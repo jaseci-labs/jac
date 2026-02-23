@@ -32,7 +32,7 @@ with entry {
 glob T = TypeVar('T', bound=uni.UniNode);
 
 """Jac Parser."""
-obj PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
+obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
         cancel_token: Event | None = None,

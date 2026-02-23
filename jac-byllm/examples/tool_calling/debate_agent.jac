@@ -1,7 +1,4 @@
-import from byllm.lib { Model }
 import wikipedia;
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 def get_wikipedia_summary(title: str) -> str {
     try {

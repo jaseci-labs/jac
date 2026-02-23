@@ -395,10 +395,18 @@ class Import:
 @dataclass
 class ClassDef:
     name: str = ""
+    type_params: str = ""
     bases: str = ""
     body: list = field(default_factory=list)
     decorators: list = field(default_factory=list)
     is_dataclass: bool = False
+
+
+@dataclass
+class TypeAliasDef:
+    name: str = ""
+    type_params: str = ""
+    value: str = ""
 
 
 @dataclass
@@ -1044,6 +1052,8 @@ class Parser:
                 return self._parse_has()
             if v == "glob":
                 return self._parse_glob()
+            if v == "type":
+                return self._parse_type_alias()
             if v == "impl":
                 return self._parse_impl([])
             if v == "with":
@@ -1168,6 +1178,10 @@ class Parser:
         kw = self._advance()  # class/obj/node/edge/walker
         is_dc = kw.value in ("obj", "node", "edge", "walker")
         name = self._expect(TT.NAME).value
+        type_params = ""
+        if self._match(TT.LBRACKET):
+            type_params = self._collect_until(TT.RBRACKET)
+            self._expect(TT.RBRACKET)
         bases = ""
         if self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
@@ -1177,11 +1191,24 @@ class Parser:
         self._expect(TT.RBRACE)
         return ClassDef(
             name=name,
+            type_params=type_params,
             bases=bases,
             body=body,
             decorators=decorators,
             is_dataclass=is_dc,
         )
+
+    def _parse_type_alias(self) -> TypeAliasDef:
+        self._expect(TT.NAME, "type")
+        name = self._expect(TT.NAME).value
+        type_params = ""
+        if self._match(TT.LBRACKET):
+            type_params = self._collect_until(TT.RBRACKET)
+            self._expect(TT.RBRACKET)
+        self._expect(TT.OP, "=")
+        value = self._collect_until(TT.SEMI)
+        self._match(TT.SEMI)
+        return TypeAliasDef(name=name, type_params=type_params, value=value)
 
     def _parse_enum(self, decorators: list[str]) -> EnumDef:
         self._expect(TT.NAME, "enum")
@@ -1683,6 +1710,8 @@ class CodeGen:
             self._emit_class(node)
         elif isinstance(node, EnumDef):
             self._emit_enum(node)
+        elif isinstance(node, TypeAliasDef):
+            self._emit_type_alias(node)
         elif isinstance(node, FuncDef):
             self._emit_func(node)
         elif isinstance(node, HasDecl):
@@ -1756,8 +1785,9 @@ class CodeGen:
             has_dc = any("dataclass" in d for d in node.decorators)
             if not has_dc:
                 self._line("@dataclass")
+        tp_str = f"[{node.type_params}]" if node.type_params else ""
         base_str = f"({node.bases})" if node.bases else ""
-        self._line(f"class {node.name}{base_str}:")
+        self._line(f"class {node.name}{tp_str}{base_str}:")
         self.indent += 1
         body = node.body
         # Stitch impls
@@ -1773,6 +1803,10 @@ class CodeGen:
             self._in_class = prev_in_class
         self.indent -= 1
         self._line()
+
+    def _emit_type_alias(self, node: TypeAliasDef) -> None:
+        tp_str = f"[{node.type_params}]" if node.type_params else ""
+        self._line(f"type {node.name}{tp_str} = {node.value}")
 
     def _emit_enum(self, node: EnumDef) -> None:
         for dec in node.decorators:

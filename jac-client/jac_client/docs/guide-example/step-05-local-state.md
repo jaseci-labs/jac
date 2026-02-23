@@ -423,7 +423,7 @@ todos.push(newTodo);  # DON'T modify directly!
 
 #  CORRECT - Create new array
 [todos, setTodos] = useState([]);
-setTodos(todos.concat([newTodo]));  # Create new array
+setTodos(todos + [newTodo]);  # Create new array
 ```
 
 Why? Because React needs to detect changes to update the UI. If you modify directly, React won't know it changed!
@@ -473,7 +473,7 @@ The child receives state but **cannot modify** the parent's state directly (we'l
 todos.push(newTodo);
 
 #  Correct
-setTodos(todos.concat([newTodo]));
+setTodos(todos + [newTodo]);
 ```
 
 ### Issue: "todos is not iterable"

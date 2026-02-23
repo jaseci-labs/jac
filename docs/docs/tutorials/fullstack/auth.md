@@ -11,6 +11,11 @@ Add user login, signup, and protected routes to your Jac application.
 
 ## Overview
 
+Authentication in Jac works across both backend approaches. Use `def:priv` (private functions) or `walker:priv` (private walkers) to create per-user endpoints where each user gets their own isolated data graph. The frontend uses built-in runtime functions to handle login/signup/logout.
+
+!!! tip "See it in action"
+    The [AI Day Planner tutorial (Part 6)](../first-app/build-ai-day-planner.md#part-6-multi-user-support) walks through adding authentication to a complete app, including per-user data isolation.
+
 Jac provides **built-in authentication** with these runtime functions:
 
 | Function | Description |
@@ -32,7 +37,7 @@ cl import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn }
 cl import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn, useNavigate }
 
 cl {
-    def:pub LoginPage() -> any {
+    def:pub LoginPage() -> JsxElement {
         has username: str = "";
         has password: str = "";
         has error: str = "";
@@ -166,7 +171,7 @@ Checks if user is currently authenticated.
 cl import from "@jac/runtime" { jacIsLoggedIn }
 
 cl {
-    def:pub NavBar() -> any {
+    def:pub NavBar() -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
 
         return <nav>
@@ -199,7 +204,7 @@ cl import from "@jac/runtime" {
 
 cl {
     # === Login Page ===
-    def:pub LoginPage() -> any {
+    def:pub LoginPage() -> JsxElement {
         has username: str = "";
         has password: str = "";
         has error: str = "";
@@ -283,7 +288,7 @@ cl {
     }
 
     # === Signup Page ===
-    def:pub SignupPage() -> any {
+    def:pub SignupPage() -> JsxElement {
         has username: str = "";
         has password: str = "";
         has confirmPassword: str = "";
@@ -381,7 +386,7 @@ cl {
     }
 
     # === Protected Dashboard ===
-    def:pub Dashboard() -> any {
+    def:pub Dashboard() -> JsxElement {
         navigate = useNavigate();
 
         # Redirect if not logged in
@@ -420,7 +425,7 @@ cl {
     }
 
     # === Main App ===
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Router>
             <Routes>
                 <Route path="/" element={<Dashboard />} />
@@ -443,7 +448,7 @@ cl import from "@jac/runtime" { AuthGuard, Outlet }
 
 # pages/(auth)/layout.jac - Protects all routes in (auth) group
 cl {
-    def:pub layout() -> any {
+    def:pub layout() -> JsxElement {
         return <AuthGuard redirect="/login">
             <Outlet />
         </AuthGuard>;

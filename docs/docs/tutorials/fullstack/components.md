@@ -122,9 +122,7 @@ cl {
 cl {
     def:pub TodoList(props: dict) -> JsxElement {
         return <ul>
-            {props.items.map(lambda item: any -> any {
-                return <li key={item.id}>{item.text}</li>;
-            })}
+            {[<li key={item.id}>{item.text}</li> for item in props.items]}
         </ul>;
     }
 
@@ -385,7 +383,7 @@ cl {
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Event handler | `onClick={lambda -> None { ... }}` |
-| List rendering | `{items.map(lambda x -> any { <li>{x}</li> })}` |
+| List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{condition ? <A /> : <B />}` |
 | Children | `{props.children}` |
 | Import component | `import from "./File.cl.jac" { Component }` |

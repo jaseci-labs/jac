@@ -152,7 +152,17 @@ impl JacClient.render_page(
       }
     </script>''';
     }
-    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{pwa_body}<script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
+    # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
+    init_data = {
+        'module': introspector._module.__name__
+        if introspector._module
+        else introspector.module_name,
+        'function': function_name,
+        'endpointEffects': introspector._client_manifest.get('endpoint_effects', {})
+    };
+    init_json = json.dumps(init_data).replace('</', '<\\/');
+    init_script = f'<script id="__jac_init__" type="application/json">{init_json}</script>';
+    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{init_script}{pwa_body}<script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
     return {
         'html': page,
         'bundle_hash': bundle_hash,

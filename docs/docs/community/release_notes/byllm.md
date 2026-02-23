@@ -2,9 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.4.22 (Unreleased)
+## byllm 0.5.1 (Unreleased)
 
-## byllm 0.4.21 (Latest Release)
+## byllm 0.5.0 (Latest Release)
+
+- **Builtin `llm` for Zero-Config `by llm()`**: The `llm` name is now a builtin, so `by llm()` works without any explicit import or `glob llm = ...` declaration. The byllm plugin provides a `default_llm` hook that automatically returns a configured `Model` instance from `jac.toml` settings. Users can still override the builtin by defining `glob llm = ...` in their module.
+
+## byllm 0.4.21
 
 - **Deprecated `method` parameter**: The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) in `by llm()` is now deprecated and emits a `DeprecationWarning`. It was never functional; the ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of using `method="ReAct"`.
 

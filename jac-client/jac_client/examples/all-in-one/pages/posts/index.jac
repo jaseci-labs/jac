@@ -36,41 +36,35 @@ cl {
                         "gap": "1rem"
                     }}
                 >
-                    {posts.map(
-                        lambda post: any  -> any { return
-                            <Link
-                                key={post["slug"]}
-                                to={"/posts/" + post["slug"]}
+                    {[
+                        <Link
+                            key={post["slug"]}
+                            to={"/posts/" + post["slug"]}
+                            style={{
+                                "display": "block",
+                                "padding": "1.25rem",
+                                "background": "#ffffff",
+                                "borderRadius": "8px",
+                                "textDecoration": "none",
+                                "color": "#111827",
+                                "border": "1px solid #e5e7eb",
+                                "boxShadow": "0 1px 2px rgba(0,0,0,0.05)"
+                            }}
+                        >
+                            <h3 style={{"margin": "0 0 0.5rem 0", "color": "#3b82f6"}}>
+                                {post["title"]}
+                            </h3>
+                            <p
                                 style={{
-                                    "display": "block",
-                                    "padding": "1.25rem",
-                                    "background": "#ffffff",
-                                    "borderRadius": "8px",
-                                    "textDecoration": "none",
-                                    "color": "#111827",
-                                    "border": "1px solid #e5e7eb",
-                                    "boxShadow": "0 1px 2px rgba(0,0,0,0.05)"
+                                    "margin": "0",
+                                    "color": "#6b7280",
+                                    "fontSize": "0.875rem"
                                 }}
                             >
-                                <h3
-                                    style={{
-                                        "margin": "0 0 0.5rem 0",
-                                        "color": "#3b82f6"
-                                    }}
-                                >
-                                    {post["title"]}
-                                </h3>
-                                <p
-                                    style={{
-                                        "margin": "0",
-                                        "color": "#6b7280",
-                                        "fontSize": "0.875rem"
-                                    }}
-                                >
-                                    {post["excerpt"]}
-                                </p>
-                            </Link>; }
-                    )}
+                                {post["excerpt"]}
+                            </p>
+                        </Link> for post in posts
+                    ]}
                 </div>
             </div>;
     }

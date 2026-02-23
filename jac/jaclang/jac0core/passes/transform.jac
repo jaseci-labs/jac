@@ -2,7 +2,7 @@
 import time;
 import from abc { ABC, abstractmethod }
 import from threading { Event }
-import from typing { TYPE_CHECKING, Generic, TypeVar }
+import from typing { TYPE_CHECKING }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.log { logging }
 import from jaclang.jac0core.unitree { UniNode }
@@ -12,11 +12,6 @@ with entry {
         import from jaclang.jac0core.program { JacProgram }
     }
 }
-
-glob T_in = TypeVar('T_in'),
-     T_out = TypeVar('T_out'),
-     T = TypeVar('T', bound=UniNode),
-     R = TypeVar('R', bound=UniNode);
 
 """Alert interface."""
 class Alert {
@@ -43,7 +38,7 @@ class Alert {
     Use this base class for transforms that don't operate on AST nodes,
     such as parser transforms that take string input and produce parse trees.
     """
-class BaseTransform(ABC, Generic[(T_in, T_out)]) {
+class BaseTransform[T_in, T_out](ABC) {
     """Initialize pass."""
     def init(
         self: BaseTransform,
@@ -77,7 +72,7 @@ class BaseTransform(ABC, Generic[(T_in, T_out)]) {
     This class extends BaseTransform with UniNode-specific functionality
     like error/warning logging with source location tracking.
     """
-class Transform(BaseTransform[(T, R)]) {
+class Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
     """Initialize pass."""
     def init(
         self: Transform,

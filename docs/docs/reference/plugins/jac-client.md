@@ -33,6 +33,133 @@ myapp/
     └── main.css
 ```
 
+### The `.cl.jac` Convention
+
+Files ending in `.cl.jac` are automatically treated as client-side code -- no `cl { }` wrapper needed:
+
+```jac
+# components/Header.cl.jac -- automatically client-side
+def:pub Header() -> JsxElement {
+    return <header>My App</header>;
+}
+```
+
+This is equivalent to wrapping the contents in `cl { }` in a regular `.jac` file.
+
+---
+
+## Module System
+
+Jac's module system bridges Python and JavaScript ecosystems. You can import from PyPI packages on the server and npm packages on the client using familiar syntax. The `include` statement (like C's `#include`) merges code directly, which is useful for splitting large files.
+
+### Import Statements
+
+```jac
+# Simple import
+import math;
+import sys, json;
+
+# Aliased import
+import datetime as dt;
+
+# From import
+import from typing { List, Dict, Optional }
+import from math { sqrt, pi, log as logarithm }
+
+# Relative imports
+import from . { sibling_module }
+import from .. { parent_module }
+import from .utils { helper_function }
+
+# npm package imports (client-side)
+import from react { useState, useEffect }
+import from "@mui/material" { Button, TextField }
+
+# CSS and asset imports
+import "./styles.css";
+import "./global.css";
+```
+
+### Include Statements
+
+Include merges code directly (like C's `#include`):
+
+```jac
+include utils;  # Merges utils.jac into current scope
+```
+
+### Export and Visibility
+
+```jac
+# Public by default
+def helper -> int { return 42; }
+
+# Explicitly public
+def:pub api_function -> None { }
+
+# Private to module
+def:priv internal_helper -> None { }
+
+# Public walker (becomes API endpoint with jac start)
+walker:pub GetUsers { }
+
+# Private walker
+walker:priv InternalProcess { }
+```
+
+---
+
+## Server-Side Development
+
+### Server Code Blocks
+
+```jac
+sv {
+    # Server-only block
+    node User {
+        has id: str;
+        has email: str;
+    }
+}
+
+# Single-statement form (no braces)
+sv import from .database { connect_db }
+sv node SecretData { has value: str; }
+```
+
+### REST API with jac start
+
+Public walkers automatically become REST endpoints:
+
+```jac
+walker:pub GetUsers {
+    can get with Root entry {
+        users = [-->](?:User);
+        report users;
+    }
+}
+
+# Endpoint: POST /GetUsers
+```
+
+Start the server:
+
+```bash
+jac start main.jac --port 8000
+```
+
+### Module Introspection
+
+```jac
+with entry {
+    # List all walkers in module
+    walkers = get_module_walkers();
+
+    # List all functions
+    functions = get_module_functions();
+}
+```
+
 ---
 
 ## Client Blocks
@@ -47,6 +174,15 @@ cl {
         </div>;
     }
 }
+```
+
+### Single-Statement Forms
+
+For one-off client-side declarations, use the single-statement `cl` prefix:
+
+```jac
+cl import from react { useState }
+cl glob THEME: str = "dark";
 ```
 
 ### Export Requirement
@@ -159,6 +295,18 @@ cl {
 }
 ```
 
+!!! warning "Immutable Updates for Lists and Objects"
+    State updates must produce new references to trigger re-renders. Mutating in place will not work.
+
+    ```jac
+    # Correct - creates new list
+    todos = todos + [new_item];
+    todos = [t for t in todos if t["id"] != target_id];
+
+    # Wrong - mutates in place (no re-render)
+    todos.append(new_item);
+    ```
+
 ---
 
 ## React Hooks
@@ -263,6 +411,41 @@ cl {
 }
 ```
 
+### Custom Hooks
+
+Create reusable state logic by defining functions that use `has`:
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def use_local_storage(key: str, initial_value: any) -> tuple {
+        has value: any = initial_value;
+
+        useEffect(lambda -> None {
+            stored = localStorage.getItem(key);
+            if stored {
+                value = JSON.parse(stored);
+            }
+        }, []);
+
+        useEffect(lambda -> None {
+            localStorage.setItem(key, JSON.stringify(value));
+        }, [value]);
+
+        return (value, lambda v: any -> None { value = v; });
+    }
+
+    def:pub Settings() -> JsxElement {
+        (theme, set_theme) = use_local_storage("theme", "light");
+        return <div>
+            <p>Current: {theme}</p>
+            <button onClick={lambda -> None { set_theme("dark"); }}>Dark</button>
+        </div>;
+    }
+}
+```
+
 ---
 
 ## Backend Integration
@@ -309,36 +492,126 @@ The `spawn` call returns a result object:
 | `result.reports` | list | Data reported by walker via `report` |
 | `result.status` | int | HTTP status code |
 
+### Spawn Syntax
+
+| Syntax | Description |
+|--------|-------------|
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
+| `node_id spawn WalkerName()` | Spawn from specific node |
+
+The spawn call returns a result object with:
+
+- `result.reports` - Data reported by the walker
+- `result.status` - HTTP status code
+
 ### Mutations (Create, Update, Delete)
 
 ```jac
-sv import from ...main { create_task, toggle_task, delete_task }
+sv import from ...main { add_task, toggle_task, delete_task }
 
 cl {
-    def:pub TaskForm() -> JsxElement {
-        has title: str = "";
+    def:pub TaskManager() -> JsxElement {
         has tasks: list = [];
 
-        async def handleSubmit() -> None {
-            if not title.trim() {
-                return;
+        # Create
+        async def handle_add(title: str) -> None {
+            result = root spawn add_task(title=title);
+            if result.reports and result.reports.length > 0 {
+                tasks = tasks + [result.reports[0]];
             }
-            result = root spawn create_task(title=title.trim());
-            if result.reports {
-                tasks = tasks.concat([result.reports[0]]);
-            }
-            title = "";
         }
 
-        async def handleToggle(taskId: str) -> None {
-            taskId spawn toggle_task();
-            # Update local state
+        # Update
+        async def handle_toggle(task_id: str) -> None {
+            result = root spawn toggle_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = tasks.map(lambda t: any -> any {
+                    if t["id"] == task_id {
+                        return {**t, "completed": not t["completed"]};
+                    }
+                    return t;
+                });
+            }
         }
 
-        return <form onSubmit={lambda e: any -> None { e.preventDefault(); handleSubmit(); }}>
-            <input value={title} onChange={lambda e: any -> None { title = e.target.value; }} />
-            <button type="submit">Add Task</button>
-        </form>;
+        # Delete
+        async def handle_delete(task_id: str) -> None {
+            result = root spawn delete_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = tasks.filter(lambda t: any -> bool {
+                    return t["id"] != task_id;
+                });
+            }
+        }
+
+        return <div>...</div>;
+    }
+}
+```
+
+### Error Handling Pattern
+
+Wrap spawn calls in try/catch and track loading/error state:
+
+```jac
+cl {
+    def:pub SafeDataView() -> JsxElement {
+        has data: any = None;
+        has loading: bool = True;
+        has error: str = "";
+
+        async can with entry {
+            loading = True;
+            try {
+                result = root spawn get_data();
+                if result.reports and result.reports.length > 0 {
+                    data = result.reports[0];
+                }
+            } except e {
+                error = f"Failed to load: {e}";
+            }
+            loading = False;
+        }
+
+        if loading { return <p>Loading...</p>; }
+        if error {
+            return <div>
+                <p>{error}</p>
+                <button onClick={lambda -> None { location.reload(); }}>Retry</button>
+            </div>;
+        }
+        return <div>{JSON.stringify(data)}</div>;
+    }
+}
+```
+
+### Polling for Real-Time Updates
+
+Use `setInterval` with effect cleanup for periodic data refresh:
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def:pub LiveData() -> JsxElement {
+        has data: any = None;
+
+        async def fetch_data() -> None {
+            result = root spawn get_live_data();
+            if result.reports and result.reports.length > 0 {
+                data = result.reports[0];
+            }
+        }
+
+        async can with entry { await fetch_data(); }
+
+        useEffect(lambda -> None {
+            interval = setInterval(lambda -> None { fetch_data(); }, 5000);
+            return lambda -> None { clearInterval(interval); };
+        }, []);
+
+        return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
     }
 }
 ```
@@ -368,15 +641,46 @@ myapp/
 
 ```
 
+**Route mapping:**
+
+| File | Route | Description |
+|------|-------|-------------|
+| `pages/index.jac` | `/` | Home page |
+| `pages/about.jac` | `/about` | Static page |
+| `pages/users/index.jac` | `/users` | Users list |
+| `pages/users/[id].jac` | `/users/:id` | Dynamic parameter |
+| `pages/[...notFound].jac` | `*` | Catch-all (404) |
+| `pages/(auth)/dashboard.jac` | `/dashboard` | Route group (no URL segment) |
+| `pages/layout.jac` | -- | Wraps child routes with `<Outlet />` |
+
 Each page file exports a `page` function:
 
 ```jac
-# pages/about.jac
+# pages/users/[id].jac
+cl import from "@jac/runtime" { useParams, Link }
+
 cl {
-    def:pub page() -> any {
+    def:pub page() -> JsxElement {
+        params = useParams();
         return <div>
-            <h1>About Us</h1>
+            <Link to="/users">Back</Link>
+            <h1>User {params.id}</h1>
         </div>;
+    }
+}
+```
+
+**Route groups** organize pages without affecting the URL. A layout file can wrap them with authentication:
+
+```jac
+# pages/(auth)/layout.jac -- protects all pages in this group
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
     }
 }
 ```
@@ -450,6 +754,18 @@ cl {
 ```jac
 cl import from "@jac/runtime" { Outlet }
 
+# pages/layout.jac -- root layout wrapping all pages
+cl {
+    def:pub layout() -> JsxElement {
+        return <>
+            <nav>...</nav>
+            <main><Outlet /></main>
+            <footer>...</footer>
+        </>;
+    }
+}
+
+# pages/dashboard/layout.jac -- nested dashboard layout
 cl {
     def:pub DashboardLayout() -> JsxElement {
         # Child routes render where Outlet is placed
@@ -462,6 +778,19 @@ cl {
     }
 }
 ```
+
+### Routing Hooks Reference
+
+Import from `@jac/runtime`:
+
+| Hook | Returns | Usage |
+|------|---------|-------|
+| `useParams()` | dict | Access URL parameters: `params.id` |
+| `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
+| `useLocation()` | object | Current location: `location.pathname`, `location.search` |
+| `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
+| `Outlet` | component | Render child routes in layouts |
+| `AuthGuard` | component | Protect routes: `<AuthGuard redirect="/login">` |
 
 ---
 
@@ -477,6 +806,14 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 | `jacSignup(username, password)` | `dict` | Register user, returns `{success: bool, error?: str}` |
 | `jacLogout()` | `void` | Clear auth token |
 | `jacIsLoggedIn()` | `bool` | Check if user is authenticated |
+
+**Additional user management operations** (available via API endpoints when using jac-scale):
+
+| Operation | Description |
+|-----------|-------------|
+| Update Username | Change username via API endpoint |
+| Update Password | Change password via API endpoint |
+| Guest Access | Anonymous user support via `__guest__` account |
 
 ### jacLogin
 
@@ -551,6 +888,38 @@ cl {
 }
 ```
 
+### Per-User Graph Isolation
+
+Each authenticated user gets an isolated root node:
+
+```jac
+walker:pub GetMyData {
+    can get with Root entry {
+        # 'root' is user-specific
+        my_data = [-->](?:MyData);
+        report my_data;
+    }
+}
+```
+
+### Single Sign-On (SSO)
+
+Configure in `jac.toml`:
+
+```toml
+[plugins.scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+```
+
+**SSO Endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `/sso/{platform}/login` | Initiate SSO login |
+| `/sso/{platform}/register` | Initiate SSO registration |
+| `/sso/{platform}/login/callback` | OAuth callback |
+
 ### AuthGuard for Protected Routes
 
 Use `AuthGuard` to protect routes in file-based routing:
@@ -609,6 +978,64 @@ cl {
 ```jac
 cl {
     import "./styles/main.css";
+}
+```
+
+### cn() Utility (Tailwind/shadcn)
+
+```jac
+cl {
+    # cn() from local lib/utils.ts (shadcn/ui pattern)
+    import from "../lib/utils" { cn }
+
+    def:pub StylingExamples() -> JsxElement {
+        has condition: bool = True;
+        has hasError: bool = False;
+        has isSuccess: bool = True;
+
+        className = cn(
+            "base-class",
+            condition and "active",
+            {"error": hasError, "success": isSuccess}
+        );
+
+        return <div>
+            <div className="p-4 bg-blue-500 text-white">Tailwind</div>
+            <div className={className}>Dynamic</div>
+        </div>;
+    }
+}
+```
+
+> **Note:** The `cn()` utility is a local file you create in your project (shadcn/ui pattern):
+>
+> ```typescript
+> // lib/utils.ts
+> import { type ClassValue, clsx } from "clsx"
+> import { twMerge } from "tailwind-merge"
+> export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+> ```
+
+### JSX Syntax Reference
+
+```jac
+cl {
+    def:pub JsxExamples() -> JsxElement {
+        has variable: str = "text";
+        has condition: bool = True;
+        has items: list = [];
+        has props: dict = {};
+
+        return <div>
+            <input type="text" value={variable} />
+
+            {condition and <div>Shown if true</div>}
+
+            {items}
+
+            <button {...props}>Click</button>
+        </div>;
+    }
 }
 ```
 
@@ -684,7 +1111,17 @@ content = ["./src/**/*.{jac,tsx,jsx}"]
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
+| `jac add --npm --dev <pkg>` | Add npm dev dependency |
+| `jac add --npm` | Install all npm dependencies from jac.toml |
 | `jac remove --npm <pkg>` | Remove npm package |
+
+npm dependencies can also be declared in `jac.toml`:
+
+```toml
+[dependencies.npm]
+lodash = "^4.17.21"
+axios = "^1.6.0"
+```
 
 ### jac build
 
@@ -754,6 +1191,7 @@ jac-client extends several core commands:
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
 | `jac add` | `--npm` | Add npm (client-side) dependency |
+| `jac add` | `--npm --dev` | Add npm dev dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
@@ -1015,6 +1453,75 @@ If `MainContent` throws an error, only that boundary's fallback is shown, while 
 1. **Isolate Failure-Prone Widgets**: Protect sections that fetch data, embed third-party code, or are unstable
 2. **Per-Page Protection**: Wrap top-level pages/routes to prevent one error from failing the whole app
 3. **Micro-Frontend Boundaries**: Nest boundaries around embeddables for fault isolation
+
+---
+
+## Memory & Persistence
+
+### Memory Hierarchy
+
+| Tier | Type | Implementation |
+|------|------|----------------|
+| L1 | Volatile | VolatileMemory (in-process) |
+| L2 | Cache | LocalCacheMemory (TTL-based) |
+| L3 | Persistent | SqliteMemory (default) |
+
+### TieredMemory
+
+Automatic read-through caching and write-through persistence:
+
+```jac
+# Objects are automatically persisted
+node User {
+    has name: str;
+}
+
+with entry {
+    user_node = User(name="Alice");
+    # Manual save
+    save(user_node);
+    commit();
+}
+```
+
+### ExecutionContext
+
+Manages runtime context:
+
+- `system_root` -- System-level root node
+- `user_root` -- User-specific root node
+- `entry_node` -- Current entry point
+- `Memory` -- Storage backend
+
+### Anchor Management
+
+Anchors provide persistent object references across sessions, allowing nodes and edges to be retrieved by stable identifiers after server restarts or session changes.
+
+---
+
+## Development Tools
+
+### Hot Module Replacement (HMR)
+
+```bash
+# Enable with --dev flag
+jac start main.jac --dev
+```
+
+Changes to `.jac` files automatically reload without restart.
+
+### Debug Mode
+
+```bash
+jac debug main.jac
+```
+
+Provides:
+
+- Step-through execution
+- Variable inspection
+- Breakpoints
+- Graph visualization
 
 ---
 

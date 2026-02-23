@@ -136,10 +136,14 @@ my_project/
 
 | Extension | Purpose |
 |-----------|---------|
-| `.jac` | Universal Jac code |
-| `.sv.jac` | Server-side only |
-| `.cl.jac` | Client-side only |
-| `.impl.jac` | Implementation file |
+| `.jac` | Universal Jac code (head module) |
+| `.sv.jac` | Server-variant code |
+| `.cl.jac` | Client-variant code |
+| `.na.jac` | Native-variant code |
+| `.impl.jac` | Implementation file (annex) |
+| `.test.jac` | Test file (annex) |
+
+Files sharing the same base name form a single logical module. For example, `mymod.jac`, `mymod.sv.jac`, `mymod.cl.jac`, `mymod.impl.jac`, and `mymod.test.jac` are all part of the `mymod` module. Variant files (`.sv.jac`, `.cl.jac`, `.na.jac`) are automatically discovered and merged during compilation -- see [Variant Modules](functions-objects.md#variant-modules) for details.
 
 ### 4 Editor Setup
 
@@ -168,6 +172,9 @@ Jac source files are UTF-8 encoded. Unicode is fully supported in strings and co
 
 """Docstring for modules, classes, and functions"""
 ```
+
+!!! tip "Coming from Python"
+    The biggest syntactic differences: Jac uses **braces** `{ }` instead of indentation for blocks, and **semicolons** `;` to terminate statements. Everything else -- variables, control flow, imports -- is very similar to Python.
 
 ### 3 Statements and Expressions
 
@@ -229,6 +236,9 @@ obj Example {
 ### 7 Entry Point Variants
 
 Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
+
+!!! tip "Coming from Python"
+    Python's `if __name__ == "__main__":` becomes `with entry:__main__ { }`. Plain `with entry { }` runs every time the module loads (like top-level Python code).
 
 ```jac
 # Default entry - always runs when this module loads
@@ -503,6 +513,18 @@ def example() {
 }
 ```
 
+??? example "Try it: Literals and collections"
+    ```jac
+    with entry {
+        name = "Jac";
+        nums = [1, 2, 3, 4, 5];
+        info = {"language": name, "version": "0.10"};
+        evens = [x for x in nums if x % 2 == 0];
+        print(f"{name} evens: {evens}");
+        print(f"Info: {info}");
+    }
+    ```
+
 ---
 
 ## Variables and Scope
@@ -526,6 +548,9 @@ def example() {
 ### 2 Instance Variables (has)
 
 The `has` keyword declares instance variables in a clean, declarative style. Unlike Python's `self.x = value` pattern scattered throughout `__init__`, `has` statements appear at the top of your class definition, making the data model immediately visible. This design improves readability for both humans and AI code generators.
+
+!!! tip "Coming from Python"
+    In Python you write `self.x = value` inside `__init__`. In Jac, `has x: Type = value;` at the top of an `obj` replaces both the `__init__` parameter and the assignment -- no `self` needed for declarations.
 
 ```jac
 obj Person {
@@ -552,6 +577,11 @@ obj Rectangle {
 ```
 
 ### 3 Global Variables (glob)
+
+The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments.
+
+!!! tip "Coming from Python"
+    Python uses plain global assignment (`DEBUG = True`) and the `global` keyword inside functions. Jac uses `glob` for declarations (`glob DEBUG: bool = True;`) and still uses `global` inside functions to modify them.
 
 ```jac
 glob PI: float = 3.14159;
@@ -1166,19 +1196,35 @@ When the `byllm` plugin is installed, `by` enables LLM delegation:
 
 ```jac
 # Function implementation delegated to LLM
-"""Summarize the given text."""
 def summarize(text: str) -> str by llm();
+sem summarize = "Summarize the given text in 2-3 sentences";
 
-"""Translate text to French."""
 def translate(text: str) -> str by llm(model_name="gpt-4");
+sem translate = "Translate the given text to French";
 
 with entry {
-    # Expression processed by LLM
     result = summarize("Hello world");
 }
 ```
 
-See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
+Use the **`sem` keyword** to attach semantic descriptions to functions, parameters, and fields. These descriptions are included in the compiler-generated prompt, giving the LLM additional context beyond what it can infer from names and types:
+
+```jac
+obj Ingredient {
+    has name: str;
+    has cost: float;
+}
+sem Ingredient.cost = "Estimated cost in USD";
+
+def plan_shopping(recipe: str) -> list[Ingredient] by llm();
+sem plan_shopping = "Generate a shopping list for the given recipe";
+sem plan_shopping.recipe = "A description of the meal to prepare";
+```
+
+!!! tip
+    Always use `sem` to provide context for `by llm()` functions. Docstrings are for human documentation and are not included in compiler-generated prompts.
+
+See [Part V: AI Integration](../plugins/byllm.md) for detailed LLM usage.
 
 ### 10 Operator Precedence
 
@@ -1267,6 +1313,19 @@ def example() {
 }
 ```
 
+??? example "Try it: Operators"
+    ```jac
+    with entry {
+        x = 10;
+        y = 3;
+        print(f"{x} + {y} = {x + y}");
+        print(f"{x} ** {y} = {x ** y}");
+        print(f"{x} > {y} = {x > y}");
+        print(f"not False = {not False}");
+        print(f"{x} in [1,5,10] = {x in [1, 5, 10]}");
+    }
+    ```
+
 ---
 
 ## Control Flow
@@ -1351,6 +1410,9 @@ def example() {
 ### 4 Pattern Matching
 
 Pattern matching lets you destructure and test complex data in a single construct. Unlike a chain of `if/elif` statements, `match` can extract values from lists, dicts, and objects while testing their structure. Use it when handling multiple data shapes or implementing state machines.
+
+!!! warning "Common Gotcha"
+    Match case bodies use **Python-style indentation**, not braces. The `case` keyword is followed by a colon, and the body is indented -- this is the one place in Jac where indentation matters.
 
 **Basic Patterns:**
 
@@ -1684,6 +1746,29 @@ def example() {
 }
 ```
 
+??? example "Try it: Control flow and generators"
+    ```jac
+    def fizzbuzz(n: int) -> str {
+        if n % 15 == 0 { return "FizzBuzz"; }
+        elif n % 3 == 0 { return "Fizz"; }
+        elif n % 5 == 0 { return "Buzz"; }
+        return str(n);
+    }
+
+    can countdown(n: int) -> Generator[int] {
+        while n > 0 {
+            yield n;
+            n -= 1;
+        }
+    }
+
+    with entry {
+        results = [fizzbuzz(i) for i in range(1, 16)];
+        print(results);
+        print([x for x in countdown(5)]);
+    }
+    ```
+
 ---
 
 ## Learn More
@@ -1691,7 +1776,7 @@ def example() {
 **Tutorials:**
 
 - [Jac Basics](../../tutorials/language/basics.md) - Step-by-step introduction to Jac syntax
-- [Hello World](../../quick-guide/hello-world.md) - Your first Jac program
+- [Installation](../../quick-guide/install.md) - Setup and your first Jac program
 
 **Related Reference:**
 

@@ -68,6 +68,8 @@ obj DocIRGenPass(UniPass) {
     def exit_module_item(nd: uni.ModuleItem) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
+    def exit_type_param(nd: uni.TypeParam) -> None;
+    def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_ability(nd: uni.Ability) -> None;
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;

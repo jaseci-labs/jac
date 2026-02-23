@@ -493,15 +493,107 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Dict methods (simple name target)
+    if target_name is not None and target_name in self.var_dict_type {
+        dict_type_key = self.var_dict_type[target_name];
+        dict_val = self._codegen_expr(trailer.target);
+        if dict_val is not None {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
+                }
+            }
+            result = self._dispatch_primitive_method(
+                "dict", method_name, dict_val, arg_vals, dict_type_key
+            );
+            if result is not None {
+                return result;
+            }
+        }
+    }
+    # Int methods (on any target expression whose type is i64)
+    if method_name in ("conjugate", "bit_length", "bit_count") {
+        int_val = self._codegen_expr(trailer.target);
+        if int_val is not None and isinstance(int_val.type, ir.IntType) {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
+                }
+            }
+            result = self._dispatch_primitive_method(
+                "int", method_name, int_val, arg_vals, ""
+            );
+            if result is not None {
+                return result;
+            }
+        }
+    }
+    # Float methods (on any target expression whose type is double)
+    if method_name in ("is_integer", "conjugate") {
+        float_val = self._codegen_expr(trailer.target);
+        if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
+                }
+            }
+            result = self._dispatch_primitive_method(
+                "float", method_name, float_val, arg_vals, ""
+            );
+            if result is not None {
+                return result;
+            }
+        }
+    }
     # String methods (on any target expression whose type is i8*)
     if method_name in (
         "strip",
+        "lstrip",
+        "rstrip",
         "split",
         "upper",
         "lower",
+        "capitalize",
+        "casefold",
+        "swapcase",
+        "title",
         "find",
+        "rfind",
+        "count",
         "startswith",
-        "endswith"
+        "endswith",
+        "replace",
+        "removeprefix",
+        "removesuffix",
+        "ljust",
+        "rjust",
+        "zfill",
+        "isalpha",
+        "isdigit",
+        "isalnum",
+        "isspace",
+        "islower",
+        "isupper",
+        "isascii",
+        "isdecimal",
+        "isnumeric",
+        "isprintable",
+        "isidentifier",
+        "istitle",
+        "index",
+        "rindex",
+        "center",
+        "expandtabs",
+        "join"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {

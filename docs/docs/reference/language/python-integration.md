@@ -1,8 +1,6 @@
 # Python Integration
 
-> **Part of:** [Part VIII: Ecosystem](ecosystem.md)
->
-> **Related:** [Library Mode](library-mode.md) | [Build a Todo App](../../tutorials/fullstack/todo-app.md)
+> **Related:** [Library Mode](library-mode.md) | [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md)
 
 ---
 
@@ -118,9 +116,52 @@ Jac files can also import Python libraries:
 # analyzer.jac
 import pandas as pd;
 import numpy as np;
+import from sklearn.linear_model { LinearRegression }
 
-# Use Python libraries in Jac code
+with entry {
+    # NumPy
+    arr = np.array([1, 2, 3, 4, 5]);
+    print(f"Mean: {np.mean(arr)}");
+
+    # Pandas
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]});
+    print(df.describe());
+
+    # Scikit-learn
+    model = LinearRegression();
+}
 ```
+
+**Inline Python with `::py::` Blocks**
+
+For performance-critical code or complex Python-only APIs, embed Python directly in `.jac` files:
+
+```jac
+::py::
+import numpy as np
+
+def complex_calculation(data):
+    """Pure Python for performance-critical code."""
+    arr = np.array(data)
+    return arr.mean(), arr.std()
+::py::
+
+with entry {
+    (mean, std) = complex_calculation([1, 2, 3, 4, 5]);
+    print(f"Mean: {mean}, Std: {std}");
+}
+```
+
+**When to use inline Python:**
+
+* Complex Python-only APIs
+* Performance-critical numerical code
+* Legacy code integration
+
+**When NOT to use inline Python:**
+
+* Simple imports (use `import` instead)
+* New code that could use Jac features
 
 **Implementation Details:** Jac extends Python's native import mechanism using the [PEP 302](https://peps.python.org/pep-0302/) import hook system. When `import jaclang` is executed, it registers a custom importer that enables Python to locate and load `.jac` files. Subsequently, Python's import mechanism automatically checks for `.jac` files alongside `.py` files, compiles them transparently, and loads them into the program. This integration makes Jac modules function as first-class citizens within the Python environment.
 
@@ -543,3 +584,32 @@ Jac's design as a Python superset enables complementary use of both languages ra
 | Pattern 5: Pure Python + Library | Low | Very Low | Core runtime only | Very Low |
 
 Jac accommodates both new application development and enhancement of existing Python codebases, providing structured approaches to graph-based and object-spatial programming while maintaining full Python ecosystem compatibility.
+
+### Using Jac from Python
+
+```python
+from jaclang import jac_import
+
+# Import Jac module
+my_module = jac_import("my_module.jac")
+
+# Use exported functions/classes
+result = my_module.my_function(arg1, arg2)
+instance = my_module.MyClass()
+```
+
+---
+
+## Type Compatibility
+
+| Jac Type | Python Type |
+|----------|-------------|
+| `int` | `int` |
+| `float` | `float` |
+| `str` | `str` |
+| `bool` | `bool` |
+| `list` | `list` |
+| `dict` | `dict` |
+| `tuple` | `tuple` |
+| `set` | `set` |
+| `None` | `None` |

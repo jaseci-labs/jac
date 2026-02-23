@@ -28,10 +28,6 @@ sentiment = analyze(text)  # Sentiment.POSITIVE (guaranteed)
 Return one of a fixed set of values:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 enum Priority {
     LOW,
     MEDIUM,
@@ -84,10 +80,6 @@ def get_status(response_description: str) -> HttpStatus by llm();
 Return complex structured data:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Person {
     has name: str;
     has age: int;
@@ -119,10 +111,6 @@ Occupation: software engineer
 ## Nested Objects
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Address {
     has street: str;
     has city: str;
@@ -158,10 +146,6 @@ with entry {
 Return multiple items:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Task {
     has title: str;
     has priority: str;
@@ -202,10 +186,7 @@ Found 4 tasks:
 ## Optional Fields
 
 ```jac
-import from byllm.lib { Model }
 import from typing { Optional }
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 obj Contact {
     has name: str;
@@ -232,10 +213,7 @@ with entry {
 ## Complex Example: Resume Parser
 
 ```jac
-import from byllm.lib { Model }
 import from typing { Optional }
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 obj Education {
     has degree: str;
@@ -303,10 +281,6 @@ with entry {
 Add hints to help the LLM understand field meanings:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Product {
     has name: str;
     has price: float;
@@ -328,10 +302,6 @@ def extract_product(listing: str) -> Product by llm();
 Use structured outputs with walkers:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 enum Priority { LOW, MEDIUM, HIGH }
 
 node Ticket {

@@ -50,6 +50,14 @@ obj GStar(GExpr) {
     def __repr__ -> str;
 }
 
+"""One-or-more: (A)+."""
+obj GPlus(GExpr) {
+    has inner: GExpr;
+
+    def __eq__(other: object) -> bool;
+    def __repr__ -> str;
+}
+
 """Terminal token reference."""
 obj GTok(GExpr) {
     has name: str;
@@ -113,6 +121,10 @@ obj GrammarExtractPass(UniPass) {
     def has_early_return(stmts: list) -> bool;
     def is_negated_check_condition(cond: uni.Expr) -> bool;
     def expr_contains_tok(expr: GExpr, tok_name: str) -> bool;
+    # Post-processing helpers
+    def _dedup_parent_child_tokens(expr: GExpr, rule_map: dict) -> GExpr;
+    def _rule_starts_with_tok(body: GExpr, tok_name: str) -> bool;
+    def _rule_always_starts_with_one_of(body: GExpr, tok_set: set) -> bool;
     # AST helpers
     def extract_token_kind(expr: uni.Expr) -> str | None;
     def get_self_method(nd: uni.Expr) -> str | None;

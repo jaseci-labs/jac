@@ -288,6 +288,9 @@ with entry {
 
 The `visit` statement tells the walker where to go next. It doesn't immediately move -- it queues nodes for the next step of traversal. This queue-based approach lets you control breadth-first vs depth-first traversal and handle cases where there's nowhere to go (using the `else` clause).
 
+!!! warning "Traversal Must Be Explicit"
+    Without a `visit` statement in an ability, the walker stops at the current node. If a walker visits root and then reaches a `Person` node but the `Person` ability has no `visit [-->]`, the walker will not continue to the next person. Traversal must be explicitly requested at each step.
+
 **Basic Syntax:**
 
 ```jac
@@ -437,6 +440,61 @@ with entry {
 }
 ```
 
+### When to Use Walkers vs Functions
+
+Jac provides two ways to expose server logic: `def:pub` functions and `walker` types. Choose based on your needs:
+
+| | `def:pub` Functions | Walkers |
+|---|---|---|
+| **Best for** | Simple stateless CRUD, quick prototyping | Graph traversal, per-user data, production apps |
+| **Auth** | Shared data (no user isolation) | Per-user root node (`walker:priv` enforces auth) |
+| **Data access** | Direct: `[root -->]` | Traversal: `visit [-->]`, `here` |
+| **API style** | Function call → HTTP endpoint | Spawn walker at node |
+| **State** | Stateless | Carries state across nodes via `has` properties |
+
+!!! tip "Rule of Thumb"
+    Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal. The `walker:priv` visibility modifier automatically enforces that the walker runs on the authenticated user's private root node.
+
+### Walkers as REST APIs
+
+Public walkers automatically become HTTP endpoints when you run `jac start`:
+
+```jac
+node Todo {
+    has title: str;
+    has done: bool = False;
+}
+
+walker add_todo {
+    has title: str;
+
+    can create with Root entry {
+        new_todo = here ++> Todo(title=self.title);
+        report new_todo;
+    }
+}
+
+walker list_todos {
+    can list with Root entry {
+        for todo in [-->](?:Todo) {
+            report todo;
+        }
+    }
+}
+```
+
+```bash
+# Run as API server
+jac start app.jac
+
+# Call via HTTP
+curl -X POST http://localhost:8000/walker/add_todo \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Learn OSP"}'
+```
+
+Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
+
 ### 7 Walker Inheritance
 
 ```jac
@@ -466,7 +524,7 @@ These keywords have special meaning in specific contexts:
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#2-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](full-stack.md#client-side-development-jsx) |
+| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-blocks) |
 
 **Usage examples:**
 
@@ -533,6 +591,15 @@ with entry {
 }
 ```
 
+!!! note "The `++>` operator returns a list"
+    The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
+
+    ```jac
+    new_node = here ++> Todo(id="123", title="Buy groceries");
+    created_todo = new_node[0];  # Access the actual node
+    report created_todo;
+    ```
+
 ### 2 Creating Edges
 
 ```jac
@@ -593,6 +660,38 @@ with entry {
 
     # Delete node
     del bob;
+}
+
+# Delete current node from within a walker
+walker Cleanup {
+    can check with Todo entry {
+        if here.completed {
+            node_id = here.id;
+            del here;
+            report {"deleted": node_id};
+        }
+    }
+}
+```
+
+#### Cascade Deletion Pattern
+
+Delete a node and all its related nodes:
+
+```jac
+walker:priv DeleteWithChildren {
+    has parent_id: str;
+
+    can search with Root entry {
+        visit [-->];
+    }
+
+    can delete with Todo entry {
+        # Delete if this is the target or a child of the target
+        if here.id == self.parent_id or here.parent_id == self.parent_id {
+            del here;
+        }
+    }
 }
 ```
 
@@ -771,7 +870,9 @@ walker Querier {
 
 ### 1 What are Typed Context Blocks?
 
-Handle different types with specialized code paths. The syntax uses `->Type{code}` with no space between the arrow and type name:
+Typed context blocks let you conditionally execute code based on the runtime type of the current node. Instead of writing separate abilities for each node type, you can handle multiple types within a single ability using `->Type{code}` blocks. This is especially useful when a walker visits a heterogeneous graph with different node types.
+
+The syntax uses `->Type{code}` with no space between the arrow and type name:
 
 ```jac
 walker AnimalVisitor {
@@ -846,10 +947,158 @@ walker ShoppingCart {
 
 ---
 
+## Common Walker Patterns
+
+### CRUD Walker
+
+```jac
+# Create
+walker:priv CreateItem {
+    has name: str;
+    can create with Root entry {
+        new_item = here ++> Item(name=self.name);
+        report new_item[0];
+    }
+}
+
+# Read (List)
+walker:priv ListItems {
+    has items: list = [];
+    can collect with Root entry { visit [-->]; }
+    can gather with Item entry { self.items.append(here); }
+    can finish with Root exit { report self.items; }
+}
+
+# Update
+walker:priv UpdateItem {
+    has item_id: str;
+    has new_name: str;
+    can find with Root entry { visit [-->]; }
+    can update with Item entry {
+        if here.id == self.item_id {
+            here.name = self.new_name;
+            report here;
+        }
+    }
+}
+
+# Delete
+walker:priv DeleteItem {
+    has item_id: str;
+    can find with Root entry { visit [-->]; }
+    can remove with Item entry {
+        if here.id == self.item_id {
+            del here;
+            report {"deleted": self.item_id};
+        }
+    }
+}
+```
+
+### Search Walker
+
+```jac
+node Item {
+    has id: str;
+    has name: str;
+}
+
+def calculate_relevance(item: Item, query: str) -> int {
+    return 1;
+}
+
+walker:priv SearchItems {
+    has query: str;
+    has matches: list = [];
+
+    can start with Root entry {
+        visit [-->];
+    }
+
+    can check with Item entry {
+        if self.query.lower() in here.name.lower() {
+            self.matches.append({
+                "id": here.id,
+                "name": here.name,
+                "score": calculate_relevance(here, self.query)
+            });
+        }
+    }
+
+    can finish with Root exit {
+        self.matches.sort(key=lambda x: any: x["score"], reverse=True);
+        report self.matches;
+    }
+}
+```
+
+### Hierarchical Traversal
+
+```
+walker:priv GetTree {
+    can build_tree(node: any) -> dict {
+        children = [];
+        for child in [node -->] {
+            children.append(self.build_tree(child));
+        }
+        return {
+            "id": node.id,
+            "name": node.name,
+            "children": children
+        };
+    }
+
+    can start with Root entry {
+        tree = self.build_tree(here);
+        report tree;
+    }
+}
+```
+
+### Aggregate Walker
+
+```jac
+walker:priv GetStats {
+    has total: int = 0;
+    has completed: int = 0;
+
+    can count with Root entry {
+        visit [-->];
+    }
+
+    can tally with Todo entry {
+        self.total += 1;
+        if here.completed {
+            self.completed += 1;
+        }
+    }
+
+    can summarize with Root exit {
+        report {
+            "total": self.total,
+            "completed": self.completed,
+            "pending": self.total - self.completed,
+            "completion_rate": (self.completed / self.total * 100) if self.total > 0 else 0
+        };
+    }
+}
+```
+
+---
+
+## Best Practices
+
+1. **Use specific entry points** -- `with Todo entry` is more efficient than generic `with entry`
+2. **Accumulate then report** -- Collect data during traversal, report once at exit
+3. **Handle empty graphs** -- Always check if traversal found anything
+4. **Use meaningful node types** -- Makes code self-documenting
+5. **Keep walkers focused** -- One walker, one responsibility
+
+---
+
 ## See Also
 
 - [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
-- [Graph Operations](graph-operations.md) - Quick reference for `++>`, `-->`, `del here`
-- [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full-stack tutorial using OSP concepts
+- [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full-stack tutorial using OSP concepts
 - [OSP Tutorial](../../tutorials/language/osp.md) - Hands-on tutorial with exercises
 - [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts

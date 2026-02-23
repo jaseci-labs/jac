@@ -68,11 +68,9 @@ impl JacTestClient._ensure_initialized -> None {
     mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
     # Load the Jac module
-    Jac.jac_import(target=mod, base_path=base, override_name="__main__", lng="jac");
+    Jac.jac_import(target=mod, base_path=base, lng="jac");
     # Create server in test mode (port=0 means no real socket binding)
-    self._server = JacAPIServer(
-        module_name="__main__", port=0, base_path=self._base_path
-    );
+    self._server = JacAPIServer(module_name=mod, port=0, base_path=self._base_path);
     # Load module metadata
     self._server.load_module();
     # Get handler class for request processing
@@ -280,51 +278,43 @@ impl JacTestClient.user_manager -> Any {
     return self._server.user_manager;
 }
 
-"""Reload the module (for HMR testing)."""
+"""Reload the Jac module to pick up changes (for testing HMR).
+"""
 impl JacTestClient.reload -> None {
+    import from pathlib { Path }
     import os;
-    import sys;
     self._ensure_initialized();
-    # Get module name from file
+    # Extract module name from file path (same as _ensure_initialized)
     (base, mod) = os.path.split(self._jac_file);
     base = base or "./";
     if self._jac_file.endswith(".jac") {
         mod = mod[:-4];
     }
-    # Clear cached module to force reload (same as HotReloader)
-    if "__main__" in sys.modules {
-        del sys.modules["__main__"];
-    }
-    # Also clear the module from Jac.loaded_modules
-    if "__main__" in Jac.loaded_modules {
-        del Jac.loaded_modules["__main__"];
-    }
-    # Also clear from mod.hub to force recompilation
-    try {
-        resolved_path = str(Path(self._jac_file).resolve());
-        if resolved_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[resolved_path];
+    # Create HotReloader instance lazily
+    if self._hot_reloader is None {
+        import from jaclang.runtimelib.hmr { HotReloader }
+        # Create minimal mock watcher (HotReloader needs it but we don't use file watching)
+        class MockWatcher {
+            has additional_patterns: list[str] = [];
+
+            def add_callback(cb: Any) -> None { }
+            def start -> None { }
+            def stop -> None { }
         }
-        if self._jac_file in Jac.program.mod.hub {
-            del Jac.program.mod.hub[self._jac_file];
-        }
-    } except Exception {
-        ;  # Ignore if hub doesn't exist
+        mock_watcher = MockWatcher();
+        self._hot_reloader = HotReloader(
+            base_path=base, module_name=mod, watcher=mock_watcher
+        );
     }
-    # Re-import the module with reload flag
-    Jac.jac_import(
-        target=mod,
-        base_path=base,
-        override_name="__main__",
-        lng="jac",
-        reload_module=True
-    );
-    # Update introspector's cached module reference directly
-    new_module = Jac.loaded_modules.get("__main__");
-    self._server.introspector._module = new_module;
-    self._server.introspector._functions = self._server.introspector._collect_functions();
-    self._server.introspector._walkers = self._server.introspector._collect_walkers();
-    # Recreate handler class with new module
+    self._hot_reloader._process_change(self._jac_file);
+    # Update server introspector WITHOUT re-importing (already done by _process_change)
+    new_module = Jac.loaded_modules.get(mod);
+    if new_module {
+        self._server.introspector._module = new_module;
+        self._server.introspector._functions = self._server.introspector._collect_functions();
+        self._server.introspector._walkers = self._server.introspector._collect_walkers();
+    }
+    # Recreate handler class with new module definitions
     self._handler_class = self._server.create_handler();
 }
 
@@ -354,4 +344,5 @@ impl JacTestClient.close -> None {
     self._handler_class = None;
     self._auth_token = None;
     self._current_user = None;
+    self._hot_reloader = None;
 }

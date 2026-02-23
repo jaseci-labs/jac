@@ -68,6 +68,24 @@ impl NaIRGenPass._get_fmt_string(fmt: str) -> ir.GlobalVariable {
     return global_fmt;
 }
 
+"""Get or create a global format string for snprintf (no trailing newline)."""
+impl NaIRGenPass._get_snprintf_fmt(fmt: str) -> ir.GlobalVariable {
+    cache_key = "snprintf:" + fmt;
+    if cache_key in self._fmt_strings {
+        return self._fmt_strings[cache_key];
+    }
+    fmt_bytes = bytearray((fmt + "\0").encode("utf8"));
+    c_fmt = ir.Constant(ir.ArrayType(ir.IntType(8), len(fmt_bytes)), fmt_bytes);
+    global_fmt = ir.GlobalVariable(
+        self.llvm_module, c_fmt.type, name=f".sfmt.{len(self._fmt_strings)}"
+    );
+    global_fmt.linkage = "private";
+    global_fmt.global_constant = True;
+    global_fmt.initializer = c_fmt;
+    self._fmt_strings[cache_key] = global_fmt;
+    return global_fmt;
+}
+
 # ─── Helper Methods ──────────────────────────────────────────
 """Generate code for a MultiString node (wraps String/FString)."""
 impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) {

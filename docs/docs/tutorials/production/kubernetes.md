@@ -7,7 +7,13 @@ Deploy your Jac application to Kubernetes with a single command.
 > - Completed: [Local API Server](local.md)
 > - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
 > - `kubectl` configured
-> - jac-scale installed: `pip install jac-scale`
+> - jac-scale installed and enabled:
+>
+>   ```bash
+>   pip install jac-scale
+>   jac plugins enable jac-scale
+>   ```
+>
 > - Time: ~10 minutes
 
 ---

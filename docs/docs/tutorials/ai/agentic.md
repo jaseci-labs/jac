@@ -33,10 +33,6 @@ Regular LLM:     Agentic LLM:
 Define functions the LLM can use:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 # Define a tool
 def get_current_time() -> str {
     import datetime;
@@ -71,10 +67,6 @@ The LLM automatically:
 ## Multiple Tools
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 def add(a: int, b: int) -> int {
     return a + b;
 }
@@ -105,10 +97,6 @@ with entry {
 Tools can have parameters that the LLM fills in:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 """Search the database for matching records."""
 def search_database(query: str, limit: int = 10) -> list[str] {
     # Simulated database search
@@ -142,10 +130,6 @@ with entry {
 **ReAct** (Reason + Act) lets the LLM think step-by-step:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o");
-
 """Search the web for information."""
 def search_web(query: str) -> str {
     # Simulated web search
@@ -194,10 +178,6 @@ With ReAct, the LLM:
 Tools can be methods on objects:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Calculator {
     has memory: float = 0;
 
@@ -245,10 +225,6 @@ with entry {
 Combine tools with graph traversal:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 node Document {
     has title: str;
     has content: str;
@@ -320,10 +296,6 @@ with entry {
 Provide additional context to the LLM:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 glob company_info = """
 Company: TechCorp
 Products: CloudDB, SecureAuth, DataViz
@@ -348,10 +320,7 @@ with entry {
 ## Building a Full Agent
 
 ```jac
-import from byllm.lib { Model }
 import json;
-
-glob llm = Model(model_name="gpt-4o");
 
 # Knowledge base
 glob kb: dict = {

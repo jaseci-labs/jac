@@ -305,9 +305,17 @@ impl JSCodeGenerator.gen_arrow_function_expression(
 ) -> str {
     async_str = 'async ' if nd.async_ else '';
     params = ', '.join(self.generate(p) for p in nd.params);
-    params = self.generate(nd.params[0]) if (len(nd.params) == 1) else f"({params})";
+    if len(nd.params) == 1
+    and not isinstance(nd.params[0], (es.ArrayPattern, es.ObjectPattern)) {
+        params = self.generate(nd.params[0]);
+    } else {
+        params = f"({params})";
+    }
     if nd.expression {
         body = self.generate(nd.body);
+        if isinstance(nd.body, es.ObjectExpression) {
+            body = f"({body})";
+        }
         return f"{async_str}{params} => {body}";
     } else {
         body = self.generate(nd.body);

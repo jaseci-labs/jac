@@ -515,7 +515,7 @@ obj Parser {
     def parse_impl_enum_body -> list;
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
-    def parse_type_params -> list;
+    def parse_type_params -> tuple;
     def parse_dotted_name -> Expr;
 }
 

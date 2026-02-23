@@ -35,7 +35,7 @@ with entry {
 }
 
 """Symbol table build schedule."""
-def get_symtab_ir_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
+def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [SymTabBuildPass, DeclImplMatchPass];
 }
 
@@ -50,7 +50,7 @@ glob _ir_sched_loading = False,
     to the basic schedule (symtab + semantic analysis only), which uses
     only jac0core passes with no lazy imports.
     """
-def get_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
+def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     global _ir_sched_loading;
     if _ir_sched_loading {
         return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
@@ -76,7 +76,7 @@ def get_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
 }
 
 """Type checking schedule."""
-def get_type_check_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
+def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     import from jaclang.compiler.passes.main { TypeCheckPass }
     return [TypeCheckPass];
 }
@@ -86,7 +86,7 @@ def get_type_check_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     Same re-entrancy guard as get_ir_gen_sched: when compiling the pass
     modules this depends on, falls back to bytecode-only generation.
     """
-def get_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
+def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading {
         return [PyastGenPass, PyBytecodeGenPass];
@@ -95,7 +95,7 @@ def get_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
         import from jaclang.compiler.passes.main { PyJacAstLinkPass }
-        passes: list[type[Transform[(uni.Module, uni.Module)]]] = [
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [
             InteropAnalysisPass,
             EsastGenPass
         ];
@@ -116,7 +116,7 @@ def get_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
     """
 def get_format_sched(
     auto_lint: bool = False
-) -> list[type[Transform[(uni.Module, uni.Module)]]] {
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     import from jaclang.compiler.passes.tool.comment_injection_pass {
         CommentInjectionPass
     }
@@ -135,7 +135,7 @@ def get_format_sched(
     Note: Annex modules are loaded by the caller (jac_file_linter) via
     parse-only to avoid cascading compilation through the import graph.
     """
-def get_lint_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
+def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     return [JacAutoLintPass];
 }
@@ -730,7 +730,7 @@ class JacCompiler {
         self: JacCompiler,
         mod: uni.Module,
         target_program: JacProgram,
-        passes: list[type[Transform[(uni.Module, uni.Module)]]],
+        passes: list[type[Transform[uni.Module, uni.Module]]],
         cancel_token: (Event | None) = None
     ) -> None {
         for current_pass in passes {

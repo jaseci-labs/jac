@@ -879,6 +879,10 @@ impl TypeEvaluator.get_type_of_magic_method_call(
                     }
                 }
                 # Validate arguments for each overloaded function.
+                # Prefer overloads with concrete (non-Unknown) return types
+                # to avoid broken overloads (e.g. LiteralString) shadowing
+                # correct ones (e.g. str.__add__(str) -> str).
+                _fallback_result: TypeBase | None = None;
                 for fn in overloaded_fns {
                     arg_param_match = self.match_args_to_params(
                         arg_nodes, node_for_error, fn, checking_overload=True
@@ -887,9 +891,17 @@ impl TypeEvaluator.get_type_of_magic_method_call(
                         if self.validate_arg_types(
                             arg_param_match, checking_overload=True
                         ) {
-                            return fn.return_type or types.UnknownType();
+                            if not isinstance(fn.return_type, types.UnknownType) {
+                                return fn.return_type or types.UnknownType();
+                            }
+                            if _fallback_result is None {
+                                _fallback_result = fn.return_type;
+                            }
                         }
                     }
+                }
+                if _fallback_result is not None {
+                    return _fallback_result;
                 }
                 # If we reached here, none of the overloads matched.
                 # Return None to allow fallback to reverse magic method (e.g., __radd__).

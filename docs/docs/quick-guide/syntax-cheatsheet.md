@@ -1,15 +1,20 @@
 # Syntax Quick Reference
 
+This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
+
+**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
+
 ```jac
 # ============================================================
 # Learn Jac in Y Minutes
 # ============================================================
 # Jac is a superset of Python with graph-native programming,
-# object-spatial walkers, and brace-delimited blocks.
+# object-spatial walkers, AI-native constructs, and full-stack
+# codespaces -- all with brace-delimited blocks.
 # Run a file with: jac <filename>
 
 # ============================================================
-# Comments
+# Comments & Docstrings
 # ============================================================
 
 # Single-line comment
@@ -18,6 +23,18 @@
     Multi-line
     comment
 *#
+
+# Module-level docstring (no semicolon needed)
+"""This module does something useful."""
+
+# Docstrings go BEFORE the declaration they document
+"""Object-level docstring."""
+obj Documented {
+
+    """Method docstring."""
+    def method() {
+    }
+}
 
 
 # ============================================================
@@ -50,6 +67,12 @@ with entry {
 
     # Jac has the same built-in types as Python:
     # int, float, str, bool, list, tuple, set, dict, bytes, any
+
+    # Union types
+    maybe: str | None = None;
+
+    # F-strings
+    msg = f"Value: {x}, Pi: {pi:.2f}";
 }
 
 
@@ -74,6 +97,10 @@ import from ..parent.mod { SomeClass }
 # Include merges a module's namespace into the current scope
 include random;
 
+# Cross-codespace imports (see Full-Stack section below)
+# sv import from ...main { MyWalker }       # Server import in client
+# cl import from "@jac/runtime" { Link }    # npm runtime import
+
 
 # ============================================================
 # Functions (def)
@@ -97,7 +124,7 @@ def say_hi() {
 # Abstract function (declaration only, no body)
 def area() -> float abs;
 
-# Function with all param types (positional-only, regular, *args, kw-only, **kwargs)
+# Function with all param types
 def kitchen_sink(
     pos_only: int,
     /,
@@ -108,6 +135,14 @@ def kitchen_sink(
 ) -> str {
     return "ok";
 }
+
+# Public function (becomes API endpoint with `jac start`)
+def:pub get_items() -> list {
+    return [];
+}
+
+# Private function
+def:priv internal_helper() -> None { }
 
 
 # ============================================================
@@ -151,6 +186,9 @@ with entry {
         if i == 7 { break; }
         print(i);
     }
+
+    # --- ternary expression ---
+    label = "high" if x > 5 else "low";
 }
 
 
@@ -217,6 +255,10 @@ with entry {
     squares = [i ** 2 for i in range(5)];
     evens = [i for i in range(10) if i % 2 == 0];
     name_map = {name: len(name) for name in ["alice", "bob"]};
+    unique_lens = {len(s) for s in ["hi", "hey", "hi"]};
+
+    # Generator expression
+    total = sum(x ** 2 for x in range(1000));
 
     # Star unpacking
     (first, *rest) = [1, 2, 3, 4];
@@ -268,6 +310,9 @@ obj Result[T, E = Exception] {
     }
 }
 
+# Forward declaration (define body later or in another file)
+obj UserProfile;
+
 
 # ============================================================
 # Has Declarations (fields)
@@ -294,11 +339,27 @@ obj Example {
 # Access Modifiers
 # ============================================================
 
-# At module level creates auth, export, and extern semantics
+# Access modifiers work on obj, class, node, edge, walker,
+# def, has -- controlling visibility and API exposure
+
 obj:pub Person {
     has:pub name: str;          # Public (default)
     has:priv ssn: str;          # Private
     has:protect age: int;       # Protected
+}
+
+# Public walker becomes REST endpoint with `jac start`
+walker:pub GetUsers {
+    can get with Root entry {
+        report [-->];
+    }
+}
+
+# Private walker enforces per-user auth
+walker:priv MyData {
+    can get with Root entry {
+        report [-->];
+    }
 }
 
 
@@ -389,6 +450,12 @@ with entry {
         else { return "F"; }
     };
     print(classify(85));
+
+    # No-arg lambda
+    get_42 = lambda : 42;
+
+    # Void lambda (common in JSX event handlers)
+    handler = lambda -> None { print("clicked"); };
 }
 
 
@@ -497,6 +564,13 @@ test "fibonacci recursive" {
     }
 }
 
+# Tests can spawn walkers and check reports
+test "walker test" {
+    root ++> Person(name="Alice", age=30);
+    result = root spawn Greeter();
+    assert len(result.reports) > 0;
+}
+
 
 # ============================================================
 # Async / Await
@@ -567,6 +641,17 @@ result = sys.maxsize
     print(f"Max int: {result}");
 }
 
+# Also works inside objects/enums for Python-specific methods
+enum Priority {
+    LOW = 1,
+    HIGH = 2
+
+    ::py::
+    def is_urgent(self):
+        return self.value >= 2
+    ::py::
+}
+
 
 # ============================================================
 # OBJECT SPATIAL PROGRAMMING (OSP)
@@ -588,6 +673,34 @@ node Person {
 # Edges connect nodes and can carry data
 edge Friendship {
     has since: int;
+}
+
+# Nodes with abilities (triggered by walkers)
+node SecureRoom {
+    has name: str,
+        clearance: int = 0;
+
+    can on_enter with Visitor entry {
+        print(f"Welcome to {self.name}");
+    }
+
+    can on_exit with Visitor exit {
+        print(f"Leaving {self.name}");
+    }
+}
+
+# Node inheritance
+node Employee(Person) {
+    has department: str;
+}
+
+# Edge with methods
+edge Weighted {
+    has weight: float = 1.0;
+
+    def normalize(max_w: float) -> float {
+        return self.weight / max_w;
+    }
 }
 
 
@@ -612,11 +725,20 @@ with entry {
 
     # --- Typed connection with field assignment ---
     a +>: Friendship : since=2018 :+> b;
+
+    # --- Chained connections ---
+    root ++> a ++> b ++> c;
+
+    # --- Delete edge ---
+    a del --> b;
+
+    # --- Delete node ---
+    del c;
 }
 
 
 # ============================================================
-# Edge Traversal & Filters (inside [...])
+# Edge Traversal & Filters
 # ============================================================
 
 with entry {
@@ -629,10 +751,36 @@ with entry {
     print([root ->:Friendship:->]);          # Nodes connected by Friendship edges
 
     # Filter by edge field values
-    print([root ->:Friendship:since > 2018:->]);    # Nodes with since > 2018
+    print([root ->:Friendship:since > 2018:->]);
 
-    # Get edges themselves (not nodes)
-    print([edge root ->:Friendship:->]);    # Friendship edge objects
+    # Filter by node type
+    print([root -->](?:Person));             # Only Person nodes
+
+    # Filter by node attribute
+    print([root -->](?age >= 18));           # Nodes with age >= 18
+
+    # Combined: type + attribute
+    print([root -->](?:Person, age > 25));
+
+    # Get edge objects themselves (not target nodes)
+    print([edge root -->]);                  # All edge objects
+    print([edge root ->:Friendship:->]);     # Friendship edge objects
+
+    # Chained traversal (multi-hop)
+    fof = [root ->:Friendship:-> ->:Friendship:->];
+}
+
+
+# ============================================================
+# Assign Comprehensions (spatial update)
+# ============================================================
+
+with entry {
+    # Filter nodes by attribute
+    adults = [root -->](?age >= 18);
+
+    # Assign: update matching nodes in-place
+    [root -->](?age >= 18)(=verified=True);
 }
 
 
@@ -664,8 +812,9 @@ with entry {
     root ++> Person(name="Alice", age=25);
     root ++> Person(name="Bob", age=30);
 
-    # Spawn a walker at root
-    root spawn Greeter();
+    # Spawn a walker at root and collect results
+    result = root spawn Greeter();
+    print(result.reports);   # ["Alice", "Bob"]
 }
 
 
@@ -682,8 +831,9 @@ walker SearchWalker {
             disengage;       # Stop traversal immediately
         }
         report here.name;
+
+        # visit...else runs fallback when no outgoing nodes
         visit [-->] else {
-            # Runs when there are no more outgoing nodes
             print("Reached a dead end");
         }
     }
@@ -691,30 +841,89 @@ walker SearchWalker {
 
 
 # ============================================================
-# Node & Edge Abilities
+# Visit Statement Variants
 # ============================================================
-# Nodes and edges can also have abilities that trigger
-# when specific walker types visit them.
 
-node SecureRoom {
-    has name: str,
-        clearance: int = 0;
+walker VisitDemo {
+    can demo with Person entry {
+        visit [-->];                    # All outgoing nodes
+        visit [<--];                    # All incoming nodes
+        visit [<-->];                   # Both directions
+        visit [-->](?:Person);          # Type-filtered
+        visit [->:Friendship:->];       # Via edge type
+        visit [->:Friendship:since > 2020:->];  # Edge condition
 
-    # Triggers when any Visitor walker enters this node
-    can on_enter with Visitor entry {
-        print(f"Welcome to {self.name}");
+        visit [-->] else {              # Fallback if nowhere to go
+            print("Dead end");
+        }
+
+        visit : 0 : [-->];             # First outgoing node only
+        visit : -1 : [-->];            # Last outgoing node only
+
+        visit here;                     # Re-visit current node
     }
 }
 
-walker Visitor {
-    has clearance: int = 0;
 
-    can visit_room with SecureRoom entry {
-        if here.clearance > self.clearance {
+# ============================================================
+# Node & Edge Abilities
+# ============================================================
+# Nodes and edges can have abilities that trigger
+# when specific walker types visit them.
+
+node Gateway {
+    has name: str;
+
+    # Triggers for any walker
+    can on_any with entry {
+        print(f"Someone entered {self.name}");
+    }
+
+    # Triggers only for specific walker type
+    can on_inspector with Inspector entry {
+        if visitor.clearance < 5 {
             print("Access denied");
             disengage;
         }
+    }
+
+    # Multiple walker types (union)
+    can on_multi with Admin | Inspector entry {
+        print("Authorized personnel");
+    }
+
+    # Exit ability
+    can on_leave with Inspector exit {
+        print("Inspector leaving");
+    }
+}
+
+walker Inspector {
+    has clearance: int = 0;
+
+    can visit_gateway with Gateway entry {
+        # `here` = current Gateway node
+        # `self` = the walker
+        print(f"Inspecting: {here.name}");
         visit [-->];
+    }
+}
+
+
+# ============================================================
+# Typed Context Blocks
+# ============================================================
+# Handle different subtypes with specialized code paths
+
+node Animal { has name: str; }
+node Dog(Animal) { has breed: str; }
+node Cat(Animal) { has indoor: bool; }
+
+walker AnimalVisitor {
+    can visit_animal with Animal entry {
+        ->Dog{print(f"{here.name} is a {here.breed} dog");}
+        ->Cat{print(f"{here.name} says meow");}
+        ->_{print(f"{here.name} is some animal");}
     }
 }
 
@@ -729,11 +938,50 @@ with entry {
     # Binary spawn: node spawn walker
     root spawn w;
 
+    # Spawn with params
+    root spawn Greeter(greeting="Hey");
+
+    # Spawn returns result object
+    result = root spawn Greeter();
+    print(result.reports);   # List of reported values
+    print(result.returns);   # Return value (if any)
+
     # Reverse: walker spawn node
     w spawn root;
+}
 
-    # Spawn returns reported values
-    results = root spawn Greeter();
+
+# ============================================================
+# Walkers as REST APIs
+# ============================================================
+# Public walkers become HTTP endpoints with `jac start`
+
+walker:pub add_todo {
+    has title: str;          # Becomes request body field
+
+    can create with Root entry {
+        new_todo = here ++> Todo(title=self.title);
+        report new_todo;     # Becomes response body
+    }
+}
+
+# Endpoint: POST /walker/add_todo
+# Body: {"title": "Learn Jac"}
+
+# Public functions also become endpoints
+def:pub health_check() -> dict {
+    return {"status": "ok"};
+}
+
+# @restspec customizes HTTP method and path
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/items/{item_id}")
+walker:pub get_item {
+    has item_id: str;
+    can fetch with Root entry {
+        report {"id": self.item_id};
+    }
 }
 
 
@@ -776,9 +1024,311 @@ walker AutoWalker {
 
 
 # ============================================================
-# Special Variables
+# Graph Built-in Functions
 # ============================================================
-# self     -- the current object/walker
+
+with entry {
+    p = Person(name="Alice", age=30);
+    root ++> p;
+
+    jid(p);              # Unique Jac ID of object
+    save(p);             # Persist node to storage
+    commit();            # Commit pending changes
+    printgraph(root);    # Print graph for debugging
+}
+
+
+# ============================================================
+# AI INTEGRATION (by llm)
+# ============================================================
+# Jac's Meaning Typed Programming lets the compiler
+# extract semantics from your code to construct LLM prompts.
+
+
+# ============================================================
+# by llm() -- Delegate Function to LLM
+# ============================================================
+
+# The function signature IS the specification.
+# Name, param names, types, and return type become the prompt.
+
+def classify_sentiment(text: str) -> str by llm;
+
+# Enums constrain LLM output to valid values
+enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
+def categorize(title: str) -> Category by llm();
+
+# Structured output -- every field must be filled
+obj Ingredient {
+    has name: str,
+        cost: float,
+        carby: bool;
+}
+def plan_shopping(recipe: str) -> list[Ingredient] by llm();
+
+# Model configuration
+def summarize(text: str) -> str by llm(
+    model_name="gpt-4",
+    temperature=0.7,
+    max_tokens=2000
+);
+
+# Streaming response (returns generator)
+def stream_story(prompt: str) -> str by llm(stream=True);
+
+# Inline LLM expression
+with entry {
+    result = "Explain quantum computing simply" by llm;
+}
+
+
+# ============================================================
+# sem -- Semantic Descriptions for AI
+# ============================================================
+# `sem` attaches descriptions to bindings that the compiler
+# includes in the LLM prompt. It's not a comment -- it
+# changes what the LLM sees at runtime.
+
+sem Ingredient.cost = "Estimated cost in USD";
+sem Ingredient.carby = "True if high in carbohydrates";
+
+sem plan_shopping = "Generate a shopping list for the given recipe.";
+
+# Parameter-level semantics
+sem summarize.text = "The article or document to summarize";
+sem summarize.return = "A 2-3 sentence summary";
+
+# Enum value semantics
+enum Priority { LOW, MEDIUM, HIGH, CRITICAL }
+sem Priority.CRITICAL = "Requires immediate attention within 1 hour";
+
+
+# ============================================================
+# Tool Calling (Agentic AI)
+# ============================================================
+# Give the LLM access to functions it can call (ReAct loop)
+
+def get_weather(city: str) -> str {
+    return f"Weather data for {city}";
+}
+
+def search_web(query: str) -> list[str] {
+    return [f"Result for {query}"];
+}
+
+# The LLM decides which tools to call and in what order
+def answer_question(question: str) -> str by llm(
+    tools=[get_weather, search_web]
+);
+
+# Additional context injection
+glob company_info = "TechCorp, products: CloudDB, SecureAuth";
+
+def support_agent(question: str) -> str by llm(
+    incl_info={"company": company_info}
+);
+sem support_agent = "Answer customer questions about our products.";
+
+
+# ============================================================
+# Multimodal AI
+# ============================================================
+
+import from byllm { Image }
+
+def describe_image(image: Image) -> str by llm;
+
+with entry {
+    desc = describe_image(Image("photo.jpg"));
+    desc = describe_image(Image("https://example.com/img.png"));
+}
+
+
+# ============================================================
+# FULL-STACK DEVELOPMENT (Codespaces)
+# ============================================================
+# Jac code can target different execution environments:
+#   sv { } = server (Python/PyPI)
+#   cl { } = client (JavaScript/npm)
+#   na { } = native (C ABI)
+
+
+# ============================================================
+# Codespace Blocks
+# ============================================================
+
+# Server code (default -- code outside any block is server)
+node Todo {
+    has title: str, done: bool = False;
+}
+
+def:pub get_todos() -> list {
+    return [{"title": t.title} for t in [root -->](?:Todo)];
+}
+
+# Client code (compiles to JavaScript/React)
+cl {
+    def:pub app() -> JsxElement {
+        has items: list = [];
+
+        async can with entry {
+            items = await get_todos();
+        }
+
+        return <div>
+            {[<p key={i.title}>{i.title}</p> for i in items]}
+        </div>;
+    }
+}
+
+# Explicit server block
+sv {
+    node Secret { has value: str; }
+}
+
+# Single-statement form (no braces)
+sv import from .database { connect_db }
+cl import from react { useState }
+
+
+# ============================================================
+# File Extension Conventions
+# ============================================================
+# .jac           Default (server codespace)
+# .sv.jac        Server-only variant
+# .cl.jac        Client-only variant (auto client codespace)
+# .na.jac        Native variant
+# .impl.jac      Implementation annex (method bodies)
+# .test.jac      Test annex
+
+
+# ============================================================
+# Client Components (JSX)
+# ============================================================
+
+cl {
+    def:pub Counter() -> JsxElement {
+        # `has` in client components becomes React useState
+        has count: int = 0;
+
+        return <div>
+            <p>Count: {count}</p>
+            <button onClick={lambda -> None { count = count + 1; }}>
+                Increment
+            </button>
+        </div>;
+    }
+}
+
+# JSX syntax reference:
+# <div>text</div>               HTML elements
+# <Component prop="val" />      Component with props
+# {expression}                  JavaScript expression
+# {condition and <p>Show</p>}   Conditional render
+# {[<li>...</li> for x in xs]}  List rendering
+# <div {...props}>               Spread props
+# <div className="cls">         Class name (not "class")
+# <div style={{"color": "red"}} Inline styles
+
+
+# ============================================================
+# Client State & Lifecycle
+# ============================================================
+
+cl {
+    def:pub DataView() -> JsxElement {
+        has data: list = [];
+        has loading: bool = True;
+
+        # Mount effect (runs once on component mount)
+        async can with entry {
+            data = await fetch("/api/data").then(
+                lambda r: any -> any { return r.json(); }
+            );
+            loading = False;
+        }
+
+        # Dependency effect (runs when userId changes)
+        # async can with [userId] entry { ... }
+
+        # Multiple dependencies
+        # can with (a, b) entry { ... }
+
+        # Cleanup on unmount
+        # can with exit { unsubscribe(); }
+
+        if loading { return <p>Loading...</p>; }
+        return <div>{data}</div>;
+    }
+}
+
+
+# ============================================================
+# Server-Client Communication
+# ============================================================
+
+# Import server walkers in client code
+sv import from ...main { AddTodo, GetTodos }
+
+cl {
+    def:pub TodoApp() -> JsxElement {
+        has todos: list = [];
+
+        async can with entry {
+            result = root spawn GetTodos();
+            if result.reports {
+                todos = result.reports[0];
+            }
+        }
+
+        async def add_todo(text: str) -> None {
+            result = root spawn AddTodo(title=text);
+            if result.reports {
+                todos = todos + [result.reports[0]];
+            }
+        }
+
+        return <div>...</div>;
+    }
+}
+
+
+# ============================================================
+# Routing (File-Based)
+# ============================================================
+# pages/index.jac          -> /
+# pages/about.jac          -> /about
+# pages/users/[id].jac     -> /users/:id  (dynamic param)
+# pages/[...notFound].jac  -> *            (catch-all)
+# pages/(auth)/layout.jac  -> route group  (no URL segment)
+# pages/layout.jac         -> root layout
+
+# Page files export a `page` function:
+# cl { def:pub page() -> JsxElement { ... } }
+
+# Layout files use <Outlet /> for child routes:
+# cl import from "@jac/runtime" { Outlet }
+# cl { def:pub layout() -> JsxElement {
+#     return <><nav>...</nav><Outlet /></>;
+# } }
+
+
+# ============================================================
+# Authentication (Client)
+# ============================================================
+
+# cl import from "@jac/runtime" {
+#     jacLogin,       # (email, pass) -> bool
+#     jacSignup,      # (email, pass) -> dict
+#     jacLogout,      # () -> void
+#     jacIsLoggedIn   # () -> bool
+# }
+
+
+# ============================================================
+# Special Variables Reference
+# ============================================================
+# self     -- the current object/walker/node
 # here     -- the current node (in walker abilities)
 # visitor  -- the visiting walker (in node/edge abilities)
 # root     -- the root node of the graph
@@ -788,13 +1338,16 @@ walker AutoWalker {
 # Keywords Reference
 # ============================================================
 # Types:    str, int, float, bool, list, tuple, set, dict, bytes, any, type
-# Decl:     obj, class, node, edge, walker, enum, has, can, def, impl, glob, test
+# Decl:     obj, class, node, edge, walker, enum, has, can, def, impl,
+#           glob, test, type
 # Modifiers: pub, priv, protect, static, override, abs, async
 # Control:  if, elif, else, for, to, by, while, match, switch, case, default
 # Flow:     return, yield, break, continue, raise, del, assert, skip
 # OSP:      visit, spawn, entry, exit, disengage, report, here, visitor, root
+# AI:       by, llm, sem
 # Async:    async, await, flow, wait
 # Logic:    and, or, not, in, is
+# Codespace: sv, cl, na
 # Other:    import, include, from, as, try, except, finally, with, lambda,
-#           global, nonlocal, self, super, init, postinit, type
+#           global, nonlocal, self, super, init, postinit
 ```

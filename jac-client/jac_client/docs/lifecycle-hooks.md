@@ -106,7 +106,7 @@ cl {
         [data, setData] = useState(None);
 
         useEffect(lambda -> None {
-            console.log("Component mounted!");
+            print("Component mounted!");
             # Load initial data
             async def loadData() -> None {
                 result = await jacSpawn("get_data", "", {});
@@ -139,7 +139,7 @@ cl {
         [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
-            console.log("Count changed to:", count);
+            print("Count changed to:", count);
             document.title = "Count: " + str(count);
         }, [count]);  # Run when count changes
 
@@ -165,7 +165,7 @@ cl {
         useEffect(lambda -> any {
             # Setup
             intervalId = setInterval(lambda -> None {
-                console.log("Timer tick");
+                print("Timer tick");
             }, 1000);
 
             # Cleanup function (returned from useEffect)
@@ -202,7 +202,7 @@ cl {
 
                 # Fetch todos from backend
                 result = await jacSpawn("read_todos", "", {});
-                console.log(result);
+                print(result);
                 setTodos(result.reports);
                 setLoading(False);
             }
@@ -376,7 +376,7 @@ cl {
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 todos = await jacSpawn("read_todos","",{});
-                console.log(todos);
+                print(todos);
                 setTodos(todos.reports);
             }
             loadTodos();
@@ -391,7 +391,7 @@ cl {
                 "done": False
             };
             await jacSpawn("create_todo","", {"text": inputValue.trim()});
-            newTodos = todos.concat([newTodo]);
+            newTodos = todos + [newTodo];
             setTodos(newTodos);
             setInputValue("");
         }
@@ -560,12 +560,12 @@ useEffect(lambda -> None {
 
 #  Good: Specify dependencies
 useEffect(lambda -> None {
-    console.log("Count changed:", count);
+    print("Count changed:", count);
 }, [count]);
 
 #  Warning: No dependency array runs on every render
 useEffect(lambda -> None {
-    console.log("Runs on every render!");
+    print("Runs on every render!");
 });
 ```
 
@@ -581,7 +581,7 @@ useEffect(lambda -> None {
             data = await jacSpawn("get_data", "", {});
             setData(data);
         } except Exception as err {
-            console.error("Error loading data:", err);
+            print("Error loading data:", err);
             setError(err);
         }
     }
@@ -764,7 +764,7 @@ These were Signal-based reactive primitives from Jac:
 [count, setCount] = createSignal(0);
 
 createEffect(lambda -> None {
-    console.log("Count:", count());
+    print("Count:", count());
 });
 ```
 
@@ -775,6 +775,6 @@ createEffect(lambda -> None {
 [count, setCount] = useState(0);
 
 useEffect(lambda -> None {
-    console.log("Count:", count);
+    print("Count:", count);
 }, [count]);
 ```

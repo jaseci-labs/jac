@@ -335,7 +335,7 @@ cl {
         async def addTodo(text: str) -> None {
             response = root spawn create_todo(text=text);
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
+            setTodos(todos + [new_todo]);
         }
 
         async def toggleTodo(id: str) -> None {
@@ -542,7 +542,7 @@ cl {
         type = action.type;
 
         if type == "ADD_TODO" {
-            return {...state, "todos": state.todos.concat([action.payload])};
+            return {...state, "todos": state.todos + [action.payload]};
         } elif type == "TOGGLE_TODO" {
             return {
                 ...state,
@@ -638,7 +638,7 @@ cl {
         async def addTodo(text: str) -> None {
             response = root spawn create_todo(text=text);
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
+            setTodos(todos + [new_todo]);
         }
 
         async def toggleTodo(id: str) -> None {
@@ -773,7 +773,7 @@ cl {
             if not text.trim() { return; }
             response = root spawn create_todo(text=text);
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
+            setTodos(todos + [new_todo]);
         }
 
         async def toggleTodo(id: str) -> None {
@@ -873,7 +873,7 @@ cl {
         # Todo state with useReducer
         def todoReducer(state: dict, action: dict) -> dict {
             if action.type == "ADD" {
-                return {...state, "todos": state.todos.concat([action.payload])};
+                return {...state, "todos": state.todos + [action.payload]};
             } elif action.type == "TOGGLE" {
                 return {
                     ...state,
@@ -983,7 +983,7 @@ cl {
             async def _addTodo() -> None {
                 response = root spawn create_todo(text=text);
                 new_todo = response.reports[0][0];
-                setTodos(todos.concat([new_todo]));
+                setTodos(todos + [new_todo]);
             }
             _addTodo();
         }, [todos]);
@@ -1163,7 +1163,7 @@ cl import from react { useReducer }
 def TodoApp() -> JsxElement {
     def reducer(state: dict, action: dict) -> dict {
         if action.type == "ADD" {
-            return {...state, "todos": state.todos.concat([action.payload]), "count": state.count + 1};
+            return {...state, "todos": state.todos + [action.payload], "count": state.count + 1};
         }
         return state;
     }

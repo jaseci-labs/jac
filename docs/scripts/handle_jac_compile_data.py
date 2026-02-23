@@ -16,7 +16,6 @@ PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
 UNIIR_NODE_DOC = "docs/community/internals/uniir_node.md"
 TOP_CONTRIBUTORS_DOC = "docs/community/top_contributors.md"
-TOP_VOICES_DOC = "docs/community/top_voices.md"
 AST_TOOL = AstTool()
 EXAMPLE_SOURCE_FOLDER = "../jac/examples"
 EXAMPLE_TARGET_FOLDER = "docs/assets/examples"
@@ -42,14 +41,6 @@ def pre_build_hook(**kwargs: dict) -> None:
 
     with open(TOP_CONTRIBUTORS_DOC, "w") as f:
         f.write(get_top_contributors())
-
-    # Generate voice data (requires gh CLI - skip if file is recent)
-    # In CI/Docker context, if this was already generated, we can skip it
-    if is_file_older_than_minutes(TOP_VOICES_DOC, 60):
-        with open(TOP_VOICES_DOC, "w") as f:
-            f.write(get_top_voices())
-    else:
-        print(f"File is recent: {TOP_VOICES_DOC}. Skipping generation.")
 
 
 def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
@@ -123,25 +114,6 @@ def get_top_contributors() -> str:
     except Exception as e:
         print(f"Warning: Unexpected error getting top contributors: {e}")
         return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
-
-
-def get_top_voices() -> str:
-    """Get the top voices from GitHub discussions."""
-    # Get the current directory (docs/scripts)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go to the root directory (two levels up from docs/scripts)
-    root_dir = os.path.dirname(os.path.dirname(current_dir))
-    cmd = ["jac", "run", "scripts/top_voices.jac"]
-    try:
-        return subprocess.check_output(
-            cmd, cwd=root_dir, stderr=subprocess.DEVNULL
-        ).decode("utf-8")
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to get top voices: {e}")
-        return "# Top Voices\n\nUnable to fetch discussion data at this time.\n"
-    except Exception as e:
-        print(f"Warning: Unexpected error getting top voices: {e}")
-        return "# Top Voices\n\nUnable to fetch discussion data at this time.\n"
 
 
 pre_build_hook()

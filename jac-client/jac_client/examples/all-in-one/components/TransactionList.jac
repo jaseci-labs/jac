@@ -24,21 +24,20 @@ cl {
                 <h3 className="list-title">
                     Transactions ({len(transactions)})
                 </h3>
-                {transactions.map(
-                    lambda tx: dict  -> JsxElement { return
-                        <TransactionItem
-                            key={tx["id"]}
-                            id={tx["id"]}
-                            description={tx["description"]}
-                            amount={tx["amount"]}
-                            category={tx["category"]}
-                            txType={tx["type"]}
-                            date={tx["date"]}
-                            isBusiness={tx["isBusinessTransaction"] || false}
-                            clientName={tx["clientName"] || None}
-                            onDelete={onDelete}
-                        />; }
-                )}
+                {[
+                    <TransactionItem
+                        key={tx["id"]}
+                        id={tx["id"]}
+                        description={tx["description"]}
+                        amount={tx["amount"]}
+                        category={tx["category"]}
+                        txType={tx["type"]}
+                        date={tx["date"]}
+                        isBusiness={tx["isBusinessTransaction"] || false}
+                        clientName={tx["clientName"] || None}
+                        onDelete={onDelete}
+                    /> for tx in transactions
+                ]}
             </div>;
     }
 }

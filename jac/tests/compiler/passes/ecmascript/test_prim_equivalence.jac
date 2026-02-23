@@ -227,9 +227,110 @@ test "format builtin matches across backends" {
     compare_results(py_result, js_result, "format_builtin");
 }
 
+test "range methods match across backends" {
+    py_result = run_py_fixture("prim_new_primitives", "range_methods_py");
+    js_code = compile_fixture_to_js("prim_new_primitives.jac");
+    js_result = run_js_function(js_code, "range_methods_cl");
+    compare_results(py_result, js_result, "range_methods");
+}
+
 test "slice builtin matches across backends" {
     py_result = run_py_fixture("prim_new_primitives", "slice_builtin_py");
     js_code = compile_fixture_to_js("prim_new_primitives.jac");
     js_result = run_js_function(js_code, "slice_builtin_cl");
     compare_results(py_result, js_result, "slice_builtin");
+}
+
+# =========================================================================
+# Phase 2: Full coverage tests
+# =========================================================================
+test "float operators match across backends" {
+    py_result = run_py_fixture("prim_float_ops", "float_ops_py");
+    js_code = compile_fixture_to_js("prim_float_ops.jac");
+    js_result = run_js_function(js_code, "float_ops_cl");
+    compare_results(py_result, js_result, "float_ops");
+}
+
+test "int extra methods match across backends" {
+    py_result = run_py_fixture("prim_int_extra", "int_extra_py");
+    js_code = compile_fixture_to_js("prim_int_extra.jac");
+    js_result = run_js_function(js_code, "int_extra_cl");
+    compare_results(py_result, js_result, "int_extra");
+}
+
+test "str extra methods match across backends" {
+    py_result = run_py_fixture("prim_str_extra", "str_extra_py");
+    js_code = compile_fixture_to_js("prim_str_extra.jac");
+    js_result = run_js_function(js_code, "str_extra_cl");
+    compare_results(py_result, js_result, "str_extra");
+}
+
+test "complex operators match across backends" {
+    py_result = run_py_fixture("prim_complex", "complex_ops_py");
+    js_code = compile_fixture_to_js("prim_complex.jac");
+    js_result = run_js_function(js_code, "complex_ops_cl");
+    compare_results(py_result, js_result, "complex_ops");
+}
+
+test "set mutation methods match across backends" {
+    py_result = run_py_fixture("prim_set_ops", "set_mutation_py");
+    js_code = compile_fixture_to_js("prim_set_ops.jac");
+    js_result = run_js_function(js_code, "set_mutation_cl");
+    compare_results(py_result, js_result, "set_mutation");
+}
+
+test "set algebra methods match across backends" {
+    py_result = run_py_fixture("prim_set_ops", "set_algebra_py");
+    js_code = compile_fixture_to_js("prim_set_ops.jac");
+    js_result = run_js_function(js_code, "set_algebra_cl");
+    compare_results(py_result, js_result, "set_algebra");
+}
+
+test "set operators match across backends" {
+    py_result = run_py_fixture("prim_set_ops", "set_operators_py");
+    js_code = compile_fixture_to_js("prim_set_ops.jac");
+    js_result = run_js_function(js_code, "set_operators_cl");
+    compare_results(py_result, js_result, "set_operators");
+}
+
+test "frozenset operators match across backends" {
+    py_result = run_py_fixture("prim_frozenset", "frozenset_ops_py");
+    js_code = compile_fixture_to_js("prim_frozenset.jac");
+    js_result = run_js_function(js_code, "frozenset_ops_cl");
+    compare_results(py_result, js_result, "frozenset_ops");
+}
+
+test "bytes search methods match across backends" {
+    py_result = run_py_fixture("prim_bytes", "bytes_search_py");
+    js_code = compile_fixture_to_js("prim_bytes.jac");
+    js_result = run_js_function(js_code, "bytes_search_cl");
+    compare_results(py_result, js_result, "bytes_search");
+}
+
+test "bytes modify methods match across backends" {
+    py_result = run_py_fixture("prim_bytes", "bytes_modify_py");
+    js_code = compile_fixture_to_js("prim_bytes.jac");
+    js_result = run_js_function(js_code, "bytes_modify_cl");
+    compare_results(py_result, js_result, "bytes_modify");
+}
+
+test "bytes case methods match across backends" {
+    py_result = run_py_fixture("prim_bytes", "bytes_case_py");
+    js_code = compile_fixture_to_js("prim_bytes.jac");
+    js_result = run_js_function(js_code, "bytes_case_cl");
+    compare_results(py_result, js_result, "bytes_case");
+}
+
+test "bytes test methods match across backends" {
+    py_result = run_py_fixture("prim_bytes", "bytes_test_py");
+    js_code = compile_fixture_to_js("prim_bytes.jac");
+    js_result = run_js_function(js_code, "bytes_test_cl");
+    compare_results(py_result, js_result, "bytes_test");
+}
+
+test "extra builtins match across backends" {
+    py_result = run_py_fixture("prim_builtins_extra", "builtins_extra_py");
+    js_code = compile_fixture_to_js("prim_builtins_extra.jac");
+    js_result = run_js_function(js_code, "builtins_extra_cl");
+    compare_results(py_result, js_result, "builtins_extra");
 }

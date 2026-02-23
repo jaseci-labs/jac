@@ -1,6 +1,4 @@
-import from byllm.lib { Model, Video }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Video }
 
 """
 Mugen is a moving character

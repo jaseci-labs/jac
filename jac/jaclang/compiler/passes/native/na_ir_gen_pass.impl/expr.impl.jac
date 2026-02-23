@@ -180,6 +180,77 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                 return result;
             }
         }
+        # Check if right is a list
+        for (list_key, helpers) in self.list_helpers.items() {
+            list_type = self.list_types.get(list_key);
+            if list_type is not None and right.type == list_type.as_pointer() {
+                elem_type = helpers["elem_type"];
+                left_coerced = self._coerce_type(left, elem_type);
+                list_len = self.builder.call(
+                    helpers["len"], [right], name="list.in.len"
+                );
+                i64 = ir.IntType(64);
+                func = self.builder.basic_block.function;
+                entry_bb = self.builder.basic_block;
+                loop_bb = func.append_basic_block(name="list.in.loop");
+                check_bb = func.append_basic_block(name="list.in.check");
+                found_bb = func.append_basic_block(name="list.in.found");
+                done_bb = func.append_basic_block(name="list.in.done");
+                self.builder.branch(loop_bb);
+                self.builder.position_at_start(loop_bb);
+                idx = self.builder.phi(i64, name="list.in.idx");
+                idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+                at_end = self.builder.icmp_unsigned(
+                    ">=", idx, list_len, name="list.in.atend"
+                );
+                self.builder.cbranch(at_end, done_bb, check_bb);
+                self.builder.position_at_start(check_bb);
+                elem = self.builder.call(
+                    helpers["get"], [right, idx], name="list.in.elem"
+                );
+                eq = self.builder.icmp_signed(
+                    "==", elem, left_coerced, name="list.in.eq"
+                );
+                next_idx = self.builder.add(
+                    idx, ir.Constant(i64, 1), name="list.in.next"
+                );
+                idx.add_incoming(next_idx, check_bb);
+                self.builder.cbranch(eq, found_bb, loop_bb);
+                self.builder.position_at_start(found_bb);
+                self.builder.branch(done_bb);
+                self.builder.position_at_start(done_bb);
+                result = self.builder.phi(i64, name="list.in.result");
+                result.add_incoming(ir.Constant(i64, 0), loop_bb);
+                result.add_incoming(ir.Constant(i64, 1), found_bb);
+                if is_not_in {
+                    result = self.builder.icmp_signed(
+                        "==", result, ir.Constant(i64, 0), name="not.in"
+                    );
+                    result = self.builder.zext(result, i64, name="notin.i64");
+                }
+                return result;
+            }
+        }
+        # Check if right is a string (i8*): left in right → strstr
+        if isinstance(right.type, ir.PointerType)
+        and isinstance(left.type, ir.PointerType) {
+            i8p = ir.IntType(8).as_pointer();
+            i64 = ir.IntType(64);
+            strstr_fn = self._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
+            found = self.builder.call(strstr_fn, [right, left], name="str.in.ptr");
+            null_ptr = ir.Constant(i8p, None);
+            is_found = self.builder.icmp_unsigned(
+                "!=", found, null_ptr, name="str.in.found"
+            );
+            result = self.builder.zext(is_found, i64, name="str.in.i64");
+            if is_not_in {
+                result = self.builder.icmp_signed(
+                    "==", result, ir.Constant(i64, 0), name="not.in"
+                );
+                result = self.builder.zext(result, i64, name="notin.i64");
+            }
+            return result;
+        }
         return None;
     }
     # Handle identity operators: is / is not (pointer comparison)
@@ -328,6 +399,18 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             if isinstance(then_val.type, ir.DoubleType)
             or isinstance(else_val.type, ir.DoubleType) {
                 (then_val, else_val) = self._promote_to_float(then_val, else_val);
+            } elif isinstance(then_val.type, ir.IntType)
+            and isinstance(else_val.type, ir.IntType) {
+                # Widen the narrower int to match the wider one
+                if then_val.type.width > else_val.type.width {
+                    else_val = self.builder.zext(
+                        else_val, then_val.type, name="ternary.widen"
+                    );
+                } else {
+                    then_val = self.builder.zext(
+                        then_val, else_val.type, name="ternary.widen"
+                    );
+                }
             }
         }
         phi = self.builder.phi(then_val.type, name="ternary.result");

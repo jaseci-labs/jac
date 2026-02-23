@@ -48,6 +48,9 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return caller_type.return_type or types.UnknownType();
     }
     if isinstance(caller_type, types.OverloadedType) {
+        # Prefer overloads with concrete (non-Unknown) return types
+        # to avoid broken overloads (e.g. LiteralString) shadowing correct ones.
+        _fallback_result: types.TypeBase | None = None;
         for overload in caller_type.overloads {
             arg_param_match = self.match_args_to_params(
                 expr.params,
@@ -59,9 +62,17 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
             if not arg_param_match.argument_errors {
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
-                    return overload.return_type or types.UnknownType();
+                    if not isinstance(overload.return_type, types.UnknownType) {
+                        return overload.return_type or types.UnknownType();
+                    }
+                    if _fallback_result is None {
+                        _fallback_result = overload.return_type;
+                    }
                 }
             }
+        }
+        if _fallback_result is not None {
+            return _fallback_result;
         }
         self.add_diagnostic(
             expr,

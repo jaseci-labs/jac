@@ -1195,25 +1195,25 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
 
     # --- Named methods (set algebra) ---
     def emit_union(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "union", args);
+        return _rt("set", "union", [target] + args);
     }
 
     def emit_intersection(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "intersection", args);
+        return _rt("set", "intersection", [target] + args);
     }
 
     def emit_difference(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "difference", args);
+        return _rt("set", "difference", [target] + args);
     }
 
     def emit_symmetric_difference(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "symmetricDifference", args);
+        return _rt("set", "symmetricDifference", [target] + args);
     }
 
     # --- Named methods (in-place set algebra) ---
@@ -1243,19 +1243,19 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_issubset(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isSubsetOf", args);
+        return _rt("set", "isSubsetOf", [target] + args);
     }
 
     def emit_issuperset(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isSupersetOf", args);
+        return _rt("set", "isSupersetOf", [target] + args);
     }
 
     def emit_isdisjoint(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isDisjointFrom", args);
+        return _rt("set", "isDisjointFrom", [target] + args);
     }
 
     def emit_copy(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
@@ -1264,19 +1264,19 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
 
     # --- Set algebra operators ---
     def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "union", [args[0]]);
+        return _rt("set", "union", [target, args[0]]);
     }
 
     def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "intersection", [args[0]]);
+        return _rt("set", "intersection", [target, args[0]]);
     }
 
     def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "difference", [args[0]]);
+        return _rt("set", "difference", [target, args[0]]);
     }
 
     def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "symmetricDifference", [args[0]]);
+        return _rt("set", "symmetricDifference", [target, args[0]]);
     }
 
     # --- Comparison operators (subset/superset) ---
@@ -1289,7 +1289,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "isSubsetOf", [args[0]]);
+        return _rt("set", "isSubsetOf", [target, args[0]]);
     }
 
     def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
@@ -1297,7 +1297,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "isSupersetOf", [args[0]]);
+        return _rt("set", "isSupersetOf", [target, args[0]]);
     }
 
     def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
@@ -1338,43 +1338,43 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
 class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     # --- Named methods ---
     def emit_union(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "union", args);
+        return _rt("set", "union", [target] + args);
     }
 
     def emit_intersection(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "intersection", args);
+        return _rt("set", "intersection", [target] + args);
     }
 
     def emit_difference(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "difference", args);
+        return _rt("set", "difference", [target] + args);
     }
 
     def emit_symmetric_difference(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "symmetricDifference", args);
+        return _rt("set", "symmetricDifference", [target] + args);
     }
 
     def emit_issubset(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isSubsetOf", args);
+        return _rt("set", "isSubsetOf", [target] + args);
     }
 
     def emit_issuperset(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isSupersetOf", args);
+        return _rt("set", "isSupersetOf", [target] + args);
     }
 
     def emit_isdisjoint(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
-        return _mcall(target, "isDisjointFrom", args);
+        return _rt("set", "isDisjointFrom", [target] + args);
     }
 
     def emit_copy(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
@@ -1383,19 +1383,19 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
 
     # --- Set algebra operators ---
     def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "union", [args[0]]);
+        return _rt("set", "union", [target, args[0]]);
     }
 
     def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "intersection", [args[0]]);
+        return _rt("set", "intersection", [target, args[0]]);
     }
 
     def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "difference", [args[0]]);
+        return _rt("set", "difference", [target, args[0]]);
     }
 
     def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "symmetricDifference", [args[0]]);
+        return _rt("set", "symmetricDifference", [target, args[0]]);
     }
 
     # --- Comparison operators (subset/superset) ---
@@ -1408,7 +1408,7 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "isSubsetOf", [args[0]]);
+        return _rt("set", "isSubsetOf", [target, args[0]]);
     }
 
     def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
@@ -1416,7 +1416,7 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        return _mcall(target, "isSupersetOf", [args[0]]);
+        return _rt("set", "isSupersetOf", [target, args[0]]);
     }
 
     def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {

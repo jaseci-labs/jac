@@ -5054,9 +5054,10 @@ impl Parser.parse_archetype -> Archetype {
     type_params: list[TypeParam] | None = None;
     tp_lb_uni: UniToken | None = None;
     tp_rb_uni: UniToken | None = None;
+    tp_comma_unis: list = [];
     if self.match_tok(TokenKind.LSQUARE) {
         tp_lb_uni = self.make_uni_token(self.previous());
-        type_params = self.parse_type_params();
+        (type_params, tp_comma_unis) = self.parse_type_params();
         tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
     }
     base_classes: list = [];
@@ -5114,7 +5115,7 @@ impl Parser.parse_archetype -> Archetype {
         kid.append(tp_lb_uni);
         for (i, tp) in enumerate(type_params) {
             if i > 0 {
-                kid.append(self.gen_token(Tok.COMMA.value, ","));
+                kid.append(tp_comma_unis[i - 1]);
             }
             kid.append(tp);
         }
@@ -6511,7 +6512,7 @@ impl Parser.parse_type_alias -> TypeAlias {
     tp_comma_unis: list = [];
     if self.match_tok(TokenKind.LSQUARE) {
         tp_lb_uni = self.make_uni_token(self.previous());
-        type_params = self.parse_type_params();
+        (type_params, tp_comma_unis) = self.parse_type_params();
         tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
     }
     eq_uni = self.consume_uni(TokenKind.EQ);
@@ -6526,7 +6527,7 @@ impl Parser.parse_type_alias -> TypeAlias {
         kid.append(tp_lb_uni);
         for (i, tp) in enumerate(type_params) {
             if i > 0 {
-                kid.append(self.gen_token(Tok.COMMA.value, ","));
+                kid.append(tp_comma_unis[i - 1]);
             }
             kid.append(tp);
         }
@@ -6545,8 +6546,9 @@ impl Parser.parse_type_alias -> TypeAlias {
     );
 }
 
-impl Parser.parse_type_params -> list {
+impl Parser.parse_type_params -> tuple {
     params: list = [];
+    comma_unis: list = [];
     # Parse first type param
     name_tok = self.expect_name();
     name = self.make_name_or_special(name_tok);
@@ -6567,6 +6569,7 @@ impl Parser.parse_type_params -> list {
         TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
     );
     while self.match_tok(TokenKind.COMMA) {
+        comma_unis.append(self.make_uni_token(self.previous()));
         if self.check(TokenKind.RSQUARE) {
             break;
         }
@@ -6589,7 +6592,7 @@ impl Parser.parse_type_params -> list {
             TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
         );
     }
-    return params;
+    return (params, comma_unis);
 }
 
 impl Parser.parse_dotted_name -> Expr {

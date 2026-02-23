@@ -14,7 +14,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 """Jac Semantic definition match pass."""
-obj SemDefMatchPass(Transform[(uni.Module, uni.Module)]) {
+obj SemDefMatchPass(Transform[uni.Module, uni.Module]) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def find_symbol_from_dotted_name(

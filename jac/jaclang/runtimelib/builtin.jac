@@ -51,6 +51,8 @@ def _get_commit -> Callable[..., Any];
 
 def _get_store -> Callable[..., Any];
 
+def _get_llm -> object;
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
@@ -79,6 +81,7 @@ glob __all__ = [
          'save',
          'commit',
          'store',
+         'llm',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',

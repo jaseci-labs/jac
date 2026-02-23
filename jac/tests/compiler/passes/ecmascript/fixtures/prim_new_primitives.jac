@@ -161,6 +161,82 @@ cl def range_builtin_cl() -> dict {
 }
 
 # =============================================================================
+# range methods — count, index, eq, ne, contains
+# =============================================================================
+
+def range_methods_py() -> dict {
+    r: list = list(range(0, 10, 2));  # [0, 2, 4, 6, 8]
+
+    # count
+    count_hit: int = r.count(4);
+    count_miss: int = r.count(3);
+
+    # index
+    idx_first: int = r.index(0);
+    idx_mid: int = r.index(6);
+    idx_last: int = r.index(8);
+
+    # equality (compare as lists since range objects aren't JSON-serializable)
+    eq_same: bool = list(range(5)) == list(range(5));
+    eq_diff_step: bool = list(range(0, 6, 2)) == list(range(0, 6, 2));
+    ne_diff: bool = list(range(5)) != list(range(6));
+    ne_empty: bool = list(range(0)) != list(range(5));
+
+    # contains (in operator on lists)
+    contains_yes: bool = 4 in r;
+    contains_no: bool = 3 in r;
+    contains_start: bool = 0 in r;
+    contains_end: bool = 8 in r;
+    contains_past: bool = 10 in r;
+
+    return {
+        "count_hit": count_hit, "count_miss": count_miss,
+        "idx_first": idx_first, "idx_mid": idx_mid, "idx_last": idx_last,
+        "eq_same": eq_same, "eq_diff_step": eq_diff_step,
+        "ne_diff": ne_diff, "ne_empty": ne_empty,
+        "contains_yes": contains_yes, "contains_no": contains_no,
+        "contains_start": contains_start, "contains_end": contains_end,
+        "contains_past": contains_past
+    };
+}
+
+cl def range_methods_cl() -> dict {
+    r: list = list(range(0, 10, 2));  # [0, 2, 4, 6, 8]
+
+    # count
+    count_hit: int = r.count(4);
+    count_miss: int = r.count(3);
+
+    # index
+    idx_first: int = r.index(0);
+    idx_mid: int = r.index(6);
+    idx_last: int = r.index(8);
+
+    # equality (compare as lists)
+    eq_same: bool = list(range(5)) == list(range(5));
+    eq_diff_step: bool = list(range(0, 6, 2)) == list(range(0, 6, 2));
+    ne_diff: bool = list(range(5)) != list(range(6));
+    ne_empty: bool = list(range(0)) != list(range(5));
+
+    # contains (in operator on lists)
+    contains_yes: bool = 4 in r;
+    contains_no: bool = 3 in r;
+    contains_start: bool = 0 in r;
+    contains_end: bool = 8 in r;
+    contains_past: bool = 10 in r;
+
+    return {
+        "count_hit": count_hit, "count_miss": count_miss,
+        "idx_first": idx_first, "idx_mid": idx_mid, "idx_last": idx_last,
+        "eq_same": eq_same, "eq_diff_step": eq_diff_step,
+        "ne_diff": ne_diff, "ne_empty": ne_empty,
+        "contains_yes": contains_yes, "contains_no": contains_no,
+        "contains_start": contains_start, "contains_end": contains_end,
+        "contains_past": contains_past
+    };
+}
+
+# =============================================================================
 # Bool bitwise operators — & | ^ return bool not int
 # =============================================================================
 

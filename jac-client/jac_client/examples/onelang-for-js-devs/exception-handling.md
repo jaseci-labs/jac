@@ -36,7 +36,7 @@ This guide covers error handling patterns in JAC-Lang for developers familiar wi
     try {
         riskyOperation();
     } except Exception as e {
-        console.log("Error:", (e.toString()));
+        print("Error:", str(e));
     }
     ```
 
@@ -109,7 +109,7 @@ This guide covers error handling patterns in JAC-Lang for developers familiar wi
     try {
         riskyOperation();
     } except Exception as e {
-        console.log("Logging error...");
+        print("Logging error...");
         raise e;  # Re-raise
     }
     ```
@@ -129,9 +129,9 @@ def validateAge(age: int) -> None {
         if age > 150 {
             raise Exception("Age seems unrealistic!");
         }
-        console.log("Valid age:", age);
+        print("Valid age:", age);
     } except Exception as e {
-        console.log("Validation error:", (e.toString()));
+        print("Validation error:", str(e));
     }
 }
 ```
@@ -144,7 +144,7 @@ def parseJson(jsonString: str) -> any {
         data = JSON.parse(jsonString);
         return data;
     } except Exception as e {
-        console.log("Invalid JSON:", (e.toString()));
+        print("Invalid JSON:", str(e));
         return None;
     }
 }
@@ -155,7 +155,7 @@ def parseJson(jsonString: str) -> any {
 ```jac
 def parseNumber(value: str, defaultVal: int) -> int {
     try {
-        parsed = parseInt(value);
+        parsed = int(value);
         if isNaN(parsed) {
             raise Exception("Not a number");
         }
@@ -176,7 +176,7 @@ def safeGetItem(arr: list, index: int) -> any {
         }
         return arr[index];
     } except Exception as e {
-        console.log("Error:", (e.toString()));
+        print("Error:", str(e));
         return None;
     }
 }

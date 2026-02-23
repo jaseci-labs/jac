@@ -108,6 +108,36 @@ test "def pub called from client imports jac call function" {
     }
 }
 
+test "endpoint effects classifies walkers and functions" {
+    test_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\ncl {\n    def:pub app() {\n        todos = root spawn get_todos();\n        root spawn create_todo(title="test");\n        stats = await get_stats();\n        result = await reset_data();\n    }\n}\n';
+
+    with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
+        f.write(test_code);
+        f.flush();
+        prog = JacProgram();
+        mod = prog.compile(f.name);
+        effects = mod.gen.client_manifest.endpoint_effects;
+        # Walker reader: no write operations in body
+        assert "walker:get_todos" in effects , "get_todos should be in endpoint_effects";
+        assert not effects["walker:get_todos"]["is_writer"] , "get_todos should be classified as reader";
+        # Walker writer: has connect op (++>) and node constructor
+        assert "walker:create_todo" in effects , "create_todo should be in endpoint_effects";
+        assert effects["walker:create_todo"]["is_writer"] , "create_todo should be classified as writer";
+        # Function reader: just returns data, no mutations
+        assert "func:get_stats" in effects , "get_stats should be in endpoint_effects";
+        assert not effects["func:get_stats"]["is_writer"] , "get_stats should be classified as reader";
+        # Function writer: has del statement
+        assert "func:reset_data" in effects , "reset_data should be in endpoint_effects";
+        assert effects["func:reset_data"]["is_writer"] , "reset_data should be classified as writer";
+        # Verify touches metadata is present
+        for key in effects {
+            assert "touches" in effects[key] , f"{key} should have touches list";
+            assert len(effects[key]["touches"]) > 0 , f"{key} should have non-empty touches";
+        }
+        os.unlink(f.name);
+    }
+}
+
 test "jac call function sends params directly" {
     jac_root = Path(jaclang.__file__).resolve().parent.parent.parent;
     runtime_path = (

@@ -288,10 +288,9 @@ def print_ast_tree(
         level_markers = [];
     }
     level = len(level_markers);
-    def mapper(draw: bool) -> str {
-        return connection_str if draw else empty_str;
-    }
-    markers = ''.join(map(mapper, level_markers[:-1]));
+    markers = ''.join(
+        [connection_str if draw else empty_str for draw in level_markers[:-1]]
+    );
     markers += marker if (level > 0) else '';
     if isinstance(`root, uni.UniNode) {
         tree_str = f"{root.loc}	{markers}{__node_repr_in_tree(root)}\n";
@@ -301,10 +300,9 @@ def print_ast_tree(
             and not print_py_raise
         ) {
             kids: list[UniNode] = [
-                *filter(
-                    lambda x: Any : x.is_raised_from_py,
-                    `root.get_all_sub_nodes(uni.Module)
-                )
+                x
+                for x in `root.get_all_sub_nodes(uni.Module)
+                if x.is_raised_from_py
             ];
         } else {
             kids = `root.kid;
