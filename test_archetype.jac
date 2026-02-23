@@ -1,10 +1,3 @@
-"""Isolated test: just exit_archetype — the suspected killer function."""
-
-import ast as ast3;
-import from typing { cast, Sequence }
-import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.lexer { Tok }
-
 impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None {
     inner: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None = None;
     if isinstance(nd.body, uni.ImplDef) {
@@ -30,41 +23,17 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
             )
         );
     }
-    # ==============================
-    # decorators (NO comprehension)
-    # ==============================
-    decorators: list[ast3.expr] = [];
-
-    if nd.decorators {
-        for i in nd.decorators {
-            decorators.append(cast(ast3.expr, i.gen.py_ast[0]));
-        }
-    }
-
+    decorators = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators]
+    if nd.decorators
+    else [];
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);
     }
-
-
-    # ==============================
-    # base_classes (NO comprehension)
-    # ==============================
-    base_classes: list[ast3.expr] = [];
-
-    for i in nd.base_classes {
-        base_classes.append(cast(ast3.expr, i.gen.py_ast[0]));
-    }
-
+    base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.base_classes];
     if (nd.arch_type.name != Tok.KW_CLASS) {
         base_classes.append(self.jaclib_obj(nd.arch_type.value.capitalize()));
     }
-
-
-    # ==============================
-    # type_param_asts (already loop)
-    # ==============================
     type_param_asts: list[ast3.type_param] = [];
-
     if nd.type_params {
         for tp in nd.type_params {
             if tp.gen.py_ast {
@@ -72,45 +41,15 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
             }
         }
     }
-
-
-    # ==============================
-    # bases (NO comprehension)
-    # ==============================
-    bases_tmp: list[ast3.expr] = [];
-    for i in base_classes {
-        bases_tmp.append(cast(ast3.expr, i));
-    }
-
-
-    # ==============================
-    # body cast (NO comprehension)
-    # ==============================
-    body_tmp: list[ast3.stmt] = [];
-    for i in body {
-        body_tmp.append(cast(ast3.stmt, i));
-    }
-
-
-    # ==============================
-    # decorator_list (NO comprehension)
-    # ==============================
-    decorator_tmp: list[ast3.expr] = [];
-    for i in decorators {
-        decorator_tmp.append(cast(ast3.expr, i));
-    }
-
-
     class_def = self.sync(
         ast3.ClassDef(
             name=nd.name.sym_name,
-            bases=bases_tmp,
+            bases=[cast(ast3.expr, i) for i in base_classes],
             keywords=[],
-            body=body_tmp,
-            decorator_list=decorator_tmp,
+            body=[cast(ast3.stmt, i) for i in body],
+            decorator_list=[cast(ast3.expr, i) for i in decorators],
             type_params=type_param_asts
         )
     );
-
     nd.gen.py_ast = [class_def];
 }
