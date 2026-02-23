@@ -217,33 +217,34 @@ impl DeclImplMatchPass._fix_shadowed_parent_symbols(
     }
     parent_scope = valid_decl.sym_tab.parent_scope;
     merged = impl_def.sym_tab.names_in_scope;
-    names_to_fix: list[str] = [];
+    # Collect shadowed names and their parent symbols in one pass.
+    fixes: dict[str, Symbol] = {};
     for (name, sym) in merged.items() {
-        # Check if this is a local var created by SymTabBuildPass (bare Name, no type info)
         if (
             sym.decl
             and sym.decl.name_of
             and isinstance(sym.decl.name_of, uni.Name)
             and not isinstance(sym.decl.name_of, (uni.HasVar, uni.ParamVar))
         ) {
-            # Check if the parent scope chain has a properly-typed version
             parent_sym = parent_scope.lookup(name, deep=True, incl_inner_scope=False);
             if (parent_sym and SymTabBuildPass._outer_has_type_annotation(parent_sym)) {
-                names_to_fix.append(name);
+                fixes[name] = parent_sym;
             }
         }
     }
-    for name in names_to_fix {
-        parent_sym = parent_scope.lookup(name, deep=True, incl_inner_scope=False);
-        if parent_sym {
-            merged[name] = parent_sym;
-            # Re-link any Name nodes in the impl body that reference this symbol
-            for name_node in impl_def.get_all_sub_nodes(uni.Name) {
-                if ((name_node.value == name) and (name_node.sym is not None)) {
-                    name_node.sym = parent_sym;
-                    parent_sym.add_use(name_node.name_spec);
-                }
-            }
+    if not fixes {
+        return;
+    }
+    # Replace scope entries.
+    for (name, parent_sym) in fixes.items() {
+        merged[name] = parent_sym;
+    }
+    # Re-link Name nodes in one traversal of the impl body.
+    for name_node in impl_def.get_all_sub_nodes(uni.Name) {
+        if ((name_node.sym is not None) and (name_node.value in fixes)) {
+            parent_sym = fixes[name_node.value];
+            name_node.sym = parent_sym;
+            parent_sym.add_use(name_node.name_spec);
         }
     }
 }

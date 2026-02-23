@@ -184,3 +184,45 @@ test "impl body symbol resolution" {
         }
     }
 }
+
+test "impl has var type not shadowed" {
+    # Verifies that `has tasks: list` retains its type when reassigned
+    # in an impl file (e.g., `tasks = tasks + [task]`). Without the
+    # _fix_shadowed_parent_symbols fix, SymTabBuildPass creates an untyped
+    # local var that shadows the typed HasVar from the parent scope.
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "impl_has_var_type_shadow.jac")
+    );
+    assert not out.errors_had , f"Compilation errors: {out.errors_had}";
+    assert len(state.impl_mod) == 1 , "Expected one impl module";
+    impl_mod = state.impl_mod[0];
+
+    # Find the add_task ImplDef (the one with the assignment).
+    impl_defs = [
+        node
+        for node in impl_mod.get_all_sub_nodes(uni.ImplDef)
+        if isinstance(node, uni.ImplDef) and "add_task" in node.sym_name
+    ];
+    assert len(impl_defs) == 1 , f"Expected 1 add_task ImplDef, got {len(impl_defs)}";
+    add_task_impl = impl_defs[0];
+
+    # Find all Name nodes referencing "tasks" in the impl body.
+    task_names = [
+        n
+        for n in add_task_impl.get_all_sub_nodes(uni.Name)
+        if isinstance(n, uni.Name) and n.value == "tasks"
+    ];
+    assert len(task_names) > 0 , "Expected Name nodes for 'tasks'";
+
+    # Every reference to "tasks" must resolve to the HasVar symbol,
+    # not an untyped local var.
+    for name_node in task_names {
+        assert name_node.sym is not None , (
+            "'tasks' Name node has no symbol — resolution failed"
+        );
+        assert isinstance(name_node.sym.decl.name_of, uni.HasVar) , (
+            f"'tasks' should resolve to HasVar, got "
+            f"{type(name_node.sym.decl.name_of).__name__}"
+        );
+    }
+}
