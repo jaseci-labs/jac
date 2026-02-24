@@ -12,14 +12,19 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
 
 """Convert a string to a docstring."""
 impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
-    import codecs;
-    content = string.value[1:-1];
-    try {
-        decoded = codecs.decode(content, 'unicode_escape');
-    } except Exception {
-        decoded = content;
+    # Determine quote style and extract content
+    val = string.value;
+    if val.startswith('"""') or val.startswith("'''") {
+        # Already triple-quoted, nothing to do
+        return;
+    } elif val.startswith('"') or val.startswith("'") {
+        content = val[1:-1];
+    } else {
+        # No quotes, wrap as-is
+        content = val;
     }
-    string.value = f'"""{decoded}"""';
+    # Use triple-double-quotes, preserving escape sequences as-is
+    string.value = f'"""{content}"""';
 }
 
 """
@@ -1284,14 +1289,32 @@ Process python node.
         values: list[expr]
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
+    # First, detect if this is a triple-quoted f-string
+    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
+    if (ast_seg is None) {
+        ast_seg = 'f""';
+    }
+    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    is_triple_quoted = fstr_match and len(fstr_match.group(2)) == 3;
+
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
+            # Use repr to properly escape special characters, then strip outer quotes
+            raw_repr = repr(i.value);
+            escaped_value = raw_repr[1:-1];  # Remove quotes from repr output
+
+            # For triple-quoted f-strings, un-escape newlines and tabs to preserve them literally
+            if is_triple_quoted {
+                escaped_value = escaped_value.replace('\\n', '\n');
+                escaped_value = escaped_value.replace('\\t', '\t');
+                escaped_value = escaped_value.replace('\\r', '\r');
+            }
             valid.append(
                 uni.String(
                     orig_src=self.orig_src,
                     name='STRING',
-                    value=i.value,
+                    value=escaped_value,
                     line=i.lineno,
                     end_line=i.end_lineno or i.lineno,
                     col_start=i.col_offset,
@@ -1309,11 +1332,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
             raise self.ice('Invalid node in joined str') ;
         }
     }
-    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
-    if (ast_seg is None) {
-        ast_seg = 'f""';
-    }
-    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    # ast_seg and fstr_match already computed above
     if fstr_match {
         (prefix, quote) = fstr_match.groups();
         start = fstr_match.group(0);
