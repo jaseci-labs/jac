@@ -26,6 +26,7 @@
 | `can` | Declaration | Ability (method on archetypes) |
 | `case` | Control | Match/switch case |
 | `cl` | Block | Client-side code block |
+| `na` | Block | Native code block (compiles to LLVM IR) |
 | `class` | Archetype | Python-style class definition |
 | `continue` | Control | Next iteration |
 | `def` | Declaration | Function |
@@ -93,7 +94,7 @@
 
 - The abstract keyword is `abs`, not `abstract`
 - Logical operators have both word and symbol forms: `and`/`&&`, `or`/`||`
-- `cl` and `sv` are block keywords for client/server code separation
+- `cl`, `sv`, and `na` are block keywords for client/server/native code separation
 
 ---
 
@@ -161,8 +162,8 @@
 module        : STRING? element*              # Optional module docstring
 element       : STRING? toplevel_stmt         # Optional statement docstring
 toplevel_stmt : import | archetype | ability | impl | test | entry
-              | (cl | sv) toplevel_stmt       # Client/server prefix
-              | (cl | sv) "{" toplevel_stmt* "}"  # Client/server block
+              | (cl | sv | na) toplevel_stmt       # Client/server/native prefix
+              | (cl | sv | na) "{" toplevel_stmt* "}"  # Client/server/native block
 
 archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"
@@ -174,6 +175,7 @@ ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";"
 event_clause  : "with" type_expr? (entry | exit)
 
 import        : "import" (module | "from" import_path "{" names "}")
+              | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
 test          : "test" NAME body

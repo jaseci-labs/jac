@@ -430,7 +430,20 @@ assignment_with_target ::=
 import_stmt ::=
     ("include" | "import")
     ("from" (("." | ELLIPSIS) ELLIPSIS*)? (STRING | ("." NAME)*)?)? (
-        "{" (("*" | "default" | NAME) ("as" NAME)?)* "}"
+        "{" (
+            (
+                "def"
+                | "can"
+                | "obj"
+                | "class"
+                | "enum"
+                | "async"
+                | STRING
+                | "glob"
+                | "has"
+            ) element_stmt*
+            | (("*" | "default" | NAME) ("as" NAME)?)*
+        ) "}"
         | (STRING | ("." NAME)*)? ("as" NAME)?
     ) ";"
 
