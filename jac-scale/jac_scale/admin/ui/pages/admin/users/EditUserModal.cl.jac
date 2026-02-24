@@ -1,6 +1,7 @@
 """Edit user modal component."""
 
 cl {
+    import from typing { Any, Callable }
     import from ....components.common.Modal { Modal, ModalFooter }
     import from ....components.common.Button { Button }
     import from ....components.common.Select { Select }
@@ -9,8 +10,8 @@ cl {
 
     def:pub EditUserModal(
         isOpen: bool,
-        onClose: any,
-        onUpdate: any,
+        onClose: Callable[[], None],
+        onUpdate: Callable[..., Any],
         username: str,
         initialRole: str,
         initialResetRequired: bool

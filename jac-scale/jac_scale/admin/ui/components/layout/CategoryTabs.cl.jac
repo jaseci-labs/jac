@@ -1,8 +1,10 @@
 """Main category tab navigation."""
 
 cl {
+    import from typing { Callable }
+
     def:pub CategoryTabs(
-        categories: list, activeCategory: str, onCategoryChange: any
+        categories: list, activeCategory: str, onCategoryChange: Callable[..., None]
     ) -> JsxElement {
         def makeHandler(catId: str, defaultTab: str) -> any {
             return lambda e: any  -> None { onCategoryChange(catId, defaultTab);};
