@@ -16,6 +16,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     create_k8s_secret,
     delete_k8s_secret,
     delete_if_exists,
+    delete_namespace,
     check_K8s_status,
     ensure_namespace_exists,
     ensure_pvc_exists,
@@ -1152,6 +1153,42 @@ class KubernetesTarget(DeploymentTarget) {
                 );
             }
             self._wait_for_deletion(app_name, namespace, apps_v1, core_v1);
+
+            # Delete namespace if not the default one
+            if namespace != 'default' {
+                delete_namespace(namespace);
+                if self.logger {
+                    self.logger.info(
+                        f"Waiting for namespace '{namespace}' to be deleted..."
+                    );
+                }
+                ns_deleted = False;
+                ns_elapsed = 0.0;
+                ns_max_wait = 120;
+                ns_poll = 2.0;
+                while ns_elapsed < ns_max_wait {
+                    try {
+                        core_v1.read_namespace(name=namespace);
+                        time.sleep(ns_poll);
+                        ns_elapsed = ns_elapsed + ns_poll;
+                    } except ApiException as e {
+                        if e.status == 404 {
+                            ns_deleted = True;
+                            break;
+                        }
+                        raise ;
+                    }
+                }
+                if self.logger {
+                    if ns_deleted {
+                        self.logger.info(f"Namespace '{namespace}' deleted");
+                    } else {
+                        self.logger.warning(
+                            f"Timed out waiting for namespace '{namespace}' to be deleted"
+                        );
+                    }
+                }
+            }
 
             if self.logger {
                 self.logger.info(f"Application '{app_name}' destroyed successfully");
