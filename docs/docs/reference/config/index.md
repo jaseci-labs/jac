@@ -367,6 +367,18 @@ See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details
 
 See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
 
+**NPM Registry Configuration (jac-client):**
+
+```toml
+[plugins.client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+
+[plugins.client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+```
+
+This generates an `.npmrc` file during dependency installation for private/scoped npm packages. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration) for details.
+
 ---
 
 ### [scripts]
