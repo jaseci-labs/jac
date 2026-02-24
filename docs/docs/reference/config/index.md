@@ -367,6 +367,17 @@ See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details
 
 See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
 
+**Import Path Aliases (jac-client):**
+
+```toml
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+"@shared" = "./shared/index"
+```
+
+Defines custom import aliases applied to Vite `resolve.alias`, TypeScript `compilerOptions.paths`, and the Jac module resolver. See [jac-client Import Path Aliases](../plugins/jac-client.md#import-path-aliases) for details.
+
 **NPM Registry Configuration (jac-client):**
 
 ```toml
@@ -378,6 +389,27 @@ _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
 This generates an `.npmrc` file during dependency installation for private/scoped npm packages. See [jac-client NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration) for details.
+
+**Build-Time Constants (jac-client):**
+
+Define global variables that are replaced at compile time in client code via the `[plugins.client.vite.define]` section:
+
+```toml
+[plugins.client.vite.define]
+"globalThis.API_URL" = "\"https://api.example.com\""
+"globalThis.FEATURE_ENABLED" = true
+"globalThis.BUILD_VERSION" = "\"1.2.3\""
+```
+
+These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). In client code, access them directly:
+
+```jac
+cl {
+    def:pub Footer() -> JsxElement {
+        return <p>Version: {globalThis.BUILD_VERSION}</p>;
+    }
+}
+```
 
 ---
 

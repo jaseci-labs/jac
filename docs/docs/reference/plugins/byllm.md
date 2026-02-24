@@ -355,6 +355,22 @@ enum Sentiment {
 def analyze_sentiment(text: str) -> Sentiment by llm();
 ```
 
+Enum member semstrings are included in the LLM's schema, helping the model understand what each value means:
+
+```jac
+enum Personality {
+    INTROVERT,
+    EXTROVERT,
+    AMBIVERT
+}
+
+sem Personality.INTROVERT = "Prefers solitude and small groups, energized by alone time";
+sem Personality.EXTROVERT = "Thrives in social settings, energized by interaction";
+sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
+
+def classify_personality(bio: str) -> Personality by llm();
+```
+
 ### Object Types
 
 ```jac
@@ -390,10 +406,13 @@ Parameters passed to `by llm()` at call time:
 |-----------|------|-------------|
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Default: 0.7 |
 | `max_tokens` | int | Maximum tokens in response |
-| `tools` | list | Tool functions for agentic behavior (enables ReAct loop) |
+| `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
+
+!!! warning "Deprecated: `method` parameter"
+    The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
 
 ### Chained Transformations
 

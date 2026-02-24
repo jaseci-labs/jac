@@ -313,6 +313,22 @@ jac-scale supports SSO with external identity providers. Currently supported: Go
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
 | GET | `/sso/{platform}/login/callback` | OAuth callback handler |
 
+**Frontend Callback Redirect:**
+
+For browser-based OAuth flows, configure `client_auth_callback_url` in `jac.toml` to redirect the SSO callback to your frontend application instead of returning JSON:
+
+```toml
+[plugins.scale.sso]
+client_auth_callback_url = "http://localhost:3000/auth/callback"
+```
+
+When set, the callback endpoint redirects to the configured URL with query parameters:
+
+- On success: `{client_auth_callback_url}?token={jwt_token}`
+- On failure: `{client_auth_callback_url}?error={error_message}`
+
+This enables seamless browser-based OAuth flows where the frontend receives the token via URL parameters.
+
 **Example:**
 
 ```bash
@@ -380,6 +396,27 @@ with entry {
 with entry {
     # Revoke a specific user's access
     disallow_root(node, target_root_id, READ);
+}
+```
+
+### Secure-by-Default Endpoints
+
+All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
+
+```jac
+# Protected (default) -- requires JWT token
+walker get_profile {
+    can fetch with Root entry { report [-->]; }
+}
+
+# Public -- no authentication required
+walker :pub health_check {
+    can check with Root entry { report {"status": "ok"}; }
+}
+
+# Private -- not exposed as endpoint (internal only)
+walker :priv internal_process {
+    can run with Root entry { }
 }
 ```
 
@@ -475,6 +512,8 @@ This walker will be accessible at `POST /webhook/PaymentReceived`.
 ### API Key Management
 
 Webhook endpoints require API key authentication. Users must first create an API key before calling webhook endpoints.
+
+> **Note:** API key metadata is stored persistently in MongoDB (in the `webhook_api_keys` collection), so keys survive server restarts. Previously, keys were held in memory only.
 
 #### Creating an API Key
 
@@ -1008,6 +1047,19 @@ On first deployment, `jac start --scale` automatically provisions:
 - **ConfigMaps** -- Application configuration
 
 Subsequent deployments only update the application -- databases persist across deployments.
+
+### Horizontal Pod Autoscaling
+
+jac-scale supports automatic horizontal scaling based on average CPU usage. When deployed to Kubernetes, pods are automatically scaled up or down based on load.
+
+Autoscaling is configured through Kubernetes resource settings. Set CPU requests and limits via environment variables:
+
+```bash
+export K8s_CPU_REQUEST="250m"
+export K8s_CPU_LIMIT="1000m"
+export K8s_MEMORY_REQUEST="256Mi"
+export K8s_MEMORY_LIMIT="512Mi"
+```
 
 ### Remove Deployment
 
