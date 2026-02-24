@@ -370,7 +370,7 @@ test "admin create user with different roles" {
         token = _admin_login(admin_base_url);
 
         # Create user with each role
-        for role in ["user", "moderator", "admin"] {
+        for role in ["user", "admin"] {
             username = f"{role}user_{uuid.uuid4().hex[:8]}";
             response = requests.post(
                 f"{admin_base_url}/admin/users",
@@ -439,10 +439,10 @@ test "admin update user role" {
             timeout=10
         );
 
-        # Update role to moderator (API requires both fields)
+        # Update role to admin (API requires both fields)
         response = requests.put(
             f"{admin_base_url}/admin/users/{username}",
-            json={"role": "moderator", "requires_password_reset": True},
+            json={"role": "admin", "requires_password_reset": True},
             headers={"Authorization": f"Bearer {token}"},
             timeout=10
         );
@@ -455,7 +455,7 @@ test "admin update user role" {
             timeout=10
         );
         user_data = _extract_response_data(get_resp.json());
-        assert user_data["role"] == "moderator";
+        assert user_data["role"] == "admin";
     } finally {
         teardown_admin_server(sp);
     }
@@ -795,7 +795,7 @@ test "admin full user lifecycle" {
         # Update user role
         update_resp = requests.put(
             f"{admin_base_url}/admin/users/{username}",
-            json={"role": "moderator", "requires_password_reset": False},
+            json={"role": "admin", "requires_password_reset": False},
             headers={"Authorization": f"Bearer {token}"},
             timeout=10
         );
@@ -808,7 +808,7 @@ test "admin full user lifecycle" {
             timeout=10
         );
         user_data2 = _extract_response_data(get_resp2.json());
-        assert user_data2["role"] == "moderator";
+        assert user_data2["role"] == "admin";
         assert user_data2["requires_password_reset"] is False;
 
         # Delete user

@@ -41,7 +41,7 @@ These tests require a client-side test framework (e.g., Jest, Vitest) to execute
 
 **Verification:**
 
-- ROLE_OPTIONS contains exactly 3 roles: user, moderator, admin
+- ROLE_OPTIONS contains exactly 2 roles: user, admin
 - Each role has both `value` and `label` keys
 - Values are lowercase, labels are capitalized
 

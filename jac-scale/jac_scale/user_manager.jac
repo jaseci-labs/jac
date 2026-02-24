@@ -21,7 +21,6 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
 """User roles enum."""
 enum UserRole {
     ADMIN = 'admin',
-    MODERATOR = 'moderator',
     USER = 'user',
 }
 
