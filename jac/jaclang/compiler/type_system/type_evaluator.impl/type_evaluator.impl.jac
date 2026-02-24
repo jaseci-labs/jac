@@ -1404,12 +1404,9 @@ impl TypeEvaluator._compute_narrowed_at(
         # If the predecessor doesn't narrow or assign this symbol, we can skip
         # the expensive recursive walk and just mark as unnarrowed.
         if sym_name not in pred.affected_symbols {
-            # Symbol not affected in this branch - use declared type (no narrowing).
-            # DEBUG: print(f"[SKIP] '{sym_name}' not in {pred.__class__.__name__}.affected_symbols");
             has_unnarrowed_pred = True;
             continue;
         }
-        # DEBUG: print(f"[EXPLORE] '{sym_name}' IS in {pred.__class__.__name__}.affected_symbols");
 
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
@@ -1420,12 +1417,10 @@ impl TypeEvaluator._compute_narrowed_at(
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
                 edge_kind = self._classify_edge(pred, stmt);
-                # DEBUG: print(f"[NARROW] '{sym_name}' {edge_kind} branch: {pred_narrowed} -> ?");
                 if edge_kind == "true" {
                     narrowed = self._apply_narrowing(
                         predicate, pred_narrowed, True, symbol
                     );
-                    # DEBUG: print(f"[NARROW] result = {narrowed}");
                     if narrowed is not None {
                         incoming_types.append(narrowed);
                     } else {
@@ -1436,7 +1431,6 @@ impl TypeEvaluator._compute_narrowed_at(
                     narrowed = self._apply_narrowing(
                         predicate, pred_narrowed, False, symbol
                     );
-                    # DEBUG: print(f"[NARROW] result = {narrowed}");
                     if narrowed is not None {
                         incoming_types.append(narrowed);
                     } else {
