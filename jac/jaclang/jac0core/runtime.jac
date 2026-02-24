@@ -371,10 +371,18 @@ class JacNode {
 
 """Jac Edge Operations."""
 class JacEdge {
-    """Detach edge from nodes."""
+    """Detach edge from nodes and clean up Root's graph structures."""
     static def detach(`edge: EdgeAnchor) -> None {
         JacRuntimeInterface.remove_edge(nd=`edge.source, `edge=`edge);
         JacRuntimeInterface.remove_edge(nd=`edge.target, `edge=`edge);
+        # Clean up Root's type_registry and edge_index
+        try {
+            root_arch = JacRuntimeInterface.get_context().get_root();
+            root_arch.unregister_type(`edge.id);
+            root_arch.remove_edge_from_index(`edge.source.id, `edge.id);
+        } except Exception {
+            ;  # Context may not be available
+        }
     }
 }
 
@@ -1632,7 +1640,7 @@ system,
         return `list(jmem.get_roots());
     }
 
-    """Jac's root getter."""
+    """Jac's edge builder — also registers in Root's type_registry and edge_index."""
     static def build_edge(
         is_undirected: bool,
         conn_type: type[EdgeArchetype] | EdgeArchetype | None,
@@ -1647,6 +1655,22 @@ system,
                 target=target,
                 is_undirected=is_undirected
             );
+            # Register edge (and ensure source/target nodes) in Root's graph structures
+            try {
+                root_arch = JacRuntimeInterface.get_context().get_root();
+                root_arch.register_type(eanch.id, type(`edge).__name__);
+                # Ensure source and target nodes are in the type_registry
+                if source.id not in root_arch.type_registry and source.archetype {
+                    root_arch.register_type(source.id, type(source.archetype).__name__);
+                }
+                if target.id not in root_arch.type_registry and target.archetype {
+                    root_arch.register_type(target.id, type(target.archetype).__name__);
+                }
+                # Add to adjacency index
+                root_arch.add_edge_to_index(source.id, eanch.id, target.id);
+            } except Exception {
+                ;  # Context may not be available during initialization
+            }
             source.edges.append(eanch);
             target.edges.append(eanch);
             if conn_assign {
@@ -1705,7 +1729,7 @@ system,
         }
     }
 
-    """Destroy multiple objects passed in a tuple or list."""
+    """Destroy multiple objects — also removes from Root's type_registry and edge_index."""
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None {
         obj_list = objs if isinstance(objs, `list) else [objs];
         for `obj in obj_list {
@@ -1714,18 +1738,45 @@ system,
             }
             anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
             if JacRuntimeInterface.check_write_access(anchor) {
-                match anchor {
-                    case NodeAnchor():
-                        for `edge in anchor.edges[:] {
-                            JacRuntimeInterface.destroy([`edge]);
-                        }
+                # Unregister from Root's graph structures before destroying
+                try {
+                    root_arch = JacRuntimeInterface.get_context().get_root();
+                    match anchor {
+                        case NodeAnchor():
+                            for `edge in anchor.edges[:] {
+                                JacRuntimeInterface.destroy([`edge]);
+                            }
+                            # Remove node from type_registry and clean up edge_index entry
+                            root_arch.unregister_type(anchor.id);
+                            root_arch.edge_index.pop(anchor.id, None);
 
-                    case EdgeAnchor():
-                        JacRuntimeInterface.detach(anchor);
+                        case EdgeAnchor():
+                            JacRuntimeInterface.detach(anchor);
+                            # Remove edge from type_registry and edge_index
+                            root_arch.unregister_type(anchor.id);
+                            root_arch.remove_edge_from_index(
+                                anchor.source.id, anchor.id
+                            );
 
-                    case _:
-                        ;
+                        case _:
+                            ;
 
+                    }
+                } except Exception {
+                    # Fallback: perform structural cleanup without Root access
+                    match anchor {
+                        case NodeAnchor():
+                            for `edge in anchor.edges[:] {
+                                JacRuntimeInterface.destroy([`edge]);
+                            }
+
+                        case EdgeAnchor():
+                            JacRuntimeInterface.detach(anchor);
+
+                        case _:
+                            ;
+
+                    }
                 }
                 JacRuntimeInterface.get_context().mem.delete(anchor.id);
             }

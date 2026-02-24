@@ -282,6 +282,12 @@ impl GenericEdge.__repr__(self: GenericEdge) -> str {
     return f"{self.__class__.__name__}()";
 }
 
+"""Initialize Root type_registry with its own UUID."""
+impl Root.postinit(self: Root) -> None {
+    import from jaclang.jac0core.constant { Constants as Con }
+    self.type_registry[UUID(Con.SUPER_ROOT_UUID)] = "Root";
+}
+
 """Create default anchor."""
 @ cached_property
 impl Root.__jac__(self: Root) -> NodeAnchor {

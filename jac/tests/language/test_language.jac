@@ -678,3 +678,21 @@ test "operator precedence matches python" {
     output = run_jac(os.path.join(FIXTURES, "operator_precedence.jac"));
     assert "PASS" in output , f"Operator precedence test failed:\n{output}";
 }
+
+test "root graph registry - type registration and CRUD" {
+    output = run_jac(os.path.join(FIXTURES, "root_graph_registry.jac"));
+    assert "ROOT_IN_REGISTRY: True" in output;
+    assert "PERSON_COUNT: 2" in output;
+    assert "CITY_COUNT: 1" in output;
+    assert "LIVESIN_COUNT: 1" in output;
+    assert "KNOWS_COUNT: 1" in output;
+    assert "GENERIC_EDGE_COUNT: 2" in output;
+    assert "ROOT_OUTGOING: 2" in output;
+    assert "ALICE_OUTGOING: 2" in output;
+    assert "ALICE_TYPE: Person" in output;
+    assert "SF_TYPE: City" in output;
+    assert "REGISTRY_SHRUNK: True" in output;
+    assert "ALICE_OUTGOING_AFTER_DEL: 1" in output;
+    assert "BOB_UNREGISTERED: True" in output;
+    assert "DONE" in output;
+}

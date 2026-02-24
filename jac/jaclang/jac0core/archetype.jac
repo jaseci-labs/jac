@@ -218,10 +218,18 @@ class NodeArchetype(Archetype) {
         __jac_base__: ClassVar = True;
     }
 
-    """Create default anchor."""
+    """Create default anchor and register in Root's type_registry."""
     @cached_property
     def __jac__(self: NodeArchetype) -> NodeAnchor {
-        return NodeAnchor(archetype=self, edges=[]);
+        anchor = NodeAnchor(archetype=self, edges=[]);
+        try {
+            import from jaclang.jac0core.runtime { JacRuntime }
+            root_arch = JacRuntime.get_context().get_root();
+            root_arch.register_type(anchor.id, type(self).__name__);
+        } except Exception {
+            ;  # Context may not be available during early initialization
+        }
+        return anchor;
     }
 }
 
@@ -271,11 +279,66 @@ obj GenericEdge(EdgeArchetype) {
     def __repr__(self: GenericEdge) -> str;
 }
 
-"""Generic Root Node."""
+"""Generic Root Node.
+
+Maintains a type_registry mapping every node/edge UUID to its archetype
+type name, and an edge_index providing O(1) adjacency lookup.
+"""
 @dataclass(eq=False)
 obj Root(NodeArchetype) {
     with entry {
         __jac_base__: ClassVar = True;
+    }
+
+    has type_registry: dict[(UUID, str)] = field(default_factory=`dict),
+        edge_index: dict[(UUID, list[tuple[(UUID, UUID)]])] = field(
+            default_factory=`dict
+        );
+
+    def postinit(self: Root) -> None;
+    """Register a node or edge UUID with its type name."""
+    def register_type(self: Root, id: UUID, type_name: str) -> None {
+        self.type_registry[id] = type_name;
+    }
+
+    """Unregister a node or edge UUID from the type registry."""
+    def unregister_type(self: Root, id: UUID) -> None {
+        self.type_registry.pop(id, None);
+    }
+
+    """Look up the type name for a given UUID."""
+    def get_type_name(self: Root, id: UUID) -> (str | None) {
+        return self.type_registry.get(id);
+    }
+
+    """Add an edge to the adjacency index."""
+    def add_edge_to_index(
+        self: Root, source_id: UUID, edge_id: UUID, target_id: UUID
+    ) -> None {
+        self.type_registry;  # ensure initialized
+        if source_id not in self.edge_index {
+            self.edge_index[source_id] = [];
+        }
+        self.edge_index[source_id].append((edge_id, target_id));
+    }
+
+    """Remove a specific edge from the adjacency index."""
+    def remove_edge_from_index(self: Root, source_id: UUID, edge_id: UUID) -> None {
+        if (neighbors := self.edge_index.get(source_id)) {
+            self.edge_index[source_id] = [
+                (eid, tid)
+                for (eid, tid) in neighbors
+                if eid != edge_id
+            ];
+            if not self.edge_index[source_id] {
+                del self.edge_index[source_id];
+            }
+        }
+    }
+
+    """Get all outgoing (edge_id, target_id) pairs for a source node."""
+    def get_neighbors(self: Root, source_id: UUID) -> list[tuple[(UUID, UUID)]] {
+        return self.edge_index.get(source_id, []);
     }
 
     @cached_property
