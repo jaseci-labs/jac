@@ -1296,14 +1296,12 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     }
     fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
     is_triple_quoted = fstr_match and len(fstr_match.group(2)) == 3;
-
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
             # Use repr to properly escape special characters, then strip outer quotes
             raw_repr = repr(i.value);
             escaped_value = raw_repr[1:-1];  # Remove quotes from repr output
-
             # For triple-quoted f-strings, un-escape newlines and tabs to preserve them literally
             if is_triple_quoted {
                 escaped_value = escaped_value.replace('\\n', '\n');
@@ -1992,8 +1990,10 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryE
         and isinstance(op, uni.Token)
         and isinstance(right, uni.Expr)
     ) {
+        # Flatten same-operator left-associative chains: e.g. (a+b)+c → a+b+c
+        # but ALWAYS return AtomUnit so that a parent with a different operator
+        # (e.g. //) will correctly see the whole group and preserve the parens.
         unwrapped_left = left;
-        is_same_op_chain = False;
         if (
             isinstance(left, uni.AtomUnit)
             and isinstance(left.value, uni.BinaryExpr)
@@ -2001,14 +2001,10 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryE
             and (left.value.op.value == op.value)
         ) {
             unwrapped_left = left.value;
-            is_same_op_chain = True;
         }
         value = uni.BinaryExpr(
             left=unwrapped_left, op=op, right=right, kid=[unwrapped_left, op, right]
         );
-        if is_same_op_chain {
-            return value;
-        }
         return uni.AtomUnit(
             value=value,
             kid=[self.operator(Tok.RPAREN, '('), value, self.operator(Tok.LPAREN, ')')]
