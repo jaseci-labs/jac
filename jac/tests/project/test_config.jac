@@ -796,11 +796,8 @@ test "merge check with nested lint" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[check]\nwarnonly = true\n\n[check.lint]\nselect = [\"all\"]\n"
-        );
+        overlay.write_text("[check.lint]\nselect = [\"all\"]\n");
         cfg.merge_from_toml_file(overlay);
-        assert cfg.check.warnonly is True;
         assert cfg.check.lint.select == ["all"];
     }
 }
@@ -1220,10 +1217,9 @@ test "apply profile storage type mapping" {
 test "apply profile check with lint" {
     config_mod._config = None;
     cfg = JacConfig.from_toml_str(
-        "[project]\nname = \"test\"\n\n[environments.strict]\n[environments.strict.check]\nwarnonly = false\n\n[environments.strict.check.lint]\nselect = [\"all\"]\n"
+        "[project]\nname = \"test\"\n\n[environments.strict]\n[environments.strict.check.lint]\nselect = [\"all\"]\n"
     );
     cfg.apply_profile("strict");
-    assert cfg.check.warnonly is False;
     assert cfg.check.lint.select == ["all"];
 }
 
