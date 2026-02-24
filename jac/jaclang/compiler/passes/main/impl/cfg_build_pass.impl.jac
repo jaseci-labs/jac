@@ -197,6 +197,16 @@ impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
 """Enter BasicBlockStmt nodes."""
 impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
     if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
+        # Pyright-style: collect affected symbols for this CFG node.
+        # For IfStmt/ElseIf, collect symbols from isinstance checks in condition.
+        # For assignments/loops, collect assigned symbols.
+        if isinstance(nd, (uni.IfStmt, uni.ElseIf)) {
+            narrowing_syms = self._collect_narrowing_symbols(nd.condition);
+            nd.affected_symbols.update(narrowing_syms);
+        }
+        assigned_syms = self._collect_assigned_symbols(nd);
+        nd.affected_symbols.update(assigned_syms);
+
         bb_stmts = self.get_code_block_sequence(nd.parent);
         if (
             isinstance(nd, uni.CodeBlockStmt)
@@ -299,6 +309,11 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
         } else {
             target.bb_in = [source];
         }
+        # PROPAGATE: target inherits source's affected_symbols.
+        # This ensures nested narrowing checks are visible to outer statements.
+        # Example: if x { if isinstance(y, int) { z = 1 } }
+        #   stmt(z=1).affected_symbols should include 'y' from parent isinstance check.
+        target.affected_symbols.update(source.affected_symbols);
     }
 }
 
@@ -344,4 +359,67 @@ impl CFGBuildPass.before_pass -> None {
     self.ability_stack: list[list[uni.UniCFGNode]] = [];
     self.to_connect: list[uni.UniCFGNode] = [];
     self.first_exit: bool = False;
+}
+
+"""Collect symbols that are narrowed by isinstance checks in a condition.
+This enables Pyright-style optimization: skip branches where the symbol isn't affected.
+"""
+impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
+    symbols: set[str] = set();
+    # Pattern: isinstance(x, T) - collect 'x'
+    if isinstance(condition, uni.FuncCall) {
+        if (isinstance(condition.target, uni.Name)
+            and condition.target.value == "isinstance"
+            and len(condition.params) >= 1
+            and isinstance(condition.params[0], uni.Name)) {
+            symbols.add(condition.params[0].value);
+        }
+    }
+    # Pattern: x is None / x is not None - collect 'x'
+    elif isinstance(condition, uni.CompareExpr) {
+        if isinstance(condition.left, uni.Name) {
+            symbols.add(condition.left.value);
+        }
+    }
+    # Pattern: not <condition> - recurse
+    elif isinstance(condition, uni.UnaryExpr) {
+        symbols.update(self._collect_narrowing_symbols(condition.operand));
+    }
+    # Pattern: <cond1> and/or <cond2> - collect from both
+    elif isinstance(condition, uni.BoolExpr) {
+        for val in condition.values {
+            symbols.update(self._collect_narrowing_symbols(val));
+        }
+    }
+    # Pattern: (parenthesized) - unwrap
+    elif isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
+        symbols.update(self._collect_narrowing_symbols(condition.value));
+    }
+    return symbols;
+}
+
+"""Collect all symbols assigned in a statement (for affected_symbols tracking)."""
+impl CFGBuildPass._collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
+    symbols: set[str] = set();
+    # Assignment: x = ... (target is a Sequence[Expr])
+    if isinstance(nd, uni.Assignment) {
+        for target in nd.target {
+            if isinstance(target, uni.Name) {
+                symbols.add(target.value);
+            }
+        }
+    }
+    # For loop: for x in ...
+    elif isinstance(nd, uni.InForStmt) {
+        if isinstance(nd.target, uni.Name) {
+            symbols.add(nd.target.value);
+        }
+    }
+    # Walrus operator / assignment comprehension: (x := ...)
+    elif isinstance(nd, uni.AssignCompr) {
+        if isinstance(nd.target, uni.Name) {
+            symbols.add(nd.target.value);
+        }
+    }
+    return symbols;
 }
