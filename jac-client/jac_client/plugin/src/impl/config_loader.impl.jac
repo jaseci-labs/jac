@@ -30,6 +30,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
         },
         'ts': {'compilerOptions': {}, 'include': [], 'exclude': []},
         'configs': {},  # Generic config file generation: { "postcss": {...}, "tailwind": {...} }
+        'npm': {},  # NPM registry config: { "scoped_registries": {...}, "auth": {...} }
         'package': {
             'name': '',
             'version': '1.0.0',
@@ -66,6 +67,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
+        'npm': client_config.get('npm', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -106,6 +108,12 @@ impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, Any] {
 impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('configs', {});
+}
+
+"""Get npm registry configuration for .npmrc generation."""
+impl JacClientConfig.get_npm_config(self: JacClientConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('npm', {});
 }
 
 """Save configuration back to jac.toml using core JacConfig."""

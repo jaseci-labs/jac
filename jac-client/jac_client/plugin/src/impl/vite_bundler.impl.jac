@@ -82,6 +82,8 @@ impl ViteBundler.create_package_json(
     self.create_tsconfig();
     # Generate config files (postcss, tailwind, etc.) from jac.toml
     self.create_config_files();
+    # Generate .npmrc for scoped registries/auth from jac.toml
+    self.create_npmrc();
     return package_json_path;
 }
 
@@ -645,6 +647,12 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 import shutil;
                 shutil.copy2(configs_package_json, build_package_json);
             }
+            # Copy .npmrc for scoped registry auth during install
+            configs_npmrc = build_dir / 'configs' / '.npmrc';
+            build_npmrc = build_dir / '.npmrc';
+            if configs_npmrc.exists() and not build_npmrc.exists() {
+                shutil.copy2(configs_npmrc, build_npmrc);
+            }
             try {
                 # Install to .jac/client/node_modules with progress feedback
                 console.print("\n  ⏳ Installing dependencies...\n");
@@ -777,6 +785,65 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
         created_files.append(config_path);
     }
     return created_files;
+}
+
+"""Create .npmrc file from jac.toml [plugins.client.npm] configuration.
+
+Generates an .npmrc file in .jac/client/configs/ with scoped registry
+mappings and authentication tokens.
+
+Example jac.toml:
+    [plugins.client.npm]
+    scoped_registries = { "@ascentcloud" = "https://npm.pkg.github.com" }
+
+    [plugins.client.npm.auth]
+    "//npm.pkg.github.com/" = { _authToken = "${NODE_AUTH_TOKEN}" }
+
+This generates .jac/client/configs/.npmrc with:
+    @ascentcloud:registry=https://npm.pkg.github.com
+    //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+"""
+impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
+    npm_config = self.config_loader.get_npm_config();
+    if not npm_config {
+        return None;
+    }
+    build_dir = self._get_client_dir();
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(parents=True, exist_ok=True);
+    npmrc_path = configs_dir / '.npmrc';
+    lines: list[str] = [];
+    # Process global settings: { "registry" = "...", "always-auth" = true }
+    known_keys = {'scoped_registries','auth','settings'};
+    settings = npm_config.get('settings', {});
+    for (key, value) in settings.items() {
+        if isinstance(value, bool) {
+            lines.append(f"{key}={str(value).lower()}");
+        } else {
+            lines.append(f"{key}={value}");
+        }
+    }
+    # Process scoped registries: { "@scope" = "https://registry.url" }
+    scoped_registries = npm_config.get('scoped_registries', {});
+    for (scope, registry_url) in scoped_registries.items() {
+        lines.append(f"{scope}:registry={registry_url}");
+    }
+    # Process auth entries: { "//registry.url/" = { _authToken = "..." } }
+    auth = npm_config.get('auth', {});
+    for (registry_path, auth_data) in auth.items() {
+        if isinstance(auth_data, dict) {
+            for (key, value) in auth_data.items() {
+                lines.append(f"{registry_path}:{key}={value}");
+            }
+        } elif isinstance(auth_data, str) {
+            lines.append(f"{registry_path}={auth_data}");
+        }
+    }
+    if not lines {
+        return None;
+    }
+    npmrc_path.write_text('\n'.join(lines) + '\n', encoding='utf-8');
+    return npmrc_path;
 }
 
 """Convert TOML config data to JavaScript config file content.
@@ -924,6 +991,12 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
     if not build_package_json.exists() {
         shutil.copy2(generated_package_json, build_package_json);
     }
+    # Copy .npmrc for scoped registry auth during install
+    configs_npmrc = build_dir / 'configs' / '.npmrc';
+    build_npmrc = build_dir / '.npmrc';
+    if configs_npmrc.exists() and not build_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
@@ -941,6 +1014,10 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
         # Clean up temp package.json
         if build_package_json.exists() {
             build_package_json.unlink();
+        }
+        # Clean up temp .npmrc
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
         }
     }
 }
