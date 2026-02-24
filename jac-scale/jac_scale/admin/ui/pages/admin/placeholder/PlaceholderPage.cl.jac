@@ -1,9 +1,8 @@
 """Placeholder page for unimplemented sections."""
 
-cl import from '....components.common.EmptyState' { PlaceholderCard }
-cl import from '....components.common.Button' { Button }
-
 cl {
+    import from ....components.common.EmptyState { PlaceholderCard }
+    import from ....components.common.Button { Button }
     def:pub PlaceholderPage(
         title: str,
         message: str = "Coming soon",

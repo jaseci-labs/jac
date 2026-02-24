@@ -1,17 +1,16 @@
 """Users management page."""
 
-cl import from react { useEffect }
-cl import from '....components.common.Button' { Button }
-cl import from '....components.common.Card' { Card, CardHeader, StatsCard }
-cl import from '....components.common.Badge' { RoleBadge, StatusBadge }
-cl import from '....components.tables.DataTable' { DataTable, TableRow, TableCell }
-cl import from '....context.AuthContext' { useAuth }
-cl import from '....context.AlertContext' { useAlert }
-cl import from '....services.userService' { getUsers, createUser, updateUser, deleteUser, getSSOProviders }
-cl import from '.CreateUserModal' { CreateUserModal }
-cl import from '.EditUserModal' { EditUserModal }
-
 cl {
+    import from react { useEffect }
+    import from ....components.common.Button { Button }
+    import from ....components.common.Card { Card, CardHeader, StatsCard }
+    import from ....components.common.Badge { RoleBadge, StatusBadge }
+    import from ....components.tables.DataTable { DataTable, TableRow, TableCell }
+    import from ....context.AuthContext { useAuth }
+    import from ....context.AlertContext { useAlert }
+    import from ....services.userService { getUsers, createUser, updateUser, deleteUser, getSSOProviders }
+    import from .CreateUserModal { CreateUserModal }
+    import from .EditUserModal { EditUserModal }
     def:pub UsersPage() -> JsxElement {
         has users: list = [];
         has ssoProviders: list = [];

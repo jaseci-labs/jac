@@ -1,8 +1,7 @@
 """Authentication service functions."""
 
-cl import from '.api' { post, baseUrl }
-
 cl {
+    import from .api { post, baseUrl }
     async def:pub loginUser(username: str, password: str) -> dict {
         return await post("/admin/login", {"username": username, "password": password});
     }

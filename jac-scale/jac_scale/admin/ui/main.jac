@@ -2,14 +2,14 @@
 
 cl import "./styles/main.css";
 
-cl import from '.components.common.Spinner' { LoadingScreen }
-cl import from '.context.AuthContext' { AuthProvider, useAuth }
-cl import from '.context.AlertContext' { AlertProvider }
-cl import from '.pages.auth.LoginPage' { LoginPage }
-cl import from '.pages.auth.ResetPage' { ResetPage }
-cl import from '.pages.admin.DashboardLayout' { DashboardLayout }
-
 cl {
+    import from .components.common.Spinner { LoadingScreen }
+    import from .context.AuthContext { AuthProvider, useAuth }
+    import from .context.AlertContext { AlertProvider }
+    import from .pages.auth.LoginPage { LoginPage }
+    import from .pages.auth.ResetPage { ResetPage }
+    import from .pages.admin.DashboardLayout { DashboardLayout }
+
     def AppContent() -> JsxElement {
         auth = useAuth();
 

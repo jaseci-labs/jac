@@ -16,7 +16,7 @@ cl {
             "info": "bg-blue-500/20 text-blue-400 border border-blue-500/30"
         };
 
-        classes = "fixed top-4 right-4 z-50 px-4 py-2 rounded text-sm font-medium " + typeClasses.get(type, typeClasses["success"]);
+        classes = "fixed top-4 right-4 z-50 px-4 py-2 rounded text-sm font-medium " + (typeClasses[type] or typeClasses["success"]);
 
         return <div className={classes}>{message}</div>;
     }
@@ -35,7 +35,7 @@ cl {
             "warning": "bg-amber-500/10 border border-amber-500/20 text-amber-400"
         };
 
-        classes = "px-3 py-2 rounded text-sm mb-4 " + typeClasses.get(type, typeClasses["error"]);
+        classes = "px-3 py-2 rounded text-sm mb-4 " + (typeClasses[type] or typeClasses["error"]);
 
         return <div className={classes}>{message}</div>;
     }

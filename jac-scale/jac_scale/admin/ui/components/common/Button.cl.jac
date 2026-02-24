@@ -26,7 +26,7 @@ cl {
             "link": "text-slate-500 hover:text-white"
         };
 
-        classes = baseClass + " " + sizeClasses.get(size, sizeClasses["md"]) + " " + variantClasses.get(variant, variantClasses["primary"]) + " " + className;
+        classes = baseClass + " " + (sizeClasses[size] or sizeClasses["md"]) + " " + (variantClasses[variant] or variantClasses["primary"]) + " " + className;
 
         return <button
             type={type}

@@ -1,12 +1,11 @@
 """Create user modal component."""
 
-cl import from '....components.common.Modal' { Modal, ModalFooter }
-cl import from '....components.common.Button' { Button }
-cl import from '....components.common.Input' { Input }
-cl import from '....components.common.Select' { Select }
-cl import from '....components.common.Alert' { InlineAlert }
-
 cl {
+    import from ....components.common.Modal { Modal, ModalFooter }
+    import from ....components.common.Button { Button }
+    import from ....components.common.Input { Input }
+    import from ....components.common.Select { Select }
+    import from ....components.common.Alert { InlineAlert }
     def:pub CreateUserModal(
         isOpen: bool,
         onClose: any,

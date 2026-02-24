@@ -1,10 +1,9 @@
 """Authentication context provider."""
 
-cl import from react { createContext, useContext, useEffect }
-cl import from '..hooks.useStorage' { getStorage, setStorage, removeStorage }
-cl import from '..services.api' { baseUrl }
-
 cl {
+    import from react { createContext, useContext, useEffect }
+    import from ..hooks.useStorage { getStorage, setStorage, removeStorage }
+    import from ..services.api { baseUrl }
     glob:pub AuthContext = createContext(None);
 
     def:pub AuthProvider(children: any) -> JsxElement {

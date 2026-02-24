@@ -1,8 +1,8 @@
 """Header component with logo and user menu."""
 
-cl import from '..common.Button' { Button }
-
 cl {
+    import from ..common.Button { Button }
+
     def:pub Header(
         username: str,
         onLogout: any

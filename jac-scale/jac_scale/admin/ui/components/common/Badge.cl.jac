@@ -15,7 +15,7 @@ cl {
             "error": "text-red-400"
         };
 
-        classes = "px-2 py-0.5 text-xs font-medium rounded " + variantClasses.get(variant, variantClasses["default"]);
+        classes = "px-2 py-0.5 text-xs font-medium rounded " + (variantClasses[variant] or variantClasses["default"]);
 
         return <span className={classes}>{text}</span>;
     }

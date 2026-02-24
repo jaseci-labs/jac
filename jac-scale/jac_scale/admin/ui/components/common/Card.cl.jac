@@ -42,7 +42,7 @@ cl {
             "blue": "text-blue-500"
         };
 
-        valueClass = "text-2xl font-semibold mt-1 " + colorClasses.get(color, "text-white");
+        valueClass = "text-2xl font-semibold mt-1 " + (colorClasses[color] or "text-white");
 
         return <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
             <p className="text-xs text-slate-500 uppercase tracking-wider">{label}</p>

@@ -1,8 +1,7 @@
 """Global alert/toast notification context."""
 
-cl import from react { createContext, useContext }
-
 cl {
+    import from react { createContext, useContext }
     glob:pub AlertContext = createContext(None);
 
     def:pub AlertProvider(children: any) -> JsxElement {

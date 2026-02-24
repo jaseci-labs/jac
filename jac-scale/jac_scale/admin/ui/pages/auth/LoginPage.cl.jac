@@ -1,11 +1,10 @@
 """Login page component."""
 
-cl import from '...components.common.Button' { Button }
-cl import from '...components.common.Input' { Input }
-cl import from '...components.common.Alert' { InlineAlert }
-cl import from '...context.AuthContext' { useAuth }
-
 cl {
+    import from ...components.common.Button { Button }
+    import from ...components.common.Input { Input }
+    import from ...components.common.Alert { InlineAlert }
+    import from ...context.AuthContext { useAuth }
     def:pub LoginPage() -> JsxElement {
         has loginUsername: str = "";
         has loginPassword: str = "";

@@ -8,11 +8,11 @@ cl {
         options: dict = {},
         token: str = ""
     ) -> dict {
-        headers = options.get("headers", {});
+        headers = options["headers"] or {};
         if token {
             headers["Authorization"] = "Bearer " + token;
         }
-        if options.get("body") {
+        if options["body"] {
             headers["Content-Type"] = "application/json";
         }
 

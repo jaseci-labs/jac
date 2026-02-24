@@ -11,7 +11,7 @@ cl {
                     {[<th
                         key={col["key"]}
                         className={"px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider " +
-                            (col.get("align") == "right" and "text-right" or "text-left")}
+                            (col["align"] == "right" and "text-right" or "text-left")}
                     >
                         {col["label"]}
                     </th> for col in columns]}

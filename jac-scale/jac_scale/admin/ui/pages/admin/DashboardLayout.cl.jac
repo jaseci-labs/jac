@@ -1,26 +1,25 @@
 """Admin dashboard layout with navigation and content routing."""
 
-cl import from '...components.layout.Header' { Header }
-cl import from '...components.layout.CategoryTabs' { CategoryTabs }
-cl import from '...components.layout.SubTabs' { SubTabs }
-cl import from '...components.common.Alert' { Alert }
-cl import from '...context.AuthContext' { useAuth }
-cl import from '...context.AlertContext' { useAlert }
-cl import from '...constants.categories' { categories, subTabs }
-
-# Import pages
-cl import from '.users.UsersPage' { UsersPage }
-cl import from '.sso.SSOPage' { SSOPage }
-cl import from '.placeholder.PlaceholderPage' {
-    SessionsPage, ApiKeysPage, GraphPage, StoragePage, CachePage,
-    WalkersPage, JobsPage, WebhooksPage, MetricsPage, LogsPage,
-    HealthPage, AlertsConfigPage, ConfigPage, EnvironmentPage,
-    SecretsPage, RateLimitsPage, CorsPage, EmailPage, NotificationsPage,
-    StorageProvidersPage, DatabasePage, DeploymentsPage, ScalingPage,
-    PodsPage, ActivityPage, SecurityPage
-}
-
 cl {
+    import from ...components.layout.Header { Header }
+    import from ...components.layout.CategoryTabs { CategoryTabs }
+    import from ...components.layout.SubTabs { SubTabs }
+    import from ...components.common.Alert { Alert }
+    import from ...context.AuthContext { useAuth }
+    import from ...context.AlertContext { useAlert }
+    import from ...constants.categories { categories, subTabs }
+
+    # Import pages
+    import from .users.UsersPage { UsersPage }
+    import from .sso.SSOPage { SSOPage }
+    import from .placeholder.PlaceholderPage {
+        SessionsPage, ApiKeysPage, GraphPage, StoragePage, CachePage,
+        WalkersPage, JobsPage, WebhooksPage, MetricsPage, LogsPage,
+        HealthPage, AlertsConfigPage, ConfigPage, EnvironmentPage,
+        SecretsPage, RateLimitsPage, CorsPage, EmailPage, NotificationsPage,
+        StorageProvidersPage, DatabasePage, DeploymentsPage, ScalingPage,
+        PodsPage, ActivityPage, SecurityPage
+    }
     def:pub DashboardLayout() -> JsxElement {
         has activeCategory: str = "auth";
         has activeSubTab: str = "users";

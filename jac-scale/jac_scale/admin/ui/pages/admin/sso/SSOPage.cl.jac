@@ -1,12 +1,11 @@
 """SSO providers page."""
 
-cl import from react { useEffect }
-cl import from '....components.common.Card' { Card, CardHeader }
-cl import from '....components.tables.DataTable' { DataTable, TableRow, TableCell }
-cl import from '....context.AuthContext' { useAuth }
-cl import from '....services.userService' { getSSOProviders }
-
 cl {
+    import from react { useEffect }
+    import from ....components.common.Card { Card, CardHeader }
+    import from ....components.tables.DataTable { DataTable, TableRow, TableCell }
+    import from ....context.AuthContext { useAuth }
+    import from ....services.userService { getSSOProviders }
     def:pub SSOPage() -> JsxElement {
         has ssoProviders: list = [];
 
