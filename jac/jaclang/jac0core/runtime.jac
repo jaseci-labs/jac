@@ -50,7 +50,7 @@ import from jaclang.jac0core.constructs {
 }
 import from jaclang.jac0core.modresolver { infer_language }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
-import from jaclang { plugin as pluggy }
+import from jaclang.jac0core { plugin }
 
 with entry {
     if TYPE_CHECKING {
@@ -68,9 +68,9 @@ with entry {
     }
 }
 
-glob plugin_manager = pluggy.PluginManager('jac'),
-     hookspec = pluggy.HookspecMarker('jac'),
-     hookimpl = pluggy.HookimplMarker('jac'),
+glob plugin_manager = plugin.PluginManager('jac'),
+     hookspec = plugin.HookspecMarker('jac'),
+     hookimpl = plugin.HookimplMarker('jac'),
      logger = getLogger(__name__),
      T = TypeVar('T'),
      P = ParamSpec('P'),

@@ -896,7 +896,6 @@ impl Module.init(
     self.variant_mod: list[Module] = [];
     self.src_terminals: list[Token] = terminals;
     self.is_raised_from_py: bool = False;
-    self.has_syntax_errors: bool = False;
     UniNode.init(self, kid=kid);
     AstDocNode.init(self, doc=doc);
     UniScopeNode.init(self, name=self.name);

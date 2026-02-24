@@ -696,6 +696,8 @@ jac add --git https://github.com/user/package.git
 jac add react --npm
 ```
 
+For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[plugins.client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+
 ---
 
 ### jac install
