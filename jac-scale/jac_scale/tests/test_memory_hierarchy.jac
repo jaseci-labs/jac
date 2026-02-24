@@ -189,8 +189,8 @@ test "read and write" {
         }
 
         mongo_doc_count_after_task_creation = collection.count_documents({});
-        assert mongo_doc_count_after_task_creation == 7 , (
-            "After task creation docs should be 7 (prev 3 + 2 anchors per task)"
+        assert mongo_doc_count_after_task_creation == 8 , (
+            "After task creation docs should be 8 (prev 4 + 2 anchors per task)"
         );
 
         assert redis_size_after_task_creation == redis_size_before_task_creation;
@@ -198,8 +198,8 @@ test "read and write" {
         post_request(base_url, "/walker/GetAllTasks", {}, token);
 
         redis_size_after_task_read = redis_client.dbsize();
-        assert redis_size_after_task_read == 7 , (
-            "Redis should have 7 entries (super root, guest user, user, 2 task nodes, 2 edges)"
+        assert redis_size_after_task_read == 8 , (
+            "Redis should have 8 entries (super root, guest user, admin, user, 2 task nodes, 2 edges)"
         );
     } finally {
         # Teardown
