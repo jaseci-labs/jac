@@ -39,6 +39,31 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 
 ---
 
+## Version Info
+
+```bash
+jac --version
+```
+
+Displays the Jac version, Python version, platform, and all detected plugins with their versions:
+
+```
+ _
+(_) __ _  ___     Jac Language
+| |/ _` |/ __|
+| | (_| | (__     Version:  0.10.2
+_/ |\__,_|\___|    Python 3.12.3
+|__/                Platform: Linux x86_64
+
+🔌 Plugins Detected:
+   byllm==0.4.17
+   jac-client==0.2.13
+   jac-scale==0.1.4
+   jac-super==0.1.0
+```
+
+---
+
 ## Core Commands
 
 ### jac run
@@ -294,7 +319,7 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-s] [-l] paths [paths ...]
+jac format [-h] [-s] [-l] [-c] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -302,6 +327,7 @@ jac format [-h] [-s] [-l] paths [paths ...]
 | `paths` | Files/directories to format | Required |
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
+| `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
 
 **Examples:**
 
@@ -314,6 +340,9 @@ jac format main.jac
 
 # Format entire directory
 jac format .
+
+# Check formatting without modifying (useful in CI)
+jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.

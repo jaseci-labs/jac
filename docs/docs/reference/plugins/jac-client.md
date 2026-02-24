@@ -1087,6 +1087,11 @@ cl_route_prefix = "/cl"       # Client route prefix
 [plugins.client]
 enabled = true
 
+# Import path aliases
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+
 [plugins.client.configs.tailwind]
 # Generates tailwind.config.js
 content = ["./src/**/*.{jac,tsx,jsx}"]
@@ -1141,6 +1146,35 @@ _authToken = "${NODE_AUTH_TOKEN}"
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
 The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac add --npm`, `jac start`, or `jac build`).
+
+### Import Path Aliases
+
+The `[plugins.client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
+
+```toml
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+"@shared" = "./shared/index"
+```
+
+With the above config, you can use aliases in your `.cl.jac` or `cl {}` code:
+
+```jac
+cl {
+    import from "@components/Button" { Button }
+    import from "@utils/format" { formatDate }
+    import from "@shared" { constants }
+}
+```
+
+| Feature | How It's Applied |
+|---------|-----------------|
+| **Vite** | Added to `resolve.alias` in `vite.config.js` - resolves `@components/Button` to `./components/Button` at build time |
+| **TypeScript** | Added to `compilerOptions.paths` in `tsconfig.json` with `baseUrl: "."` - enables IDE autocompletion and type checking |
+| **Module resolver** | The Jac compiler resolves aliases during compilation, so `import from "@components/Button"` finds the correct file |
+
+**Wildcard patterns** (`@alias/*` -> `./path/*`) match any sub-path under the prefix. **Exact patterns** (`@alias` -> `./path`) match only the alias itself.
 
 ---
 
@@ -1351,7 +1385,80 @@ description = "My awesome Jac app"
 
 ---
 
+## Automatic Endpoint Caching
+
+The client runtime automatically caches responses from reader endpoints and invalidates caches when writer endpoints are called. This uses compiler-provided `endpoint_effects` metadata -- no manual cache annotations or `jacInvalidate()` calls needed.
+
+**How it works:**
+
+1. The compiler classifies each walker/function endpoint as a **reader** (no side effects) or **writer** (modifies state)
+2. Reader responses are stored in an LRU cache (500 entries, 60-second TTL)
+3. Concurrent identical requests are deduplicated (only one network call)
+4. When a writer endpoint is called, all cached reader responses are automatically invalidated
+5. Auth state changes (login/logout) clear the entire cache
+
+This means spawning the same walker twice in quick succession only makes one API call, and creating/updating data automatically refreshes any cached reads.
+
+---
+
+## BrowserRouter (Clean URLs)
+
+jac-client uses `BrowserRouter` for client-side routing, producing clean URLs like `/about` and `/users/123` instead of hash-based URLs like `#/about`.
+
+For this to work in production, your server must return the SPA HTML for all non-API routes. When using `jac start`, this is handled automatically -- the server's catch-all route serves the SPA HTML for extensionless paths, excluding API prefixes (`cl/`, `walker/`, `function/`, `user/`, `static/`).
+
+The Vite dev server is configured with `appType: 'spa'` for history API fallback during development.
+
+---
+
+## Build Error Diagnostics
+
+When client builds fail, jac-client displays structured error diagnostics instead of raw Vite/Rollup output. Errors include:
+
+- **Error codes** (`JAC_CLIENT_001`, `JAC_CLIENT_003`, etc.)
+- **Source snippets** pointing to the original `.jac` file location
+- **Actionable hints** and quick fix commands
+
+| Code | Issue | Example Fix |
+|------|-------|-------------|
+| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
+| `JAC_CLIENT_004` | Unresolved import | Verify import path |
+
+To see raw error output alongside formatted diagnostics, set `debug = true` under `[plugins.client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
+
+> **Note:** Debug mode is enabled by default for a better development experience. For production deployments, set `debug = false` in `jac.toml`.
+
+---
+
+## Build-Time Constants
+
+Define global variables that are replaced at compile time using the `[plugins.client.vite.define]` section in `jac.toml`:
+
+```toml
+[plugins.client.vite.define]
+"globalThis.API_URL" = "\"https://api.example.com\""
+"globalThis.FEATURE_ENABLED" = true
+"globalThis.BUILD_VERSION" = "\"1.2.3\""
+```
+
+These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). Access them in client code:
+
+```jac
+cl {
+    def:pub Footer() -> JsxElement {
+        return <p>Version: {globalThis.BUILD_VERSION}</p>;
+    }
+}
+```
+
+---
+
 ## Development Server
+
+### Prerequisites
+
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. If Bun is not installed, the CLI prompts you to install it automatically.
 
 ### Start Server
 
