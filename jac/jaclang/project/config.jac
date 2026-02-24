@@ -103,7 +103,6 @@ obj LintConfig {
 """Check command defaults from [check] section."""
 obj CheckConfig {
     has print_errs: bool = True,
-        warnonly: bool = False,
         lint: LintConfig = LintConfig();
 }
 

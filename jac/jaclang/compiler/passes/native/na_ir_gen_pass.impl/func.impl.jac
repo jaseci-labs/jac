@@ -49,12 +49,49 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.has_native_code = True;
 }
 
+"""Forward-declare a C library extern function with value types for clib structs."""
+impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
+    if not isinstance(nd, uni.Ability) {
+        return;
+    }
+    if nd.signature is None or not isinstance(nd.signature, uni.FuncSignature) {
+        return;
+    }
+    name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
+    sig = nd.signature;
+    # Build parameter types -- value types for clib structs
+    param_types: list[ir.Type] = [];
+    for p in sig.get_parameters() {
+        if p.type_tag and p.type_tag.tag {
+            param_types.append(self._resolve_clib_type(p.type_tag.tag));
+        } else {
+            param_types.append(ir.IntType(64));
+        }
+    }
+    # Return type -- value type for clib structs
+    ret_type = self._resolve_clib_type(sig.return_type);
+    # Create function
+    fnty = ir.FunctionType(ret_type, param_types);
+    func = ir.Function(self.llvm_module, fnty, name=name);
+    # Name the parameters
+    for (i, p) in enumerate(sig.get_parameters()) {
+        func.args[i].name = p.name.value if p.name else f"arg{i}";
+    }
+    self.func_symtab[name] = func;
+    self.has_native_code = True;
+}
+
 # ─── Ability (Function Definition) — Manual Codegen ──────────
 """Generate LLVM IR for a complete function definition."""
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
     func = self.func_symtab.get(name);
     if func is None {
+        return;
+    }
+    # C library externs: keep as LLVM 'declare' (no body).
+    # MCJIT resolves them from loaded shared libraries.
+    if name in self.clib_extern_names {
         return;
     }
     # Create entry block

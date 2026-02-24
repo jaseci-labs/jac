@@ -58,7 +58,9 @@ def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
         sys.stderr = old_stderr;
     }
 
-    match_result = re.search(r"Checked (\d+)", stdout + stderr);
+    combined = stdout + stderr;
+    # New format: "=== N passed in X.XXs ==="
+    match_result = re.search(r"(\d+) passed", combined);
     return int(match_result.group(1)) if match_result else 0;
 }
 
@@ -365,7 +367,7 @@ test "del clean" {
         sys.stdout = old_stdout;
     }
     stdout_value = captured.getvalue();
-    assert "0 errors, 0 warnings" in stdout_value;
+    assert "passed" in stdout_value;
 }
 
 test "run test" {

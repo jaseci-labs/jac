@@ -634,6 +634,56 @@ impl CircleService.describe -> str {
 }
 ```
 
+#### Native Variant Files (`.na.jac`)
+
+Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.na.jac` files runs as native machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly. The same functionality is available inside `na {}` blocks in regular `.jac` files.
+
+**C Library Imports:**
+
+Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or inside a `na {}` block:
+
+```jac
+# math_native.na.jac
+import from "/usr/lib/libm.so.6" {
+    def sqrt(x: f64) -> f64;
+    def pow(base: f64, exp: f64) -> f64;
+}
+
+def hypotenuse(a: f64, b: f64) -> f64 {
+    return sqrt(a * a + b * b);
+}
+```
+
+Declarations inside the braces are body-less function signatures that become LLVM `declare` (extern) statements. The shared library is loaded automatically at JIT time, and symbols are resolved by name.
+
+**Type mapping:** Jac's `int` maps to `i64` and `float` maps to `f64` in native code. Use fixed-width types (`i8`, `i16`, `i32`, `u8`, `u16`, `u32`, `f32`, etc.) when C functions expect specific sizes. The compiler automatically coerces between standard and fixed-width types at call boundaries.
+
+**Example -- calling raylib from Jac:**
+
+```jac
+# game.na.jac
+import from "libraylib.so" {
+    def InitWindow(width: i32, height: i32, title: str) -> None;
+    def CloseWindow() -> None;
+    def WindowShouldClose() -> i8;
+    def BeginDrawing() -> None;
+    def EndDrawing() -> None;
+    def ClearBackground(color: i32) -> None;
+    def DrawText(text: str, x: i32, y: i32, size: i32, color: i32) -> None;
+}
+
+with entry {
+    InitWindow(800, 600, "Hello from Jac");
+    while WindowShouldClose() == 0 {
+        BeginDrawing();
+        ClearBackground(0);
+        DrawText("Jac + Raylib", 300, 280, 30, -1);
+        EndDrawing();
+    }
+    CloseWindow();
+}
+```
+
 ### 5 When to Use Implementations
 
 - **Circular dependencies**: Forward declare to break cycles
@@ -642,6 +692,7 @@ impl CircleService.describe -> str {
 - **Plugin architectures**: Define interfaces that plugins implement
 - **Large codebases**: Separate concerns across files
 - **Variant modules**: Split server, client, and native code into separate files while keeping them as one logical module
+- **C interop**: Use `.na.jac` files to call C libraries directly from JIT-compiled native code
 
 ---
 
