@@ -122,6 +122,7 @@ infer_type_assignment.jac
 init_as_call.jac
 __init__.jac
 interop_analysis_pass.impl.jac
+jacpretty.jac
 jac_auto_lint_pass.impl.jac
 jac_formatter_pass.impl.jac
 jfast_api.impl.jac
