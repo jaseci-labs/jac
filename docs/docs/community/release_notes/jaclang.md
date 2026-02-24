@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.1 (Unreleased)
 
+- **Perf: Type Narrowing Optimization**: Fixed exponential slowdown in `jac check` with many `if` statements (~1 min → ~2s). Member access now uses narrowed types and reports errors for invalid attribute access on `None`.
 - **Import Path Alias Resolution**: The module resolver now supports path aliases configured in `[plugins.client.paths]` in `jac.toml`. Aliases like `@components/Button` are resolved to their filesystem paths before standard module lookup, enabling cleaner imports in client-side Jac code.
 - **Native Codegen: C Library Import Syntax (`import from "lib" { def ...; }`)**: Added first-class parser and IR generation support for importing C shared libraries. Declarations inside the braces are parsed as extern function signatures (no body), producing LLVM `declare` statements that MCJIT resolves from the loaded `.so`/`.dylib`. Includes fixed-width C-compatible types (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `c_void`) and automatic type coercion (i64↔i32, f64↔f32) at call boundaries.
 - **Native Codegen: C Struct Value-Type Coercion**: C structs declared inside `import from "lib" { obj Color { has r: u8, g: u8, b: u8, a: u8; } }` blocks are used as normal Jac objects (heap-allocated, pointer semantics) but automatically coerced to C value semantics at call boundaries. Small integer-only structs (<=64 bits) are ABI-coerced to register-sized integers (e.g., `Color` to `i32`), matching the x86_64 SysV calling convention.
@@ -12,7 +13,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **Fix: `py2jac` String escape sequences**: Fixed handling of escape sequences (`\x1b`, `\033`, `\u001b`, `\n`, `\t`) in string and f-string literals during conversion.
 - **Enhanced jac check output**: The `jac check` command now provides a more detailed and user-friendly output format, including file progress, failure details, and timing information.
-- 1 Minor refactor
 - 2 Minor refactor
 
 ## jaclang 0.11.0 (Latest Release)

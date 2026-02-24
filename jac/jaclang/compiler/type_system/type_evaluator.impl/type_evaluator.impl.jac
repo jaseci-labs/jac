@@ -53,9 +53,16 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # End of prefetched types
         # ----------------------------------------------------------------------
         case uni.AtomTrailer():
-            # NOTE: Pyright is using CFG to figure out the member type by narrowing the base
-            # type and filtering the members. We're not doing that anytime sooner.
+            # Get the base type first
             base_type = self.get_type_of_expression(expr.target);
+
+            # CFG-based narrowing: if target is a Name with a symbol, check for narrowed type.
+            # This allows member access to use the narrowed type (e.g., after isinstance check).
+            if isinstance(expr.target, uni.Name) and expr.target.sym {
+                if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
+                    base_type = narrowed;
+                }
+            }
 
             if expr.is_attr {  # <expr>.member
 
@@ -107,6 +114,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         }
                         return value;
                     }
+                    # TODO: Re-enable after fixing TypeVar resolution.
+                    # Disabled: gives false positives on generic types (e.g., list[T].append).
+                    # self.add_diagnostic(
+                    #     expr.right,
+                    #     f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                    # );
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -212,6 +225,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # TODO: Re-enable after fixing TypeVar resolution.
+                    # Disabled: gives false positives on generic types (e.g., list[T].append).
+                    # self.add_diagnostic(
+                    #     expr.right,
+                    #     f'"{base_type}" has no attribute "{expr.right.value}"',
+                    # );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
                     # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
@@ -1304,11 +1323,19 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
 
 # -------------------------------------------------------------------------
 # Type narrowing support (CFG-based, flow-sensitive)
+# Pyright-style implementation with affected_symbols optimization.
 # -------------------------------------------------------------------------
 """Entry point: get the CFG-based narrowed type for a symbol at a given AST node."""
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
+    # Early exit for non-union types.
+    # Type narrowing only applies to union types (e.g., X | None, A | B).
+    # Non-union types cannot be narrowed, so skip the CFG walk entirely.
+    symbol_type = self.get_type_of_symbol(symbol);
+    if not isinstance(symbol_type, types.UnionType) {
+        return None;
+    }
     # Find the enclosing CodeBlockStmt (CFG node) for this Name node.
     stmt: uni.CodeBlockStmt | None = None;
     if isinstance(at_node, uni.CodeBlockStmt) {
@@ -1322,11 +1349,15 @@ impl TypeEvaluator.get_narrowed_type(
     return self._compute_narrowed_at(symbol, stmt, set());
 }
 
-"""Demand-driven backward CFG walk to compute narrowed type at a statement."""
+"""Demand-driven backward CFG walk to compute narrowed type at a statement.
+Uses Pyright-style affected_symbols optimization to skip branches where
+the symbol is not narrowed or assigned.
+"""
 impl TypeEvaluator._compute_narrowed_at(
     symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
-    cache_key = (id(stmt), symbol.sym_name);
+    sym_name = symbol.sym_name;
+    cache_key = (id(stmt), sym_name);
     if cache_key in self._narrowing_cache {
         return self._narrowing_cache[cache_key];
     }
@@ -1335,20 +1366,20 @@ impl TypeEvaluator._compute_narrowed_at(
         return None;  # Cycle (back-edge in loop) -- conservative
 
     }
-    # Bail out when the backward walk has grown too deep.  This prevents
-    # combinatorial explosion on very large modules whose CFGs contain
-    # hundreds of basic blocks (e.g. standalone .impl.jac files).
-    # Returning None is conservative (no narrowing) and safe.
+    # Depth limit to prevent very deep recursion in large modules.
     if len(visited) > 64 {
-        return None;
-    }
-    visited.add(stmt_id);
-    # Ignore back-edges from loop body to preserve pre-loop narrowing.
-    is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));
-    if not stmt.bb_in {
         self._narrowing_cache[cache_key] = None;
         return None;
     }
+    visited.add(stmt_id);
+    # No predecessors means entry point - no narrowing available.
+    if not stmt.bb_in {
+        self._narrowing_cache[cache_key] = None;
+        visited.discard(stmt_id);
+        return None;
+    }
+    # Ignore back-edges from loop body to preserve pre-loop narrowing.
+    is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
     for pred in stmt.bb_in {
@@ -1356,9 +1387,8 @@ impl TypeEvaluator._compute_narrowed_at(
             has_unnarrowed_pred = True;
             continue;
         }
-        # Ignore back-edges from loop body to preserve pre-loop narrowing.
+        # Skip back-edges from loop body.
         if is_loop_header {
-            # Skip back-edges from loop body.
             ancestor: uni.UniNode | None = None;
             if isinstance(stmt, uni.InForStmt) {
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
@@ -1366,13 +1396,23 @@ impl TypeEvaluator._compute_narrowed_at(
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
             }
             if ancestor is stmt {
-                continue;  # skip loop back-edge
+                continue;
             }
         }
+
+        # PYRIGHT-STYLE OPTIMIZATION: Skip branches where symbol is not affected.
+        # If the predecessor doesn't narrow or assign this symbol, we can skip
+        # the expensive recursive walk and just mark as unnarrowed.
+        if sym_name not in pred.affected_symbols {
+            has_unnarrowed_pred = True;
+            continue;
+        }
+
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
 
         # Check if predecessor is a conditional with a narrowing predicate.
+        # Note: ElseIf extends IfStmt, so this handles both.
         if isinstance(pred, uni.IfStmt) {
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
@@ -1400,6 +1440,10 @@ impl TypeEvaluator._compute_narrowed_at(
                 }
             }
         }
+        # TODO: ElseIf (elif) narrowing needs CFG fix - predecessor nodes don't match.
+        # The CFG builds correct links but type checker sees different node instances.
+        # This is a future PR task.
+
         # No narrowing from this predecessor; propagate its type.
         if pred_narrowed is not None {
             incoming_types.append(pred_narrowed);

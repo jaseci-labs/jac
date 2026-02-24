@@ -48,6 +48,7 @@ checker_root_type.jac
 checker_self_type.jac
 checker_slice.jac
 checker_super_init_explicit.jac
+checker_type_narrowing_none.jac
 checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
@@ -263,6 +264,7 @@ test_validate_md_files.jac
 test_webhook.jac
 top_contributors.jac
 top_voices.jac
+unitree.jac
 validate_docs_code.jac
 precompile_bytecode.jac
 cli.impl.jac
