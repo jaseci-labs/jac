@@ -320,6 +320,69 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
 
+    # Configuration endpoints
+    async def get_config_handler(request: Request, profile: str = "default") -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_get_config(profile, authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/config',
+            callback=get_config_handler,
+            parameters=[
+                APIParameter(
+                    name='profile',
+                    data_type='string',
+                    required=False,
+                    default='default',
+                    description='Config profile (default, development, production)',
+                    type=ParameterType.QUERY
+                )
+            ],
+            response_model=None,
+            tags=['Admin'],
+            summary='Get configuration',
+            description='Get jac.toml configuration content (admin only)'
+        )
+    );
+
+    async def update_config_handler(
+        request: Request, content: str, profile: str = "default"
+    ) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_update_config(content, profile, authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/admin/config',
+            callback=update_config_handler,
+            parameters=[
+                APIParameter(
+                    name='content',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='TOML configuration content',
+                    type=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='profile',
+                    data_type='string',
+                    required=False,
+                    default='default',
+                    description='Config profile (default, development, production)',
+                    type=ParameterType.QUERY
+                )
+            ],
+            response_model=None,
+            tags=['Admin'],
+            summary='Update configuration',
+            description='Update jac.toml configuration content (admin only)'
+        )
+    );
+
     # Admin graph visualization
     async def admin_graph_handler(
         request: Request, username: str | None = None
@@ -794,6 +857,105 @@ impl JacAPIServerAdmin.admin_get_user_sso_accounts(
         data={'username': username, 'sso_accounts': accounts},
         meta=Meta(extra={'http_status': 200})
     );
+}
+
+"""Get configuration content (admin only)."""
+impl JacAPIServerAdmin.admin_get_config(
+    profile: str = "default", Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+
+    import os;
+    cwd = Path(os.getcwd());
+
+    # Determine config file path based on profile
+    if profile == "default" {
+        config_path = cwd / "jac.toml";
+    } else {
+        config_path = cwd / f"jac.{profile}.toml";
+    }
+
+    if not config_path.exists() {
+        # Return empty content if file doesn't exist
+        return TransportResponse.success(
+            data={
+                'profile': profile,
+                'content': f"# Configuration file not found: {config_path.name}\n# Create this file to configure {profile} profile.",
+                'exists': False
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+
+    try {
+        content = config_path.read_text(encoding='utf-8');
+        return TransportResponse.success(
+            data={
+                'profile': profile,
+                'content': content,
+                'exists': True
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    } except Exception as e {
+        return TransportResponse.fail(
+            code='READ_ERROR',
+            message=f'Failed to read config: {str(e)}',
+            meta=Meta(extra={'http_status': 500})
+        );
+    }
+}
+
+"""Update configuration content (admin only)."""
+impl JacAPIServerAdmin.admin_update_config(
+    content: str, profile: str = "default", Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+
+    import os;
+    import toml;
+    cwd = Path(os.getcwd());
+
+    # Determine config file path based on profile
+    if profile == "default" {
+        config_path = cwd / "jac.toml";
+    } else {
+        config_path = cwd / f"jac.{profile}.toml";
+    }
+
+    # Validate TOML syntax before saving
+    try {
+        toml.loads(content);
+    } except Exception as e {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message=f'Invalid TOML syntax: {str(e)}',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+
+    try {
+        config_path.write_text(content, encoding='utf-8');
+        return TransportResponse.success(
+            data={
+                'profile': profile,
+                'message': 'Configuration saved successfully'
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    } except Exception as e {
+        return TransportResponse.fail(
+            code='WRITE_ERROR',
+            message=f'Failed to save config: {str(e)}',
+            meta=Meta(extra={'http_status': 500})
+        );
+    }
 }
 
 """Get graph data for admin visualization."""

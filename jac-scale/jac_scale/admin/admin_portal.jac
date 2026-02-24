@@ -75,6 +75,15 @@ obj JacAPIServerAdmin {
         username: str | None = None, Authorization: str | None = None
     ) -> JSONResponse;
 
+    # Configuration management
+    def admin_get_config(
+        profile: str = "default", Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def admin_update_config(
+        content: str, profile: str = "default", Authorization: str | None = None
+    ) -> TransportResponse;
+
     # Admin UI
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
