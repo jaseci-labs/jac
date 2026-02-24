@@ -81,14 +81,14 @@ jac-scale/jac_scale/admin/
 
 ### Phase 2: RBAC
 
-5. Define role and permission models
+1. Define role and permission models
 2. Create RBAC middleware for route protection
 3. Add role assignment endpoints (admin-only)
 4. Update JWT claims to include role
 
 ### Phase 3: Admin Portal
 
-9. Create `/admin` route group with admin-only middleware
+1. Create `/admin` route group with admin-only middleware
 2. Implement user management endpoints:
     - `GET /admin/users` - List users
     - `POST /admin/users` - Create user (sets `requires_password_reset=true`)
@@ -100,7 +100,7 @@ jac-scale/jac_scale/admin/
 
 ### Phase 4: Frontend (Optional)
 
-13. Serve static admin UI at `/admin` (React/Vue SPA or simple HTML)
+1. Serve static admin UI at `/admin` (React/Vue SPA or simple HTML)
 2. Or: document API-only approach for external admin UIs
 
 ## Configuration Schema
