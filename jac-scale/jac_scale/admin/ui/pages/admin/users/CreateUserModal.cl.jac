@@ -8,11 +8,7 @@ cl {
     import from ....components.common.Alert { InlineAlert }
     import from ....constants.users { ROLE_OPTIONS }
 
-    def:pub CreateUserModal(
-        isOpen: bool,
-        onClose: any,
-        onCreate: any
-    ) -> JsxElement {
+    def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement {
         has newUsername: str = "",
             newPassword: str = "",
             newRole: str = "user",
