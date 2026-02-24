@@ -53,9 +53,16 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # End of prefetched types
         # ----------------------------------------------------------------------
         case uni.AtomTrailer():
-            # NOTE: Pyright is using CFG to figure out the member type by narrowing the base
-            # type and filtering the members. We're not doing that anytime sooner.
+            # Get the base type first
             base_type = self.get_type_of_expression(expr.target);
+
+            # CFG-based narrowing: if target is a Name with a symbol, check for narrowed type.
+            # This allows member access to use the narrowed type (e.g., after isinstance check).
+            if isinstance(expr.target, uni.Name) and expr.target.sym {
+                if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
+                    base_type = narrowed;
+                }
+            }
 
             if expr.is_attr {  # <expr>.member
 
@@ -107,6 +114,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         }
                         return value;
                     }
+                    # Member not found on class - report error
+                    self.add_diagnostic(
+                        expr.right,
+                        f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                    );
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -212,6 +224,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # Member not found on instance - report error
+                    self.add_diagnostic(
+                        expr.right,
+                        f'"{base_type}" has no attribute "{expr.right.value}"',
+                    );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
                     # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
@@ -1390,22 +1407,27 @@ impl TypeEvaluator._compute_narrowed_at(
         # the expensive recursive walk and just mark as unnarrowed.
         if sym_name not in pred.affected_symbols {
             # Symbol not affected in this branch - use declared type (no narrowing).
+            # DEBUG: print(f"[SKIP] '{sym_name}' not in {pred.__class__.__name__}.affected_symbols");
             has_unnarrowed_pred = True;
             continue;
         }
+        # DEBUG: print(f"[EXPLORE] '{sym_name}' IS in {pred.__class__.__name__}.affected_symbols");
 
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
 
         # Check if predecessor is a conditional with a narrowing predicate.
+        # Note: ElseIf extends IfStmt, so this handles both.
         if isinstance(pred, uni.IfStmt) {
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
                 edge_kind = self._classify_edge(pred, stmt);
+                # DEBUG: print(f"[NARROW] '{sym_name}' {edge_kind} branch: {pred_narrowed} -> ?");
                 if edge_kind == "true" {
                     narrowed = self._apply_narrowing(
                         predicate, pred_narrowed, True, symbol
                     );
+                    # DEBUG: print(f"[NARROW] result = {narrowed}");
                     if narrowed is not None {
                         incoming_types.append(narrowed);
                     } else {
@@ -1416,6 +1438,7 @@ impl TypeEvaluator._compute_narrowed_at(
                     narrowed = self._apply_narrowing(
                         predicate, pred_narrowed, False, symbol
                     );
+                    # DEBUG: print(f"[NARROW] result = {narrowed}");
                     if narrowed is not None {
                         incoming_types.append(narrowed);
                     } else {
@@ -1425,6 +1448,10 @@ impl TypeEvaluator._compute_narrowed_at(
                 }
             }
         }
+        # TODO: ElseIf (elif) narrowing needs CFG fix - predecessor nodes don't match.
+        # The CFG builds correct links but type checker sees different node instances.
+        # This is a future PR task.
+
         # No narrowing from this predecessor; propagate its type.
         if pred_narrowed is not None {
             incoming_types.append(pred_narrowed);
