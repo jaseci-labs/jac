@@ -887,6 +887,54 @@ test "config files from jac toml" {
     }
 }
 
+test "npmrc from jac toml" {
+    """Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+
+            # Create jac.toml with npm scoped registry and auth config
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            config_path = os.path.join(temp_dir, "jac.toml");
+            with open(config_path, "w") as f {
+                f.write(toml_content);
+            }
+
+            # Import and use ViteBundler to generate .npmrc
+            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+            npmrc_path = bundler.create_npmrc();
+
+            # Verify .npmrc was created
+            assert npmrc_path is not None;
+            configs_dir = os.path.join(temp_dir, ".jac", "client", "configs");
+            expected_npmrc = os.path.join(configs_dir, ".npmrc");
+            assert os.path.exists(expected_npmrc);
+
+            with open(expected_npmrc) as f {
+                npmrc_content = f.read();
+            }
+
+            # Verify global settings appear first
+            assert "registry=https://registry.example.com" in npmrc_content;
+            assert "always-auth=true" in npmrc_content;
+            assert "strict-ssl=false" in npmrc_content;
+
+            # Verify scoped registry entries
+            assert "@mycompany:registry=https://npm.pkg.github.com" in npmrc_content;
+            assert "@myorg:registry=https://registry.example.com" in npmrc_content;
+
+            # Verify auth entry — env var should pass through as literal
+            # (interpolation swallows ValueError when env var is unset)
+            assert "//npm.pkg.github.com/:_authToken=" in npmrc_content;
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 test "create cl and run no root files" {
     """Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
     test_project_name = "test-cl-no-root-files";

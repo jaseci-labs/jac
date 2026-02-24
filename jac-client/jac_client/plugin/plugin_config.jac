@@ -76,6 +76,28 @@ class JacClientPluginConfig {
                     "type": "dict",
                     "default": {},
                     "description": "Generate config files for npm packages. Keys are config names (e.g., 'postcss', 'tailwind'), values are the config objects to export."
+                },
+                "npm": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "NPM registry configuration for .npmrc generation. Supports 'settings' for global options, 'scoped_registries' for scope-to-registry mappings, and 'auth' for registry authentication tokens.",
+                    "nested": {
+                        "settings": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Global .npmrc settings as key-value pairs (e.g., registry, always-auth, strict-ssl, proxy)"
+                        },
+                        "scoped_registries": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Map npm scopes to custom registries (e.g., '@myorg' = 'https://npm.pkg.github.com')"
+                        },
+                        "auth": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Registry authentication tokens (e.g., '//npm.pkg.github.com/' = { _authToken = '${NODE_AUTH_TOKEN}' })"
+                        }
+                    }
                 }
             }
         };
@@ -216,6 +238,13 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         shutil.copy2(configs_package_json, build_package_json);
 
+        # Copy .npmrc for scoped registry auth during install
+        configs_npmrc = client_dir / 'configs' / '.npmrc';
+        build_npmrc = client_dir / '.npmrc';
+        if configs_npmrc.exists() {
+            shutil.copy2(configs_npmrc, build_npmrc);
+        }
+
         # Run bun install (ensure bun is available first)
         import from jac_client.plugin.utils { ensure_bun_available }
         if not ensure_bun_available() {
@@ -256,6 +285,10 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             # Clean up temporary package.json
             if build_package_json.exists() {
                 build_package_json.unlink();
+            }
+            # Clean up temporary .npmrc
+            if build_npmrc.exists() {
+                build_npmrc.unlink();
             }
         }
     } except Exception as e {
@@ -347,6 +380,13 @@ def _regenerate_and_install(project_dir: Path) -> None {
         shutil.copy2(configs_package_json, build_package_json);
     }
 
+    # Copy .npmrc to .jac/client/ for scoped registry auth during install
+    configs_npmrc = client_dir / 'configs' / '.npmrc';
+    build_npmrc = client_dir / '.npmrc';
+    if configs_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
+
     try {
         # Run bun install
         subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
@@ -356,6 +396,10 @@ def _regenerate_and_install(project_dir: Path) -> None {
         # Clean up temporary package.json
         if build_package_json.exists() {
             build_package_json.unlink();
+        }
+        # Clean up temporary .npmrc
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
         }
         # Move bun.lockb to configs/ if it exists
         build_bun_lockb = client_dir / 'bun.lockb';
