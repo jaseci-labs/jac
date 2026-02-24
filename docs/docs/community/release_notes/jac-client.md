@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.1 (Unreleased)
 
+- **NPM Scoped Registry & Auth Support via jac.toml**: Added support for configuring custom npm registries and authentication tokens directly in `jac.toml` under `[plugins.client.npm]`.
+
 ## jac-client 0.3.0 (Latest Release)
 
 - **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).

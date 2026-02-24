@@ -188,6 +188,13 @@ default_model = "gpt-4"
 [plugins.client]
 port = 5173
 
+# Private npm registries (generates .npmrc)
+[plugins.client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+
+[plugins.client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+
 [scripts]
 dev = "jac start main.jac --dev"
 test = "jac test"
