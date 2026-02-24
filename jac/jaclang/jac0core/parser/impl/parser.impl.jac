@@ -4865,6 +4865,7 @@ impl Parser.parse_import_stmt -> Import {
     kid: list = [self.make_uni_token(self.previous())];
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
+    is_clib_import = False;
     if self.match_tok(TokenKind.KW_FROM) {
         kid.append(self.make_uni_token(self.previous()));
         # Parse module path
@@ -4887,10 +4888,12 @@ impl Parser.parse_import_stmt -> Import {
         }
         if self.check(TokenKind.STRING) {
             # String import path: import from "@jac/runtime" { ... }
+            # or C library import: import from "raylib" { def ...; }
             str_tok = self.advance();
             str_node = self.make_string(str_tok);
             path_names.append(str_node);
             path_kid.append(str_node);
+            is_clib_import = True;
         } elif self.check_name() or self.is_keyword_token() {
             name_tok = self.advance();
             nm = self.make_name_or_special(name_tok);
@@ -4917,53 +4920,82 @@ impl Parser.parse_import_stmt -> Import {
     }
     # Parse items in braces: { item1, item2, ... }
     items: list = [];
+    clib_decls: list = [];
     if self.match_tok(TokenKind.LBRACE) {
         kid.append(self.make_uni_token(self.previous()));
-        while not self.check(TokenKind.RBRACE) and not self.at_end() {
-            item_name: Name;
-            if self.check(TokenKind.STAR_MUL) {
-                # Star import: import from X { * as Y }
-                star_tok = self.advance();
-                item_name = self.make_uni_token(star_tok);
-            } else {
-                item_name_tok: Token;
-                if self.check(TokenKind.KW_DEFAULT) {
-                    # KW_DEFAULT stays as a Token in imports
-                    item_name_tok = self.advance();
-                    item_name = self.make_uni_token(item_name_tok);
-                } elif self.check_name() {
-                    item_name_tok = self.advance();
-                    item_name = self.make_name(item_name_tok);
-                } elif self.is_keyword_token() {
-                    item_name_tok = self.advance();
-                    item_name = self.make_name_or_special(item_name_tok);
-                } else {
-                    item_name_tok = self.expect_name();
-                    item_name = self.make_name(item_name_tok);
+        # C library import: import from "libname" { def ...; obj ...; }
+        # When from_loc is a string literal and braces contain declarations,
+        # parse as element statements (like na {} blocks) instead of names.
+        if is_clib_import
+        and self.check_any(
+            TokenKind.KW_DEF,
+            TokenKind.KW_CAN,
+            TokenKind.KW_OBJECT,
+            TokenKind.KW_CLASS,
+            TokenKind.KW_ENUM,
+            TokenKind.KW_ASYNC,
+            TokenKind.STRING,
+            TokenKind.KW_GLOBAL,
+            TokenKind.KW_HAS
+        ) {
+            while not self.check(TokenKind.RBRACE) and not self.at_end() {
+                stmt = self.parse_element_stmt();
+                if stmt is not None {
+                    clib_decls.append(stmt);
+                    kid.append(stmt);
+                    # Mark as native context
+                    if stmt?.code_context {
+                        stmt.code_context = CodeContext.NATIVE;
+                    }
                 }
             }
-            alias = None;
-            as_tok: Token | None = None;
-            if self.match_tok(TokenKind.KW_AS) {
-                as_tok = self.previous();
-                alias_tok = self.expect_name();
-                alias = self.make_name(alias_tok);
+        } else {
+            while not self.check(TokenKind.RBRACE) and not self.at_end() {
+                item_name: Name;
+                if self.check(TokenKind.STAR_MUL) {
+                    # Star import: import from X { * as Y }
+                    star_tok = self.advance();
+                    item_name = self.make_uni_token(star_tok);
+                } else {
+                    item_name_tok: Token;
+                    if self.check(TokenKind.KW_DEFAULT) {
+                        # KW_DEFAULT stays as a Token in imports
+                        item_name_tok = self.advance();
+                        item_name = self.make_uni_token(item_name_tok);
+                    } elif self.check_name() {
+                        item_name_tok = self.advance();
+                        item_name = self.make_name(item_name_tok);
+                    } elif self.is_keyword_token() {
+                        item_name_tok = self.advance();
+                        item_name = self.make_name_or_special(item_name_tok);
+                    } else {
+                        item_name_tok = self.expect_name();
+                        item_name = self.make_name(item_name_tok);
+                    }
+                }
+                alias = None;
+                as_tok: Token | None = None;
+                if self.match_tok(TokenKind.KW_AS) {
+                    as_tok = self.previous();
+                    alias_tok = self.expect_name();
+                    alias = self.make_name(alias_tok);
+                }
+                item_kid: list = [item_name];
+                if alias is not None {
+                    item_kid.append(self.make_uni_token(as_tok));
+                    item_kid.append(alias);
+                }
+                item = ModuleItem(name=item_name, alias=alias, kid=item_kid);
+                items.append(item);
+                kid.append(item);
+                if not self.match_tok(TokenKind.COMMA) {
+                    break;
+                }
+                kid.append(self.make_uni_token(self.previous()));
             }
-            item_kid: list = [item_name];
-            if alias is not None {
-                item_kid.append(self.make_uni_token(as_tok));
-                item_kid.append(alias);
+            if len(items) == 0 {
+                self.error("import statement must specify at least one item");
             }
-            item = ModuleItem(name=item_name, alias=alias, kid=item_kid);
-            items.append(item);
-            kid.append(item);
-            if not self.match_tok(TokenKind.COMMA) {
-                break;
-            }
-            kid.append(self.make_uni_token(self.previous()));
-        }
-        if len(items) == 0 {
-            self.error("import statement must specify at least one item");
         }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
         kid.append(rbrace_uni);
@@ -5021,7 +5053,12 @@ impl Parser.parse_import_stmt -> Import {
         kid.append(self.make_semi());
     }
     return Import(
-        from_loc=from_loc, items=items, is_absorb=is_include, kid=kid, doc=None
+        from_loc=from_loc,
+        items=items,
+        is_absorb=is_include,
+        kid=kid,
+        doc=None,
+        clib_decls=clib_decls
     );
 }
 

@@ -698,7 +698,8 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
         kid: Sequence[UniNode],
-        doc: (String | None) = None
+        doc: (String | None) = None,
+        clib_decls: (Sequence[UniNode] | None) = None
     ) -> None;
 
     """Check if import is python."""

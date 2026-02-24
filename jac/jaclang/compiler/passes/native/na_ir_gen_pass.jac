@@ -255,6 +255,10 @@ obj NaIRGenPass(Transform) {
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
+    # C library imports: import from "libname" { def ...; }
+    def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_clib_ability(nd: uni.Ability) -> None;
+    def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
     def _dispatch_primitive_method(

@@ -139,7 +139,7 @@ my_project/
 | `.jac` | Universal Jac code (head module) |
 | `.sv.jac` | Server-variant code |
 | `.cl.jac` | Client-variant code |
-| `.na.jac` | Native-variant code |
+| `.na.jac` | Native-variant code (compiles to LLVM IR, JIT-executed) |
 | `.impl.jac` | Implementation file (annex) |
 | `.test.jac` | Test file (annex) |
 
@@ -216,7 +216,7 @@ Jac keywords are reserved and cannot be used as identifiers:
 | **Exception** | `try`, `except`, `finally`, `raise`, `assert` |
 | **OSP** | `visit`, `disengage`, `spawn`, `here`, `root`, `visitor`, `entry`, `exit` |
 | **Module** | `import`, `include`, `from`, `as`, `glob` |
-| **Blocks** | `cl` (client), `sv` (server) |
+| **Blocks** | `cl` (client), `sv` (server), `na` (native) |
 | **Other** | `with`, `test`, `impl`, `sem`, `by`, `del`, `in`, `is`, `and`, `or`, `not`, `async`, `await`, `flow`, `wait`, `lambda`, `props` |
 
 **Note:** The abstract modifier keyword is `abs`, not `abstract`.
@@ -275,6 +275,20 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `any` | Any type | -- |
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
+
+**Fixed-width types** (for native code and C interop):
+
+| Type | Description | C Equivalent |
+|------|-------------|--------------|
+| `i8`, `u8` | 8-bit signed/unsigned integer | `int8_t`, `uint8_t` |
+| `i16`, `u16` | 16-bit signed/unsigned integer | `int16_t`, `uint16_t` |
+| `i32`, `u32` | 32-bit signed/unsigned integer | `int32_t`, `uint32_t` |
+| `i64`, `u64` | 64-bit signed/unsigned integer | `int64_t`, `uint64_t` |
+| `f32` | 32-bit float | `float` |
+| `f64` | 64-bit float | `double` |
+| `c_void` | Opaque pointer | `void*` |
+
+These types are used in `.na.jac` files for C library interop. The compiler automatically coerces between Jac's standard types (`int` = `i64`, `float` = `f64`) and fixed-width types at call boundaries.
 
 ### 2 Type Annotations
 

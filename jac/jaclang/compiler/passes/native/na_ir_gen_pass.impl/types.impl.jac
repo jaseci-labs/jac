@@ -202,6 +202,29 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Resolve a type for C library declarations -- clib structs use value types, not pointers."""
+impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
+    if type_expr is None {
+        return ir.IntType(64);
+    }
+    # Check if this is a clib struct name -- return VALUE type (not pointer)
+    type_name: (str | None) = None;
+    if isinstance(type_expr, uni.Name) {
+        type_name = type_expr.value;
+    } elif type_expr?.value and isinstance(getattr(type_expr, "value", None), str) {
+        type_name = type_expr.value;
+    }
+    if type_name is not None and type_name in self.clib_struct_names {
+        # Use ABI-coerced integer type for small structs (matches C calling convention)
+        if type_name in self.clib_struct_abi_types {
+            return self.clib_struct_abi_types[type_name];
+        }
+        return self.struct_types[type_name];
+    }
+    # For all other types, delegate to normal resolution
+    return self._resolve_jac_type(type_expr);
+}
+
 """Extract name string from a Name or similar node."""
 impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
     if nd is None {
@@ -264,15 +287,99 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
     }
+    # Int → Double (f64)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.DoubleType) {
         return self.builder.sitofp(val, target_type, name="cast");
     }
+    # Int → Float (f32)
+    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.FloatType) {
+        return self.builder.sitofp(val, target_type, name="cast.f32");
+    }
+    # Double (f64) → Int
     if isinstance(val.type, ir.DoubleType) and isinstance(target_type, ir.IntType) {
         return self.builder.fptosi(val, target_type, name="cast");
+    }
+    # Float (f32) → Int
+    if isinstance(val.type, ir.FloatType) and isinstance(target_type, ir.IntType) {
+        return self.builder.fptosi(val, target_type, name="cast.i");
+    }
+    # Double (f64) → Float (f32)
+    if isinstance(val.type, ir.DoubleType) and isinstance(target_type, ir.FloatType) {
+        return self.builder.fptrunc(val, target_type, name="fptrunc");
+    }
+    # Float (f32) → Double (f64)
+    if isinstance(val.type, ir.FloatType) and isinstance(target_type, ir.DoubleType) {
+        return self.builder.fpext(val, target_type, name="fpext");
     }
     # Pointer-to-pointer bitcast (e.g., different struct pointer types)
     if isinstance(val.type, ir.PointerType) and isinstance(target_type, ir.PointerType) {
         return self.builder.bitcast(val, target_type, name="ptrcast");
+    }
+    # Struct pointer → struct value (Jac pointer → C value at call boundary)
+    if isinstance(val.type, ir.PointerType)
+    and not isinstance(target_type, ir.PointerType) {
+        if val.type?.pointee and val.type.pointee == target_type {
+            return self.builder.load(val, name="struct.unbox");
+        }
+        # Struct pointer → ABI integer (e.g., %Color* → i32 for small C structs)
+        if isinstance(target_type, ir.IntType) and val.type?.pointee {
+            for (sname, abi_type) in self.clib_struct_abi_types.items() {
+                if val.type.pointee == self.struct_types.get(sname)
+                and abi_type == target_type {
+                    int_ptr = self.builder.bitcast(
+                        val, target_type.as_pointer(), name="struct.abi.cast"
+                    );
+                    return self.builder.load(int_ptr, name="struct.abi.unbox");
+                }
+            }
+        }
+    }
+    # Struct value → struct pointer (C value → Jac pointer at call boundary)
+    if not isinstance(val.type, ir.PointerType)
+    and isinstance(target_type, ir.PointerType) {
+        if target_type?.pointee and target_type.pointee == val.type {
+            gc_malloc = self._get_or_declare_extern(
+                "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+            );
+            null_ptr = ir.Constant(target_type, None);
+            size_gep = self.builder.gep(
+                null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.sizeof.gep"
+            );
+            size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="clib.sizeof");
+            raw_ptr = self.builder.call(gc_malloc, [size], name="clib.box.raw");
+            typed_ptr = self.builder.bitcast(raw_ptr, target_type, name="clib.box.ptr");
+            self.builder.store(val, typed_ptr);
+            return typed_ptr;
+        }
+        # ABI integer → struct pointer (e.g., i32 → %Color* for small C struct returns)
+        if isinstance(val.type, ir.IntType) and target_type?.pointee {
+            for (sname, abi_type) in self.clib_struct_abi_types.items() {
+                if target_type.pointee == self.struct_types.get(sname)
+                and abi_type == val.type {
+                    gc_malloc = self._get_or_declare_extern(
+                        "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+                    );
+                    null_ptr = ir.Constant(target_type, None);
+                    size_gep = self.builder.gep(
+                        null_ptr,
+                        [ir.Constant(ir.IntType(32), 1)],
+                        name="clib.sizeof.gep"
+                    );
+                    size = self.builder.ptrtoint(
+                        size_gep, ir.IntType(64), name="clib.sizeof"
+                    );
+                    raw_ptr = self.builder.call(gc_malloc, [size], name="clib.box.raw");
+                    int_ptr = self.builder.bitcast(
+                        raw_ptr, val.type.as_pointer(), name="clib.abi.cast"
+                    );
+                    self.builder.store(val, int_ptr);
+                    typed_ptr = self.builder.bitcast(
+                        raw_ptr, target_type, name="clib.box.ptr"
+                    );
+                    return typed_ptr;
+                }
+            }
+        }
     }
     # Int width coercion (i1 to i64, etc.)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.IntType) {

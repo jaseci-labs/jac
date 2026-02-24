@@ -6,26 +6,58 @@ Direct implementations - no delegation to cli.jac.
 import from pathlib { Path }
 import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
+import from jaclang.cli.check_report {
+    print_file_progress,
+    print_failures,
+    print_failed_summary,
+    print_final_summary
+}
 
 """Run type checker for specified .jac files."""
 impl check(
     paths: list,
     print_errs: bool = True,
-    warnonly: bool = False,
     ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
+    import from time { time }
     if isinstance(paths, str) {
         paths = [paths];
     }
+    start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
-    def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int] {
+    # Helper to process and store single file result
+    def process_file_result(file_path: str, idx: int, total: int) -> None {
+        nonlocal total_files , total_errors , total_warnings , failed_files ;
+        total_files += 1;
+        (success, errs, warns, errors_list, warnings_list) = check_single_file(
+            prog, file_path
+        );
+        total_errors += errs;
+        total_warnings += warns;
+
+        # Print progress line
+        print_file_progress(file_path, success, idx, total);
+
+        # Store only failed results
+        if not success {
+            failed_files += 1;
+            failed_results.append(
+                {'path': file_path, 'errors': errors_list, 'warnings': warnings_list}
+            );
+        }
+    }
+    # Store failed file results for later detailed output
+    failed_results: list[dict] = [];
+    def check_single_file(
+        prog: JacProgram, file_path: str
+    ) -> tuple[bool, int, int, list, list] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
-            return (False, 1, 0);
+            return (False, 1, 0, [], []);
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
@@ -48,87 +80,57 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
-
-            if print_errs {
-                for e in filtered_errors {
-                    console.error(f"{e}");
-                }
-                if not nowarn {
-                    for w in filtered_warnings {
-                        console.warning(f"{w}");
-                    }
-                }
-            }
+            err_count = len(filtered_errors);
+            warn_count = len(filtered_warnings);
 
             return (
-                (len(filtered_errors) == 0),
-                len(filtered_errors),
-                len(filtered_warnings)
+                err_count == 0,
+                err_count,
+                warn_count,
+                filtered_errors,
+                filtered_warnings
             );
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
-            return (False, 1, 0);
+            return (False, 1, 0, [], []);
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
-    failed_file_list: list[str] = [];
     prog = JacProgram();
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
             if not _should_ignore(path, ignore_list) {
-                total_files += 1;
-                (success, errs, warns) = check_single_file(prog, path);
-                total_errors += errs;
-                total_warnings += warns;
-                if not success {
-                    failed_files += 1;
-                    failed_file_list.append(path);
-                }
+                process_file_result(path, 1, 1);
             }
         } elif path_obj.is_dir() {
-            for jac_file in path_obj.glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
-                }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    total_files += 1;
-                    (success, errs, warns) = check_single_file(prog, str(jac_file));
-                    total_errors += errs;
-                    total_warnings += warns;
-                    if not success {
-                        failed_files += 1;
-                        failed_file_list.append(str(jac_file));
-                    }
-                }
+            all_files = [
+                str(jac_file)
+                for jac_file in path_obj.glob('**/*.jac')
+                if jac_file.is_file()
+                and not _should_ignore(str(jac_file), ignore_list)
+            ];
+            total_to_check = len(all_files);
+            for (idx, jac_file_path) in enumerate(all_files, 1) {
+                process_file_result(jac_file_path, idx, total_to_check);
             }
         } else {
             console.error(f"'{path}' is not a .jac file or directory.");
             failed_files += 1;
             total_errors += 1;
-            failed_file_list.append(path);
         }
     }
-    # Print summary of failed files
-    if failed_file_list {
-        console.print("\nFAILED files:");
-        for failed_file in failed_file_list {
-            console.print(f"  {failed_file}");
+    # Print FAILURES section and summary
+    if failed_files > 0 {
+        if print_errs {
+            print_failures(failed_results, nowarn);
         }
+        print_failed_summary(failed_results);
     }
-    check_type = "Parsed" if parse_only else "Checked";
-    summary_msg = f"{check_type} {total_files} '.jac' files: {(
-        total_files - failed_files
-    )} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).";
-    if total_errors {
-        console.error(summary_msg);
-    } else {
-        console.success(summary_msg);
-    }
-    if (total_errors > 0 and not warnonly) {
-        return 1;
-    }
-    return 0;
+    # Print final summary line
+    elapsed = time() - start_time;
+    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    return 1 if total_errors > 0 else 0;
 }
 
 """Lint .jac files and report violations."""

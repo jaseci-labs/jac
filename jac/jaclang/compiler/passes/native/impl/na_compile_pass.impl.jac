@@ -39,6 +39,31 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             malloc_addr = _ct.cast(libc.malloc, _ct.c_void_p).value;
             llvm.add_symbol("GC_malloc", malloc_addr);
         }
+        # Load C shared libraries from import from "lib" { ... } declarations
+        import os;
+        clib_paths = getattr(module.gen, '_clib_paths', None);
+        if clib_paths {
+            for lib_path in clib_paths {
+                try {
+                    # Try as absolute/relative path first
+                    if os.path.exists(lib_path) {
+                        llvm.load_library_permanently(lib_path);
+                    } else {
+                        # Try system library lookup
+                        found = ctypes.util.find_library(lib_path);
+                        if found {
+                            llvm.load_library_permanently(found);
+                        } else {
+                            self.log_warning(f"C library not found: {lib_path}");
+                        }
+                    }
+                } except Exception as lib_err {
+                    self.log_warning(
+                        f"Failed to load C library '{lib_path}': {lib_err}"
+                    );
+                }
+            }
+        }
         mod = llvm.parse_assembly(llvm_ir_str);
         mod.verify();
         target = llvm.Target.from_default_triple();
