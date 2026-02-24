@@ -1,7 +1,6 @@
 """Create user modal component."""
 
 cl {
-    import from typing { Any, Callable }
     import from ....components.common.Modal { Modal, ModalFooter }
     import from ....components.common.Button { Button }
     import from ....components.common.Input { Input }
@@ -11,8 +10,8 @@ cl {
 
     def:pub CreateUserModal(
         isOpen: bool,
-        onClose: Callable[[], None],
-        onCreate: Callable[[str, str, str], Any]
+        onClose: any,
+        onCreate: any
     ) -> JsxElement {
         has newUsername: str = "",
             newPassword: str = "",
