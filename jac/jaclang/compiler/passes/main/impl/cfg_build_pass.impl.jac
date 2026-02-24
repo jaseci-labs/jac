@@ -395,6 +395,10 @@ impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     elif isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
         symbols.update(self._collect_narrowing_symbols(condition.value));
     }
+    # Pattern: x (truthiness check like `if val:`) - collect 'x'
+    elif isinstance(condition, uni.Name) {
+        symbols.add(condition.value);
+    }
     return symbols;
 }
 

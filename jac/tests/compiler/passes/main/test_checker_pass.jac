@@ -1567,3 +1567,28 @@ test "bare_dot_relative_import" {
         program.errors_had[0].pretty_print()
     );
 }
+
+"""Test type narrowing detects None attribute access in else branches."""
+test "type_narrowing_none_attribute_errors" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing_none.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2, f"Expected 2 errors, got {len(program.errors_had)}";
+
+    assert_error_pretty_found(
+        """
+        print(value.bit_length());  # <-- Error: None has no .bit_length()
+                    ^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        print(data.keys());  # <-- Error: None has no .keys()
+                   ^^^^
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
