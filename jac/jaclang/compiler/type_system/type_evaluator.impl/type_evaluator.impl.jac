@@ -114,11 +114,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         }
                         return value;
                     }
-                    # Member not found on class - report error
-                    self.add_diagnostic(
-                        expr.right,
-                        f'Type "{base_type}" has no attribute "{expr.right.value}"',
-                    );
+                    # TODO: Re-enable after fixing TypeVar resolution.
+                    # Disabled: gives false positives on generic types (e.g., list[T].append).
+                    # self.add_diagnostic(
+                    #     expr.right,
+                    #     f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                    # );
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -224,11 +225,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
-                    # Member not found on instance - report error
-                    self.add_diagnostic(
-                        expr.right,
-                        f'"{base_type}" has no attribute "{expr.right.value}"',
-                    );
+                    # TODO: Re-enable after fixing TypeVar resolution.
+                    # Disabled: gives false positives on generic types (e.g., list[T].append).
+                    # self.add_diagnostic(
+                    #     expr.right,
+                    #     f'"{base_type}" has no attribute "{expr.right.value}"',
+                    # );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
                     # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
