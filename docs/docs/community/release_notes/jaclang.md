@@ -6,7 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Fix: `jac format` Unicode Error on Windows**: Fixed `'charmap' codec can't encode character` error when formatting files with emojis or non-ASCII text on Windows.
 - **Remove Vendored pluggy and interegular**: Replaced the vendored `pluggy` library (~1,700 lines) with a lightweight custom plugin system (`jaclang/plugin.py`, ~200 lines) that provides the same hook spec/impl/dispatch API. Removed the unused vendored `interegular` library (~2,200 lines).
-- 2 Minor refactor
+- **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
+- **Fix: `py2jac` String escape sequences**: Fixed handling of escape sequences (`\x1b`, `\033`, `\u001b`, `\n`, `\t`) in string and f-string literals during conversion.
 
 ## jaclang 0.11.0 (Latest Release)
 
