@@ -1334,7 +1334,6 @@ impl TypeEvaluator.get_narrowed_type(
     if not isinstance(symbol_type, types.UnionType) {
         return None;
     }
-
     # Find the enclosing CodeBlockStmt (CFG node) for this Name node.
     stmt: uni.CodeBlockStmt | None = None;
     if isinstance(at_node, uni.CodeBlockStmt) {
@@ -1363,6 +1362,7 @@ impl TypeEvaluator._compute_narrowed_at(
     stmt_id = id(stmt);
     if stmt_id in visited {
         return None;  # Cycle (back-edge in loop) -- conservative
+
     }
     # Depth limit to prevent very deep recursion in large modules.
     if len(visited) > 64 {
@@ -1370,20 +1370,16 @@ impl TypeEvaluator._compute_narrowed_at(
         return None;
     }
     visited.add(stmt_id);
-
     # No predecessors means entry point - no narrowing available.
     if not stmt.bb_in {
         self._narrowing_cache[cache_key] = None;
         visited.discard(stmt_id);
         return None;
     }
-
     # Ignore back-edges from loop body to preserve pre-loop narrowing.
     is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));
-
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
-
     for pred in stmt.bb_in {
         if pred is stmt {
             has_unnarrowed_pred = True;
@@ -1459,7 +1455,6 @@ impl TypeEvaluator._compute_narrowed_at(
             has_unnarrowed_pred = True;
         }
     }
-
     # Merge incoming types.
     result: TypeBase | None = None;
     if len(incoming_types) == 0 {

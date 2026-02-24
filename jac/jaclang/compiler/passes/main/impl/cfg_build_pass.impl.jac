@@ -207,7 +207,6 @@ impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
         }
         assigned_syms = self._collect_assigned_symbols(nd);
         nd.affected_symbols.update(assigned_syms);
-
         bb_stmts = self.get_code_block_sequence(nd.parent);
         if (
             isinstance(nd, uni.CodeBlockStmt)
@@ -375,10 +374,12 @@ impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     symbols: set[str] = set();
     # Pattern: isinstance(x, T) - collect 'x'
     if isinstance(condition, uni.FuncCall) {
-        if (isinstance(condition.target, uni.Name)
+        if (
+            isinstance(condition.target, uni.Name)
             and condition.target.value == "isinstance"
             and len(condition.params) >= 1
-            and isinstance(condition.params[0], uni.Name)) {
+            and isinstance(condition.params[0], uni.Name)
+        ) {
             symbols.add(condition.params[0].value);
         }
     }

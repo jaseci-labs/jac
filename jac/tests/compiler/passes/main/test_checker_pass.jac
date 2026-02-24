@@ -1574,7 +1574,9 @@ test "type_narrowing_none_attribute_errors" {
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing_none.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 2, f"Expected 2 errors, got {len(program.errors_had)}";
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}";
 
     assert_error_pretty_found(
         """
