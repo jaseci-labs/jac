@@ -197,9 +197,10 @@ impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
 """Enter BasicBlockStmt nodes."""
 impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
     if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
-        # Pyright-style: collect affected symbols for this CFG node.
-        # For IfStmt/ElseIf, collect symbols from isinstance checks in condition.
-        # For assignments/loops, collect assigned symbols.
+        # Collect symbols that THIS node directly affects (Pyright-style optimization).
+        # Narrowing patterns: isinstance(x, T) → {'x'}, y is None → {'y'}, if z → {'z'}
+        # Assignment patterns: a = 1 → {'a'}, for b in list → {'b'}
+        # These enable skipping irrelevant branches during backward CFG walks.
         if isinstance(nd, (uni.IfStmt, uni.ElseIf)) {
             narrowing_syms = self._collect_narrowing_symbols(nd.condition);
             nd.affected_symbols.update(narrowing_syms);
@@ -309,10 +310,16 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
         } else {
             target.bb_in = [source];
         }
-        # PROPAGATE: target inherits source's affected_symbols.
-        # This ensures nested narrowing checks are visible to outer statements.
-        # Example: if x { if isinstance(y, int) { z = 1 } }
-        #   stmt(z=1).affected_symbols should include 'y' from parent isinstance check.
+        # Propagate affected_symbols from parent (source) to child (target) in CFG.
+        # Collection (enter_node) captures what each node DIRECTLY affects.
+        # Propagation accumulates symbols along CFG paths, so backward walks
+        # during type narrowing can skip branches where no relevant symbol appears.
+        # Example:
+        #   if y is not None {          ← collects: {'y'}
+        #       if isinstance(x, int) { ← collects: {'x'}, inherits: {'y'} → {'x', 'y'}
+        #           a = 1;              ← collects: {'a'}, inherits: {'x', 'y'} → {'a', 'x', 'y'}
+        #       }
+        #   }
         target.affected_symbols.update(source.affected_symbols);
     }
 }
