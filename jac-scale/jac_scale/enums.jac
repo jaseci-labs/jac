@@ -1,13 +1,12 @@
 """Common enums for jac-scale."""
-import from enum { StrEnum }
 
 """Supported SSO platforms."""
-enum Platforms ( StrEnum ) {
+enum Platforms {
     GOOGLE = 'google'
 }
 
 """SSO operations."""
-enum Operations ( StrEnum ) {
+enum Operations {
     LOGIN = 'login',
     REGISTER = 'register'
 }
