@@ -5,6 +5,9 @@ cl {
     import from ...components.common.Input { Input }
     import from ...components.common.Alert { InlineAlert }
     import from ...context.AuthContext { useAuth }
+
+    glob MIN_PASSWORD_LENGTH = 8;
+
     def:pub ResetPage() -> JsxElement {
         has resetCurrent: str = "";
         has resetNew: str = "";
@@ -21,8 +24,8 @@ cl {
                 resetError = "Passwords do not match";
                 return;
             }
-            if len(resetNew) < 8 {
-                resetError = "Password must be at least 8 characters";
+            if len(resetNew) < MIN_PASSWORD_LENGTH {
+                resetError = "Password must be at least " + str(MIN_PASSWORD_LENGTH) + " characters";
                 return;
             }
 

@@ -4,6 +4,8 @@ cl {
     import from react { createContext, useContext, useEffect }
     import from ..hooks.useStorage { getStorage, setStorage, removeStorage }
     import from ..services.api { baseUrl }
+    import from ..utils.api { getErrorMessage }
+
     glob:pub AuthContext = createContext(None);
 
     def:pub AuthProvider(children: any) -> JsxElement {
@@ -59,7 +61,7 @@ cl {
                         return {"ok": True};
                     }
                 }
-                return {"ok": False, "error": (data["error"] and data["error"]["message"]) or "Login failed"};
+                return {"ok": False, "error": getErrorMessage(data, "Login failed")};
             } except Exception as e {
                 return {"ok": False, "error": "Connection error: " + str(e)};
             }
@@ -85,7 +87,7 @@ cl {
                     view = "admin";
                     return {"ok": True};
                 }
-                return {"ok": False, "error": (data["error"] and data["error"]["message"]) or "Password reset failed"};
+                return {"ok": False, "error": getErrorMessage(data, "Password reset failed")};
             } except Exception as e {
                 return {"ok": False, "error": "Connection error: " + str(e)};
             }

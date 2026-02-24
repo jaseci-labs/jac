@@ -3,6 +3,8 @@
 cl {
     import from ....components.common.EmptyState { PlaceholderCard }
     import from ....components.common.Button { Button }
+    import from ....components.common.Input { Input, TextArea }
+    import from ....components.common.Card { Card, CardHeader, CardBody }
     def:pub PlaceholderPage(
         title: str,
         message: str = "Coming soon",
@@ -111,27 +113,27 @@ cl {
     def:pub ConfigPage() -> JsxElement {
         has tomlConfig: str = "";
 
-        return <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-                <h2 className="text-sm font-medium text-white">Configuration (jac.toml)</h2>
-                <div className="flex gap-2">
+        return <Card className="overflow-hidden">
+            <CardHeader
+                title="Configuration (jac.toml)"
+                action={<div className="flex gap-2">
                     <select className="px-2 py-1 bg-slate-950 border border-slate-700 rounded text-white text-xs">
                         <option value="default">Default Profile</option>
                         <option value="development">Development</option>
                         <option value="production">Production</option>
                     </select>
                     <Button>Save</Button>
-                </div>
-            </div>
-            <div className="p-4">
-                <textarea
-                    className="w-full h-96 px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm font-mono focus:outline-none focus:border-orange-500 transition"
-                    placeholder="# TOML configuration will load here..."
+                </div>}
+            />
+            <CardBody>
+                <TextArea
                     value={tomlConfig}
                     onChange={lambda e: any -> None { tomlConfig = e.target.value; }}
-                ></textarea>
-            </div>
-        </div>;
+                    placeholder="# TOML configuration will load here..."
+                    rows={20}
+                />
+            </CardBody>
+        </Card>;
     }
 
     def:pub EnvironmentPage() -> JsxElement {
@@ -159,27 +161,32 @@ cl {
     }
 
     def:pub EmailPage() -> JsxElement {
-        return <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800">
-                <h2 className="text-sm font-medium text-white">Email Configuration</h2>
-            </div>
-            <div className="p-4 space-y-4">
+        has smtpHost: str = "";
+        has smtpPort: str = "";
+
+        return <Card className="overflow-hidden">
+            <CardHeader title="Email Configuration" />
+            <CardBody className="p-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">SMTP Host</label>
-                        <input type="text" placeholder="smtp.example.com" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">SMTP Port</label>
-                        <input type="text" placeholder="587" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
+                    <Input
+                        label="SMTP Host"
+                        value={smtpHost}
+                        onChange={lambda e: any -> None { smtpHost = e.target.value; }}
+                        placeholder="smtp.example.com"
+                    />
+                    <Input
+                        label="SMTP Port"
+                        value={smtpPort}
+                        onChange={lambda e: any -> None { smtpPort = e.target.value; }}
+                        placeholder="587"
+                    />
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button variant="secondary">Test Connection</Button>
                     <Button>Save</Button>
                 </div>
-            </div>
-        </div>;
+            </CardBody>
+        </Card>;
     }
 
     def:pub NotificationsPage() -> JsxElement {
@@ -225,27 +232,37 @@ cl {
     }
 
     def:pub DatabasePage() -> JsxElement {
-        return <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800">
-                <h2 className="text-sm font-medium text-white">Database Configuration</h2>
-            </div>
-            <div className="p-4 space-y-4">
-                <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Database URL</label>
-                    <input type="text" placeholder="postgresql://user:pass@host:5432/db" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm font-mono" />
-                </div>
+        has dbUrl: str = "";
+        has poolSize: str = "";
+        has maxOverflow: str = "";
+
+        return <Card className="overflow-hidden">
+            <CardHeader title="Database Configuration" />
+            <CardBody className="p-4 space-y-4">
+                <Input
+                    label="Database URL"
+                    value={dbUrl}
+                    onChange={lambda e: any -> None { dbUrl = e.target.value; }}
+                    placeholder="postgresql://user:pass@host:5432/db"
+                />
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Pool Size</label>
-                        <input type="number" placeholder="10" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Max Overflow</label>
-                        <input type="number" placeholder="20" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
+                    <Input
+                        label="Pool Size"
+                        type="number"
+                        value={poolSize}
+                        onChange={lambda e: any -> None { poolSize = e.target.value; }}
+                        placeholder="10"
+                    />
+                    <Input
+                        label="Max Overflow"
+                        type="number"
+                        value={maxOverflow}
+                        onChange={lambda e: any -> None { maxOverflow = e.target.value; }}
+                        placeholder="20"
+                    />
                 </div>
-            </div>
-        </div>;
+            </CardBody>
+        </Card>;
     }
 
     def:pub DeploymentsPage() -> JsxElement {
@@ -257,27 +274,38 @@ cl {
     }
 
     def:pub ScalingPage() -> JsxElement {
-        return <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800">
-                <h2 className="text-sm font-medium text-white">Auto-Scaling</h2>
-            </div>
-            <div className="p-4 space-y-4">
+        has minReplicas: str = "";
+        has maxReplicas: str = "";
+        has targetCpu: str = "";
+
+        return <Card className="overflow-hidden">
+            <CardHeader title="Auto-Scaling" />
+            <CardBody className="p-4 space-y-4">
                 <div className="grid grid-cols-3 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Min Replicas</label>
-                        <input type="number" placeholder="1" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Max Replicas</label>
-                        <input type="number" placeholder="10" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Target CPU %</label>
-                        <input type="number" placeholder="70" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm" />
-                    </div>
+                    <Input
+                        label="Min Replicas"
+                        type="number"
+                        value={minReplicas}
+                        onChange={lambda e: any -> None { minReplicas = e.target.value; }}
+                        placeholder="1"
+                    />
+                    <Input
+                        label="Max Replicas"
+                        type="number"
+                        value={maxReplicas}
+                        onChange={lambda e: any -> None { maxReplicas = e.target.value; }}
+                        placeholder="10"
+                    />
+                    <Input
+                        label="Target CPU %"
+                        type="number"
+                        value={targetCpu}
+                        onChange={lambda e: any -> None { targetCpu = e.target.value; }}
+                        placeholder="70"
+                    />
                 </div>
-            </div>
-        </div>;
+            </CardBody>
+        </Card>;
     }
 
     def:pub PodsPage() -> JsxElement {

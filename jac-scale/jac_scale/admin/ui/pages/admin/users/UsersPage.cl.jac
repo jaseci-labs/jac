@@ -9,6 +9,7 @@ cl {
     import from ....context.AuthContext { useAuth }
     import from ....context.AlertContext { useAlert }
     import from ....services.userService { getUsers, createUser, updateUser, deleteUser, getSSOProviders }
+    import from ....utils.api { getErrorMessage }
     import from .CreateUserModal { CreateUserModal }
     import from .EditUserModal { EditUserModal }
     def:pub UsersPage() -> JsxElement {
@@ -48,7 +49,7 @@ cl {
                 alert["showAlert"]("User created", "success");
                 loadUsers();
             }
-            return {"ok": result["ok"], "error": (result["error"] and result["error"]["message"]) or "Failed to create user"};
+            return {"ok": result["ok"], "error": getErrorMessage(result, "Failed to create user")};
         }
 
         async def handleUpdate(username: str, role: str, resetRequired: bool) -> dict {
@@ -57,7 +58,7 @@ cl {
                 alert["showAlert"]("User updated", "success");
                 loadUsers();
             }
-            return {"ok": result["ok"], "error": (result["error"] and result["error"]["message"]) or "Failed to update user"};
+            return {"ok": result["ok"], "error": getErrorMessage(result, "Failed to update user")};
         }
 
         async def handleDelete(username: str) -> None {
@@ -69,7 +70,7 @@ cl {
                 alert["showAlert"]("User deleted", "success");
                 loadUsers();
             } else {
-                alert["showAlert"]((result["error"] and result["error"]["message"]) or "Failed to delete user", "error");
+                alert["showAlert"](getErrorMessage(result, "Failed to delete user"), "error");
             }
         }
 

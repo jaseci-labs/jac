@@ -5,6 +5,8 @@ cl {
     import from ....components.common.Button { Button }
     import from ....components.common.Select { Select }
     import from ....components.common.Alert { InlineAlert }
+    import from ....constants.users { ROLE_OPTIONS }
+
     def:pub EditUserModal(
         isOpen: bool,
         onClose: any,
@@ -16,12 +18,6 @@ cl {
         has editRole: str = initialRole;
         has editResetPassword: bool = initialResetRequired;
         has editError: str = "";
-
-        roleOptions = [
-            {"value": "user", "label": "User"},
-            {"value": "moderator", "label": "Moderator"},
-            {"value": "admin", "label": "Admin"}
-        ];
 
         async def handleSubmit(e: any) -> None {
             e.preventDefault();
@@ -46,7 +42,7 @@ cl {
                     label="Role"
                     value={editRole}
                     onChange={lambda e: any -> None { editRole = e.target.value; }}
-                    options={roleOptions}
+                    options={ROLE_OPTIONS}
                     className="mb-3"
                 />
                 <div className="mb-4">

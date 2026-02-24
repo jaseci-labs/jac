@@ -2,6 +2,8 @@
 
 cl {
     import from react { createContext, useContext }
+
+    glob ALERT_DISMISS_MS = 3000;
     glob:pub AlertContext = createContext(None);
 
     def:pub AlertProvider(children: any) -> JsxElement {
@@ -11,7 +13,7 @@ cl {
         def showAlert(msg: str, type: str = "success") -> None {
             message = msg;
             alertType = type;
-            setTimeout(lambda -> None { message = ""; }, 3000);
+            setTimeout(lambda -> None { message = ""; }, ALERT_DISMISS_MS);
         }
 
         value = {

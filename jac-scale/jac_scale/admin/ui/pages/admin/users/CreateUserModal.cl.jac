@@ -6,6 +6,8 @@ cl {
     import from ....components.common.Input { Input }
     import from ....components.common.Select { Select }
     import from ....components.common.Alert { InlineAlert }
+    import from ....constants.users { ROLE_OPTIONS }
+
     def:pub CreateUserModal(
         isOpen: bool,
         onClose: any,
@@ -15,12 +17,6 @@ cl {
         has newPassword: str = "";
         has newRole: str = "user";
         has createError: str = "";
-
-        roleOptions = [
-            {"value": "user", "label": "User"},
-            {"value": "moderator", "label": "Moderator"},
-            {"value": "admin", "label": "Admin"}
-        ];
 
         async def handleSubmit(e: any) -> None {
             e.preventDefault();
@@ -65,7 +61,7 @@ cl {
                     label="Role"
                     value={newRole}
                     onChange={lambda e: any -> None { newRole = e.target.value; }}
-                    options={roleOptions}
+                    options={ROLE_OPTIONS}
                     className="mb-4"
                 />
                 <ModalFooter>

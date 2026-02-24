@@ -20,6 +20,55 @@ cl {
         StorageProvidersPage, DatabasePage, DeploymentsPage, ScalingPage,
         PodsPage, ActivityPage, SecurityPage
     }
+
+    # Page route map: category -> subtab -> component
+    glob PAGE_ROUTES = {
+        "auth": {
+            "users": UsersPage,
+            "sso": SSOPage,
+            "sessions": SessionsPage,
+            "apikeys": ApiKeysPage
+        },
+        "data": {
+            "graph": GraphPage,
+            "storage": StoragePage,
+            "cache": CachePage
+        },
+        "ops": {
+            "walkers": WalkersPage,
+            "jobs": JobsPage,
+            "webhooks": WebhooksPage
+        },
+        "monitor": {
+            "metrics": MetricsPage,
+            "logs": LogsPage,
+            "health": HealthPage,
+            "alerts": AlertsConfigPage
+        },
+        "settings": {
+            "config": ConfigPage,
+            "environment": EnvironmentPage,
+            "secrets": SecretsPage,
+            "ratelimits": RateLimitsPage,
+            "cors": CorsPage
+        },
+        "integrations": {
+            "email": EmailPage,
+            "notifications": NotificationsPage,
+            "storage_providers": StorageProvidersPage,
+            "database": DatabasePage
+        },
+        "deploy": {
+            "deployments": DeploymentsPage,
+            "scaling": ScalingPage,
+            "pods": PodsPage
+        },
+        "audit": {
+            "activity": ActivityPage,
+            "security": SecurityPage
+        }
+    };
+
     def:pub DashboardLayout() -> JsxElement {
         has activeCategory: str = "auth";
         has activeSubTab: str = "users";
@@ -39,67 +88,14 @@ cl {
         }
 
         def renderContent() -> JsxElement {
-            # Auth category
-            if activeCategory == "auth" {
-                if activeSubTab == "users" { return <UsersPage />; }
-                if activeSubTab == "sso" { return <SSOPage />; }
-                if activeSubTab == "sessions" { return <SessionsPage />; }
-                if activeSubTab == "apikeys" { return <ApiKeysPage />; }
+            categoryRoutes = PAGE_ROUTES[activeCategory];
+            if categoryRoutes {
+                PageComponent = categoryRoutes[activeSubTab];
+                if PageComponent {
+                    return <PageComponent />;
+                }
             }
-
-            # Data category
-            if activeCategory == "data" {
-                if activeSubTab == "graph" { return <GraphPage />; }
-                if activeSubTab == "storage" { return <StoragePage />; }
-                if activeSubTab == "cache" { return <CachePage />; }
-            }
-
-            # Ops category
-            if activeCategory == "ops" {
-                if activeSubTab == "walkers" { return <WalkersPage />; }
-                if activeSubTab == "jobs" { return <JobsPage />; }
-                if activeSubTab == "webhooks" { return <WebhooksPage />; }
-            }
-
-            # Monitor category
-            if activeCategory == "monitor" {
-                if activeSubTab == "metrics" { return <MetricsPage />; }
-                if activeSubTab == "logs" { return <LogsPage />; }
-                if activeSubTab == "health" { return <HealthPage />; }
-                if activeSubTab == "alerts" { return <AlertsConfigPage />; }
-            }
-
-            # Settings category
-            if activeCategory == "settings" {
-                if activeSubTab == "config" { return <ConfigPage />; }
-                if activeSubTab == "environment" { return <EnvironmentPage />; }
-                if activeSubTab == "secrets" { return <SecretsPage />; }
-                if activeSubTab == "ratelimits" { return <RateLimitsPage />; }
-                if activeSubTab == "cors" { return <CorsPage />; }
-            }
-
-            # Integrations category
-            if activeCategory == "integrations" {
-                if activeSubTab == "email" { return <EmailPage />; }
-                if activeSubTab == "notifications" { return <NotificationsPage />; }
-                if activeSubTab == "storage_providers" { return <StorageProvidersPage />; }
-                if activeSubTab == "database" { return <DatabasePage />; }
-            }
-
-            # Deploy category
-            if activeCategory == "deploy" {
-                if activeSubTab == "deployments" { return <DeploymentsPage />; }
-                if activeSubTab == "scaling" { return <ScalingPage />; }
-                if activeSubTab == "pods" { return <PodsPage />; }
-            }
-
-            # Audit category
-            if activeCategory == "audit" {
-                if activeSubTab == "activity" { return <ActivityPage />; }
-                if activeSubTab == "security" { return <SecurityPage />; }
-            }
-
-            return <div>Unknown page</div>;
+            return <div className="text-slate-500">Page not found</div>;
         }
 
         return <div className="min-h-screen bg-slate-950">
