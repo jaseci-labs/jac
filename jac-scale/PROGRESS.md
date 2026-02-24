@@ -3,6 +3,7 @@
 ## Current Status: COMPLETE - All phases implemented and verified
 
 ### Phase 1: Foundation
+
 | Step | Status | Notes |
 |------|--------|-------|
 | 1. Add admin config section to jac.toml schema | ✅ Complete | Added `[plugins.scale.admin]` section with username, email, default_password, session_expiry_hours, require_password_reset |
@@ -11,6 +12,7 @@
 | 4. Add password reset flow endpoint | ✅ Complete | POST `/admin/reset-password` |
 
 ### Phase 2: RBAC
+
 | Step | Status | Notes |
 |------|--------|-------|
 | 5. Define role and permission models | ✅ Complete | UserRole enum: admin, moderator, user |
@@ -19,6 +21,7 @@
 | 8. Update JWT claims to include role | ✅ Complete | Role included in JWT payload |
 
 ### Phase 3: Admin Portal
+
 | Step | Status | Notes |
 |------|--------|-------|
 | 9. Create /admin route group | ✅ Complete | All endpoints under `/admin/*` |
@@ -27,6 +30,7 @@
 | 12. Admin graph visualizer | ✅ Complete | GET `/admin/graph?username=` |
 
 ### Phase 4: Frontend
+
 | Step | Status | Notes |
 |------|--------|-------|
 | 13. Admin UI | ✅ Complete | Full HTML/JS UI at `/admin` |
@@ -34,12 +38,14 @@
 ## Files Created/Modified
 
 ### New Files
+
 - `jac_scale/admin/__init__.py`
 - `jac_scale/admin/admin_portal.jac` - Admin portal interface
 - `jac_scale/admin/impl/__init__.py`
 - `jac_scale/admin/impl/admin_portal.impl.jac` - Admin portal implementation
 
 ### Modified Files
+
 - `jac_scale/config_loader.jac` - Added `get_admin_config()` method
 - `jac_scale/impl/config_loader.impl.jac` - Added admin config defaults and implementation
 - `jac_scale/user_manager.jac` - Added UserRole enum and admin management methods
@@ -76,6 +82,7 @@ require_password_reset = true
 ```
 
 Environment variable overrides:
+
 - `ADMIN_USERNAME`
 - `ADMIN_EMAIL`
 - `ADMIN_DEFAULT_PASSWORD`

@@ -17,7 +17,11 @@ def categorize(title: str) -> Category
     by llm();
 
 def:pub get_todos -> list {
-    return [{"title": t.title, "category": categorize(t.title)}
+    if not [root-->](?:Todo) {
+        root ++> Todo(title="Buy groceries");
+        root ++> Todo(title="Finish report");
+    }
+    return [{"title": t.title, "category": str(categorize(t.title)).split(".")[-1]}
             for t in [root-->](?:Todo)];
 }
 
@@ -30,6 +34,38 @@ cl def:pub app() -> JsxElement {
 ```
 
 This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend. No database setup. No prompt engineering. No separate frontend project. Just Jac.
+
+??? info "You can actaully run this example"
+    Save the code above as `main.jac`, then create a `jac.toml` in the same directory:
+
+    ```toml
+    [project]
+    name = "my-app"
+
+    [dependencies.npm]
+    jac-client-node = "1.0.4"
+
+    [dependencies.npm.dev]
+    "@jac-client/dev-deps" = "1.0.0"
+
+    [serve]
+    base_route_app = "app"
+
+    [plugins.client]
+
+    [plugins.byllm.model]
+    default_model = "claude-sonnet-4-20250514"
+    ```
+
+    Install Jac, set your API key, and run:
+
+    ```bash
+    pip install jaseci
+    export ANTHROPIC_API_KEY="your-key-here"
+    jac start main.jac
+    ```
+
+    Open [http://localhost:8000](http://localhost:8000) to see it running. Jac supports any [LiteLLM-compatible model](https://docs.litellm.ai/docs/providers) -- use `gemini/gemini-2.5-flash` for a free alternative or `ollama/llama3.2:1b` for local models.
 
 ---
 
