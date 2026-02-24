@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.1 (Unreleased)
 
+- **Admin Portal UI Components**: Added reusable UI components for the jac-scale admin portal including buttons, modals, inputs, tables, and layout components built with jac-client.
+
 ## jac-client 0.3.0 (Latest Release)
 
 - **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).

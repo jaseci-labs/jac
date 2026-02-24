@@ -152,6 +152,10 @@ jobs:
     - name: Run SSO tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.jac
+    
+    - name: Run admin API tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_admin_api.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
