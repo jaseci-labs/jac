@@ -192,7 +192,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
             if error_count > unfixable_count {
                 changed = formatted_code != original_code;
                 if changed {
-                    with open(str(path_obj), 'w') as f {
+                    with open(str(path_obj), 'w', encoding='utf-8') as f {
                         f.write(formatted_code);
                     }
                 }
@@ -201,7 +201,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                     impl_formatted = impl_mod.gen.jac;
                     impl_original = impl_mod.source.code;
                     if (impl_formatted != impl_original) {
-                        with open(impl_path, 'w') as f {
+                        with open(impl_path, 'w', encoding='utf-8') as f {
                             f.write(impl_formatted);
                         }
                     }
@@ -295,8 +295,12 @@ impl format(
         if to_screen {
             console.print(code);
         } elif not check {
-            with open(target_path, 'w') as f {
-                f.write(code);
+            try {
+                with open(target_path, 'w', encoding='utf-8') as f {
+                    f.write(code);
+                }
+            } except Exception as e {
+                console.error(f"Error writing formatted code to '{target_path}': {e}");
             }
         }
     }
@@ -503,7 +507,7 @@ impl grammar(lark: bool = False, output: str = "") -> int {
     }
     text = pass_.emit_lark() if lark else pass_.emit_ebnf();
     if output {
-        with open(output, "w") as f {
+        with open(output, "w", encoding="utf-8") as f {
             f.write(text);
             f.write("\n");
         }

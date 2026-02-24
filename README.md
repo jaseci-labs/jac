@@ -6,7 +6,7 @@
   </picture>
 
   <h1>Jaseci</h1>
-  <h3>One Language for AI-Native Full-Stack Development</h3>
+  <h3>Designed for Humans and AI to Build Together</h3>
 
   <p>
     <a href="https://pypi.org/project/jaclang/">
@@ -32,13 +32,11 @@
 
 # Jaseci Ecosystem
 
-Welcome to the Jaseci project. This repository houses the core libraries and tooling for building next-generation applications with the Jac programming language.
+Jac is a programming language designed for humans and AI to build together. It supersets Python and JavaScript with native compilation support, adding constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure.
 
-Jaseci serves as the implementation stack for the Jac programming language. As a superset of both Python and TypeScript/JavaScript, Jac provides seamless access to the entire PyPI and npm ecosystems, enabling developers to build complete applications, from backend logic to frontend interfaces, in a single unified language.
+This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
 
-The project brings together a set of components that work seamlessly together:
-
-- **[`jaclang`](jac/):** The Jac programming language, a drop‑in replacement for and superset of both Python and Typescript/Javascript. (`pip install jaclang`)
+- **[`jaclang`](jac/):** The Jac programming language -- supersets Python and JavaScript with native compilation support. (`pip install jaclang`)
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
 - **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
 - **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
@@ -51,19 +49,96 @@ All of these components are bundled together as the [**Jaseci**](jaseci-package/
 
 ## Core Concepts
 
-Jac is an innovative programming language that extends both Python and TypeScript/JavaScript while maintaining full interoperability with both ecosystems. It introduces cutting-edge programming models and abstractions specifically designed to hide complexity, embrace AI-forward development, and automate categories of common software systems that typically require manual implementation. Despite being relatively new, Jac has already proven its production-grade capabilities, currently powering several real-world applications across various use cases. Jaseci's power is rooted in five key principles.
+Jac imagines what should be abstracted away from the developer and automates it through the compiler and runtime. This philosophy is grounded in five key principles.
 
 - **AI-Native:** Treat AI models as a native type through [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965). Weave LLMs into your logic as effortlessly as calling a function, no prompt engineering required.
 
-- **Full-Stack in One Language:** Build complete applications, backend logic and frontend interfaces, in a single language. Write React-like components alongside your server code with seamless data flow between them.
+- **Full-Stack in One Language:** Build backend logic and frontend interfaces without switching languages. Write React-like components alongside your server code with seamless data flow between them.
 
-- **Python & JavaScript Superset:** Access the entire PyPI ecosystem (`numpy`, `pandas`, `torch`, etc.) and npm ecosystem (`react`, `vite`, `tailwind`, etc.) without friction. All valid Python and JavaScript code can be expressed in Jac code.
+- **Python & JavaScript Superset:** Supersets both Python and JavaScript with native compilation support. Access the entire PyPI ecosystem (`numpy`, `pandas`, `torch`, etc.) and npm ecosystem (`react`, `vite`, `tailwind`, etc.) without friction.
 
-- **Agentic Object Spatial Programming Model:** The next evolution beyond objects and types, is representing them in a graph. Model your domain as a first-class graph of objects and deploy agentic **walker** objects to travel through your object graph performing operations in-situ. Intuitively model AI state, the problem domain, and data.
+- **Graph-Native Domain Modeling:** Model complex domains as first-class graphs of objects and deploy agentic **walker** objects to traverse them, performing operations in-situ. No separate database setup or ORM required.
 
-- **Cloud-Native:** Deploy your application as a production-ready API server with a single `jac start` command. Scale automatically to Kubernetes with `jac start --scale`, zero code changes required.
+- **Cloud-Native:** Deploy to the cloud without writing infrastructure. A single `jac start` command gives you a production-ready API server. Add `--scale` for automatic Kubernetes deployment with Redis and MongoDB provisioning.
 
-- **Designed for Humans and AI Models to Use:** A language built to maximize readability, architectural clarity, and coding joy for human developers while enabling AI models to generate high-quality code at scale. Features like `has` declarations for clean attribute definitions and `impl` separation (interfaces separate from implementations) create a structure that both humans can easily reason about and models can reliably produce.
+- **Designed for Humans and AI:** A language built for human readability and AI code generation alike. The number of tokens to realize a full application is minimized by ~10x on average, and features like `has` declarations and `impl` separation (interfaces separate from implementations) create structure that both humans can reason about and models can reliably produce.
+
+---
+
+## A Complete Full-Stack AI App in One File
+
+```jac
+node Todo {
+    has title: str, done: bool = False;
+}
+
+enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
+
+def categorize(title: str) -> Category
+    by llm();
+
+def:pub get_todos -> list {
+    if not [root-->](?:Todo) {
+        root ++> Todo(title="Buy groceries");
+        root ++> Todo(title="Finish report");
+    }
+    return [{"title": t.title, "category": str(categorize(t.title)).split(".")[-1]}
+            for t in [root-->](?:Todo)];
+}
+
+cl def:pub app() -> JsxElement {
+    has items: list = [];
+    async can with entry { items = await get_todos(); }
+    return <div>{[<p key={i.title}>{i.title} ({i.category})</p>
+                  for i in items]}</div>;
+}
+```
+
+This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend -- without any database configuration, prompt engineering, or separate frontend project.
+
+<details>
+<summary><strong>Run this example</strong></summary>
+
+<br>
+
+Save the code above as `main.jac`, then create a `jac.toml` in the same directory:
+
+```toml
+[project]
+name = "my-app"
+
+[dependencies.npm]
+jac-client-node = "1.0.4"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+[plugins.byllm.model]
+default_model = "claude-sonnet-4-20250514"
+```
+
+Install Jac, set your API key, and run:
+
+```bash
+pip install jaseci
+export ANTHROPIC_API_KEY="your-key-here"
+jac start main.jac
+```
+
+Open [http://localhost:8000](http://localhost:8000) to see it running. Jac supports any [LiteLLM-compatible model](https://docs.litellm.ai/docs/providers) -- use `gemini/gemini-2.5-flash` for a free alternative or `ollama/llama3.2:1b` for local models.
+
+</details>
+
+---
+
+## Become a Jac Programmer
+
+The best way to learn Jac is by building something real. The [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) tutorial walks you through every core concept -- variables, functions, graphs, walkers, AI integration, authentication, and full-stack deployment -- in a single guided project.
 
 ---
 
@@ -81,22 +156,6 @@ pip install jaseci
 ```
 
 The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, and `jac-super` together for convenience. This is the fastest way to get started with building applications.
-
-</details>
-
-<details>
-<summary><strong>Install from Source (For Contributors)</strong></summary>
-
-<br>
-
-If you plan to contribute to Jaseci, install it in editable mode from a cloned repository:
-
-```bash
-git clone --recurse --depth 1 --single-branch https://github.com/jaseci-labs/jaseci
-cd jaseci
-```
-
-This will install all development dependencies, including testing and linting tools.
 
 </details>
 
