@@ -10,7 +10,7 @@ cl {
     import from ....constants.users { ROLE_OPTIONS }
 
     def:pub CreateUserModal(
-        isOpen: bool, onClose: Callable[[], None], onCreate: Callable[..., Any]
+        isOpen: bool, onClose: Callable[[], None], onCreate: Callable[[str, str, str], Any]
     ) -> JsxElement {
         has newUsername: str = "",
             newPassword: str = "",

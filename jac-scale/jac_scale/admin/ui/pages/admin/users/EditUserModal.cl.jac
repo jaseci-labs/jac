@@ -11,7 +11,7 @@ cl {
     def:pub EditUserModal(
         isOpen: bool,
         onClose: Callable[[], None],
-        onUpdate: Callable[..., Any],
+        onUpdate: Callable[[str, str, bool], Any],
         username: str,
         initialRole: str,
         initialResetRequired: bool
