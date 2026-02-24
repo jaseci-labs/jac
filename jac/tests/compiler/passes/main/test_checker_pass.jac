@@ -1568,8 +1568,8 @@ test "bare_dot_relative_import" {
     );
 }
 
-"""Test type narrowing detects None attribute access in else branches."""
-test "type_narrowing_none_attribute_errors" {
+"""Test type narrowing detects None assignment to non-None type in else branches."""
+test "type_narrowing_none_assignment_errors" {
     program = JacProgram();
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing_none.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1580,16 +1580,14 @@ test "type_narrowing_none_attribute_errors" {
 
     assert_error_pretty_found(
         """
-        print(value.bit_length());  # <-- Error: None has no .bit_length()
-                    ^^^^^^^^^^
+        y: int = value;  # <-- Error: None cannot be assigned to int
     """,
         program.errors_had[0].pretty_print()
     );
 
     assert_error_pretty_found(
         """
-        print(data.keys());  # <-- Error: None has no .keys()
-                   ^^^^
+        b: str = data;  # <-- Error: None cannot be assigned to str
     """,
         program.errors_had[1].pretty_print()
     );

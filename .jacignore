@@ -264,6 +264,7 @@ test_validate_md_files.jac
 test_webhook.jac
 top_contributors.jac
 top_voices.jac
+unitree.jac
 validate_docs_code.jac
 precompile_bytecode.jac
 cli.impl.jac

@@ -1,17 +1,17 @@
-"""Fixture: Type narrowing error - accessing None attributes in else branch."""
+"""Fixture: Type narrowing error - assigning None to non-None type in else branch."""
 
-def error_none_attr(value: int | None) {
+def error_none_assign(value: int | None) {
     if value is not None {
-        print(value);
+        x: int = value;  # OK: value is int here
     } else {
-        print(value.bit_length());  # <-- Error: None has no .bit_length()
+        y: int = value;  # <-- Error: None cannot be assigned to int
     }
 }
 
-def error_nested_none(data: dict | None) {
+def error_nested_none(data: str | None) {
     if data is not None {
-        print(data.keys());
+        a: str = data;  # OK: data is str here
     } else {
-        print(data.keys());  # <-- Error: None has no .keys()
+        b: str = data;  # <-- Error: None cannot be assigned to str
     }
 }
