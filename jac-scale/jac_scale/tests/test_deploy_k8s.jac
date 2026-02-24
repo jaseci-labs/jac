@@ -577,14 +577,29 @@ test "deploy all in one" {
     }
 
     # Verify PVC cleanup
-    pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace=namespace);
-    for pvc in pvcs.items {
-        assert not pvc.metadata.name.startswith(app_name) , (
-            f"PVC '{pvc.metadata.name}' should have been deleted"
-        );
+    try {
+        pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace=namespace);
+        for pvc in pvcs.items {
+            assert not pvc.metadata.name.startswith(app_name) , (
+                f"PVC '{pvc.metadata.name}' should have been deleted"
+            );
+        }
+    } except ApiException as e {
+        # Namespace already deleted - PVCs are gone too
+        assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    print("Cleanup verification complete - all resources properly deleted");
+    # Verify namespace was deleted (since it is not 'default')
+    try {
+        core_v1.read_namespace(name=namespace);
+        raise AssertionError("Namespace should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for namespace, got {e.status}";
+    }
+
+    print(
+        "Cleanup verification complete - all resources and namespace properly deleted"
+    );
 }
 
 """Test deployment early exit on failure."""

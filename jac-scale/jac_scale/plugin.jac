@@ -185,11 +185,24 @@ class JacCmd {
                 target_config = scale_config.get_kubernetes_config();  # Default for now
             }
 
+            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
+            namespace = os.getenv('K8s_NAMESPACE')
+            or target_config.get('namespace', 'default');
+
+            # Warn user and require confirmation before proceeding
+            console.print(
+                f"[bold red]WARNING:[/bold red] You are about to delete namespace '{namespace}' and all its associated resources."
+            );
+            confirmation = input("Are you sure you want to proceed? (y/n): ").strip().lower();
+            if confirmation != 'y' {
+                console.print("Destroy cancelled.");
+                return 1;
+            }
+
             # Create deployment target and destroy
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
-            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
             deployment_target.destroy(app_name);
 
             console.print(

@@ -483,6 +483,25 @@ impl create_tarball(source_dir: str, tar_path: str) -> None {
     }
 }
 
+"""Delete a namespace from the Kubernetes cluster if it exists and is not 'default'."""
+impl delete_namespace(namespace: str) -> None {
+    if (namespace == 'default') {
+        return;
+    }
+    try {
+        config.load_kube_config();
+        core_v1 = client.CoreV1Api();
+        core_v1.delete_namespace(name=namespace);
+        console.print(f"Namespace '{namespace}' deleted successfully.");
+    } except ApiException as e {
+        if (e.status == 404) {
+            console.print(f"Namespace '{namespace}' not found, skipping deletion.");
+        } else {
+            raise ;
+        }
+    }
+}
+
 """
     Ensure that a given namespace exists in the Kubernetes cluster.
     If it doesn't exist and is not 'default', it will be created.
