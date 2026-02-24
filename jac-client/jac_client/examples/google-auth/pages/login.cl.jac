@@ -1,7 +1,7 @@
-import from react { useContext }
-import from "@jac/runtime" { Navigate, useNavigate }
-import from '..lib.auth' { AuthContext }
-import from '..components.Button' { Button }
+cl import from react { useContext }
+cl import from "@jac/runtime" { Navigate, useNavigate }
+cl import from '../../lib.auth' { AuthContext }
+cl import from '../../components.Button' { Button }
 
 cl def:pub Login -> JsxElement {
     auth = useContext(AuthContext);

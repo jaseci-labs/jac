@@ -1,0 +1,32 @@
+"""Global alert/toast notification context."""
+
+cl import from react { createContext, useContext }
+
+cl {
+    glob:pub AlertContext = createContext(None);
+
+    def:pub AlertProvider(children: any) -> JsxElement {
+        has message: str = "";
+        has alertType: str = "success";
+
+        def showAlert(msg: str, type: str = "success") -> None {
+            message = msg;
+            alertType = type;
+            setTimeout(lambda -> None { message = ""; }, 3000);
+        }
+
+        value = {
+            "message": message,
+            "alertType": alertType,
+            "showAlert": showAlert
+        };
+
+        return <AlertContext.Provider value={value}>
+            {children}
+        </AlertContext.Provider>;
+    }
+
+    def:pub useAlert -> dict {
+        return useContext(AlertContext);
+    }
+}
