@@ -4,7 +4,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.1 (Unreleased)
 
-
 - **Perf: Type Narrowing Optimization**: Fixed exponential slowdown in `jac check` with many `if` statements (~1 min → ~2s). Member access now uses narrowed types and reports errors for invalid attribute access on `None`.
 - **Import Path Alias Resolution**: The module resolver now supports path aliases configured in `[plugins.client.paths]` in `jac.toml`. Aliases like `@components/Button` are resolved to their filesystem paths before standard module lookup, enabling cleaner imports in client-side Jac code.
 - **Native Codegen: C Library Import Syntax (`import from "lib" { def ...; }`)**: Added first-class parser and IR generation support for importing C shared libraries. Declarations inside the braces are parsed as extern function signatures (no body), producing LLVM `declare` statements that MCJIT resolves from the loaded `.so`/`.dylib`. Includes fixed-width C-compatible types (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `c_void`) and automatic type coercion (i64↔i32, f64↔f32) at call boundaries.
