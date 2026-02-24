@@ -97,6 +97,67 @@ class JacByllmPluginConfig {
                     "type": "string",
                     "default": "",
                     "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
+                },
+                "observability": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Structured observability/logging for LLM calls, tool execution, and ReAct iterations",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable structured event logging"
+                        },
+                        "console": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Console output handler configuration",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": True,
+                                    "description": "Enable console event output"
+                                },
+                                "level": {
+                                    "type": "string",
+                                    "default": "INFO",
+                                    "description": "Log level for console output"
+                                },
+                                "show_args": {
+                                    "type": "bool",
+                                    "default": True,
+                                    "description": "Show tool call arguments"
+                                },
+                                "show_results": {
+                                    "type": "bool",
+                                    "default": True,
+                                    "description": "Show tool call results"
+                                },
+                                "colorize": {
+                                    "type": "bool",
+                                    "default": True,
+                                    "description": "Enable ANSI color codes"
+                                }
+                            }
+                        },
+                        "file": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "JSONL file output handler configuration",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Enable file event output"
+                                },
+                                "path": {
+                                    "type": "string",
+                                    "default": "byllm_events.jsonl",
+                                    "description": "Output file path for JSONL events"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         };

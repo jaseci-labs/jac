@@ -23,8 +23,11 @@ impl Tool.__call__(*args: list, **kwargs: dict) -> object {
         # TODO: Should I json serialize or this is fine?
         return self.func(*args, **kwargs);
     } except Exception as e {
-        # For the LLM if the tool failed, it'll see the error message
-        logger.exception("Tool execution failed");  # To prevent sensitive info leakage(generic message)
+        import from byllm.observability { get_observer, EventType }
+        get_observer().emit_event(EventType.TOOL_CALL_ERROR,
+            tool_name=self.get_name(),
+            error_type=type(e).__name__, error_message=str(e)[:500]);
+        logger.exception("Tool execution failed");
         return "Tool error";
     }
 }

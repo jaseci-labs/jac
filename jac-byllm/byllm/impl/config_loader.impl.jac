@@ -26,7 +26,21 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         },
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
         'litellm': {'local_cost_map': True, 'drop_params': True},
-        'system_prompt': ''
+        'system_prompt': '',
+        'observability': {
+            'enabled': False,
+            'console': {
+                'enabled': True,
+                'level': 'INFO',
+                'show_args': True,
+                'show_results': True,
+                'colorize': True
+            },
+            'file': {
+                'enabled': False,
+                'path': 'byllm_events.jsonl'
+            }
+        }
     };
 }
 
@@ -88,6 +102,12 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
 impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
     config = self.load();
     return config.get('system_prompt', '');
+}
+
+"""Get observability configuration from jac.toml."""
+impl JacByllmConfig.get_observability_config(self: JacByllmConfig) -> dict[str, Any] {
+    # load() already deep-merges get_default_config() with user config
+    return self.load().get('observability', {});
 }
 
 """Reset the global config instance (useful for testing)."""

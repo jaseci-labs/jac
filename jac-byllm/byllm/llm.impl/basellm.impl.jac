@@ -13,21 +13,41 @@ Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
 impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
-    # If streaming without tools, stream immediately
-    if mt_run.stream and len(mt_run.tools) == 0 {
-        return self.dispatch_streaming(mt_run);
-    }
+    import from byllm.observability { get_observer, EventType }
+    observer = get_observer();
+    observer.start_trace();
+    invoke_start = time.monotonic();
+
     max_iters = (
         mt_run.call_params.get("max_react_iterations")
         or self.call_params.get("max_react_iterations")
         or _call_params_config.get("max_react_iterations")
         or 0
     );
+    tool_names = [t.get_name() for t in mt_run.tools if not t.is_finish_tool()];
+    observer.emit_event(EventType.INVOKE_START, self.model_name,
+        caller_name=getattr(mt_run.mtir.caller, "__name__", "?"),
+        has_tools=len(mt_run.tools) > 0, tool_names=tool_names,
+        is_streaming=mt_run.stream, max_react_iterations=int(max_iters));
+
+    # If streaming without tools, stream immediately.
+    # No INVOKE_END here — timing is meaningless before the generator runs.
+    # The consumer will see LLM_REQUEST/LLM_RESPONSE from dispatch_streaming.
+    if mt_run.stream and len(mt_run.tools) == 0 {
+        return self.dispatch_streaming(mt_run);
+    }
+
     iter_count = 0;
     # Invoke the LLM and handle tool calls (ReAct loop).
     while True {
         iter_count += 1;
+        iter_start = time.monotonic();
+        observer.emit_event(EventType.REACT_ITERATION_START, self.model_name, iteration=iter_count);
+
         if int(max_iters) > 0 and iter_count > int(max_iters) {
+            observer.emit_event(EventType.INVOKE_END, self.model_name,
+                total_iterations=iter_count - 1, duration_ms=(time.monotonic() - invoke_start) * 1000,
+                finish_reason="max_iterations", has_output=True);
             # If streaming, reuse the existing streaming final-answer path
             if mt_run.stream {
                 return self._stream_final_answer(mt_run);
@@ -49,23 +69,38 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         }
         resp = self.dispatch_no_streaming(mt_run);
         if resp.tool_calls {
+            observer.emit_event(EventType.REACT_ITERATION_END, self.model_name,
+                iteration=iter_count, duration_ms=(time.monotonic() - iter_start) * 1000,
+                num_tool_calls=len(resp.tool_calls),
+                has_finish_tool=any(tc.is_finish_call() for tc in resp.tool_calls));
             for tool_call in resp.tool_calls {
                 if tool_call.is_finish_call() {
-                    # If streaming is enabled, make a new streaming call
                     mt_run.add_message(tool_call());
-                    # to generate the final answer based on all context
+                    output = tool_call.get_output();
+                    observer.emit_event(EventType.FINISH_TOOL_CALLED, self.model_name,
+                        call_id=tool_call.call_id, output_type=type(output).__name__,
+                        output_preview=str(output)[:200]);
+                    observer.emit_event(EventType.INVOKE_END, self.model_name,
+                        total_iterations=iter_count, duration_ms=(time.monotonic() - invoke_start) * 1000,
+                        finish_reason="finish_tool", has_output=True);
                     if mt_run.stream {
                         return self._stream_final_answer(mt_run);
                     }
-                    return tool_call.get_output();
+                    return output;
                 } else {
                     mt_run.add_message(tool_call());
                 }
             }
         } else {
+            observer.emit_event(EventType.REACT_ITERATION_END, self.model_name,
+                iteration=iter_count, duration_ms=(time.monotonic() - iter_start) * 1000,
+                num_tool_calls=0, has_finish_tool=False);
             break;
         }
     }
+    observer.emit_event(EventType.INVOKE_END, self.model_name,
+        total_iterations=iter_count, duration_ms=(time.monotonic() - invoke_start) * 1000,
+        finish_reason="no_tool_calls", has_output=resp.output is not None);
     return resp.output;
 }
 
@@ -92,8 +127,20 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         "api_key": self.api_key or None,
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
-
     };
+
+    # Forward reasoning/thinking params to LiteLLM when present
+    # Anthropic extended thinking: thinking={"type": "enabled", "budget_tokens": N}
+    thinking = self.call_params.get("thinking") or mt_run.call_params.get("thinking");
+    if thinking {
+        params["thinking"] = thinking;
+    }
+    # OpenAI o-series / DeepSeek / others: reasoning_effort="low"|"medium"|"high"
+    reasoning_effort = self.call_params.get("reasoning_effort") or mt_run.call_params.get("reasoning_effort");
+    if reasoning_effort {
+        params["reasoning_effort"] = reasoning_effort;
+    }
+
     return params;
 }
 
@@ -152,23 +199,48 @@ Makes a synchronous API call and processes the response, including
 parsing any tool calls returned by the model.
 """
 impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
-    # Construct the parameters for the LLM call
+    import from byllm.observability { get_observer, EventType }
+    observer = get_observer();
+
     params = self.make_model_params(mt_run);
-    # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+
+    observer.emit_event(EventType.LLM_REQUEST, self.model_name,
+        num_messages=len(params.get("messages", [])),
+        has_tools=params.get("tools") is not None,
+        temperature=params.get("temperature", 0));
+
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    response = self.model_call_no_stream(params);
-    # Output format:
-    # https://docs.litellm.ai/docs/#response-format-openai-format
-    #
-    # TODO: Handle stream output (type ignoring stream response)
+    llm_start = time.monotonic();
+    try {
+        response = self.model_call_no_stream(params);
+    } except Exception as e {
+        observer.emit_event(EventType.LLM_ERROR, self.model_name,
+            error_type=type(e).__name__, error_message=str(e)[:500],
+            duration_ms=(time.monotonic() - llm_start) * 1000);
+        raise;
+    }
+    llm_duration_ms = (time.monotonic() - llm_start) * 1000;
+
     message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
     output_value = mt_run.parse_response(output_content);
+
+    # Extract reasoning/thinking content (model-specific)
+    reasoning = (message or {}).get("reasoning_content") or "";
+    if not reasoning {
+        # Anthropic extended thinking: extract from thinking_blocks
+        for block in ((message or {}).get("thinking_blocks") or []) {
+            if block.get("type") == "thinking" {
+                reasoning += block.get("thinking", "");
+            }
+        }
+    }
+
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
     for tool_call in tool_calls_list {
@@ -182,27 +254,54 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             ) ;
         }
     }
+
+    observer.emit_event(EventType.LLM_RESPONSE, self.model_name,
+        duration_ms=llm_duration_ms, output_length=len(output_content),
+        output_preview=output_content[:500],
+        reasoning_preview=reasoning[:500],
+        num_tool_calls=len(tool_calls_list),
+        tool_call_names=[tc.function.name for tc in tool_calls_list]);
+
     return CompletionResult(output=output_value, tool_calls=tool_calls,);
 }
 
 """Dispatch the LLM call with streaming.
 
 Makes a streaming API call and yields content chunks as they arrive.
+Events fire lazily as the generator is consumed — LLM_REQUEST on first
+iteration, LLM_RESPONSE after the last chunk.
 """
 impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {
-    # Construct the parameters for the LLM call
+    import from byllm.observability { get_observer, EventType }
+    observer = get_observer();
+
     params = self.make_model_params(mt_run);
-    # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
+
+    observer.emit_event(EventType.LLM_REQUEST, self.model_name,
+        num_messages=len(params.get("messages", [])),
+        has_tools=params.get("tools") is not None,
+        temperature=params.get("temperature", 0), streaming=True);
+
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    response = self.model_call_with_stream(params);
-    for chunk in response {
-        if chunk?.choices and chunk?.choices?[0]?.delta {
-            delta = chunk.choices[0].delta;
-            yield delta.content or "";
+    llm_start = time.monotonic();
+    try {
+        response = self.model_call_with_stream(params);
+        for chunk in response {
+            if chunk?.choices and chunk?.choices?[0]?.delta {
+                delta = chunk.choices[0].delta;
+                yield delta.content or "";
+            }
         }
+        observer.emit_event(EventType.LLM_RESPONSE, self.model_name,
+            duration_ms=(time.monotonic() - llm_start) * 1000, streaming=True);
+    } except Exception as e {
+        observer.emit_event(EventType.LLM_ERROR, self.model_name,
+            error_type=type(e).__name__, error_message=str(e)[:500],
+            duration_ms=(time.monotonic() - llm_start) * 1000);
+        raise;
     }
 }
 

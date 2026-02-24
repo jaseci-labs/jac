@@ -38,6 +38,9 @@ with entry {
     if _litellm_config['local_cost_map'] {
         os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
     }
+    # Initialize observability from jac.toml config
+    import from byllm.observability { configure_observer_from_config }
+    configure_observer_from_config();
 }
 
 glob DEFAULT_BASE_URL = "http://localhost:4000",

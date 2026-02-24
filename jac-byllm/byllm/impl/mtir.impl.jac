@@ -167,6 +167,15 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         finish_tool = Tool.make_finish_tool(return_type or str);
         tools.append(finish_tool);
     }
+
+    import from byllm.observability { get_observer, EventType }
+    get_observer().emit_event(EventType.MTIR_FACTORY,
+        caller_name=getattr(caller, "__name__", "?"),
+        num_args=len(args),
+        num_tools=len([t for t in tools if not t.is_finish_tool()]),
+        return_type_name=getattr(return_type, "__name__", "None") if return_type else "None",
+        is_streaming=is_streaming);
+
     return MTRuntime(
         messages=messages,
         tools=tools,

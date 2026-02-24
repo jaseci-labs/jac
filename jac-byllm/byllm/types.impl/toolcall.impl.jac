@@ -3,11 +3,28 @@
 #-------------------------------------------------------------------------------
 """Execute the tool call and return a result message."""
 impl ToolCall.__call__ -> ToolCallResultMsg {
+    import from byllm.observability { get_observer, EventType }
+    import time;
+    observer = get_observer();
+
+    observer.emit_event(EventType.TOOL_CALL_START,
+        call_id=self.call_id, tool_name=self.tool.get_name(),
+        args={k: str(v)[:500] for (k, v) in (self.args or {}).items()},
+        is_finish_tool=self.tool.is_finish_tool());
+
+    tool_start = time.monotonic();
     if self.args is not None {
         result = self.tool(**self.args);
     } else {
         raise ValueError("args is None, Expected a dictionary") ;
     }
+
+    result_str = str(result);
+    observer.emit_event(EventType.TOOL_CALL_END,
+        call_id=self.call_id, tool_name=self.tool.get_name(),
+        duration_ms=(time.monotonic() - tool_start) * 1000,
+        result_length=len(result_str), result_preview=result_str[:200]);
+
     return ToolCallResultMsg(
         content=str(result), tool_call_id=self.call_id, name=self.tool.get_name(),
     );
