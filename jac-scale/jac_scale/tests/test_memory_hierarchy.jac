@@ -162,16 +162,16 @@ test "read and write" {
         collection = db["anchors"];
 
         mongo_doc_initial_count = collection.count_documents({});
-        assert mongo_doc_initial_count == 2 , (
-            "Initial docs should be 2 (super root, guest_user)"
+        assert mongo_doc_initial_count == 3 , (
+            "Initial docs should be 3 (super root, guest_user, admin)"
         );
 
         # Register a user
         token = register_user(base_url, "reader", "pass123");
 
         mongo_doc_after_user_creation_count = collection.count_documents({});
-        assert mongo_doc_after_user_creation_count == 3 , (
-            "After user creation docs should be 3 (super root, guest_user, created user)"
+        assert mongo_doc_after_user_creation_count == 4 , (
+            "After user creation docs should be 4 (super root, guest_user, admin, created user)"
         );
 
         redis_size_before_task_creation = redis_client.dbsize();
