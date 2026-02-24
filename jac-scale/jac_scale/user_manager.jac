@@ -22,7 +22,7 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
 enum UserRole {
     ADMIN = 'admin',
     MODERATOR = 'moderator',
-    USER = 'user'
+    USER = 'user',
 }
 
 obj JacScaleUserManager(UserManager) {
@@ -63,6 +63,7 @@ obj JacScaleUserManager(UserManager) {
     def set_requires_password_reset(
         username: str, requires_reset: bool
     ) -> dict[str, str];
+
     def is_password_required(username: str) -> bool;
     def set_password_required(username: str, required: bool) -> dict[str, str];
     def bootstrap_admin_user -> dict[str, str];

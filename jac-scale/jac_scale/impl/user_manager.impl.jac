@@ -43,7 +43,7 @@ impl JacScaleUserManager.postinit -> None {
     # Load SSO config
     sso_config = get_scale_config().get_sso_config();
     for platform in Platforms {
-        key = platform.lower();
+        key = platform.value.lower();
         platform_config = sso_config.get(key, {});
 
         client_id = platform_config.get('client_id', '');

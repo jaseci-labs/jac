@@ -2,11 +2,11 @@
 
 """Supported SSO platforms."""
 enum Platforms {
-    GOOGLE = 'google'
+    GOOGLE = 'google',
 }
 
 """SSO operations."""
 enum Operations {
     LOGIN = 'login',
-    REGISTER = 'register'
+    REGISTER = 'register',
 }
