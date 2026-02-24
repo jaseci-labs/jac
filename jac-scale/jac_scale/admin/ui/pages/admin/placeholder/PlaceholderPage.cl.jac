@@ -5,15 +5,6 @@ cl {
     import from ....components.common.Button { Button }
     import from ....components.common.Input { Input, TextArea }
     import from ....components.common.Card { Card, CardHeader, CardBody }
-    def:pub PlaceholderPage(
-        title: str,
-        message: str = "Coming soon",
-        showAction: bool = False,
-        actionLabel: str = ""
-    ) -> JsxElement {
-        action = showAction and <Button>{actionLabel}</Button> or None;
-        return <PlaceholderCard title={title} message={message} action={action} />;
-    }
 
     def:pub SessionsPage() -> JsxElement {
         return <PlaceholderCard
