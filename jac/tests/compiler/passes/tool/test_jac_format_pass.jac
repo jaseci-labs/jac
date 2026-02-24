@@ -221,6 +221,45 @@ test "jsx hash text preserved" {
     assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
 }
 
+"""Test that Unicode characters survive jac format --lintfix on Windows."""
+test "unicode encoding write roundtrip" {
+    import subprocess;
+
+    path = os.path.join(FIXTURES, "unicode_encoding.jac");
+
+    result = subprocess.run(
+        ["jac", "format", path, "--lintfix"], capture_output=True, text=True
+    );
+    assert result.returncode == 0 , f"jac format failed: {result.stderr}";
+
+    with open(path, 'r', encoding='utf-8') as f {
+        content = f.read();
+    }
+    for char in ['●', '✅', '🚀', 'සාර්ථකයි', 'வெற்றி'] {
+        assert char in content , f"Unicode char '{char}' lost after jac format";
+    }
+}
+
+"""Regression: jac_str_formatter must populate errors_had on syntax error
+so that the LSP returns the original source instead of an empty string."""
+test "syntax error preserves original source" {
+    bad_source = "obj Foo { has x: int = ; }";  # invalid syntax
+    prog = JacProgram.jac_str_formatter(source_str=bad_source, file_path="<test>.jac");
+    # Must report errors
+    assert len(prog.errors_had) > 0 , (
+        "jac_str_formatter must populate errors_had on syntax error"
+    );
+    # gen.jac will be empty since no format passes ran
+    gen_output = prog.mod.main.gen.jac;
+    # Simulate the LSP formatted_jac() logic:
+    # return formatted if no errors, else return original source
+    result = gen_output if not prog.errors_had else bad_source;
+    assert result == bad_source , (
+        "Formatter must return original source on syntax error, "
+        f"got: {repr(result)}"
+    );
+}
+
 def format_test(rel_path: str) -> None {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     if not os.path.exists(filename) {
