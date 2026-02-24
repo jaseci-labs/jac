@@ -50,8 +50,12 @@ def _cleanup_db_files(fixtures_dir: Path) -> None {
     dirs_to_clean = [fixtures_dir, fixtures_dir.parent];
     for clean_dir in dirs_to_clean {
         for pattern in [
-            "*.db", "*.db-wal", "*.db-shm",
-            "anchor_store.db.dat", "anchor_store.db.bak", "anchor_store.db.dir"
+            "*.db",
+            "*.db-wal",
+            "*.db-shm",
+            "anchor_store.db.dat",
+            "anchor_store.db.bak",
+            "anchor_store.db.dir"
         ] {
             for db_file in glob.glob(str(clean_dir / pattern)) {
                 with contextlib.suppress(Exception) {
@@ -69,11 +73,17 @@ def _cleanup_db_files(fixtures_dir: Path) -> None {
 }
 
 """Start the jac-scale server in a subprocess."""
-def _start_server(fixtures_dir: Path, test_file: Path, port: int, base_url: str) -> subprocess.Popen {
+def _start_server(
+    fixtures_dir: Path, test_file: Path, port: int, base_url: str
+) -> subprocess.Popen {
     jac_executable = Path(sys.executable).parent / "jac";
     cmd = [str(jac_executable), "start", test_file.name, "--port", str(port)];
     server_process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(fixtures_dir)
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(fixtures_dir)
     );
 
     max_attempts = 50;
@@ -81,7 +91,9 @@ def _start_server(fixtures_dir: Path, test_file: Path, port: int, base_url: str)
     for _ in range(max_attempts) {
         if server_process.poll() is not None {
             (stdout, stderr) = server_process.communicate();
-            raise RuntimeError(f"Server terminated unexpectedly.\nSTDOUT: {stdout}\nSTDERR: {stderr}");
+            raise RuntimeError(
+                f"Server terminated unexpectedly.\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            ) ;
         }
         try {
             response = requests.get(f"{base_url}/docs", timeout=2);
@@ -102,7 +114,9 @@ def _start_server(fixtures_dir: Path, test_file: Path, port: int, base_url: str)
             server_process.kill();
             (stdout, stderr) = server_process.communicate();
         }
-        raise RuntimeError(f"Server failed to start.\nSTDOUT: {stdout}\nSTDERR: {stderr}");
+        raise RuntimeError(
+            f"Server failed to start.\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+        ) ;
     }
     return server_process;
 }
@@ -136,7 +150,10 @@ def _admin_login(base_url: str, new_password: str = "newadmin123") -> str {
         temp_token = data["token"];
         reset_resp = requests.post(
             f"{base_url}/admin/reset-password",
-            json={"current_password": DEFAULT_ADMIN_PASSWORD, "new_password": new_password},
+            json={
+                "current_password": DEFAULT_ADMIN_PASSWORD,
+                "new_password": new_password
+            },
             headers={"Authorization": f"Bearer {temp_token}"},
             timeout=10
         );
@@ -160,7 +177,7 @@ def _admin_login(base_url: str, new_password: str = "newadmin123") -> str {
         return data2["token"];
     }
 
-    raise RuntimeError(f"Admin login failed: {data}");
+    raise RuntimeError(f"Admin login failed: {data}") ;
 }
 
 # Shared state for admin tests
@@ -172,10 +189,12 @@ glob admin_fixtures_dir: Path = Path(__file__).parent / "fixtures",
 """Setup and start the server for admin tests."""
 def setup_admin_server -> subprocess.Popen {
     if not admin_test_file.exists() {
-        raise FileNotFoundError(f"Test fixture not found: {admin_test_file}");
+        raise FileNotFoundError(f"Test fixture not found: {admin_test_file}") ;
     }
     _cleanup_db_files(admin_fixtures_dir);
-    return _start_server(admin_fixtures_dir, admin_test_file, admin_port, admin_base_url);
+    return _start_server(
+        admin_fixtures_dir, admin_test_file, admin_port, admin_base_url
+    );
 }
 
 """Teardown the admin server."""
@@ -187,7 +206,6 @@ def teardown_admin_server(sp: subprocess.Popen | None) -> None {
 # ============================================================================
 # Admin Login Tests
 # ============================================================================
-
 test "admin login success" {
     sp = setup_admin_server();
     try {
@@ -230,26 +248,18 @@ test "admin login missing credentials" {
     try {
         # Missing password
         response = requests.post(
-            f"{admin_base_url}/admin/login",
-            json={"username": "admin"},
-            timeout=10
+            f"{admin_base_url}/admin/login", json={"username": "admin"}, timeout=10
         );
         assert response.status_code in [400, 422];
 
         # Missing username
         response = requests.post(
-            f"{admin_base_url}/admin/login",
-            json={"password": "admin"},
-            timeout=10
+            f"{admin_base_url}/admin/login", json={"password": "admin"}, timeout=10
         );
         assert response.status_code in [400, 422];
 
         # Empty body
-        response = requests.post(
-            f"{admin_base_url}/admin/login",
-            json={},
-            timeout=10
-        );
+        response = requests.post(f"{admin_base_url}/admin/login", json={}, timeout=10);
         assert response.status_code in [400, 422];
     } finally {
         teardown_admin_server(sp);
@@ -286,8 +296,10 @@ test "admin login non-admin user rejected" {
             timeout=10
         );
         # May require password reset, but should eventually be rejected as non-admin
-        assert response.status_code in [401, 403] or (
-            response.status_code == 200 and _extract_response_data(response.json()).get("requires_password_reset")
+        assert response.status_code in [401, 403]
+        or (
+            response.status_code == 200
+            and _extract_response_data(response.json()).get("requires_password_reset")
         );
     } finally {
         teardown_admin_server(sp);
@@ -297,7 +309,6 @@ test "admin login non-admin user rejected" {
 # ============================================================================
 # User Management Tests
 # ============================================================================
-
 test "admin list users" {
     sp = setup_admin_server();
     try {
@@ -323,10 +334,7 @@ test "admin list users" {
 test "admin list users requires auth" {
     sp = setup_admin_server();
     try {
-        response = requests.get(
-            f"{admin_base_url}/admin/users",
-            timeout=10
-        );
+        response = requests.get(f"{admin_base_url}/admin/users", timeout=10);
         assert response.status_code == 403;
     } finally {
         teardown_admin_server(sp);
@@ -546,7 +554,6 @@ test "admin get user not found" {
 # ============================================================================
 # Password Reset Tests
 # ============================================================================
-
 test "admin reset password" {
     sp = setup_admin_server();
     try {
@@ -624,7 +631,6 @@ test "admin reset password requires auth" {
 # ============================================================================
 # SSO Provider Tests
 # ============================================================================
-
 test "admin list sso providers" {
     sp = setup_admin_server();
     try {
@@ -649,10 +655,7 @@ test "admin list sso providers" {
 test "admin list sso providers requires auth" {
     sp = setup_admin_server();
     try {
-        response = requests.get(
-            f"{admin_base_url}/admin/sso/providers",
-            timeout=10
-        );
+        response = requests.get(f"{admin_base_url}/admin/sso/providers", timeout=10);
         assert response.status_code == 403;
     } finally {
         teardown_admin_server(sp);
@@ -662,7 +665,6 @@ test "admin list sso providers requires auth" {
 # ============================================================================
 # Configuration Tests
 # ============================================================================
-
 test "admin get config" {
     sp = setup_admin_server();
     try {
@@ -687,10 +689,7 @@ test "admin get config" {
 test "admin get config requires auth" {
     sp = setup_admin_server();
     try {
-        response = requests.get(
-            f"{admin_base_url}/admin/config",
-            timeout=10
-        );
+        response = requests.get(f"{admin_base_url}/admin/config", timeout=10);
         assert response.status_code == 403;
     } finally {
         teardown_admin_server(sp);
@@ -700,14 +699,10 @@ test "admin get config requires auth" {
 # ============================================================================
 # Admin Graph Tests
 # ============================================================================
-
 test "admin graph requires auth" {
     sp = setup_admin_server();
     try {
-        response = requests.get(
-            f"{admin_base_url}/admin/graph",
-            timeout=10
-        );
+        response = requests.get(f"{admin_base_url}/admin/graph", timeout=10);
         # Should require authentication (401/403) or validation error (422 for missing params)
         assert response.status_code in [401, 403, 422];
     } finally {
@@ -737,14 +732,11 @@ test "admin graph data" {
 # ============================================================================
 # Admin UI Tests
 # ============================================================================
-
 test "admin page redirect" {
     sp = setup_admin_server();
     try {
         response = requests.get(
-            f"{admin_base_url}/admin",
-            timeout=10,
-            allow_redirects=False
+            f"{admin_base_url}/admin", timeout=10, allow_redirects=False
         );
         assert response.status_code == 302;
         assert response.headers.get("location") == "/admin/";
@@ -757,8 +749,7 @@ test "admin index page" {
     sp = setup_admin_server();
     try {
         response = requests.get(
-            f"{admin_base_url}/admin/",
-            timeout=60  # Build may take time
+            f"{admin_base_url}/admin/", timeout=60  # Build may take time
         );
         # Should return HTML (200) or build error (503)
         assert response.status_code in [200, 503];
@@ -773,7 +764,6 @@ test "admin index page" {
 # ============================================================================
 # Integration Tests
 # ============================================================================
-
 test "admin full user lifecycle" {
     sp = setup_admin_server();
     try {

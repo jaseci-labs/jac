@@ -15,9 +15,9 @@ cl {
         initialRole: str,
         initialResetRequired: bool
     ) -> JsxElement {
-        has editRole: str = initialRole;
-        has editResetPassword: bool = initialResetRequired;
-        has editError: str = "";
+        has editRole: str = initialRole,
+            editResetPassword: bool = initialResetRequired,
+            editError: str = "";
 
         async def handleSubmit(e: any) -> None {
             e.preventDefault();
@@ -30,37 +30,44 @@ cl {
             }
         }
 
-        def handleClose() -> None {
+        def handleClose -> None {
             editError = "";
             onClose();
         }
 
-        return <Modal isOpen={isOpen} onClose={handleClose} title={"Edit " + username}>
-            <form onSubmit={handleSubmit}>
-                <InlineAlert message={editError} type="error" />
-                <Select
-                    label="Role"
-                    value={editRole}
-                    onChange={lambda e: any -> None { editRole = e.target.value; }}
-                    options={ROLE_OPTIONS}
-                    className="mb-3"
-                />
-                <div className="mb-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={editResetPassword}
-                            onChange={lambda e: any -> None { editResetPassword = e.target.checked; }}
-                            className="w-4 h-4 rounded border-slate-600 bg-slate-950 text-orange-500 focus:ring-orange-500 focus:ring-offset-0"
-                        />
-                        <span className="text-xs text-slate-400">Require password reset</span>
-                    </label>
-                </div>
-                <ModalFooter>
-                    <Button variant="ghost" onClick={handleClose}>Cancel</Button>
-                    <Button type="submit">Save</Button>
-                </ModalFooter>
-            </form>
-        </Modal>;
+        return
+            <Modal isOpen={isOpen} onClose={handleClose} title={"Edit " + username}>
+                <form onSubmit={handleSubmit}>
+                    <InlineAlert message={editError} type="error"/>
+                    <Select
+                        label="Role"
+                        value={editRole}
+                        onChange={lambda e: any  -> None { editRole = e.target.value;}}
+                        options={ROLE_OPTIONS}
+                        className="mb-3"
+                    />
+                    <div className="mb-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={editResetPassword}
+                                onChange={lambda e: any  -> None { editResetPassword = e.target.checked;}}
+                                className="w-4 h-4 rounded border-slate-600 bg-slate-950 text-orange-500 focus:ring-orange-500 focus:ring-offset-0"
+                            />
+                            <span className="text-xs text-slate-400">
+                                Require password reset
+                            </span>
+                        </label>
+                    </div>
+                    <ModalFooter>
+                        <Button variant="ghost" onClick={handleClose}>
+                            Cancel
+                        </Button>
+                        <Button type="submit">
+                            Save
+                        </Button>
+                    </ModalFooter>
+                </form>
+            </Modal>;
     }
 }

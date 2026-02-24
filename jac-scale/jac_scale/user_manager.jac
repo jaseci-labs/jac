@@ -56,13 +56,14 @@ obj JacScaleUserManager(UserManager) {
     def get_user_by_sso(platform: str, external_id: str) -> (dict[str, str] | None);
     # Override validate_token to use JWT
     def validate_token(token: str) -> (str | None);
-
     # User role and admin management
     def get_user_role(username: str) -> (str | None);
     def set_user_role(username: str, role: str) -> dict[str, str];
     def is_admin(username: str) -> bool;
     def requires_password_reset(username: str) -> bool;
-    def set_requires_password_reset(username: str, requires_reset: bool) -> dict[str, str];
+    def set_requires_password_reset(
+        username: str, requires_reset: bool
+    ) -> dict[str, str];
     def is_password_required(username: str) -> bool;
     def set_password_required(username: str, required: bool) -> dict[str, str];
     def bootstrap_admin_user -> dict[str, str];

@@ -8,11 +8,11 @@ cl {
 
     glob MIN_PASSWORD_LENGTH = 8;
 
-    def:pub ResetPage() -> JsxElement {
-        has resetCurrent: str = "";
-        has resetNew: str = "";
-        has resetConfirm: str = "";
-        has resetError: str = "";
+    def:pub ResetPage -> JsxElement {
+        has resetCurrent: str = "",
+            resetNew: str = "",
+            resetConfirm: str = "",
+            resetError: str = "";
 
         auth = useAuth();
 
@@ -35,41 +35,54 @@ cl {
             }
         }
 
-        return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-            <div className="w-full max-w-sm">
-                <div className="text-center mb-8">
-                    <h1 className="text-xl font-semibold text-white tracking-tight">Reset Password</h1>
-                    <p className="text-slate-500 text-sm mt-1">Create a new password to continue</p>
+        return
+            <div
+                className="min-h-screen bg-slate-950 flex items-center justify-center p-4"
+            >
+                <div className="w-full max-w-sm">
+                    <div className="text-center mb-8">
+                        <h1
+                            className="text-xl font-semibold text-white tracking-tight"
+                        >
+                            Reset Password
+                        </h1>
+                        <p className="text-slate-500 text-sm mt-1">
+                            Create a new password to continue
+                        </p>
+                    </div>
+                    <div
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-6"
+                    >
+                        <InlineAlert message={resetError} type="error"/>
+                        <form onSubmit={handleResetPassword}>
+                            <Input
+                                label="Current Password"
+                                type="password"
+                                value={resetCurrent}
+                                onChange={lambda e: any  -> None { resetCurrent = e.target.value;}}
+                                className="mb-4"
+                            />
+                            <Input
+                                label="New Password"
+                                type="password"
+                                value={resetNew}
+                                onChange={lambda e: any  -> None { resetNew = e.target.value;}}
+                                placeholder="Min 8 characters"
+                                className="mb-4"
+                            />
+                            <Input
+                                label="Confirm Password"
+                                type="password"
+                                value={resetConfirm}
+                                onChange={lambda e: any  -> None { resetConfirm = e.target.value;}}
+                                className="mb-5"
+                            />
+                            <Button type="submit" className="w-full">
+                                Update Password
+                            </Button>
+                        </form>
+                    </div>
                 </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-                    <InlineAlert message={resetError} type="error" />
-                    <form onSubmit={handleResetPassword}>
-                        <Input
-                            label="Current Password"
-                            type="password"
-                            value={resetCurrent}
-                            onChange={lambda e: any -> None { resetCurrent = e.target.value; }}
-                            className="mb-4"
-                        />
-                        <Input
-                            label="New Password"
-                            type="password"
-                            value={resetNew}
-                            onChange={lambda e: any -> None { resetNew = e.target.value; }}
-                            placeholder="Min 8 characters"
-                            className="mb-4"
-                        />
-                        <Input
-                            label="Confirm Password"
-                            type="password"
-                            value={resetConfirm}
-                            onChange={lambda e: any -> None { resetConfirm = e.target.value; }}
-                            className="mb-5"
-                        />
-                        <Button type="submit" className="w-full">Update Password</Button>
-                    </form>
-                </div>
-            </div>
-        </div>;
+            </div>;
     }
 }

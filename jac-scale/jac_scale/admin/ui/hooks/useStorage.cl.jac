@@ -5,7 +5,7 @@ cl {
         storage = globalThis.localStorage;
         if storage {
             val = storage.getItem(key);
-            return val if val else "";
+            return val or "";
         }
         return "";
     }

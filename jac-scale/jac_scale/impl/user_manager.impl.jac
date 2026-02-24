@@ -19,27 +19,27 @@ impl JacScaleUserManager.postinit -> None {
     self._conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_sso_accounts_user_id ON sso_accounts(user_id)"
     );
-
     # Add role, requires_password_reset, and is_password_required columns to users table
     # SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so check column existence first
     cursor = self._conn.execute("PRAGMA table_info(users)");
     existing_columns = {row[1] for row in cursor.fetchall()};
-
     if 'role' not in existing_columns {
         self._conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     }
     if 'requires_password_reset' not in existing_columns {
-        self._conn.execute("ALTER TABLE users ADD COLUMN requires_password_reset INTEGER DEFAULT 0");
+        self._conn.execute(
+            "ALTER TABLE users ADD COLUMN requires_password_reset INTEGER DEFAULT 0"
+        );
     }
     if 'is_password_required' not in existing_columns {
-        self._conn.execute("ALTER TABLE users ADD COLUMN is_password_required INTEGER DEFAULT 1");
+        self._conn.execute(
+            "ALTER TABLE users ADD COLUMN is_password_required INTEGER DEFAULT 1"
+        );
     }
     if 'user_id' not in existing_columns {
         self._conn.execute("ALTER TABLE users ADD COLUMN user_id TEXT");
     }
-
     self._conn.commit();
-
     # Load SSO config
     sso_config = get_scale_config().get_sso_config();
     for platform in Platforms {
@@ -60,7 +60,9 @@ impl JacScaleUserManager.postinit -> None {
     }
 }
 
-impl JacScaleUserManager.create_jwt_token(username: str, include_role: bool = True) -> str {
+impl JacScaleUserManager.create_jwt_token(
+    username: str, include_role: bool = True
+) -> str {
     now = datetime.now(UTC);
     payload: dict[(str, Any)] = {
         'username': username,
@@ -392,13 +394,11 @@ impl JacScaleUserManager.get_user_by_sso(
 # ============================================================================
 # User Role and Admin Management Methods
 # ============================================================================
-
 """Get user's role."""
 impl JacScaleUserManager.get_user_role(username: str) -> (str | None) {
     self._ensure_connection();
     cursor = self._conn.execute(
-        "SELECT role FROM users WHERE username = ?",
-        (username,)
+        "SELECT role FROM users WHERE username = ?", (username, )
     );
     row = cursor.fetchone();
     if not row {
@@ -417,8 +417,7 @@ impl JacScaleUserManager.set_user_role(username: str, role: str) -> dict[str, st
     }
     self._ensure_connection();
     cursor = self._conn.execute(
-        "UPDATE users SET role = ? WHERE username = ?",
-        (role, username)
+        "UPDATE users SET role = ? WHERE username = ?", (role, username)
     );
     self._conn.commit();
     if cursor.rowcount == 0 {
@@ -437,8 +436,7 @@ impl JacScaleUserManager.is_admin(username: str) -> bool {
 impl JacScaleUserManager.requires_password_reset(username: str) -> bool {
     self._ensure_connection();
     cursor = self._conn.execute(
-        "SELECT requires_password_reset FROM users WHERE username = ?",
-        (username,)
+        "SELECT requires_password_reset FROM users WHERE username = ?", (username, )
     );
     row = cursor.fetchone();
     if not row {
@@ -467,8 +465,7 @@ impl JacScaleUserManager.set_requires_password_reset(
 impl JacScaleUserManager.is_password_required(username: str) -> bool {
     self._ensure_connection();
     cursor = self._conn.execute(
-        "SELECT is_password_required FROM users WHERE username = ?",
-        (username,)
+        "SELECT is_password_required FROM users WHERE username = ?", (username, )
     );
     row = cursor.fetchone();
     if not row {
@@ -498,16 +495,13 @@ impl JacScaleUserManager.bootstrap_admin_user -> dict[str, str] {
     import logging;
     logger = logging.getLogger(__name__);
     admin_config = get_scale_config().get_admin_config();
-
     if not admin_config.get('enabled', True) {
         return {'message': 'Admin portal is disabled'};
     }
-
     admin_username = admin_config.get('username', 'admin');
     admin_email = admin_config.get('email', 'admin@localhost');
     default_password = admin_config.get('default_password', 'changeme');
     require_reset = admin_config.get('require_password_reset', True);
-
     # Check if admin already exists
     existing_admin = self.get_user(admin_username);
     if existing_admin {
@@ -524,13 +518,11 @@ impl JacScaleUserManager.bootstrap_admin_user -> dict[str, str] {
         }
         return {'message': 'Admin user already exists', 'username': admin_username};
     }
-
     # Create admin user
     result = self.create_user(admin_username, default_password);
     if 'error' in result {
         return result;
     }
-
     # Set admin role and user_id
     self._ensure_connection();
     self._conn.execute(
@@ -544,12 +536,10 @@ impl JacScaleUserManager.bootstrap_admin_user -> dict[str, str] {
         (self.ADMIN_USER_ID, 1 if require_reset else 0, admin_username)
     );
     self._conn.commit();
-
     logger.warning(
         f"Admin user '{admin_username}' created with default password. "
         "Please change the password immediately!"
     );
-
     return {
         'message': 'Admin user created successfully',
         'username': admin_username,
@@ -575,14 +565,16 @@ impl JacScaleUserManager.list_all_users(
     );
     users = [];
     for row in cursor.fetchall() {
-        users.append({
-            'username': row[0],
-            'root_id': row[1],
-            'role': row[2] or 'user',
-            'requires_password_reset': bool(row[3]),
-            'is_password_required': bool(row[4]) if row[4] is not None else True,
-            'user_id': row[5]
-        });
+        users.append(
+            {
+                'username': row[0],
+                'root_id': row[1],
+                'role': row[2] or 'user',
+                'requires_password_reset': bool(row[3]),
+                'is_password_required': bool(row[4]) if row[4] is not None else True,
+                'user_id': row[5]
+            }
+        );
     }
     return users;
 }
@@ -592,19 +584,14 @@ impl JacScaleUserManager.delete_user(username: str) -> dict[str, str] {
     # Prevent deleting admin user with all-zeros UUID
     self._ensure_connection();
     cursor = self._conn.execute(
-        "SELECT user_id FROM users WHERE username = ?",
-        (username,)
+        "SELECT user_id FROM users WHERE username = ?", (username, )
     );
     row = cursor.fetchone();
     if row and row[0] == self.ADMIN_USER_ID {
         return {'error': 'Cannot delete the primary admin user'};
     }
-
     # Delete the user
-    cursor = self._conn.execute(
-        "DELETE FROM users WHERE username = ?",
-        (username,)
-    );
+    cursor = self._conn.execute("DELETE FROM users WHERE username = ?", (username, ));
     self._conn.commit();
     if cursor.rowcount == 0 {
         return {'error': 'User not found'};
@@ -621,19 +608,16 @@ impl JacScaleUserManager.create_user_as_admin(
 ) -> dict[str, Any] {
     import from jac_scale.user_manager { UserRole }
     import uuid;
-
     # Validate role
     valid_roles = [r.value for r in UserRole];
     if role not in valid_roles {
         return {'error': f"Invalid role. Must be one of: {', '.join(valid_roles)}"};
     }
-
     # Create the base user
     result = self.create_user(username, password);
     if 'error' in result {
         return result;
     }
-
     # Update with admin-specific fields
     user_id = str(uuid.uuid4());
     self._ensure_connection();
@@ -648,7 +632,6 @@ impl JacScaleUserManager.create_user_as_admin(
         (role, user_id, 1 if requires_password_reset else 0, username)
     );
     self._conn.commit();
-
     result['role'] = role;
     result['user_id'] = user_id;
     result['requires_password_reset'] = str(requires_password_reset);

@@ -9,17 +9,18 @@ cl {
     glob:pub AuthContext = createContext(None);
 
     def:pub AuthProvider(children: any) -> JsxElement {
-        has authToken: str = "";
-        has currentUsername: str = "";
-        has tempToken: str = "";
-        has isLoading: bool = True;
-        has view: str = "login";
+        has authToken: str = "",
+            currentUsername: str = "",
+            tempToken: str = "",
+            isLoading: bool = True,
+            view: str = "login";
 
         async def validateAndRestoreSession(token: str, username: str) -> None {
             try {
-                resp = await fetch(baseUrl + "/admin/users", {
-                    "headers": {"Authorization": "Bearer " + token}
-                });
+                resp = await fetch(
+                    baseUrl + "/admin/users",
+                    {"headers": {"Authorization": "Bearer " + token}}
+                );
                 data = await resp.json();
                 if data["ok"] {
                     authToken = token;
@@ -39,11 +40,16 @@ cl {
 
         async def login(username: str, password: str) -> dict {
             try {
-                resp = await fetch(baseUrl + "/admin/login", {
-                    "method": "POST",
-                    "headers": {"Content-Type": "application/json"},
-                    "body": JSON.stringify({"username": username, "password": password})
-                });
+                resp = await fetch(
+                    baseUrl + "/admin/login",
+                    {
+                        "method": "POST",
+                        "headers": {"Content-Type": "application/json"},
+                        "body": JSON.stringify(
+                            {"username": username, "password": password}
+                        )
+                    }
+                );
                 data = await resp.json();
                 if data["ok"] and data["data"] {
                     if data["data"]["requires_password_reset"] {
@@ -69,14 +75,19 @@ cl {
 
         async def resetPassword(currentPwd: str, newPwd: str) -> dict {
             try {
-                resp = await fetch(baseUrl + "/admin/reset-password", {
-                    "method": "POST",
-                    "headers": {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + tempToken
-                    },
-                    "body": JSON.stringify({"current_password": currentPwd, "new_password": newPwd})
-                });
+                resp = await fetch(
+                    baseUrl + "/admin/reset-password",
+                    {
+                        "method": "POST",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer " + tempToken
+                        },
+                        "body": JSON.stringify(
+                            {"current_password": currentPwd, "new_password": newPwd}
+                        )
+                    }
+                );
                 data = await resp.json();
                 if data["ok"] and data["data"] {
                     token = data["data"]["token"];
@@ -87,13 +98,16 @@ cl {
                     view = "admin";
                     return {"ok": True};
                 }
-                return {"ok": False, "error": getErrorMessage(data, "Password reset failed")};
+                return {
+                    "ok": False,
+                    "error": getErrorMessage(data, "Password reset failed")
+                };
             } except Exception as e {
                 return {"ok": False, "error": "Connection error: " + str(e)};
             }
         }
 
-        def logout() -> None {
+        def logout -> None {
             authToken = "";
             currentUsername = "";
             removeStorage("admin_token");
@@ -101,15 +115,16 @@ cl {
             view = "login";
         }
 
-        useEffect(lambda -> None {
-            stored_token = getStorage("admin_token");
-            stored_user = getStorage("admin_username");
-            if stored_token and stored_user {
+        useEffect(
+            lambda -> None { stored_token = getStorage("admin_token");stored_user = getStorage(
+                "admin_username"
+            );if stored_token and stored_user {
                 validateAndRestoreSession(stored_token, stored_user);
             } else {
                 isLoading = False;
-            }
-        }, []);
+            } },
+            []
+        );
 
         value = {
             "authToken": authToken,
@@ -121,9 +136,10 @@ cl {
             "logout": logout
         };
 
-        return <AuthContext.Provider value={value}>
-            {children}
-        </AuthContext.Provider>;
+        return
+            <AuthContext.Provider value={value}>
+                {children}
+            </AuthContext.Provider>;
     }
 
     def:pub useAuth -> dict {
