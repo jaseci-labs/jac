@@ -266,6 +266,7 @@ top_voices.jac
 validate_docs_code.jac
 precompile_bytecode.jac
 cli.impl.jac
+populate_shortcircuit_mock.jac
 game1.jac
 client.impl.jac
 kubernetes_target.jac
