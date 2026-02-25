@@ -207,7 +207,11 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Constant | None);
     # Phase 12: Dictionaries
     def _emit_dict_helpers(
-        key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
+        key_type_name: str,
+        val_type_name: str,
+        key_type: ir.Type,
+        val_type: ir.Type,
+        key_size: int = 0
     ) -> None;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
