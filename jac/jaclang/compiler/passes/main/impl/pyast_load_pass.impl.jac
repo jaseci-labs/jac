@@ -12,7 +12,7 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
 
 """Convert a string to a docstring."""
 impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
-     # Determine quote style and extract content
+    # Determine quote style and extract content
     val = string.value;
     if val.startswith('"""') or val.startswith("'''") {
         # Already triple-quoted, nothing to do
