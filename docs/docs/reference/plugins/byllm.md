@@ -419,20 +419,6 @@ Parameters passed to `by llm()` at call time:
 !!! warning "Deprecated: `method` parameter"
     The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
 
-### Chained Transformations
-
-Compose multiple LLM calls using the pipe operator:
-
-```jac
-with entry {
-    text = "Some input text";
-    result = text
-        |> (lambda t: str -> str: t by llm("Correct grammar"))
-        |> (lambda t: str -> str: t by llm("Simplify language"))
-        |> (lambda t: str -> str: t by llm("Translate to Spanish"));
-}
-```
-
 ### Examples
 
 ```jac
