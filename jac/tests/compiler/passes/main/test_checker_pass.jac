@@ -1327,6 +1327,18 @@ test "impl_body_type_checking" {
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
 }
 
+"""Test that self.x = value in impl files creates valid archetype attributes."""
+test "impl_self_member_assignment" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_impl", "checker_impl_self_member.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
 test "super_init_with_has_vars" {
     program = JacProgram();
     path = os.path.join(FIXTURES, "checker_super_init_has_vars.jac");
