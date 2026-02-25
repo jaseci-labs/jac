@@ -10,6 +10,7 @@ import jaclang;
 import from jaclang.compiler.passes.tool.grammar_extract_pass {
     GAlt,
     GOpt,
+    GPlus,
     GrammarExtractPass,
     GrammarRule,
     GRef,
@@ -277,7 +278,7 @@ test "rules reference valid names" {
             for choice in expr.choices {
                 refs.update(collect_refs(choice));
             }
-        } elif isinstance(expr, (GOpt, GStar)) {
+        } elif isinstance(expr, (GOpt, GStar, GPlus)) {
             refs.update(collect_refs(expr.inner));
         }
         return refs;
