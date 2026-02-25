@@ -15,6 +15,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **LSP: ReadWriteLock for Concurrent Queries**: Replaced the single `RLock` in the language server with a writer-priority `ReadWriteLock`, allowing hover, completion, go-to-definition, and other read operations to run concurrently without blocking on type checking. Also fixed several race conditions where shared state (`mod.hub`, `sem_managers`) was accessed without any lock.
 - 3 Minor refactor
 - **Refactor: Merge `JacSerializer` into `Serializer`**: Removed the `JacSerializer` wrapper class from `runtimelib.server` and merged its API-response behavior into `Serializer` via a new `api_mode: bool = False` parameter. Call `Serializer.serialize(obj, api_mode=True)` to get clean API output with `_jac_type`, `_jac_id`, and `_jac_archetype` metadata on `Archetype` objects (previously done by `JacSerializer`). Storage backends continue to use `Serializer.serialize(obj, include_type=True)` unchanged. Import from `jaclang.runtimelib.serializer`. This eliminates a redundant wrapper class with no unique serialization logic. Added `social_graph.jac` example fixture in jac-scale demonstrating native persistence and `db.find_nodes()` for querying persisted nodes with MongoDB filters.
+- **Fix: py2jac semstring conversion**: Fix py2jac to correctly convert `Semstrings` with escape sequences.
 
 ## jaclang 0.11.0 (Latest Release)
 
