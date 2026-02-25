@@ -435,6 +435,8 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
+    def _make_attr_from_keyword(name_tok: Any);
+    def parse_index_slice -> IndexSlice;
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
     def parse_filter_compr_inner -> FilterCompr;
@@ -444,15 +446,23 @@ obj Parser {
     def parse_builtin_type -> Expr;
     def parse_special_ref -> Expr;
     def parse_atom -> Expr;
+    def parse_paren_expr -> Expr;
+    def parse_bracket_expr -> Expr;
+    def _is_edge_ref_start -> bool;
+    def parse_brace_expr -> Expr;
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
     def parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal;
+    def parse_dict_spread_entry -> KVPair;
     def parse_edge_ref_chain -> Expr;
+    def parse_edge_op_ref -> EdgeOpRef | None;
     def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
+    def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params(sig_kid: list) -> list;
+    def parse_lambda_param -> ParamVar;
     # JSX parsing
     def parse_jsx_element -> Expr;
     def parse_jsx_opening_element -> tuple;
@@ -460,6 +470,9 @@ obj Parser {
     def parse_jsx_children -> list;
     def parse_jsx_child -> Expr;
     def parse_element_stmt;
+    def _dispatch_decorated;
+    def _dispatch_async;
+    def parse_docstring_target;
     def parse_client_block -> ClientBlock;
     def parse_server_block -> ServerBlock;
     def parse_native_block -> NativeBlock;
@@ -480,6 +493,9 @@ obj Parser {
     def parse_pattern;
     def parse_or_pattern;
     def parse_single_pattern;
+    def parse_literal_pattern -> MatchValue;
+    def _literal_pattern_fallback -> MatchValue;
+    def parse_name_pattern;
     def parse_sequence_pattern;
     def parse_tuple_sequence_pattern;
     def parse_mapping_pattern;
@@ -498,19 +514,29 @@ obj Parser {
     def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(target: Expr) -> Assignment;
     def parse_import_stmt -> Import;
+    def parse_from_path -> tuple;
+    def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
     def parse_archetype -> Archetype;
     def parse_archetype_member;
+    def _skip_semicolons;
+    def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;
     def parse_has_var -> HasVar;
     def parse_ability -> Ability;
+    def _parse_post_async_modifiers(
+        is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+    ) -> tuple;
+
     def parse_func_signature -> FuncSignature;
     def parse_func_params(kid: list) -> list;
+    def parse_param_var -> ParamVar | None;
     def parse_enum -> Enum;
     def parse_enum_member -> Assignment;
     def parse_test -> Test;
     def parse_global_var -> GlobalVars;
     def parse_global_var_assignment -> Assignment;
     def parse_impl_def -> ImplDef;
+    def _is_impl_enum_body -> bool;
     def parse_impl_target_name -> Name;
     def parse_impl_enum_body -> list;
     def parse_sem_def -> SemDef;

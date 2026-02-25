@@ -917,7 +917,7 @@ impl GrammarExtractPass.interpret_call(call: uni.FuncCall) -> GExpr | None {
                 return None;
             }
             if sem.kind == "consume_name" {
-                return GTok(name="NAME");
+                return GAlt(choices=[GTok(name="NAME"), GTok(name="KWESC_NAME")]);
             }
             if sem.kind == "consume_opt" {
                 tokens = self.get_token_args(call);
@@ -1697,6 +1697,26 @@ impl GrammarExtractPass._dedup_parent_child_tokens(
                 should_remove = False;
                 if ref.name in rule_map {
                     child_body = rule_map[ref.name].body;
+                    # Resolve leading GRef indirections (e.g. comprehension_clauses
+                    # starts with GRef(compr_clause) — follow through to get actual
+                    # leading tokens for comparison).
+                    resolved = child_body;
+                    seen: set = {ref.name};
+                    while True {
+                        lead = resolved;
+                        if isinstance(lead, GSeq) and len(lead.items) > 0 {
+                            lead = lead.items[0];
+                        }
+                        if isinstance(lead, GRef)
+                        and lead.name in rule_map
+                        and lead.name not in seen {
+                            seen.add(lead.name);
+                            resolved = rule_map[lead.name].body;
+                        } else {
+                            break;
+                        }
+                    }
+                    child_body = resolved;
                     # Extract guard token set from item
                     guard_toks: set = set();
                     if isinstance(item, GTok) {
