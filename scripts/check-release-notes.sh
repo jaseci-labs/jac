@@ -12,6 +12,7 @@ declare -A FOLDER_TO_NOTES=(
     ["jac-client/jac_client/"]="docs/docs/community/release_notes/jac-client.md"
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/byllm.md"
     ["jac-super/jac_super/"]="docs/docs/community/release_notes/jac-super.md"
+    ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/jac-mcp.md"
 )
 
 # Determine changed files based on context

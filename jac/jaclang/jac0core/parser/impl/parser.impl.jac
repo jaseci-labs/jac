@@ -1623,7 +1623,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
         } else {
             name = self.make_special_name(name_tok);
         }
-        eq_uni = self.make_uni_token(self.advance());  # consume '='
+        eq_uni = self.consume_uni(TokenKind.EQ);
         value = self.parse_expression();
         return KWPair(key=name, value=value, kid=[name, eq_uni, value]);
     }
