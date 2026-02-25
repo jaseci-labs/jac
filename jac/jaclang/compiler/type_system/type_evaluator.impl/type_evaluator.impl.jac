@@ -1671,13 +1671,29 @@ impl TypeEvaluator._find_predicate_for(
         }
     }
     # Pattern 7: Truthiness narrowing - if x: (where x is a Name)
-    # This excludes None from the type when the condition is truthy
+    # This excludes None from the type when the condition is truthy.
+    # Only apply if the symbol's type actually contains None (e.g., X | None).
     if isinstance(condition, uni.Name) and condition.value == sym_name {
-        if self.prefetch and self.prefetch.none_type_class {
-            none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-            return NarrowingPredicate(
-                sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-            );
+        if self.prefetch and self.prefetch.none_type_class and condition.sym {
+            # Check if the symbol's type contains None
+            sym_type = self.get_type_of_symbol(condition.sym);
+            # Only apply truthiness narrowing for union types containing None
+            if isinstance(sym_type, types.UnionType) and sym_type.types {
+                none_shared = self.prefetch.none_type_class.shared if self.prefetch.none_type_class else None;
+                has_none = False;
+                for t in sym_type.types {
+                    if isinstance(t, types.ClassType) and t.shared == none_shared {
+                        has_none = True;
+                        break;
+                    }
+                }
+                if has_none {
+                    none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                    );
+                }
+            }
         }
     }
     return None;

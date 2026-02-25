@@ -487,3 +487,28 @@ def test_error_single_class_no_narrow(
     # Without isinstance check, nd is still BaseNode, cannot append to list[CFGNode]
     to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
 }
+
+# =========================================================================
+# 17. Truthiness narrowing does NOT apply to non-None union types
+#     Regression test: `if x:` should NOT modify types that don't contain None
+# =========================================================================
+
+# 17a. Bool type should NOT be narrowed by truthiness check
+def test_truthiness_bool_no_narrow(api_mode: bool) -> bool {
+    if api_mode {
+        return True;
+    }
+    # api_mode is still bool here, NOT bool | None
+    result: bool = api_mode;  # <-- Ok, api_mode is still bool
+    return result;
+}
+
+# 17b. str | int should NOT be narrowed (no None in union)
+def test_truthiness_no_none_union(val: str | int) -> str | int {
+    if val {
+        return val;
+    }
+    # val is still str | int here, NOT changed
+    result: str | int = val;  # <-- Ok, val is still str | int
+    return result;
+}
