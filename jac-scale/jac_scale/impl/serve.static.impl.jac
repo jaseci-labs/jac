@@ -290,6 +290,8 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     }
     file_name = Path(file_path).name;
     candidates = [
+        base_path / '.jac' / 'client' / 'dist' / file_path,
+        base_path / '.jac' / 'client' / 'dist' / file_name,
         base_path / 'dist' / file_path,
         base_path / 'dist' / file_name,
         base_path / 'assets' / file_path,
