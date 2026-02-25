@@ -1045,6 +1045,19 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
     }
+    # If source is a union type and destination is NOT a union, check if ALL
+    # constituent types of source are assignable to destination.
+    # Example: Dog | Cat -> Animal (valid if both Dog and Cat are subclasses of Animal)
+    if isinstance(src_type, types.UnionType)
+    and not isinstance(dest_type, types.UnionType) {
+        for src_member in src_type.types {
+            src_member_inst = self._convert_to_instance(src_member);
+            if not self.assign_type(src_member_inst, dest_type) {
+                return False;
+            }
+        }
+        return True;
+    }
     # If destination is a union type, check if source is compatible with any of the
     # constituent types.
     if isinstance(dest_type, types.UnionType) {
@@ -1329,11 +1342,13 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
-    # Early exit for non-union types.
-    # Type narrowing only applies to union types (e.g., X | None, A | B).
-    # Non-union types cannot be narrowed, so skip the CFG walk entirely.
+    # Performance optimization: Only do CFG walk for types that can be narrowed.
+    # 1. Union types (e.g., X | None, A | B) - narrow to subset
+    # 2. Class types with potential subclasses - narrow via isinstance
+    #    e.g., isinstance(nd, CFGNode) where nd: BaseNode -> narrow to CFGNode
+    # Skip primitives (int, str, bool, etc.) where narrowing doesn't apply.
     symbol_type = self.get_type_of_symbol(symbol);
-    if not isinstance(symbol_type, types.UnionType) {
+    if not isinstance(symbol_type, (types.UnionType, types.ClassType)) {
         return None;
     }
     # Find the enclosing CodeBlockStmt (CFG node) for this Name node.
@@ -1443,6 +1458,26 @@ impl TypeEvaluator._compute_narrowed_at(
         # TODO: ElseIf (elif) narrowing needs CFG fix - predecessor nodes don't match.
         # The CFG builds correct links but type checker sees different node instances.
         # This is a future PR task.
+
+        # Check if predecessor is a MatchStmt and narrow based on pattern.
+        if isinstance(pred, uni.MatchStmt) {
+            # Check if match target is the symbol we're narrowing
+            if isinstance(pred.target, uni.Name) and pred.target.value == sym_name {
+                # Find which MatchCase contains the current stmt
+                match_case: uni.MatchCase | None = stmt.find_parent_of_type(
+                    uni.MatchCase
+                );
+                if match_case is not None and match_case.pattern {
+                    pattern_type = self._get_type_from_match_pattern(
+                        match_case.pattern
+                    );
+                    if pattern_type is not None {
+                        incoming_types.append(pattern_type);
+                        continue;
+                    }
+                }
+            }
+        }
 
         # No narrowing from this predecessor; propagate its type.
         if pred_narrowed is not None {
@@ -1669,13 +1704,33 @@ impl TypeEvaluator._find_predicate_for(
         }
     }
     # Pattern 7: Truthiness narrowing - if x: (where x is a Name)
-    # This excludes None from the type when the condition is truthy
+    # This excludes None from the type when the condition is truthy.
+    # Only apply if the symbol's type actually contains None (e.g., X | None).
     if isinstance(condition, uni.Name) and condition.value == sym_name {
-        if self.prefetch and self.prefetch.none_type_class {
-            none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-            return NarrowingPredicate(
-                sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-            );
+        if self.prefetch and self.prefetch.none_type_class and condition.sym {
+            # Check if the symbol's type contains None
+            sym_type = self.get_type_of_symbol(condition.sym);
+            # Only apply truthiness narrowing for union types containing None
+            if isinstance(sym_type, types.UnionType) and sym_type.types {
+                none_shared = self.prefetch.none_type_class.shared
+                if self.prefetch.none_type_class
+                else None;
+                has_none = False;
+                for t in sym_type.types {
+                    if isinstance(t, types.ClassType) and t.shared == none_shared {
+                        has_none = True;
+                        break;
+                    }
+                }
+                if has_none {
+                    none_inst = self._convert_to_instance(
+                        self.prefetch.none_type_class
+                    );
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                    );
+                }
+            }
         }
     }
     return None;
@@ -1871,4 +1926,49 @@ impl TypeEvaluator.exclude_type_from_union(
         }
     }
     return original;
+}
+
+"""Extract type from a match pattern for type narrowing.
+
+Handles:
+- MatchArch (class pattern): case MyClass() -> narrows to MyClass
+- MatchOr (union pattern): case A() | B() -> narrows to A | B
+- MatchAs (capture pattern): case _ as x: A() -> narrows to inner pattern type
+- MatchWild (wildcard): case _ -> no narrowing (returns None)
+"""
+impl TypeEvaluator._get_type_from_match_pattern(
+    pattern: uni.MatchPattern
+) -> TypeBase | None {
+    # MatchArch (class pattern): case MyClass() or case mod.MyClass()
+    if isinstance(pattern, uni.MatchArch) {
+        class_type = self.get_type_of_expression(pattern.name);
+        return self._convert_to_instance(class_type);
+    }
+    # MatchOr (union pattern): case A() | B() | C()
+    if isinstance(pattern, uni.MatchOr) and pattern.patterns {
+        pattern_types: list[TypeBase] = [];
+        for sub_pattern in pattern.patterns {
+            sub_type = self._get_type_from_match_pattern(sub_pattern);
+            if sub_type is not None {
+                pattern_types.append(sub_type);
+            }
+        }
+        if len(pattern_types) == 0 {
+            return None;
+        } elif len(pattern_types) == 1 {
+            return pattern_types[0];
+        } else {
+            return types.UnionType(types=pattern_types);
+        }
+    }
+    # MatchAs (capture with inner pattern): case x as MyClass()
+    if isinstance(pattern, uni.MatchAs) and pattern.pattern {
+        return self._get_type_from_match_pattern(pattern.pattern);
+    }
+    # MatchWild (wildcard): case _ -> no narrowing
+    if isinstance(pattern, uni.MatchWild) {
+        return None;
+    }
+    # Other patterns (MatchValue, MatchSingleton, etc.) - no type narrowing for now
+    return None;
 }

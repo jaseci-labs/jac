@@ -53,6 +53,14 @@ jobs:
           path: jac-mcp/jac_mcp/_precompiled/
           pattern: precompiled-mcp-*
           merge-multiple: true
+      - name: Bundle documentation
+        run: |
+          mkdir -p jac_mcp/content/docs
+          cp ../docs/docs/reference/language/*.md jac_mcp/content/docs/
+          cp ../docs/docs/quick-guide/syntax-cheatsheet.md jac_mcp/content/docs/
+          cp ../docs/docs/reference/plugins/*.md jac_mcp/content/docs/
+          cp ../jac/jaclang/jac.spec jac_mcp/content/docs/jac-grammar.spec
+          cp ../jac/jaclang/jac0core/parser/tokens.jac jac_mcp/content/docs/tokens.jac
       - name: Install build tools
         run: |
           pip install build twine

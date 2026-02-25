@@ -72,4 +72,14 @@ links
         impl_def: uni.ImplDef,
         valid_decl: uni.AstImplNeedingNode
     ) -> None;
+
+    """Populate self-member symbols from impl body to archetype's symbol table.
+
+    When an impl file contains `self.x = value` assignments in a method, these
+    define instance attributes on the archetype. Since SymTabBuildPass runs on
+    impl files before they're connected to their declarations, it can't populate
+    these symbols into the archetype. This method does that after connection."""
+    def _populate_self_member_symbols(
+        self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+    ) -> None;
 }

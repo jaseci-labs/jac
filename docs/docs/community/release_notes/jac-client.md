@@ -2,13 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.1 (Unreleased)
+## jac-client 0.3.2 (Unreleased)
+
+## jac-client 0.3.1 (Latest Release)
 
 - **Admin Portal UI Components**: Added reusable UI components for the jac-scale admin portal including buttons, modals, inputs, tables, and layout components built with jac-client.
 - **Custom Import Path Aliases via jac.toml**: Added support for configuring import path aliases in `[plugins.client.paths]`. Define aliases like `"@components/*" = "./components/*"` and they are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths` in tsconfig.json.
 - **NPM Scoped Registry & Auth Support via jac.toml**: Added support for configuring custom npm registries and authentication tokens directly in `jac.toml` under `[plugins.client.npm]`.
 
-## jac-client 0.3.0 (Latest Release)
+## jac-client 0.3.0
 
 - **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).
 - **Automatic Endpoint Caching**: The client runtime now automatically caches responses from reader endpoints (walkers and server functions) and invalidates caches when writer endpoints are called, using compiler-provided `endpoint_effects` metadata. Includes an LRU cache (500 entries, 60s TTL), request deduplication for concurrent identical calls, and automatic cache clearing on auth state changes. No manual `jacInvalidate()` or cache annotations needed.

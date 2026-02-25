@@ -205,6 +205,10 @@ impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
             narrowing_syms = self._collect_narrowing_symbols(nd.condition);
             nd.affected_symbols.update(narrowing_syms);
         }
+        # Match statement: collect affected symbols from match subject
+        if isinstance(nd, uni.MatchStmt) and isinstance(nd.target, uni.Name) {
+            nd.affected_symbols.add(nd.target.value);
+        }
         assigned_syms = self._collect_assigned_symbols(nd);
         nd.affected_symbols.update(assigned_syms);
         bb_stmts = self.get_code_block_sequence(nd.parent);

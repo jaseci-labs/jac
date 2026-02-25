@@ -297,11 +297,27 @@ impl SymTabBuildPass.exit_atom_trailer(
         return;
     }
     chain = nd.as_attr_list;
+    # Case 1: Inside an Ability directly (e.g., obj Foo { def init() { self.x = 1; } })
     ability = nd.find_parent_of_type(uni.Ability);
     if (ability and ability.method_owner) {
         archetype = ability.method_owner;
         if isinstance(archetype, uni.Archetype) {
             archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+        }
+        return;
+    }
+    # Case 2: Inside an ImplDef (e.g., impl Foo.init() { self.x = 1; })
+    # For same-module impls, insert directly. For separate .impl.jac files,
+    # DeclImplMatchPass handles it after connecting impl to declaration.
+    impl_def = nd.find_parent_of_type(uni.ImplDef);
+    if (impl_def and (len(impl_def.target) >= 2)) {
+        archetype_name = impl_def.target[0].sym_name;
+        if impl_def.sym_tab and impl_def.sym_tab.parent_scope {
+            lookup = impl_def.sym_tab.parent_scope.lookup(archetype_name, deep=True);
+            if (lookup and isinstance(lookup.decl.name_of, uni.Archetype)) {
+                archetype = lookup.decl.name_of;
+                archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+            }
         }
     }
 }
@@ -320,13 +336,20 @@ impl SymTabBuildPass._is_self_member_assignment(
     if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
         return False;
     }
+    # Case 1: Inside an Ability directly
     ability = nd.find_parent_of_type(uni.Ability);
-    return (
-        (ability is not None)
-        and ability.is_method
-        and not ability.is_static
-        and not ability.is_cls_method
-    );
+    if ability is not None {
+        return (
+            ability.is_method and not ability.is_static and not ability.is_cls_method
+        );
+    }
+    # Case 2: Inside an ImplDef that represents a method implementation
+    impl_def = nd.find_parent_of_type(uni.ImplDef);
+    if (impl_def and (len(impl_def.target) >= 2)) {
+        # target has >= 2 parts means it's impl Archetype.method, not just impl Archetype
+        return True;
+    }
+    return False;
 }
 
 impl SymTabBuildPass.exit_enum(self: SymTabBuildPass, nd: uni.Enum) -> None {
