@@ -237,15 +237,112 @@ impl sys_path_context(path: str) -> Iterator[None] {
     }
 }
 
-"""Validate that an anchor has a valid archetype."""
-impl is_valid_anchor(anchor: object) -> bool {
-    if not anchor?.archetype or anchor.archetype is None {
-        return False;
-    }
+"""Helper to get entry file path from sys.argv or __main__."""
+def _get_entry_path -> (Path | None) {
+    import from pathlib { Path }
     try {
-        _ = anchor.archetype.__class__;
-        return True;
-    } except (AttributeError, TypeError) {
+        # Check sys.argv first
+        if sys.argv and len(sys.argv) > 0 {
+            return Path(sys.argv[0]).resolve();
+        }
+        # Fallback to __main__ module
+        if '__main__' in sys.modules {
+            main_module = sys.modules['__main__'];
+            if main_module?.__file__ and main_module.__file__ {
+                return Path(main_module.__file__).resolve();
+            }
+        }
+    } except Exception {
+    # If any error occurs (e.g., sys.argv[0] doesn't exist), return None
+    }
+    return None;
+}
+
+# Ad-hoc directory patterns (check parent directories only, not filename)
+glob ADHOC_DIRS = frozenset(
+         {'test','tests','fixture','fixtures','example','examples','tmp','temp','build'}
+     );
+
+"""Check if the entry file is ad-hoc (test/fixture/example/temp)."""
+impl is_adhoc_file(file_path: (Path | None) = None) -> bool {
+    if file_path is None {
+        file_path = _get_entry_path();
+    }
+    if not file_path {
         return False;
     }
+    # Check if any parent directory matches adhoc patterns
+    for part in file_path.parts[:-1] {  # Exclude filename (last part)
+
+        if part.lower() in ADHOC_DIRS {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Get project name from jac.toml if exists, None otherwise."""
+impl get_project_name(file_path: (Path | None) = None) -> str | None {
+    import from jaclang.project.config { JacConfig }
+    if file_path is None {
+        file_path = _get_entry_path();
+    }
+    if not file_path or file_path.suffix not in ['.jac', '.py'] {
+        return None;
+    }
+    # Only check the same directory as the entry file, NOT parent directories
+    # This prevents test fixtures from accidentally using the repo's root jac.toml
+    try {
+        toml_path = file_path.parent / "jac.toml";
+        if toml_path.exists() and toml_path.is_file() {
+            config = JacConfig.load(toml_path);
+            if config.project.name {
+                return config.project.name;
+            }
+        }
+    } except Exception {
+        ;  # No project found or error reading config
+    }
+    return None;
+}
+
+"""Get entry file stem (filename without extension) from __main__ module."""
+impl get_entry_file_stem(file_path: (Path | None) = None) -> str | None {
+    if file_path is None {
+        file_path = _get_entry_path();
+    }
+    if file_path
+    and file_path.suffix in ['.jac', '.py']
+    and file_path.stem not in ['jac', '__main__'] {
+        return file_path.stem;
+    }
+    return None;
+}
+
+"""Get database path:
+- Projects (jac.toml in same dir) → .jac/data/project-name.db
+- Ad-hoc/test/play files → None (volatile memory only, no persistence)
+- Real standalone apps → .jac/data/filename.db
+"""
+impl get_db_path(base_path: str) -> (str | None) {
+    import from pathlib { Path }
+    # Resolve entry path once and reuse across all checks
+    file_path = _get_entry_path();
+    base = Path(base_path);
+    data_dir = base / ".jac" / "data";
+    # 1. Check for project (jac.toml in same directory)
+    if (project_name := get_project_name(file_path)) {
+        return str(data_dir / f"{project_name}.db");
+    }
+    # 2. Check if ad-hoc/test file → NO PERSISTENCE (volatile memory only)
+    # Tests should be isolated and repeatable, not share persistent state
+    if is_adhoc_file(file_path) {
+        return None;
+    }
+    # 3. Real standalone app → use filename
+    if (entry_stem := get_entry_file_stem(file_path)) {
+        return str(data_dir / f"{entry_stem}.db");
+    }
+    # 4. Ultimate fallback
+    return str(data_dir / "main.db");
 }

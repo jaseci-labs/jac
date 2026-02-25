@@ -39,7 +39,6 @@ obj ExecutionContext {
         call_state: ContextVar[CallState] = ContextVar('call_state');
 
     def postinit -> None;
-    def _cleanup_stale_edges(node_anchor: NodeAnchor) -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;

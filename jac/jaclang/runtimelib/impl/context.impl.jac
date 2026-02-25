@@ -22,57 +22,11 @@ impl ExecutionContext.postinit -> None {
         system_root = cast(NodeAnchor, Root().__jac__);
         system_root.id = UUID(Con.SUPER_ROOT_UUID);
         self.mem.put(system_root);
-    } else {
-        # Clean up any stale edges from previous runs
-        self._cleanup_stale_edges(system_root);
     }
     self.system_root = system_root;
     # Default user_root and entry_node to system_root
     self.user_root = self.system_root;
     self.entry_node = self.system_root;
-}
-
-"""Remove stale edges that point to invalid anchors."""
-impl ExecutionContext._cleanup_stale_edges(node_anchor: NodeAnchor) -> None {
-    if not node_anchor.edges {
-        return;
-    }
-    valid_edges = [];
-    found_stale = False;
-    for edge in node_anchor.edges {
-        try {
-            # Access target from __dict__ to avoid triggering populate() during init.
-            # This prevents recursion when context is not fully initialized yet.
-            # Stub edges (created by make_stub()) only have 'id' in __dict__ and
-            # no 'target' key. These are valid unpopulated references, not stale edges.
-            edge_dict = edge.__dict__;
-            target_obj = edge_dict.get('target');
-            if target_obj is None {
-                # No 'target' key means this is a stub edge (valid lazy reference).
-                # Verify the edge itself still exists in storage before keeping it.
-                edge_id = edge_dict.get('id');
-                if edge_id and self.mem.has(edge_id) {
-                    valid_edges.append(edge);
-                } else {
-                    # Edge anchor itself is gone from storage - truly stale
-                    found_stale = True;
-                }
-            } else {
-                # Edge is fully populated (has a target object) - check target exists
-                target_id = target_obj.__dict__.get('id');
-                if target_id and self.mem.has(target_id) {
-                    valid_edges.append(edge);
-                } else {
-                    found_stale = True;
-                }
-            }
-        } except (AttributeError, TypeError) {
-            found_stale = True;
-        }
-    }
-    if found_stale {
-        node_anchor.edges = valid_edges;
-    }
 }
 
 """Get anchor by ID or raise error."""

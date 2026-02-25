@@ -4,7 +4,6 @@ import logging;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from uuid { UUID }
-import from jaclang.runtimelib.utils { is_valid_anchor, storage_key, to_uuid }
 import from jaclang.jac0core.archetype { Anchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
@@ -49,20 +48,13 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     if self.redis_client is None {
         return None;
     }
-    key = storage_key(id);
+    key = storage_key(to_uuid(id));
     try {
         raw = self.redis_client.get(key);
         if not raw {
             return None;
         }
-        anchor = loads(raw);
-        # Validate anchor integrity
-        if not is_valid_anchor(anchor) {
-            logger.debug(f"Removing invalid Redis anchor {id}");
-            self.redis_client.delete(key);
-            return None;
-        }
-        return anchor;
+        return loads(raw);
     } except Exception as e {
         logger.debug(f"Redis get failed: {e}");
         return None;

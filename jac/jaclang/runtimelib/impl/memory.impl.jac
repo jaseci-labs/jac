@@ -10,7 +10,6 @@ import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from typing { cast }
 import from uuid { UUID }
-import from jaclang.runtimelib.utils { is_valid_anchor }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 
 glob logger = logging.getLogger(__name__);
@@ -211,22 +210,12 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         if (row := cursor.fetchone()) {
             try {
                 anchor = loads(row[0]);
-                # Validate anchor integrity
-                if not is_valid_anchor(anchor) {
-                    logger.debug(f"Removing invalid anchor {id}");
-                    self.__conn__.execute(
-                        "DELETE FROM anchors WHERE id = ?", (str(id), )
-                    );
-                    self.__conn__.commit();
-                    return None;
-                }
                 # Promote to memory cache
                 self.__mem__[id] = anchor;
                 return anchor;
             } except (UnpicklingError, ModuleNotFoundError, AttributeError) {
                 # Can't unpickle - likely stale data from previous session
                 # Delete the stale entry
-                logger.debug(f"Removing unpicklable anchor {id}");
                 self.__conn__.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
                 self.__conn__.commit();
                 return None;
@@ -463,6 +452,7 @@ impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None {
 """Initialize TieredMemory with optional cache and persistence."""
 impl TieredMemory.postinit -> None {
     import from jaclang.runtimelib.memory { LocalCacheMemory, SqliteMemory }
+    import from jaclang.runtimelib.utils { get_db_path }
     # Initialize L1 (inherited from VolatileMemory)
     self.__mem__ = {};
     self.__gc__ = set();
@@ -474,8 +464,14 @@ impl TieredMemory.postinit -> None {
     }
     # Initialize L3 persistence if base_path provided
     if self.base_path {
-        db_path = os.path.join(self.base_path, ".jac", "data", "main.db");
-        self.l3 = SqliteMemory(path=db_path);
+        # Use project.db for projects, filename.db for apps, None for tests
+        db_path = get_db_path(self.base_path);
+        if db_path {
+            self.l3 = SqliteMemory(path=db_path);
+        } else {
+            # No persistence (adhoc/test files use volatile memory only)
+            self.l3 = None;
+        }
     } else {
         self.l3 = None;
     }

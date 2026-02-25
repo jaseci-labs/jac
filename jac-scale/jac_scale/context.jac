@@ -13,7 +13,4 @@ not per-context parameters.
 """
 class JScaleExecutionContext(ExecutionContext) {
     def init(self: JScaleExecutionContext) -> None;
-    def _cleanup_stale_edges(
-        self: JScaleExecutionContext, node_anchor: NodeAnchor
-    ) -> None;
 }
