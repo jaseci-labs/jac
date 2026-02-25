@@ -62,6 +62,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
                     base_type = narrowed;
                 }
+                # Progressive narrowing within AND expressions:
+                # If we're inside `isinstance(x, T) and x.method()`, narrow x to T.
+                elif and_narrowed := self._get_and_narrowing(expr.target.value) {
+                    base_type = and_narrowed;
+                }
             }
 
             if expr.is_attr {  # <expr>.member
@@ -365,6 +370,47 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
+
+        case uni.BoolExpr():
+            # Handle AND expressions with progressive narrowing
+            match expr.op.name {
+                case Tok.KW_AND:
+                    self._push_and_narrowing_scope();
+                    for val in expr.values {
+                        # If it's isinstance(x, T), add narrowing for x BEFORE evaluating
+                        # so subsequent expressions see the narrowed type
+                        if (
+                            isinstance(val, uni.FuncCall)
+                            and isinstance(val.target, uni.Name)
+                            and val.target.value == "isinstance"
+                            and len(val.params) == 2
+                            and isinstance(val.params[0], uni.Name)
+                        ) {
+                            sym_name = val.params[0].value;
+                            type_arg = val.params[1];
+                            isinstance_type = self.get_type_of_expression(type_arg);
+                            isinstance_inst = self._convert_to_instance(
+                                isinstance_type
+                            );
+                            self._add_and_narrowing(sym_name, isinstance_inst);
+                        }
+                        # Evaluate the sub-expression (with narrowing context)
+                        self.get_type_of_expression(val);
+                    }
+                    self._pop_and_narrowing_scope();
+
+                case _:
+                    # OR and other boolean expressions - just evaluate
+                    for val in expr.values {
+                        self.get_type_of_expression(val);
+                    }
+
+            }
+            # Boolean expressions return bool
+            if self.prefetch and self.prefetch.bool_class {
+                return self._convert_to_instance(self.prefetch.bool_class);
+            }
+            return types.UnknownType();
 
         case uni.UnaryExpr():
             if isinstance(expr.op, uni.Token) {
@@ -1309,6 +1355,9 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     self.builtins_module: uni.Module | None = None;
     # CFG-based type narrowing cache: (id(stmt_node), sym_name) -> narrowed_type.
     self._narrowing_cache: dict[tuple, types.TypeBase | None] = {};
+    # Progressive narrowing context stack for AND expressions.
+    # Each scope is a dict mapping symbol names to their narrowed types.
+    self._and_narrowing_context: list[dict[str, types.TypeBase]] = [];
     # Cache for module types by resolved path to avoid redundant lookups.
     self._module_type_cache: dict[str, types.ModuleType] = {};
     # NOTE: The initialization order here is important.
@@ -1526,6 +1575,54 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     return "unconditional";
 }
 
+"""Push a new scope for AND expression narrowing."""
+impl TypeEvaluator._push_and_narrowing_scope -> None {
+    self._and_narrowing_context.append({});
+}
+
+"""Pop the current AND expression narrowing scope."""
+impl TypeEvaluator._pop_and_narrowing_scope -> None {
+    if self._and_narrowing_context {
+        self._and_narrowing_context.pop();
+    }
+}
+
+"""Add a narrowing for a symbol in the current AND scope."""
+impl TypeEvaluator._add_and_narrowing(
+    sym_name: str, narrowed_type: types.TypeBase
+) -> None {
+    if self._and_narrowing_context {
+        current_scope = self._and_narrowing_context[-1];
+        # If already narrowed, keep the more specific type
+        if sym_name in current_scope {
+            existing = current_scope[sym_name];
+            if (
+                isinstance(narrowed_type, types.ClassType)
+                and isinstance(existing, types.ClassType)
+            ) {
+                if self.is_sub_class(existing, narrowed_type) {
+                    # narrowed_type is more specific
+                    current_scope[sym_name] = narrowed_type;
+                }
+                # else: existing is more specific, keep it
+            }
+        } else {
+            current_scope[sym_name] = narrowed_type;
+        }
+    }
+}
+
+"""Get narrowed type for a symbol from AND expression context."""
+impl TypeEvaluator._get_and_narrowing(sym_name: str) -> types.TypeBase | None {
+    # Search from innermost to outermost scope
+    for scope in reversed(self._and_narrowing_context) {
+        if sym_name in scope {
+            return scope[sym_name];
+        }
+    }
+    return None;
+}
+
 """Find a narrowing predicate for a specific symbol in a condition expression.
 
 Supports the following patterns (Pyright-compatible):
@@ -1570,15 +1667,42 @@ impl TypeEvaluator._find_predicate_for(
         match condition.op.name {
             # Pattern 2: Compound AND (BoolExpr with KW_AND)
             # Handles: isinstance(x, A) and isinstance(x, B)
-            # Returns the first matching predicate for the symbol
+            # For multiple isinstance checks on SAME symbol, return most specific type.
+            # Example: isinstance(x, BaseNode) and isinstance(x, CFGNode) -> CFGNode
             case Tok.KW_AND:
-                for val in condition.values {
-                    pred = self._find_predicate_for(symbol, val);
-                    if pred is not None {
-                        return pred;
+                all_preds = [
+                    p
+                    for val in condition.values
+                    if (p := self._find_predicate_for(symbol, val)) is not None
+                ];
+                if not all_preds {
+                    return None;
+                }
+                # Find most specific non-inverted predicate.
+                # Inverted predicates (not isinstance) are exclusions, handled separately.
+                positive_preds = [
+                    p
+                    for p in all_preds
+                    if not p.is_inverted
+                ];
+                if not positive_preds {
+                    return all_preds[0];  # All inverted, return first
+
+                }
+                # Find most specific (subclass) among positive predicates.
+                most_specific = positive_preds[0];
+                for pred in positive_preds[1:] {
+                    if (
+                        isinstance(pred.narrow_type, types.ClassType)
+                        and isinstance(most_specific.narrow_type, types.ClassType)
+                        and self.is_sub_class(
+                            most_specific.narrow_type, pred.narrow_type
+                        )
+                    ) {
+                        most_specific = pred;
                     }
                 }
-                return None;
+                return most_specific;
 
             # Pattern 3: Compound OR (BoolExpr with KW_OR)
             # Handles: isinstance(x, A) | isinstance(x, B) -> narrows to A | B

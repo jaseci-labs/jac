@@ -1653,3 +1653,22 @@ test "union_subclass_to_base_assignment" {
         program.errors_had[0].pretty_print()
     );
 }
+
+"""Test compound AND narrowing picks most specific type."""
+test "compound_and_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_and_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have exactly 1 error (E1 - type reverts after if block)
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        return x.bb_out;  # <-- Error: BaseNode has no attribute bb_out
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}

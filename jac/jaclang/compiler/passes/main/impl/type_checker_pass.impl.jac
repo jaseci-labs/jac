@@ -88,6 +88,40 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
+"""Enter a boolean expression - set up narrowing context for AND expressions."""
+impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # For AND expressions, push a narrowing scope
+    if nd.op.name == Tok.KW_AND {
+        self.evaluator._push_and_narrowing_scope();
+        # Pre-process isinstance checks to add narrowings BEFORE children are evaluated
+        for val in nd.values {
+            if (
+                isinstance(val, uni.FuncCall)
+                and isinstance(val.target, uni.Name)
+                and val.target.value == "isinstance"
+                and len(val.params) == 2
+                and isinstance(val.params[0], uni.Name)
+            ) {
+                sym_name = val.params[0].value;
+                type_arg = val.params[1];
+                isinstance_type = self.evaluator.get_type_of_expression(type_arg);
+                isinstance_inst = self.evaluator._convert_to_instance(isinstance_type);
+                self.evaluator._add_and_narrowing(sym_name, isinstance_inst);
+            }
+        }
+    }
+}
+
+"""Exit a boolean expression - clean up narrowing context."""
+impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Pop the narrowing scope for AND expressions
+    if nd.op.name == Tok.KW_AND {
+        self.evaluator._pop_and_narrowing_scope();
+    }
+}
+
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
     self.evaluator.get_type_of_expression(nd);
