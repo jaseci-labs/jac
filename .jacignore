@@ -38,6 +38,7 @@ checker_list_assignment.jac
 checker_list_iteration.jac
 checker_magic_call.jac
 checker_match_type_narrowing.jac
+checker_match_narrowing.jac
 checker_mod_path.jac
 checker_numeric_promotion.jac
 checker_overload.jac

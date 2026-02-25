@@ -1048,7 +1048,8 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     # If source is a union type and destination is NOT a union, check if ALL
     # constituent types of source are assignable to destination.
     # Example: Dog | Cat -> Animal (valid if both Dog and Cat are subclasses of Animal)
-    if isinstance(src_type, types.UnionType) and not isinstance(dest_type, types.UnionType) {
+    if isinstance(src_type, types.UnionType)
+    and not isinstance(dest_type, types.UnionType) {
         for src_member in src_type.types {
             src_member_inst = self._convert_to_instance(src_member);
             if not self.assign_type(src_member_inst, dest_type) {
