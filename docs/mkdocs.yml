@@ -21,6 +21,7 @@ nav:
       - Overview: "reference/index.md"
       - Language Specification:
           - Foundation: "reference/language/foundation.md"
+          - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
@@ -53,6 +54,7 @@ nav:
       - Tools & Config:
           - CLI Commands: "reference/cli/index.md"
           - Configuration: "reference/config/index.md"
+          - MCP Server: "reference/tools/mcp.md"
           - Testing: "reference/testing.md"
           - Debugging: "tutorials/language/debugging.md"
       - Python Integration:
@@ -71,8 +73,8 @@ nav:
           - byLLM: "community/release_notes/byllm.md"
           - jac-client: "community/release_notes/jac-client.md"
           - jac-scale: "community/release_notes/jac-scale.md"
-          - "(Deprecated) jac-cloud": "community/release_notes/jac-cloud.md"
           - jac-super: "community/release_notes/jac-super.md"
+          - jac-mcp: "community/release_notes/jac-mcp.md"
       - Internals:
           - Import Patterns: "community/internals/jac_import_patterns.md"
           - UniIR Nodes: "community/internals/uniir_node.md"

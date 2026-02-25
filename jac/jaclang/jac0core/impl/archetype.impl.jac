@@ -228,6 +228,18 @@ impl Anchor.__eq__(self: Anchor, other: object) -> bool {
     return False;
 }
 
+"""Check if node anchor is fully populated (has edges)."""
+impl NodeAnchor.is_populated(self: NodeAnchor) -> bool {
+    d = self.__dict__;
+    return 'edges' in d and 'archetype' in d;
+}
+
+"""Check if edge anchor is fully populated (has source/target)."""
+impl EdgeAnchor.is_populated(self: EdgeAnchor) -> bool {
+    d = self.__dict__;
+    return 'source' in d and 'target' in d and 'archetype' in d;
+}
+
 """Serialize Node Anchor."""
 impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
     state = super.__getstate__();
@@ -264,6 +276,9 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
     if not cls.__dict__.get('__jac_base__', False) {
         import from jaclang { JacRuntimeInterface as _ }
         _.make_archetype(cls);
+        for hook in Archetype._subclass_hooks {
+            hook(cls);
+        }
     }
 }
 

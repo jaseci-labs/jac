@@ -726,6 +726,9 @@ impl WalkerStmtOnlyNode.init(self: WalkerStmtOnlyNode) -> None {
 impl UniCFGNode.init(self: UniCFGNode) -> None {
     self.bb_in: list[UniCFGNode] = [];
     self.bb_out: list[UniCFGNode] = [];
+    # Pyright-style optimization: track symbols affected (assigned/narrowed) in this branch.
+    # If a symbol is not in affected_symbols, we can skip backward traversal through this node.
+    self.affected_symbols: set[str] = set();
 }
 
 """Get head by walking up the CFG iteratively."""

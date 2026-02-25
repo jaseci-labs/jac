@@ -1191,3 +1191,74 @@ test "vite config generation" {
         }
     }
 }
+
+"""Test that [plugins.client.paths] aliases appear in generated vite config and tsconfig."""
+test "path aliases in generated vite and tsconfig" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+
+            # Create jac.toml with path aliases
+            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\nentry-point = "main.jac"\n\n[plugins.client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
+            config_path = os.path.join(temp_dir, "jac.toml");
+            with open(config_path, "w") as f {
+                f.write(toml_content);
+            }
+
+            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+
+            # Create a mock entry file
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry file");
+
+            # Test build config includes path aliases
+            build_config_path = bundler.create_vite_config(entry_file);
+            build_content = build_config_path.read_text();
+
+            # Vite aliases strip trailing /* from patterns
+            assert '"@components": path.resolve(projectRoot, "components")' in build_content , f"@components alias not found in build config:\n{build_content}";
+            assert '"@utils": path.resolve(projectRoot, "src/utils")' in build_content , f"@utils alias not found in build config:\n{build_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")' in build_content , f"@shared alias not found in build config:\n{build_content}";
+
+            # Test dev config also includes path aliases
+            dev_config_path = bundler.create_vite_config(
+                entry_file, is_dev=True, api_port=8001
+            );
+            dev_content = dev_config_path.read_text();
+
+            assert '"@components": path.resolve(projectRoot, "components")' in dev_content , f"@components alias not found in dev config:\n{dev_content}";
+            assert '"@utils": path.resolve(projectRoot, "src/utils")' in dev_content , f"@utils alias not found in dev config:\n{dev_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")' in dev_content , f"@shared alias not found in dev config:\n{dev_content}";
+
+            # Test tsconfig includes path aliases
+            tsconfig_path = bundler.create_tsconfig();
+            tsconfig_content = tsconfig_path.read_text();
+            tsconfig_data = json.loads(tsconfig_content);
+
+            compiler_options = tsconfig_data.get("compilerOptions", {});
+            assert "paths" in compiler_options , f"paths not found in tsconfig compilerOptions:\n{tsconfig_content}";
+            assert "baseUrl" in compiler_options , f"baseUrl not found in tsconfig compilerOptions:\n{tsconfig_content}";
+            assert compiler_options["baseUrl"] == ".";
+
+            ts_paths = compiler_options["paths"];
+            assert "@components/*" in ts_paths , f"@components/* not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@components/*"] == ["components/*"] , f"@components/* path mismatch: {ts_paths[
+                '@components/*'
+            ]}";
+            assert "@utils/*" in ts_paths , f"@utils/* not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@utils/*"] == ["src/utils/*"] , f"@utils/* path mismatch: {ts_paths[
+                '@utils/*'
+            ]}";
+            assert "@shared" in ts_paths , f"@shared not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@shared"] == ["shared/index"] , f"@shared path mismatch: {ts_paths[
+                '@shared'
+            ]}";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}

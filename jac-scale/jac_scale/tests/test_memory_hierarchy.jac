@@ -121,10 +121,11 @@ test "read and write" {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
     }
 
-    # Clean up session file from previous runs
-    session_file = FIXTURES_DIR / ".jac" / "data" / "todo_app.session.users.json";
-    if session_file.exists() {
-        os.remove(session_file);
+    # Clean up data files from previous runs
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
     }
 
     # Start Redis container
@@ -159,7 +160,7 @@ test "read and write" {
 
     try {
         db = mongo_client["jac_db"];
-        collection = db["anchors"];
+        collection = db["_anchors"];
 
         mongo_doc_initial_count = collection.count_documents({});
         assert mongo_doc_initial_count == 3 , (
@@ -223,9 +224,11 @@ test "read and write" {
         time.sleep(0.5);
         gc.collect();
 
-        session_file = FIXTURES_DIR / ".jac" / "data" / "todo_app.session.users.json";
-        if session_file.exists() {
-            os.remove(session_file);
+        # Clean up data files
+        data_dir = FIXTURES_DIR / ".jac" / "data";
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
         }
     }
 }

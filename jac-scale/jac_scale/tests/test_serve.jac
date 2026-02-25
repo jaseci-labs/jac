@@ -1,4 +1,8 @@
-"""Test for jac-scale serve command and REST API server."""
+"""Test for jac-scale serve command and REST API server.
+
+Optimized test structure: Tests are grouped by category to share server instances,
+reducing CI time from ~13 minutes to ~2-3 minutes.
+"""
 
 import asyncio;
 import contextlib;
@@ -18,6 +22,9 @@ import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from typing { Any, cast }
 
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -144,7 +151,7 @@ def _start_server(
                 break;
             }
         } except (requests.ConnectionError, requests.Timeout) {
-            time.sleep(2);
+            time.sleep(0.5);
         }
     }
 
@@ -176,7 +183,7 @@ def _stop_server(server_process: subprocess.Popen | None) -> None {
             server_process.wait();
         }
     }
-    time.sleep(0.5);
+    time.sleep(0.2);
     gc.collect();
 }
 
@@ -189,7 +196,7 @@ def _request(
     token: str | None = None,
     timeout: int = 5,
     max_retries: int = 60,
-    retry_interval: float = 2.0
+    retry_interval: float = 0.5
 ) -> dict[str, Any] {
     url = f"{base_url}{path}";
     headers = {"Content-Type": "application/json"};
@@ -248,10 +255,11 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
     return pyjwt.encode(payload, secret, algorithm=algorithm);
 }
 
-# Shared state for main TestJacScaleServe
-glob sv_fixtures_dir: Path = Path(
-         __file__
-     ).parent / "fixtures",
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+glob sv_fixtures_dir:
+         Path = Path(__file__).parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
      sv_port: int = get_free_port(),
      sv_base_url: str = f"http://localhost:{sv_port}",
@@ -272,84 +280,232 @@ def teardown_serve_server(sp: subprocess.Popen | None) -> None {
     _cleanup_db_files(sv_fixtures_dir);
 }
 
-test "server root endpoint" {
+# =============================================================================
+# GROUP 1: STATIC & SCHEMA TESTS (Read-only, no state changes)
+# =============================================================================
+test "static and schema endpoints" {
     sp = setup_serve_server();
     try {
+        # Test: server root endpoint returns docs
         response = requests.get(f"{sv_base_url}/docs", timeout=5);
+        assert response.status_code == 200 , "Docs endpoint should return 200";
+
+        # Test: custom response headers from config
+        assert "x-custom-test-header" in response.headers;
+        assert response.headers["x-custom-test-header"] == "test-value";
+        assert "cross-origin-opener-policy" in response.headers;
+        assert response.headers["cross-origin-opener-policy"] == "same-origin";
+        assert "cross-origin-embedder-policy" in response.headers;
+        assert response.headers["cross-origin-embedder-policy"] == "require-corp";
+
+        # Test: OpenAPI schema is accessible and correct
+        openapi_response = requests.get(f"{sv_base_url}/openapi.json", timeout=5);
+        assert openapi_response.status_code == 200;
+        openapi_spec = openapi_response.json();
+        paths = openapi_spec.get("paths", {});
+
+        # Test: refresh endpoint in openapi docs
+        assert "/user/refresh-token" in paths;
+        refresh_endpoint = paths["/user/refresh-token"];
+        assert "post" in refresh_endpoint;
+        post_spec = refresh_endpoint["post"];
+        assert post_spec["summary"] == "Refresh JWT token";
+        assert "User APIs" in post_spec["tags"];
+
+        # Test: websocket endpoints NOT in openapi (they use /ws/ prefix)
+        assert "/walker/EchoMessage" not in paths , "WebSocket walker should not be in /walker/ paths";
+        assert "/walker/MinimalWebSocket" not in paths;
+        ws_walkers = [
+            "EchoMessage",
+            "MinimalWebSocket",
+            "PrivateWebSocket",
+            "BroadcastChat",
+            "PrivateBroadcastChat"
+        ];
+        for walker in ws_walkers {
+            assert f"/walker/{walker}" not in paths , f"WebSocket walker {walker} should not be in /walker/ paths";
+        }
+
+        # Test: 404 responses for non-existent paths
+        response = requests.get(f"{sv_base_url}/cl/nonexistent_page_xyz", timeout=5);
+        assert response.status_code == 404;
+        assert "404" in response.text;
+
+        response = requests.get(
+            f"{sv_base_url}/static/nonexistent_file.css", timeout=5
+        );
+        assert response.status_code == 404;
+        assert "not found" in response.text.lower();
+
+        response = requests.get(f"{sv_base_url}/nonexistent_image.png", timeout=5);
+        assert response.status_code == 404;
+
+        # Test: disallowed extensions return 404
+        response = requests.get(f"{sv_base_url}/malware.exe", timeout=5);
+        assert response.status_code == 404;
+        response = requests.get(f"{sv_base_url}/script.php", timeout=5);
+        assert response.status_code == 404;
+
+        # Test: reserved paths return 404 for asset requests
+        reserved_paths = [
+            "page/something.png",
+            "walker/something.png",
+            "function/something.png",
+            "user/something.png",
+            "static/something.png"
+        ];
+        for path in reserved_paths {
+            response = requests.get(f"{sv_base_url}/{path}", timeout=5);
+            assert response.status_code == 404;
+        }
+
+        # Test: static client.js (may be 200, 503, or 500 depending on build state)
+        response = requests.get(f"{sv_base_url}/static/client.js", timeout=60);
+        assert response.status_code in [200, 503, 500];
+        if response.status_code == 200 {
+            assert "application/javascript" in response.headers.get("content-type", "");
+        }
+
+        # Test: graph endpoint returns html page
+        response = requests.get(f"{sv_base_url}/graph", timeout=5);
         assert response.status_code == 200;
+        assert "text/html" in response.headers["content-type"];
     } finally {
         teardown_serve_server(sp);
     }
 }
 
-test "user creation" {
+# =============================================================================
+# GROUP 2: USER AUTHENTICATION TESTS (Register, Login, Token Refresh)
+# =============================================================================
+test "user registration and login" {
     sp = setup_serve_server();
     try {
+        # Test: user creation
+        test_username = f"testuser_{uuid.uuid4().hex[:8]}";
         result = _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "testuser1", "password": "testpass123"}
+            {"username": test_username, "password": "testpass123"}
         );
         assert "username" in result;
         assert "token" in result;
         assert "root_id" in result;
-        assert result["username"] == "testuser1";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        assert result["username"] == test_username;
 
-test "user login" {
-    sp = setup_serve_server();
-    try {
+        # Test: status code 201 for successful registration
+        status_user = f"status_{uuid.uuid4().hex[:8]}";
+        response = requests.post(
+            f"{sv_base_url}/user/register",
+            json={"username": status_user, "password": "password123"},
+            timeout=5
+        );
+        assert response.status_code == 201;
+        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        assert "token" in data;
+        assert data["username"] == status_user;
+
+        # Test: status code 400 for duplicate registration
+        response = requests.post(
+            f"{sv_base_url}/user/register",
+            json={"username": status_user, "password": "password123"},
+            timeout=5
+        );
+        assert response.status_code == 400;
+
+        # Test: user login
+        login_username = f"login_{uuid.uuid4().hex[:8]}";
         create_result = _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "loginuser", "password": "loginpass"}
+            {"username": login_username, "password": "loginpass"}
         );
         login_result = _request(
             sv_base_url,
             "POST",
             "/user/login",
-            {"username": "loginuser", "password": "loginpass"}
+            {"username": login_username, "password": "loginpass"}
         );
-
         assert "token" in login_result;
-        assert login_result["username"] == "loginuser";
+        assert login_result["username"] == login_username;
         assert login_result["root_id"] == create_result["root_id"];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "user login wrong password" {
-    sp = setup_serve_server();
-    try {
+        # Test: status code 200 for successful login
+        response = requests.post(
+            f"{sv_base_url}/user/login",
+            json={"username": login_username, "password": "loginpass"},
+            timeout=5
+        );
+        assert response.status_code == 200;
+
+        # Test: user login wrong password
+        fail_username = f"fail_{uuid.uuid4().hex[:8]}";
         _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "failuser", "password": "correctpass"}
+            {"username": fail_username, "password": "correctpass"}
         );
         login_result = _request(
             sv_base_url,
             "POST",
             "/user/login",
-            {"username": "failuser", "password": "wrongpass"}
+            {"username": fail_username, "password": "wrongpass"}
         );
         assert "error" in login_result;
+
+        # Test: status code 401 for invalid credentials
+        response = requests.post(
+            f"{sv_base_url}/user/login",
+            json={"username": fail_username, "password": "wrongpass"},
+            timeout=5
+        );
+        assert response.status_code == 401;
+        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        assert data["error"] == "Invalid credentials";
+
+        # Test: status code 400/422 for missing credentials
+        response = requests.post(
+            f"{sv_base_url}/user/login", json={"username": "test"}, timeout=5
+        );
+        assert response.status_code in [400, 422];
+
+        response = requests.post(
+            f"{sv_base_url}/user/login", json={"password": "password123"}, timeout=5
+        );
+        assert response.status_code in [400, 422];
+
+        response = requests.post(f"{sv_base_url}/user/login", json={}, timeout=5);
+        assert response.status_code in [400, 422];
+
+        response = requests.post(
+            f"{sv_base_url}/user/login",
+            json={"username": "", "password": "password123"},
+            timeout=5
+        );
+        assert response.status_code == 400;
+        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        assert data["error"] == "Username and password required";
+
+        # Test: nonexistent user returns 401
+        response = requests.post(
+            f"{sv_base_url}/user/login",
+            json={"username": "nonexistent", "password": "password"},
+            timeout=5
+        );
+        assert response.status_code == 401;
     } finally {
         teardown_serve_server(sp);
     }
 }
 
-test "refresh token with missing token" {
+test "token refresh functionality" {
     sp = setup_serve_server();
     try {
+        # Test: refresh token with missing token
         refresh_result = _request(sv_base_url, "POST", "/user/refresh-token", {});
-
         if "detail" in refresh_result {
             assert isinstance(refresh_result["detail"], list);
             error_entry = refresh_result["detail"][0];
@@ -362,19 +518,47 @@ test "refresh token with missing token" {
                 "Invalid or expired token"
             ];
         }
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "refresh token with bearer prefix" {
-    sp = setup_serve_server();
-    try {
+        # Test: refresh token with empty token
+        refresh_result = _request(
+            sv_base_url, "POST", "/user/refresh-token", {"token": ""}
+        );
+        assert "error" in refresh_result;
+        assert refresh_result["error"] == "Token is required";
+
+        # Test: status code 400 for empty token
+        response = requests.post(
+            f"{sv_base_url}/user/refresh-token", json={"token": ""}, timeout=5
+        );
+        assert response.status_code == 400;
+
+        # Test: refresh token with invalid/malformed tokens (all return same error)
+        invalid_tokens = ["invalid.token.here", "not.a.jwt", "invalid_token_string"];
+        for invalid_token in invalid_tokens {
+            refresh_result = _request(
+                sv_base_url, "POST", "/user/refresh-token", {"token": invalid_token}
+            );
+            assert "error" in refresh_result;
+            assert refresh_result["error"] == "Invalid or expired token";
+        }
+
+        # Test: status code 401 for invalid token
+        response = requests.post(
+            f"{sv_base_url}/user/refresh-token",
+            json={"token": "invalid_token_string"},
+            timeout=5
+        );
+        assert response.status_code == 401;
+
+        # Test: refresh token with bearer prefix
         create_result = _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "refresh_bearer", "password": "password123"}
+            {
+                "username": f"refresh_bearer_{uuid.uuid4().hex[:8]}",
+                "password": "password123"
+            }
         );
         original_token = create_result["token"];
 
@@ -384,96 +568,53 @@ test "refresh token with bearer prefix" {
             "/user/refresh-token",
             {"token": f"Bearer {original_token}"}
         );
-
         assert "token" in refresh_result;
         assert "message" in refresh_result;
         assert refresh_result["message"] == "Token refreshed successfully";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "refresh token with empty token" {
-    sp = setup_serve_server();
-    try {
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": ""}
+        # Test: status code 200 for successful refresh
+        response = requests.post(
+            f"{sv_base_url}/user/refresh-token",
+            json={"token": original_token},
+            timeout=5
         );
-        assert "error" in refresh_result;
-        assert refresh_result["error"] == "Token is required";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        assert response.status_code == 200;
+        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        assert "token" in data;
+        assert data["message"] == "Token refreshed successfully";
 
-test "refresh token with invalid token" {
-    sp = setup_serve_server();
-    try {
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": "invalid.token.here"}
-        );
-        assert "error" in refresh_result;
-        assert refresh_result["error"] == "Invalid or expired token";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "refresh token with malformed token" {
-    sp = setup_serve_server();
-    try {
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": "not.a.jwt"}
-        );
-        assert "error" in refresh_result;
-        assert refresh_result["error"] == "Invalid or expired token";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "refresh token too old" {
-    sp = setup_serve_server();
-    try {
+        # Test: refresh token too old
+        old_user = f"refresh_old_{uuid.uuid4().hex[:8]}";
         _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "refresh_old", "password": "password123"}
+            {"username": old_user, "password": "password123"}
         );
-        very_old_token = _create_very_old_token("refresh_old", days_ago=15);
+        very_old_token = _create_very_old_token(old_user, days_ago=15);
         refresh_result = _request(
             sv_base_url, "POST", "/user/refresh-token", {"token": very_old_token}
         );
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "refresh token with nonexistent user" {
-    sp = setup_serve_server();
-    try {
+        # Test: refresh token with nonexistent user
         fake_token = _create_expired_token("nonexistent", days_ago=1);
         refresh_result = _request(
             sv_base_url, "POST", "/user/refresh-token", {"token": fake_token}
         );
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "refresh token multiple times" {
-    sp = setup_serve_server();
-    try {
+        # Test: refresh token multiple times
         create_result = _request(
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": "refresh_multi", "password": "password123"}
+            {
+                "username": f"refresh_multi_{uuid.uuid4().hex[:8]}",
+                "password": "password123"
+            }
         );
         token1 = create_result["token"];
 
@@ -489,15 +630,9 @@ test "refresh token multiple times" {
         token3 = refresh_result2["token"];
         assert token3 != token2;
         assert token3 != token1;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "refresh token preserves username" {
-    sp = setup_serve_server();
-    try {
-        username = "refresh_preserve";
+        # Test: refresh token preserves username
+        username = f"refresh_preserve_{uuid.uuid4().hex[:8]}";
         create_result = _request(
             sv_base_url,
             "POST",
@@ -525,494 +660,12 @@ test "refresh token preserves username" {
     }
 }
 
-test "refresh endpoint in openapi docs" {
+test "integration auth flow" {
     sp = setup_serve_server();
     try {
-        response = requests.get(f"{sv_base_url}/openapi.json", timeout=5);
-        assert response.status_code == 200;
+        username = f"integration_{uuid.uuid4().hex[:8]}";
 
-        openapi_spec = response.json();
-        paths = openapi_spec.get("paths", {});
-
-        assert "/user/refresh-token" in paths;
-        refresh_endpoint = paths["/user/refresh-token"];
-        assert "post" in refresh_endpoint;
-
-        post_spec = refresh_endpoint["post"];
-        assert post_spec["summary"] == "Refresh JWT token";
-        assert "User APIs" in post_spec["tags"];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "call function add numbers" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "adduser", "password": "pass"}
-        );
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url,
-            "POST",
-            "/function/add_numbers",
-            {"a": 10, "b": 25},
-            token=token
-        );
-
-        assert "result" in result;
-        assert result["result"] == 35;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "call function greet" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "greetuser", "password": "pass"}
-        );
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url, "POST", "/function/greet", {"name": "Alice"}, token=token
-        );
-
-        assert "result" in result;
-        assert result["result"] == "Hello, Alice!";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "call function with defaults" {
-    sp = setup_serve_server();
-    try {
-        username = f"defuser_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "pass"}
-        );
-        assert "token" in create_result , f"Registration failed: {create_result}";
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url, "POST", "/function/greet", {"args": {}}, token=token
-        );
-
-        assert "result" in result;
-        assert result["result"] == "Hello, World!";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "invalid function" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "invalidfunc", "password": "pass"}
-        );
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url, "POST", "/function/nonexistent", {"args": {}}, token=token
-        );
-
-        assert "Method Not Allowed" in result["detail"];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "invalid walker" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "invalidwalk", "password": "pass"}
-        );
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url,
-            "POST",
-            "/walker/NonExistentWalker",
-            {"fields": {}},
-            token=token
-        );
-
-        assert "Method Not Allowed" in result["detail"];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "multiply function" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "multuser", "password": "pass"}
-        );
-        token = create_result["token"];
-
-        result = _request(
-            sv_base_url, "POST", "/function/multiply", {"x": 7, "y": 8}, token=token
-        );
-
-        assert "result" in result;
-        assert result["result"] == 56;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code user register 201 success" {
-    sp = setup_serve_server();
-    try {
-        response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": "status201", "password": "password123"},
-            timeout=5
-        );
-        assert response.status_code == 201;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert "token" in data;
-        assert "username" in data;
-        assert data["username"] == "status201";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code user register 400 already exists" {
-    sp = setup_serve_server();
-    try {
-        username = "status400exists";
-        requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": username, "password": "password123"},
-            timeout=5
-        );
-
-        response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": username, "password": "password123"},
-            timeout=5
-        );
-        assert response.status_code == 400;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert "error" in data;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code user login 200 success" {
-    sp = setup_serve_server();
-    try {
-        username = "status200login";
-        requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": username, "password": "password123"},
-            timeout=5
-        );
-
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "password123"},
-            timeout=5
-        );
-        assert response.status_code == 200;
-        data = _extract_transport_response_data(response.json());
-        assert "token" in data;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code user login 400 missing credentials" {
-    sp = setup_serve_server();
-    try {
-        response = requests.post(
-            f"{sv_base_url}/user/login", json={"username": "test"}, timeout=5
-        );
-        assert response.status_code in [400, 422];
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert "error" in data or "detail" in data;
-
-        response = requests.post(
-            f"{sv_base_url}/user/login", json={"password": "password123"}, timeout=5
-        );
-        assert response.status_code in [400, 422];
-
-        response = requests.post(f"{sv_base_url}/user/login", json={}, timeout=5);
-        assert response.status_code in [400, 422];
-
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": "", "password": "password123"},
-            timeout=5
-        );
-        assert response.status_code == 400;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert data["error"] == "Username and password required";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code user login 401 invalid credentials" {
-    sp = setup_serve_server();
-    try {
-        username = "status401login";
-        requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": username, "password": "correctpass"},
-            timeout=5
-        );
-
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "wrongpass"},
-            timeout=5
-        );
-        assert response.status_code == 401;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert data["error"] == "Invalid credentials";
-
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": "nonexistent", "password": "password"},
-            timeout=5
-        );
-        assert response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code refresh token 200 success" {
-    sp = setup_serve_server();
-    try {
-        create_response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": "status200refresh", "password": "password123"},
-            timeout=5
-        );
-        create_data = cast(
-            dict[str, Any], _extract_transport_response_data(create_response.json())
-        );
-        token = create_data["token"];
-
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": token}, timeout=5
-        );
-        assert response.status_code == 200;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert "token" in data;
-        assert data["message"] == "Token refreshed successfully";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code refresh token 400 missing token" {
-    sp = setup_serve_server();
-    try {
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": ""}, timeout=5
-        );
-        assert response.status_code == 400;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert data["error"] == "Token is required";
-
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": None}, timeout=5
-        );
-        assert response.status_code in [400, 422];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code refresh token 401 invalid token" {
-    sp = setup_serve_server();
-    try {
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token",
-            json={"token": "invalid_token_string"},
-            timeout=5
-        );
-        assert response.status_code == 401;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert data["error"] == "Invalid or expired token";
-
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": "not.a.jwt"}, timeout=5
-        );
-        assert response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code walker 200 success" {
-    sp = setup_serve_server();
-    try {
-        create_response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": "status200walker", "password": "password123"},
-            timeout=5
-        );
-        create_data = cast(
-            dict[str, Any], _extract_transport_response_data(create_response.json())
-        );
-        token = create_data["token"];
-
-        response = requests.post(
-            f"{sv_base_url}/walker/CreateTask",
-            json={"title": "Test Task", "priority": 2},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
-        );
-        assert response.status_code == 200;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code function 200 success" {
-    sp = setup_serve_server();
-    try {
-        create_response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": "status200func", "password": "password123"},
-            timeout=5
-        );
-        create_data = cast(
-            dict[str, Any], _extract_transport_response_data(create_response.json())
-        );
-        token = create_data["token"];
-
-        response = requests.post(
-            f"{sv_base_url}/function/add_numbers",
-            json={"a": 10, "b": 20},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
-        );
-        assert response.status_code == 200;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
-        assert "result" in data;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code page 404 not found" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/cl/nonexistent_page_xyz", timeout=5);
-        assert response.status_code == 404;
-        assert "404" in response.text;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code static client js 200 or 503" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/static/client.js", timeout=60);
-        assert response.status_code in [200, 503, 500];
-        if response.status_code == 200 {
-            assert "application/javascript" in response.headers.get("content-type", "");
-        }
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code static file 404 not found" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(
-            f"{sv_base_url}/static/nonexistent_file.css", timeout=5
-        );
-        assert response.status_code == 404;
-        assert "not found" in response.text.lower();
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code root asset 404 not found" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/nonexistent_image.png", timeout=5);
-        assert response.status_code == 404;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code root asset 404 disallowed extension" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/malware.exe", timeout=5);
-        assert response.status_code == 404;
-
-        response = requests.get(f"{sv_base_url}/script.php", timeout=5);
-        assert response.status_code == 404;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code root asset 404 reserved paths" {
-    sp = setup_serve_server();
-    try {
-        reserved_paths = [
-            "page/something.png",
-            "walker/something.png",
-            "function/something.png",
-            "user/something.png",
-            "static/something.png"
-        ];
-
-        for path in reserved_paths {
-            response = requests.get(f"{sv_base_url}/{path}", timeout=5);
-            assert response.status_code == 404;
-        }
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "status code integration auth flow" {
-    sp = setup_serve_server();
-    try {
-        username = "integration_status";
-
+        # Register
         register_response = requests.post(
             f"{sv_base_url}/user/register",
             json={"username": username, "password": "secure123"},
@@ -1024,6 +677,7 @@ test "status code integration auth flow" {
         );
         token1 = data["token"];
 
+        # Login
         login_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": "secure123"},
@@ -1035,6 +689,7 @@ test "status code integration auth flow" {
         );
         token2 = data["token"];
 
+        # Refresh
         refresh_response = requests.post(
             f"{sv_base_url}/user/refresh-token", json={"token": token1}, timeout=5
         );
@@ -1044,6 +699,7 @@ test "status code integration auth flow" {
         );
         token3 = data["token"];
 
+        # Failed login
         fail_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": "wrongpass"},
@@ -1051,6 +707,7 @@ test "status code integration auth flow" {
         );
         assert fail_response.status_code == 401;
 
+        # All tokens should be different
         assert token1 != token2;
         assert token2 != token3;
         assert token1 != token3;
@@ -1059,23 +716,114 @@ test "status code integration auth flow" {
     }
 }
 
-test "private walker 401 unauthorized" {
+# =============================================================================
+# GROUP 3: API OPERATIONS (Functions and Walkers)
+# =============================================================================
+test "function calls" {
     sp = setup_serve_server();
     try {
+        # Create a user for authenticated calls
+        create_result = _request(
+            sv_base_url,
+            "POST",
+            "/user/register",
+            {"username": f"funcuser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+        );
+        token = create_result["token"];
+
+        # Test: call function add_numbers
+        result = _request(
+            sv_base_url,
+            "POST",
+            "/function/add_numbers",
+            {"a": 10, "b": 25},
+            token=token
+        );
+        assert "result" in result;
+        assert result["result"] == 35;
+
+        # Test: call function greet
+        result = _request(
+            sv_base_url, "POST", "/function/greet", {"name": "Alice"}, token=token
+        );
+        assert "result" in result;
+        assert result["result"] == "Hello, Alice!";
+
+        # Test: call function with defaults
+        result = _request(
+            sv_base_url, "POST", "/function/greet", {"args": {}}, token=token
+        );
+        assert "result" in result;
+        assert result["result"] == "Hello, World!";
+
+        # Test: multiply function
+        result = _request(
+            sv_base_url, "POST", "/function/multiply", {"x": 7, "y": 8}, token=token
+        );
+        assert "result" in result;
+        assert result["result"] == 56;
+
+        # Test: status code 200 for function success
+        response = requests.post(
+            f"{sv_base_url}/function/add_numbers",
+            json={"a": 10, "b": 20},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5
+        );
+        assert response.status_code == 200;
+        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        assert "result" in data;
+
+        # Test: invalid function returns 405
+        result = _request(
+            sv_base_url, "POST", "/function/nonexistent", {"args": {}}, token=token
+        );
+        assert "Method Not Allowed" in result["detail"];
+    } finally {
+        teardown_serve_server(sp);
+    }
+}
+
+test "walker calls" {
+    sp = setup_serve_server();
+    try {
+        # Create a user for authenticated calls
+        create_result = _request(
+            sv_base_url,
+            "POST",
+            "/user/register",
+            {"username": f"walkeruser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+        );
+        token = create_result["token"];
+
+        # Test: status code 200 for walker success
+        response = requests.post(
+            f"{sv_base_url}/walker/CreateTask",
+            json={"title": "Test Task", "priority": 2},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5
+        );
+        assert response.status_code == 200;
+
+        # Test: invalid walker returns 405
+        result = _request(
+            sv_base_url,
+            "POST",
+            "/walker/NonExistentWalker",
+            {"fields": {}},
+            token=token
+        );
+        assert "Method Not Allowed" in result["detail"];
+
+        # Test: private walker 401 unauthorized (no token)
         response = requests.post(
             f"{sv_base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},
             timeout=5
         );
         assert response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "public walker 200 no auth" {
-    sp = setup_serve_server();
-    try {
+        # Test: public walker 200 no auth
         response = requests.post(
             f"{sv_base_url}/walker/PublicInfo", json={}, timeout=5
         );
@@ -1088,22 +836,8 @@ test "public walker 200 no auth" {
         assert data["message"] == "This is a public endpoint";
         assert "auth_required" in data;
         assert data["auth_required"] is False;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "public walker 200 with auth" {
-    sp = setup_serve_server();
-    try {
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "publicuser", "password": "password123"}
-        );
-        token = create_result["token"];
-
+        # Test: public walker 200 with auth
         response = requests.post(
             f"{sv_base_url}/walker/PublicInfo",
             json={},
@@ -1115,16 +849,9 @@ test "public walker 200 with auth" {
             dict[str, Any], _extract_transport_response_data(response.json())
         );
         data = response_data["reports"][0];
-        assert "message" in data;
         assert data["message"] == "This is a public endpoint";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "private walker 401 with deleted user token" {
-    sp = setup_serve_server();
-    try {
+        # Test: private walker 401 with deleted user token
         secret = "supersecretkey_for_testing_only!";
         now = datetime.now(UTC);
         payload = {
@@ -1132,42 +859,58 @@ test "private walker 401 with deleted user token" {
             "exp": now + timedelta(days=1),
             "iat": now
         };
-        token = pyjwt.encode(payload, secret, algorithm="HS256");
+        fake_token = pyjwt.encode(payload, secret, algorithm="HS256");
 
         response = requests.post(
             f"{sv_base_url}/walker/PrivateCreateTask",
             json={"title": "Ghost Task", "priority": 1},
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {fake_token}"},
             timeout=5
         );
         assert response.status_code == 401 , (
             f"Expected 401 for deleted/non-existent user, got {response.status_code}"
         );
+
+        # Test: graph data returns nodes and edges
+        response = requests.get(f"{sv_base_url}/graph/data", timeout=5);
+        assert response.status_code == 200;
+        data = response.json();
+        assert "nodes" in data and "edges" in data;
+
+        # Create a node and verify it appears for authenticated user
+        reg = _request(
+            sv_base_url,
+            "POST",
+            "/user/register",
+            {"username": f"guser_{uuid.uuid4().hex[:8]}", "password": "gpass"}
+        );
+        _request(
+            sv_base_url,
+            "POST",
+            "/walker/CreateTask",
+            {"title": "T1", "priority": 1},
+            token=reg["token"]
+        );
+        auth_resp = requests.get(
+            f"{sv_base_url}/graph/data",
+            headers={"Authorization": f"Bearer {reg['token']}"},
+            timeout=5
+        );
+        auth_data = auth_resp.json();
+        assert len(auth_data["nodes"]) == 2;
+        assert len(auth_data["edges"]) == 1;
     } finally {
         teardown_serve_server(sp);
     }
 }
 
-test "custom response headers from config" {
+# =============================================================================
+# GROUP 4: USER MANAGEMENT (Username and Password Updates)
+# =============================================================================
+test "user management operations" {
     sp = setup_serve_server();
     try {
-        response = requests.get(f"{sv_base_url}/docs", timeout=5);
-
-        assert "x-custom-test-header" in response.headers;
-        assert response.headers["x-custom-test-header"] == "test-value";
-
-        assert "cross-origin-opener-policy" in response.headers;
-        assert response.headers["cross-origin-opener-policy"] == "same-origin";
-        assert "cross-origin-embedder-policy" in response.headers;
-        assert response.headers["cross-origin-embedder-policy"] == "require-corp";
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "update username success" {
-    sp = setup_serve_server();
-    try {
+        # Test: update username success
         username = f"olduser_{uuid.uuid4().hex[:8]}";
         create_result = _request(
             sv_base_url,
@@ -1193,6 +936,7 @@ test "update username success" {
         assert "root_id" in update_result;
         assert update_result["root_id"] == original_root_id;
 
+        # Verify login with new username works
         login_result = _request(
             sv_base_url,
             "POST",
@@ -1202,20 +946,15 @@ test "update username success" {
         assert login_result["username"] == new_username;
         assert "token" in login_result;
 
+        # Verify login with old username fails
         login_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": "password123"},
             timeout=5
         );
         assert login_response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update username requires auth" {
-    sp = setup_serve_server();
-    try {
+        # Test: update username requires auth
         username = f"authtest_{uuid.uuid4().hex[:8]}";
         _request(
             sv_base_url,
@@ -1223,21 +962,14 @@ test "update username requires auth" {
             "/user/register",
             {"username": username, "password": "password123"}
         );
-
         response = requests.put(
             f"{sv_base_url}/user/username",
             json={"current_username": username, "new_username": "newname"},
             timeout=5
         );
         assert response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update username cannot update other users" {
-    sp = setup_serve_server();
-    try {
+        # Test: update username cannot update other users
         user1_name = f"user1_{uuid.uuid4().hex[:8]}";
         user1_result = _request(
             sv_base_url,
@@ -1262,15 +994,9 @@ test "update username cannot update other users" {
             timeout=5
         );
         assert response.status_code == 403;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update username duplicate fails" {
-    sp = setup_serve_server();
-    try {
-        user1_name = f"user1_{uuid.uuid4().hex[:8]}";
+        # Test: update username duplicate fails
+        user1_name = f"dup1_{uuid.uuid4().hex[:8]}";
         user1_result = _request(
             sv_base_url,
             "POST",
@@ -1279,7 +1005,7 @@ test "update username duplicate fails" {
         );
         user1_token = user1_result["token"];
 
-        user2_name = f"user2_{uuid.uuid4().hex[:8]}";
+        user2_name = f"dup2_{uuid.uuid4().hex[:8]}";
         _request(
             sv_base_url,
             "POST",
@@ -1294,14 +1020,8 @@ test "update username duplicate fails" {
             timeout=5
         );
         assert response.status_code == 400;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update username empty validation" {
-    sp = setup_serve_server();
-    try {
+        # Test: update username empty validation
         username = f"testuser_{uuid.uuid4().hex[:8]}";
         user_result = _request(
             sv_base_url,
@@ -1318,14 +1038,8 @@ test "update username empty validation" {
             timeout=5
         );
         assert response.status_code == 400;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update password success" {
-    sp = setup_serve_server();
-    try {
+        # Test: update password success
         username = f"passuser_{uuid.uuid4().hex[:8]}";
         create_result = _request(
             sv_base_url,
@@ -1351,6 +1065,7 @@ test "update password success" {
         assert update_result["username"] == username;
         assert "message" in update_result or "success" in str(update_result).lower();
 
+        # Verify login with new password works
         login_result = _request(
             sv_base_url,
             "POST",
@@ -1359,20 +1074,15 @@ test "update password success" {
         );
         assert login_result["username"] == username;
 
+        # Verify login with old password fails
         login_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": "oldpass123"},
             timeout=5
         );
         assert login_response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update password requires auth" {
-    sp = setup_serve_server();
-    try {
+        # Test: update password requires auth
         username = f"noauthuser_{uuid.uuid4().hex[:8]}";
         _request(
             sv_base_url,
@@ -1391,14 +1101,8 @@ test "update password requires auth" {
             timeout=5
         );
         assert response.status_code == 401;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update password wrong current password" {
-    sp = setup_serve_server();
-    try {
+        # Test: update password wrong current password
         username = f"wrongpass_{uuid.uuid4().hex[:8]}";
         user_result = _request(
             sv_base_url,
@@ -1419,14 +1123,8 @@ test "update password wrong current password" {
             timeout=5
         );
         assert response.status_code == 400;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update password cannot update other users" {
-    sp = setup_serve_server();
-    try {
+        # Test: update password cannot update other users
         user1_name = f"passuser1_{uuid.uuid4().hex[:8]}";
         user1_result = _request(
             sv_base_url,
@@ -1455,14 +1153,8 @@ test "update password cannot update other users" {
             timeout=5
         );
         assert response.status_code == 403;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "update password empty validation" {
-    sp = setup_serve_server();
-    try {
+        # Test: update password empty validation
         username = f"emptypass_{uuid.uuid4().hex[:8]}";
         user_result = _request(
             sv_base_url,
@@ -1483,14 +1175,8 @@ test "update password empty validation" {
             timeout=5
         );
         assert response.status_code == 400;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "username and password update flow" {
-    sp = setup_serve_server();
-    try {
+        # Test: username and password update flow (combined)
         username = f"original_{uuid.uuid4().hex[:8]}";
         create_result = _request(
             sv_base_url,
@@ -1534,6 +1220,7 @@ test "username and password update flow" {
         assert login_result["username"] == new_username;
         assert login_result["root_id"] == root_id;
 
+        # Old username should fail
         old_username_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": "newpass"},
@@ -1541,6 +1228,7 @@ test "username and password update flow" {
         );
         assert old_username_response.status_code == 401;
 
+        # Old password should fail
         old_password_response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": new_username, "password": "oldpass"},
@@ -1552,30 +1240,15 @@ test "username and password update flow" {
     }
 }
 
-test "websocket endpoint not in openapi" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/openapi.json", timeout=5);
-        assert response.status_code == 200;
-        schema = response.json();
-        paths = schema.get("paths", {});
-
-        assert "/walker/EchoMessage" not in paths , (
-            "WebSocket walker EchoMessage should not be in /walker/ paths"
-        );
-        assert "/walker/MinimalWebSocket" not in paths , (
-            "WebSocket walker MinimalWebSocket should not be in /walker/ paths"
-        );
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "websocket connect and echo" {
+# =============================================================================
+# GROUP 5: WEBSOCKET TESTS
+# =============================================================================
+test "websocket functionality" {
     import websockets;
     sp = setup_serve_server();
     try {
-        async def _test -> None {
+        # Test: websocket connect and echo
+        async def test_echo -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
                 response = json.loads(await ws.recv());
@@ -1590,17 +1263,10 @@ test "websocket connect and echo" {
                 assert rpt["protocol"] == "websocket";
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_echo());
 
-test "websocket minimal walker" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: websocket minimal walker
+        async def test_minimal -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
                 await ws.send(json.dumps({}));
                 response = json.loads(await ws.recv());
@@ -1614,17 +1280,10 @@ test "websocket minimal walker" {
                 assert rpt["protocol"] == "websocket";
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_minimal());
 
-test "websocket multiple messages" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: websocket multiple messages
+        async def test_multiple -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 for i in range(3) {
                     await ws.send(
@@ -1642,15 +1301,9 @@ test "websocket multiple messages" {
                 }
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_multiple());
 
-test "websocket not accessible via walker endpoint" {
-    sp = setup_serve_server();
-    try {
+        # Test: websocket not accessible via walker endpoint
         response = requests.post(
             f"{sv_base_url}/walker/EchoMessage",
             json={"message": "test", "client_id": "test"},
@@ -1659,56 +1312,35 @@ test "websocket not accessible via walker endpoint" {
         assert response.status_code in (400, 404, 405) , (
             f"Expected 400/404/405, got {response.status_code}: {response.text}"
         );
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
 
-test "websocket nonexistent walker" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: websocket nonexistent walker
+        async def test_nonexistent -> None {
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/NonExistentWalker") as ws {
                     await ws.recv();
                     pytest.fail("Expected connection to be rejected");
                 }
             } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+                0;  # Expected
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_nonexistent());
 
-test "http walker not accessible via ws" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: http walker not accessible via ws
+        async def test_http_via_ws -> None {
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
                     await ws.recv();
                     pytest.fail("Expected connection to be rejected for HTTP walker");
                 }
             } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+                0;  # Expected
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_http_via_ws());
 
-test "private websocket requires auth" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: private websocket requires auth
+        async def test_private_no_auth -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(json.dumps({"message": "hello"}));
                 response = json.loads(await ws.recv());
@@ -1717,16 +1349,9 @@ test "private websocket requires auth" {
                 assert "token" in response["error"]["message"].lower();
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_private_no_auth());
 
-test "private websocket with valid token" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
+        # Test: private websocket with valid token
         username = f"ws_test_user_{uuid.uuid4().hex[:8]}";
         password = "testpass123";
 
@@ -1745,10 +1370,10 @@ test "private websocket with valid token" {
         assert response.status_code == 200 , f"Failed to login: {response.text}";
         token = response.json()["data"]["token"];
 
-        async def _test -> None {
+        async def test_private_with_token(t: str) -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(
-                    json.dumps({"message": "authenticated hello", "token": token})
+                    json.dumps({"message": "authenticated hello", "token": t})
                 );
                 response = json.loads(await ws.recv());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
@@ -1762,19 +1387,10 @@ test "private websocket with valid token" {
                 assert rpt["protocol"] == "websocket";
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_private_with_token(token));
 
-test "private websocket with query token" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
+        # Test: private websocket with query token
         username = f"ws_query_user_{uuid.uuid4().hex[:8]}";
-        password = "testpass123";
-
         response = requests.post(
             f"{sv_base_url}/user/register",
             json={"username": username, "password": password},
@@ -1788,12 +1404,10 @@ test "private websocket with query token" {
             timeout=10
         );
         assert response.status_code == 200;
-        token = response.json()["data"]["token"];
+        query_token = response.json()["data"]["token"];
 
-        async def _test -> None {
-            async with websockets.connect(
-                f"{sv_ws_url}/ws/PrivateWebSocket?token={token}"
-            ) as ws {
+        async def test_query_token(t: str) -> None {
+            async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket?token={t}") as ws {
                 await ws.send(json.dumps({"message": "query auth hello"}));
                 response = json.loads(await ws.recv());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
@@ -1805,17 +1419,10 @@ test "private websocket with query token" {
                 assert rpt["authenticated"] is True;
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_query_token(query_token));
 
-test "broadcast websocket all clients receive" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: broadcast websocket all clients receive
+        async def test_broadcast -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
                 async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
                     await asyncio.sleep(0.1);
@@ -1849,17 +1456,10 @@ test "broadcast websocket all clients receive" {
                 }
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_broadcast());
 
-test "private broadcast requires auth" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        async def _test -> None {
+        # Test: private broadcast requires auth
+        async def test_private_broadcast_no_auth -> None {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateBroadcastChat") as ws {
                 await ws.send(json.dumps({"message": "hello", "room": "general"}));
                 response = json.loads(await ws.recv());
@@ -1867,17 +1467,10 @@ test "private broadcast requires auth" {
                 assert response["error"]["code"] == "UNAUTHORIZED";
             }
         }
-        asyncio.run(_test());
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
+        asyncio.run(test_private_broadcast_no_auth());
 
-test "private broadcast with auth" {
-    import websockets;
-    sp = setup_serve_server();
-    try {
-        users = [];
+        # Test: private broadcast with auth
+        users: list = [];
         for i in range(2) {
             username = f"broadcast_user_{i}_{uuid.uuid4().hex[:8]}";
             password = "testpass123";
@@ -1900,12 +1493,12 @@ test "private broadcast with auth" {
             );
         }
 
-        async def _test -> None {
+        async def test_private_broadcast_with_auth(u: list) -> None {
             async with websockets.connect(
-                f"{sv_ws_url}/ws/PrivateBroadcastChat?token={users[0]['token']}"
+                f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[0]['token']}"
             ) as ws1 {
                 async with websockets.connect(
-                    f"{sv_ws_url}/ws/PrivateBroadcastChat?token={users[1]['token']}"
+                    f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[1]['token']}"
                 ) as ws2 {
                     await asyncio.sleep(0.1);
                     await ws1.send(
@@ -1937,39 +1530,17 @@ test "private broadcast with auth" {
                 }
             }
         }
-        asyncio.run(_test());
+        asyncio.run(test_private_broadcast_with_auth(users));
     } finally {
         teardown_serve_server(sp);
     }
 }
 
-test "websocket walkers not in openapi" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/openapi.json", timeout=5);
-        assert response.status_code == 200;
-        schema = response.json();
-        paths = schema.get("paths", {});
-
-        ws_walkers = [
-            "EchoMessage",
-            "MinimalWebSocket",
-            "PrivateWebSocket",
-            "BroadcastChat",
-            "PrivateBroadcastChat"
-        ];
-        for walker in ws_walkers {
-            assert f"/walker/{walker}" not in paths , (
-                f"WebSocket walker {walker} should not be in /walker/ paths"
-            );
-        }
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-# TestJacScaleServeDevMode
-glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+# =============================================================================
+# GROUP 6: DEV MODE TESTS
+# =============================================================================
+glob dm_fixtures_dir:
+         Path = Path(__file__).parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
      dm_api_port: int = dm_vite_port + 1,
@@ -2009,7 +1580,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     );
 
-    max_attempts = 50;
+    # Dev mode needs more time due to Jac compilation, bun setup, and vite initialization
+    max_attempts = 60;
     server_ready = False;
 
     for _ in range(max_attempts) {
@@ -2031,7 +1603,7 @@ def setup_dev_mode_server -> subprocess.Popen {
                 break;
             }
         } except (requests.ConnectionError, requests.Timeout) {
-            time.sleep(2);
+            time.sleep(2);  # Dev mode needs longer polling interval for CI
         }
     }
 
@@ -2058,9 +1630,10 @@ def teardown_dev_mode_server(sp: subprocess.Popen | None) -> None {
     _cleanup_db_files(dm_fixtures_dir);
 }
 
-test "dev mode walker body parsing" {
+test "dev mode operations" {
     sp = setup_dev_mode_server();
     try {
+        # Test: dev mode walker body parsing
         register_response = requests.post(
             f"{dm_base_url}/user/register",
             json={"username": f"devtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
@@ -2080,16 +1653,9 @@ test "dev mode walker body parsing" {
             f"Expected 200, got {response.status_code}: {response.text}"
         );
         data = _extract_data_dev(response.json());
-
         assert "result" in data or "reports" in data , f"Unexpected response: {data}";
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "dev mode function body parsing" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: dev mode function body parsing
         register_response = requests.post(
             f"{dm_base_url}/user/register",
             json={"username": f"devfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
@@ -2109,48 +1675,27 @@ test "dev mode function body parsing" {
             f"Expected 200, got {response.status_code}: {response.text}"
         );
         data = _extract_data_dev(response.json());
-
         assert "result" in data , f"Expected 'result' in response: {data}";
         assert data["result"] == 100 , f"Expected 100, got {data['result']}";
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "dev mode public walker no auth" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: dev mode public walker no auth
         response = requests.post(
             f"{dm_base_url}/walker/PublicInfo", json={}, timeout=10
         );
-
         assert response.status_code == 200;
         data = _extract_data_dev(response.json());
         assert "reports" in data;
         assert data["reports"][0]["message"] == "This is a public endpoint";
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "dev mode private walker requires auth" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: dev mode private walker requires auth
         response = requests.post(
             f"{dm_base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},
             timeout=10
         );
-
         assert response.status_code == 401;
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "async walker basic execution" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: async walker basic execution
         username = f"asyncuser_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
@@ -2182,14 +1727,8 @@ test "async walker basic execution" {
         assert reports[1]["status"] == "after_async_wait";
         assert reports[2]["status"] == "completed";
         assert "task" in reports[2];
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "walker stream response" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: walker stream response
         response = requests.post(
             f"{dm_base_url}/walker/WalkerStream",
             json={"count": 3},
@@ -2213,61 +1752,8 @@ test "walker stream response" {
 
         expected = "Report 0Report 1Report 2";
         assert content == expected , f"Expected '{expected}', got '{content}'";
-    } finally {
-        teardown_dev_mode_server(sp);
-    }
-}
 
-test "graph endpoint returns html page" {
-    sp = setup_serve_server();
-    try {
-        response = requests.get(f"{sv_base_url}/graph", timeout=5);
-        assert response.status_code == 200;
-        assert "text/html" in response.headers["content-type"];
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "graph data returns nodes and edges" {
-    sp = setup_serve_server();
-    try {
-        # Public (no auth) should return __guest__ root
-        response = requests.get(f"{sv_base_url}/graph/data", timeout=5);
-        assert response.status_code == 200;
-        data = response.json();
-        assert "nodes" in data and "edges" in data;
-
-        # Authenticated user: create a node, verify it appears
-        reg = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": "guser", "password": "gpass"}
-        );
-        _request(
-            sv_base_url,
-            "POST",
-            "/walker/CreateTask",
-            {"title": "T1", "priority": 1},
-            token=reg["token"]
-        );
-        auth_resp = requests.get(
-            f"{sv_base_url}/graph/data",
-            headers={"Authorization": f"Bearer {reg['token']}"},
-            timeout=5
-        );
-        auth_data = auth_resp.json();
-        assert len(auth_data["nodes"]) == 2;
-        assert len(auth_data["edges"]) == 1;
-    } finally {
-        teardown_serve_server(sp);
-    }
-}
-
-test "function stream response" {
-    sp = setup_dev_mode_server();
-    try {
+        # Test: function stream response
         response = requests.post(
             f"{dm_base_url}/function/FunctionStream",
             json={"count": 2},

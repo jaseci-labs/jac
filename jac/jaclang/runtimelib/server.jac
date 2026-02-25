@@ -57,12 +57,6 @@ obj UserData {
         root_id: str;
 }
 
-"""Type-safe serializer for Jac objects."""
-obj JacSerializer {
-    static def serialize(`obj: object) -> JsonValue;
-    static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
-}
-
 """Manage users and their persistent roots (SQLite-backed)."""
 obj UserManager {
     has base_path: str,

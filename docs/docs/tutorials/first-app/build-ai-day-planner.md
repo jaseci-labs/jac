@@ -602,7 +602,7 @@ You can also visit [http://localhost:8000/graph](http://localhost:8000/graph) to
     In Parts 1-2 we used `jac <file>` to run scripts. `jac start <file>` launches a web server that serves `def:pub` endpoints and any frontend components. Use `jac` for scripts, `jac start` for web apps.
 
 !!! warning "Common issue"
-    If you see "Address already in use", another process is on that port. Use `--port` to pick a different one, or see [Troubleshooting](../troubleshooting.md#server-wont-start-address-already-in-use).
+    If you see "Address already in use", another process is on that port. Use `--port` to pick a different one.
 
 **What You Learned**
 
@@ -2703,10 +2703,10 @@ node Task {
 
     can respond with ListTasks entry {
         visitor.results.append({
-            "id": here.id,
-            "title": here.title,
-            "done": here.done,
-            "category": here.category
+            "id": self.id,
+            "title": self.title,
+            "done": self.done,
+            "category": self.category
         });
     }
 }
@@ -2775,9 +2775,9 @@ walker GenerateShoppingList {
     has meal_description: str;
 
     can generate with Root entry {
-        # First, visit children to clear old ingredients
+        # Queue connected nodes for traversal after this ability completes
         visit [-->];
-        # Then generate new ones (runs after visit completes)
+        # Generate new ingredients (runs before queued visits)
         ingredients = generate_shopping_list(self.meal_description);
         result: list = [];
         for ing in ingredients {
@@ -2803,7 +2803,7 @@ walker GenerateShoppingList {
 }
 ```
 
-When `visit [-->]` runs, the walker visits all connected nodes. If any are `ShoppingItem` nodes, the `clear_old` ability fires and deletes them. Then control returns to root, where the walker generates fresh ingredients via the LLM and persists them as new nodes.
+When `visit [-->]` runs, it queues all connected nodes for traversal **after the current ability body completes**. So the rest of `generate` runs first -- creating new `ShoppingItem` nodes and building the result list. Then, once the ability body finishes, the walker traverses to the queued nodes. If any are `ShoppingItem` nodes that existed before this ability ran, the `clear_old` ability fires and deletes them.
 
 Compare this to the function version where you needed an explicit loop to clear old items. The walker version expresses the same intent more declaratively: "when I encounter a ShoppingItem, delete it."
 
@@ -3634,5 +3634,5 @@ Here's a quick reference of every Jac concept covered in this tutorial:
 - **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale`
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for tool-using agents
-- **Examples** -- [LittleX (Twitter Clone)](../examples/littlex.md), [RAG Chatbot](../examples/rag-chatbot.md)
+- **Examples** -- Check the [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for more projects
 - **Language Reference** -- [Full Language Reference](../../reference/language/foundation.md) for complete syntax documentation

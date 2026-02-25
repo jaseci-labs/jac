@@ -15,7 +15,11 @@ import from jaclang.compiler.passes.tool.grammar_extract_pass {
     GRef,
     GSeq,
     GStar,
-    GTok
+    GTok,
+    MethodSemantics,
+    ConditionResult,
+    METHOD_TABLE,
+    SPECIAL_LOOKAHEAD_TOKENS
 }
 import from jaclang.jac0core.program { JacProgram }
 

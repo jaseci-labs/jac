@@ -169,7 +169,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _push_scope(nd: uni.UniScopeNode) -> None;
     def _pop_scope(nd: uni.UniScopeNode) -> None;
     def _current_scope -> (ScopeInfo | None);
-    def _is_declared_in_current_scope(name: str) -> bool;
     def _is_declared_in_any_scope(name: str) -> bool;
     def _register_declaration(name: str) -> None;
     def _ensure_identifier_declared(name: str, jac_node: uni.UniNode) -> None;
@@ -238,12 +237,9 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def _get_setter_name(var_name: str) -> str;
-    def _inject_usestate_import(nd: uni.UniNode) -> None;
-    def _inject_jac_call_function_import(nd: uni.UniNode) -> None;
-    def _has_usestate_import -> bool;
+    def _has_import(name: str) -> bool;
+    def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _register_jac_runtime_import -> None;
-    def _has_useeffect_import -> bool;
-    def _inject_useeffect_import(nd: uni.UniNode) -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
     def exit_jsx_element_name(nd: uni.JsxElementName) -> None;

@@ -352,7 +352,7 @@ cl {
 
 ```jac
 cl {
-    import ".styles.css";
+    import "./styles.css";
 
     def:pub app() -> JsxElement {
         return <div className="container">

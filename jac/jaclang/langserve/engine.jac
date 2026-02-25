@@ -30,6 +30,7 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
+import from .rwlock { ReadWriteLock }
 
 obj Task {
     has file_uri: str,
@@ -50,7 +51,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
         dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
         worker_future: Future | None by postinit,
-        _state_lock: threading.RLock by postinit,
+        _state_lock: ReadWriteLock by postinit,
         _work_event: threading.Event = threading.Event(),
         _idle_event: threading.Event by postinit,
         _shutdown_called: bool = False,

@@ -11,7 +11,7 @@ impl Task.postinit -> None {
 impl JacLangServer.postinit -> None {
     LanguageServer.init(self, 'jac-lsp', 'v0.1');
     JacProgram.init(self);
-    self._state_lock = threading.RLock();
+    self._state_lock = ReadWriteLock();
     self.module_manager = ModuleManager(self, self.sem_managers);
     # Initialize idle event as set (server starts idle)
     self._idle_event = threading.Event();
@@ -24,7 +24,7 @@ impl JacLangServer.postinit -> None {
 """Debounced type check - waits for typing to pause before starting analysis."""
 impl JacLangServer.type_check(file_uri: str) -> None {
     DEBOUNCE_DELAY = 0.3;  # 300ms debounce delay
-    with self._state_lock {
+    with self._state_lock.write_lock() {
         # Cancel any pending debounce timer
         if self._debounce_timer {
             self._debounce_timer.cancel();
@@ -52,17 +52,17 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 
 """Actually queue the type check task after debounce delay."""
 impl JacLangServer._do_type_check(file_uri: str) -> None {
-    with self._state_lock {
+    with self._state_lock.write_lock() {
         # Clear timer reference and pending file
         self._debounce_timer = None;
         # Clear idle event since we're about to add work
         self._idle_event.clear();
+        self.debug("Debounce triggered, starting type check for " + file_uri);
+        self.last_task = Task(file_uri);
+        self.pipe.append(self.last_task);
+        # Trigger the worker to pick up the new task.
+        self._work_event.set();
     }
-    self.debug("Debounce triggered, starting type check for " + file_uri);
-    self.last_task = Task(file_uri);
-    self.pipe.append(self.last_task);
-    # Trigger the worker to pick up the new task.
-    self._work_event.set();
 }
 
 """Rebuild a file and its dependencies (typecheck)."""
@@ -132,39 +132,44 @@ impl JacLangServer.type_check_file(
 impl JacLangServer.dispatcher -> None {
     while True {
         start_time = time.time();
-        self.debug(
-            "Dispatcher waiting for work..." + str(start_time) + str(
-                self.dirty_files.keys()
-            )
-        );
+        self.debug("Dispatcher waiting for work...");
         # Wait until there's a task to process or shutdown is called.
         self._work_event.wait();
-        if self._shutdown_called {
+        # Determine next task under write lock (pops from pipe/dirty_files).
+        task: Task | None = None;
+        should_exit = False;
+        with self._state_lock.write_lock() {
+            if self._shutdown_called {
+                should_exit = True;
+            } elif self.pipe {
+                task = self.pipe.popleft();
+            } elif self.dirty_files {
+                # Get the most recent dirty file and create a NEW task for it
+                (file_uri, _) = self.dirty_files.popitem();
+                task = Task(file_uri);
+            } else {
+                # No tasks to process, signal idle and wait for the next one.
+                self._work_event.clear();
+                self._idle_event.set();
+            }
+        }
+        if should_exit {
             self.debug("Shutting down dispatcher");
             break;
-        } elif self.pipe {
-            task = self.pipe.popleft();
-        } elif self.dirty_files {
-            # Get the most recent dirty file and create a NEW task for it
-            (file_uri, _) = self.dirty_files.popitem();
-            task = Task(file_uri);
-        } else {
-            # No tasks to process, signal idle and wait for the next one.
-            self._work_event.clear();
-            self._idle_event.set();
+        }
+        if not task {
             continue;
         }
-
+        # Lock released — type_check_file runs without holding the RWLock,
+        # allowing readers (hover, completion, etc.) to proceed concurrently.
         self.debug("Dispatching task id: " + str(task.task_id));
         try {
             self.type_check_file(task.file_uri, cancel_token=task.cancel_token);
             self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-        } finally {
-        # self.queue.task_done();
-        }
+        } finally { }
         if task.cancel_token.is_set() {
             self.debug(
-                "Task cancled id: " + str(task.task_id) + " " + str(time.time())
+                "Task cancelled id: " + str(task.task_id) + " " + str(time.time())
             );
         } else {
             # Mark task as done so type_check won't try to "cancel" it later
@@ -177,26 +182,30 @@ impl JacLangServer.dispatcher -> None {
             );
         }
         # Check if there's more work, otherwise signal idle
-        if not self.pipe and not self.dirty_files {
+        with self._state_lock.read_lock() {
+            has_more = bool(self.pipe) or bool(self.dirty_files);
+        }
+        if not has_more {
             self._idle_event.set();
         }
     }
 }
 
 impl JacLangServer.shutdown -> None {
-    # Guard against double shutdown.
-    if self._shutdown_called {
-        return;
-    }
-    self._shutdown_called = True;
-    try {
-        # Cancel any pending debounce timer
-        with self._state_lock {
-            if self._debounce_timer {
-                self._debounce_timer.cancel();
-                self._debounce_timer = None;
-            }
+    # Guard against double shutdown under write lock.
+    with self._state_lock.write_lock() {
+        if self._shutdown_called {
+            return;
         }
+        self._shutdown_called = True;
+        # Cancel any pending debounce timer
+        if self._debounce_timer {
+            self._debounce_timer.cancel();
+            self._debounce_timer = None;
+        }
+    }
+    # Release lock before waiting on worker to avoid deadlock.
+    try {
         if self?.worker_future and not self?.worker_future.done() {
             self._work_event.set();  # Wake up the worker to let it exit gracefully.
             wait self.worker_future ;  # Wait for the worker to finish
@@ -232,15 +241,12 @@ impl JacLangServer.log_error(message: str) -> None {
 """Return semantic tokens for a file."""
 impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     fs_path = uris.to_fs_path(file_path);
-    self._state_lock.acquire();
-    try {
+    with self._state_lock.read_lock() {
         sem_mgr = self.sem_managers.get(fs_path);
         if not sem_mgr {
             return lspt.SemanticTokens(data=[]);
         }
         return lspt.SemanticTokens(data=list(sem_mgr.sem_tokens));
-    } finally {
-        self._state_lock.release();
     }
 }
 
@@ -350,8 +356,10 @@ impl JacLangServer.get_definition(
 """Return document symbols for a file."""
 impl JacLangServer.get_outline(file_path: str) -> list[lspt.DocumentSymbol] {
     fs_path = uris.to_fs_path(file_path);
-    if fs_path in self.mod.hub and (root_node := self.mod.hub[fs_path].sym_tab) {
-        return utils.get_symbols_for_outline(root_node);
+    with self._state_lock.read_lock() {
+        if fs_path in self.mod.hub and (root_node := self.mod.hub[fs_path].sym_tab) {
+            return utils.get_symbols_for_outline(root_node);
+        }
     }
     return [];
 }
@@ -432,28 +440,34 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
 """Close module (didClose cleanup - remove sem_manager only)."""
 impl JacLangServer.close_module(uri: str) -> None {
     fs_path = uris.to_fs_path(uri);
-    if fs_path in self.sem_managers {
-        del (self.sem_managers[fs_path], );
+    with self._state_lock.write_lock() {
+        if fs_path in self.sem_managers {
+            del (self.sem_managers[fs_path], );
+        }
     }
 }
 
 """Delete module."""
 impl JacLangServer.delete_module(uri: str) -> None {
-    if uri in self.mod.hub {
-        del (self.mod.hub[uri], );
-    }
-    if uri in self.sem_managers {
-        del (self.sem_managers[uri], );
+    with self._state_lock.write_lock() {
+        if uri in self.mod.hub {
+            del (self.mod.hub[uri], );
+        }
+        if uri in self.sem_managers {
+            del (self.sem_managers[uri], );
+        }
     }
 }
 
 """Rename module."""
 impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
-    if old_path in self.mod.hub and new_path != old_path {
-        self.mod.hub[new_path] = self.mod.hub[old_path];
-        self.sem_managers[new_path] = self.sem_managers[old_path];
-        del (self.mod.hub[old_path], );
-        del (self.sem_managers[old_path], );
+    with self._state_lock.write_lock() {
+        if old_path in self.mod.hub and new_path != old_path {
+            self.mod.hub[new_path] = self.mod.hub[old_path];
+            self.sem_managers[new_path] = self.sem_managers[old_path];
+            del (self.mod.hub[old_path], );
+            del (self.sem_managers[old_path], );
+        }
     }
 }
 
@@ -516,8 +530,10 @@ impl JacLangServer.get_node_at_position(
 }
 
 impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
-    if file_path in self.mod.hub {
-        return self.mod.hub[file_path];
+    with self._state_lock.read_lock() {
+        if file_path in self.mod.hub {
+            return self.mod.hub[file_path];
+        }
     }
     return None;
 }
@@ -526,7 +542,7 @@ impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
 impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
     self.debug("Waiting for server to be idle (sync)...");
     # First, flush any pending debounce timer
-    with self._state_lock {
+    with self._state_lock.write_lock() {
         if self._debounce_timer {
             self._debounce_timer.cancel();
             self._debounce_timer = None;
@@ -536,7 +552,7 @@ impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
     # Wait for dispatcher to become idle and re-check queue state after wake to avoid races with stale work events.
     while True {
         self._idle_event.wait();
-        with self._state_lock {
+        with self._state_lock.read_lock() {
             has_pending_work = bool(
                 self.pipe or self.dirty_files or self._debounce_timer
             );
@@ -609,8 +625,7 @@ impl JacLangServer.get_token_at_position(
     file_path: str, position: lspt.Position
 ) -> Optional[uni.AstNode] {
     fs_path = uris.to_fs_path(file_path);
-    self._state_lock.acquire();
-    try {
+    with self._state_lock.read_lock() {
         if fs_path not in self.mod.hub {
             return None;
         }
@@ -628,8 +643,6 @@ impl JacLangServer.get_token_at_position(
             return sem_mgr.static_sem_tokens[token_index][3];
         }
         return None;
-    } finally {
-        self._state_lock.release();
     }
 }
 
@@ -638,51 +651,54 @@ impl JacLangServer.update_modules(
     file_path: str, build: uni.Module, need: bool = True
 ) -> None {
     self.log_py(f"'Updating modules for '{file_path}");
-    self._state_lock.acquire();
-    try {
+    with self._state_lock.write_lock() {
         self.module_manager.update(file_path, build, update_annexed=need);
-    } finally {
-        self._state_lock.release();
     }
 }
 
 """Get IR for a file path."""
 impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
-    return self.mod.hub.get(file_path);
+    with self._state_lock.read_lock() {
+        return self.mod.hub.get(file_path);
+    }
 }
 
 """Remove errors and warnings for a specific file from the lists."""
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
-    self.module_manager.clear_alerts_for_file(file_path);
-    # Also clear from internal_program (jaclang.* modules) if it exists
-    if (self._compiler and self._compiler._internal_program) {
-        internal = self._compiler._internal_program;
-        internal.errors_had = [
-            e
-            for e in internal.errors_had
-            if e.loc.mod_path != file_path
-        ];
-        internal.warnings_had = [
-            w
-            for w in internal.warnings_had
-            if w.loc.mod_path != file_path
-        ];
+    with self._state_lock.write_lock() {
+        self.module_manager.clear_alerts_for_file(file_path);
+        # Also clear from internal_program (jaclang.* modules) if it exists
+        if (self._compiler and self._compiler._internal_program) {
+            internal = self._compiler._internal_program;
+            internal.errors_had = [
+                e
+                for e in internal.errors_had
+                if e.loc.mod_path != file_path
+            ];
+            internal.warnings_had = [
+                w
+                for w in internal.warnings_had
+                if w.loc.mod_path != file_path
+            ];
+        }
     }
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
 impl JacLangServer.diagnostics -> dict[str, list] {
-    # Aggregate errors from internal_program (jaclang.* modules) if any
-    all_errors = list(self.errors_had);
-    all_warnings = list(self.warnings_had);
-    if (self._compiler and self._compiler._internal_program) {
-        all_errors.extend(self._compiler._internal_program.errors_had);
-        all_warnings.extend(self._compiler._internal_program.warnings_had);
+    with self._state_lock.read_lock() {
+        # Aggregate errors from internal_program (jaclang.* modules) if any
+        all_errors = list(self.errors_had);
+        all_warnings = list(self.warnings_had);
+        if (self._compiler and self._compiler._internal_program) {
+            all_errors.extend(self._compiler._internal_program.errors_had);
+            all_warnings.extend(self._compiler._internal_program.warnings_had);
+        }
+        result = {};
+        for file_path in self.mod.hub {
+            uri = uris.from_fs_path(file_path);
+            result[uri] = utils.gen_diagnostics(file_path, all_errors, all_warnings);
+        }
+        return result;
     }
-    result = {};
-    for file_path in self.mod.hub {
-        uri = uris.from_fs_path(file_path);
-        result[uri] = utils.gen_diagnostics(file_path, all_errors, all_warnings);
-    }
-    return result;
 }
