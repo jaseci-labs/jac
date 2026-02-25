@@ -353,6 +353,21 @@ test "max react iterations" {
     );
 }
 
+test "max react iterations with finish tool call" {
+    # Verifies that when max_react_iterations is exceeded and the LLM responds
+    # with a finish_tool call (instead of plain text), the output is correctly extracted.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("react_max_iterations_finish_tool", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "get_live_wind_speed called for Puttalam" in stdout_value;
+    assert "get_speed_unit called" in stdout_value;
+    assert "RESULT: FINAL_REPORT" in stdout_value;
+    assert "WIND_TOOL_CALLS: 1" in stdout_value;
+    assert "UNIT_TOOL_CALLS: 1" in stdout_value;
+}
+
 test "api key from constructor" {
     model = Model(model_name="gpt-4o-mini", api_key="sk-constructor-key");
     assert model.api_key == "sk-constructor-key";
@@ -467,4 +482,29 @@ test "api key not in verbose output" {
     log_value = captured_output.getvalue();
     assert "sk-secret-test-key-do-not-leak" not in log_value;
     assert "Calling LLM" in log_value;
+}
+
+test "builtin llm with mock override" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("builtin_llm", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "POSITIVE" in stdout_value or "positive" in stdout_value;
+}
+
+test "builtin llm compiles without glob" {
+    # Verify that a file using 'by llm()' without defining glob llm
+    # compiles successfully (the llm name is recognized as a builtin).
+    # We suppress runtime errors since no actual LLM API key is configured.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    try {
+        jac_import("builtin_llm_no_override", base_path=FIXTURE_DIR + "/");
+    } except Exception as e {
+        # Runtime errors are expected (no API key), but NameError for 'llm'
+        # would indicate the builtin wasn't recognized.
+        assert "name 'llm' is not defined" not in str(e) , f"'llm' should be a recognized builtin, got: {e}";
+    }
+    sys.stdout = sys.__stdout__;
 }

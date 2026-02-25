@@ -191,7 +191,7 @@ This guide covers array and list methods for developers familiar with JavaScript
     (items, setItems) = useState(["A", "B", "C"]);
 
     # Add item
-    setItems(items.concat(["D"]));
+    setItems(items + ["D"]);
 
     # Remove by index
     setItems(items.filter(lambda item: str, i: int -> bool { return i != indexToRemove; }));
@@ -299,7 +299,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 
 ## Tips
 
-1. **Use `.concat()`** instead of `.push()` for immutable updates in state
+1. **Use `+` operator** (e.g. `list + [item]`) instead of `.push()` for immutable updates in state
 2. **Always provide `key`** prop when mapping in JSX
 3. **Use `.slice()`** to copy arrays before sorting (sort mutates!)
 4. **Chain methods**: `.filter().map().slice()`

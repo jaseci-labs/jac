@@ -49,6 +49,8 @@ def delete_if_exists(
 
 def ensure_namespace_exists(namespace: str) -> None;
 
+def delete_namespace(namespace: str) -> None;
+
 def exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo];
 
 def create_tarball(source_dir: str, tar_path: str) -> None;
@@ -68,6 +70,13 @@ def check_deployment_status(
 ) -> tuple[bool, str];
 
 def cluster_type -> str;
+
+def check_node_ports_available(
+    node_port: int,
+    prometheus_node_port: int | None,
+    grafana_node_port: int | None,
+    current_namespace: str
+) -> None;
 
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,

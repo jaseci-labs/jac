@@ -726,6 +726,9 @@ impl WalkerStmtOnlyNode.init(self: WalkerStmtOnlyNode) -> None {
 impl UniCFGNode.init(self: UniCFGNode) -> None {
     self.bb_in: list[UniCFGNode] = [];
     self.bb_out: list[UniCFGNode] = [];
+    # Pyright-style optimization: track symbols affected (assigned/narrowed) in this branch.
+    # If a symbol is not in affected_symbols, we can skip backward traversal through this node.
+    self.affected_symbols: set[str] = set();
 }
 
 """Get head by walking up the CFG iteratively."""
@@ -893,9 +896,9 @@ impl Module.init(
     self.stub_only = stub_only;
     self.impl_mod: list[Module] = [];
     self.test_mod: list[Module] = [];
+    self.variant_mod: list[Module] = [];
     self.src_terminals: list[Token] = terminals;
     self.is_raised_from_py: bool = False;
-    self.has_syntax_errors: bool = False;
     UniNode.init(self, kid=kid);
     AstDocNode.init(self, doc=doc);
     UniScopeNode.init(self, name=self.name);
@@ -1114,12 +1117,14 @@ impl Import.init(
     items: (Sequence[ModuleItem] | Sequence[ModulePath]),
     is_absorb: bool,
     kid: Sequence[UniNode],
-    doc: (String | None) = None
+    doc: (String | None) = None,
+    clib_decls: (Sequence[UniNode] | None) = None
 ) -> None {
     self.hint = None;
     self.from_loc = from_loc;
     self.items = items;
     self.is_absorb = is_absorb;
+    self.clib_decls = clib_decls;
     UniNode.init(self, kid=kid);
     AstDocNode.init(self, doc=doc);
     CodeBlockStmt.init(self);
@@ -2838,6 +2843,26 @@ impl String.lit_value(self: String) -> str {
         try {
             return ast3.literal_eval(self.value);
         } except (ValueError, SyntaxError) {
+            fstring_parent2: FString = self.parent;
+            is_raw2 = False;
+            if (
+                fstring_parent2
+                and fstring_parent2.start
+                and fstring_parent2.start.value
+            ) {
+                prefix2 = fstring_parent2.start.value.lower();
+                is_raw2 = 'r' in prefix2;
+            }
+            if not is_raw2 {
+                result = self.value;
+                placeholder = '\x00';
+                result = result.replace('\\\\', placeholder);
+                result = result.replace('\\n', '\n');
+                result = result.replace('\\t', '\t');
+                result = result.replace('\\r', '\r');
+                result = result.replace(placeholder, '\\');
+                return result;
+            }
             return self.value;
         }
     } else {

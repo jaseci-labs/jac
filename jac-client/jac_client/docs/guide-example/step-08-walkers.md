@@ -169,7 +169,7 @@ async def addTodo() -> None {
     result = root spawn create_todo(text=input.trim());
 
     # Add the new todo to local state
-    setTodos(todos.concat([result.reports[0][0]]));
+    setTodos(todos + [result.reports[0][0]]);
     setInput("");
 }
 ```
@@ -362,7 +362,7 @@ Every node gets a unique `_jac_id`:
 
 ```jac
 todo = result.reports[0][0];
-console.log(todo._jac_id);  # "urn:uuid:abc123..."
+print(todo._jac_id);  # "urn:uuid:abc123..."
 ```
 
 Use this ID to reference specific nodes:
@@ -495,7 +495,7 @@ can report_todos with Todo entry {
 # Safe access
 if result.reports and result.reports.length > 0 {
     todo = result.reports[0][0];
-    console.log(todo._jac_id);
+    print(todo._jac_id);
 }
 ```
 

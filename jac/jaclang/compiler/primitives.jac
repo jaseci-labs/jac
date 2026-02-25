@@ -27,17 +27,10 @@ Returning None signals that this backend has not yet implemented the
 operation, allowing the dispatch layer to fall back gracefully.
 """
 
-import from typing { TypeVar, Generic }
-
-glob V = TypeVar('V'),
-     C = TypeVar('C');
-
 # =============================================================================
 #  Numeric Types
 # =============================================================================
-class IntEmitter(Generic[
-    (V, C)
-]) {
+class IntEmitter[V, C] {
     # --- Named methods ---
     def emit_bit_length(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_bit_count(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -93,7 +86,7 @@ class IntEmitter(Generic[
 
 }
 
-class FloatEmitter(Generic[(V, C)]) {
+class FloatEmitter[V, C] {
     # --- Named methods ---
     def emit_is_integer(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_as_integer_ratio(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -135,7 +128,7 @@ class FloatEmitter(Generic[(V, C)]) {
 
 }
 
-class ComplexEmitter(Generic[(V, C)]) {
+class ComplexEmitter[V, C] {
     # --- Named methods ---
     def emit_conjugate(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     # --- Arithmetic operators ---
@@ -164,9 +157,7 @@ class ComplexEmitter(Generic[(V, C)]) {
 # =============================================================================
 #  String Types
 # =============================================================================
-class StrEmitter(Generic[
-    (V, C)
-]) {
+class StrEmitter[V, C] {
     # Case conversion
     def emit_capitalize(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_casefold(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -247,7 +238,7 @@ class StrEmitter(Generic[
 
 }
 
-class BytesEmitter(Generic[(V, C)]) {
+class BytesEmitter[V, C] {
     # Decoding
     def emit_decode(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_hex(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -326,9 +317,7 @@ class BytesEmitter(Generic[(V, C)]) {
 # =============================================================================
 #  Collection Types
 # =============================================================================
-class ListEmitter(Generic[
-    (V, C)
-]) {
+class ListEmitter[V, C] {
     # --- Named methods ---
     def emit_append(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_extend(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -369,7 +358,7 @@ class ListEmitter(Generic[
 
 }
 
-class DictEmitter(Generic[(V, C)]) {
+class DictEmitter[V, C] {
     # --- Named methods ---
     def emit_get(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_keys(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -398,7 +387,7 @@ class DictEmitter(Generic[(V, C)]) {
 
 }
 
-class SetEmitter(Generic[(V, C)]) {
+class SetEmitter[V, C] {
     # --- Named methods (mutation) ---
     def emit_add(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_remove(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -458,7 +447,7 @@ class SetEmitter(Generic[(V, C)]) {
 
 }
 
-class FrozensetEmitter(Generic[(V, C)]) {
+class FrozensetEmitter[V, C] {
     # --- Named methods ---
     def emit_union(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_intersection(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -495,7 +484,7 @@ class FrozensetEmitter(Generic[(V, C)]) {
 
 }
 
-class TupleEmitter(Generic[(V, C)]) {
+class TupleEmitter[V, C] {
     # --- Named methods ---
     def emit_count(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_index(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -522,7 +511,7 @@ class TupleEmitter(Generic[(V, C)]) {
 
 }
 
-class RangeEmitter(Generic[(V, C)]) {
+class RangeEmitter[V, C] {
     # --- Named methods ---
     def emit_count(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_index(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
@@ -539,9 +528,7 @@ class RangeEmitter(Generic[(V, C)]) {
 # =============================================================================
 #  Builtin Functions
 # =============================================================================
-class BuiltinEmitter(Generic[
-    (V, C)
-]) {
+class BuiltinEmitter[V, C] {
     def emit_print(self, ctx: C, args: list[V]) -> (V | None) abs;
     def emit_input(self, ctx: C, args: list[V]) -> (V | None) abs;
     def emit_len(self, ctx: C, args: list[V]) -> (V | None) abs;

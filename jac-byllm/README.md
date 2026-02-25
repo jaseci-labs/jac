@@ -26,10 +26,6 @@ pip install byllm
 Consider building an application that translates english to other languages using an LLM. This can be simply built as follows:
 
 ```python
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o");
-
 def translate_to(language: str, phrase: str) -> str by llm();
 
 with entry {
@@ -38,16 +34,13 @@ with entry {
 }
 ```
 
-This simple piece of code replaces traditional prompt engineering without introducing additional complexity.
+`llm` is a **built-in** name -- no imports needed. By default it uses the model configured in your `jac.toml` (defaults to `gpt-4o-mini`). This simple piece of code replaces traditional prompt engineering without introducing additional complexity.
 
 ## Power of Types with LLMs
 
-Consider a program that detects the personality type of a historical figure from their name. This can eb built in a way that LLM picks from an enum and the output strictly adhere this type.
+Consider a program that detects the personality type of a historical figure from their name. This can be built in a way that LLM picks from an enum and the output strictly adheres to this type.
 
 ```python
-import from byllm.lib { Model }
-glob llm = Model(model_name="gemini/gemini-2.0-flash");
-
 enum Personality {
     INTROVERT, EXTROVERT, AMBIVERT
 }

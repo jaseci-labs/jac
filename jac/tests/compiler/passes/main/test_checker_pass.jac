@@ -1552,3 +1552,43 @@ test "type_param_assignment" {
         program.errors_had[0].pretty_print()
     );
 }
+
+"""Test bare-dot relative import (from . import x) resolves sibling module and catches type errors."""
+test "bare_dot_relative_import" {
+    path = os.path.join(FIXTURES, "checker_bare_dot_import.jac");
+    program = JacProgram();
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1;
+    assert_error_pretty_found(
+        """
+      err: str = checker_imported.some_int;
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+"""Test type narrowing detects None assignment to non-None type in else branches."""
+test "type_narrowing_none_assignment_errors" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing_none.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}";
+
+    assert_error_pretty_found(
+        """
+        y: int = value;  # <-- Error: None cannot be assigned to int
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        b: str = data;  # <-- Error: None cannot be assigned to str
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}

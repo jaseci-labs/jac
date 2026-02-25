@@ -24,6 +24,7 @@ class JacClientConfig(PluginConfigBase) {
     def get_ts_config(self: JacClientConfig) -> dict[str, Any];
     def get_configs(self: JacClientConfig) -> dict[str, Any];
     def get_package_config(self: JacClientConfig) -> dict[str, Any];
+    def get_npm_config(self: JacClientConfig) -> dict[str, Any];
     def add_dependency(
         self: JacClientConfig, name: str, version: str, is_dev: bool = False
     ) -> None;
@@ -31,4 +32,6 @@ class JacClientConfig(PluginConfigBase) {
     def remove_dependency(
         self: JacClientConfig, name: str, is_dev: bool = False
     ) -> bool;
+
+    def get_paths_config(self: JacClientConfig) -> dict[str, str];
 }

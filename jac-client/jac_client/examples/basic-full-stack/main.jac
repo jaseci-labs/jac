@@ -57,44 +57,61 @@ cl {
         async def toggleTodo(id: any) -> None {
             print("toggleTodo", id);
             id spawn toggle_todo();
-            todos = todos.map(
-                lambda todo: any  -> any { if todo._jac_id == id {
-                    updatedTodo = {
-                        "_jac_id": todo._jac_id,
-                        "text": todo.text,
-                        "done": not todo.done,
-                        "id": todo.id
-                    };
-                    return updatedTodo;
-                }return todo; }
-            );
+            todos = [
+                {
+                    "_jac_id": todo._jac_id,
+                    "text": todo.text,
+                    "done": not todo.done,
+                    "id": todo.id
+                }
+                if todo._jac_id == id
+                else todo for todo in todos
+            ];
         }
 
         # Delete a todo
         def deleteTodo(id: any) -> None {
-            todos = todos.filter(lambda todo: any  -> bool { return todo.id != id; });
+            todos = [
+                todo
+                for todo in todos
+                if todo.id != id
+            ];
         }
 
         # Clear all completed todos
         def clearCompleted -> None {
-            todos = todos.filter(lambda todo: any  -> bool { return not todo.done; });
+            todos = [
+                todo
+                for todo in todos
+                if not todo.done
+            ];
         }
 
         # Filter todos based on current filter
         def getFilteredTodos -> list {
             if filter == "active" {
-                return todos.filter(
-                    lambda todo: any  -> bool { return not todo.done; }
-                );
+                return [
+                    todo
+                    for todo in todos
+                    if not todo.done
+                ];
             } elif filter == "completed" {
-                return todos.filter(lambda todo: any  -> bool { return todo.done; });
+                return [
+                    todo
+                    for todo in todos
+                    if todo.done
+                ];
             }
             return todos;
         }
 
         # Count active todos
         activeCount = len(
-            todos.filter(lambda todo: any  -> bool { return not todo.done; })
+            [
+                todo
+                for todo in todos
+                if not todo.done
+            ]
         );
 
         filteredTodos = getFilteredTodos();
@@ -258,65 +275,60 @@ cl {
                     )
                     if len(filteredTodos) == 0
                     else (
-                        filteredTodos.map(
-                            lambda todo: any  -> any { return
-                                <div
-                                    key={todo._jac_id}
+                        [
+                            <div
+                                key={todo._jac_id}
+                                style={{
+                                    "display": "flex",
+                                    "alignItems": "center",
+                                    "gap": "12px",
+                                    "padding": "16px",
+                                    "borderBottom": "1px solid #e5e7eb",
+                                    "transition": "background 0.2s"
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={todo.done}
+                                    onChange={lambda -> None { toggleTodo(todo._jac_id);}}
                                     style={{
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "12px",
-                                        "padding": "16px",
-                                        "borderBottom": "1px solid #e5e7eb",
+                                        "width": "20px",
+                                        "height": "20px",
+                                        "cursor": "pointer"
+                                    }}
+                                />
+                                <span
+                                    style={{
+                                        "flex": "1",
+                                        "textDecoration": (
+                                            "line-through" if todo.done else "none"
+                                        ),
+                                        "color": (
+                                            "#9ca3af" if todo.done else "#1f2937"
+                                        ),
+                                        "fontSize": "16px"
+                                    }}
+                                >
+                                    {todo.text}
+                                </span>
+                                <button
+                                    onClick={lambda -> None { deleteTodo(todo.__jac_id);}}
+                                    style={{
+                                        "padding": "6px 12px",
+                                        "background": "#ef4444",
+                                        "color": "#ffffff",
+                                        "border": "none",
+                                        "borderRadius": "6px",
+                                        "fontSize": "14px",
+                                        "fontWeight": "500",
+                                        "cursor": "pointer",
                                         "transition": "background 0.2s"
                                     }}
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={todo.done}
-                                        onChange={lambda -> None { toggleTodo(
-                                            todo._jac_id
-                                        );}}
-                                        style={{
-                                            "width": "20px",
-                                            "height": "20px",
-                                            "cursor": "pointer"
-                                        }}
-                                    />
-                                    <span
-                                        style={{
-                                            "flex": "1",
-                                            "textDecoration": (
-                                                "line-through" if todo.done else "none"
-                                            ),
-                                            "color": (
-                                                "#9ca3af" if todo.done else "#1f2937"
-                                            ),
-                                            "fontSize": "16px"
-                                        }}
-                                    >
-                                        {todo.text}
-                                    </span>
-                                    <button
-                                        onClick={lambda -> None { deleteTodo(
-                                            todo.__jac_id
-                                        );}}
-                                        style={{
-                                            "padding": "6px 12px",
-                                            "background": "#ef4444",
-                                            "color": "#ffffff",
-                                            "border": "none",
-                                            "borderRadius": "6px",
-                                            "fontSize": "14px",
-                                            "fontWeight": "500",
-                                            "cursor": "pointer",
-                                            "transition": "background 0.2s"
-                                        }}
-                                    >
-                                        Delete
-                                    </button>
-                                </div>; }
-                        )
+                                    Delete
+                                </button>
+                            </div> for todo in filteredTodos
+                        ]
                     )}
                 </div>
                 # Stats and clear completed button

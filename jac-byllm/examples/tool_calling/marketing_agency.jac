@@ -1,13 +1,9 @@
-import from byllm.lib { Model }
-
 # Note that these tools are not available in byllm package and
 # Should be defined by the user him/herself.
 import from byllm.tools.wikipedia_utils {
     wikipedia_summary
 }
 import from byllm.tools.serper { search, scrape }
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 def save_output_as_md(output: str, filename: str) -> None {
     with open(filename, 'w') as f {

@@ -21,11 +21,17 @@ def containers_py() -> dict {
 
     # tuple operators
     tuple_concat: list = list(t + (30,));
+    tuple_in: bool = 10 in t;
+    tuple_nin: bool = 99 not in t;
 
     # dict operators
     dict_merge: dict = d1 | d2;
     dict_in: bool = "x" in d1;
     dict_nin: bool = "z" not in d1;
+
+    # dict |= (in-place merge)
+    d3: dict = {"a": 1, "b": 2};
+    d3 |= {"b": 99, "c": 3};
 
     # augmented assignment
     c: list = [10, 20];
@@ -40,9 +46,12 @@ def containers_py() -> dict {
         "str_in": str_in,
         "str_nin": str_nin,
         "tuple_concat": tuple_concat,
+        "tuple_in": tuple_in,
+        "tuple_nin": tuple_nin,
         "dict_merge": dict_merge,
         "dict_in": dict_in,
         "dict_nin": dict_nin,
+        "dict_ior": d3,
         "list_iadd": c
     };
 }
@@ -68,11 +77,17 @@ cl def containers_cl() -> dict {
 
     # tuple operators
     tuple_concat: list = list(t + (30,));
+    tuple_in: bool = 10 in t;
+    tuple_nin: bool = 99 not in t;
 
     # dict operators
     dict_merge: dict = d1 | d2;
     dict_in: bool = "x" in d1;
     dict_nin: bool = "z" not in d1;
+
+    # dict |= (in-place merge)
+    d3: dict = {"a": 1, "b": 2};
+    d3 |= {"b": 99, "c": 3};
 
     # augmented assignment
     c: list = [10, 20];
@@ -87,9 +102,12 @@ cl def containers_cl() -> dict {
         "str_in": str_in,
         "str_nin": str_nin,
         "tuple_concat": tuple_concat,
+        "tuple_in": tuple_in,
+        "tuple_nin": tuple_nin,
         "dict_merge": dict_merge,
         "dict_in": dict_in,
         "dict_nin": dict_nin,
+        "dict_ior": d3,
         "list_iadd": c
     };
 }

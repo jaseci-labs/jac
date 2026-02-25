@@ -39,6 +39,31 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 
 ---
 
+## Version Info
+
+```bash
+jac --version
+```
+
+Displays the Jac version, Python version, platform, and all detected plugins with their versions:
+
+```
+ _
+(_) __ _  ___     Jac Language
+| |/ _` |/ __|
+| | (_| | (__     Version:  0.10.2
+_/ |\__,_|\___|    Python 3.12.3
+|__/                Platform: Linux x86_64
+
+🔌 Plugins Detected:
+   byllm==0.4.17
+   jac-client==0.2.13
+   jac-scale==0.1.4
+   jac-super==0.1.0
+```
+
+---
+
 ## Core Commands
 
 ### jac run
@@ -294,7 +319,7 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-s] [-l] paths [paths ...]
+jac format [-h] [-s] [-l] [-c] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -302,18 +327,22 @@ jac format [-h] [-s] [-l] paths [paths ...]
 | `paths` | Files/directories to format | Required |
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
+| `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
 
 **Examples:**
 
 ```bash
 # Preview formatting
-jac format main.jac -t
+jac format main.jac -s
 
 # Apply formatting
 jac format main.jac
 
 # Format entire directory
 jac format .
+
+# Check formatting without modifying (useful in CI)
+jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
@@ -446,6 +475,44 @@ jac debug [-h] [-m] [-c] filename
 # Start debugger
 jac debug main.jac
 ```
+
+#### VS Code Debugger Setup
+
+To use the VS Code debugger with Jac:
+
+1. Install the **Jac** extension from the VS Code Extensions marketplace
+2. Enable **Debug: Allow Breakpoints Everywhere** in VS Code Settings (search "breakpoints")
+3. Create a `launch.json` via Run and Debug panel (Ctrl+Shift+D) → "Create a launch.json file" → select "Jac Debug"
+
+The generated `.vscode/launch.json`:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "jac",
+            "request": "launch",
+            "name": "Jac Debug",
+            "program": "${file}"
+        }
+    ]
+}
+```
+
+Debugger controls: F5 (continue), F10 (step over), F11 (step into), Shift+F11 (step out).
+
+#### Graph Visualization (`jacvis`)
+
+The Jac extension includes live graph visualization:
+
+1. Open VS Code Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+2. Type `jacvis` and select **jacvis: Visualize Jaclang Graph**
+3. A side panel opens showing your graph structure
+
+Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
+
+For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
 
 ---
 
@@ -657,6 +724,8 @@ jac add --git https://github.com/user/package.git
 # Add npm package (requires jac-client)
 jac add react --npm
 ```
+
+For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[plugins.client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
 
 ---
 

@@ -1,7 +1,3 @@
-import from byllm.lib { Model }
-
-glob llm = Model();
-
 def correct_grammar(text: str) -> str by llm(temperature=0.9);
 
 glob files_path = input("Enter the file path to the text file: ");

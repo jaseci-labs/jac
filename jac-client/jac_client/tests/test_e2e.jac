@@ -272,3 +272,127 @@ test "complete auth flow" {
         _stop_running_server(server, temp_dir, original_cwd);
     }
 }
+
+test "auto cache prevents duplicate reader requests and invalidates on write" {
+    """Verifies the full auto-caching pipeline end-to-end in a real browser.
+
+    The compiler classifies walkers as readers or writers, injects endpoint
+    metadata into the served HTML, and the client JS runtime uses it to:
+    1. Cache reader responses (skip network on repeat calls)
+    2. Auto-invalidate reader caches after a writer executes
+
+    This test observes actual HTTP traffic via Playwright to confirm the
+    cache prevents redundant server calls and correctly invalidates.
+    """;
+    (server, port, url, temp_dir, original_cwd) = _start_running_server();
+    try {
+        with sync_playwright() as p {
+            browser = p.chromium.launch(headless=True);
+            context = browser.new_context();
+            page = context.new_page();
+            try {
+                # Sign up to get authenticated and land on the home page
+                _signup(page, url, f"cache_e2e_{int(time.time())}", "cache_pass_123");
+                page.wait_for_load_state("networkidle");
+                page.wait_for_timeout(3000);
+
+                # ---- Track walker HTTP requests ----
+                walker_requests: list = [];
+
+                def _track_request(request: any) -> None {
+                    if "/walker/" in request.url {
+                        walker_requests.append(request.url);
+                    }
+                }
+
+                page.on("request", _track_request);
+
+                # ---- Debug: Check __jac_init__ and endpointEffects ----
+                init_data = page.evaluate(
+                    """() => {
+                    const el = document.getElementById('__jac_init__');
+                    if (!el) return {error: 'no __jac_init__ element'};
+                    try {
+                        const data = JSON.parse(el.textContent);
+                        return {keys: Object.keys(data), effects: data.endpointEffects || null};
+                    } catch(e) { return {error: e.message}; }
+                }"""
+                );
+                print(f"[CACHE DEBUG] __jac_init__ data: {init_data}");
+
+                effects_in_browser = page.evaluate(
+                    """() => {
+                    return globalThis.__jacEndpointEffects__ || 'not set';
+                }"""
+                );
+                print(
+                    f"[CACHE DEBUG] globalThis.__jacEndpointEffects__: {effects_in_browser}"
+                );
+
+                # ---- Step 1: First click on "Ping Backend" (cache MISS) ----
+                ping_btn = page.locator('button:has-text("Ping Backend")').first;
+                ping_btn.click();
+                page.wait_for_timeout(2000);
+
+                ping_hits_after_first = len(
+                    [
+                        r
+                        for r in walker_requests
+                        if "ping_server" in r
+                    ]
+                );
+                assert ping_hits_after_first == 1 , (
+                    f"First ping should produce exactly 1 HTTP request, "
+                    f"got {ping_hits_after_first}"
+                );
+
+                # ---- Step 2: Second click on "Ping Backend" (cache HIT) ----
+                ping_btn.click();
+                page.wait_for_timeout(2000);
+
+                ping_hits_after_second = len(
+                    [
+                        r
+                        for r in walker_requests
+                        if "ping_server" in r
+                    ]
+                );
+                assert ping_hits_after_second == 1 , (
+                    "Second ping should be served from cache (no new HTTP "
+                    f"request), but total ping requests grew to "
+                    f"{ping_hits_after_second}"
+                );
+
+                # ---- Step 3: Click "Create Sample Todo" (WRITER) ----
+                # create_todo is classified as a writer because it uses ++>.
+                # It should auto-invalidate reader caches that share node
+                # types (both ping_server and create_todo touch Root).
+                todo_btn = page.locator('button:has-text("Create Sample Todo")').first;
+                todo_btn.click();
+                page.wait_for_timeout(2000);
+
+                # ---- Step 4: Third click on "Ping Backend" (cache was INVALIDATED) ----
+                ping_btn.click();
+                page.wait_for_timeout(2000);
+
+                ping_hits_after_invalidation = len(
+                    [
+                        r
+                        for r in walker_requests
+                        if "ping_server" in r
+                    ]
+                );
+                assert ping_hits_after_invalidation == 2 , (
+                    "After writer invalidation, ping should make a new HTTP "
+                    f"request (expected 2 total), got "
+                    f"{ping_hits_after_invalidation}"
+                );
+            } finally {
+                context.close();
+                browser.close();
+            }
+        }
+    } finally {
+        _stop_running_server(server, temp_dir, original_cwd);
+    }
+}

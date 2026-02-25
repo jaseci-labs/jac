@@ -50,7 +50,7 @@ def LoginPage() -> JsxElement {
 
         success = await jacLogin(username, password);
         if success {
-            console.log("Login successful!");
+            print("Login successful!");
         } else {
             setError("Invalid credentials");
         }
@@ -169,7 +169,7 @@ def SignupPage() -> JsxElement {
 
         result = await jacSignup(username, password);
         if result["success"] {
-            console.log("Signup successful!");
+            print("Signup successful!");
         } else {
             setError(result["error"] if result["error"] else "Signup failed");
         }

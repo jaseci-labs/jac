@@ -13,9 +13,13 @@ tests with zero configuration.
 
 from __future__ import annotations
 
+import contextlib
+import importlib
+import importlib.machinery
 import os
 import sys
 import tempfile
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import FunctionTestCase
@@ -107,6 +111,73 @@ def _fresh_jac_state(*, clear_modules: bool = True):
 
 
 # ---------------------------------------------------------------------------
+# Synthetic namespace packages for relative import support
+# ---------------------------------------------------------------------------
+
+_test_packages: dict[str, str] = {}
+_test_pkg_counter = 0
+
+
+def _ensure_test_package(base_dir: str) -> str:
+    """Create a synthetic namespace package so relative imports work.
+
+    When a ``.jac`` test file uses ``import from .sibling { ... }``, the
+    compiled Python code contains ``from .sibling import ...`` which
+    requires the module to have a non-empty ``__package__``.  By importing
+    the test module as a child of a namespace package whose ``__path__``
+    points at the test directory, Python resolves the relative import
+    against sibling ``.jac`` files correctly.
+
+    Returns the package name registered in ``sys.modules``.
+    """
+    global _test_pkg_counter
+    real_dir = os.path.realpath(base_dir)
+
+    # Reuse existing package name if we've seen this directory before.
+    pkg_name = _test_packages.get(real_dir)
+    if pkg_name and pkg_name in sys.modules:
+        return pkg_name
+
+    if not pkg_name:
+        pkg_name = f"_jac_test_pkg_{_test_pkg_counter}"
+        _test_pkg_counter += 1
+        _test_packages[real_dir] = pkg_name
+
+    pkg = types.ModuleType(pkg_name)
+    pkg.__path__ = [real_dir]
+    pkg.__package__ = pkg_name
+    pkg.__spec__ = importlib.machinery.ModuleSpec(
+        pkg_name, loader=None, is_package=True
+    )
+    pkg.__spec__.submodule_search_locations = [real_dir]
+    sys.modules[pkg_name] = pkg
+
+    return pkg_name
+
+
+@contextlib.contextmanager
+def _scoped_syspath(directory: str):
+    """Temporarily prepend *directory* to ``sys.path``.
+
+    This mirrors pytest's own ``--import-mode=prepend`` behaviour: the test
+    directory is on ``sys.path`` while the test module is being imported /
+    executed so that absolute imports of sibling packages (e.g.
+    ``from fixtures import ...``) resolve correctly.  The entry is removed
+    afterwards to avoid polluting ``sys.path`` for unrelated test files.
+    """
+    real_dir = os.path.realpath(directory)
+    already_present = real_dir in sys.path
+    if not already_present:
+        sys.path.insert(0, real_dir)
+    try:
+        yield
+    finally:
+        if not already_present:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(real_dir)
+
+
+# ---------------------------------------------------------------------------
 # Collector
 # ---------------------------------------------------------------------------
 
@@ -115,7 +186,6 @@ class JacFile(pytest.File):
     """Collector that imports a ``.jac`` file and yields its ``test`` blocks."""
 
     def collect(self) -> list[JacTestItem]:  # noqa: C901
-        from jaclang.jac0core.runtime import JacRuntimeInterface
         from jaclang.runtimelib.test import JacTestCheck
 
         _ensure_jac_runtime()
@@ -147,11 +217,15 @@ class JacFile(pytest.File):
             base_dir = str(Path(filepath).parent)
             mod_name = Path(filepath).stem
 
+            # Import the test module under a synthetic namespace package so
+            # that relative imports (``from .sibling import ...``) resolve
+            # against sibling .jac files in the same directory.
+            pkg_name = _ensure_test_package(base_dir)
+            qualified_name = f"{pkg_name}.{mod_name}"
+
             try:
-                JacRuntimeInterface.jac_import(
-                    target=mod_name,
-                    base_path=base_dir,
-                )
+                with _scoped_syspath(base_dir):
+                    importlib.import_module(qualified_name)
             except Exception:
                 # Import failure -- nothing to collect from this file.
                 return []
@@ -207,9 +281,15 @@ class JacTestItem(pytest.Item):
         so that ``unittest.mock.patch("pkg.mod.func")`` resolves to the same
         module object whose ``__globals__`` dict is referenced by the code
         under test.  Module-level cleanup happens once at collection time.
+
+        The test directory is temporarily added to ``sys.path`` (scoped) so
+        that imports inside test functions (e.g. ``from fixtures import ...``)
+        resolve against sibling packages without permanently polluting the
+        path for other test files.
         """
         _fresh_jac_state(clear_modules=False)
-        self._test_case.runTest()
+        with _scoped_syspath(str(self.path.parent)):
+            self._test_case.runTest()
 
     def repr_failure(self, excinfo: pytest.ExceptionInfo[BaseException]) -> str:
         return str(excinfo.getrepr())

@@ -119,7 +119,7 @@ cl {
 
     def app() -> JsxElement {
         useEffect(lambda -> None {
-            console.log("Count: ", count);
+            print("Count: ", count);
         }, [count]);
         return <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
             <h1>Hello, World!</h1>

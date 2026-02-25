@@ -51,6 +51,7 @@ obj NaIRGenPass(Transform) {
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
+    def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
@@ -254,6 +255,10 @@ obj NaIRGenPass(Transform) {
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
+    # C library imports: import from "libname" { def ...; }
+    def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_clib_ability(nd: uni.Ability) -> None;
+    def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
     def _dispatch_primitive_method(

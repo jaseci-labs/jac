@@ -44,11 +44,11 @@ cl {
         }
 
         # Filter categories based on type (income only has INCOME category)
-        availableCategories = CATEGORIES.filter(
-            lambda cat: str  -> bool { if txType == "income" {
-                return cat == "INCOME";
-            }return cat != "INCOME"; }
-        );
+        availableCategories = [
+            cat
+            for cat in CATEGORIES
+            if (cat == "INCOME" if txType == "income" else cat != "INCOME")
+        ];
 
         # Show client dropdown only for business income
         showClientDropdown = txType == "income" and isBusiness;
@@ -142,12 +142,11 @@ cl {
                             );}}
                             className="form-select"
                         >
-                            {availableCategories.map(
-                                lambda cat: str  -> any { return
-                                    <option key={cat} value={cat}>
-                                        {CATEGORY_LABELS[cat]}
-                                    </option>; }
-                            )}
+                            {[
+                                <option key={cat} value={cat}>
+                                    {CATEGORY_LABELS[cat]}
+                                </option> for cat in availableCategories
+                            ]}
                         </select>
                     </div>
                     {showClientDropdown
@@ -166,12 +165,11 @@ cl {
                             <option value="">
                                 Select Client (Optional)
                             </option>
-                            {CLIENTS.map(
-                                lambda client: str  -> any { return
-                                    <option key={client} value={client}>
-                                        {client}
-                                    </option>; }
-                            )}
+                            {[
+                                <option key={client} value={client}>
+                                    {client}
+                                </option> for client in CLIENTS
+                            ]}
                         </select>
                     </div>}
                     <div className="form-group">

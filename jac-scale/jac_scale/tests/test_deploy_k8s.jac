@@ -237,7 +237,6 @@ test "deploy all in one" {
     );
 
     result = deployment_target.deploy(app_config);
-    result = deployment_target.deploy(app_config);
     details = result.details;
     assert len(details) == 10;
     assert result.success is True;
@@ -422,6 +421,41 @@ test "deploy all in one" {
     assert response.status_code == 200;
     print(f"Successfully reached app page at {url}");
 
+    # --- Port conflict test ---
+    # Deploy the same app into a different namespace using the same node_port.
+    # check_node_ports_available must detect the conflict and the deploy must fail.
+    duplicate_namespace = "all-in-one-duplicate";
+    duplicate_app_name = duplicate_namespace;
+
+    os.environ.update(
+        {"APP_NAME": duplicate_app_name, "K8s_NAMESPACE": duplicate_namespace}
+    );
+
+    duplicate_target_config = app_scale_config.get_kubernetes_config();
+    duplicate_target_config["app_name"] = duplicate_app_name;
+    duplicate_target_config["namespace"] = duplicate_namespace;
+    duplicate_target_config["node_port"] = target_config["node_port"];  # same port — must conflict
+    duplicate_target_config["jaseci_repo_url"] = repo_url;
+    duplicate_target_config["jaseci_branch"] = branch;
+    duplicate_target_config["jaseci_commit"] = commit;
+
+    duplicate_target = DeploymentTargetFactory.create(
+        "kubernetes", duplicate_target_config, logger
+    );
+    duplicate_target.secrets = app_scale_config.get_secrets_config();
+
+    conflict_result = duplicate_target.deploy(app_config);
+    assert conflict_result.success is False , (
+        "Deploying with a conflicting NodePort should fail"
+    );
+    assert "NodePort conflict detected" in conflict_result.message , (
+        f"Expected NodePort conflict error, got: {conflict_result.message}"
+    );
+    print(f"Port conflict correctly detected: {conflict_result.message}");
+
+    # Restore env vars to point back at the original namespace for cleanup
+    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
+
     # Cleanup using new architecture
     deployment_target.destroy(app_name);
 
@@ -577,14 +611,29 @@ test "deploy all in one" {
     }
 
     # Verify PVC cleanup
-    pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace=namespace);
-    for pvc in pvcs.items {
-        assert not pvc.metadata.name.startswith(app_name) , (
-            f"PVC '{pvc.metadata.name}' should have been deleted"
-        );
+    try {
+        pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace=namespace);
+        for pvc in pvcs.items {
+            assert not pvc.metadata.name.startswith(app_name) , (
+                f"PVC '{pvc.metadata.name}' should have been deleted"
+            );
+        }
+    } except ApiException as e {
+        # Namespace already deleted - PVCs are gone too
+        assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    print("Cleanup verification complete - all resources properly deleted");
+    # Verify namespace was deleted (since it is not 'default')
+    try {
+        core_v1.read_namespace(name=namespace);
+        raise AssertionError("Namespace should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for namespace, got {e.status}";
+    }
+
+    print(
+        "Cleanup verification complete - all resources and namespace properly deleted"
+    );
 }
 
 """Test deployment early exit on failure."""

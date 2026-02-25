@@ -88,6 +88,8 @@ impl __getattr__(name: str) -> object {
         return _get_commit();
     } elif (name == 'store') {
         return _get_store();
+    } elif (name == 'llm') {
+        return _get_llm();
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}") ;
 }
@@ -100,6 +102,11 @@ impl _get_commit -> Callable[..., Any] {
 """Get storage backend lazily."""
 impl _get_store -> Callable[..., Any] {
     return _get_jac().store;
+}
+
+"""Get default LLM model instance lazily."""
+impl _get_llm -> object {
+    return _get_jac().default_llm();
 }
 
 """Get save lazily."""

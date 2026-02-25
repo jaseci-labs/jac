@@ -2,10 +2,6 @@
 
 Storage configuration comes from environment variables or jac.toml.
 """
-import logging;
-import from jaclang.runtimelib.memory { SqliteMemory }
-
-glob logger = logging.getLogger(__name__);
 
 """Initialize ScaleTieredMemory with distributed backends."""
 impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
@@ -35,7 +31,9 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
         } except Exception { }
     } else {
         # Fall back to jaclang's SqliteMemory using configured path
-        self.l3 = SqliteMemory(path=_db_config['shelf_db_path']);
+        self.l3 = SqliteMemory(
+            path=get_scale_config().get_database_config()['shelf_db_path']
+        );
         self._persistence_type = PersistenceType.SQLITE;
         logger.debug("MongoDB not available, using SqliteMemory for persistence");
         # Show subtle message

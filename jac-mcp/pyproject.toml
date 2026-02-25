@@ -1,0 +1,36 @@
+[project]
+name = "jac-mcp"
+version = "0.1.0"
+description = "MCP server for AI-assisted Jac development"
+authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+license = "MIT"
+readme = "README.md"
+keywords = ["jac", "jaclang", "jaseci", "mcp", "ai", "model-context-protocol"]
+requires-python = ">=3.12"
+dependencies = [
+    "jaclang>=0.11.0",
+    "mcp>=1.0.0",
+]
+
+[project.entry-points."jac"]
+mcp = "jac_mcp.plugin:JacCmd"
+mcp_plugin_config = "jac_mcp.plugin_config:JacMcpPluginConfig"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.2",
+    "pytest-xdist",
+    "pytest-asyncio",
+]
+
+[tool.setuptools.packages.find]
+include = ["jac_mcp*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
+jac_mcp = ["content/*.md", "_precompiled/**/*.jbc", "_precompiled/manifest.json"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

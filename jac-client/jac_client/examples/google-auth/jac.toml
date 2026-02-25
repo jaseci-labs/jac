@@ -1,0 +1,39 @@
+[project]
+name = "google-auth"
+version = "1.0.0"
+description = "Jac client application: google-auth"
+entry-point = "main.jac"
+
+[dependencies]
+
+[dependencies.npm]
+jac-client-node = "1.0.4"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+
+
+[plugins.scale]
+[plugins.scale.jwt]
+secret = "${JWT_SECRET}"
+algorithm = "HS256"
+exp_delta_days = 7
+
+[plugins.scale.sso]
+host = "http://localhost:8000/sso"
+# Redirect to frontend after OAuth callback (optional - if not set, returns JSON)
+client_auth_callback_url = "http://localhost:8000/auth/callback"
+
+# Configure specific providers
+[plugins.scale.sso.google]
+client_id = "${GOOGLE_CLIENT_ID}"
+client_secret = "${GOOGLE_CLIENT_SECRET}"

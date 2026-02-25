@@ -4,9 +4,9 @@ This reference explains how walker responses work and the common patterns for ha
 
 > **Related:**
 >
-> - [Graph Operations](graph-operations.md) - Node creation, traversal, and deletion
+> - [Graph Operations](osp.md) - Node creation, traversal, and deletion
 > - [Part III: OSP](osp.md) - Walker and node fundamentals
-> - [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full tutorial using these patterns
+> - [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full tutorial using these patterns
 
 ---
 
@@ -64,6 +64,19 @@ with entry {
 ```
 
 **When to use:** Most read operations, listing data, aggregations.
+
+This is the **accumulator pattern** -- the standard approach for collecting data from a graph traversal. The walker flows through three stages:
+
+1. **Enter root** → initiate traversal with `visit [-->]`
+2. **Visit each node** → gather data into walker state (`self.items`)
+3. **Exit root** → report the accumulated result
+
+The `with Root exit` ability fires after the walker has finished visiting all queued nodes and returns to root, making it the ideal place for a single consolidated report.
+
+!!! tip "Accumulator in Frontend"
+    When calling this pattern from client code, access the result with `result.reports[0]` -- there is always exactly one report containing the full collection.
+
+For a complete walkthrough of this pattern in a full-stack app, see [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md).
 
 ### Pattern 2: Report Per Node
 
@@ -126,25 +139,25 @@ with entry {
 
 ### Pattern 4: Nested Walker Spawning
 
-When one walker spawns another, their reports combine:
+When one walker spawns another, use `has` attributes to pass data between them instead of relying on `reports`:
 
 ```jac
 walker:priv InnerWalker {
+    has result: str = "";
+
     can work with Root entry {
-        report "inner data";
+        self.result = "inner data";
     }
 }
 
 walker:priv OuterWalker {
     can work with Root entry {
-        # Spawn inner walker - its reports go to OUR reports array
-        inner_result = root spawn InnerWalker();
+        # Spawn inner walker
+        inner = InnerWalker();
+        root spawn inner;
 
-        # inner_result.reports[0] = "inner data"
-        # But this is a NEW response object, not added to our reports
-
-        # Our own report
-        report {"outer": "data", "inner": inner_result.reports[0]};
+        # Access inner walker's data via its attributes
+        report {"outer": "data", "inner": inner.result};
     }
 }
 
@@ -155,7 +168,7 @@ with entry {
 }
 ```
 
-**Important:** Nested walker spawns return their own response object. Their reports don't automatically merge with the parent walker's reports.
+**Important:** When spawning walkers from within other walkers, the inner walker's `reports` list may not be accessible from the parent context. Use `has` attributes on the inner walker to communicate results back to the outer walker.
 
 ### Pattern 5: Multiple Reports (Complex Operations)
 

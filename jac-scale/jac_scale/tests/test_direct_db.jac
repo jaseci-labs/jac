@@ -276,4 +276,109 @@ test "cache aside pattern" {
 
     cleanup_connections();
 }
-# Start containers
+
+# ===== FIND_NODES =====
+test "find_nodes basic" {
+    import from jaclang.runtimelib.serializer { Serializer }
+
+    # Test node for find_nodes test
+    node TestNode {
+        has name: str,
+            age: int,
+            status: str = "active";
+    }
+    db = kvstore(db_name="test_find_nodes", db_type="mongodb", uri=MONGO_URI);
+
+    # Create test nodes manually
+    alice = TestNode(name="Alice", age=30, status="active");
+    bob = TestNode(name="Bob", age=25, status="inactive");
+    charlie = TestNode(name="Charlie", age=35, status="active");
+
+    test_nodes = [alice, bob, charlie];
+
+    # Store nodes in _anchors collection
+    for node in test_nodes {
+        data = Serializer.serialize(node.__jac__, include_type=True);
+        db._get_mongo_collection('_anchors').insert_one(
+            {'_id': str(node.__jac__.id), 'data': data, 'type': 'NodeAnchor'}
+        );
+    }
+
+    # Test find_nodes - find all TestNode instances
+    results = db.find_nodes('TestNode');
+    assert len(results) == 3 , f"Expected 3 nodes, got {len(results)}";
+
+    # Test with filter - find only active nodes
+    active_results = db.find_nodes('TestNode', {'status': 'active'});
+    assert len(active_results) == 2 , f"Expected 2 active nodes, got {len(
+        active_results
+    )}";
+    for node in active_results {
+        assert node.status == 'active';
+    }
+
+    # Test with filter - find by name
+    alice_results = db.find_nodes('TestNode', {'name': 'Alice'});
+    assert len(alice_results) == 1;
+    assert alice_results[0].name == 'Alice';
+    assert alice_results[0].age == 30;
+
+    # Clean up
+    db._get_mongo_collection('_anchors').drop();
+    cleanup_connections();
+}
+
+test "_anchors collection is read-only" {
+    db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
+
+    # Test that write operations on _anchors are blocked
+    raised = False;
+    try {
+        db.set("test_key", {"data": "value"}, "_anchors");
+    } except PermissionError as e {
+        raised = True;
+        assert "read-only" in str(e);
+    }
+    assert raised , "Expected PermissionError for set() on _anchors";
+
+    raised = False;
+    try {
+        db.insert_one("_anchors", {"data": "value"});
+    } except PermissionError as e {
+        raised = True;
+        assert "read-only" in str(e);
+    }
+    assert raised , "Expected PermissionError for insert_one() on _anchors";
+
+    raised = False;
+    try {
+        db.update_one("_anchors", {"_id": "test"}, {"$set": {"data": "new"}});
+    } except PermissionError as e {
+        raised = True;
+        assert "read-only" in str(e);
+    }
+    assert raised , "Expected PermissionError for update_one() on _anchors";
+
+    raised = False;
+    try {
+        db.delete_one("_anchors", {"_id": "test"});
+    } except PermissionError as e {
+        raised = True;
+        assert "read-only" in str(e);
+    }
+    assert raised , "Expected PermissionError for delete_one() on _anchors";
+
+    raised = False;
+    try {
+        db.delete("test_key", "_anchors");
+    } except PermissionError as e {
+        raised = True;
+        assert "read-only" in str(e);
+    }
+    assert raised , "Expected PermissionError for delete() on _anchors";
+
+    results = db.find_nodes('SomeNodeType');
+    assert isinstance(results, list);
+
+    cleanup_connections();
+}

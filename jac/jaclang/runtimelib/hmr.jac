@@ -60,9 +60,6 @@ obj HotReloader {
     """Copy frontend files to compiled directory."""
     def _copy_frontend_files(file_path: str) -> None;
 
-    """Create export statement for recompiled JS code."""
-    def _create_export_statement(js_code: str, client_manifest: Any) -> str;
-
     """Update the entry point to reflect changes in modules."""
     def _update_entry_point -> None;
 }

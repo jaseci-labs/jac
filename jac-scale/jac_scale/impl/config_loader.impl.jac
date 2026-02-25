@@ -25,6 +25,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
         },
         'sso': {
             'host': 'http://localhost:8000/sso',
+            'client_auth_callback_url': '',  # If set, redirects to this URL with token/error
             'google': {'client_id': '', 'client_secret': ''}
         },
         'database': {
@@ -85,6 +86,14 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'prometheus_admin_password': 'Adminpassword123',
             'prometheus_node_port': 30090,
             'grafana_node_port': 30300
+        },
+        'admin': {
+            'enabled': True,
+            'username': 'admin',
+            'email': 'admin@localhost',
+            'default_password': 'changeme',
+            'session_expiry_hours': 24,
+            'require_password_reset': True
         }
     };
 }
@@ -107,6 +116,7 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
     google_config = sso_config.get('google', {});
     return {
         'host': sso_config.get('host', 'http://localhost:8000/sso'),
+        'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
             'client_secret': google_config.get('client_secret', '')
@@ -249,14 +259,33 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
 """Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
-    if _scale_config_instance is None {
-        _scale_config_instance = JacScaleConfig(project_dir);
+    if _scale_config_instance is not None {
+        return _scale_config_instance;
     }
-    return _scale_config_instance;
+    new_instance = JacScaleConfig(project_dir);
+    _scale_config_instance = new_instance;
+    return new_instance;
 }
 
 """Reset the global config instance (useful for testing)."""
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+"""Get admin configuration from jac.toml."""
+impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    admin_config = config.get('admin', {});
+    return {
+        'enabled': admin_config.get('enabled', True),
+        'username': os.environ.get('ADMIN_USERNAME')
+        or admin_config.get('username', 'admin'),
+        'email': os.environ.get('ADMIN_EMAIL')
+        or admin_config.get('email', 'admin@localhost'),
+        'default_password': os.environ.get('ADMIN_DEFAULT_PASSWORD')
+        or admin_config.get('default_password', 'changeme'),
+        'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
+        'require_password_reset': admin_config.get('require_password_reset', True)
+    };
 }

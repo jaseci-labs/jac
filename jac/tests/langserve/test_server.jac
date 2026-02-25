@@ -20,8 +20,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      ),
      _active_servers: list = [];
 
+"""Clear jac-compiled modules from sys.modules."""
 def _clear_jac_modules {
-    """Clear jac-compiled modules from sys.modules."""
     jac_modules_to_clear = [
         k
         for k in list(sys.modules.keys())
@@ -33,19 +33,19 @@ def _clear_jac_modules {
     }
 }
 
-def setup_test {
-    """Set up test environment.
+"""Set up test environment.
 
-    Note: _fresh_jac_state() runs automatically before each Jac test via the
-    pytest plugin, which resets JacRuntime. We only need to handle server-
-    specific setup here.
-    """
+Note: _fresh_jac_state() runs automatically before each Jac test via the
+pytest plugin, which resets JacRuntime. We only need to handle server-
+specific setup here.
+"""
+def setup_test {
     _clear_jac_modules();
     _active_servers.clear();
 }
 
+"""Tear down test environment."""
 def teardown_test {
-    """Tear down test environment."""
     for server in _active_servers {
         with contextlib.suppress(Exception) as _s {
             server.shutdown();
@@ -56,23 +56,23 @@ def teardown_test {
     _clear_jac_modules();
 }
 
+"""Get absolute path to fixture file."""
 def fixture_path(name: str) -> str {
-    """Get absolute path to fixture file."""
     return os.path.join(FIXTURE_DIR, name);
 }
 
+"""Get absolute path of an example from examples directory."""
 def examples_abs_path(name: str) -> str {
-    """Get absolute path of an example from examples directory."""
     return os.path.join(EXAMPLES_DIR, name);
 }
 
+"""Get absolute path of a fixture from compiler passes main fixtures directory."""
 def passes_main_fixture_abs_path(name: str) -> str {
-    """Get absolute path of a fixture from compiler passes main fixtures directory."""
     return os.path.join(PASSES_FIXTURES, name);
 }
 
+"""Create a JacLangServer wired to the given workspace."""
 def create_server(workspace_path: str | None = None) -> JacLangServer {
-    """Create a JacLangServer wired to the given workspace."""
     lsp = JacLangServer();
     workspace_root = workspace_path if workspace_path is not None else FIXTURE_DIR;
     workspace_val = Workspace(workspace_root, lsp);
@@ -209,13 +209,13 @@ test "test_go_to_definition_md_path" {
         import_file = uris.from_fs_path(fixture_path("md_path.jac"));
         lsp.type_check_file(import_file);
         positions = [
-            (3, 11, "asyncio/__init__.py:0:0-0:0"),
-            (6, 17, "concurrent/__init__.py:0:0-0:0"),
-            (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
-            (7, 17, "typing.py:0:0-0:0"),
+            (3, 11, "asyncio/__init__.pyi:0:0-0:0"),
+            (6, 17, "concurrent/__init__.pyi:0:0-0:0"),
+            (6, 28, "concurrent/futures/__init__.pyi:0:0-0:0"),
+            (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:19:3-19:22"),
+            (10, 34, "jac/jaclang/__init__.py:28:3-28:22"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
             (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
@@ -383,7 +383,7 @@ test "test_go_to_def_import_star" {
             (5, 21, "import_star_mod_py.py:1:3-2:6"),
             (6, 16, "import_star_mod_jac.jac:0:4-0:7"),
             (6, 22, "import_star_mod_jac.jac:1:8-1:11"),
-            (8, 25, "_pydatetime.py:"),
+            (8, 25, "datetime.pyi:"),
 
         ];
 

@@ -1,6 +1,7 @@
 import os;
 import pathlib;
 import from jaclang.cli.console { console }
+import from kubernetes { client }
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -322,9 +323,64 @@ Detect if the current connected cluster is AWS or local.
     Returns:
         'aws' for AWS EKS clusters, 'local' for local/other clusters.
 """
+impl check_node_ports_available(
+    node_port: int,
+    prometheus_node_port: int | None,
+    grafana_node_port: int | None,
+    current_namespace: str
+) -> None {
+    """Check that the requested NodePorts are not already bound by services
+    in other namespaces.
+
+    NodePorts are cluster-scoped, so two services in different namespaces
+    cannot share the same NodePort value.  Services inside current_namespace
+    are excluded because they will be replaced by this deployment.
+    Raises ValueError listing every conflicting port and the service that owns it.
+    """
+    v1 = client.CoreV1Api();
+    all_services = v1.list_service_for_all_namespaces();
+    # Build a map: port_number -> "namespace/service-name"
+    # Only include services from OTHER namespaces.
+    used_ports: dict[int, str] = {};
+    for svc in all_services.items {
+        if svc.metadata.namespace == current_namespace {
+            continue;
+        }
+        svc_id = f"{svc.metadata.namespace}/{svc.metadata.name}";
+        for port_obj in (svc.spec.ports or []) {
+            if port_obj.node_port is not None {
+                used_ports[port_obj.node_port] = svc_id;
+            }
+        }
+    }
+    requested: dict[str, int] = {'node_port': node_port};
+    if prometheus_node_port is not None {
+        requested['prometheus_node_port'] = prometheus_node_port;
+    }
+    if grafana_node_port is not None {
+        requested['grafana_node_port'] = grafana_node_port;
+    }
+    conflicts: list[str] = [];
+    for (param_name, port_val) in requested.items() {
+        if port_val in used_ports {
+            conflicts.append(
+                f"  {param_name}={port_val} is already in use by '{used_ports[port_val]}'"
+            );
+        }
+    }
+    if conflicts {
+        conflict_lines = '\n'.join(conflicts);
+        raise ValueError(
+            f"NodePort conflict detected on local cluster.\n"
+            f"The following requested ports are already bound:\n{conflict_lines}\n"
+            f"Please choose different port values in your KubernetesConfig "
+            f"(node_port, prometheus_node_port, grafana_node_port) and try again."
+        ) ;
+    }
+}
+
 impl cluster_type -> str {
     try {
-        import from kubernetes { client }
         v1 = client.CoreV1Api();
         nodes = v1.list_node();
         if not nodes.items {
@@ -480,6 +536,25 @@ impl create_tarball(source_dir: str, tar_path: str) -> None {
     os.makedirs((os.path.dirname(tar_path) or '.'), exist_ok=True);
     with tarfile.open(tar_path, 'w:gz') as tar {
         tar.add(source_dir, arcname='.', filter=exclude_folders);
+    }
+}
+
+"""Delete a namespace from the Kubernetes cluster if it exists and is not 'default'."""
+impl delete_namespace(namespace: str) -> None {
+    if (namespace == 'default') {
+        return;
+    }
+    try {
+        config.load_kube_config();
+        core_v1 = client.CoreV1Api();
+        core_v1.delete_namespace(name=namespace);
+        console.print(f"Namespace '{namespace}' deleted successfully.");
+    } except ApiException as e {
+        if (e.status == 404) {
+            console.print(f"Namespace '{namespace}' not found, skipping deletion.");
+        } else {
+            raise ;
+        }
     }
 }
 

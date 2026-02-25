@@ -29,12 +29,17 @@ pip install byllm[video]
 
 byLLM supports image inputs through the `Image` type. Images can be provided as input to any `by llm()` function or method.
 
+!!! tip "Model for vision tasks"
+    Vision tasks require a vision-capable model like `gpt-4o`. Set it in your `jac.toml`:
+    ```toml
+    [plugins.byllm.model]
+    default_model = "gpt-4o"
+    ```
+
 ### Basic Example
 
 ```jac
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 """Describe what you see in this image."""
 def describe_image(img: Image) -> str by llm();
@@ -51,9 +56,7 @@ with entry {
 Combine image input with structured outputs for powerful data extraction:
 
 ```jac
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 enum Personality {
     INTROVERT,
@@ -144,9 +147,7 @@ byLLM supports video inputs through the `Video` type. Videos are processed by ex
 ### Basic Example
 
 ```jac
-import from byllm.lib { Model, Video }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Video }
 
 """Describe what happens in this video."""
 def explain_video(video: Video) -> str by llm();
@@ -195,9 +196,7 @@ with entry {
 ### Receipt Analyzer
 
 ```jac
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 obj LineItem {
     has description: str;
@@ -232,9 +231,7 @@ with entry {
 ### Math Problem Solver
 
 ```jac
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 obj MathSolution {
     has problem: str;
@@ -263,9 +260,7 @@ with entry {
 ### Video Content Analysis
 
 ```jac
-import from byllm.lib { Model, Video }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Video }
 
 obj VideoAnalysis {
     has summary: str;
@@ -297,9 +292,7 @@ with entry {
 Multimodal inputs work with tool calling:
 
 ```jac
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 """Search for products matching the description."""
 def search_products(query: str) -> list[str] {

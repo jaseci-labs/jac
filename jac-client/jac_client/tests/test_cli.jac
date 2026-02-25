@@ -887,6 +887,54 @@ test "config files from jac toml" {
     }
 }
 
+test "npmrc from jac toml" {
+    """Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+
+            # Create jac.toml with npm scoped registry and auth config
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            config_path = os.path.join(temp_dir, "jac.toml");
+            with open(config_path, "w") as f {
+                f.write(toml_content);
+            }
+
+            # Import and use ViteBundler to generate .npmrc
+            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+            npmrc_path = bundler.create_npmrc();
+
+            # Verify .npmrc was created
+            assert npmrc_path is not None;
+            configs_dir = os.path.join(temp_dir, ".jac", "client", "configs");
+            expected_npmrc = os.path.join(configs_dir, ".npmrc");
+            assert os.path.exists(expected_npmrc);
+
+            with open(expected_npmrc) as f {
+                npmrc_content = f.read();
+            }
+
+            # Verify global settings appear first
+            assert "registry=https://registry.example.com" in npmrc_content;
+            assert "always-auth=true" in npmrc_content;
+            assert "strict-ssl=false" in npmrc_content;
+
+            # Verify scoped registry entries
+            assert "@mycompany:registry=https://npm.pkg.github.com" in npmrc_content;
+            assert "@myorg:registry=https://registry.example.com" in npmrc_content;
+
+            # Verify auth entry — env var should pass through as literal
+            # (interpolation swallows ValueError when env var is unset)
+            assert "//npm.pkg.github.com/:_authToken=" in npmrc_content;
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 test "create cl and run no root files" {
     """Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
     test_project_name = "test-cl-no-root-files";
@@ -1138,6 +1186,77 @@ test "vite config generation" {
             assert build_config_content != dev_config_content;
             assert ("sourcemap: true" in build_config_content);  # Both should have sourcemaps
             assert "sourcemap: true" in dev_config_content;
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+"""Test that [plugins.client.paths] aliases appear in generated vite config and tsconfig."""
+test "path aliases in generated vite and tsconfig" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+
+            # Create jac.toml with path aliases
+            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\nentry-point = "main.jac"\n\n[plugins.client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
+            config_path = os.path.join(temp_dir, "jac.toml");
+            with open(config_path, "w") as f {
+                f.write(toml_content);
+            }
+
+            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+
+            # Create a mock entry file
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry file");
+
+            # Test build config includes path aliases
+            build_config_path = bundler.create_vite_config(entry_file);
+            build_content = build_config_path.read_text();
+
+            # Vite aliases strip trailing /* from patterns
+            assert '"@components": path.resolve(projectRoot, "components")' in build_content , f"@components alias not found in build config:\n{build_content}";
+            assert '"@utils": path.resolve(projectRoot, "src/utils")' in build_content , f"@utils alias not found in build config:\n{build_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")' in build_content , f"@shared alias not found in build config:\n{build_content}";
+
+            # Test dev config also includes path aliases
+            dev_config_path = bundler.create_vite_config(
+                entry_file, is_dev=True, api_port=8001
+            );
+            dev_content = dev_config_path.read_text();
+
+            assert '"@components": path.resolve(projectRoot, "components")' in dev_content , f"@components alias not found in dev config:\n{dev_content}";
+            assert '"@utils": path.resolve(projectRoot, "src/utils")' in dev_content , f"@utils alias not found in dev config:\n{dev_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")' in dev_content , f"@shared alias not found in dev config:\n{dev_content}";
+
+            # Test tsconfig includes path aliases
+            tsconfig_path = bundler.create_tsconfig();
+            tsconfig_content = tsconfig_path.read_text();
+            tsconfig_data = json.loads(tsconfig_content);
+
+            compiler_options = tsconfig_data.get("compilerOptions", {});
+            assert "paths" in compiler_options , f"paths not found in tsconfig compilerOptions:\n{tsconfig_content}";
+            assert "baseUrl" in compiler_options , f"baseUrl not found in tsconfig compilerOptions:\n{tsconfig_content}";
+            assert compiler_options["baseUrl"] == ".";
+
+            ts_paths = compiler_options["paths"];
+            assert "@components/*" in ts_paths , f"@components/* not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@components/*"] == ["components/*"] , f"@components/* path mismatch: {ts_paths[
+                '@components/*'
+            ]}";
+            assert "@utils/*" in ts_paths , f"@utils/* not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@utils/*"] == ["src/utils/*"] , f"@utils/* path mismatch: {ts_paths[
+                '@utils/*'
+            ]}";
+            assert "@shared" in ts_paths , f"@shared not in tsconfig paths: {ts_paths}";
+            assert ts_paths["@shared"] == ["shared/index"] , f"@shared path mismatch: {ts_paths[
+                '@shared'
+            ]}";
         } finally {
             os.chdir(original_cwd);
         }

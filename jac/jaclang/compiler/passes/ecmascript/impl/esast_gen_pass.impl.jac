@@ -398,7 +398,7 @@ impl EsastGenPass.exit_bool(nd: uni.Bool) -> None {
 
 """Process inner comprehension (for x in items if cond) - handled by parent comprehension."""
 impl EsastGenPass.exit_inner_compr(nd: uni.InnerCompr) -> None {
-    # InnerCompr is handled by the parent ListCompr/SetCompr/GenCompr
+    # InnerCompr is handled by the parent ListCompr/SetCompr/GenCompr/DictCompr
     ;
 }
 
@@ -407,9 +407,18 @@ impl EsastGenPass.exit_list_compr(nd: uni.ListCompr) -> None {
     self._build_compr_chain(nd);
 }
 
-"""Process set comprehension: {expr for x in items if cond} -> items.filter(x => cond).map(x => expr)."""
+"""Process set comprehension: {expr for x in items if cond} -> new Set(items.filter(x => cond).map(x => expr))."""
 impl EsastGenPass.exit_set_compr(nd: uni.SetCompr) -> None {
     self._build_compr_chain(nd);
+    if nd.gen.es_ast {
+        nd.gen.es_ast = self.sync_loc(
+            es.NewExpression(
+                callee=self.sync_loc(es.Identifier(name='Set'), jac_node=nd),
+                arguments=[cast(es.Expression, nd.gen.es_ast)]
+            ),
+            jac_node=nd
+        );
+    }
 }
 
 """Process generator comprehension: (expr for x in items if cond) -> items.filter(x => cond).map(x => expr)."""
@@ -417,85 +426,199 @@ impl EsastGenPass.exit_gen_compr(nd: uni.GenCompr) -> None {
     self._build_compr_chain(nd);
 }
 
-"""Build filter().map() chain for comprehensions."""
+"""Process dict comprehension: {k: v for (k,v) in pairs if cond} -> Object.fromEntries(pairs.filter(...).map(...))."""
+impl EsastGenPass.exit_dict_compr(nd: uni.DictCompr) -> None {
+    # Build the output expression as [key, value] array
+    key_expr = cast(es.Expression, nd.kv_pair.key.gen.es_ast)
+    if nd.kv_pair.key
+    else None;
+    val_expr = cast(es.Expression, nd.kv_pair.value.gen.es_ast);
+    if not key_expr or not val_expr {
+        nd.gen.es_ast = self.sync_loc(es.ObjectExpression(properties=[]), jac_node=nd);
+        return;
+    }
+    # Output expression is [key, value] for Object.fromEntries
+    out_expr = self.sync_loc(
+        es.ArrayExpression(elements=[key_expr, val_expr]), jac_node=nd.kv_pair
+    );
+    # Build the filter/map chain
+    chain = self._build_compr_expr(nd.compr, out_expr, nd);
+    if not chain {
+        nd.gen.es_ast = self.sync_loc(es.ObjectExpression(properties=[]), jac_node=nd);
+        return;
+    }
+    # Wrap in Object.fromEntries(...)
+    nd.gen.es_ast = self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(
+                es.MemberExpression(
+                    object=self.sync_loc(es.Identifier(name='Object'), jac_node=nd),
+                    property=self.sync_loc(
+                        es.Identifier(name='fromEntries'), jac_node=nd
+                    ),
+                    computed=False
+                ),
+                jac_node=nd
+            ),
+            arguments=[chain]
+        ),
+        jac_node=nd
+    );
+}
+
+"""Build filter().map() chain for list/set/gen comprehensions."""
 impl EsastGenPass._build_compr_chain(nd: uni.ListCompr) -> None {
-    # Start with the output expression
     out_expr = cast(es.Expression, nd.out_expr.gen.es_ast);
     if not out_expr {
         nd.gen.es_ast = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
         return;
     }
-    # Process comprehensions (currently only support single compr, nested would be more complex)
     if not nd.compr or len(nd.compr) == 0 {
         nd.gen.es_ast = self.sync_loc(
             es.ArrayExpression(elements=[out_expr]), jac_node=nd
         );
         return;
     }
-    compr = nd.compr[0];
-    collection = cast(es.Expression, compr.collection.gen.es_ast);
-    target = cast(es.Expression, compr.target.gen.es_ast);
-    if not collection or not target {
+    result = self._build_compr_expr(nd.compr, out_expr, nd);
+    if result {
+        nd.gen.es_ast = result;
+    } else {
         nd.gen.es_ast = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
-        return;
     }
-    # Build params for arrow function (the iteration variable)
-    param = self.sync_loc(
-        es.Identifier(name=target.name if isinstance(target, es.Identifier) else 'x'),
-        jac_node=compr.target
-    );
-    result = collection;
-    # Add filter() calls for each conditional
-    if compr.conditional {
-        for cond in compr.conditional {
-            cond_expr = cast(es.Expression, cond.gen.es_ast);
-            if cond_expr {
-                filter_arrow = self.sync_loc(
-                    es.ArrowFunctionExpression(
-                        params=[param], body=cond_expr, expression=True
-                    ),
-                    jac_node=cond
-                );
-                filter_call = self.sync_loc(
-                    es.CallExpression(
-                        callee=self.sync_loc(
-                            es.MemberExpression(
-                                object=result,
-                                property=self.sync_loc(
-                                    es.Identifier(name='filter'), jac_node=cond
-                                ),
-                                computed=False
-                            ),
-                            jac_node=cond
+}
+
+"""Build the filter/map/flatMap chain for a list of InnerCompr nodes.
+
+For single loop: collection.filter(x => cond).map(x => expr)
+For nested loops: outer.flatMap(x => inner.filter(y => cond).map(y => expr))
+"""
+impl EsastGenPass._build_compr_expr(
+    comprs: list[uni.InnerCompr], out_expr: es.Expression, nd: uni.UniNode
+) -> (es.Expression | None) {
+    if not comprs or len(comprs) == 0 {
+        return None;
+    }
+    # Build from innermost compr outward
+    # Start with the innermost comprehension using .map(out_expr)
+    # Then wrap each outer comprehension with .flatMap(inner_chain)
+    result: (es.Expression | None) = None;
+    i = len(comprs) - 1;
+    while i >= 0 {
+        compr = comprs[i];
+        collection = cast(es.Expression, compr.collection.gen.es_ast);
+        target = cast(es.Expression, compr.target.gen.es_ast);
+        if not collection or not target {
+            return None;
+        }
+        param = self._compr_param(target, compr.target);
+        # Start with the collection
+        chain = collection;
+        # Add .filter() for each conditional
+        if compr.conditional {
+            for cond in compr.conditional {
+                cond_expr = cast(es.Expression, cond.gen.es_ast);
+                if cond_expr {
+                    filter_arrow = self.sync_loc(
+                        es.ArrowFunctionExpression(
+                            params=[param], body=cond_expr, expression=True
                         ),
-                        arguments=[filter_arrow]
-                    ),
-                    jac_node=cond
-                );
-                result = filter_call;
+                        jac_node=cond
+                    );
+                    chain = self.sync_loc(
+                        es.CallExpression(
+                            callee=self.sync_loc(
+                                es.MemberExpression(
+                                    object=chain,
+                                    property=self.sync_loc(
+                                        es.Identifier(name='filter'), jac_node=cond
+                                    ),
+                                    computed=False
+                                ),
+                                jac_node=cond
+                            ),
+                            arguments=[filter_arrow]
+                        ),
+                        jac_node=cond
+                    );
+                }
             }
         }
-    }
-    # Add map() call for the output expression
-    map_arrow = self.sync_loc(
-        es.ArrowFunctionExpression(params=[param], body=out_expr, expression=True),
-        jac_node=nd.out_expr
-    );
-    map_call = self.sync_loc(
-        es.CallExpression(
-            callee=self.sync_loc(
-                es.MemberExpression(
-                    object=result,
-                    property=self.sync_loc(es.Identifier(name='map'), jac_node=nd),
-                    computed=False
+        if i == len(comprs) - 1 {
+            # Innermost: use .map(param => out_expr)
+            map_arrow = self.sync_loc(
+                es.ArrowFunctionExpression(
+                    params=[param], body=out_expr, expression=True
                 ),
                 jac_node=nd
-            ),
-            arguments=[map_arrow]
-        ),
-        jac_node=nd
-    );
-    nd.gen.es_ast = map_call;
+            );
+            result = self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(
+                        es.MemberExpression(
+                            object=chain,
+                            property=self.sync_loc(
+                                es.Identifier(name='map'), jac_node=nd
+                            ),
+                            computed=False
+                        ),
+                        jac_node=nd
+                    ),
+                    arguments=[map_arrow]
+                ),
+                jac_node=nd
+            );
+        } else {
+            # Outer: use .flatMap(param => inner_chain)
+            flat_arrow = self.sync_loc(
+                es.ArrowFunctionExpression(
+                    params=[param], body=cast(es.Expression, result), expression=True
+                ),
+                jac_node=nd
+            );
+            result = self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(
+                        es.MemberExpression(
+                            object=chain,
+                            property=self.sync_loc(
+                                es.Identifier(name='flatMap'), jac_node=nd
+                            ),
+                            computed=False
+                        ),
+                        jac_node=nd
+                    ),
+                    arguments=[flat_arrow]
+                ),
+                jac_node=nd
+            );
+        }
+        i -= 1;
+    }
+    return cast(es.Expression, result);
+}
+
+"""Extract arrow function parameter from a comprehension target.
+
+Handles simple identifiers (x =>) and tuple destructuring (([k, v]) =>).
+"""
+impl EsastGenPass._compr_param(target: es.Expression, jac_node: uni.UniNode) -> es.Node {
+    if isinstance(target, es.Identifier) {
+        return self.sync_loc(es.Identifier(name=target.name), jac_node=jac_node);
+    }
+    if isinstance(target, es.ArrayExpression) {
+        # Tuple target like (k, v) → ArrayPattern([k, v]) for destructuring
+        elements: list[(es.Node | None)] = [];
+        for elem in target.elements {
+            if isinstance(elem, es.Identifier) {
+                elements.append(
+                    self.sync_loc(es.Identifier(name=elem.name), jac_node=jac_node)
+                );
+            }
+        }
+        return self.sync_loc(es.ArrayPattern(elements=elements), jac_node=jac_node);
+    }
+    # Fallback
+    return self.sync_loc(es.Identifier(name='x'), jac_node=jac_node);
 }
 
 """Process key-value pair."""
@@ -824,6 +947,14 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 );
                 if is_server_func {
                     func_name = nd.target.sym_name;
+                    # Analyze function body for auto-caching effects
+                    effect_key = f"func:{func_name}";
+                    if effect_key not in self.client_manifest.endpoint_effects {
+                        if ability_node.body and isinstance(ability_node.body, list) {
+                            effects = self._analyze_body_effects(ability_node.body);
+                            self.client_manifest.endpoint_effects[effect_key] = effects;
+                        }
+                    }
                     param_names: list[str] = [];
                     if isinstance(ability_node.signature, uni.FuncSignature) {
                         param_names = [
@@ -870,26 +1001,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         jac_node=nd
                     );
                     # Auto-inject __jacCallFunction import if not already done
-                    if not self.has_injected_jac_call_function {
-                        # Inline: import { __jacCallFunction } from "@jac/runtime";
-                        specifier = self.sync_loc(
-                            es.ImportSpecifier(
-                                imported=es.Identifier(name='__jacCallFunction'),
-                                local=es.Identifier(name='__jacCallFunction')
-                            ),
-                            jac_node=nd
-                        );
-                        source = self.sync_loc(
-                            es.Literal(value='@jac/runtime', raw='"@jac/runtime"'),
-                            jac_node=nd
-                        );
-                        import_decl = self.sync_loc(
-                            es.ImportDeclaration(specifiers=[specifier], source=source),
-                            jac_node=nd
-                        );
-                        self.imports.append(import_decl);
-                        self.has_injected_jac_call_function = True;
-                    }
+                    self._inject_runtime_import('__jacCallFunction', nd);
                     nd.gen.es_ast = call_expr;
                     return;
                 }
@@ -921,10 +1033,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         ) {
             # Lazily initialize emitter singletons on first use
             if self._primitive_emitters is None {
-                _pes = __import__(
+                self._primitives_es_mod = __import__(
                     "jaclang.compiler.passes.ecmascript.primitives_es",
                     fromlist=["ESIntEmitter"]
                 );
+                _pes = self._primitives_es_mod;
                 self._primitive_emitters = {
                     "int": _pes.ESIntEmitter(),
                     "float": _pes.ESFloatEmitter(),
@@ -939,7 +1052,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     "range": _pes.ESRangeEmitter(),
                     "bool": _pes.ESBoolEmitter()
                 };
-                self._es_emit_ctx_class = _pes.ESEmitCtx;
             }
             _type_name = _obj_type.shared.class_name;
             _emitter = self._primitive_emitters.get(_type_name);
@@ -948,7 +1060,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
             if _emit_fn {
                 _unparser = JSCodeGenerator();
-                _ctx = self._es_emit_ctx_class(unparser=_unparser);
+                _ctx = self._primitives_es_mod.ESEmitCtx(unparser=_unparser);
                 _target_str = _unparser.generate(callee.object);
                 _args_strs: list[str] = [];
                 for _a in args {
@@ -960,7 +1072,15 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         _args_strs.append(_unparser.generate(_p.value));
                     }
                 }
-                _result = _emit_fn(_ctx, _target_str, _args_strs);
+                # Static emitter methods (fromkeys, from_bytes, etc.) take
+                # (ctx, args) while instance methods take (ctx, target, args).
+                import inspect;
+                _n_params = len(inspect.signature(_emit_fn).parameters);
+                if _n_params == 2 {
+                    _result = _emit_fn(_ctx, _args_strs);
+                } else {
+                    _result = _emit_fn(_ctx, _target_str, _args_strs);
+                }
                 if _result is not None and "_jac." in str(_result) {
                     self.needs_jac_runtime = True;
                 }
@@ -977,21 +1097,20 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         # Lazily initialize builtin emitter singleton on first use
         if self._builtin_emitter is None {
-            _pes = __import__(
-                "jaclang.compiler.passes.ecmascript.primitives_es",
-                fromlist=["ESBuiltinEmitter"]
-            );
-            self._builtin_emitter = _pes.ESBuiltinEmitter();
-            if not hasattr(self, '_es_emit_ctx_class') {
-                self._es_emit_ctx_class = _pes.ESEmitCtx;
+            if not hasattr(self, '_primitives_es_mod') {
+                self._primitives_es_mod = __import__(
+                    "jaclang.compiler.passes.ecmascript.primitives_es",
+                    fromlist=["ESBuiltinEmitter"]
+                );
             }
+            self._builtin_emitter = self._primitives_es_mod.ESBuiltinEmitter();
         }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
         _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
         if _emit_fn {
             _unparser = JSCodeGenerator();
-            _ctx = self._es_emit_ctx_class(unparser=_unparser);
+            _ctx = self._primitives_es_mod.ESEmitCtx(unparser=_unparser);
             _args_strs: list[str] = [];
             for _a in args {
                 _args_strs.append(_unparser.generate(_a));
@@ -1357,10 +1476,11 @@ impl EsastGenPass._try_primitive_op(
     }
     # Lazily initialize emitter singletons on first use
     if self._primitive_emitters is None {
-        _pes = __import__(
+        self._primitives_es_mod = __import__(
             "jaclang.compiler.passes.ecmascript.primitives_es",
             fromlist=["ESIntEmitter"]
         );
+        _pes = self._primitives_es_mod;
         self._primitive_emitters = {
             "int": _pes.ESIntEmitter(),
             "float": _pes.ESFloatEmitter(),
@@ -1375,7 +1495,6 @@ impl EsastGenPass._try_primitive_op(
             "range": _pes.ESRangeEmitter(),
             "bool": _pes.ESBoolEmitter()
         };
-        self._es_emit_ctx_class = _pes.ESEmitCtx;
     }
     _type_name = _obj_type.shared.class_name;
     _emitter = self._primitive_emitters.get(_type_name);
@@ -1384,7 +1503,7 @@ impl EsastGenPass._try_primitive_op(
         return None;
     }
     _unparser = JSCodeGenerator();
-    _ctx = self._es_emit_ctx_class(unparser=_unparser);
+    _ctx = self._primitives_es_mod.ESEmitCtx(unparser=_unparser);
     _target_str = _unparser.generate(left_es);
     _args_strs: list[str] = [];
     if right_es is not None {
@@ -1579,6 +1698,34 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         spawn_parts = self._prepare_spawn_call(nd, left, right);
         if spawn_parts {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
+            # Analyze walker effects for auto-caching
+            walker_name = spawn_parts.walker.walker_name;
+            effect_key = f"walker:{walker_name}";
+            if effect_key not in self.client_manifest.endpoint_effects {
+                walker_sym = self._resolve_expr_symbol(
+                    spawn_parts.walker.call_node.target
+                );
+                # If the symbol is an imported variable (sv import),
+                # search the main module for the original walker arch.
+                if (walker_sym and walker_sym.sym_type != SymbolType.WALKER_ARCH) {
+                    main_sym = self.search_sym_in_main_mod(
+                        spawn_parts.walker.call_node.target
+                    );
+                    if main_sym {
+                        walker_sym = main_sym;
+                    }
+                }
+                if (walker_sym and walker_sym.sym_type == SymbolType.WALKER_ARCH) {
+                    arch_node = walker_sym.decl.parent;
+                    if isinstance(arch_node, uni.Archetype) {
+                        resolved_body = arch_node._get_impl_resolved_body();
+                        if resolved_body {
+                            effects = self._analyze_body_effects(resolved_body);
+                            self.client_manifest.endpoint_effects[effect_key] = effects;
+                        }
+                    }
+                }
+            }
         }
         return;
     }
@@ -1947,12 +2094,12 @@ impl EsastGenPass._get_setter_name(var_name: str) -> str {
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
-"""Check if useState is already imported (either by user or auto-injection)."""
-impl EsastGenPass._has_usestate_import -> bool {
+"""Check if a named import already exists (either by user or auto-injection)."""
+impl EsastGenPass._has_import(name: str) -> bool {
     for import_decl in self.imports {
         for spec in import_decl.specifiers {
             if isinstance(spec, es.ImportSpecifier) {
-                if spec.local and spec.local.name == 'useState' {
+                if spec.local and spec.local.name == name {
                     return True;
                 }
             }
@@ -1973,69 +2120,14 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     }
 }
 
-"""Auto-inject useState import from @jac/runtime when reactive has variables are used."""
-impl EsastGenPass._inject_usestate_import(nd: uni.UniNode) -> None {
-    # Create: import { useState } from "@jac/runtime";
-    specifier = self.sync_loc(
-        es.ImportSpecifier(
-            imported=es.Identifier(name='useState'),
-            local=es.Identifier(name='useState')
-        ),
-        jac_node=nd
-    );
-    source = self.sync_loc(
-        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
-    );
-    import_decl = self.sync_loc(
-        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
-    );
-    self.imports.append(import_decl);
-    # Register in client manifest so bundler knows to inline the runtime
-    self._register_jac_runtime_import();
-}
-
-"""Auto-inject __jacCallFunction import from @jac/runtime when server functions are called from client."""
-impl EsastGenPass._inject_jac_call_function_import(nd: uni.UniNode) -> None {
-    # Create: import { __jacCallFunction } from "@jac/runtime";
-    specifier = self.sync_loc(
-        es.ImportSpecifier(
-            imported=es.Identifier(name='__jacCallFunction'),
-            local=es.Identifier(name='__jacCallFunction')
-        ),
-        jac_node=nd
-    );
-    source = self.sync_loc(
-        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
-    );
-    import_decl = self.sync_loc(
-        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
-    );
-    self.imports.append(import_decl);
-    # Register in client manifest so bundler knows to inline the runtime
-    self._register_jac_runtime_import();
-}
-
-"""Check if useEffect is already imported (either by user or auto-injection)."""
-impl EsastGenPass._has_useeffect_import -> bool {
-    for import_decl in self.imports {
-        for spec in import_decl.specifiers {
-            if isinstance(spec, es.ImportSpecifier) {
-                if spec.local and spec.local.name == 'useEffect' {
-                    return True;
-                }
-            }
-        }
+"""Auto-inject a named import from @jac/runtime (e.g. useState, useEffect, __jacCallFunction)."""
+impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+    if name in self.injected_imports or self._has_import(name) {
+        return;
     }
-    return False;
-}
-
-"""Auto-inject useEffect import from @jac/runtime when can with entry/exit is used."""
-impl EsastGenPass._inject_useeffect_import(nd: uni.UniNode) -> None {
-    # Create: import { useEffect } from "@jac/runtime";
     specifier = self.sync_loc(
         es.ImportSpecifier(
-            imported=es.Identifier(name='useEffect'),
-            local=es.Identifier(name='useEffect')
+            imported=es.Identifier(name=name), local=es.Identifier(name=name)
         ),
         jac_node=nd
     );
@@ -2046,6 +2138,7 @@ impl EsastGenPass._inject_useeffect_import(nd: uni.UniNode) -> None {
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
     );
     self.imports.append(import_decl);
+    self.injected_imports.add(name);
     # Register in client manifest so bundler knows to inline the runtime
     self._register_jac_runtime_import();
 }
@@ -2152,11 +2245,8 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
         nd.gen.es_ast = None;
         return;
     }
-    # Auto-inject useState import if not already done and user hasn't imported it
-    if not self.has_injected_usestate and not self._has_usestate_import() {
-        self._inject_usestate_import(nd);
-        self.has_injected_usestate = True;
-    }
+    # Auto-inject useState import if not already done
+    self._inject_runtime_import('useState', nd);
     # Generate useState destructuring for each variable
     # has count: int = 0; -> const [count, setCount] = useState(0);
     statements: list[es.Statement] = [];
@@ -2240,10 +2330,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     # CHECK: Is this an event-based ability (can with entry/exit) in client context?
     if (isinstance(nd.signature, uni.EventSignature) and nd.in_client_context()) {
         # Auto-inject useEffect import if needed
-        if not self.has_injected_useeffect and not self._has_useeffect_import() {
-            self._inject_useeffect_import(nd);
-            self.has_injected_useeffect = True;
-        }
+        self._inject_runtime_import('useEffect', nd);
         # Transform to useEffect
         self._transform_to_useeffect(nd);
         return;
@@ -2752,6 +2839,13 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                         p.name.sym_name for p in ability_node.signature.params
                     ];
                 }
+                # Analyze function body for auto-caching effects
+                if ability_node
+                and ability_node.body
+                and isinstance(ability_node.body, list) {
+                    effects = self._analyze_body_effects(ability_node.body);
+                    self.client_manifest.endpoint_effects[f"func:{func_name}"] = effects;
+                }
             }
         }
         # Build JS function parameters
@@ -2808,24 +2902,7 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
     }
     if stubs {
         # Auto-inject __jacCallFunction import if not already done
-        if not self.has_injected_jac_call_function {
-            specifier = self.sync_loc(
-                es.ImportSpecifier(
-                    imported=es.Identifier(name='__jacCallFunction'),
-                    local=es.Identifier(name='__jacCallFunction')
-                ),
-                jac_node=nd
-            );
-            source = self.sync_loc(
-                es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
-            );
-            import_decl = self.sync_loc(
-                es.ImportDeclaration(specifiers=[specifier], source=source),
-                jac_node=nd
-            );
-            self.imports.append(import_decl);
-            self.has_injected_jac_call_function = True;
-        }
+        self._inject_runtime_import('__jacCallFunction', nd);
         # Append stubs to the accumulation list (sv import nodes have SERVER
         # context and their es_ast is filtered out in exit_module, so we
         # collect them separately and inject them into the module body).
@@ -2854,6 +2931,9 @@ impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
     for sub_mod in nd.gen.client_manifest.params {
         self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
     }
+    for (ename, eeffect) in nd.gen.client_manifest.endpoint_effects.items() {
+        self.client_manifest.endpoint_effects[ename] = eeffect;
+    }
 }
 
 """Populate client manifest from module declarations."""
@@ -2869,10 +2949,32 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body.extend(self.imports);
     # Include stubs for def:pub functions imported via sv import
     body.extend(self.sv_import_stubs);
+    # Collect import source paths already present to avoid duplicates
+    # when impl modules re-inject the same import (e.g. __jacCallFunction).
+    seen_imports: set[str] = set();
+    for imp in self.imports {
+        if (isinstance(imp.source, es.Literal) and isinstance(imp.source.value, str)) {
+            seen_imports.add(imp.source.value);
+        }
+    }
     for mod in nd.impl_mod {
         if (mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program)) {
             for import_decl in mod.gen.es_ast.body {
                 if isinstance(import_decl, es.ImportDeclaration) {
+                    src_val = (
+                        import_decl.source.value
+                        if (
+                            isinstance(import_decl.source, es.Literal)
+                            and isinstance(import_decl.source.value, str)
+                        )
+                        else None
+                    );
+                    if (src_val is not None and src_val in seen_imports) {
+                        continue;
+                    }
+                    if src_val is not None {
+                        seen_imports.add(src_val);
+                    }
                     body.append(import_decl);
                 }
             }
@@ -2936,6 +3038,24 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
         );
         body.append(comprehensive_export);
     }
+    # Emit self-registration of endpoint effects so each compiled module
+    # contributes its effects to the global map at import time.  This is
+    # necessary because page modules are separate files compiled
+    # independently — their effects don't propagate to the main module's
+    # client_manifest.
+    if self.client_manifest.endpoint_effects {
+        import json as _json;
+        effects_json = _json.dumps(self.client_manifest.endpoint_effects);
+        register_code = (
+            'if (typeof globalThis !== "undefined") {'
+            ' if (!globalThis.__jacEndpointEffects__) globalThis.__jacEndpointEffects__ = {};'
+            f' Object.assign(globalThis.__jacEndpointEffects__, {effects_json});'
+            ' }'
+        );
+        body.append(
+            es.ExpressionStatement(expression=es.Identifier(name=register_code))
+        );
+    }
     program = self.sync_loc(es.Program(body=body, sourceType='module'), jac_node=nd);
     nd.gen.es_ast = program;
     nd.gen.js = es_to_js(nd.gen.es_ast);
@@ -2995,6 +3115,108 @@ impl EsastGenPass._collect_stmt_body(
         }
     }
     return statements;
+}
+
+"""Analyze a code body to classify it as reader or writer and extract touched node types.
+
+Recursively scans descendant AST nodes for write-indicating operations
+(edge creation, node deletion, field mutation, sub-walker spawns).
+Returns dict with 'is_writer' (bool) and 'touches' (list of node type names).
+"""
+impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> dict {
+    is_writer = False;
+    touches: set[str] = set();
+    """Recursively scan a node and its descendants for effects.""";
+    def _scan(nd: uni.UniNode) -> None {
+        nonlocal is_writer ;
+
+        # Edge creation: BinaryExpr with ConnectOp operator (++>, <++, <++>)
+        if isinstance(nd, uni.BinaryExpr) and isinstance(nd.op, uni.ConnectOp) {
+            is_writer = True;
+            # Try to extract edge type from ConnectOp
+            if nd.op.conn_type and isinstance(nd.op.conn_type, uni.Name) {
+                touches.add(nd.op.conn_type.sym_name);
+            }
+        }
+
+        # Edge deletion: BinaryExpr with DisconnectOp operator
+        if isinstance(nd, uni.BinaryExpr) and isinstance(nd.op, uni.DisconnectOp) {
+            is_writer = True;
+        }
+
+        # Node/edge deletion: DeleteStmt
+        if isinstance(nd, uni.DeleteStmt) {
+            is_writer = True;
+        }
+
+        # Spawn sub-walker: BinaryExpr with KW_SPAWN
+        if (
+            isinstance(nd, uni.BinaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and nd.op.name == Tok.KW_SPAWN
+        ) {
+            is_writer = True;
+        }
+
+        # Field mutation on non-self targets: Assignment with AtomTrailer target
+        if isinstance(nd, uni.Assignment) {
+            for tgt in nd.target {
+                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+                    # Check if the target root is NOT self/here (those are walker state writes)
+                    root_expr = tgt.target;
+                    while isinstance(root_expr, uni.AtomTrailer) {
+                        root_expr = root_expr.target;
+                    }
+                    is_self = (
+                        isinstance(root_expr, uni.SpecialVarRef)
+                        and root_expr.sym_name == 'self'
+                    );
+                    if not is_self {
+                        is_writer = True;
+                    }
+                }
+            }
+        }
+
+        # Node type touched: FuncCall targeting a node/edge archetype
+        if isinstance(nd, uni.FuncCall) {
+            target_sym = self._resolve_expr_symbol(nd.target);
+            if target_sym {
+                if target_sym.sym_type in [SymbolType.NODE_ARCH, SymbolType.EDGE_ARCH] {
+                    touches.add(target_sym.sym_name);
+                    # Constructing a node/edge is a write
+                    is_writer = True;
+                }
+            }
+        }
+
+        # Node types from EventSignature (can foo with NodeType entry)
+        if isinstance(nd, uni.EventSignature) and nd.arch_tag_info {
+            if isinstance(nd.arch_tag_info, uni.Name) {
+                touches.add(nd.arch_tag_info.sym_name);
+            } elif isinstance(nd.arch_tag_info, uni.BoolExpr) {
+                # Union type: NodeA | NodeB
+                for val in nd.arch_tag_info.values {
+                    if isinstance(val, uni.Name) {
+                        touches.add(val.sym_name);
+                    }
+                }
+            }
+        }
+
+        # Recurse into children
+        for child in nd.kid {
+            if child {
+                _scan(child);
+            }
+        }
+    }
+    for nd in body_nodes {
+        _scan(nd);
+    }
+    # If no specific node types were determined, use catch-all
+    touches_list = sorted(touches) if touches else ["*"];
+    return {"is_writer": is_writer, "touches": touches_list};
 }
 
 """Emit the await __jacSpawn(...) expression for a spawn call."""
@@ -3297,12 +3519,6 @@ impl EsastGenPass._is_declared_in_any_scope(name: str) -> bool {
     return any((name in scope.declared) for scope in reversed(self.scope_stack));
 }
 
-"""Check if a name is already declared in the active scope."""
-impl EsastGenPass._is_declared_in_current_scope(name: str) -> bool {
-    scope = self._current_scope();
-    return (name in scope.declared) if scope else False;
-}
-
 """Get the scope currently being populated."""
 impl EsastGenPass._current_scope -> (ScopeInfo | None) {
     return self.scope_stack[-1] if self.scope_stack else None;
@@ -3401,14 +3617,10 @@ impl EsastGenPass.before_pass -> None {
     self.reactive_vars: dict[str, str] = {};
     # Stack to save/restore reactive_vars per function boundary
     self.reactive_vars_stack: list[dict[str, str]] = [];
-    # Track if useState import has been auto-injected to avoid duplicates
-    self.has_injected_usestate: bool = False;
-    # Track if __jacCallFunction import has been auto-injected to avoid duplicates
-    self.has_injected_jac_call_function: bool = False;
+    # Track which runtime imports have been auto-injected to avoid duplicates
+    self.injected_imports: set[str] = set();
     # Accumulate JS function stubs for def:pub functions imported via sv import
     self.sv_import_stubs: list[es.Statement] = [];
-    # Track if useEffect import has been auto-injected to avoid duplicates
-    self.has_injected_useeffect: bool = False;
     # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)
     self.needs_jac_runtime: bool = False;
     # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)

@@ -299,7 +299,7 @@ cl {
         has count: int = 0;
 
         useEffect(lambda -> None {
-            console.log("Count changed:", count);
+            print("Count changed:", count);
         }, [count]);
 
         return <div>
@@ -358,7 +358,7 @@ cl {
             if not input.trim() { return; }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
-            todos = todos.concat([new_todo]);
+            todos = todos + [new_todo];
             input = "";
         }
 
@@ -408,7 +408,7 @@ Event handling in Jac works just like React, but with Jac's lambda syntax.
 ```jac
 def Button() -> JsxElement {
     return <button onClick={lambda -> None {
-        console.log("Button clicked!");
+        print("Button clicked!");
     }}>
         Click Me
     </button>;
@@ -426,7 +426,7 @@ def InputField() -> JsxElement {
         type="text"
         value={value}
         onChange={lambda e: any -> None {
-            console.log("Input value:", e.target.value);
+            print("Input value:", e.target.value);
             value = e.target.value;
         }}
     />;
@@ -600,7 +600,7 @@ async def onAddTodo(e: any) -> None {
         "text": new_todo.text,
         "done": new_todo.done
     };
-    setTodoState({"items": s.items.concat([newItem])});
+    setTodoState({"items": s.items + [newItem]});
 }
 ```
 
@@ -693,7 +693,7 @@ cl {
             if not input.trim() { return; }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
-            todos = todos.concat([new_todo]);
+            todos = todos + [new_todo];
             input = "";
         }
 

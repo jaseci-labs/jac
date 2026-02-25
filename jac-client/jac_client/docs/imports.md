@@ -76,7 +76,7 @@ cl {
         async def addTodo(text: str) -> None {
             # Call walker with parameters
             new_todo = await jacSpawn("create_todo", "", {"text": text});
-            setTodos(todos.concat([new_todo]));
+            setTodos(todos + [new_todo]);
         }
 
         return <div>{/* UI */}</div>;
@@ -641,7 +641,7 @@ cl {
 
     def Counter() -> JsxElement {
         useEffect(lambda -> None {
-            console.log("Count: ", count);
+            print("Count: ", count);
         }, [count]);
 
         return <div>
@@ -777,7 +777,7 @@ cl def MyComponent() -> JsxElement {
             <Button
                 type="primary"
                 onClick={lambda -> None {
-                    console.log("Button clicked!");
+                    print("Button clicked!");
                 }}
             >
                 Click Me
@@ -861,10 +861,10 @@ cl import from .button {
 
 cl def:pub App() -> JsxElement {
     return <div>
-        <CustomButton onClick={lambda -> None { console.log("Clicked!"); }}>
+        <CustomButton onClick={lambda -> None { print("Clicked!"); }}>
             Custom Button
         </CustomButton>
-        <PrimaryButton onClick={lambda -> None { console.log("Primary!"); }}>
+        <PrimaryButton onClick={lambda -> None { print("Primary!"); }}>
             Primary Button
         </PrimaryButton>
     </div>;

@@ -18,29 +18,32 @@ cl {
                     Filter by Category
                 </h3>
                 <div className="filter-buttons">
-                    {allCategories.map(
-                        lambda cat: str  -> any { isActive = selectedCategory == cat;color = CATEGORY_COLORS[
-                            cat
-                        ]
-                        if cat != "ALL"
-                        else "#374151";return
-                            <button
-                                key={cat}
-                                className={("filter-btn active")
-                                if isActive
-                                else ("filter-btn")}
-                                style={{
-                                    "borderColor": color,
-                                    "backgroundColor": (color)
-                                    if isActive
-                                    else ("transparent"),
-                                    "color": ("#fff") if isActive else (color)
-                                }}
-                                onClick={lambda : onSelect(cat)}
-                            >
-                                {(cat) if cat == "ALL" else (CATEGORY_LABELS[cat])}
-                            </button>; }
-                    )}
+                    {[
+                        <button
+                            key={cat}
+                            className={("filter-btn active")
+                            if selectedCategory == cat
+                            else ("filter-btn")}
+                            style={{
+                                "borderColor": CATEGORY_COLORS[cat]
+                                if cat != "ALL"
+                                else "#374151",
+                                "backgroundColor": (
+                                    CATEGORY_COLORS[cat] if cat != "ALL" else "#374151"
+                                )
+                                if selectedCategory == cat
+                                else ("transparent"),
+                                "color": ("#fff")
+                                if selectedCategory == cat
+                                else (
+                                    CATEGORY_COLORS[cat] if cat != "ALL" else "#374151"
+                                )
+                            }}
+                            onClick={lambda : onSelect(cat)}
+                        >
+                            {(cat) if cat == "ALL" else (CATEGORY_LABELS[cat])}
+                        </button> for cat in allCategories
+                    ]}
                 </div>
             </div>;
     }

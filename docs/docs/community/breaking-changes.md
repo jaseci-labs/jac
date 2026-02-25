@@ -6,6 +6,18 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### byllm 0.5.1: LiteLLM Minimum Version Raised to 1.81.15
+
+The `litellm` dependency for byllm has been bumped from `>=1.75.5.post1,<1.80.0` to `>=1.81.15,<1.83.0`.
+
+**Impact:** If your environment has other packages that pin `litellm` below `1.81.15`, dependency resolution will fail.
+
+**Migration:** Update `litellm` in your project or environment:
+
+```bash
+pip install "litellm>=1.81.15,<1.83.0"
+```
+
 ### Test Syntax Changed from Identifiers to String Descriptions
 
 The `test` keyword now requires a **string description** instead of an identifier name. This gives tests more readable, natural-language names with spaces, punctuation, and proper casing.

@@ -24,6 +24,10 @@ def dict_methods_py() -> dict {
     # copy
     d3: dict = d.copy();
 
+    # fromkeys
+    fk1: dict = dict.fromkeys(["x", "y", "z"], 0);
+    fk2: dict = dict.fromkeys(["a", "b"]);
+
     return {
         "get_hit": get_hit,
         "get_miss": get_miss,
@@ -31,7 +35,9 @@ def dict_methods_py() -> dict {
         "values": values,
         "items": items,
         "after_update": d2,
-        "copy": d3
+        "copy": d3,
+        "fromkeys_val": fk1,
+        "fromkeys_none": fk2
     };
 }
 
@@ -59,6 +65,10 @@ cl def dict_methods_cl() -> dict {
     # copy
     d3: dict = d.copy();
 
+    # fromkeys
+    fk1: dict = dict.fromkeys(["x", "y", "z"], 0);
+    fk2: dict = dict.fromkeys(["a", "b"]);
+
     return {
         "get_hit": get_hit,
         "get_miss": get_miss,
@@ -66,6 +76,8 @@ cl def dict_methods_cl() -> dict {
         "values": values,
         "items": items,
         "after_update": d2,
-        "copy": d3
+        "copy": d3,
+        "fromkeys_val": fk1,
+        "fromkeys_none": fk2
     };
 }

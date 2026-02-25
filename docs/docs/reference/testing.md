@@ -111,6 +111,15 @@ test "none checking" {
 }
 ```
 
+### Float Comparison
+
+```jac
+test "float comparison" {
+    result = 0.1 + 0.2;
+    assert almostEqual(result, 0.3, 10);
+}
+```
+
 ### With Messages
 
 ```jac
@@ -166,6 +175,9 @@ jac test -d tests/ -m 3
 # Combined
 jac test main.jac -t calculator_add -v
 ```
+
+!!! tip "File naming"
+    Avoid naming `.jac` files with a `test_` prefix (e.g., `test_utils.jac`), as this can conflict with Python's module import system. Use descriptive names like `utils_tests.jac` or `my_app.jac` instead.
 
 ---
 
@@ -320,6 +332,10 @@ test "graph connections" {
     # Test connections
     assert len([root -->]) == 1;
     assert len([kitchen -->]) == 1;
+    assert len([living -->]) == 1;
+    assert len([bedroom -->]) == 0;
+
+    # Test connectivity
     assert living in [kitchen ->:Door:->];
     assert bedroom in [living ->:Door:->];
 }
@@ -346,6 +362,10 @@ test "divide by zero" {
     } except ZeroDivisionError {
         assert True;  # Expected
     }
+}
+
+test "divide negative" {
+    assert divide(-10, 2) == -5;
 }
 ```
 
@@ -396,6 +416,11 @@ test "user valid" {
 
 test "user invalid email" {
     user = User(name="Alice", email="invalid");
+    assert not user.is_valid();
+}
+
+test "user empty name" {
+    user = User(name="", email="alice@example.com");
     assert not user.is_valid();
 }
 ```
@@ -535,6 +560,77 @@ def test_hmr(tmp_path):
 
 ---
 
+## Parameterized Tests
+
+The `parametrize()` helper registers one test per parameter, similar to `pytest.mark.parametrize`. It creates individual test cases from a list of inputs, so each case runs and reports independently.
+
+### Import
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+```
+
+### Signature
+
+```
+parametrize(base_name: str, params: Iterable, test_func: Callable, id_fn: Callable | None = None)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base_name` | `str` | Base name for the generated tests |
+| `params` | `Iterable` | List of parameter values, each passed to the test function |
+| `test_func` | `Callable` | Test function to invoke with each parameter |
+| `id_fn` | `Callable \| None` | Optional function to generate test IDs from each parameter |
+
+### Usage
+
+Define a test function that takes a single parameter, then call `parametrize()` in a `with entry` block:
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+
+def _test_square(pair: tuple) {
+    input_val = pair[0];
+    expected = pair[1];
+    result = input_val ** 2;
+    assert result == expected, f"Expected {expected}, got {result}";
+}
+
+with entry {
+    parametrize(
+        "square",
+        [(2, 4), (3, 9), (0, 0), (-1, 1)],
+        _test_square
+    );
+}
+```
+
+This registers four tests: `square_0`, `square_1`, `square_2`, `square_3`.
+
+### Custom Test IDs
+
+Use `id_fn` to generate descriptive test names:
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+
+def _test_parse(raw: str) {
+    # test logic
+}
+
+with entry {
+    parametrize(
+        "parse values",
+        ["500m", "2", "250"],
+        _test_parse,
+        id_fn=lambda p: str -> str { return f"input_{p}"; }
+    );
+}
+```
+
+---
+
 ## Best Practices
 
 ### 1. Descriptive Names
@@ -624,5 +720,4 @@ test "calculation no message" {
 
 ## Related Resources
 
-- [Testing Tutorial](../tutorials/language/testing.md)
 - [CLI Reference](cli/index.md)

@@ -1374,3 +1374,64 @@ test "llvmir ir has function definitions" {
     assert 'define i64 @"negate"' in llvm_ir_str;
     assert 'define double @"float_add"' in llvm_ir_str;
 }
+
+# --- TestCLibImportSyntax ---
+test "clib import produces extern declares" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # Extern C functions should be 'declare' (no body), not 'define'
+    assert 'declare double @"sqrt"' in llvm_ir_str;
+    assert 'declare double @"pow"' in llvm_ir_str;
+    assert 'define double @"sqrt"' not in llvm_ir_str;
+    assert 'define double @"pow"' not in llvm_ir_str;
+    # Native Jac function should be 'define' (has body)
+    assert 'define double @"hypotenuse"' in llvm_ir_str;
+    # Library path should be stored for the compile pass
+    assert ir.gen._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "clib import inside na block" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # Extern C functions from na {} block should be 'declare'
+    assert 'declare double @"ceil"' in llvm_ir_str;
+    assert 'declare double @"floor"' in llvm_ir_str;
+    # Native Jac function should be 'define'
+    assert 'define double @"round_up"' in llvm_ir_str;
+    # Library path should be stored
+    assert ir.gen._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "clib struct value-type coercion" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # --- Large struct (Vec2: 128-bit, float fields) ---
+    # Extern sqrt should use value type (f64 -> f64)
+    assert 'declare double @"sqrt"' in llvm_ir_str;
+    # Vec2 struct type should be defined
+    assert '%"Vec2"' in llvm_ir_str , "Vec2 struct type not found in IR";
+    # Jac functions should use pointer types for Vec2 (Jac semantics)
+    assert '%"Vec2"* @"make_vec"' in llvm_ir_str , "make_vec should return Vec2 pointer";
+    assert '%"Vec2"* %"v"' in llvm_ir_str , "vec_length should take Vec2 pointer param";
+    # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
+    # Color struct type should be defined
+    assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
+    # Extern draw should have Color param ABI-coerced to i32
+    assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
+    # Jac test_draw function should use Color pointer internally
+    assert 'define void @"test_draw"' in llvm_ir_str;
+    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
+    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+}
