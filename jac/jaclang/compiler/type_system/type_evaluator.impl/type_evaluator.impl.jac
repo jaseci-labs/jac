@@ -372,7 +372,10 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             return operations.get_type_of_binary_operation(self, expr);
 
         case uni.BoolExpr():
-            # Handle AND expressions with progressive narrowing
+            # Handle AND/OR expressions. In Python/Jac, these return operand values,
+            # not bool. E.g., `x and y` returns y if x is truthy, else x.
+            # The result type is the union of all operand types.
+            operand_types: list[TypeBase] = [];
             match expr.op.name {
                 case Tok.KW_AND:
                     self._push_and_narrowing_scope();
@@ -394,21 +397,22 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             );
                             self._add_and_narrowing(sym_name, isinstance_inst);
                         }
-                        # Evaluate the sub-expression (with narrowing context)
-                        self.get_type_of_expression(val);
+                        # Evaluate and collect operand type
+                        operand_types.append(self.get_type_of_expression(val));
                     }
                     self._pop_and_narrowing_scope();
 
                 case _:
-                    # OR and other boolean expressions - just evaluate
+                    # OR and other boolean expressions
                     for val in expr.values {
-                        self.get_type_of_expression(val);
+                        operand_types.append(self.get_type_of_expression(val));
                     }
 
             }
-            # Boolean expressions return bool
-            if self.prefetch and self.prefetch.bool_class {
-                return self._convert_to_instance(self.prefetch.bool_class);
+            # Return last operand type (most common case: `cond and value`)
+            # For more precise typing, could return union of all operand types.
+            if operand_types {
+                return operand_types[-1];
             }
             return types.UnknownType();
 
