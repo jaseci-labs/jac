@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.11.1 (Unreleased)
+## jaclang 0.11.2 (Unreleased)
+
+## jaclang 0.11.1 (Latest Release)
 
 - **Perf: Type Narrowing Optimization**: Fixed exponential slowdown in `jac check` with many `if` statements (~1 min → ~2s). Member access now uses narrowed types and reports errors for invalid attribute access on `None`.
 - **Import Path Alias Resolution**: The module resolver now supports path aliases configured in `[plugins.client.paths]` in `jac.toml`. Aliases like `@components/Button` are resolved to their filesystem paths before standard module lookup, enabling cleaner imports in client-side Jac code.
@@ -13,10 +15,12 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Enhanced jac check output**: The `jac check` command now provides a more detailed and user-friendly output format, including file progress, failure details, and timing information.
 - **Fix: Grammar Extraction Well-Formedness**: Improved `jac grammar` to produce well-formed EBNF by pruning unreachable rules, detecting savepoint-backtrack patterns, suppressing duplicate guard tokens, and handling broader condition forms (`check_name`, nested boolean exprs, `or` chains).
 - **LSP: ReadWriteLock for Concurrent Queries**: Replaced the single `RLock` in the language server with a writer-priority `ReadWriteLock`, allowing hover, completion, go-to-definition, and other read operations to run concurrently without blocking on type checking. Also fixed several race conditions where shared state (`mod.hub`, `sem_managers`) was accessed without any lock.
+- **Fix: Self-Member Attributes in Impl Files**: `self.x = value` assignments in impl blocks (including separate `.impl.jac` files) now correctly register as archetype attributes. Go-to-definition and type checking work seamlessly without requiring explicit `has` declarations.
 - 3 Minor refactor
+- **Fix: Unparenthesized Lambda with Keyword Parameter Name**: Fixed `parse_lambda_param` rejecting keyword tokens (e.g., `props`, `root`, `here`) as unparenthesized lambda parameter names. The parser now correctly accepts special var ref keywords and emits a targeted error for other keywords with an escape hint.
 - **Refactor: Merge `JacSerializer` into `Serializer`**: Removed the `JacSerializer` wrapper class from `runtimelib.server` and merged its API-response behavior into `Serializer` via a new `api_mode: bool = False` parameter. Call `Serializer.serialize(obj, api_mode=True)` to get clean API output with `_jac_type`, `_jac_id`, and `_jac_archetype` metadata on `Archetype` objects (previously done by `JacSerializer`). Storage backends continue to use `Serializer.serialize(obj, include_type=True)` unchanged. Import from `jaclang.runtimelib.serializer`. This eliminates a redundant wrapper class with no unique serialization logic. Added `social_graph.jac` example fixture in jac-scale demonstrating native persistence and `db.find_nodes()` for querying persisted nodes with MongoDB filters.
 
-## jaclang 0.11.0 (Latest Release)
+## jaclang 0.11.0
 
 - **Automatic Endpoint Caching**: The compiler now statically analyzes walker and server function bodies to classify endpoints as readers or writers, and propagates this metadata (`endpoint_effects`) through the `ClientManifest` to the client runtime. Reader endpoints are automatically cached on the client side, and writer endpoints auto-invalidate overlapping reader caches based on shared node types -- zero developer configuration required.
 - **HMR Server-Side Reloading Refactor**: Improved HMR functionality with better handling of `.impl.jac` files and optimized caching to avoid unnecessary recompilations during development

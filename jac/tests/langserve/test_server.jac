@@ -152,7 +152,7 @@ test "test_go_to_definition" {
         assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
             lsp.get_definition(circle_file, lspt.Position(9, 16))
         );
-        assert "fixtures/circle_pure.jac:13:11-13:16" in str(
+        assert "fixtures/circle_pure.jac:13:9-13:14" in str(
             lsp.get_definition(circle_file, lspt.Position(20, 16))
         );
 
@@ -175,6 +175,16 @@ test "test_go_to_definition" {
         # Test when the left of assignment is a list.
         assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
             lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
+        );
+
+        # Test go-to-definition for self-member assigned in impl file.
+        # t2.program (line 20) should go to self.program in impl file (line 4).
+        self_member_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_impl/checker_impl_self_member.jac")
+        );
+        lsp.type_check_file(self_member_file);
+        assert "checker_impl_self_member.impl.jac:3" in str(
+            lsp.get_definition(self_member_file, lspt.Position(19, 14))
         );
     } finally {
         teardown_test();

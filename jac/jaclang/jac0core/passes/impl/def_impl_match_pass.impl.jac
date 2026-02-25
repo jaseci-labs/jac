@@ -126,6 +126,17 @@ impl DeclImplMatchPass.connect_impls(
         # that shadow `has tasks: list` from the parent scope.
         self._fix_shadowed_parent_symbols(sym.decl.name_of, valid_decl);
         self._resolve_impl_body_symbols(sym.decl.name_of);
+        # Populate self-member symbols from impl to archetype for method impls
+        # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
+        if (
+            len(name_of_links) >= 1
+            and name_of_links[0]
+            and isinstance(name_of_links[0].name_of, uni.Archetype)
+        ) {
+            self._populate_self_member_symbols(
+                sym.decl.name_of, name_of_links[0].name_of
+            );
+        }
     }
     for source_scope in source_sym_tab.kid_scope {
         if (source_sym_tab is target_sym_tab) {
@@ -246,5 +257,33 @@ impl DeclImplMatchPass._fix_shadowed_parent_symbols(
             name_node.sym = parent_sym;
             parent_sym.add_use(name_node.name_spec);
         }
+    }
+}
+
+"""Populate self-member symbols from impl body to archetype's symbol table."""
+impl DeclImplMatchPass._populate_self_member_symbols(
+    self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+) -> None {
+    # Find all self.x = value assignments in the impl body
+    for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer) {
+        # Check if this is a self.attr = value assignment
+        if not (
+            trailer_node.parent and isinstance(trailer_node.parent, uni.Assignment)
+        ) {
+            continue;
+        }
+        if (trailer_node != trailer_node.parent.target[0]) {
+            continue;
+        }
+        chain = trailer_node.as_attr_list;
+        if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
+            continue;
+        }
+        attr_name = chain[1];
+        # Skip if already defined in the archetype
+        if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
+            continue;
+        }
+        archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
     }
 }

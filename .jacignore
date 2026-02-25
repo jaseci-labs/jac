@@ -295,3 +295,11 @@ EditUserModal.cl.jac
 CategoryTabs.cl.jac
 invalid_snippet.jac
 type_error_snippet.jac
+transform.jac
+uni_pass.jac
+unparse_pass.jac
+na_ir_gen_pass.jac
+na_compile_pass.jac
+pyjac_ast_link_pass.jac
+test_parser.jac
+type_checker_pass.jac

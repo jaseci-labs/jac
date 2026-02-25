@@ -208,7 +208,10 @@ lambda_expr ::=
 
 lambda_params ::= ("*" | "/" | lambda_param)*
 
-lambda_param ::= ("*" | "**")? (NAME | KWESC_NAME) (":" pipe)? ("=" expression)?
+lambda_param ::=
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
+    (":" pipe)? ("=" expression)?
 
 jsx_element ::=
     "<>" jsx_children "</>"
