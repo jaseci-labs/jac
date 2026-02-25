@@ -1329,11 +1329,13 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
-    # Early exit for non-union types.
-    # Type narrowing only applies to union types (e.g., X | None, A | B).
-    # Non-union types cannot be narrowed, so skip the CFG walk entirely.
+    # Performance optimization: Only do CFG walk for types that can be narrowed.
+    # 1. Union types (e.g., X | None, A | B) - narrow to subset
+    # 2. Class types with potential subclasses - narrow via isinstance
+    #    e.g., isinstance(nd, CFGNode) where nd: BaseNode -> narrow to CFGNode
+    # Skip primitives (int, str, bool, etc.) where narrowing doesn't apply.
     symbol_type = self.get_type_of_symbol(symbol);
-    if not isinstance(symbol_type, types.UnionType) {
+    if not isinstance(symbol_type, (types.UnionType, types.ClassType)) {
         return None;
     }
     # Find the enclosing CodeBlockStmt (CFG node) for this Name node.

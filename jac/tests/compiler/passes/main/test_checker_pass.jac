@@ -1234,7 +1234,7 @@ test "type_narrowing" {
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 10 , f"Expected exactly 10 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 11 , f"Expected exactly 11 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1278,6 +1278,10 @@ test "type_narrowing" {
         """
         r: Reptile = creature;  # <-- Error: Lion cannot assign to Reptile
         ^^^^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
+                          ^^
         """
     ];
 
