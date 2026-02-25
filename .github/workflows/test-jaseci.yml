@@ -153,6 +153,10 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.jac
 
+    - name: Run Serializer tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
+
   test-scale-k8s:
     runs-on: ubuntu-latest
     steps:

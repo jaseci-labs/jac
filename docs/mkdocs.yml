@@ -21,6 +21,7 @@ nav:
       - Overview: "reference/index.md"
       - Language Specification:
           - Foundation: "reference/language/foundation.md"
+          - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"

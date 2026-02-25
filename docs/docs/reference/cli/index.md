@@ -333,7 +333,7 @@ jac format [-h] [-s] [-l] [-c] paths [paths ...]
 
 ```bash
 # Preview formatting
-jac format main.jac -t
+jac format main.jac -s
 
 # Apply formatting
 jac format main.jac

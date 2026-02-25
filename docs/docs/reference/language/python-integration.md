@@ -588,14 +588,14 @@ Jac accommodates both new application development and enhancement of existing Py
 ### Using Jac from Python
 
 ```python
-from jaclang import jac_import
+import jaclang  # Registers the Jac import hook
 
-# Import Jac module
-my_module = jac_import("my_module.jac")
+# Import Jac modules using standard Python import syntax
+from my_module import my_function, MyClass
 
 # Use exported functions/classes
-result = my_module.my_function(arg1, arg2)
-instance = my_module.MyClass()
+result = my_function(arg1, arg2)
+instance = MyClass()
 ```
 
 ---

@@ -11,7 +11,6 @@ Deploy your Jac application to Kubernetes with a single command.
 >
 >   ```bash
 >   pip install jac-scale
->   jac plugins enable jac-scale
 >   ```
 >
 > - Time: ~10 minutes

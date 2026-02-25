@@ -211,8 +211,8 @@ Jac keywords are reserved and cannot be used as identifiers:
 | **Abilities** | `can`, `def`, `init`, `postinit` |
 | **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abs` |
 | **Control** | `if`, `elif`, `else`, `while`, `for`, `match`, `case`, `switch`, `default` |
-| **Loop** | `break`, `continue`, `skip` |
-| **Return** | `return`, `yield`, `report` |
+| **Loop** | `break`, `continue` |
+| **Return** | `return`, `yield`, `report`, `skip` |
 | **Exception** | `try`, `except`, `finally`, `raise`, `assert` |
 | **OSP** | `visit`, `disengage`, `spawn`, `here`, `root`, `visitor`, `entry`, `exit` |
 | **Module** | `import`, `include`, `from`, `as`, `glob` |
@@ -232,6 +232,9 @@ obj Example {
     has `class: str;  # Backtick-escaped keyword used as identifier
 }
 ```
+
+!!! warning
+    Backtick-escaped keywords in `has` declarations may cause runtime issues with the underlying dataclass machinery. Use with caution and consider choosing a non-keyword identifier instead.
 
 ### 7 Entry Point Variants
 
@@ -602,7 +605,6 @@ glob PI: float = 3.14159;
 glob config: dict = {};
 
 with entry {
-    global PI;
     print(PI);
 }
 ```
@@ -1163,7 +1165,7 @@ obj Builder {
 
 def example() {
     # Dot forward pipe
-    result = Builder() .> add(5) .> double;
+    result = Builder() .> add(5) .> double();
 
     # Equivalent to:
     result = Builder().add(5).double();
@@ -1521,7 +1523,7 @@ def example(value: int) {
 }
 ```
 
-Note: Unlike C, there is no fall-through between cases.
+Note: Like C, cases fall through to subsequent cases. Use `break` to prevent fall-through.
 
 ### 6 Loop Control
 
@@ -1779,7 +1781,7 @@ def example() {
         return str(n);
     }
 
-    can countdown(n: int) -> Generator[int] {
+    def countdown(n: int) -> Generator[int] {
         while n > 0 {
             yield n;
             n -= 1;
@@ -1826,6 +1828,7 @@ The native backend supports:
 
 Import C shared libraries directly in native Jac code:
 
+<!-- jac-skip -->
 ```jac
 # compute.na.jac
 import from "libm" {
@@ -1842,6 +1845,7 @@ with entry {
 
 C structs can be declared inside library import blocks and used as normal Jac objects with automatic value-type coercion at call boundaries:
 
+<!-- jac-skip -->
 ```jac
 import from "libgraphics" {
     obj Color {

@@ -92,7 +92,7 @@ Common questions and answers. If you don't see your question below and couldn't 
         See [API key setup](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/#part-5-making-it-smart-with-ai)
 
     ??? question "How do I structure by llm() functions so that the output is deterministic and parseable?"
-        Use structured prompts and response templates.[AI Integration Reference](https://docs.jaseci.org/reference/language/ai-integration/)
+        Use structured prompts and response templates. [byLLM Reference](https://docs.jaseci.org/reference/plugins/byllm/)
 
 ??? "Production & Deployment"
 
@@ -107,7 +107,7 @@ Common questions and answers. If you don't see your question below and couldn't 
         - Containerizes Jac application
         - Sets up Kubernetes deployment
         - Manages scaling and load balancing
-        [Kubernetes Deployment Reference](https://docs.jaseci.org/reference/language/deployment/#kubernetes-deployment)
+        [Kubernetes Deployment Reference](https://docs.jaseci.org/tutorials/production/kubernetes/)
 
 ??? "Debugging & Support"
 

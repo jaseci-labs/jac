@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.5.1 (Unreleased)
 
+- **Fix: Enum/structured return types failing with Anthropic models**: Fixed a bug where `by llm()` functions returning non-string types (enums, objects) would crash with Anthropic/Claude models (`"Attempted to call tool: 'json_tool_call' which was not present"`). The issue was that `finish_tool` was only added when explicit tools were provided, so when no tools were passed but a structured return type was set, LiteLLM's Anthropic adapter would inject a hidden `json_tool_call` tool that byllm couldn't find. The fix ensures `finish_tool` is always created for non-string return types, regardless of whether explicit tools are provided.
+
 ## byllm 0.5.0 (Latest Release)
 
 - **Builtin `llm` for Zero-Config `by llm()`**: The `llm` name is now a builtin, so `by llm()` works without any explicit import or `glob llm = ...` declaration. The byllm plugin provides a `default_llm` hook that automatically returns a configured `Model` instance from `jac.toml` settings. Users can still override the builtin by defining `glob llm = ...` in their module.

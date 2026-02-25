@@ -139,7 +139,7 @@ walker:pub GetUsers {
     }
 }
 
-# Endpoint: POST /GetUsers
+# Endpoint: POST /walker/GetUsers
 ```
 
 Start the server:
@@ -568,7 +568,7 @@ cl {
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
-            } except e {
+            } except Exception as e {
                 error = f"Failed to load: {e}";
             }
             loading = False;

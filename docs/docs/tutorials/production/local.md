@@ -72,11 +72,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ### 3. Call the API
 
 ```bash
-# Get all tasks
-curl http://localhost:8000/get_tasks
+# Get all tasks (all walker endpoints use POST with /walker/ prefix)
+curl -X POST http://localhost:8000/walker/get_tasks
 
 # Add a task
-curl -X POST http://localhost:8000/add_task \
+curl -X POST http://localhost:8000/walker/add_task \
   -H "Content-Type: application/json" \
   -d '{"title": "Buy groceries"}'
 ```
@@ -120,9 +120,9 @@ Each public walker becomes an endpoint:
 
 | Walker | HTTP Method | Endpoint |
 |--------|-------------|----------|
-| `walker:pub get_users { }` | POST | `/get_users` |
-| `walker:pub create_user { }` | POST | `/create_user` |
-| `walker:pub delete_user { }` | POST | `/delete_user` |
+| `walker:pub get_users { }` | POST | `/walker/get_users` |
+| `walker:pub create_user { }` | POST | `/walker/create_user` |
+| `walker:pub delete_user { }` | POST | `/walker/delete_user` |
 
 ### Request Format
 
@@ -137,7 +137,7 @@ walker:pub search_users {
 ```
 
 ```bash
-curl -X POST http://localhost:8000/search_users \
+curl -X POST http://localhost:8000/walker/search_users \
   -H "Content-Type: application/json" \
   -d '{"query": "john", "limit": 20, "page": 1}'
 ```
@@ -166,15 +166,36 @@ walker:pub get_user {
 }
 ```
 
-Response:
+Response (all walker responses are wrapped in a standard envelope):
 
 ```json
 {
-  "id": "123",
-  "name": "Alice",
-  "email": "alice@example.com"
+  "ok": true,
+  "type": "walker:pub:get_user",
+  "data": {
+    "result": null,
+    "reports": [
+      {
+        "id": "123",
+        "name": "Alice",
+        "email": "alice@example.com"
+      }
+    ]
+  },
+  "error": null,
+  "meta": {}
 }
 ```
+
+!!! note "Response Envelope"
+    All walker API responses use this envelope format:
+
+    - **`ok`**: `true` if the request succeeded, `false` on error
+    - **`type`**: The walker type identifier
+    - **`data.result`**: The walker's return value (if any)
+    - **`data.reports`**: Array of all `report`ed values during traversal
+    - **`error`**: Error message (if `ok` is `false`)
+    - **`meta`**: Additional metadata
 
 ---
 
@@ -455,15 +476,15 @@ Test it:
 
 ```bash
 # Create user
-curl -X POST http://localhost:8000/create_user \
+curl -X POST http://localhost:8000/walker/create_user \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice", "email": "alice@example.com"}'
 
 # List users
-curl http://localhost:8000/list_users
+curl -X POST http://localhost:8000/walker/list_users
 
 # Health check
-curl http://localhost:8000/health
+curl -X POST http://localhost:8000/walker/health
 ```
 
 ---

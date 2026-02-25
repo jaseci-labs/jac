@@ -283,6 +283,9 @@ dir = ".jac_cache"  # Cache directory
 
 ### [storage]
 
+!!! warning "Plugin-Specific Configuration"
+    The `[storage]` section requires the **jac-scale** plugin and may not be available in all configurations. Running `jac config list -g storage` will return "Unknown group 'storage'" if the plugin is not installed.
+
 File storage configuration:
 
 ```toml
