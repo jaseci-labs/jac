@@ -3,7 +3,7 @@ import from byllm.lib { MockLLM }
 
 # Override the builtin llm with a mock for testability.
 # The key test is that 'llm' in 'by llm()' compiles as a builtin name.
-glob llm = MockLLM(model_name="mockllm", config={"outputs": ["positive"]});
+glob llm = MockLLM(model_name="mockllm", config={"outputs": [Sentiment.POSITIVE]});
 
 enum Sentiment { POSITIVE, NEGATIVE, NEUTRAL }
 
