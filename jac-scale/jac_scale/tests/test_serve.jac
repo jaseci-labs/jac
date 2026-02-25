@@ -25,7 +25,6 @@ import from typing { Any, cast }
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
-
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -259,8 +258,8 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
 # =============================================================================
 # SERVER CONFIGURATION
 # =============================================================================
-
-glob sv_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+glob sv_fixtures_dir:
+         Path = Path(__file__).parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
      sv_port: int = get_free_port(),
      sv_base_url: str = f"http://localhost:{sv_port}",
@@ -284,13 +283,12 @@ def teardown_serve_server(sp: subprocess.Popen | None) -> None {
 # =============================================================================
 # GROUP 1: STATIC & SCHEMA TESTS (Read-only, no state changes)
 # =============================================================================
-
 test "static and schema endpoints" {
     sp = setup_serve_server();
     try {
         # Test: server root endpoint returns docs
         response = requests.get(f"{sv_base_url}/docs", timeout=5);
-        assert response.status_code == 200, "Docs endpoint should return 200";
+        assert response.status_code == 200 , "Docs endpoint should return 200";
 
         # Test: custom response headers from config
         assert "x-custom-test-header" in response.headers;
@@ -315,11 +313,17 @@ test "static and schema endpoints" {
         assert "User APIs" in post_spec["tags"];
 
         # Test: websocket endpoints NOT in openapi (they use /ws/ prefix)
-        assert "/walker/EchoMessage" not in paths, "WebSocket walker should not be in /walker/ paths";
+        assert "/walker/EchoMessage" not in paths , "WebSocket walker should not be in /walker/ paths";
         assert "/walker/MinimalWebSocket" not in paths;
-        ws_walkers = ["EchoMessage", "MinimalWebSocket", "PrivateWebSocket", "BroadcastChat", "PrivateBroadcastChat"];
+        ws_walkers = [
+            "EchoMessage",
+            "MinimalWebSocket",
+            "PrivateWebSocket",
+            "BroadcastChat",
+            "PrivateBroadcastChat"
+        ];
         for walker in ws_walkers {
-            assert f"/walker/{walker}" not in paths, f"WebSocket walker {walker} should not be in /walker/ paths";
+            assert f"/walker/{walker}" not in paths , f"WebSocket walker {walker} should not be in /walker/ paths";
         }
 
         # Test: 404 responses for non-existent paths
@@ -327,7 +331,9 @@ test "static and schema endpoints" {
         assert response.status_code == 404;
         assert "404" in response.text;
 
-        response = requests.get(f"{sv_base_url}/static/nonexistent_file.css", timeout=5);
+        response = requests.get(
+            f"{sv_base_url}/static/nonexistent_file.css", timeout=5
+        );
         assert response.status_code == 404;
         assert "not found" in response.text.lower();
 
@@ -364,7 +370,6 @@ test "static and schema endpoints" {
         response = requests.get(f"{sv_base_url}/graph", timeout=5);
         assert response.status_code == 200;
         assert "text/html" in response.headers["content-type"];
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -373,7 +378,6 @@ test "static and schema endpoints" {
 # =============================================================================
 # GROUP 2: USER AUTHENTICATION TESTS (Register, Login, Token Refresh)
 # =============================================================================
-
 test "user registration and login" {
     sp = setup_serve_server();
     try {
@@ -492,7 +496,6 @@ test "user registration and login" {
             timeout=5
         );
         assert response.status_code == 401;
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -510,7 +513,10 @@ test "token refresh functionality" {
             assert error_entry["type"] == "missing";
         } else {
             assert "error" in refresh_result;
-            assert refresh_result["error"] in ["Token is required", "Invalid or expired token"];
+            assert refresh_result["error"] in [
+                "Token is required",
+                "Invalid or expired token"
+            ];
         }
 
         # Test: refresh token with empty token
@@ -549,7 +555,10 @@ test "token refresh functionality" {
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": f"refresh_bearer_{uuid.uuid4().hex[:8]}", "password": "password123"}
+            {
+                "username": f"refresh_bearer_{uuid.uuid4().hex[:8]}",
+                "password": "password123"
+            }
         );
         original_token = create_result["token"];
 
@@ -565,7 +574,9 @@ test "token refresh functionality" {
 
         # Test: status code 200 for successful refresh
         response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": original_token}, timeout=5
+            f"{sv_base_url}/user/refresh-token",
+            json={"token": original_token},
+            timeout=5
         );
         assert response.status_code == 200;
         data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
@@ -600,7 +611,10 @@ test "token refresh functionality" {
             sv_base_url,
             "POST",
             "/user/register",
-            {"username": f"refresh_multi_{uuid.uuid4().hex[:8]}", "password": "password123"}
+            {
+                "username": f"refresh_multi_{uuid.uuid4().hex[:8]}",
+                "password": "password123"
+            }
         );
         token1 = create_result["token"];
 
@@ -641,7 +655,6 @@ test "token refresh functionality" {
         assert original_payload["username"] == username;
         assert new_payload["username"] == username;
         assert original_payload["username"] == new_payload["username"];
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -698,7 +711,6 @@ test "integration auth flow" {
         assert token1 != token2;
         assert token2 != token3;
         assert token1 != token3;
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -707,7 +719,6 @@ test "integration auth flow" {
 # =============================================================================
 # GROUP 3: API OPERATIONS (Functions and Walkers)
 # =============================================================================
-
 test "function calls" {
     sp = setup_serve_server();
     try {
@@ -768,7 +779,6 @@ test "function calls" {
             sv_base_url, "POST", "/function/nonexistent", {"args": {}}, token=token
         );
         assert "Method Not Allowed" in result["detail"];
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -857,7 +867,7 @@ test "walker calls" {
             headers={"Authorization": f"Bearer {fake_token}"},
             timeout=5
         );
-        assert response.status_code == 401, (
+        assert response.status_code == 401 , (
             f"Expected 401 for deleted/non-existent user, got {response.status_code}"
         );
 
@@ -889,7 +899,6 @@ test "walker calls" {
         auth_data = auth_resp.json();
         assert len(auth_data["nodes"]) == 2;
         assert len(auth_data["edges"]) == 1;
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -898,7 +907,6 @@ test "walker calls" {
 # =============================================================================
 # GROUP 4: USER MANAGEMENT (Username and Password Updates)
 # =============================================================================
-
 test "user management operations" {
     sp = setup_serve_server();
     try {
@@ -1227,7 +1235,6 @@ test "user management operations" {
             timeout=5
         );
         assert old_password_response.status_code == 401;
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -1236,7 +1243,6 @@ test "user management operations" {
 # =============================================================================
 # GROUP 5: WEBSOCKET TESTS
 # =============================================================================
-
 test "websocket functionality" {
     import websockets;
     sp = setup_serve_server();
@@ -1246,7 +1252,7 @@ test "websocket functionality" {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
                 response = json.loads(await ws.recv());
-                assert response["ok"] is True, f"Expected ok=True, got {response}";
+                assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
                 if "reports" in data {
@@ -1264,7 +1270,7 @@ test "websocket functionality" {
             async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
                 await ws.send(json.dumps({}));
                 response = json.loads(await ws.recv());
-                assert response["ok"] is True, f"Expected ok=True, got {response}";
+                assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
                 if "reports" in data {
@@ -1303,7 +1309,7 @@ test "websocket functionality" {
             json={"message": "test", "client_id": "test"},
             timeout=10
         );
-        assert response.status_code in (400, 404, 405), (
+        assert response.status_code in (400, 404, 405) , (
             f"Expected 400/404/405, got {response.status_code}: {response.text}"
         );
 
@@ -1338,7 +1344,7 @@ test "websocket functionality" {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(json.dumps({"message": "hello"}));
                 response = json.loads(await ws.recv());
-                assert response["ok"] is False, f"Expected ok=False, got {response}";
+                assert response["ok"] is False , f"Expected ok=False, got {response}";
                 assert response["error"]["code"] == "UNAUTHORIZED";
                 assert "token" in response["error"]["message"].lower();
             }
@@ -1354,14 +1360,14 @@ test "websocket functionality" {
             json={"username": username, "password": password},
             timeout=10
         );
-        assert response.status_code in (200, 201), f"Failed to create user: {response.text}";
+        assert response.status_code in (200, 201) , f"Failed to create user: {response.text}";
 
         response = requests.post(
             f"{sv_base_url}/user/login",
             json={"username": username, "password": password},
             timeout=10
         );
-        assert response.status_code == 200, f"Failed to login: {response.text}";
+        assert response.status_code == 200 , f"Failed to login: {response.text}";
         token = response.json()["data"]["token"];
 
         async def test_private_with_token(t: str) -> None {
@@ -1370,7 +1376,7 @@ test "websocket functionality" {
                     json.dumps({"message": "authenticated hello", "token": t})
                 );
                 response = json.loads(await ws.recv());
-                assert response["ok"] is True, f"Expected ok=True, got {response}";
+                assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
                 if "reports" in data {
@@ -1401,12 +1407,10 @@ test "websocket functionality" {
         query_token = response.json()["data"]["token"];
 
         async def test_query_token(t: str) -> None {
-            async with websockets.connect(
-                f"{sv_ws_url}/ws/PrivateWebSocket?token={t}"
-            ) as ws {
+            async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket?token={t}") as ws {
                 await ws.send(json.dumps({"message": "query auth hello"}));
                 response = json.loads(await ws.recv());
-                assert response["ok"] is True, f"Expected ok=True, got {response}";
+                assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
                 if "reports" in data {
@@ -1431,8 +1435,8 @@ test "websocket functionality" {
                     response2 = json.loads(
                         await asyncio.wait_for(ws2.recv(), timeout=5)
                     );
-                    assert response1["ok"] is True, f"Client1 expected ok=True: {response1}";
-                    assert response2["ok"] is True, f"Client2 expected ok=True: {response2}";
+                    assert response1["ok"] is True , f"Client1 expected ok=True: {response1}";
+                    assert response2["ok"] is True , f"Client2 expected ok=True: {response2}";
                     data1 = response1["data"];
                     data2 = response2["data"];
                     rpt1 = data1;
@@ -1527,7 +1531,6 @@ test "websocket functionality" {
             }
         }
         asyncio.run(test_private_broadcast_with_auth(users));
-
     } finally {
         teardown_serve_server(sp);
     }
@@ -1536,8 +1539,8 @@ test "websocket functionality" {
 # =============================================================================
 # GROUP 6: DEV MODE TESTS
 # =============================================================================
-
-glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+glob dm_fixtures_dir:
+         Path = Path(__file__).parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
      dm_api_port: int = dm_vite_port + 1,
@@ -1646,11 +1649,11 @@ test "dev mode operations" {
             timeout=10
         );
 
-        assert response.status_code == 200, (
+        assert response.status_code == 200 , (
             f"Expected 200, got {response.status_code}: {response.text}"
         );
         data = _extract_data_dev(response.json());
-        assert "result" in data or "reports" in data, f"Unexpected response: {data}";
+        assert "result" in data or "reports" in data , f"Unexpected response: {data}";
 
         # Test: dev mode function body parsing
         register_response = requests.post(
@@ -1668,12 +1671,12 @@ test "dev mode operations" {
             timeout=10
         );
 
-        assert response.status_code == 200, (
+        assert response.status_code == 200 , (
             f"Expected 200, got {response.status_code}: {response.text}"
         );
         data = _extract_data_dev(response.json());
-        assert "result" in data, f"Expected 'result' in response: {data}";
-        assert data["result"] == 100, f"Expected 100, got {data['result']}";
+        assert "result" in data , f"Expected 'result' in response: {data}";
+        assert data["result"] == 100 , f"Expected 100, got {data['result']}";
 
         # Test: dev mode public walker no auth
         response = requests.post(
@@ -1709,15 +1712,15 @@ test "dev mode operations" {
             timeout=10
         );
 
-        assert response.status_code == 200, (
+        assert response.status_code == 200 , (
             f"Expected 200, got {response.status_code}: {response.text}"
         );
         data = _extract_data_dev(response.json());
 
-        assert "reports" in data, f"Expected 'reports' in response: {data}";
+        assert "reports" in data , f"Expected 'reports' in response: {data}";
         reports = data["reports"];
 
-        assert len(reports) >= 3, f"Expected at least 3 reports, got {len(reports)}";
+        assert len(reports) >= 3 , f"Expected at least 3 reports, got {len(reports)}";
 
         assert reports[0]["status"] == "started";
         assert reports[0]["title"] == "Async Test Task";
@@ -1733,7 +1736,7 @@ test "dev mode operations" {
             stream=True
         );
 
-        assert response.status_code == 200, (
+        assert response.status_code == 200 , (
             f"Failed with status {response.status_code}: {response.text}"
         );
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8";
@@ -1748,7 +1751,7 @@ test "dev mode operations" {
         }
 
         expected = "Report 0Report 1Report 2";
-        assert content == expected, f"Expected '{expected}', got '{content}'";
+        assert content == expected , f"Expected '{expected}', got '{content}'";
 
         # Test: function stream response
         response = requests.post(
@@ -1758,7 +1761,7 @@ test "dev mode operations" {
             stream=True
         );
 
-        assert response.status_code == 200, (
+        assert response.status_code == 200 , (
             f"Failed with status {response.status_code}: {response.text}"
         );
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8";
@@ -1773,8 +1776,7 @@ test "dev mode operations" {
         }
 
         expected = "Func 0Func 1";
-        assert content == expected, f"Expected '{expected}', got '{content}'";
-
+        assert content == expected , f"Expected '{expected}', got '{content}'";
     } finally {
         teardown_dev_mode_server(sp);
     }
