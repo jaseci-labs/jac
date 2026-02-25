@@ -435,6 +435,7 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
+    def _make_attr_from_keyword(name_tok: Any);
     def parse_index_slice -> IndexSlice;
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
@@ -455,6 +456,7 @@ obj Parser {
     def parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal;
     def parse_dict_spread_entry -> KVPair;
     def parse_edge_ref_chain -> Expr;
+    def parse_edge_op_ref -> EdgeOpRef | None;
     def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
@@ -492,6 +494,7 @@ obj Parser {
     def parse_or_pattern;
     def parse_single_pattern;
     def parse_literal_pattern -> MatchValue;
+    def _literal_pattern_fallback -> MatchValue;
     def parse_name_pattern;
     def parse_sequence_pattern;
     def parse_tuple_sequence_pattern;
@@ -515,9 +518,15 @@ obj Parser {
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
     def parse_archetype -> Archetype;
     def parse_archetype_member;
+    def _skip_semicolons;
+    def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;
     def parse_has_var -> HasVar;
     def parse_ability -> Ability;
+    def _parse_post_async_modifiers(
+        is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+    ) -> tuple;
+
     def parse_func_signature -> FuncSignature;
     def parse_func_params(kid: list) -> list;
     def parse_param_var -> ParamVar | None;
@@ -527,6 +536,7 @@ obj Parser {
     def parse_global_var -> GlobalVars;
     def parse_global_var_assignment -> Assignment;
     def parse_impl_def -> ImplDef;
+    def _is_impl_enum_body -> bool;
     def parse_impl_target_name -> Name;
     def parse_impl_enum_body -> list;
     def parse_sem_def -> SemDef;

@@ -75,18 +75,7 @@ pipe_call ::= ("|>" | ":>") atomic_chain | atomic_chain
 
 atomic_chain ::=
     atom (
-        "." ("." | ".>" | "<.")? (
-            NAME
-            | KWESC_NAME
-            | "init"
-            | "postinit"
-            | "self"
-            | "props"
-            | "super"
-            | "root"
-            | "here"
-            | "visitor"
-        )?
+        "." ("." | ".>" | "<.")? (NAME | KWESC_NAME)?
         | "(" (filter_compr_inner | assign_compr_inner | call_args ")")
         | ("?" | "[") "?"? index_slice
     )*
@@ -151,7 +140,6 @@ atom ::=
     | builtin_type
     | special_ref
     | (NAME | KWESC_NAME) NAME?
-    | NAME
     | "*" expression
     | "**" expression
     | paren_expr
@@ -180,18 +168,19 @@ edge_ref_chain ::=
         (NAME | KWESC_NAME | "root" | "self" | "here" | "super" | "visitor" | "[")
         atomic_chain
     )? (
-        (
-            "-->"
-            | "<--"
-            | "<-->"
-            | "->" atom? (":" (compare ("," compare)*)?)? ":->"
-            | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
-            | "->:" ((NAME | KWESC_NAME) atom)? ":->"
-        ) (
+        edge_op_ref (
             "(" (filter_compr_inner | expression ")")
             | (NAME | KWESC_NAME | "self" | "root" | "here" | "super") atomic_chain
         )?
     )* "]"
+
+edge_op_ref ::=
+    "-->"
+    | "<--"
+    | "<-->"
+    | "->" atom? (":" (compare ("," compare)*)?)? ":->"
+    | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
+    | "->:" ((NAME | KWESC_NAME) atom)? ":->"
 
 dict_or_set ::=
     "}"
@@ -252,15 +241,8 @@ element_stmt ::=
     | module_code
 
 docstring_target ::=
-    STRING (
-        test
-        | "enum" enum
-        | type_alias
-        | global_var
-        | "impl" impl_def
-        | module_code
-        | ("@" atomic_chain)* "async"* archetype enum impl_def ability
-    )
+    STRING
+    (test | "enum" enum | type_alias | global_var | "impl" impl_def | module_code)?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
 
@@ -348,12 +330,12 @@ single_pattern ::=
     | name_pattern
     | expression
 
-literal_pattern ::= INT | FLOAT | multistring ("-" (INT | FLOAT)? | expression)
+literal_pattern ::= INT | FLOAT | multistring ("-" (INT | FLOAT)?)?
 
 name_pattern ::=
     (NAME | KWESC_NAME)
     (("." (NAME | KWESC_NAME))* class_pattern_args? | class_pattern_args)?
-    | class_pattern_args?
+    | NAME class_pattern_args?
 
 sequence_pattern ::= "[" (("*" (NAME | KWESC_NAME) | pattern) ","?)* "]"
 
@@ -425,7 +407,7 @@ archetype ::=
     ("(" (atomic_chain ("," atomic_chain)*)? ")")? ("{" archetype_member* "}" | ";")
 
 archetype_member ::=
-    ";"* STRING? (
+    STRING? (
         "@" ability
         | "static" ("has" has_stmt | ability)
         | "has" has_stmt
@@ -436,27 +418,15 @@ archetype_member ::=
         | "impl" impl_def
         | PYNLINE
         | "with" (("entry" | "exit") "{" code_block_stmts "}")?
-        | NAME?
-    )
+    )?
 
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 
 has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
 
 ability ::=
-    ("@" atomic_chain)* "override"? "static"? ("async" "override"? "static"?)?
-    access_tag (
-        NAME
-        | KWESC_NAME
-        | "init"
-        | "postinit"
-        | "root"
-        | "super"
-        | "self"
-        | "props"
-        | "here"
-        | "visitor"
-    )? ("with" expression | func_signature)
+    ("@" atomic_chain)* "override"? "static"? "async"? access_tag (NAME | KWESC_NAME)?
+    ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?
@@ -488,15 +458,7 @@ impl_def ::=
         "(" (":" | "self" | ")")? func_signature (atomic_chain ("," atomic_chain)*)? ")"
         | "with" expression
         | func_signature
-    )? (
-        "{" (NAME | KWESC_NAME)? (
-            (NAME | KWESC_NAME) ("(" | "{" | "[" | ")" | "}" | "]")?
-            ("=" ("(" | "{" | "[" | ")" | "}" | "]")? ","? | ",")?
-        )? ((NAME | KWESC_NAME) ("(" | "{" | "[" | ")" | "}" | "]")? ","?)?
-        impl_enum_body code_block_stmts "}"
-        | "by" expression ";"
-        | ";"
-    )
+    )? ("{" impl_enum_body code_block_stmts "}" | "by" expression ";" | ";")
 
 impl_target_name ::=
     NAME | KWESC_NAME | "init" | "postinit" | "entry" | "exit" | "default"

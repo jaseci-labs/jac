@@ -1332,23 +1332,9 @@ impl Parser.parse_atomic_chain -> Expr {
             if self.check_name() {
                 name_tok = self.advance();
                 attr = self.make_name(name_tok);
-            } elif self.check_any(
-                TokenKind.KW_INIT,
-                TokenKind.KW_POST_INIT,
-                TokenKind.KW_SELF,
-                TokenKind.KW_PROPS,
-                TokenKind.KW_SUPER,
-                TokenKind.KW_ROOT,
-                TokenKind.KW_HERE,
-                TokenKind.KW_VISITOR
-            ) {
-                name_tok = self.advance();
-                attr = SpecialVarRef(
-                    var=self.make_special_name(name_tok), is_enum_stmt=False
-                );
             } elif self.is_keyword_token() {
                 name_tok = self.advance();
-                attr = self.make_special_name(name_tok);
+                attr = self._make_attr_from_keyword(name_tok);
             }
             if not attr {
                 # No attribute after dot (e.g. foo.) - create placeholder for LSP completion
@@ -1461,6 +1447,28 @@ impl Parser.parse_atomic_chain -> Expr {
         }
     }
     return expr;
+}
+
+"""Create an attribute Name node from a keyword token (used for dot-access on keywords)."""
+impl Parser._make_attr_from_keyword(name_tok: Any) {
+    special_kinds = [
+        TokenKind.KW_INIT,
+        TokenKind.KW_POST_INIT,
+        TokenKind.KW_SELF,
+        TokenKind.KW_PROPS,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_HERE,
+        TokenKind.KW_VISITOR
+    ];
+    for sk in special_kinds {
+        if name_tok.kind == sk {
+            return SpecialVarRef(
+                var=self.make_special_name(name_tok), is_enum_stmt=False
+            );
+        }
+    }
+    return self.make_special_name(name_tok);
 }
 
 impl Parser.parse_index_slice -> IndexSlice {
@@ -1984,7 +1992,9 @@ impl Parser.parse_atom -> Expr {
     ) {
         return self.parse_special_ref();
     }
-    if self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME) {
+    if self.check(TokenKind.NAME)
+    or self.check(TokenKind.KWESC_NAME)
+    or self.is_keyword_token() {
         # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
         # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
         if self.check(TokenKind.NAME)
@@ -1996,14 +2006,10 @@ impl Parser.parse_atom -> Expr {
             );
         }
         tok = self.advance();
+        if tok.kind != TokenKind.NAME and tok.kind != TokenKind.KWESC_NAME {
+            return self.make_special_name(tok);
+        }
         return self.make_name(tok);
-    }
-    # Contextual keywords: these are keywords that can also be used as
-    # identifiers in expression context (Lark's ContextualLexer handles
-    # this automatically; we handle it explicitly here)
-    if self.is_keyword_token() {
-        tok = self.advance();
-        return self.make_special_name(tok);
     }
     # Star expressions: *args (unpack) and **kwargs (dict unpack)
     if self.check(TokenKind.STAR_MUL) {
@@ -2493,126 +2499,8 @@ impl Parser.parse_edge_ref_chain -> Expr {
     }
     # Parse edge operations
     while True {
-        edge_op_ref: EdgeOpRef | None = None;
-        # Simple edge operators: -->, <--, <-->
-        if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
-            edge_tok = self.advance();
-            edge_uni = self.make_uni_token(edge_tok);
-            dir = EdgeDir.OUT;
-            if edge_tok.kind == TokenKind.ARROW_L {
-                dir = EdgeDir.IN;
-            } elif edge_tok.kind == TokenKind.ARROW_BI {
-                dir = EdgeDir.ANY;
-            }
-            edge_op_ref = EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
-        }
-        # Typed edge out: ->:type:-> (as RETURN_HINT + COLON ... ARROW_R_P2)
-        elif self.check(TokenKind.RETURN_HINT) and self.check_peek(TokenKind.COLON) {
-            self.advance();  # ->
-            arrow_r_tok = self.previous();
-            self.advance();  # :
-            start_uni = self.make_uni_token(arrow_r_tok);
-            colon_uni = self.make_uni_token(self.previous());
-            # Parse typed filter compare list
-            f_type = None;
-            compares: list = [];
-            fcompr_kid: list = [];
-            if self.check_name()
-            or self.check_any(
-                TokenKind.TYP_STRING,
-                TokenKind.TYP_INT,
-                TokenKind.TYP_FLOAT,
-                TokenKind.TYP_LIST,
-                TokenKind.TYP_TUPLE,
-                TokenKind.TYP_SET,
-                TokenKind.TYP_DICT,
-                TokenKind.TYP_BOOL,
-                TokenKind.TYP_BYTES,
-                TokenKind.TYP_ANY,
-                TokenKind.TYP_TYPE
-            ) {
-                f_type = self.parse_atom();
-            }
-            if f_type is not None {
-                fcompr_kid.append(f_type);
-            }
-            # Parse optional filter conditions: :field==val,field2==val2
-            if self.check(TokenKind.COLON)
-            and not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
-                self.advance();  # :
-                fcompr_kid.append(self.make_uni_token(self.previous()));
-                if not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
-                    cmp = self.parse_compare();
-                    compares.append(cmp);
-                    fcompr_kid.append(cmp);
-                    while self.match_tok(TokenKind.COMMA) {
-                        fcompr_kid.append(self.make_uni_token(self.previous()));
-                        cmp = self.parse_compare();
-                        compares.append(cmp);
-                        fcompr_kid.append(cmp);
-                    }
-                }
-            }
-            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
-            # Expect closing :->
-            end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
-            edge_op_ref = EdgeOpRef(
-                filter_cond=fcond,
-                edge_dir=EdgeDir.OUT,
-                kid=[start_uni, colon_uni, fcond, end_uni]
-            );
-        }
-        # Typed edge in: <-:type:<- or <-:type:a==1,b==2:<-
-        elif self.check(TokenKind.ARROW_L_P1) {
-            self.advance();  # <-:
-            start_uni = self.make_uni_token(self.previous());
-            f_type = None;
-            compares: list = [];
-            fcompr_kid: list = [];
-            if self.check_name() or self.is_keyword_token() {
-                f_type = self.parse_atom();
-                fcompr_kid.append(f_type);
-            }
-            if self.check(TokenKind.COLON) and not self.check(TokenKind.ARROW_L_P2) {
-                self.advance();
-                fcompr_kid.append(self.make_uni_token(self.previous()));
-                if not self.check(TokenKind.ARROW_L_P2) {
-                    cmp = self.parse_compare();
-                    compares.append(cmp);
-                    fcompr_kid.append(cmp);
-                    while self.match_tok(TokenKind.COMMA) {
-                        fcompr_kid.append(self.make_uni_token(self.previous()));
-                        cmp = self.parse_compare();
-                        compares.append(cmp);
-                        fcompr_kid.append(cmp);
-                    }
-                }
-            }
-            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
-            end_uni = self.consume_uni(TokenKind.ARROW_L_P2);
-            edge_op_ref = EdgeOpRef(
-                filter_cond=fcond, edge_dir=EdgeDir.IN, kid=[start_uni, fcond, end_uni]
-            );
-        }
-        # Typed edge as single tokens: ARROW_R_P1 ... ARROW_R_P2
-        elif self.check(TokenKind.ARROW_R_P1) {
-            self.advance();
-            start_uni = self.make_uni_token(self.previous());
-            f_type = None;
-            compares: list = [];
-            fcompr_kid: list = [];
-            if self.check_name() {
-                f_type = self.parse_atom();
-                fcompr_kid.append(f_type);
-            }
-            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
-            end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
-            edge_op_ref = EdgeOpRef(
-                filter_cond=fcond,
-                edge_dir=EdgeDir.OUT,
-                kid=[start_uni, fcond, end_uni]
-            );
-        } else {
+        edge_op_ref = self.parse_edge_op_ref();
+        if edge_op_ref is None {
             break;
         }
         if edge_op_ref is not None {
@@ -2654,6 +2542,127 @@ impl Parser.parse_edge_ref_chain -> Expr {
     return EdgeRefTrailer(
         chain=chain, edges_only=edges_only, is_async=is_async, kid=kid
     );
+}
+
+"""Parse a single edge operation: -->, <--, <-->, ->:type:-> , <-:type:<-, ->:name:->."""
+impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
+    # Simple edge operators: -->, <--, <-->
+    if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
+        edge_tok = self.advance();
+        edge_uni = self.make_uni_token(edge_tok);
+        dir = EdgeDir.OUT;
+        if edge_tok.kind == TokenKind.ARROW_L {
+            dir = EdgeDir.IN;
+        } elif edge_tok.kind == TokenKind.ARROW_BI {
+            dir = EdgeDir.ANY;
+        }
+        return EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
+    }
+    # Typed edge out: ->:type:-> (as RETURN_HINT + COLON ... ARROW_R_P2)
+    if self.check(TokenKind.RETURN_HINT) and self.check_peek(TokenKind.COLON) {
+        self.advance();  # ->
+        arrow_r_tok = self.previous();
+        self.advance();  # :
+        start_uni = self.make_uni_token(arrow_r_tok);
+        colon_uni = self.make_uni_token(self.previous());
+        # Parse typed filter compare list
+        f_type = None;
+        compares: list = [];
+        fcompr_kid: list = [];
+        if self.check_name()
+        or self.check_any(
+            TokenKind.TYP_STRING,
+            TokenKind.TYP_INT,
+            TokenKind.TYP_FLOAT,
+            TokenKind.TYP_LIST,
+            TokenKind.TYP_TUPLE,
+            TokenKind.TYP_SET,
+            TokenKind.TYP_DICT,
+            TokenKind.TYP_BOOL,
+            TokenKind.TYP_BYTES,
+            TokenKind.TYP_ANY,
+            TokenKind.TYP_TYPE
+        ) {
+            f_type = self.parse_atom();
+        }
+        if f_type is not None {
+            fcompr_kid.append(f_type);
+        }
+        # Parse optional filter conditions: :field==val,field2==val2
+        if self.check(TokenKind.COLON)
+        and not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
+            self.advance();  # :
+            fcompr_kid.append(self.make_uni_token(self.previous()));
+            if not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
+                cmp = self.parse_compare();
+                compares.append(cmp);
+                fcompr_kid.append(cmp);
+                while self.match_tok(TokenKind.COMMA) {
+                    fcompr_kid.append(self.make_uni_token(self.previous()));
+                    cmp = self.parse_compare();
+                    compares.append(cmp);
+                    fcompr_kid.append(cmp);
+                }
+            }
+        }
+        fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+        end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
+        return EdgeOpRef(
+            filter_cond=fcond,
+            edge_dir=EdgeDir.OUT,
+            kid=[start_uni, colon_uni, fcond, end_uni]
+        );
+    }
+    # Typed edge in: <-:type:<- or <-:type:a==1,b==2:<-
+    if self.check(TokenKind.ARROW_L_P1) {
+        self.advance();  # <-:
+        start_uni = self.make_uni_token(self.previous());
+        f_type = None;
+        compares: list = [];
+        fcompr_kid: list = [];
+        if self.check_name() or self.is_keyword_token() {
+            f_type = self.parse_atom();
+            fcompr_kid.append(f_type);
+        }
+        if self.check(TokenKind.COLON) and not self.check(TokenKind.ARROW_L_P2) {
+            self.advance();
+            fcompr_kid.append(self.make_uni_token(self.previous()));
+            if not self.check(TokenKind.ARROW_L_P2) {
+                cmp = self.parse_compare();
+                compares.append(cmp);
+                fcompr_kid.append(cmp);
+                while self.match_tok(TokenKind.COMMA) {
+                    fcompr_kid.append(self.make_uni_token(self.previous()));
+                    cmp = self.parse_compare();
+                    compares.append(cmp);
+                    fcompr_kid.append(cmp);
+                }
+            }
+        }
+        fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+        end_uni = self.consume_uni(TokenKind.ARROW_L_P2);
+        return EdgeOpRef(
+            filter_cond=fcond, edge_dir=EdgeDir.IN, kid=[start_uni, fcond, end_uni]
+        );
+    }
+    # Typed edge as single tokens: ARROW_R_P1 ... ARROW_R_P2
+    if self.check(TokenKind.ARROW_R_P1) {
+        self.advance();
+        start_uni = self.make_uni_token(self.previous());
+        f_type = None;
+        compares: list = [];
+        fcompr_kid: list = [];
+        if self.check_name() {
+            f_type = self.parse_atom();
+            fcompr_kid.append(f_type);
+        }
+        fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+        end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
+        return EdgeOpRef(
+            filter_cond=fcond, edge_dir=EdgeDir.OUT, kid=[start_uni, fcond, end_uni]
+        );
+    }
+    return None;
 }
 
 impl Parser.parse_dict_or_set -> Expr {
@@ -3462,35 +3471,8 @@ impl Parser.parse_docstring_target{
         result.add_kids_left([elem_doc]);
         return result;
     }
-    # Complex case: decorators/async/ability/archetype — need lookahead past decorators
-    save_pos = self.pos;
-    while self.check(TokenKind.DECOR_OP) {
-        self.advance();
-        self.parse_atomic_chain();
-    }
-    while self.check(TokenKind.KW_ASYNC) {
-        self.advance();
-    }
-    is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
-    is_archetype = self.check_any(
-        TokenKind.KW_OBJECT,
-        TokenKind.KW_NODE,
-        TokenKind.KW_EDGE,
-        TokenKind.KW_WALKER,
-        TokenKind.KW_CLASS
-    );
-    is_enum = self.check(TokenKind.KW_ENUM);
-    is_impl = self.check(TokenKind.KW_IMPL);
-    self.pos = save_pos;
-    if is_archetype {
-        result = self.parse_archetype();
-    } elif is_enum {
-        result = self.parse_enum();
-    } elif is_impl {
-        result = self.parse_impl_def();
-    } else {
-        result = self.parse_ability();
-    }
+    # Complex case: decorators/async/ability/archetype — dispatch via lookahead
+    result = self._dispatch_decorated();
     result.doc = elem_doc;
     result.add_kids_left([elem_doc]);
     return result;
@@ -4392,7 +4374,12 @@ impl Parser.parse_literal_pattern -> MatchValue {
             return MatchValue(value=val, kid=[val]);
         }
     }
-    # Shouldn't reach here if dispatch is correct
+    # Shouldn't reach here if dispatch is correct — fallback
+    return self._literal_pattern_fallback();
+}
+
+"""Fallback for literal_pattern when no literal token matches (error recovery)."""
+impl Parser._literal_pattern_fallback -> MatchValue {
     expr = self.parse_expression();
     return MatchValue(value=expr, kid=[expr]);
 }
@@ -4440,12 +4427,16 @@ impl Parser.parse_name_pattern{
         return MatchAs(name=name, pattern=None, kid=[name]);
     }
     # Builtin types and keywords used as class patterns
-    tok = self.advance();
-    name = self.make_special_name(tok);
-    if self.check(TokenKind.LPAREN) {
-        return self.parse_class_pattern_args([name]);
+    if self.is_keyword_token() {
+        tok = self.advance();
+        name = self.make_special_name(tok);
+        if self.check(TokenKind.LPAREN) {
+            return self.parse_class_pattern_args([name]);
+        }
+        return MatchValue(value=name, kid=[name]);
     }
-    return MatchValue(value=name, kid=[name]);
+    # Fallback — shouldn't be reached with correct dispatch
+    return self._literal_pattern_fallback();
 }
 
 impl Parser.parse_sequence_pattern{
@@ -5225,9 +5216,7 @@ impl Parser.parse_archetype -> Archetype {
 }
 
 impl Parser.parse_archetype_member{
-    while self.match_tok(TokenKind.SEMI) {
-        continue;
-    }
+    self._skip_semicolons();
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
     }
@@ -5346,7 +5335,19 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
-    # Check for 'pass' keyword specifically
+    self._error_unexpected_member();
+    return EmptyToken();
+}
+
+"""Skip consecutive semicolons (error recovery for extra semis)."""
+impl Parser._skip_semicolons{
+    while self.match_tok(TokenKind.SEMI) {
+        continue;
+    }
+}
+
+"""Handle unexpected token error in archetype body."""
+impl Parser._error_unexpected_member{
     if self.check(TokenKind.NAME) and self.current().value == "pass" {
         self.error("'pass' keyword is not allowed in Jac");
         self.error("Jac does not allow this keyword in any syntactic position");
@@ -5354,7 +5355,6 @@ impl Parser.parse_archetype_member{
         self.error("Unexpected token in archetype body");
     }
     self.advance();
-    return EmptyToken();
 }
 
 impl Parser.parse_has_stmt -> ArchHas {
@@ -5490,14 +5490,9 @@ impl Parser.parse_ability -> Ability {
         is_async = True;
         async_tok = self.previous();
         # Handle `async static/override def` ordering (async before modifiers)
-        if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
-            is_override = True;
-            override_tok = self.previous();
-        }
-        if not is_static and self.match_tok(TokenKind.KW_STATIC) {
-            is_static = True;
-            static_tok = self.previous();
-        }
+        (is_override, override_tok, is_static, static_tok) = self._parse_post_async_modifiers(
+            is_override, override_tok, is_static, static_tok
+        );
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
@@ -5507,21 +5502,9 @@ impl Parser.parse_ability -> Ability {
     if self.check_name() {
         name_tok = self.advance();
         name = self.make_name(name_tok);
-    } elif self.check_any(
-        TokenKind.KW_INIT,
-        TokenKind.KW_POST_INIT,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_SELF,
-        TokenKind.KW_PROPS,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
-    ) {
-        name_tok = self.advance();
-        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.is_keyword_token() and not (is_can and self.check(TokenKind.KW_WITH)) {
         name_tok = self.advance();
-        name = self.make_special_name(name_tok);
+        name = self._make_attr_from_keyword(name_tok);
     }
     signature: FuncSignature | EventSignature;
     if is_can and self.check(TokenKind.KW_WITH) {
@@ -5631,6 +5614,21 @@ impl Parser.parse_ability -> Ability {
         doc=None,
         decorators=decorators
     );
+}
+
+"""Handle override/static modifiers that may appear after async keyword."""
+impl Parser._parse_post_async_modifiers(
+    is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+) -> tuple {
+    if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
+        is_override = True;
+        override_tok = self.previous();
+    }
+    if not is_static and self.match_tok(TokenKind.KW_STATIC) {
+        is_static = True;
+        static_tok = self.previous();
+    }
+    return (is_override, override_tok, is_static, static_tok);
 }
 
 impl Parser.parse_func_signature -> FuncSignature {
@@ -6276,111 +6274,7 @@ impl Parser.parse_impl_def -> ImplDef {
     rb_uni: UniToken | None = None;
     if self.match_tok(TokenKind.LBRACE) {
         lb_uni = self.make_uni_token(self.previous());
-        # Check if this is enum-style body (NAME = value, NAME = value, ... or NAME, NAME, ...)
-        # Key distinction: enum-style uses commas, regular uses semicolons
-        is_enum_style = False;
-        # Bare name followed by comma is enum-style: impl Enum { Bar, Baz }
-        if self.check_name() and self.check_peek(TokenKind.COMMA) {
-            is_enum_style = True;
-        }
-        # NAME: type = value followed by comma is enum-style
-        if not is_enum_style and self.check_name() and self.check_peek(TokenKind.COLON) {
-            save_pos = self.pos;
-            self.advance();  # consume NAME
-            self.advance();  # consume COLON
-            # Skip type expression to find EQ or COMMA
-            depth = 0;
-            while not self.at_end()
-            and not (
-                depth == 0
-                and self.check_any(
-                    TokenKind.EQ, TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE
-                )
-            ) {
-                if self.check_any(
-                    TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE
-                ) {
-                    depth += 1;
-                } elif self.check_any(
-                    TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-                ) {
-                    if depth > 0 {
-                        depth -= 1;
-                    } else {
-                        break;
-                    }
-                }
-                self.advance();
-            }
-            if self.check(TokenKind.EQ) {
-                self.advance();  # consume EQ
-                # Skip value to find delimiter
-                depth = 0;
-                while not self.at_end()
-                and not (
-                    depth == 0
-                    and self.check_any(
-                        TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE
-                    )
-                ) {
-                    if self.check_any(
-                        TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE
-                    ) {
-                        depth += 1;
-                    } elif self.check_any(
-                        TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-                    ) {
-                        if depth > 0 {
-                            depth -= 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    self.advance();
-                }
-                if self.check(TokenKind.COMMA) {
-                    is_enum_style = True;
-                }
-            } elif self.check(TokenKind.COMMA) {
-                is_enum_style = True;
-            }
-            self.pos = save_pos;
-        }
-        # NAME = value followed by comma is enum-style
-        if not is_enum_style and self.check_name() and self.check_peek(TokenKind.EQ) {
-            # Look further ahead to find COMMA or SEMI after the value
-            save_pos = self.pos;
-            self.advance();  # consume NAME
-            self.advance();  # consume EQ
-            # Skip the value expression to find delimiter
-            depth = 0;
-            while not self.at_end()
-            and not (
-                depth == 0
-                and self.check_any(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE)
-            ) {
-                if self.check_any(
-                    TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE
-                ) {
-                    depth += 1;
-                } elif self.check_any(
-                    TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-                ) {
-                    if depth > 0 {
-                        depth -= 1;
-                    } else {
-                        break;
-                    }
-                }
-                self.advance();
-            }
-            # Check if we found comma (enum-style) or semicolon/rbrace (regular)
-            if self.check(TokenKind.COMMA) {
-                is_enum_style = True;
-            }
-            self.pos = save_pos;  # Restore position
-        }
-        if is_enum_style {
+        if self._is_impl_enum_body() {
             self._impl_enum_comma_unis = [];
             body = self.parse_impl_enum_body();
         } else {
@@ -6449,6 +6343,103 @@ impl Parser.parse_impl_def -> ImplDef {
         kid=kid,
         doc=None
     );
+}
+
+"""Lookahead: determine if impl body is enum-style (comma-separated) or code-style."""
+impl Parser._is_impl_enum_body -> bool {
+    # Bare name followed by comma: impl Enum { Bar, Baz }
+    if self.check_name() and self.check_peek(TokenKind.COMMA) {
+        return True;
+    }
+    # NAME: type = value, ... (typed enum)
+    if self.check_name() and self.check_peek(TokenKind.COLON) {
+        save_pos = self.pos;
+        self.advance();  # consume NAME
+        self.advance();  # consume COLON
+        # Skip type expression to find EQ or COMMA
+        depth = 0;
+        while not self.at_end()
+        and not (
+            depth == 0
+            and self.check_any(
+                TokenKind.EQ, TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE
+            )
+        ) {
+            if self.check_any(TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE) {
+                depth += 1;
+            } elif self.check_any(
+                TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
+            ) {
+                if depth > 0 {
+                    depth -= 1;
+                } else {
+                    break;
+                }
+            }
+            self.advance();
+        }
+        result = False;
+        if self.check(TokenKind.EQ) {
+            self.advance();  # consume EQ
+            depth = 0;
+            while not self.at_end()
+            and not (
+                depth == 0
+                and self.check_any(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE)
+            ) {
+                if self.check_any(
+                    TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE
+                ) {
+                    depth += 1;
+                } elif self.check_any(
+                    TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
+                ) {
+                    if depth > 0 {
+                        depth -= 1;
+                    } else {
+                        break;
+                    }
+                }
+                self.advance();
+            }
+            if self.check(TokenKind.COMMA) {
+                result = True;
+            }
+        } elif self.check(TokenKind.COMMA) {
+            result = True;
+        }
+        self.pos = save_pos;
+        return result;
+    }
+    # NAME = value, ... (simple enum)
+    if self.check_name() and self.check_peek(TokenKind.EQ) {
+        save_pos = self.pos;
+        self.advance();  # consume NAME
+        self.advance();  # consume EQ
+        depth = 0;
+        while not self.at_end()
+        and not (
+            depth == 0
+            and self.check_any(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE)
+        ) {
+            if self.check_any(TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE) {
+                depth += 1;
+            } elif self.check_any(
+                TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
+            ) {
+                if depth > 0 {
+                    depth -= 1;
+                } else {
+                    break;
+                }
+            }
+            self.advance();
+        }
+        result = self.check(TokenKind.COMMA);
+        self.pos = save_pos;
+        return result;
+    }
+    return False;
 }
 
 impl Parser.parse_impl_target_name -> Name {
