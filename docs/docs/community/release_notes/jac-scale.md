@@ -8,6 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - Internal: refactor jac-scale k8s loadbalancer/service to support other vendors
 - Before deploying to the local Kubernetes cluster, check whether the required NodePorts are already in use in any namespace; if they are, throw an error.
 - jac destroy command deletes non default namespace
+- 1 Minor refactor
 
 ## jac-scale 0.2.0 (Latest Release)
 
