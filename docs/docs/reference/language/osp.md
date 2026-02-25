@@ -384,6 +384,10 @@ node DataNode {
 }
 
 walker DataCollector {
+    can start with Root entry {
+        visit [-->];
+    }
+
     can collect with DataNode entry {
         report here.value;  # Continues execution
         visit [-->];
@@ -428,6 +432,7 @@ walker MyWalker {
     }
     can collect with Item entry {
         report here.value;
+        visit [-->];
     }
 }
 
@@ -444,7 +449,6 @@ with entry {
     result = root spawn MyWalker(param=10);
 
     # Access results
-    print(result.returns);  # Return value
     print(result.reports);  # All reported values
 }
 ```
@@ -715,7 +719,7 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
-| `printgraph(root)` | Print graph for debugging |
+| `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
 ```jac
 node Person { has name: str; }
@@ -761,6 +765,10 @@ Walker traversal uses recursive post-order exit execution. Entry abilities execu
 node Step { has label: str; }
 
 walker Logger {
+    can start with Root entry {
+        visit [-->];  # Begin traversal from root
+    }
+
     can enter with Step entry {
         print(f"ENTER: {here.label}");
         visit [-->];
@@ -771,7 +779,9 @@ walker Logger {
     }
 }
 
-# For a chain: A → B → C
+# Setup: root -> A -> B -> C
+# root spawn Logger();
+#
 # Output:
 #   ENTER: A
 #   ENTER: B
@@ -1075,7 +1085,7 @@ walker:priv SearchItems {
 
 ```
 walker:priv GetTree {
-    can build_tree(node: any) -> dict {
+    def build_tree(node: any) -> dict {
         children = [];
         for child in [node -->] {
             children.append(self.build_tree(child));

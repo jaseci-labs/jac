@@ -334,6 +334,9 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 ## **Complete Library Interface Reference**
 
+!!! warning "API Scope Notice"
+    The following reference includes both public API functions available via `from jaclang.lib import ...` and internal runtime functions that may not be directly importable. Core functions available for import include: `connect`, `disconnect`, `spawn`, `root`, `node`, `edge`, `walker`, `obj`, `Anchor`, `NodeAnchor`, `EdgeAnchor`, `WalkerAnchor`, `Root`. Other functions listed below may be internal to the runtime and subject to change.
+
 ### **Type Aliases & Constants**
 
 | Name | Type | Description |

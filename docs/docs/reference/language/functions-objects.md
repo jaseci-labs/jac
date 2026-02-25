@@ -309,7 +309,7 @@ def:protect _protected_func -> None { }
         return f"Hello, {name}!";
     }
 
-    can add(a: int, b: int) -> int {
+    def add(a: int, b: int) -> int {
         return a + b;
     }
 
@@ -320,7 +320,7 @@ def:protect _protected_func -> None { }
     with entry {
         print(greet("World"));
         print(add(3, 4));
-        print(apply(lambda x, y: int -> x * y, 5, 6));
+        print(apply(lambda x: int, y: int -> int { return x * y; }, 5, 6));
     }
     ```
 
@@ -339,13 +339,8 @@ obj Person {
     has name: str;
     has age: int;
 
-    def init(name: str, age: int) {
-        self.name = name;
-        self.age = age;
-    }
-
     def postinit() -> None {
-        # Called after init completes
+        # Called after the auto-generated init completes
         print(f"Created {self.name}");
     }
 
@@ -464,7 +459,7 @@ obj Account {
         has name: str,
             sound: str;
 
-        can speak -> str {
+        def speak() -> str {
             return f"{self.name} says {self.sound}!";
         }
     }
@@ -472,7 +467,7 @@ obj Account {
     obj Dog(Animal) {
         has breed: str;
 
-        can speak -> str {
+        def speak() -> str {
             return f"{self.name} the {self.breed} says {self.sound}!";
         }
     }
@@ -642,6 +637,7 @@ Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.n
 
 Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or inside a `na {}` block:
 
+<!-- jac-skip -->
 ```jac
 # math_native.na.jac
 import from "/usr/lib/libm.so.6" {
@@ -660,6 +656,7 @@ Declarations inside the braces are body-less function signatures that become LLV
 
 **Example -- calling raylib from Jac:**
 
+<!-- jac-skip -->
 ```jac
 # game.na.jac
 import from "libraylib.so" {

@@ -322,13 +322,18 @@ obj MyClass {
 
 ### Inline Expression
 
-The `by llm` operator can also be used as an inline expression without a function declaration:
+!!! warning "Not Yet Implemented"
+    The inline `by llm` expression syntax is planned but not yet available. Use a function declaration instead:
 
-```jac
-with entry {
-    response = "Explain quantum computing in simple terms" by llm;
-}
-```
+    ```jac
+    # Instead of: response = "prompt" by llm;
+    # Use:
+    def explain(topic: str) -> str by llm();
+
+    with entry {
+        response = explain("quantum computing");
+    }
+    ```
 
 ---
 
@@ -414,25 +419,12 @@ Parameters passed to `by llm()` at call time:
 !!! warning "Deprecated: `method` parameter"
     The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
 
-### Chained Transformations
-
-Compose multiple LLM calls using the pipe operator:
-
-```jac
-with entry {
-    text = "Some input text";
-    result = text
-        |> (lambda t: str -> str: t by llm("Correct grammar"))
-        |> (lambda t: str -> str: t by llm("Simplify language"))
-        |> (lambda t: str -> str: t by llm("Translate to Spanish"));
-}
-```
-
 ### Examples
 
 ```jac
 # With temperature control
-def generate_story(prompt: str) -> str by llm(temperature=1.5);
+# Note: Max temperature varies by provider (Anthropic: 0.0-1.0, OpenAI: 0.0-2.0)
+def generate_story(prompt: str) -> str by llm(temperature=0.9);
 def extract_facts(text: str) -> str by llm(temperature=0.0);
 
 # With max tokens
@@ -1026,7 +1018,7 @@ import from byllm.lib { Model }
 glob llm = Model(
     model_name="gpt-4o",
     api_key="your_litellm_virtual_key",
-    proxy_url="http://localhost:8000"
+    config={"api_base": "http://localhost:8000"}
 );
 ```
 
@@ -1036,7 +1028,7 @@ from byllm.lib import Model
 llm = Model(
     model_name="gpt-4o",
     api_key="your_litellm_virtual_key",
-    proxy_url="http://localhost:8000"
+    config={"api_base": "http://localhost:8000"}
 )
 ```
 
@@ -1046,7 +1038,7 @@ llm = Model(
 |-----------|-------------|
 | `model_name` | The model to use (must be configured in LiteLLM proxy) |
 | `api_key` | LiteLLM virtual key or master key (not the provider API key) |
-| `proxy_url` | URL of your LiteLLM proxy server |
+| `config` | Configuration dict; set `api_base` to the URL of your LiteLLM proxy server (also accepts `base_url` or `host` as aliases) |
 
 For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys).
 

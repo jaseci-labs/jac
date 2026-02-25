@@ -10,6 +10,21 @@ def _redis_key(db_name: str, col_name: str, key: str) -> str {
     return f"{db_name}:{col_name}:{key}";
 }
 
+"""Check if a collection is read-only (protected from user modifications)."""
+def _is_read_only_collection(col_name: str) -> bool {
+    return col_name == '_anchors';
+}
+
+"""Validate that a collection is not read-only, raise error if it is."""
+def _validate_not_read_only(col_name: str) -> None {
+    if _is_read_only_collection(col_name) {
+        raise PermissionError(
+            f"Collection '{col_name}' is read-only and cannot be modified. "
+            "This is a system collection managed internally."
+        ) ;
+    }
+}
+
 """Apply MongoDB-style update operations to a document."""
 def _apply_update(doc: dict, update_data: dict) -> dict {
     if '$set' in update_data {
@@ -57,6 +72,7 @@ impl Db.get(
 }
 
 impl Db.set(key: str, value: dict, col_name: str = 'default') -> str {
+    _validate_not_read_only(col_name);
     if self.db_type == DatabaseType.MONGODB {
         col = self._get_mongo_collection(col_name);
         # Upsert: update if exists, insert if not
@@ -74,6 +90,7 @@ impl Db.set(key: str, value: dict, col_name: str = 'default') -> str {
 }
 
 impl Db.delete(key: str, col_name: str = 'default') -> int {
+    _validate_not_read_only(col_name);
     if self.db_type == DatabaseType.MONGODB {
         # Try string key first, then ObjectId if valid
         result = self._get_mongo_collection(col_name).delete_one({'_id': key});
@@ -142,6 +159,7 @@ impl Db.insert_one(
             "insert_one() is not supported for Redis. Use set(key, value) instead."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).insert_one(document);
 }
 
@@ -154,6 +172,7 @@ impl Db.update_one(
             "Use set(key, value) to update a value."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_one(
         filter, update_data, upsert=upsert_mode
     );
@@ -166,6 +185,7 @@ impl Db.delete_one(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteR
             "Use delete(key) instead."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).delete_one(filter);
 }
 
@@ -179,6 +199,7 @@ impl Db.insert_many(
             "Use set(key, value) in a loop or use Redis pipelines."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).insert_many(documents);
 }
 
@@ -191,6 +212,7 @@ impl Db.update_many(
             "Redis does not support bulk updates with filters."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_many(
         filter, update_data, upsert=upsert_mode
     );
@@ -203,6 +225,7 @@ impl Db.delete_many(col_name: str, filter: dict) -> PyMongoDeleteResult | Delete
             "Use scan_keys(pattern) to find keys, then delete them individually."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).delete_many(filter);
 }
 
@@ -228,12 +251,14 @@ impl Db.update_by_id(
             "Use get(key) to retrieve, modify, then set(key, value)."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_one(
         {'_id': ObjectId(id)}, update_data, upsert=upsert_mode
     );
 }
 
 impl Db.delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult {
+    _validate_not_read_only(col_name);
     if self.db_type == DatabaseType.MONGODB {
         return self._get_mongo_collection(col_name).delete_one({'_id': ObjectId(id)});
     } elif self.db_type == DatabaseType.REDIS {
@@ -254,6 +279,7 @@ impl Db.set_with_ttl(
             "MongoDB uses TTL indexes, not per-key expiration."
         ) ;
     }
+    _validate_not_read_only(col_name);
     return self.client.setex(
         self._get_redis_key(col_name, key), ttl, json.dumps(value)
     );
@@ -306,4 +332,33 @@ def get_db -> Db {
     return Db(
         client=get_mongo_client(), db_name='jac_db', db_type=DatabaseType.MONGODB
     );
+}
+
+impl Db.find_nodes(
+    node_type: str, filter: dict = {}, col_name: str = '_anchors'
+) -> list {
+    if self.db_type == DatabaseType.REDIS {
+        raise NotImplementedError(
+            "find_nodes() is not supported for Redis. "
+            "Redis stores serialized data without query capability."
+        ) ;
+    }
+    # Build MongoDB query that filters on archetype fields
+    mongo_filter: dict = {"data.archetype.__type__": node_type};
+    # Add user-provided filters on archetype attributes
+    for (key, value) in filter.items() {
+        mongo_filter[f"data.archetype.{key}"] = value;
+    }
+    col = self._get_mongo_collection(col_name);
+    results: list = [];
+    for doc in col.find(mongo_filter) {
+        if (data := doc.get('data')) {
+            if (anchor := Serializer.deserialize(data)) {
+                if anchor?.archetype {
+                    results.append(anchor.archetype);
+                }
+            }
+        }
+    }
+    return results;
 }

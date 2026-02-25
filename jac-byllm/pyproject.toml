@@ -10,7 +10,7 @@ keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.11"
 dependencies = [
     "jaclang>=0.11.0",
-    "litellm>=1.75.5.post1,<1.80.0",
+    "litellm>=1.81.15,<1.83.0",
     "loguru>=0.7.2,<0.8.0",
     "pillow>=12.0.0,<13.0.0",
 ]

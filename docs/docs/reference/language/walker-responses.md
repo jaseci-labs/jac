@@ -139,25 +139,25 @@ with entry {
 
 ### Pattern 4: Nested Walker Spawning
 
-When one walker spawns another, their reports combine:
+When one walker spawns another, use `has` attributes to pass data between them instead of relying on `reports`:
 
 ```jac
 walker:priv InnerWalker {
+    has result: str = "";
+
     can work with Root entry {
-        report "inner data";
+        self.result = "inner data";
     }
 }
 
 walker:priv OuterWalker {
     can work with Root entry {
-        # Spawn inner walker - its reports go to OUR reports array
-        inner_result = root spawn InnerWalker();
+        # Spawn inner walker
+        inner = InnerWalker();
+        root spawn inner;
 
-        # inner_result.reports[0] = "inner data"
-        # But this is a NEW response object, not added to our reports
-
-        # Our own report
-        report {"outer": "data", "inner": inner_result.reports[0]};
+        # Access inner walker's data via its attributes
+        report {"outer": "data", "inner": inner.result};
     }
 }
 
@@ -168,7 +168,7 @@ with entry {
 }
 ```
 
-**Important:** Nested walker spawns return their own response object. Their reports don't automatically merge with the parent walker's reports.
+**Important:** When spawning walkers from within other walkers, the inner walker's `reports` list may not be accessible from the parent context. Use `has` attributes on the inner walker to communicate results back to the outer walker.
 
 ### Pattern 5: Multiple Reports (Complex Operations)
 

@@ -116,7 +116,7 @@ test "none checking" {
 ```jac
 test "float comparison" {
     result = 0.1 + 0.2;
-    assert almostEqual(result, 0.3, places=10);
+    assert almostEqual(result, 0.3, 10);
 }
 ```
 
