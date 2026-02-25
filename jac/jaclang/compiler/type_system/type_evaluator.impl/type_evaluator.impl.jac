@@ -116,10 +116,10 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # TODO: Re-enable after fixing TypeVar resolution.
                     # Disabled: gives false positives on generic types (e.g., list[T].append).
-                    # self.add_diagnostic(
-                    #     expr.right,
-                    #     f'Type "{base_type}" has no attribute "{expr.right.value}"',
-                    # );
+                    self.add_diagnostic(
+                        expr.right,
+                        f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                    );
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -227,10 +227,10 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # TODO: Re-enable after fixing TypeVar resolution.
                     # Disabled: gives false positives on generic types (e.g., list[T].append).
-                    # self.add_diagnostic(
-                    #     expr.right,
-                    #     f'"{base_type}" has no attribute "{expr.right.value}"',
-                    # );
+                    self.add_diagnostic(
+                        expr.right,
+                        f'"{base_type}" has no attribute "{expr.right.value}"',
+                    );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
                     # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
@@ -1444,6 +1444,26 @@ impl TypeEvaluator._compute_narrowed_at(
         # The CFG builds correct links but type checker sees different node instances.
         # This is a future PR task.
 
+        # Check if predecessor is a MatchStmt and narrow based on pattern.
+        if isinstance(pred, uni.MatchStmt) {
+            # Check if match target is the symbol we're narrowing
+            if isinstance(pred.target, uni.Name) and pred.target.value == sym_name {
+                # Find which MatchCase contains the current stmt
+                match_case: uni.MatchCase | None = stmt.find_parent_of_type(
+                    uni.MatchCase
+                );
+                if match_case is not None and match_case.pattern {
+                    pattern_type = self._get_type_from_match_pattern(
+                        match_case.pattern
+                    );
+                    if pattern_type is not None {
+                        incoming_types.append(pattern_type);
+                        continue;
+                    }
+                }
+            }
+        }
+
         # No narrowing from this predecessor; propagate its type.
         if pred_narrowed is not None {
             incoming_types.append(pred_narrowed);
@@ -1871,4 +1891,49 @@ impl TypeEvaluator.exclude_type_from_union(
         }
     }
     return original;
+}
+
+"""Extract type from a match pattern for type narrowing.
+
+Handles:
+- MatchArch (class pattern): case MyClass() -> narrows to MyClass
+- MatchOr (union pattern): case A() | B() -> narrows to A | B
+- MatchAs (capture pattern): case _ as x: A() -> narrows to inner pattern type
+- MatchWild (wildcard): case _ -> no narrowing (returns None)
+"""
+impl TypeEvaluator._get_type_from_match_pattern(
+    pattern: uni.MatchPattern
+) -> TypeBase | None {
+    # MatchArch (class pattern): case MyClass() or case mod.MyClass()
+    if isinstance(pattern, uni.MatchArch) {
+        class_type = self.get_type_of_expression(pattern.name);
+        return self._convert_to_instance(class_type);
+    }
+    # MatchOr (union pattern): case A() | B() | C()
+    if isinstance(pattern, uni.MatchOr) and pattern.patterns {
+        pattern_types: list[TypeBase] = [];
+        for sub_pattern in pattern.patterns {
+            sub_type = self._get_type_from_match_pattern(sub_pattern);
+            if sub_type is not None {
+                pattern_types.append(sub_type);
+            }
+        }
+        if len(pattern_types) == 0 {
+            return None;
+        } elif len(pattern_types) == 1 {
+            return pattern_types[0];
+        } else {
+            return types.UnionType(types=pattern_types);
+        }
+    }
+    # MatchAs (capture with inner pattern): case x as MyClass()
+    if isinstance(pattern, uni.MatchAs) and pattern.pattern {
+        return self._get_type_from_match_pattern(pattern.pattern);
+    }
+    # MatchWild (wildcard): case _ -> no narrowing
+    if isinstance(pattern, uni.MatchWild) {
+        return None;
+    }
+    # Other patterns (MatchValue, MatchSingleton, etc.) - no type narrowing for now
+    return None;
 }

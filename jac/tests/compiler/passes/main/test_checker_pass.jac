@@ -1604,3 +1604,29 @@ test "type_narrowing_none_assignment_errors" {
         program.errors_had[1].pretty_print()
     );
 }
+
+"""Test match case type narrowing - validates type narrowing inside match cases."""
+test "match_type_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_match_type_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have exactly 2 errors (E1 and E2 in the test file)
+    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        i: IntVal = val;  # <-- Error: StringVal cannot assign to IntVal
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        s: StringVal = val;  # <-- Error: StringVal | IntVal cannot assign to StringVal
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.2 (Unreleased)
 
+- **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
+
 ## jaclang 0.11.1 (Latest Release)
 
 - **Perf: Type Narrowing Optimization**: Fixed exponential slowdown in `jac check` with many `if` statements (~1 min → ~2s). Member access now uses narrowed types and reports errors for invalid attribute access on `None`.
