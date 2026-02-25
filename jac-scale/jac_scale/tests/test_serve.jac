@@ -1577,7 +1577,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     );
 
-    max_attempts = 50;
+    # Dev mode needs more time due to Jac compilation, bun setup, and vite initialization
+    max_attempts = 60;
     server_ready = False;
 
     for _ in range(max_attempts) {
@@ -1599,7 +1600,7 @@ def setup_dev_mode_server -> subprocess.Popen {
                 break;
             }
         } except (requests.ConnectionError, requests.Timeout) {
-            time.sleep(0.5);
+            time.sleep(2);  # Dev mode needs longer polling interval for CI
         }
     }
 
