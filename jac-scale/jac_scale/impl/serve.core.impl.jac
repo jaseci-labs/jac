@@ -164,6 +164,7 @@ impl JacAPIServerCore.start(
     self.register_update_password_endpoint();
     self.register_api_key_endpoints();
     self.register_graph_endpoint();
+    self.register_admin_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
         self.register_dynamic_walker_endpoint();

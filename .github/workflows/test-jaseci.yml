@@ -177,6 +177,10 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.jac
 
+    - name: Run admin API tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_admin.jac
+
     - name: Run Serializer tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
