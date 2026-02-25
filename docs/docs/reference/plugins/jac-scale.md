@@ -336,6 +336,61 @@ curl http://localhost:8000/sso/google/login
 
 ---
 
+## Admin Portal
+
+jac-scale includes a built-in admin portal for managing users, roles, and SSO configurations.
+
+### Accessing the Admin Portal
+
+Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
+
+### Configuration
+
+```toml
+[plugins.scale.admin]
+enabled = true
+username = "admin"
+session_expiry_hours = 24
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable admin portal |
+| `username` | string | `"admin"` | Admin username |
+| `session_expiry_hours` | int | `24` | Admin session duration in hours |
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `ADMIN_USERNAME` | Admin username (overrides jac.toml) |
+| `ADMIN_EMAIL` | Admin email (overrides jac.toml) |
+| `ADMIN_DEFAULT_PASSWORD` | Initial password (overrides jac.toml) |
+
+### User Roles
+
+| Role | Value | Description |
+|------|-------|-------------|
+| `ADMIN` | `admin` | Full administrative access |
+| `MODERATOR` | `moderator` | Limited administrative access |
+| `USER` | `user` | Standard user access |
+
+### Admin API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/login` | Admin authentication |
+| GET | `/admin/users` | List all users |
+| GET | `/admin/users/{username}` | Get user details |
+| POST | `/admin/users` | Create a new user |
+| PUT | `/admin/users/{username}` | Update user role/settings |
+| DELETE | `/admin/users/{username}` | Delete a user |
+| POST | `/admin/users/{username}/force-password-reset` | Force password reset |
+| GET | `/admin/sso/providers` | List SSO providers |
+| GET | `/admin/sso/users/{username}/accounts` | Get user's SSO accounts |
+
+---
+
 ## Permissions & Access Control
 
 ### Access Levels

@@ -290,5 +290,8 @@ prim_float_cmp.jac
 prim_builtins_extra.jac
 features_test_ui.cl.jac
 prim_dict_extra.jac
+CreateUserModal.cl.jac
+EditUserModal.cl.jac
+CategoryTabs.cl.jac
 invalid_snippet.jac
 type_error_snippet.jac

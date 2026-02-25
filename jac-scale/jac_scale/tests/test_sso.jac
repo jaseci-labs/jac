@@ -16,7 +16,8 @@ import from fastapi.responses { JSONResponse, RedirectResponse }
 
 import from jac_scale.config_loader { reset_scale_config }
 import from jac_scale.google_sso_provider { GoogleSSOProvider }
-import from jac_scale.serve { JacAPIServer, Operations, Platforms }
+import from jac_scale.serve { JacAPIServer }
+import from jac_scale.enums { Operations, Platforms }
 import from jac_scale.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.transport { TransportResponse }
 
