@@ -214,9 +214,7 @@ cl {
         }
 
         return <div>
-            {todos.map(lambda todo: any -> any {
-                return <TodoItem todo={todo} />;
-            })}
+            {[<TodoItem todo={todo} /> for todo in todos]}
         </div>;
     }
 }
@@ -399,26 +397,23 @@ cl {
         # Toggle todo completion status
         async def toggleTodo(id: any) -> None {
             await jacSpawn("toggle_todo",id, {});
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    updatedTodo = {
-                        "_jac_id": todo._jac_id,
-                        "text": todo.text,
-                        "done": not todo.done,
-                        "id": todo.id
-                    };
-                    return updatedTodo;
-                }
-                return todo;
-            }));
+            setTodos([
+                {
+                    "_jac_id": todo._jac_id,
+                    "text": todo.text,
+                    "done": not todo.done,
+                    "id": todo.id
+                } if todo._jac_id == id else todo
+                for todo in todos
+            ]);
         }
 
         # Filter todos based on current filter
         def getFilteredTodos() -> list {
             if filter == "active" {
-                return todos.filter(lambda todo: any -> bool { return not todo.done; });
+                return [todo for todo in todos if not todo.done];
             } elif filter == "completed" {
-                return todos.filter(lambda todo: any -> bool { return todo.done; });
+                return [todo for todo in todos if todo.done];
             }
             return todos;
         }
@@ -459,16 +454,14 @@ cl {
 
             # Todo list
             <ul>
-                {filteredTodos.map(lambda todo: any -> any {
-                    return <li key={todo._jac_id}>
-                        <input
-                            type="checkbox"
-                            checked={todo.done}
-                            onChange={lambda -> None { toggleTodo(todo._jac_id); }}
-                        />
-                        <span>{todo.text}</span>
-                    </li>;
-                })}
+                {[<li key={todo._jac_id}>
+                    <input
+                        type="checkbox"
+                        checked={todo.done}
+                        onChange={lambda -> None { toggleTodo(todo._jac_id); }}
+                    />
+                    <span>{todo.text}</span>
+                </li> for todo in filteredTodos]}
             </ul>
         </div>;
     }

@@ -177,12 +177,10 @@ cl {
 
             # Display todos
             <div>
-                {todos.map(lambda todo: any -> any {
-                    return <TodoItem
-                        text={todo.text}
-                        done={todo.done}
-                    />;
-                })}
+                {[<TodoItem
+                    text={todo.text}
+                    done={todo.done}
+                /> for todo in todos]}
             </div>
 
             # Stats
@@ -388,14 +386,12 @@ Follow this pattern:
 [x, y] = useState(0);                 # Not descriptive
 ```
 
-### The `.map()` Method for Lists
+### List Comprehensions for Rendering Lists
 
-To render a list of items, use `.map()`:
+To render a list of items, use a list comprehension:
 
 ```jac
-{todos.map(lambda todo: any -> any {
-    return <TodoItem text={todo.text} done={todo.done} />;
-})}
+{[<TodoItem text={todo.text} done={todo.done} /> for todo in todos]}
 ```
 
 **How it works:**
@@ -408,9 +404,9 @@ items = [TodoItem(text=todo["text"]) for todo in todos]
 
 **Breakdown:**
 
-- `todos.map(...)` - Loop through each todo
-- `lambda todo: any -> any { ... }` - Function that runs for each item
-- `return <TodoItem ... />` - Returns a component for each item
+- `[... for todo in todos]` - Loop through each todo
+- `<TodoItem ... />` - Creates a component for each item
+- The result is a list of components that React renders
 
 ### State is Immutable
 
@@ -456,7 +452,7 @@ The child receives state but **cannot modify** the parent's state directly (we'l
 - How to use the `useState` hook
 - Creating multiple state variables
 - State naming conventions
-- Using `.map()` to render lists
+- Using list comprehensions to render lists
 - State is immutable (don't modify directly)
 - Passing state to child components via props
 
@@ -510,9 +506,7 @@ Try adding more initial todos:
 And display the count of completed todos:
 
 ```jac
-completedCount = todos.filter(lambda todo: any -> bool {
-    return todo.done;
-}).length;
+completedCount = [todo for todo in todos if todo.done].length;
 
 return <div>
     <p>{completedCount} completed out of {todos.length}</p>

@@ -10,8 +10,8 @@ This guide covers array and list methods for developers familiar with JavaScript
 
 | Method        | Purpose         | React/JS                          | JAC-Client                                        |
 | ------------- | --------------- | --------------------------------- | ------------------------------------------------- |
-| `.map()`      | Transform items | `arr.map(x => x * 2)`             | `arr.map(lambda x -> any { return x * 2; })`      |
-| `.filter()`   | Keep matching   | `arr.filter(x => x > 0)`          | `arr.filter(lambda x -> bool { return x > 0; })`  |
+| `.map()`      | Transform items | `arr.map(x => x * 2)`             | `[x * 2 for x in arr]`                            |
+| `.filter()`   | Keep matching   | `arr.filter(x => x > 0)`          | `[x for x in arr if x > 0]`                       |
 | `.find()`     | First match     | `arr.find(x => x.id === 1)`       | `arr.find(lambda x -> bool { return x["id"] == 1; })` |
 | `.some()`     | Any match?      | `arr.some(x => x < 0)`            | `arr.some(lambda x -> bool { return x < 0; })`    |
 | `.every()`    | All match?      | `arr.every(x => x > 0)`           | `arr.every(lambda x -> bool { return x > 0; })`   |
@@ -20,7 +20,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 
 ---
 
-## Render List with .map()
+## Render List (JSX Comprehension)
 
 === "React"
 
@@ -36,9 +36,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 
     ```jac
     <ul>
-        {items.map(lambda item: str, i: int -> any {
-            return <li key={i}>{item}</li>;
-        })}
+        {[<li key={i}>{item}</li> for i, item in enumerate(items)]}
     </ul>
     ```
 
@@ -60,10 +58,10 @@ This guide covers array and list methods for developers familiar with JavaScript
 
     ```jac
     # Get even numbers
-    evens = numbers.filter(lambda n: int -> bool { return n % 2 == 0; });
+    evens = [n for n in numbers if n % 2 == 0];
 
     # Filter active users
-    activeUsers = users.filter(lambda u: dict -> bool { return u["active"]; });
+    activeUsers = [u for u in users if u["active"]];
     ```
 
 ---
@@ -161,9 +159,8 @@ This guide covers array and list methods for developers familiar with JavaScript
         { "name": "Keyboard", "price": 79, "inStock": False }
     ];
 
-    # Get names of in-stock products
-    available = products.filter(lambda p: dict -> bool { return p["inStock"]; });
-    availableNames = available.map(lambda p: dict -> str { return p["name"]; });
+    # Get names of in-stock products (filter + map in one comprehension)
+    availableNames = [p["name"] for p in products if p["inStock"]];
     # Result: ["Laptop", "Mouse"]
     ```
 
@@ -194,7 +191,7 @@ This guide covers array and list methods for developers familiar with JavaScript
     setItems(items + ["D"]);
 
     # Remove by index
-    setItems(items.filter(lambda item: str, i: int -> bool { return i != indexToRemove; }));
+    setItems([item for i, item in enumerate(items) if i != indexToRemove]);
     ```
 
 ---

@@ -552,11 +552,9 @@ cl {
 
         return <div>
             <h1> User List</h1>
-            {users.map(lambda user: any -> any {
-                return <div key={user}>
-                    <Link to={"/user/" + user}>{user}</Link>
-                </div>;
-            })}
+            {[<div key={user}>
+                <Link to={"/user/" + user}>{user}</Link>
+            </div> for user in users]}
         </div>;
     }
 

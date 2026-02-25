@@ -146,11 +146,9 @@ cl {
 
             # Display todos
             <div>
-                {todos.map(lambda todo: any -> any {
-                    return <div style={{"padding": "8px"}}>
+                {[<div style={{"padding": "8px"}}>
                         {todo.text}
-                    </div>;
-                })}
+                    </div> for todo in todos]}
             </div>
         </div>;
     }
@@ -290,23 +288,16 @@ cl {
 
         # Toggle todo
         def toggleTodo(id: any) -> None {
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo["id"] == id {
-                    return {
-                        "id": todo["id"],
-                        "text": todo["text"],
-                        "done": not todo["done"]
-                    };
-                }
-                return todo;
-            }));
+            setTodos([{
+                "id": todo["id"],
+                "text": todo["text"],
+                "done": not todo["done"]
+            } if todo["id"] == id else todo for todo in todos]);
         }
 
         # Delete todo
         def deleteTodo(id: any) -> None {
-            setTodos(todos.filter(lambda todo: any -> bool {
-                return todo["id"] != id;
-            }));
+            setTodos([todo for todo in todos if todo["id"] != id]);
         }
 
         return <div style={{
@@ -322,16 +313,14 @@ cl {
             />
 
             <div>
-                {todos.map(lambda todo: any -> any {
-                    return <TodoItem
+                {[<TodoItem
                         key={todo["id"]}
                         id={todo["id"]}
                         text={todo["text"]}
                         done={todo["done"]}
                         toggleTodo={toggleTodo}
                         deleteTodo={deleteTodo}
-                    />;
-                })}
+                    /> for todo in todos]}
             </div>
         </div>;
     }
@@ -416,13 +405,9 @@ cl {
         # Filter todos based on current filter
         def getFilteredTodos() -> list {
             if filter == "active" {
-                return todos.filter(lambda todo: any -> bool {
-                    return not todo["done"];
-                });
+                return [todo for todo in todos if not todo["done"]];
             } elif filter == "completed" {
-                return todos.filter(lambda todo: any -> bool {
-                    return todo["done"];
-                });
+                return [todo for todo in todos if todo["done"]];
             }
             return todos;
         }
@@ -439,16 +424,14 @@ cl {
             <TodoFilters filter={filter} setFilter={setFilter} />
 
             <div>
-                {filteredTodos.map(lambda todo: any -> any {
-                    return <TodoItem
+                {[<TodoItem
                         key={todo["id"]}
                         id={todo["id"]}
                         text={todo["text"]}
                         done={todo["done"]}
                         toggleTodo={toggleTodo}
                         deleteTodo={deleteTodo}
-                    />;
-                })}
+                    /> for todo in filteredTodos]}
             </div>
         </div>;
     }
@@ -554,7 +537,7 @@ def:pub app() -> JsxElement {
 
 When state updates, React re-renders the component with the new value!
 
-### Array Methods for State Updates
+### List Operations for State Updates
 
 **`+` operator - Add items**
 
@@ -567,25 +550,18 @@ todos.push(newTodo);
 setTodos(todos);
 ```
 
-**`.map()` - Update items**
+**List comprehension - Update items**
 
 ```jac
 # Toggle a todo
-setTodos(todos.map(lambda todo: any -> any {
-    if todo["id"] == targetId {
-        return {"id": todo["id"], "done": not todo["done"]};
-    }
-    return todo;
-}));
+setTodos([{"id": todo["id"], "done": not todo["done"]} if todo["id"] == targetId else todo for todo in todos]);
 ```
 
-**`.filter()` - Remove items**
+**List comprehension - Remove items**
 
 ```jac
 # Delete a todo
-setTodos(todos.filter(lambda todo: any -> bool {
-    return todo["id"] != targetId;
-}));
+setTodos([todo for todo in todos if todo["id"] != targetId]);
 ```
 
 ### Inline vs Named Functions
@@ -655,9 +631,7 @@ def addItem(newItem: any) -> None {
 
 ```jac
 def removeItem(id: any) -> None {
-    setItems(items.filter(lambda item: any -> bool {
-        return item.id != id;
-    }));
+    setItems([item for item in items if item.id != id]);
 }
 ```
 
@@ -671,7 +645,7 @@ def removeItem(id: any) -> None {
 - The event object (`e`)
 - Passing functions as props
 - Updating state in event handlers
-- List operations (`+` operator, map, filter)
+- List operations (`+` operator, list comprehensions)
 - Inline vs named functions
 
 ---
@@ -736,9 +710,7 @@ And a "Clear Completed" button:
 
 ```jac
 def clearCompleted() -> None {
-    setTodos(todos.filter(lambda todo: any -> bool {
-        return not todo["done"];
-    }));
+    setTodos([todo for todo in todos if not todo["done"]]);
 }
 
 <button onClick={clearCompleted}>Clear Completed</button>

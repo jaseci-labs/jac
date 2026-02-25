@@ -185,16 +185,14 @@ async def toggleTodo(id: any) -> None {
     id spawn toggle_todo();
 
     # Update local state
-    setTodos(todos.map(lambda todo: any -> any {
-        if todo._jac_id == id {
-            return {
-                "_jac_id": todo._jac_id,
-                "text": todo.text,
-                "done": not todo.done
-            };
-        }
-        return todo;
-    }));
+    setTodos([
+        {
+            "_jac_id": todo._jac_id,
+            "text": todo.text,
+            "done": not todo.done
+        } if todo._jac_id == id else todo
+        for todo in todos
+    ]);
 }
 
 # Delete todo
@@ -203,9 +201,7 @@ async def deleteTodo(id: any) -> None {
     #id spawn delete_todo();
 
     # Update local state
-    setTodos(todos.filter(lambda todo: any -> bool {
-        return todo._jac_id != id;
-    }));
+    setTodos([todo for todo in todos if todo._jac_id != id]);
 }
 ```
 
@@ -216,16 +212,14 @@ When rendering todos, use `_jac_id` instead of custom id:
 ```jac
 # In your app() function
 <div>
-    {filteredTodos.map(lambda todo: any -> any {
-        return <TodoItem
-            key={todo._jac_id}
-            id={todo._jac_id}
-            text={todo.text}
-            done={todo.done}
-            toggleTodo={toggleTodo}
-            deleteTodo={deleteTodo}
-        />;
-    })}
+    {[<TodoItem
+        key={todo._jac_id}
+        id={todo._jac_id}
+        text={todo.text}
+        done={todo.done}
+        toggleTodo={toggleTodo}
+        deleteTodo={deleteTodo}
+    /> for todo in filteredTodos]}
 </div>
 ```
 
@@ -529,9 +523,7 @@ walker clear_completed {
 # Call from frontend
 async def clearCompleted() -> None {
     await root spawn clear_completed();
-    setTodos(todos.filter(lambda todo: any -> bool {
-        return not todo.done;
-    }));
+    setTodos([todo for todo in todos if not todo.done]);
 }
 ```
 

@@ -436,46 +436,34 @@ cl {
         # Toggle todo
         async def toggleTodo(id: any) -> None {
             id spawn toggle_todo();
-            setTodos(
-                todos.map(
-                    lambda  todo: any  -> any{
-                        if todo._jac_id == id {
-                            return {
-                                "_jac_id": todo._jac_id,
-                                "text": todo.text,
-                                "done": not todo.done
-                            };
-                        }
-                        return todo;
-                    }
-                )
-            );
+            setTodos([
+                {
+                    "_jac_id": todo._jac_id,
+                    "text": todo.text,
+                    "done": not todo.done
+                } if todo._jac_id == id else todo
+                for todo in todos
+            ]);
         }
 
         # Delete todo
         async def deleteTodo(id: any) -> None {
             #id spawn delete_todo();
-            setTodos(
-                todos.filter(lambda  todo: any  -> bool{ return todo._jac_id != id; } )
-            );
+            setTodos([todo for todo in todos if todo._jac_id != id]);
         }
 
         # Filter todos
         def getFilteredTodos()  -> list {
             if filter == "active" {
-                return todos.filter(
-                    lambda  todo: any  -> bool{ return not todo.done; }
-                );
+                return [todo for todo in todos if not todo.done];
             } elif filter == "completed" {
-                return todos.filter(lambda  todo: any  -> bool{ return todo.done; } );
+                return [todo for todo in todos if todo.done];
             }
             return todos;
         }
 
         filteredTodos = getFilteredTodos();
-        activeCount = todos.filter(
-            lambda  todo: any  -> bool{ return not todo.done; }
-        ).length;
+        activeCount = [todo for todo in todos if not todo.done].length;
 
         return <div
             style={{
@@ -581,8 +569,7 @@ cl {
                 {(<div style={{"padding": "20px", "textAlign": "center", "color": "#999"}}>
                     No todos yet. Add one above!
                 </div>) if filteredTodos.length == 0 else (
-                    filteredTodos.map(lambda todo: any -> any {
-                        return <div
+                    [<div
                             key={todo._jac_id}
                             style={{
                                 "display": "flex",
@@ -623,8 +610,7 @@ cl {
                             >
                                 Delete
                             </button>
-                        </div>;
-                    })
+                        </div> for todo in filteredTodos]
                 )}
             </div>
 

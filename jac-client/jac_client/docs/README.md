@@ -181,9 +181,7 @@ cl import from react { useEffect }
 cl {
     def TodoList(todos: list) -> JsxElement {
         return <ul>
-            {todos.map(lambda todo: any -> any {
-                return <li key={todo._jac_id}>{todo.text}</li>;
-            })}
+            {[<li key={todo._jac_id}>{todo.text}</li> for todo in todos]}
         </ul>;
     }
 
@@ -365,9 +363,9 @@ cl {
         # Filter todos
         def getFilteredTodos() -> list {
             if filter == "active" {
-                return todos.filter(lambda todo: any -> bool { return not todo.done; });
+                return [todo for todo in todos if not todo.done];
             } elif filter == "completed" {
-                return todos.filter(lambda todo: any -> bool { return todo.done; });
+                return [todo for todo in todos if todo.done];
             }
             return todos;
         }
@@ -386,11 +384,9 @@ cl {
             <button onClick={addTodo}>Add</button>
 
             <div>
-                {filteredTodos.map(lambda todo: any -> any {
-                    return <div key={todo._jac_id}>
-                        <span>{todo.text}</span>
-                    </div>;
-                })}
+                {[<div key={todo._jac_id}>
+                    <span>{todo.text}</span>
+                </div> for todo in filteredTodos]}
             </div>
         </div>;
     }
@@ -709,11 +705,9 @@ cl {
             <button onClick={addTodo}>Add Todo</button>
 
             <div>
-                {todos.map(lambda todo: any -> any {
-                    return <div key={todo._jac_id}>
-                        <span>{todo.text}</span>
-                    </div>;
-                })}
+                {[<div key={todo._jac_id}>
+                    <span>{todo.text}</span>
+                </div> for todo in todos]}
             </div>
         </div>;
     }

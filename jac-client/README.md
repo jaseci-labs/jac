@@ -133,9 +133,7 @@ cl {
 
         return <div>
             <h1>My Todos</h1>
-            {todos.map(lambda todo: any -> any {
-                return <div key={todo._jac_id}>{todo.text}</div>;
-            })}
+            {[<div key={todo._jac_id}>{todo.text}</div> for todo in todos]}
         </div>;
     }
 }

@@ -98,9 +98,7 @@ cl {
         if error { return <div>Error: {error}</div>; }
 
         return <div>
-            {todos.map(lambda todo: any -> any {
-                return <TodoItem key={todo._jac_id} todo={todo} />;
-            })}
+            {[<TodoItem key={todo._jac_id} todo={todo} /> for todo in todos]}
         </div>;
     }
 
@@ -340,12 +338,7 @@ cl {
 
         async def toggleTodo(id: str) -> None {
             id spawn toggle_todo();
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    return {...todo, "done": not todo.done};
-                }
-                return todo;
-            }));
+            setTodos([{...todo, "done": not todo.done} if todo._jac_id == id else todo for todo in todos]);
         }
 
         useEffect(lambda -> None {
@@ -373,9 +366,7 @@ cl {
         return <div>
             <h1>Welcome, {userData.user.name if userData.user else "Guest"}</h1>
             <button onClick={userData.logout}>Logout</button>
-            {todoData.todos.map(lambda todo: any -> any {
-                return <TodoItem key={todo._jac_id} todo={todo} />;
-            })}
+            {[<TodoItem key={todo._jac_id} todo={todo} /> for todo in todoData.todos]}
         </div>;
     }
 
@@ -404,9 +395,9 @@ cl {
         # Memoized filtered todos - only recomputes when todos or filter changes
         filteredTodos = useMemo(lambda -> list {
             if filter == "active" {
-                return todos.filter(lambda item: any -> bool { return not item.done; });
+                return [item for item in todos if not item.done];
             } elif filter == "completed" {
-                return todos.filter(lambda item: any -> bool { return item.done; });
+                return [item for item in todos if item.done];
             }
             return todos;
         }, [todos, filter]);
@@ -414,7 +405,7 @@ cl {
         # Memoized stats - only recomputes when todos changes
         stats = useMemo(lambda -> dict {
             total = todos.length;
-            active = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+            active = [item for item in todos if not item.done].length;
             completed = total - active;
 
             return {
@@ -428,9 +419,7 @@ cl {
             <div>
                 Total: {stats.total}, Active: {stats.active}, Completed: {stats.completed}
             </div>
-            {filteredTodos.map(lambda item: any -> any {
-                return <TodoItem key={item._jac_id} todo={item} />;
-            })}
+            {[<TodoItem key={item._jac_id} todo={item} /> for item in filteredTodos]}
         </div>;
     }
 
@@ -455,21 +444,19 @@ cl {
         # Simple derived values - computed on each render
         def getFilteredTodos() -> list {
             if filter == "active" {
-                return todos.filter(lambda item: any -> bool { return not item.done; });
+                return [item for item in todos if not item.done];
             } elif filter == "completed" {
-                return todos.filter(lambda item: any -> bool { return item.done; });
+                return [item for item in todos if item.done];
             }
             return todos;
         }
 
         filtered = getFilteredTodos();
-        activeCount = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+        activeCount = [item for item in todos if not item.done].length;
 
         return <div>
             <div>{activeCount} active todos</div>
-            {filtered.map(lambda item: any -> any {
-                return <TodoItem key={item._jac_id} todo={item} />;
-            })}
+            {[<TodoItem key={item._jac_id} todo={item} /> for item in filtered]}
         </div>;
     }
 
@@ -498,7 +485,7 @@ cl {
         # Update stats whenever todos change
         useEffect(lambda -> None {
             total = todos.length;
-            active = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+            active = [item for item in todos if not item.done].length;
             completed = total - active;
 
             setStats({
@@ -513,9 +500,7 @@ cl {
 
         return <div>
             <StatsDisplay stats={stats} />
-            {todos.map(lambda item: any -> any {
-                return <TodoItem key={item._jac_id} todo={item} />;
-            })}
+            {[<TodoItem key={item._jac_id} todo={item} /> for item in todos]}
         </div>;
     }
 
@@ -546,19 +531,12 @@ cl {
         } elif type == "TOGGLE_TODO" {
             return {
                 ...state,
-                "todos": state.todos.map(lambda todo: any -> any {
-                    if todo._jac_id == action.payload {
-                        return {...todo, "done": not todo.done};
-                    }
-                    return todo;
-                })
+                "todos": [{...todo, "done": not todo.done} if todo._jac_id == action.payload else todo for todo in state.todos]
             };
         } elif type == "REMOVE_TODO" {
             return {
                 ...state,
-                "todos": state.todos.filter(lambda todo: any -> bool {
-                    return todo._jac_id != action.payload;
-                })
+                "todos": [todo for todo in state.todos if todo._jac_id != action.payload]
             };
         } elif type == "SET_FILTER" {
             return {...state, "filter": action.payload};
@@ -603,13 +581,11 @@ cl {
 
         return <div>
             {state.loading and <div>Loading...</div>}
-            {state.todos.map(lambda todo: any -> any {
-                return <TodoItem
+            {[<TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     onToggle={lambda -> None { toggleTodo(todo._jac_id); }}
-                />;
-            })}
+                /> for todo in state.todos]}
         </div>;
     }
 
@@ -643,12 +619,7 @@ cl {
 
         async def toggleTodo(id: str) -> None {
             id spawn toggle_todo();
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    return {...todo, "done": not todo.done};
-                }
-                return todo;
-            }));
+            setTodos([{...todo, "done": not todo.done} if todo._jac_id == id else todo for todo in todos]);
         }
 
         value = {
@@ -673,20 +644,18 @@ cl {
     def TodoList() -> JsxElement {
         ctx = useTodoContext();
 
-        filteredTodos = ctx.todos.filter(lambda todo: any -> bool {
-            if ctx.filter == "active" { return not todo.done; }
-            if ctx.filter == "completed" { return todo.done; }
-            return True;
-        });
+        filteredTodos = [todo for todo in ctx.todos if (
+            (not todo.done) if ctx.filter == "active"
+            else (todo.done) if ctx.filter == "completed"
+            else True
+        )];
 
         return <div>
-            {filteredTodos.map(lambda todo: any -> any {
-                return <TodoItem
+            {[<TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     onToggle={lambda -> None { ctx.toggleTodo(todo._jac_id); }}
-                />;
-            })}
+                /> for todo in filteredTodos]}
         </div>;
     }
 
@@ -727,22 +696,15 @@ cl {
 
         # Memoized callback - only recreated if todos changes
         handleToggle = useCallback(lambda id: str -> None {
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    return {...todo, "done": not todo.done};
-                }
-                return todo;
-            }));
+            setTodos([{...todo, "done": not todo.done} if todo._jac_id == id else todo for todo in todos]);
         }, [todos]);
 
         return <div>
-            {todos.map(lambda todo: any -> any {
-                return <TodoItem
+            {[<TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     onToggle={handleToggle}
-                />;
-            })}
+                /> for todo in todos]}
         </div>;
     }
 
@@ -778,24 +740,15 @@ cl {
 
         async def toggleTodo(id: str) -> None {
             id spawn toggle_todo();
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    return {...todo, "done": not todo.done};
-                }
-                return todo;
-            }));
+            setTodos([{...todo, "done": not todo.done} if todo._jac_id == id else todo for todo in todos]);
         }
 
         def removeTodo(id: str) -> None {
-            setTodos(todos.filter(lambda todo: any -> bool {
-                return todo._jac_id != id;
-            }));
+            setTodos([todo for todo in todos if todo._jac_id != id]);
         }
 
         def clearCompleted() -> None {
-            setTodos(todos.filter(lambda todo: any -> bool {
-                return not todo.done;
-            }));
+            setTodos([todo for todo in todos if not todo.done]);
         }
 
         return <div>
@@ -824,27 +777,25 @@ cl {
         # Memoized selectors
         filteredTodos = useMemo(lambda -> list {
             if filter == "active" {
-                return todos.filter(lambda t: any -> bool { return not t.done; });
+                return [t for t in todos if not t.done];
             } elif filter == "completed" {
-                return todos.filter(lambda t: any -> bool { return t.done; });
+                return [t for t in todos if t.done];
             }
             return todos;
         }, [todos, filter]);
 
         activeTodos = useMemo(lambda -> list {
-            return todos.filter(lambda t: any -> bool { return not t.done; });
+            return [t for t in todos if not t.done];
         }, [todos]);
 
         completedTodos = useMemo(lambda -> list {
-            return todos.filter(lambda t: any -> bool { return t.done; });
+            return [t for t in todos if t.done];
         }, [todos]);
 
         return <div>
             <div>Active: {activeTodos.length}</div>
             <div>Completed: {completedTodos.length}</div>
-            {filteredTodos.map(lambda todo: any -> any {
-                return <TodoItem key={todo._jac_id} todo={todo} />;
-            })}
+            {[<TodoItem key={todo._jac_id} todo={todo} /> for todo in filteredTodos]}
         </div>;
     }
 
@@ -877,12 +828,7 @@ cl {
             } elif action.type == "TOGGLE" {
                 return {
                     ...state,
-                    "todos": state.todos.map(lambda t: any -> any {
-                        if t._jac_id == action.payload {
-                            return {...t, "done": not t.done};
-                        }
-                        return t;
-                    })
+                    "todos": [{...t, "done": not t.done} if t._jac_id == action.payload else t for t in state.todos]
                 };
             }
             return state;
@@ -965,16 +911,16 @@ cl {
         # Memoized derived state
         filteredTodos = useMemo(lambda -> list {
             if filter == "active" {
-                return todos.filter(lambda t: any -> bool { return not t.done; });
+                return [t for t in todos if not t.done];
             } elif filter == "completed" {
-                return todos.filter(lambda t: any -> bool { return t.done; });
+                return [t for t in todos if t.done];
             }
             return todos;
         }, [todos, filter]);
 
         stats = useMemo(lambda -> dict {
             total = todos.length;
-            active = todos.filter(lambda t: any -> bool { return not t.done; }).length;
+            active = [t for t in todos if not t.done].length;
             return {"total": total, "active": active, "completed": total - active};
         }, [todos]);
 
@@ -991,22 +937,17 @@ cl {
         toggleTodo = useCallback(lambda id: str -> None {
             async def _toggleTodo() -> None {
                 id spawn toggle_todo();
-                setTodos(todos.map(lambda t: any -> any {
-                    if t._jac_id == id {
-                        return {...t, "done": not t.done};
-                    }
-                    return t;
-                }));
+                setTodos([{...t, "done": not t.done} if t._jac_id == id else t for t in todos]);
             }
             _toggleTodo();
         }, [todos]);
 
         removeTodo = useCallback(lambda id: str -> None {
-            setTodos(todos.filter(lambda t: any -> bool { return t._jac_id != id; }));
+            setTodos([t for t in todos if t._jac_id != id]);
         }, [todos]);
 
         clearCompleted = useCallback(lambda -> None {
-            setTodos(todos.filter(lambda t: any -> bool { return not t.done; }));
+            setTodos([t for t in todos if not t.done]);
         }, [todos]);
 
         toggleSidebar = useCallback(lambda -> None {
@@ -1050,8 +991,7 @@ cl {
 
                 # Todo list
                 <div>
-                    {filteredTodos.map(lambda todo: any -> any {
-                        return <div key={todo._jac_id} style={{"marginBottom": "10px"}}>
+                    {[<div key={todo._jac_id} style={{"marginBottom": "10px"}}>
                             <input
                                 type="checkbox"
                                 checked={todo.done}
@@ -1064,8 +1004,7 @@ cl {
                             >
                                 Delete
                             </button>
-                        </div>;
-                    })}
+                        </div> for todo in filteredTodos]}
                 </div>
 
                 # Clear completed button
@@ -1123,7 +1062,7 @@ def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     activeTodos = useMemo(lambda -> list {
-        return todos.filter(lambda t: any -> bool { return not t.done; });
+        return [t for t in todos if not t.done];
     }, [todos]);
 }
 
@@ -1132,7 +1071,7 @@ def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     # This runs on every render, even if todos hasn't changed
-    activeTodos = todos.filter(lambda t: any -> bool { return not t.done; });
+    activeTodos = [t for t in todos if not t.done];
 }
 ```
 
@@ -1144,7 +1083,7 @@ cl import from react { useState }
 #  Good: Calculate derived values
 def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
-    activeCount = todos.filter(lambda t: any -> bool { return not t.done; }).length;
+    activeCount = [t for t in todos if not t.done].length;
 }
 
 #  Avoid: Storing derived values in state
@@ -1222,10 +1161,7 @@ def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     handleToggle = useCallback(lambda id: str -> None {
-        setTodos(todos.map(lambda t: any -> any {
-            if t._jac_id == id { return {...t, "done": not t.done}; }
-            return t;
-        }));
+        setTodos([{...t, "done": not t.done} if t._jac_id == id else t for t in todos]);
     }, [todos]);
 
     return <TodoList todos={todos} onToggle={handleToggle} />;

@@ -289,9 +289,9 @@ When you need to do multiple things or have logic inside an onClick handler:
 
 ---
 
-### Array Methods (.map, .filter)
+### Array Methods (.map, .filter) → List Comprehensions
 
-**Important:** For `.map()` and `.filter()`, JAC-Client works best with helper functions:
+**Idiomatic Jac** uses list comprehensions instead of `.map()` and `.filter()`:
 
 === "React"
 
@@ -304,39 +304,17 @@ When you need to do multiple things or have logic inside an onClick handler:
 === "JAC-Client"
 
     ```jac
-    # Define helper functions
-    def getName(user: dict, index: int) -> any {
-        return user["name"];
-    }
-
-    def isAdult(user: dict, index: int) -> any {
-        return user["age"] >= 18;
-    }
-
-    def renderItem(item: dict, index: int) -> any {
-        return <li key={item["id"]}>{item["name"]}</li>;
-    }
-
-    # Use with array methods
-    names = users.map(getName);
-    adults = users.filter(isAdult);
-    listItems = items.map(renderItem);
+    # List comprehensions (idiomatic Jac)
+    names = [user["name"] for user in users];
+    adults = [user for user in users if user["age"] >= 18];
+    listItems = [<li key={item["id"]}>{item["name"]}</li> for item in items];
     ```
-
-**Alternative: Inline lambda for .map()**
-
-```jac
-# Inline lambda (used in some examples)
-{items.map(lambda item: any -> any {
-    return <li key={item["id"]}>{item["name"]}</li>;
-})}
-```
 
 ---
 
-### Inline Lambda in JSX (The Common React Pattern)
+### Inline List Comprehension in JSX (The Common Pattern)
 
-This is the pattern React developers use most often - rendering lists directly inside JSX without assigning to variables first:
+This is the pattern for rendering lists directly inside JSX:
 
 === "React"
 
@@ -360,24 +338,19 @@ This is the pattern React developers use most often - rendering lists directly i
 
     ```jac
     <div>
-        {items.map(lambda item: any -> any {
-            isSelected = selected and selected["id"] == item["id"];
-            return (
-                <button
-                    key={item["id"]}
-                    style={{
-                        "backgroundColor": ("#28a745") if isSelected else ("#007bff")
-                    }}
-                    onClick={lambda: handleSelect(item["id"], item["name"])}
-                >
-                    {item["name"]}
-                </button>
-            );
-        })}
+        {[<button
+            key={item["id"]}
+            style={{
+                "backgroundColor": ("#28a745") if (selected and selected["id"] == item["id"]) else ("#007bff")
+            }}
+            onClick={lambda: handleSelect(item["id"], item["name"])}
+        >
+            {item["name"]}
+        </button> for item in items]}
     </div>
     ```
 
-### Inline .filter().map() Chain
+### Inline Filter + Map with Comprehension
 
 === "React"
 
@@ -395,13 +368,8 @@ This is the pattern React developers use most often - rendering lists directly i
 
     ```jac
     <div>
-        {items.filter(lambda item: any -> any {
-            return item["inStock"];
-        }).map(lambda item: any -> any {
-            return (
-                <span key={item["id"]}>In Stock: {item["name"]}</span>
-            );
-        })}
+        {[<span key={item["id"]}>In Stock: {item["name"]}</span>
+            for item in items if item["inStock"]]}
     </div>
     ```
 
@@ -437,7 +405,7 @@ This is the pattern React developers use most often - rendering lists directly i
     )}
     ```
 
-### Inline .map() with Index
+### Inline List with Index (enumerate)
 
 === "React"
 
@@ -455,13 +423,9 @@ This is the pattern React developers use most often - rendering lists directly i
 
     ```jac
     <ol>
-        {items.map(lambda item: any, index: int -> any {
-            return (
-                <li key={item["id"]}>
-                    #{index + 1}: {item["name"]}
-                </li>
-            );
-        })}
+        {[<li key={item["id"]}>
+            #{index + 1}: {item["name"]}
+        </li> for index, item in enumerate(items)]}
     </ol>
     ```
 
@@ -511,11 +475,11 @@ This is the pattern React developers use most often - rendering lists directly i
 | `onClick={() => { a(); b(); }}`            | `onClick={lambda -> None { a(); b(); }}`                                  |
 | `onClick={(e) => { e.preventDefault(); }}` | `onClick={lambda e: any -> None { e.preventDefault(); }}`                 |
 | `onClick={() => { if(x) a(); }}`           | `onClick={lambda -> None { if x { a(); } }}`                              |
-| `arr.map(x => x.name)`                     | Helper function + `arr.map(helperFn)`                                     |
+| `arr.map(x => x.name)`                     | `[x["name"] for x in arr]`                                               |
 | `async () => {}`                           | `async def funcName() {}`                                                 |
 | **Inline JSX map**                         |                                                                           |
-| `{items.map(x => <li>{x}</li>)}`           | `{items.map(lambda x: any -> any { return <li>{x}</li>; })}`              |
-| `{items.filter(x => x.active).map(...)}`   | `{items.filter(lambda x: any -> any { return x["active"]; }).map(...)}`   |
+| `{items.map(x => <li>{x}</li>)}`           | `{[<li>{x}</li> for x in items]}`                                         |
+| `{items.filter(x => x.active).map(...)}`   | `{[<li>{x}</li> for x in items if x["active"]]}`                          |
 | `{arr.some(x => x.done) && <p>...</p>}`    | `{arr.some(lambda x: any -> any { return x["done"]; }) and (<p>...</p>)}` |
 | `{arr.every(x => x.ok) && <p>...</p>}`     | `{arr.every(lambda x: any -> any { return x["ok"]; }) and (<p>...</p>)}`  |
 
@@ -532,9 +496,9 @@ This is the pattern React developers use most often - rendering lists directly i
    - `lambda -> None { }` for void
    - `lambda -> int { return 42; }` for int return
 
-3. **Array Methods**: Use helper functions or inline lambdas with full type annotations
+3. **Array Methods**: Use list comprehensions for `.map()` and `.filter()` patterns
 
-   - `.map()`, `.filter()`, etc. need `(item: any, index: int) -> any` signature
+   - `[item for item in arr if cond]` instead of `.filter(lambda ...)`
 
 4. **Async**: Use `async def funcName()` instead of `async () =>`
 
@@ -552,7 +516,7 @@ This is the pattern React developers use most often - rendering lists directly i
 
 3. **Use `any` when uncertain** - If you are not sure of the type, `any` works like TypeScript's `any`
 
-4. **Helper functions for clarity** - For `.map()` and `.filter()`, defining separate helper functions often reads better than inline lambdas
+4. **Use list comprehensions** - For `.map()` and `.filter()`, use `[expr for x in arr]` and `[x for x in arr if cond]`
 
 5. **`None` = void** - Use `-> None` when the function does not return anything (like React's void arrow functions)
 
