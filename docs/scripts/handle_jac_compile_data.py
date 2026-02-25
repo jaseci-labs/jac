@@ -65,6 +65,8 @@ def create_playground_zip() -> None:
     if not os.path.exists(TARGET_FOLDER):
         raise FileNotFoundError(f"Folder not found: {TARGET_FOLDER}")
 
+    os.makedirs(EXTRACTED_FOLDER, exist_ok=True)
+
     # Files/directories to exclude for faster zipping
     exclude_patterns = {
         ".pyi",  # Type stub files (4427 files!)
