@@ -79,20 +79,23 @@ impl JacAPIServerCore.postinit -> None {
             }
         }
         self.server.app.add_middleware(MetricsMiddleware);
-        # Register /metrics endpoint
+        # Register /metrics endpoint (admin-only)
+        metrics_handler = self._create_admin_metrics_handler(
+            self._metrics.get_endpoint_handler()
+        );
         self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.GET,
                 path=metrics_endpoint,
-                callback=self._metrics.get_endpoint_handler(),
+                callback=metrics_handler,
                 parameters=[],
                 response_model=None,
                 tags=['Monitoring'],
-                summary='Prometheus metrics',
-                description='Exposes application metrics in Prometheus format for scraping'
+                summary='Prometheus metrics (Admin only)',
+                description='Exposes application metrics in Prometheus format for scraping. Requires admin authentication.'
             )
         );
-        logger.info(f"Prometheus metrics enabled at {metrics_endpoint}");
+        logger.info(f"Prometheus metrics enabled at {metrics_endpoint} (admin-only)");
     }
 }
 
@@ -895,4 +898,30 @@ impl JacAPIServerCore.register_api_key_endpoints -> None {
             description='Revokes an API key, making it invalid for future webhook requests.'
         )
     );
+}
+
+"""Create a wrapper around the metrics endpoint that requires admin authentication."""
+impl JacAPIServerCore._create_admin_metrics_handler(
+    original_handler: Callable[..., Any]
+) -> Callable[..., Any] {
+    import from fastapi { Request }
+    import from fastapi.responses { Response, JSONResponse }
+
+    async def admin_metrics_handler(request: Request) -> Response {
+        # Check for admin authentication
+        authorization = request.headers.get('Authorization');
+        admin_user = self.validate_admin_token(authorization);
+        if not admin_user {
+            return JSONResponse(
+                status_code=403,
+                content={
+                    'ok': False,
+                    'error': {'code': 'FORBIDDEN', 'message': 'Admin access required'}
+                }
+            );
+        }
+        # Call the original Prometheus metrics handler
+        return original_handler();
+    }
+    return admin_metrics_handler;
 }

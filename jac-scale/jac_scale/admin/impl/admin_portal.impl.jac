@@ -415,6 +415,23 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Get graph data for any user (admin only)'
         )
     );
+    # Metrics endpoint for dashboard
+    async def get_metrics_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_get_metrics(authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/admin/metrics',
+            callback=get_metrics_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Admin'],
+            summary='Get metrics data',
+            description='Get parsed Prometheus metrics as JSON (admin only)'
+        )
+    );
     # Admin UI - redirect /admin to /admin/
     self.server.add_endpoint(
         JEndPoint(
@@ -971,6 +988,181 @@ impl JacAPIServerAdmin.admin_graph_data(
     } except Exception as e {
         return JSONResponse(
             status_code=500, content={'error': 'Internal error', 'message': str(e)}
+        );
+    }
+}
+
+"""Get parsed Prometheus metrics as JSON for admin dashboard."""
+impl JacAPIServerAdmin.admin_get_metrics(
+    Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+
+    # Check if metrics are enabled
+    if not self._metrics or not self._metrics.is_enabled() {
+        return TransportResponse.success(
+            data={
+                'enabled': False,
+                'message': 'Prometheus metrics are not enabled',
+                'metrics': []
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+
+    import re;
+    import from prometheus_client { generate_latest, REGISTRY }
+
+    try {
+        # Get raw Prometheus metrics
+        raw_metrics = generate_latest(REGISTRY).decode('utf-8');
+
+        # Parse the Prometheus format into structured data
+        metrics_data: list[dict] = [];
+        current_metric: dict | None = None;
+
+        for line in raw_metrics.split('\n') {
+            line = line.strip();
+            if not line {
+                continue;
+            }
+
+            # HELP line - metric description
+            if line.startswith('# HELP ') {
+                parts = line[7:].split(' ', 1);
+                metric_name = parts[0];
+                description = parts[1] if len(parts) > 1 else '';
+                current_metric = {
+                    'name': metric_name,
+                    'description': description,
+                    'type': 'unknown',
+                    'values': []
+                };
+                metrics_data.append(current_metric);
+            }
+            # TYPE line - metric type
+            elif line.startswith('# TYPE ') {
+                parts = line[7:].split(' ', 1);
+                if current_metric and parts[0] == current_metric['name'] {
+                    current_metric['type'] = parts[1] if len(parts) > 1 else 'unknown';
+                }
+            }
+            # Comment line - skip
+            elif line.startswith('#') {
+                continue;
+            }
+            # Metric value line
+            else {
+                # Parse metric line: metric_name{label="value",...} value
+                regex_match = re.match(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)((?:\{[^}]*\})?)[ \t]+(.+)$', line);
+                if regex_match {
+                    metric_name = regex_match.group(1);
+                    labels_str = regex_match.group(2);
+                    value_str = regex_match.group(3);
+
+                    # Parse labels
+                    labels: dict = {};
+                    if labels_str and labels_str.startswith('{') and labels_str.endswith('}') {
+                        labels_content = labels_str[1:-1];
+                        # Parse label=value pairs
+                        for label_match in re.finditer(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"', labels_content) {
+                            labels[label_match.group(1)] = label_match.group(2);
+                        }
+                    }
+
+                    # Parse value
+                    try {
+                        value = float(value_str);
+                    } except ValueError {
+                        value = value_str;
+                    }
+
+                    # Find or create metric entry
+                    found_metric = None;
+                    for m in metrics_data {
+                        if m['name'] == metric_name or metric_name.startswith(m['name'] + '_') {
+                            found_metric = m;
+                            break;
+                        }
+                    }
+
+                    if found_metric {
+                        found_metric['values'].append({
+                            'labels': labels,
+                            'value': value,
+                            'suffix': metric_name[len(found_metric['name']):] if metric_name.startswith(found_metric['name']) else ''
+                        });
+                    } else {
+                        # Create new metric if not found (shouldn't happen normally)
+                        metrics_data.append({
+                            'name': metric_name,
+                            'description': '',
+                            'type': 'unknown',
+                            'values': [{'labels': labels, 'value': value, 'suffix': ''}]
+                        });
+                    }
+                }
+            }
+        }
+
+        # Calculate summary statistics for key metrics
+        summary: dict = {
+            'total_requests': 0,
+            'active_requests': 0,
+            'error_count': 0,
+            'avg_latency_ms': 0.0
+        };
+
+        for metric in metrics_data {
+            if 'http_requests_total' in metric['name'] {
+                for v in metric['values'] {
+                    if isinstance(v['value'], (int, float)) {
+                        summary['total_requests'] += int(v['value']);
+                        if v['labels'].get('status_code', '').startswith('5') {
+                            summary['error_count'] += int(v['value']);
+                        }
+                    }
+                }
+            } elif 'requests_in_progress' in metric['name'] {
+                for v in metric['values'] {
+                    if isinstance(v['value'], (int, float)) {
+                        summary['active_requests'] = int(v['value']);
+                    }
+                }
+            } elif 'request_duration_seconds' in metric['name'] {
+                # Calculate average from histogram sum/count
+                total_sum = 0.0;
+                total_count = 0;
+                for v in metric['values'] {
+                    if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
+                        total_sum += v['value'];
+                    } elif v['suffix'] == '_count' and isinstance(v['value'], (int, float)) {
+                        total_count += int(v['value']);
+                    }
+                }
+                if total_count > 0 {
+                    summary['avg_latency_ms'] = round((total_sum / total_count) * 1000, 2);
+                }
+            }
+        }
+
+        return TransportResponse.success(
+            data={
+                'enabled': True,
+                'summary': summary,
+                'metrics': metrics_data,
+                'raw_available': True
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    } except Exception as e {
+        return TransportResponse.fail(
+            code='METRICS_ERROR',
+            message=f'Failed to retrieve metrics: {str(e)}',
+            meta=Meta(extra={'http_status': 500})
         );
     }
 }
