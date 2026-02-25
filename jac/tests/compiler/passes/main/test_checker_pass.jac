@@ -1667,3 +1667,15 @@ test "compound_and_narrowing" {
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
+
+"""Test assert isinstance type narrowing."""
+test "assert_isinstance_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_assert_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - assert isinstance narrows the type
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
