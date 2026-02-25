@@ -1459,6 +1459,24 @@ impl TypeEvaluator._compute_narrowed_at(
         # The CFG builds correct links but type checker sees different node instances.
         # This is a future PR task.
 
+        # Check if predecessor is an AssertStmt with isinstance narrowing.
+        # assert isinstance(x, T) narrows x to T for subsequent statements.
+        if isinstance(pred, uni.AssertStmt) {
+            predicate = self._find_predicate_for(symbol, pred.condition);
+            if predicate is not None {
+                # Assert passed means condition is true
+                narrowed = self._apply_narrowing(
+                    predicate, pred_narrowed, True, symbol
+                );
+                if narrowed is not None {
+                    incoming_types.append(narrowed);
+                } else {
+                    has_unnarrowed_pred = True;
+                }
+                continue;
+            }
+        }
+
         # Check if predecessor is a MatchStmt and narrow based on pattern.
         if isinstance(pred, uni.MatchStmt) {
             # Check if match target is the symbol we're narrowing

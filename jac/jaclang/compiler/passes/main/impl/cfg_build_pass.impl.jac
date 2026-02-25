@@ -205,6 +205,11 @@ impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
             narrowing_syms = self._collect_narrowing_symbols(nd.condition);
             nd.affected_symbols.update(narrowing_syms);
         }
+        # Assert statement: collect affected symbols from isinstance checks
+        if isinstance(nd, uni.AssertStmt) {
+            narrowing_syms = self._collect_narrowing_symbols(nd.condition);
+            nd.affected_symbols.update(narrowing_syms);
+        }
         # Match statement: collect affected symbols from match subject
         if isinstance(nd, uni.MatchStmt) and isinstance(nd.target, uni.Name) {
             nd.affected_symbols.add(nd.target.value);
