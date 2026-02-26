@@ -16,6 +16,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `jac create --use` with jac-scale endpoints**: Fixed `jac create --use <URL>` failing when the URL points to a jac-scale `@restspec` endpoint. The template loader now unwraps the `TransportResponse` envelope (`{data: {result: {...}}}`) before parsing the jacpack JSON.
 - **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
 - **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
+- 1 Minor refactors/changes
 
 ## jaclang 0.11.1 (Latest Release)
 
@@ -72,7 +73,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Lexer Infinite Loop on Malformed JSX**: Fixed three infinite-loop scenarios where the lexer would hang forever when hitting EOF inside a non-NORMAL mode (JSX content, JSX tag, or f-string). Added a stuck detector in `tokenize()` that forces EOF when the lexer stops advancing or overshoots the source, preventing `jac run`, `jac start`, and `jac js` from hanging on malformed input (e.g., unterminated JSX like `<div>hello` with no closing tag).
 - **Fix: Bare `<` in JSX Content No Longer Hangs Lexer**: A `<` character in JSX content that does not start a valid tag (e.g., `<--`) is now consumed as text instead of causing an infinite loop. The text scanner only breaks on `<` when the next character forms a real JSX construct (`</`, `<>`, or `<` + identifier).
 - **Fix: Grammar Extraction Accuracy**: Fixed multiple issues in `jac grammar` output: `atomic_chain` and `jsx_attributes` now show `*` repetition, `compare` no longer duplicates operators, `assignment_with_target` correctly extracts ternary expressions, excessive top-level `?` wrapping is stripped from multi-branch rules, f-string tokens use proper quoting, and added `GPlus` (one-or-more `+`) grammar expression type.
-- 1 Minor refactors/chages
+- 1 Minor refactors/changes
 
 ## jaclang 0.10.3
 
