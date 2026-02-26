@@ -4,11 +4,11 @@ def foo() -> str:
 
 
 def bar():
-    "hello\nworld"
+    """hello\nworld"""
     pass
 
 
 class Baz:
-    "line1\ttabbed"
+    """line1\ttabbed"""
 
     pass
