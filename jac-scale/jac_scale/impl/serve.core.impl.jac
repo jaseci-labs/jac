@@ -906,21 +906,21 @@ impl JacAPIServerCore._create_admin_metrics_handler(
 ) -> Callable[..., Any] {
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
 
     async def admin_metrics_handler(request: Request) -> Response {
-        # Check for admin authentication
         authorization = request.headers.get('Authorization');
         admin_user = self.validate_admin_token(authorization);
         if not admin_user {
             return JSONResponse(
                 status_code=403,
-                content={
-                    'ok': False,
-                    'error': {'code': 'FORBIDDEN', 'message': 'Admin access required'}
-                }
+                content=TransportResponse.fail(
+                    code='FORBIDDEN',
+                    message='Admin access required',
+                    meta=Meta(extra={'http_status': 403})
+                ).model_dump()
             );
         }
-        # Call the original Prometheus metrics handler
         return original_handler();
     }
     return admin_metrics_handler;

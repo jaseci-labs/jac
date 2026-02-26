@@ -996,12 +996,14 @@ impl JacAPIServerAdmin.admin_graph_data(
 impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
+    import re;
+    import from prometheus_client { generate_latest, REGISTRY }
+
     error = self.require_admin(Authorization);
     if error {
         return error;
     }
 
-    # Check if metrics are enabled
     if not self._metrics or not self._metrics.is_enabled() {
         return TransportResponse.success(
             data={
@@ -1013,141 +1015,10 @@ impl JacAPIServerAdmin.admin_get_metrics(
         );
     }
 
-    import re;
-    import from prometheus_client { generate_latest, REGISTRY }
-
     try {
-        # Get raw Prometheus metrics
         raw_metrics = generate_latest(REGISTRY).decode('utf-8');
-
-        # Parse the Prometheus format into structured data
-        metrics_data: list[dict] = [];
-        current_metric: dict | None = None;
-
-        for line in raw_metrics.split('\n') {
-            line = line.strip();
-            if not line {
-                continue;
-            }
-
-            # HELP line - metric description
-            if line.startswith('# HELP ') {
-                parts = line[7:].split(' ', 1);
-                metric_name = parts[0];
-                description = parts[1] if len(parts) > 1 else '';
-                current_metric = {
-                    'name': metric_name,
-                    'description': description,
-                    'type': 'unknown',
-                    'values': []
-                };
-                metrics_data.append(current_metric);
-            }
-            # TYPE line - metric type
-            elif line.startswith('# TYPE ') {
-                parts = line[7:].split(' ', 1);
-                if current_metric and parts[0] == current_metric['name'] {
-                    current_metric['type'] = parts[1] if len(parts) > 1 else 'unknown';
-                }
-            }
-            # Comment line - skip
-            elif line.startswith('#') {
-                continue;
-            }
-            # Metric value line
-            else {
-                # Parse metric line: metric_name{label="value",...} value
-                regex_match = re.match(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)((?:\{[^}]*\})?)[ \t]+(.+)$', line);
-                if regex_match {
-                    metric_name = regex_match.group(1);
-                    labels_str = regex_match.group(2);
-                    value_str = regex_match.group(3);
-
-                    # Parse labels
-                    labels: dict = {};
-                    if labels_str and labels_str.startswith('{') and labels_str.endswith('}') {
-                        labels_content = labels_str[1:-1];
-                        # Parse label=value pairs
-                        for label_match in re.finditer(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"', labels_content) {
-                            labels[label_match.group(1)] = label_match.group(2);
-                        }
-                    }
-
-                    # Parse value
-                    try {
-                        value = float(value_str);
-                    } except ValueError {
-                        value = value_str;
-                    }
-
-                    # Find or create metric entry
-                    found_metric = None;
-                    for m in metrics_data {
-                        if m['name'] == metric_name or metric_name.startswith(m['name'] + '_') {
-                            found_metric = m;
-                            break;
-                        }
-                    }
-
-                    if found_metric {
-                        found_metric['values'].append({
-                            'labels': labels,
-                            'value': value,
-                            'suffix': metric_name[len(found_metric['name']):] if metric_name.startswith(found_metric['name']) else ''
-                        });
-                    } else {
-                        # Create new metric if not found (shouldn't happen normally)
-                        metrics_data.append({
-                            'name': metric_name,
-                            'description': '',
-                            'type': 'unknown',
-                            'values': [{'labels': labels, 'value': value, 'suffix': ''}]
-                        });
-                    }
-                }
-            }
-        }
-
-        # Calculate summary statistics for key metrics
-        summary: dict = {
-            'total_requests': 0,
-            'active_requests': 0,
-            'error_count': 0,
-            'avg_latency_ms': 0.0
-        };
-
-        for metric in metrics_data {
-            if 'http_requests_total' in metric['name'] {
-                for v in metric['values'] {
-                    if isinstance(v['value'], (int, float)) {
-                        summary['total_requests'] += int(v['value']);
-                        if v['labels'].get('status_code', '').startswith('5') {
-                            summary['error_count'] += int(v['value']);
-                        }
-                    }
-                }
-            } elif 'requests_in_progress' in metric['name'] {
-                for v in metric['values'] {
-                    if isinstance(v['value'], (int, float)) {
-                        summary['active_requests'] = int(v['value']);
-                    }
-                }
-            } elif 'request_duration_seconds' in metric['name'] {
-                # Calculate average from histogram sum/count
-                total_sum = 0.0;
-                total_count = 0;
-                for v in metric['values'] {
-                    if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
-                        total_sum += v['value'];
-                    } elif v['suffix'] == '_count' and isinstance(v['value'], (int, float)) {
-                        total_count += int(v['value']);
-                    }
-                }
-                if total_count > 0 {
-                    summary['avg_latency_ms'] = round((total_sum / total_count) * 1000, 2);
-                }
-            }
-        }
+        metrics_data = _parse_prometheus_text(raw_metrics);
+        summary = _calculate_metrics_summary(metrics_data);
 
         return TransportResponse.success(
             data={
@@ -1165,6 +1036,129 @@ impl JacAPIServerAdmin.admin_get_metrics(
             meta=Meta(extra={'http_status': 500})
         );
     }
+}
+
+"""Parse Prometheus text format into structured metric data."""
+def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
+    import re;
+
+    metrics_data: list[dict] = [];
+    current_metric: dict | None = None;
+    metric_line_re = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)((?:\{[^}]*\})?)[ \t]+(.+)$');
+    label_re = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"');
+
+    for line in raw_metrics.split('\n') {
+        line = line.strip();
+        if not line {
+            continue;
+        }
+
+        if line.startswith('# HELP ') {
+            parts = line[7:].split(' ', 1);
+            current_metric = {
+                'name': parts[0],
+                'description': parts[1] if len(parts) > 1 else '',
+                'type': 'unknown',
+                'values': []
+            };
+            metrics_data.append(current_metric);
+        } elif line.startswith('# TYPE ') {
+            parts = line[7:].split(' ', 1);
+            if current_metric and parts[0] == current_metric['name'] {
+                current_metric['type'] = parts[1] if len(parts) > 1 else 'unknown';
+            }
+        } elif line.startswith('#') {
+            continue;
+        } else {
+            regex_match = metric_line_re.match(line);
+            if regex_match {
+                metric_name = regex_match.group(1);
+                labels_str = regex_match.group(2);
+                value_str = regex_match.group(3);
+
+                labels: dict = {};
+                if labels_str and labels_str.startswith('{') and labels_str.endswith('}') {
+                    for lm in label_re.finditer(labels_str[1:-1]) {
+                        labels[lm.group(1)] = lm.group(2);
+                    }
+                }
+
+                try {
+                    value = float(value_str);
+                } except ValueError {
+                    value = value_str;
+                }
+
+                found_metric = None;
+                for m in metrics_data {
+                    if m['name'] == metric_name or metric_name.startswith(m['name'] + '_') {
+                        found_metric = m;
+                        break;
+                    }
+                }
+
+                suffix = '';
+                if found_metric {
+                    if metric_name.startswith(found_metric['name']) {
+                        suffix = metric_name[len(found_metric['name']):];
+                    }
+                    found_metric['values'].append({'labels': labels, 'value': value, 'suffix': suffix});
+                } else {
+                    metrics_data.append({
+                        'name': metric_name,
+                        'description': '',
+                        'type': 'unknown',
+                        'values': [{'labels': labels, 'value': value, 'suffix': ''}]
+                    });
+                }
+            }
+        }
+    }
+    return metrics_data;
+}
+
+"""Calculate summary statistics from parsed metrics."""
+def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
+    summary: dict = {
+        'total_requests': 0,
+        'active_requests': 0,
+        'error_count': 0,
+        'avg_latency_ms': 0.0
+    };
+
+    for metric in metrics_data {
+        name = metric['name'];
+        if 'http_requests_total' in name {
+            for v in metric['values'] {
+                if isinstance(v['value'], (int, float)) {
+                    summary['total_requests'] += int(v['value']);
+                    if v['labels'].get('status_code', '').startswith('5') {
+                        summary['error_count'] += int(v['value']);
+                    }
+                }
+            }
+        } elif 'requests_in_progress' in name {
+            for v in metric['values'] {
+                if isinstance(v['value'], (int, float)) {
+                    summary['active_requests'] = int(v['value']);
+                }
+            }
+        } elif 'request_duration_seconds' in name {
+            total_sum = 0.0;
+            total_count = 0;
+            for v in metric['values'] {
+                if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
+                    total_sum += v['value'];
+                } elif v['suffix'] == '_count' and isinstance(v['value'], (int, float)) {
+                    total_count += int(v['value']);
+                }
+            }
+            if total_count > 0 {
+                summary['avg_latency_ms'] = round((total_sum / total_count) * 1000, 2);
+            }
+        }
+    }
+    return summary;
 }
 
 """Get the admin dist directory path - in the running app's .jac folder."""
