@@ -12,6 +12,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Global Pointer Variables Collected by GC**: MCJIT global variables (e.g. `glob WHITE_SYMBOLS: dict[...]`) live outside Boehm GC's scanned memory, causing global dicts/lists/objects to be freed after enough allocations trigger a collection. Fixed by emitting `GC_add_roots` calls for every pointer-typed global after initialization.
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
+- **Fix: `jac create --use` with jac-scale endpoints**: Fixed `jac create --use <URL>` failing when the URL points to a jac-scale `@restspec` endpoint. The template loader now unwraps the `TransportResponse` envelope (`{data: {result: {...}}}`) before parsing the jacpack JSON.
 
 ## jaclang 0.11.1 (Latest Release)
 
