@@ -121,6 +121,18 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
     user_exclude = user_ts_config.get('exclude', []);
     # Merge compiler options (user overrides defaults)
     merged_compiler_options = {** default_compiler_options, ** user_compiler_options};
+    # Add user-defined path aliases to compiler options
+    paths_config = self.config_loader.get_paths_config();
+    if paths_config {
+        ts_paths: dict[str, list[str]] = {};
+        for (alias_pattern, target_path) in paths_config.items() {
+            # Convert ./components/* to components/*
+            ts_target = target_path.lstrip('./');
+            ts_paths[alias_pattern] = [ts_target];
+        }
+        merged_compiler_options['baseUrl'] = '.';
+        merged_compiler_options['paths'] = ts_paths;
+    }
     # For include/exclude, use user values if provided, otherwise defaults
     merged_include = user_include or default_include;
     merged_exclude = user_exclude or default_exclude;
@@ -355,8 +367,24 @@ impl ViteBundler._generate_vite_config_content(
     build_config = vite_config_data.get('build', {});
     resolve_config = vite_config_data.get('resolve', {});
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
-    if (isinstance(resolve_config, dict) and resolve_config)
-    else '';
+        if (isinstance(resolve_config, dict) and resolve_config)
+        else '';
+    # Get user-defined path aliases for Vite resolve.alias
+    paths_config = self.config_loader.get_paths_config();
+    user_aliases_lines: list[str] = [];
+    q = '"';
+    for (alias_pattern, target_path) in paths_config.items() {
+        # Strip trailing /* for Vite (it handles directory mapping differently)
+        alias_key = alias_pattern.rstrip('/*');
+        # Strip leading ./ and trailing /* from target
+        target_clean = target_path.lstrip('./').rstrip('/*');
+        user_aliases_lines.append(
+            f'        {q}{alias_key}{q}: path.resolve(projectRoot, {q}{target_clean}{q}),'
+        );
+    }
+    user_aliases_str = '\n' + '\n'.join(user_aliases_lines)
+        if user_aliases_lines
+        else '';
     define_config = vite_config_data.get('define', {});
     define_str = self._format_define_entries(api_base_url, define_config);
     imports_section = f"{imports_str}\n" if imports_str else '';
@@ -364,12 +392,12 @@ impl ViteBundler._generate_vite_config_content(
     if is_dev {
         # Dev config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, dict) and build_config)
-        else '';
+            if (isinstance(build_config, dict) and build_config)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, dict) and server_config)
-        else '';
+            if (isinstance(server_config, dict) and server_config)
+            else '';
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
@@ -385,7 +413,11 @@ export default defineConfig({{
   define: {{
 {define_str}
   }},
-  plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+  plugins: [{(
+            newline + plugins_str + newline + '  '
+        )
+            if plugins_str
+            else ''}],
   root: buildDir,
   envDir: projectRoot, // Load .env files from project root
   publicDir: false,
@@ -425,7 +457,7 @@ export default defineConfig({{
   resolve: {{
     alias: {{
       "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
-      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
 {resolve_overrides_str}
@@ -435,15 +467,15 @@ export default defineConfig({{
     } else {
         # Build config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, dict) and build_config)
-        else '';
+            if (isinstance(build_config, dict) and build_config)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, dict) and server_config)
-        else '';
+            if (isinstance(server_config, dict) and server_config)
+            else '';
         server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
-        if server_config_str
-        else '';
+            if server_config_str
+            else '';
         # Get output dir relative path
         try {
             output_relative = self.output_dir.relative_to(build_dir).as_posix();
@@ -512,9 +544,11 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
-        if plugins_str
-        else ''}],
+    jacSourceMapper(),{(
+            newline + plugins_str + newline + '  '
+        )
+            if plugins_str
+            else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
   envDir: projectRoot, // Load .env files from project root
     build: {{
@@ -538,7 +572,7 @@ export default defineConfig({{
 {server_section}  resolve: {{
       alias: {{
         "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
-        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
 {resolve_overrides_str}
@@ -619,7 +653,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
     # Ensure bun is available before proceeding
     if not ensure_bun_available() {
-        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+        raise ClientBundleError(
+            'Bun is required. Install manually: https://bun.sh'
+        ) from None ;
     }
     # Ensure client npm deps are configured; prompt to install defaults if missing
     if not ensure_client_deps(self.config_loader) {

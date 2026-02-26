@@ -349,21 +349,30 @@ walker Visitor {
 }
 ```
 
-**Indexed Visit:**
+**Queue Insertion Index:**
+
+The `visit : index : [-->]` syntax controls *where* in the walker's traversal queue new destinations are inserted. This enables DFS, BFS, and custom traversal strategies:
 
 ```jac
 node Item {}
 
 walker Visitor {
-    can indexed with Item entry {
-        visit : 0 : [-->];              # Visit first outgoing node only
-        visit : -1 : [-->];             # Visit last outgoing node only
-        visit : 2 : [-->];              # Visit third node (0-indexed)
+    can traverse with Item entry {
+        visit : 0 : [-->];              # Insert at FRONT of queue (DFS behavior)
+        visit : -1 : [-->];             # Insert at END of queue (BFS behavior)
+        visit : 2 : [-->];              # Insert at position 2 in queue
     }
 }
 ```
 
-Out-of-bounds indices result in no visit.
+| Syntax | Queue Position | Effect |
+|--------|---------------|--------|
+| `visit [-->]` | End (default) | BFS-like -- standard breadth-first traversal |
+| `visit : 0 : [-->]` | Front | DFS-like -- depth-first by inserting at front |
+| `visit : -1 : [-->]` | End | Explicit BFS -- same as default |
+| `visit : N : [-->]` | Position N | Custom insertion point |
+
+Out-of-bounds indices fall back to appending at the end.
 
 ### 4 The `report` Statement
 
@@ -375,6 +384,10 @@ node DataNode {
 }
 
 walker DataCollector {
+    can start with Root entry {
+        visit [-->];
+    }
+
     can collect with DataNode entry {
         report here.value;  # Continues execution
         visit [-->];
@@ -419,6 +432,7 @@ walker MyWalker {
     }
     can collect with Item entry {
         report here.value;
+        visit [-->];
     }
 }
 
@@ -435,7 +449,6 @@ with entry {
     result = root spawn MyWalker(param=10);
 
     # Access results
-    print(result.returns);  # Return value
     print(result.reports);  # All reported values
 }
 ```
@@ -706,7 +719,7 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
-| `printgraph(root)` | Print graph for debugging |
+| `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
 ```jac
 node Person { has name: str; }
@@ -743,6 +756,42 @@ walker BFSWalker {
     }
 }
 ```
+
+### Traversal Semantics: Deferred Exits
+
+Walker traversal uses recursive post-order exit execution. Entry abilities execute immediately when entering a node, while **exit abilities are deferred** until all descendants are visited. This means exits execute in LIFO order (last visited node exits first), similar to function call stack unwinding.
+
+```jac
+node Step { has label: str; }
+
+walker Logger {
+    can start with Root entry {
+        visit [-->];  # Begin traversal from root
+    }
+
+    can enter with Step entry {
+        print(f"ENTER: {here.label}");
+        visit [-->];
+    }
+
+    can leave with Step exit {
+        print(f"EXIT: {here.label}");
+    }
+}
+
+# Setup: root -> A -> B -> C
+# root spawn Logger();
+#
+# Output:
+#   ENTER: A
+#   ENTER: B
+#   ENTER: C
+#   EXIT: C    ← innermost exits first
+#   EXIT: B
+#   EXIT: A    ← outermost exits last
+```
+
+This is useful for aggregation patterns where you need to collect results from children before processing the parent (e.g., calculating subtree totals, building trees bottom-up).
 
 ### 2 Filtered Traversal
 
@@ -1036,7 +1085,7 @@ walker:priv SearchItems {
 
 ```
 walker:priv GetTree {
-    can build_tree(node: any) -> dict {
+    def build_tree(node: any) -> dict {
         children = [];
         for child in [node -->] {
             children.append(self.build_tree(child));

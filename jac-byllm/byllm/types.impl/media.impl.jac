@@ -185,9 +185,7 @@ impl Video.load_frames -> None {
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT));
     target_fps = self.fps;
     source_fps = video.get(cv2.CAP_PROP_FPS);
-    frames_to_skip = (
-        int(source_fps / target_fps) - 1 if target_fps < source_fps else 1
-    );
+    frames_to_skip = int(source_fps / target_fps) - 1 if target_fps < source_fps else 1;
     curr_frame = 0;
     while curr_frame < total_frames - 1 {
         video.set(cv2.CAP_PROP_POS_FRAMES, curr_frame);

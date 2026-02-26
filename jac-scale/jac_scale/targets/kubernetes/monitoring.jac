@@ -38,11 +38,11 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         prometheus_name = f"{app_name}-prometheus";
         # Use the service port (80 on AWS LoadBalancer, container_port on local NodePort)
-        service_port = 80 if is_aws else self.k8s_config.container_port;
+        service_port = 80 if cluster_env == 'aws' else self.k8s_config.container_port;
 
         scrape_config = (
             "global:\n"
@@ -186,7 +186,7 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
@@ -510,7 +510,7 @@ class MonitoringDeployer {
         }
 
         # Service: NodePort locally, dedicated LoadBalancer (NLB) on AWS
-        if is_aws {
+        if cluster_env == 'aws' {
             grafana_service = {
                 'apiVersion': 'v1',
                 'kind': 'Service',
@@ -567,7 +567,7 @@ class MonitoringDeployer {
         }
 
         if self.logger {
-            if is_aws {
+            if cluster_env == 'aws' {
                 self.logger.info(f"Grafana deployed for '{app_name}'");
             } else {
                 self.logger.info(
@@ -584,14 +584,14 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         if not self.k8s_config.monitoring_enabled {
             return;
         }
 
-        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, is_aws);
-        self._deploy_grafana(app_name, namespace, apps_v1, core_v1, is_aws);
+        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, cluster_env);
+        self._deploy_grafana(app_name, namespace, apps_v1, core_v1, cluster_env);
     }
 
     """Destroy all Prometheus and Grafana resources for an app namespace."""

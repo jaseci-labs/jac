@@ -49,12 +49,49 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.has_native_code = True;
 }
 
+"""Forward-declare a C library extern function with value types for clib structs."""
+impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
+    if not isinstance(nd, uni.Ability) {
+        return;
+    }
+    if nd.signature is None or not isinstance(nd.signature, uni.FuncSignature) {
+        return;
+    }
+    name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
+    sig = nd.signature;
+    # Build parameter types -- value types for clib structs
+    param_types: list[ir.Type] = [];
+    for p in sig.get_parameters() {
+        if p.type_tag and p.type_tag.tag {
+            param_types.append(self._resolve_clib_type(p.type_tag.tag));
+        } else {
+            param_types.append(ir.IntType(64));
+        }
+    }
+    # Return type -- value type for clib structs
+    ret_type = self._resolve_clib_type(sig.return_type);
+    # Create function
+    fnty = ir.FunctionType(ret_type, param_types);
+    func = ir.Function(self.llvm_module, fnty, name=name);
+    # Name the parameters
+    for (i, p) in enumerate(sig.get_parameters()) {
+        func.args[i].name = p.name.value if p.name else f"arg{i}";
+    }
+    self.func_symtab[name] = func;
+    self.has_native_code = True;
+}
+
 # ─── Ability (Function Definition) — Manual Codegen ──────────
 """Generate LLVM IR for a complete function definition."""
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
     func = self.func_symtab.get(name);
     if func is None {
+        return;
+    }
+    # C library externs: keep as LLVM 'declare' (no body).
+    # MCJIT resolves them from loaded shared libraries.
+    if name in self.clib_extern_names {
         return;
     }
     # Create entry block
@@ -128,6 +165,12 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     # Initialize global variables that have complex initializers (dicts, lists, etc.)
+    # After init, register pointer globals as GC roots so Boehm GC doesn't collect them.
+    # MCJIT global variables live outside the GC's scanned memory regions.
+    i8_ptr = ir.IntType(8).as_pointer();
+    gc_add_roots = self._get_or_declare_extern(
+        "GC_add_roots", ir.VoidType(), [i8_ptr, i8_ptr]
+    );
     if self?._global_init_nodes and self._global_init_nodes {
         for init_tuple in self._global_init_nodes {
             var_name = init_tuple[0];
@@ -139,6 +182,18 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
                 if global_var is not None {
                     coerced = self._coerce_type(init_val, var_type);
                     self.builder.store(coerced, global_var);
+                    # Register pointer globals as GC roots
+                    if isinstance(var_type, ir.PointerType) {
+                        root_lo = self.builder.bitcast(global_var, i8_ptr, name="gc.lo");
+                        # high = low + sizeof(pointer)
+                        one_past = self.builder.gep(
+                            global_var,
+                            [ir.Constant(ir.IntType(32), 1)],
+                            name="gc.hi.gep"
+                        );
+                        root_hi = self.builder.bitcast(one_past, i8_ptr, name="gc.hi");
+                        self.builder.call(gc_add_roots, [root_lo, root_hi]);
+                    }
                 }
             }
         }

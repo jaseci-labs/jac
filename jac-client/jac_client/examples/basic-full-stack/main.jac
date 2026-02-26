@@ -64,8 +64,8 @@ cl {
                     "done": not todo.done,
                     "id": todo.id
                 }
-                if todo._jac_id == id
-                else todo for todo in todos
+                    if todo._jac_id == id
+                    else todo for todo in todos
             ];
         }
 
@@ -264,72 +264,76 @@ cl {
                         >
                             {(
                                 "No todos yet. Add one above!"
-                                if filter == "all"
-                                else (
-                                    "No active todos!"
-                                    if filter == "active"
-                                    else "No completed todos!"
-                                )
+                                    if filter == "all"
+                                    else (
+                                        "No active todos!"
+                                            if filter == "active"
+                                            else "No completed todos!"
+                                    )
                             )}
                         </div>
                     )
-                    if len(filteredTodos) == 0
-                    else (
-                        [
-                            <div
-                                key={todo._jac_id}
-                                style={{
-                                    "display": "flex",
-                                    "alignItems": "center",
-                                    "gap": "12px",
-                                    "padding": "16px",
-                                    "borderBottom": "1px solid #e5e7eb",
-                                    "transition": "background 0.2s"
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={todo.done}
-                                    onChange={lambda -> None { toggleTodo(todo._jac_id);}}
+                        if len(filteredTodos) == 0
+                        else (
+                            [
+                                <div
+                                    key={todo._jac_id}
                                     style={{
-                                        "width": "20px",
-                                        "height": "20px",
-                                        "cursor": "pointer"
-                                    }}
-                                />
-                                <span
-                                    style={{
-                                        "flex": "1",
-                                        "textDecoration": (
-                                            "line-through" if todo.done else "none"
-                                        ),
-                                        "color": (
-                                            "#9ca3af" if todo.done else "#1f2937"
-                                        ),
-                                        "fontSize": "16px"
-                                    }}
-                                >
-                                    {todo.text}
-                                </span>
-                                <button
-                                    onClick={lambda -> None { deleteTodo(todo.__jac_id);}}
-                                    style={{
-                                        "padding": "6px 12px",
-                                        "background": "#ef4444",
-                                        "color": "#ffffff",
-                                        "border": "none",
-                                        "borderRadius": "6px",
-                                        "fontSize": "14px",
-                                        "fontWeight": "500",
-                                        "cursor": "pointer",
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "gap": "12px",
+                                        "padding": "16px",
+                                        "borderBottom": "1px solid #e5e7eb",
                                         "transition": "background 0.2s"
                                     }}
                                 >
-                                    Delete
-                                </button>
-                            </div> for todo in filteredTodos
-                        ]
-                    )}
+                                    <input
+                                        type="checkbox"
+                                        checked={todo.done}
+                                        onChange={lambda -> None { toggleTodo(
+                                            todo._jac_id
+                                        );}}
+                                        style={{
+                                            "width": "20px",
+                                            "height": "20px",
+                                            "cursor": "pointer"
+                                        }}
+                                    />
+                                    <span
+                                        style={{
+                                            "flex": "1",
+                                            "textDecoration": (
+                                                "line-through" if todo.done else "none"
+                                            ),
+                                            "color": (
+                                                "#9ca3af" if todo.done else "#1f2937"
+                                            ),
+                                            "fontSize": "16px"
+                                        }}
+                                    >
+                                        {todo.text}
+                                    </span>
+                                    <button
+                                        onClick={lambda -> None { deleteTodo(
+                                            todo.__jac_id
+                                        );}}
+                                        style={{
+                                            "padding": "6px 12px",
+                                            "background": "#ef4444",
+                                            "color": "#ffffff",
+                                            "border": "none",
+                                            "borderRadius": "6px",
+                                            "fontSize": "14px",
+                                            "fontWeight": "500",
+                                            "cursor": "pointer",
+                                            "transition": "background 0.2s"
+                                        }}
+                                    >
+                                        Delete
+                                    </button>
+                                </div> for todo in filteredTodos
+                            ]
+                        )}
                 </div>
                 # Stats and clear completed button
                 {(
@@ -365,12 +369,14 @@ cl {
                                 Clear Completed
                             </button>
                         )
-                        if todos.some(lambda todo: any  -> bool { return todo.done; })
-                        else None}
+                            if todos.some(
+                                lambda todo: any  -> bool { return todo.done; }
+                            )
+                            else None}
                     </div>
                 )
-                if len(todos) > 0
-                else None}
+                    if len(todos) > 0
+                    else None}
             </div>;
     }
 }

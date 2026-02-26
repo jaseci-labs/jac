@@ -60,8 +60,8 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 # Extract element type from list type name
                 # e.g., %"List.ptr" -> "ptr", %"List.i64" -> "i64"
                 elem_type = ret_type_name[7:-1]
-                if ret_type_name.endswith("\"")
-                else ret_type_name[7:];
+                    if ret_type_name.endswith("\"")
+                    else ret_type_name[7:];
                 self._list_type_hint = elem_type;
             }
             # Check if return type is a dict with JacVal values (dict[str, any])
@@ -172,8 +172,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     # 2. From field target: self.field = [] where field has known list type
     if self._list_type_hint is None {
         check_targets = nd.target
-        if isinstance(nd.target, (list, tuple))
-        else [(nd.target)];
+            if isinstance(nd.target, (list, tuple))
+            else [(nd.target)];
         for ct in check_targets {
             if isinstance(ct, uni.AtomTrailer) and ct.is_attr {
                 ct_target_name = self._get_name(ct.target);

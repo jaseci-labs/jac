@@ -11,23 +11,15 @@ description = "Complete all-in-one example with authentication and UI components
 [serve]
 base_route_app = "app"
 
-[plugins.client]
-# Vite bundler configuration (optional overrides)
-# vite.plugins = []
-# vite.build = {}
-
 [plugins.client.app_meta_data]
 title = "All-In-One"
 icon = ".assets/burger.png"
 author = "Jaseci"
-# meta_color_scheme = "dark"
 
 [plugins.client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
-# Build-time constants (alternative to .env for when import.meta.env doesn't work)
-# These are injected at build time and available as global variables
 [plugins.client.vite.define]
 "globalThis.APP_BUILD_TIME" = "2024-01-01T00:00:00Z"
 "globalThis.FEATURE_ENABLED" = true
@@ -35,9 +27,27 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+
+[plugins.scale.secrets]
+TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
+
+[plugins.scale.monitoring]
+enabled = true
+namespace = "default"
+walker_metrics = true
+
+[plugins.scale.admin]
+enabled = true
+username = "admin"
+default_password = "admin123"
+require_password_reset = true
+
 [dependencies.npm]
 antd = "^6.0.0"
-"jac-client-node" = "1.0.4"
+jac-client-node = "1.0.4"
 recharts = "latest"
 tailwindcss = "latest"
 
@@ -46,20 +56,5 @@ tailwindcss = "latest"
 "@tailwindcss/vite" = "^4.1.17"
 
 [environments.response.headers]
-"Cross-Origin-Opener-Policy" = "same-origin"
-"Cross-Origin-Embedder-Policy" = "require-corp"
-
-[plugins.client.pwa]
-theme_color = "#000000"
-background_color = "#ffffff"
-# cache_name = "jac-pwa-cache-v1"
-# [plugins.client.pwa.manifest]
-# name = "My App"
-# short_name = "App"
-[plugins.scale.secrets]
-TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
-
-[plugins.scale.monitoring]
-enabled = true
-namespace = "default"
-walker_metrics = true
+Cross-Origin-Opener-Policy = "same-origin"
+Cross-Origin-Embedder-Policy = "require-corp"

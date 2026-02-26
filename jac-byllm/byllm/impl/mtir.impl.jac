@@ -236,16 +236,16 @@ impl MTRuntime.get_tool_list -> list[dict] {
 
 """Return the JSON schema for the response type, if applicable."""
 impl MTRuntime.get_output_schema -> dict | None {
-    assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
+    assert (
+        len(self.tools) == 0 or self.get_tool("finish_tool") is not None
+    );  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {
             return None;  # Strings are default and not using a schema.
 
         }
         # Use MTIR info if available, otherwise None (Python library mode)
-        return_type_info = (
-            self.mtir.ir_info.return_type if self.mtir.ir_info else None
-        );
+        return_type_info = self.mtir.ir_info.return_type if self.mtir.ir_info else None;
         return type_to_schema(resp_type=self.resp_type, info=return_type_info);
     }
     # If the are tools, the final output will be sent to the finish_tool

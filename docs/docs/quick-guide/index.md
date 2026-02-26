@@ -35,7 +35,7 @@ cl def:pub app() -> JsxElement {
 
 This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend. No database setup. No prompt engineering. No separate frontend project. Just Jac.
 
-??? info "You can actaully run this example"
+??? info "You can actually run this example"
     Save the code above as `main.jac`, then create a `jac.toml` in the same directory:
 
     ```toml

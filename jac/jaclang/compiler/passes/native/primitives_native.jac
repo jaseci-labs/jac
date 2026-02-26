@@ -43,9 +43,7 @@ class NativeEmitCtx {
 # =============================================================================
 #  Numeric Types
 # =============================================================================
-class NativeIntEmitter(IntEmitter[
-    (ir.Value, NativeEmitCtx)
-]) {
+class NativeIntEmitter(IntEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_bit_length(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
@@ -210,9 +208,7 @@ class NativeComplexEmitter(ComplexEmitter[(ir.Value, NativeEmitCtx)]) {
 # =============================================================================
 #  String Types
 # =============================================================================
-class NativeStrEmitter(StrEmitter[
-    (ir.Value, NativeEmitCtx)
-]) {
+class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
     # Case conversion
     def emit_capitalize(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
@@ -437,14 +433,10 @@ class NativeStrEmitter(StrEmitter[
         ch = b.load(src_ptr, name="swap.ch");
         ch_i32 = b.zext(ch, i32, name="swap.ch.i32");
         is_low = b.call(islower_fn, [ch_i32], name="swap.islow");
-        is_low_bool = b.icmp_signed(
-            "!=", is_low, ir.Constant(i32, 0), name="swap.islo"
-        );
+        is_low_bool = b.icmp_signed("!=", is_low, ir.Constant(i32, 0), name="swap.islo");
         upper_ch = b.call(toupper_fn, [ch_i32], name="swap.upper");
         is_up = b.call(isupper_fn, [ch_i32], name="swap.isup");
-        is_up_bool = b.icmp_signed(
-            "!=", is_up, ir.Constant(i32, 0), name="swap.isup.b"
-        );
+        is_up_bool = b.icmp_signed("!=", is_up, ir.Constant(i32, 0), name="swap.isup.b");
         lower_ch = b.call(tolower_fn, [ch_i32], name="swap.lower");
         # If lower -> use upper, elif upper -> use lower, else keep original
         pick1 = b.select(is_up_bool, lower_ch, ch_i32, name="swap.pick1");
@@ -2217,9 +2209,7 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
 # =============================================================================
 #  Collection Types
 # =============================================================================
-class NativeListEmitter(ListEmitter[
-    (ir.Value, NativeEmitCtx)
-]) {
+class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_append(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
@@ -3861,9 +3851,7 @@ class NativeRangeEmitter(RangeEmitter[(ir.Value, NativeEmitCtx)]) {
 # =============================================================================
 #  Builtin Functions
 # =============================================================================
-class NativeBuiltinEmitter(BuiltinEmitter[
-    (ir.Value, NativeEmitCtx)
-]) {
+class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_print(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
         return None;
     }
@@ -4040,9 +4028,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[
         str_ptr = b.call(gc_malloc, [ir.Constant(ir.IntType(64), 2)], name="chr.buf");
         byte_val = b.trunc(arg_val, ir.IntType(8), name="chr.byte");
         b.store(byte_val, str_ptr);
-        idx1_ptr = b.gep(
-            str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr"
-        );
+        idx1_ptr = b.gep(str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr");
         b.store(ir.Constant(ir.IntType(8), 0), idx1_ptr);
         return str_ptr;
     }
@@ -4081,9 +4067,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[
         fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="hex.fmt.pos");
         fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="hex.fmt.neg");
         fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="hex.fmt");
-        b.call(
-            snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf"
-        );
+        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf");
         return buf;
     }
 
@@ -4110,9 +4094,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[
         fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="oct.fmt.pos");
         fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="oct.fmt.neg");
         fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="oct.fmt");
-        b.call(
-            snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf"
-        );
+        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf");
         return buf;
     }
 
@@ -4150,9 +4132,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[
         b.position_at_start(zero_bb);
         fmt_zero = p._get_snprintf_fmt("0b0");
         fmt_zero_ptr = b.bitcast(fmt_zero, i8p, name="bin.fmt.zero");
-        b.call(
-            snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp"
-        );
+        b.call(snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp");
         b.branch(done_bb);
         # Write prefix: "-0b" or "0b"
         b.position_at_start(prefix_bb);
@@ -4240,7 +4220,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[
         if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
             return p._codegen_int_pow(base, exp);
         }
-        if isinstance(base.type, ir.DoubleType) and isinstance(exp.type, ir.DoubleType) {
+        if isinstance(base.type, ir.DoubleType)
+        and isinstance(exp.type, ir.DoubleType) {
             pow_fn = p._get_or_declare_extern(
                 "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
             );

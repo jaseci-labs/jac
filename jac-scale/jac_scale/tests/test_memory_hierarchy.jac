@@ -121,10 +121,11 @@ test "read and write" {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
     }
 
-    # Clean up session file from previous runs
-    session_file = FIXTURES_DIR / ".jac" / "data" / "todo_app.session.users.json";
-    if session_file.exists() {
-        os.remove(session_file);
+    # Clean up data files from previous runs
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
     }
 
     # Start Redis container
@@ -159,19 +160,19 @@ test "read and write" {
 
     try {
         db = mongo_client["jac_db"];
-        collection = db["anchors"];
+        collection = db["_anchors"];
 
         mongo_doc_initial_count = collection.count_documents({});
-        assert mongo_doc_initial_count == 2 , (
-            "Initial docs should be 2 (super root, guest_user)"
+        assert mongo_doc_initial_count == 3 , (
+            "Initial docs should be 3 (super root, guest_user, admin)"
         );
 
         # Register a user
         token = register_user(base_url, "reader", "pass123");
 
         mongo_doc_after_user_creation_count = collection.count_documents({});
-        assert mongo_doc_after_user_creation_count == 3 , (
-            "After user creation docs should be 3 (super root, guest_user, created user)"
+        assert mongo_doc_after_user_creation_count == 4 , (
+            "After user creation docs should be 4 (super root, guest_user, admin, created user)"
         );
 
         redis_size_before_task_creation = redis_client.dbsize();
@@ -189,8 +190,8 @@ test "read and write" {
         }
 
         mongo_doc_count_after_task_creation = collection.count_documents({});
-        assert mongo_doc_count_after_task_creation == 7 , (
-            "After task creation docs should be 7 (prev 3 + 2 anchors per task)"
+        assert mongo_doc_count_after_task_creation == 8 , (
+            "After task creation docs should be 8 (prev 4 + 2 anchors per task)"
         );
 
         assert redis_size_after_task_creation == redis_size_before_task_creation;
@@ -198,8 +199,8 @@ test "read and write" {
         post_request(base_url, "/walker/GetAllTasks", {}, token);
 
         redis_size_after_task_read = redis_client.dbsize();
-        assert redis_size_after_task_read == 7 , (
-            "Redis should have 7 entries (super root, guest user, user, 2 task nodes, 2 edges)"
+        assert redis_size_after_task_read == 8 , (
+            "Redis should have 8 entries (super root, guest user, admin, user, 2 task nodes, 2 edges)"
         );
     } finally {
         # Teardown
@@ -223,9 +224,11 @@ test "read and write" {
         time.sleep(0.5);
         gc.collect();
 
-        session_file = FIXTURES_DIR / ".jac" / "data" / "todo_app.session.users.json";
-        if session_file.exists() {
-            os.remove(session_file);
+        # Clean up data files
+        data_dir = FIXTURES_DIR / ".jac" / "data";
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
         }
     }
 }

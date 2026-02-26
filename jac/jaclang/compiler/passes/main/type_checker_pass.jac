@@ -28,6 +28,8 @@ class TypeCheckPass(UniPass) {
     def exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None;
     def exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None;
     def exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None;
+    def enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None;
+    def exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None;
     def exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None;
     def exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -> None;
     def exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None;

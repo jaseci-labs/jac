@@ -200,11 +200,11 @@ def print_ast_tree(
     print_py_raise: bool = False;
     def __node_repr_in_tree(nd: UniNode) -> str {
         access = f"Access: {nd.access.tag.value} ,"
-        if (isinstance(nd, uni.AstAccessNode) and (nd.access is not None))
-        else '';
+            if (isinstance(nd, uni.AstAccessNode) and (nd.access is not None))
+            else '';
         sym_table_link = f"SymbolTable: {nd.type_sym_tab.scope_name}"
-        if (isinstance(nd, AstSymbolNode) and nd.type_sym_tab)
-        else 'SymbolTable: None' if isinstance(nd, AstSymbolNode) else '';
+            if (isinstance(nd, AstSymbolNode) and nd.type_sym_tab)
+            else 'SymbolTable: None' if isinstance(nd, AstSymbolNode) else '';
         if (isinstance(nd, Token) and isinstance(nd, AstSymbolNode)) {
             out = f"{nd.__class__.__name__} - {nd.value} - Type: {nd.expr_type}, {access} {sym_table_link}";
             return out;
@@ -216,8 +216,8 @@ def print_ast_tree(
             return f"{nd.__class__.__name__} - PythonModuleRaised: {nd.name}";
         } elif isinstance(nd, uni.ModuleItem) {
             name_str = nd.name.sym_name
-            if isinstance(nd.name, uni.Name)
-            else nd.name.value;
+                if isinstance(nd.name, uni.Name)
+                else nd.name.value;
             out = f"{nd.__class__.__name__} - {name_str} - abs_path: {nd.abs_path}";
             return out;
         } elif isinstance(nd, uni.ModulePath) {
@@ -239,7 +239,9 @@ def print_ast_tree(
             return f"{nd.__class__.__name__} - {nd.value!r}";
         } elif isinstance(nd, ast3.Name) {
             return f"{nd.__class__.__name__} - {nd.id}";
-        } elif isinstance(nd, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef) {
+        } elif isinstance(
+            nd, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef
+        ) {
             return f"{nd.__class__.__name__} - {nd.name}";
         } elif isinstance(nd, ast3.Import) {
             return f"{nd.__class__.__name__} - {', '.join(
@@ -269,8 +271,8 @@ def print_ast_tree(
         if (nd?.lineno and nd?.col_offset and nd?.end_lineno and nd?.end_col_offset) {
             start_pos = f"{nd.lineno}:{(nd.col_offset + 1)}";
             end_pos = f"{nd.end_lineno}:{(nd.end_col_offset + 1)
-            if nd.end_col_offset
-            else nd.col_offset}";
+                if nd.end_col_offset
+                else nd.col_offset}";
             prefix = f"{start_pos} - {end_pos}";
             return prefix;
         }
@@ -431,8 +433,8 @@ def get_symtab_tree_str(
                 for draw in level_markers[:-1]
             ]
         ) + marker
-        if level_markers
-        else ''
+            if level_markers
+            else ''
     );
     line = f"{markers}{root.name}\n";
     if output_file {

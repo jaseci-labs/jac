@@ -313,6 +313,8 @@ node Ticket {
 def analyze_priority(title: str, description: str) -> Priority by llm();
 
 walker PrioritizeTickets {
+    can with Root entry { visit [-->]; }
+
     can prioritize with Ticket entry {
         here.priority = analyze_priority(here.title, here.description);
         report here;

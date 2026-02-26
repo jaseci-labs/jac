@@ -58,7 +58,9 @@ def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
         sys.stderr = old_stderr;
     }
 
-    match_result = re.search(r"Checked (\d+)", stdout + stderr);
+    combined = stdout + stderr;
+    # New format: "=== N passed in X.XXs ==="
+    match_result = re.search(r"(\d+) passed", combined);
     return int(match_result.group(1)) if match_result else 0;
 }
 
@@ -365,7 +367,7 @@ test "del clean" {
         sys.stdout = old_stdout;
     }
     stdout_value = captured.getvalue();
-    assert "0 errors, 0 warnings" in stdout_value;
+    assert "passed" in stdout_value;
 }
 
 test "run test" {
@@ -523,7 +525,9 @@ test "param arg" {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
         py_code = JacProgram().compile(file_path=filename).gen.py;
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as temp_file {
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as temp_file {
             temp_file.write(py_code);
             py_file_path = temp_file.name;
         }
@@ -532,7 +536,9 @@ test "param arg" {
             jac_code = (
                 JacProgram().compile(use_str=py_code, file_path=py_file_path).unparse()
             );
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_file {
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jac", delete=False
+            ) as temp_file {
                 temp_file.write(jac_code);
                 jac_file_path = temp_file.name;
             }
@@ -658,7 +664,9 @@ test "cli error exit codes" {
     assert result == 1 , "check command should exit with code 1 on type check error";
 
     # Test format command with file that needs changes
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_file {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False
+    ) as temp_file {
         temp_file.write('with entry{print("hello");}');
         temp_path = temp_file.name;
     }

@@ -9,13 +9,14 @@ implementations in jaclang.runtimelib.memory:
 ScaleTieredMemory extends TieredMemory by swapping in these backends.
 Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 """
+import json;
 import logging;
+import redis;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
-import from typing { Any }
+import from typing { Any, cast }
 import from uuid { UUID }
-import redis;
-import from pymongo { MongoClient }
+import from pymongo { MongoClient, UpdateOne }
 import from pymongo.errors { ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
@@ -25,18 +26,22 @@ import from jaclang.runtimelib.memory {
     SqliteMemory
 }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
+import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
 
-# Load database configuration from jac.toml with env var overrides
-glob _db_config = get_scale_config().get_database_config(),
-     logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__);
+
+"""Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
+def _get_db_config -> dict {
+    return get_scale_config().get_database_config();
+}
 
 """
 Redis cache backend - implements CacheMemory for distributed L2 caching.
 Replaces LocalCacheMemory when Redis is available.
 """
 obj RedisBackend(CacheMemory) {
-    has redis_url: str = _db_config['redis_url'],
+    has redis_url: (str | None) = None,
         redis_client: (redis.Redis | None) = None;
 
     def postinit -> None;
@@ -78,8 +83,8 @@ obj MongoBackend(PersistentMemory) {
         db: Any by postinit,
         collection: Any by postinit,
         db_name: str = 'jac_db',
-        collection_name: str = 'anchors',
-        mongo_url: str = _db_config['mongodb_uri'];
+        collection_name: str = '_anchors',
+        mongo_url: (str | None) = None;
 
     def postinit -> None;
     def is_available -> bool;

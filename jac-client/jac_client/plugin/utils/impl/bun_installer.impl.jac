@@ -85,9 +85,7 @@ impl prompt_install_bun -> bool {
         console.error("  ✖ Installation timed out.");
         return False;
     } except FileNotFoundError {
-        console.error(
-            "  ✖ curl not found. Please install Bun manually: https://bun.sh"
-        );
+        console.error("  ✖ curl not found. Please install Bun manually: https://bun.sh");
         return False;
     } except Exception as e {
         console.error(f"  ✖ Installation failed: {e}");

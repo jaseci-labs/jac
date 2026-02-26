@@ -97,5 +97,7 @@ class JServer(ABC, Generic[T]) {
 
     """Run the server on the specified host and port."""
     @abstractmethod
-    def run_server(self: JServer, host: str = 'localhost', port: int = 8000) -> None { }
+    def run_server(
+        self: JServer, host: str = 'localhost', port: int = 8000
+    ) -> None { }
 }

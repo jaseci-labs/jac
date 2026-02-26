@@ -520,7 +520,11 @@ test "fstring with expressions" {
     try {
         js_code = compile_fixture_to_js(temp_path);
 
-        for pattern in ["function calculate_message", "function conditional_message", ] {
+        for pattern in [
+            "function calculate_message",
+            "function conditional_message",
+
+        ] {
             assert pattern in js_code;
         }
 
@@ -553,7 +557,15 @@ test "fstring advanced fixture template literals" {
 
     assert "function template_literal_examples" in js_code;
     assert js_code.count("`") >= 2;
-    for pattern in ["${", "${user}", "${score}", "${status}", "scored", "which is a", ] {
+    for pattern in [
+        "${",
+        "${user}",
+        "${score}",
+        "${status}",
+        "scored",
+        "which is a",
+
+    ] {
         assert pattern in js_code;
     }
 }
@@ -856,9 +868,7 @@ test "compr set basic" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
-    assert "new Set(" in js_code , (
-        "Set comprehension should wrap result in new Set()"
-    );
+    assert "new Set(" in js_code , ("Set comprehension should wrap result in new Set()");
     assert "new Set(items.map(" in js_code , (
         "Set comprehension should be new Set(items.map(...))"
     );
