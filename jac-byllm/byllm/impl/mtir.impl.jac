@@ -213,8 +213,15 @@ impl MTRuntime.parse_response(response: str) -> object {
         return response;
     }
     if self.resp_type {
-        json_dict = json.loads(response);
-        return json_to_instance(json_dict, self.resp_type);
+        resp_type = self.resp_type;
+        try {
+            json_dict = json.loads(response);
+            return json_to_instance(json_dict, resp_type);
+        } except Exception {
+            # LLM returned non-JSON (e.g. plain text instead of calling finish_tool).
+            # Return the raw string so the invoke loop can attempt recovery.
+            return response;
+        }
     }
     return response;
 }
