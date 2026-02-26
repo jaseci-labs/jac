@@ -1,32 +1,74 @@
-name: Create Releases from Specific Subdirectories
+name: Create GitHub Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (reads from jaseci pyproject.toml if empty)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  create-github-releases:
+  create-release:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-    - name: Create Releases for Specific Subdirectories
-      run: |
-        # List of subdirectories for which releases need to be created
-        subdirs=("jac" "jac-byllm")
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-        for dir in "${subdirs[@]}"; do
-          # Extract the directory name as the release name
-          release_name=$(basename "$dir")
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(python3 -c "
+          import tomllib
+          with open('jaseci-package/pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
 
-          # Get the latest commit hash for this subdirectory
-          release_version=$(git log -n 1 --format=%h -- "$dir")
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v${{ steps.version.outputs.version }} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          # Create a release for the subdirectory with the release version (commit hash)
-          gh release create "$release_name-$release_version" "$dir/*" --title "$release_name" --notes "Release for $release_name version $release_version"
-        done
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "Jaseci v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest
+          echo "Created release v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "## Release v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "Release already existed — no action taken." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "GitHub Release created. Standalone binary build will be triggered automatically." >> "$GITHUB_STEP_SUMMARY"
+          fi

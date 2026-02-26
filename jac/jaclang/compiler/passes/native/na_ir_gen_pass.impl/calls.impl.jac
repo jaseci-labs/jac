@@ -180,9 +180,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.cbranch(is_eof, eof_bb, ok_bb);
         # EOF path: return empty string
         self.builder.position_at_start(eof_bb);
-        gc_malloc_eof = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
         eof_str = self.builder.call(
-            gc_malloc_eof, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
+            self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
         );
         self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
         self.builder.branch(merge_bb);
@@ -192,12 +191,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
         strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
         slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
-        # Copy to GC-allocated string
-        gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
+        # Copy to RC-managed string
         alloc_size = self.builder.add(
             slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
         );
-        result_ptr = self.builder.call(gc_malloc, [alloc_size], name="input.result");
+        result_ptr = self.builder.call(
+            self.rc_alloc_fn, [alloc_size], name="input.result"
+        );
         memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
         self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
         # Strip trailing newline if present (only if slen > 0)

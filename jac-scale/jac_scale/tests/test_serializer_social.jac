@@ -7,6 +7,8 @@ import from jac_scale.lib { kvstore }
 import from jac_scale.db { close_all_db_connections }
 import from jac_scale.config_loader { reset_scale_config }
 import from testcontainers.mongodb { MongoDbContainer }
+import from uuid { uuid4 }
+import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor }
 
 def cleanup_connections {
     with contextlib.suppress(Exception) {
@@ -74,4 +76,50 @@ test "find_nodes queries persisted graph with BuildGraph" {
     # Cleanup
     db._get_mongo_collection('_anchors').drop();
     cleanup_connections();
+}
+
+test "_id_to_stub creates valid stubs" {
+    # NodeAnchor stub
+    node_id = uuid4();
+    node_stub = Serializer._id_to_stub(NodeAnchor, str(node_id));
+    assert node_stub.id == node_id and not node_stub.is_populated();
+
+    # EdgeAnchor stub
+    edge_id = uuid4();
+    edge_stub = Serializer._id_to_stub(EdgeAnchor, str(edge_id));
+    assert edge_stub.id == edge_id and not edge_stub.is_populated();
+
+    # Invalid UUID returns None
+    assert Serializer._id_to_stub(NodeAnchor, "bad-uuid") is None;
+}
+
+test "NodeAnchor edges restored as lazy stubs" {
+    edge_ids = [uuid4(), uuid4(), uuid4()];
+    anchor = Serializer._deserialize_anchor(
+        {
+            '__type__': 'NodeAnchor',
+            'id': str(uuid4()),
+            'root': str(uuid4()),
+            'edges': [str(e) for e in edge_ids]
+        }
+    );
+    assert len(anchor.edges) == 3;
+    for (i, edge) in enumerate(anchor.edges) {
+        assert edge.id == edge_ids[i] and not edge.is_populated();
+    }
+}
+
+test "EdgeAnchor source/target restored as lazy stubs" {
+    src_id = uuid4();
+    tgt_id = uuid4();
+    anchor = Serializer._deserialize_anchor(
+        {
+            '__type__': 'EdgeAnchor',
+            'id': str(uuid4()),
+            'source': str(src_id),
+            'target': str(tgt_id)
+        }
+    );
+    assert anchor.source.id == src_id and not anchor.source.is_populated();
+    assert anchor.target.id == tgt_id and not anchor.target.is_populated();
 }
