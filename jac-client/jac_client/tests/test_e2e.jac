@@ -17,9 +17,7 @@ import from .test_helpers {
 }
 
 # ---- Helper functions (replacing fixtures) ----
-def _fill_auth_form(
-    page: Page, username: str, password: str
-) -> None {
+def _fill_auth_form(page: Page, username: str, password: str) -> None {
     """Fill username and password fields."""
     page.locator('input[type="text"], input[placeholder="Username" i]').first.fill(
         username

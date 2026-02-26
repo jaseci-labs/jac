@@ -53,11 +53,7 @@ cl {
                                 "py": 3
                             }}
                         >
-                            <Typography
-                                variant="h6"
-                                color="text.secondary"
-                                gutterBottom
-                            >
+                            <Typography variant="h6" color="text.secondary" gutterBottom>
                                 Current Count
                             </Typography>
                             <Typography
@@ -66,8 +62,10 @@ cl {
                                 sx={{
                                     "fontWeight": "bold",
                                     "color": "success.main"
-                                    if count > 0
-                                    else "error.main" if count < 0 else "text.primary"
+                                        if count > 0
+                                        else "error.main"
+                                            if count < 0
+                                            else "text.primary"
                                 }}
                             >
                                 {count}

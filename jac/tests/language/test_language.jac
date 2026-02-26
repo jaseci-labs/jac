@@ -585,7 +585,9 @@ test "dynamic archetype creation" {
 }
 
 test "dynamic archetype creation rel import" {
-    lines = run_jac(os.path.join(FIXTURES, "arch_rel_import_creation.jac")).strip().splitlines();
+    lines = run_jac(
+        os.path.join(FIXTURES, "arch_rel_import_creation.jac")
+    ).strip().splitlines();
     for val in ["DynamicWalker Started", "UtilityNode Data: 42"] {
         assert val in lines;
     }

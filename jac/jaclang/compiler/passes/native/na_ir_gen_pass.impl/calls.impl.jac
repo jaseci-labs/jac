@@ -37,7 +37,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 # Check for dict type by inferring from value
                 for (dict_key, helpers) in self.dict_helpers.items() {
                     dict_type = self.dict_types.get(dict_key);
-                    if dict_type is not None and arg_val.type == dict_type.as_pointer() {
+                    if dict_type is not None
+                    and arg_val.type == dict_type.as_pointer() {
                         return self.builder.call(
                             helpers["len"], [arg_val], name="dict.len"
                         );

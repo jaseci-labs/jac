@@ -179,7 +179,8 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
             ability_node.decorators = new_decorators or None;
         }
     }
-    if self.is_rule_enabled(LintRule.STATICMETHOD_TO_STATIC) and ability_node.is_static {
+    if self.is_rule_enabled(LintRule.STATICMETHOD_TO_STATIC)
+    and ability_node.is_static {
         self._remove_staticmethod_from_kids(ability_node);
     }
     if self.is_rule_enabled(LintRule.COMBINE_HAS)
@@ -372,7 +373,8 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                     break;
                 }
             }
-            if len(merged_globs) > 1 {
+            all_single = all(len(g.assignments) == 1 for g in merged_globs);
+            if len(merged_globs) > 1 and all_single {
                 self.log_error(
                     "Consecutive 'glob' declarations can be combined [combine-glob]",
                     node_override=base_glob
@@ -404,7 +406,9 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                 base_glob.set_kids(nodes=new_kid);
                 new_body.append(base_glob);
             } else {
-                new_body.append(stmt);
+                for g in merged_globs {
+                    new_body.append(g);
+                }
             }
             i = j;
         } else {
@@ -756,7 +760,8 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
         attr_value = attr_expr.value;
         string_node = attr_expr;
     } elif isinstance(attr_expr, uni.MultiString) {
-        if len(attr_expr.strings) == 1 and isinstance(attr_expr.strings[0], uni.String) {
+        if len(attr_expr.strings) == 1
+        and isinstance(attr_expr.strings[0], uni.String) {
             attr_value = attr_expr.strings[0].value;
             string_node = attr_expr.strings[0];
         }

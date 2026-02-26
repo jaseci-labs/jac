@@ -114,10 +114,16 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     key_type = self._resolve_jac_type(key_node);
                     val_type = self._resolve_jac_type(val_node);
                     key_type_name = "i64";
+                    key_size = 0;
                     if isinstance(key_type, ir.DoubleType) {
                         key_type_name = "f64";
                     } elif isinstance(key_type, ir.PointerType) {
                         key_type_name = "ptr";
+                        # Check if key is a tuple (pointer to LiteralStructType)
+                        if isinstance(key_type.pointee, ir.LiteralStructType) {
+                            key_size = self._get_struct_size(key_type.pointee);
+                            key_type_name = f"tuple{key_size}";
+                        }
                     }
                     val_type_name = "i64";
                     if isinstance(val_type, ir.DoubleType) {
@@ -129,7 +135,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     }
                     dict_key = f"{key_type_name}:{val_type_name}";
                     self._emit_dict_helpers(
-                        key_type_name, val_type_name, key_type, val_type
+                        key_type_name, val_type_name, key_type, val_type, key_size
                     );
                     return self.dict_types[dict_key].as_pointer();
                 }
@@ -312,7 +318,8 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
         return self.builder.fpext(val, target_type, name="fpext");
     }
     # Pointer-to-pointer bitcast (e.g., different struct pointer types)
-    if isinstance(val.type, ir.PointerType) and isinstance(target_type, ir.PointerType) {
+    if isinstance(val.type, ir.PointerType)
+    and isinstance(target_type, ir.PointerType) {
         return self.builder.bitcast(val, target_type, name="ptrcast");
     }
     # Struct pointer → struct value (Jac pointer → C value at call boundary)
@@ -521,16 +528,12 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(
-                    helpers["len"], [right], name="lcat.rlen"
-                );
+                right_len = self.builder.call(helpers["len"], [right], name="lcat.rlen");
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(loop2_bb);
                 i2 = self.builder.phi(i64, name="lcat.i2");
                 i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(
-                    ">=", i2, right_len, name="lcat.end2"
-                );
+                end2 = self.builder.icmp_unsigned(">=", i2, right_len, name="lcat.end2");
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
@@ -697,7 +700,8 @@ impl NaIRGenPass._emit_comparison(
     op: str, left: ir.Value, right: ir.Value, is_float: bool
 ) -> (ir.Value | None) {
     # Pointer comparisons
-    if isinstance(left.type, ir.PointerType) and isinstance(right.type, ir.PointerType) {
+    if isinstance(left.type, ir.PointerType)
+    and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
         # String comparison: both operands must be i8* (char pointers)
         if left.type == i8_ptr and right.type == i8_ptr {

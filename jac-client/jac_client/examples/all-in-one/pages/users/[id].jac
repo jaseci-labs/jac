@@ -39,10 +39,7 @@ cl {
 
         return
             <div style={{"padding": "2rem"}}>
-                <Link
-                    to="/users"
-                    style={{"color": "#3b82f6", "textDecoration": "none"}}
-                >
+                <Link to="/users" style={{"color": "#3b82f6", "textDecoration": "none"}}>
                     ← Back to Users
                 </Link>
                 <h1 style={{"marginTop": "1rem"}}>

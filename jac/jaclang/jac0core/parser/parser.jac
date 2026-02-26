@@ -11,11 +11,7 @@ import from .tokens { Token, TokenKind, SourceLoc }
 import from .lexer { Lexer, LexerError }
 
 # Import unitree classes from Python
-import from jaclang.jac0core.unitree {
-    UniNode,
-    Token as UniToken,
-    Expr
-}
+import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
@@ -116,12 +112,7 @@ import from jaclang.jac0core.unitree {
     GenCompr,
     InnerCompr
 }
-import from jaclang.jac0core.unitree {
-    FString,
-    FormattedValue,
-    MultiString,
-    LambdaExpr
-}
+import from jaclang.jac0core.unitree { FString, FormattedValue, MultiString, LambdaExpr }
 import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }

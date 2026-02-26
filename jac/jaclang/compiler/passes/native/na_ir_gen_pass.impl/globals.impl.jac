@@ -23,8 +23,8 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     for assign in nd.assignments {
         targets = assign.target
-        if isinstance(assign.target, (list, tuple))
-        else [(assign.target)];
+            if isinstance(assign.target, (list, tuple))
+            else [(assign.target)];
         for target in targets {
             var_name = self._get_name(target);
             if var_name is None {

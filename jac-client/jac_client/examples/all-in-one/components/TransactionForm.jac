@@ -1,8 +1,6 @@
 # Transaction form component
 # Demonstrates: form handling, useState, events, select options
-cl import from ..context.BudgetContext {
-    useBudgetContext
-}
+cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS }
 cl import from ..constants.clients { CLIENTS }
 
@@ -60,8 +58,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if txType == "expense"
-                            else ("toggle-btn")}
+                                if txType == "expense"
+                                else ("toggle-btn")}
                             onClick={lambda : setTxType("expense")}
                         >
                             Expense
@@ -69,8 +67,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active income")
-                            if txType == "income"
-                            else ("toggle-btn")}
+                                if txType == "income"
+                                else ("toggle-btn")}
                             onClick={lambda : setTxType("income")}
                         >
                             Income
@@ -80,8 +78,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if isBusiness
-                            else ("toggle-btn")}
+                                if isBusiness
+                                else ("toggle-btn")}
                             onClick={lambda : setIsBusiness(true)}
                         >
                             Business
@@ -89,8 +87,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if not isBusiness
-                            else ("toggle-btn")}
+                                if not isBusiness
+                                else ("toggle-btn")}
                             onClick={lambda : setIsBusiness(false)}
                         >
                             Personal

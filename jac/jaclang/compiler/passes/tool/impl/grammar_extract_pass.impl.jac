@@ -3,9 +3,7 @@
 # =========================================================================
 # GExpr __eq__ / __repr__
 # =========================================================================
-impl GExpr.__eq__(
-    other: object
-) -> bool {
+impl GExpr.__eq__(other: object) -> bool {
     return type(self) == type(other);
 }
 
@@ -14,9 +12,7 @@ impl GExpr.__repr__ -> str {
 }
 
 # -- GSeq -----------------------------------------------------------------
-impl GSeq.__eq__(
-    other: object
-) -> bool {
+impl GSeq.__eq__(other: object) -> bool {
     return isinstance(other, GSeq) and self.items == other.items;
 }
 
@@ -25,9 +21,7 @@ impl GSeq.__repr__ -> str {
 }
 
 # -- GAlt -----------------------------------------------------------------
-impl GAlt.__eq__(
-    other: object
-) -> bool {
+impl GAlt.__eq__(other: object) -> bool {
     return isinstance(other, GAlt) and self.choices == other.choices;
 }
 
@@ -36,9 +30,7 @@ impl GAlt.__repr__ -> str {
 }
 
 # -- GOpt -----------------------------------------------------------------
-impl GOpt.__eq__(
-    other: object
-) -> bool {
+impl GOpt.__eq__(other: object) -> bool {
     return isinstance(other, GOpt) and self.inner == other.inner;
 }
 
@@ -47,9 +39,7 @@ impl GOpt.__repr__ -> str {
 }
 
 # -- GStar ----------------------------------------------------------------
-impl GStar.__eq__(
-    other: object
-) -> bool {
+impl GStar.__eq__(other: object) -> bool {
     return isinstance(other, GStar) and self.inner == other.inner;
 }
 
@@ -58,9 +48,7 @@ impl GStar.__repr__ -> str {
 }
 
 # -- GPlus ----------------------------------------------------------------
-impl GPlus.__eq__(
-    other: object
-) -> bool {
+impl GPlus.__eq__(other: object) -> bool {
     return isinstance(other, GPlus) and self.inner == other.inner;
 }
 
@@ -69,9 +57,7 @@ impl GPlus.__repr__ -> str {
 }
 
 # -- GTok -----------------------------------------------------------------
-impl GTok.__eq__(
-    other: object
-) -> bool {
+impl GTok.__eq__(other: object) -> bool {
     return isinstance(other, GTok) and self.name == other.name;
 }
 
@@ -84,9 +70,7 @@ impl GTok.__hash__ -> int {
 }
 
 # -- GRef -----------------------------------------------------------------
-impl GRef.__eq__(
-    other: object
-) -> bool {
+impl GRef.__eq__(other: object) -> bool {
     return isinstance(other, GRef) and self.name == other.name;
 }
 
@@ -1038,8 +1022,8 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
             inner_parts.append(body_expr);
         }
         inner: GExpr = GSeq(items=inner_parts)
-        if len(inner_parts) > 1
-        else inner_parts[0];
+            if len(inner_parts) > 1
+            else inner_parts[0];
         if stmt.else_body is not None {
             else_expr2: GExpr | None = None;
             if isinstance(stmt.else_body, (uni.ElseIf, uni.IfStmt)) {
@@ -1206,8 +1190,8 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
                     return None;
                 }
                 inner: GExpr = GSeq(items=inner_parts)
-                if len(inner_parts) > 1
-                else inner_parts[0];
+                    if len(inner_parts) > 1
+                    else inner_parts[0];
                 return GStar(inner=inner);
             }
             # Pattern 2: x = parse_X(); if x is None { break; }
@@ -1221,8 +1205,8 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
                     inner_parts2.append(remaining_expr);
                 }
                 inner2: GExpr = GSeq(items=inner_parts2)
-                if len(inner_parts2) > 1
-                else inner_parts2[0];
+                    if len(inner_parts2) > 1
+                    else inner_parts2[0];
                 return GStar(inner=inner2);
             }
             # Pattern 3: while True { ...; if ... elif ... else { break; }; ... }
@@ -1275,8 +1259,8 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
                     # Interpret any remaining stmts after the break-chain
                     after_stmts3 = body_stmts3[break_chain_idx + 1:];
                     after_expr3 = self.interpret_stmts(after_stmts3)
-                    if len(after_stmts3) > 0
-                    else None;
+                        if len(after_stmts3) > 0
+                        else None;
                     if after_expr3 is not None {
                         return GStar(inner=GSeq(items=[dispatch3, after_expr3]));
                     }
@@ -1303,8 +1287,8 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
             inner_parts.append(body_expr);
         }
         inner: GExpr = GSeq(items=inner_parts)
-        if len(inner_parts) > 1
-        else inner_parts[0];
+            if len(inner_parts) > 1
+            else inner_parts[0];
         return GStar(inner=inner);
     }
     # while check(X) / check_any(X,Y) { body } → (body)*
@@ -1338,8 +1322,8 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
             inner_parts2.append(body_expr);
         }
         inner2: GExpr = GSeq(items=inner_parts2)
-        if len(inner_parts2) > 1
-        else inner_parts2[0];
+            if len(inner_parts2) > 1
+            else inner_parts2[0];
         return GStar(inner=inner2);
     }
     return None;
@@ -1451,7 +1435,9 @@ impl GrammarExtractPass.find_break_none_check(stmts: list) -> tuple | None {
 # Condition Analysis (table-driven)
 # =========================================================================
 """Resolve tokens for a parser method call using the method table."""
-impl GrammarExtractPass._resolve_tokens(method: str, call: uni.FuncCall | None) -> list {
+impl GrammarExtractPass._resolve_tokens(
+    method: str, call: uni.FuncCall | None
+) -> list {
     # Check special parameterless methods first
     if method in SPECIAL_LOOKAHEAD_TOKENS {
         return list(SPECIAL_LOOKAHEAD_TOKENS[method]);
@@ -1741,7 +1727,9 @@ impl GrammarExtractPass._dedup_parent_child_tokens(
                         }
                         # Also check GStar/GPlus inner
                         elif isinstance(child_body, (GStar, GPlus)) {
-                            if self.all_paths_start_with(child_body.inner, guard_toks) {
+                            if self.all_paths_start_with(
+                                child_body.inner, guard_toks
+                            ) {
                                 should_remove = True;
                             }
                         }

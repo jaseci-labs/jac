@@ -127,8 +127,8 @@ def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     }
     if not project_root {
         project_root = os.path.dirname(base_path)
-        if os.path.isfile(base_path)
-        else base_path;
+            if os.path.isfile(base_path)
+            else base_path;
     }
     for (alias_pattern, target_path) in aliases.items() {
         if alias_pattern.endswith('/*') {
@@ -167,7 +167,13 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         }
         if os.path.isfile(alias_resolved) {
             ext = os.path.splitext(alias_resolved)[1].lower();
-            lang = {'.jac': 'jac', '.py': 'py', '.js': 'js', '.ts': 'js', '.tsx': 'js'}.get(
+            lang = {
+                '.jac': 'jac',
+                '.py': 'py',
+                '.js': 'js',
+                '.ts': 'js',
+                '.tsx': 'js'
+            }.get(
                 ext, 'other'
             );
             return (alias_resolved, lang);
@@ -373,7 +379,9 @@ def get_typeshed_paths -> list[str] {
 }
 
 """Find .pyi files in typeshed, trying module.pyi then package/__init__.pyi."""
-def _candidate_from_typeshed(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
+def _candidate_from_typeshed(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None) {
     if not parts {
         return None;
     }

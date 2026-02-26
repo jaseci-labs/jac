@@ -5,8 +5,6 @@ impl travelor.say_hello{
 }
 
 # :w: and :c: are aliases for :walker: and :abilitiy:
-impl travelor.say_whatever(
-    msg: str
-) -> None {
+impl travelor.say_whatever(msg: str) -> None {
     msg |> print;
 }
