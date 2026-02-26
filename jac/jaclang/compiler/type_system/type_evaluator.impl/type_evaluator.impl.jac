@@ -1521,6 +1521,39 @@ impl TypeEvaluator._compute_narrowed_at(
             }
         }
 
+        # Check if predecessor is an Assignment that assigns to this symbol.
+        # a: int | None = None; a = 90; -> narrows 'a' to int
+        # Only narrow if the assigned type is strictly narrower than the declared type.
+        if isinstance(pred, uni.Assignment) and pred.value {
+            found_assignment = False;
+            for target in pred.target {
+                if isinstance(target, uni.Name) and target.value == sym_name {
+                    # Get the type of the assigned value
+                    assigned_type = self.get_type_of_expression(pred.value);
+                    if assigned_type
+                    and not isinstance(assigned_type, types.UnknownType) {
+                        declared_type = self.get_type_of_symbol(symbol);
+                        # Only narrow if:
+                        # 1. assigned_type is assignable to declared_type (valid assignment)
+                        # 2. declared_type is NOT assignable to assigned_type (narrowing, not equivalent)
+                        # This ensures we only narrow for cases like int|None -> int,
+                        # not for cases like list[int] -> list[] (which would widen).
+                        if (
+                            self.assign_type(assigned_type, declared_type)
+                            and not self.assign_type(declared_type, assigned_type)
+                        ) {
+                            incoming_types.append(assigned_type);
+                            found_assignment = True;
+                            break;
+                        }
+                    }
+                }
+            }
+            if found_assignment {
+                continue;
+            }
+        }
+
         # Check if predecessor is a MatchStmt and narrow based on pattern.
         if isinstance(pred, uni.MatchStmt) {
             # Check if match target is the symbol we're narrowing

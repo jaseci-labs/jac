@@ -1703,6 +1703,20 @@ test "assert_isinstance_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Test assignment-based type narrowing."""
+test "assignment_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_narrowing.jac")
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - assignment narrows union types appropriately
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Test impl files can access imports from their parent .jac file."""
 test "impl_imports_from_parent" {
     program = JacProgram();
