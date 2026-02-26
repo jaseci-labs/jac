@@ -30,6 +30,48 @@ impl find_repo_root -> str | None {
 
 """Mapping from URI to (relative doc path, bundled filename, description)."""
 glob DOC_MAPPINGS: dict[str, tuple] = {
+         # --- Get Started ---
+         "jac://docs/welcome": (
+             "quick-guide/index.md",
+             "quick-guide-index.md",
+             "Welcome - Getting started with Jac"
+         ),
+         "jac://docs/install": (
+             "quick-guide/install.md",
+             "install.md",
+             "Installation - Setting up Jac"
+         ),
+         "jac://docs/core-concepts": (
+             "quick-guide/what-makes-jac-different.md",
+             "what-makes-jac-different.md",
+             "Core Concepts - What makes Jac different"
+         ),
+         "jac://docs/first-app": (
+             "tutorials/first-app/build-ai-day-planner.md",
+             "build-ai-day-planner.md",
+             "Build to Learn - AI Day Planner tutorial"
+         ),
+         "jac://docs/cheatsheet": (
+             "quick-guide/syntax-cheatsheet.md",
+             "syntax-cheatsheet.md",
+             "Syntax Cheatsheet - Quick reference"
+         ),
+         "jac://docs/jac-vs-traditional": (
+             "quick-guide/jac-vs-traditional-stack.md",
+             "jac-vs-traditional-stack.md",
+             "Jac vs Traditional Stack - Architecture comparison"
+         ),
+         "jac://docs/faq": (
+             "quick-guide/faq.md",
+             "faq.md",
+             "FAQ - Frequently asked questions"
+         ),
+         # --- Language Specification ---
+         "jac://docs/reference-overview": (
+             "reference/index.md",
+             "reference-index.md",
+             "Reference Overview - Full reference index"
+         ),
          "jac://docs/foundation": (
              "reference/language/foundation.md",
              "foundation.md",
@@ -60,30 +102,152 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "advanced.md",
              "Comprehensions & Filters"
          ),
-         "jac://docs/cheatsheet": (
-             "quick-guide/syntax-cheatsheet.md",
-             "syntax-cheatsheet.md",
-             "Syntax Cheatsheet - Quick reference"
+         # --- Learn by Doing: Language ---
+         "jac://docs/tutorial-coding-primer": (
+             "tutorials/language/coding_primer.md",
+             "coding_primer.md",
+             "New to Programming? - Coding primer for beginners"
          ),
-         "jac://docs/python-integration": (
-             "reference/language/python-integration.md",
-             "python-integration.md",
-             "Python Integration - Interop with Python"
+         "jac://docs/tutorial-basics": (
+             "tutorials/language/basics.md",
+             "basics.md",
+             "Jac Fundamentals - Language basics tutorial"
          ),
+         "jac://docs/tutorial-osp": (
+             "tutorials/language/osp.md",
+             "tutorial-osp.md",
+             "Graphs & Walkers - OSP tutorial"
+         ),
+         # --- AI Integration ---
          "jac://docs/byllm": (
              "reference/plugins/byllm.md",
              "byllm.md",
              "byLLM - LLM integration reference"
          ),
+         "jac://docs/tutorial-ai-quickstart": (
+             "tutorials/ai/quickstart.md",
+             "ai-quickstart.md",
+             "Your First AI Function - AI quickstart tutorial"
+         ),
+         "jac://docs/tutorial-ai-structured": (
+             "tutorials/ai/structured-outputs.md",
+             "ai-structured-outputs.md",
+             "Structured Outputs - AI structured output tutorial"
+         ),
+         "jac://docs/tutorial-ai-agentic": (
+             "tutorials/ai/agentic.md",
+             "ai-agentic.md",
+             "Agentic AI - Building AI agents tutorial"
+         ),
+         "jac://docs/tutorial-ai-multimodal": (
+             "tutorials/ai/multimodal.md",
+             "ai-multimodal.md",
+             "Multimodal - Multimodal AI tutorial"
+         ),
+         # --- Full-Stack Development ---
          "jac://docs/jac-client": (
              "reference/plugins/jac-client.md",
              "jac-client.md",
              "jac-client - Full-stack web reference"
          ),
+         "jac://docs/tutorial-fullstack-setup": (
+             "tutorials/fullstack/setup.md",
+             "fullstack-setup.md",
+             "Project Setup - Full-stack setup tutorial"
+         ),
+         "jac://docs/tutorial-fullstack-components": (
+             "tutorials/fullstack/components.md",
+             "fullstack-components.md",
+             "Components - Full-stack components tutorial"
+         ),
+         "jac://docs/tutorial-fullstack-state": (
+             "tutorials/fullstack/state.md",
+             "fullstack-state.md",
+             "State Management - Full-stack state tutorial"
+         ),
+         "jac://docs/tutorial-fullstack-backend": (
+             "tutorials/fullstack/backend.md",
+             "fullstack-backend.md",
+             "Backend Integration - Full-stack backend tutorial"
+         ),
+         "jac://docs/tutorial-fullstack-auth": (
+             "tutorials/fullstack/auth.md",
+             "fullstack-auth.md",
+             "Authentication - Full-stack auth tutorial"
+         ),
+         "jac://docs/tutorial-fullstack-routing": (
+             "tutorials/fullstack/routing.md",
+             "fullstack-routing.md",
+             "Routing - Full-stack routing tutorial"
+         ),
+         # --- Deployment & Scaling ---
          "jac://docs/jac-scale": (
              "reference/plugins/jac-scale.md",
              "jac-scale.md",
              "jac-scale - Deployment/scaling reference"
+         ),
+         "jac://docs/tutorial-production-local": (
+             "tutorials/production/local.md",
+             "production-local.md",
+             "Local API Server - Local deployment tutorial"
+         ),
+         "jac://docs/tutorial-production-k8s": (
+             "tutorials/production/kubernetes.md",
+             "production-kubernetes.md",
+             "Kubernetes - Kubernetes deployment tutorial"
+         ),
+         # --- Developer Workflow ---
+         "jac://docs/cli": (
+             "reference/cli/index.md",
+             "cli-index.md",
+             "CLI Commands - Command line interface reference"
+         ),
+         "jac://docs/config": (
+             "reference/config/index.md",
+             "config-index.md",
+             "Configuration - Project configuration reference"
+         ),
+         "jac://docs/code-organization": (
+             "reference/code-organization.md",
+             "code-organization.md",
+             "Code Organization - Project structure guide"
+         ),
+         "jac://docs/mcp": (
+             "reference/tools/mcp.md",
+             "mcp.md",
+             "MCP Server - Model Context Protocol reference"
+         ),
+         "jac://docs/testing": (
+             "reference/testing.md",
+             "testing.md",
+             "Testing - Test framework reference"
+         ),
+         "jac://docs/debugging": (
+             "tutorials/language/debugging.md",
+             "debugging.md",
+             "Debugging - Debugging techniques tutorial"
+         ),
+         # --- Python Integration ---
+         "jac://docs/python-integration": (
+             "reference/language/python-integration.md",
+             "python-integration.md",
+             "Python Integration - Interop with Python"
+         ),
+         "jac://docs/library-mode": (
+             "reference/language/library-mode.md",
+             "library-mode.md",
+             "Library Mode - Using Jac as a library"
+         ),
+         # --- Quick Reference ---
+         "jac://docs/walker-responses": (
+             "reference/language/walker-responses.md",
+             "walker-responses.md",
+             "Walker Patterns - Walker response patterns"
+         ),
+         "jac://docs/appendices": (
+             "reference/language/appendices.md",
+             "appendices.md",
+             "Appendices - Additional language reference"
          ),
 
      };

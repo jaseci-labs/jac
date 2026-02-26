@@ -1653,3 +1653,29 @@ test "union_subclass_to_base_assignment" {
         program.errors_had[0].pretty_print()
     );
 }
+
+"""Test compound AND narrowing picks most specific type."""
+test "compound_and_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_and_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All positive cases should pass. E1 (attribute error after if block) is not
+    # reported because "has no attribute" errors are disabled in the type evaluator.
+    # TODO: Re-enable when attribute error reporting is fixed for generics.
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Test assert isinstance type narrowing."""
+test "assert_isinstance_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_assert_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - assert isinstance narrows the type
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}

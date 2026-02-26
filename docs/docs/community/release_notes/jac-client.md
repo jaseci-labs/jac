@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.2 (Unreleased)
 
+- **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
+- 1 small refactor/change
+
 ## jac-client 0.3.1 (Latest Release)
 
 - **Admin Portal UI Components**: Added reusable UI components for the jac-scale admin portal including buttons, modals, inputs, tables, and layout components built with jac-client.

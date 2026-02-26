@@ -23,8 +23,7 @@ import from jaclang.jac0core.mtp { Info }
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
-glob MessageType:
-         TypeAlias = 'Message | LiteLLMMessage';
+glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
 
 """Enum for message roles in LLM interactions."""
 enum MessageRole ( StrEnum ) {

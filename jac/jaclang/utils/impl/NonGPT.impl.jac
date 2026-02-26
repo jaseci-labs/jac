@@ -62,8 +62,8 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
                 if t is not type(None)
             ]
         )
-        if options
-        else None;
+            if options
+            else None;
         return random_value_for_type(chosen, _depth=_depth + 1, _max_depth=_max_depth);
     }
     # Tuple (fixed-length or variadic)
@@ -244,8 +244,8 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
                     continue;
                 }
                 ann = param.annotation
-                if param.annotation is not inspect._empty
-                else Any;
+                    if param.annotation is not inspect._empty
+                    else Any;
                 if param.default is not inspect._empty and random.random() < 0.4 {
                     continue;
                 }
@@ -302,7 +302,9 @@ impl _random_primitive(tp: Any) -> Any {
         return date.fromordinal(random.randint(700_000, 800_000));
     }
     if tp is time {
-        return (datetime.min + timedelta(seconds=random.randint(0, 24 * 3600 - 1))).time();
+        return (
+            datetime.min + timedelta(seconds=random.randint(0, 24 * 3600 - 1))
+        ).time();
     }
     if tp is type(None) {
         return None;

@@ -1,7 +1,9 @@
 """NormalizePass implementation - rebuilds kid lists from semantic fields."""
 
 """Initialize the NormalizePass."""
-impl NormalizePass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+impl NormalizePass.init(
+    ir_in: uni.Module, prog: Any, cancel_token: Any = None
+) -> None {
     super.init(ir_in, prog, cancel_token);
 }
 
@@ -731,11 +733,7 @@ impl NormalizePass.enter_else_if(nd: uni.ElseIf) -> None {
 
 """Normalize ElseStmt kid list."""
 impl NormalizePass.enter_else_stmt(nd: uni.ElseStmt) -> None {
-    new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.KW_ELSE),
-        nd.gen_token(Tok.LBRACE),
-
-    ];
+    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_ELSE), nd.gen_token(Tok.LBRACE), ];
     for stmt in nd.body {
         new_kid.append(stmt);
     }

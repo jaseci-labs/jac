@@ -526,12 +526,10 @@ cl {
         async def handle_toggle(task_id: str) -> None {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.map(lambda t: any -> any {
-                    if t["id"] == task_id {
-                        return {**t, "completed": not t["completed"]};
-                    }
-                    return t;
-                });
+                tasks = [
+                    {**t, "completed": not t["completed"]} if t["id"] == task_id else t
+                    for t in tasks
+                ];
             }
         }
 
@@ -539,9 +537,7 @@ cl {
         async def handle_delete(task_id: str) -> None {
             result = root spawn delete_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.filter(lambda t: any -> bool {
-                    return t["id"] != task_id;
-                });
+                tasks = [t for t in tasks if t["id"] != task_id];
             }
         }
 

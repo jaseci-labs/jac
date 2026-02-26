@@ -26,17 +26,12 @@ with entry {
 
 # FIXME: Conver the bellow to dot import (from . import ...)
 # Currently its not possible with jac+python hybrid repos.
-import from jaclang.compiler.type_system {
-    operations
-}
+import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
 # The callback type definition for the diagnostic messages.
-glob DiagnosticCallback = Callable[
-         [uni.UniNode, str, bool],
-         None
-     ];
+glob DiagnosticCallback = Callable[[uni.UniNode, str, bool], None];
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
@@ -234,6 +229,11 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
+    # Progressive narrowing context for AND expressions
+    def _push_and_narrowing_scope -> None;
+    def _pop_and_narrowing_scope -> None;
+    def _add_and_narrowing(sym_name: str, narrowed_type: types.TypeBase) -> None;
+    def _get_and_narrowing(sym_name: str) -> types.TypeBase | None;
     def _find_predicate_for(
         symbol: uni.Symbol, condition: uni.Expr
     ) -> NarrowingPredicate | None;

@@ -4,7 +4,9 @@ impl WebhookUtils.generate_signature(payload: bytes, secret: str) -> str {
 }
 
 """Verify HMAC-SHA256 signature for webhook payload."""
-impl WebhookUtils.verify_signature(payload: bytes, signature: str, secret: str) -> bool {
+impl WebhookUtils.verify_signature(
+    payload: bytes, signature: str, secret: str
+) -> bool {
     expected_signature = WebhookUtils.generate_signature(payload, secret);
     # Use constant-time comparison to prevent timing attacks
     return hmac.compare_digest(signature.lower(), expected_signature.lower());
