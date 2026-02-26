@@ -83,3 +83,32 @@ test "fstring triple quotes" {
     assert "f'''Hello\n{name}'''''''" not in code;
     assert 'f"""Hello\n{name}"""""""' not in code;
 }
+
+"""Test that escape sequences are preserved when converting Python to Jac."""
+test "py2jac escape sequences" {
+    with open(os.path.join(FIXTURES, "py2jac_escape_sequences.py")) as f {
+        file_source = f.read();
+    }
+    code = PyastBuildPass(
+        ir_in=PythonModuleAst(
+            py_ast.parse(file_source),
+            orig_src=Source(file_source, "py2jac_escape_sequences.py")
+        ),
+        prog=JacProgram()
+    ).ir_out.unparse();
+
+    # Hex escapes should be preserved as \x1b, not converted to actual ESC char
+    assert "\\x1b[31m" in code , f"Hex escape not preserved in: {code}";
+    assert "\\x1b[0m" in code , f"Hex reset not preserved in: {code}";
+
+    # Octal escapes \033 should be converted to hex \x1b in output
+    # (Python normalizes \033 to \x1b in the AST)
+    assert "\\x1b[32m" in code or "\\033[32m" in code , f"Octal escape not preserved: {code}";
+
+    # Standard escapes should be preserved
+    assert "\\n" in code , f"Newline escape not preserved: {code}";
+    assert "\\t" in code , f"Tab escape not preserved: {code}";
+
+    # F-string with escapes should work
+    assert "f\"\\x1b[" in code or "f'\\x1b[" in code , f"F-string escape not preserved: {code}";
+}
