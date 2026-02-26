@@ -258,8 +258,7 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
 # =============================================================================
 # SERVER CONFIGURATION
 # =============================================================================
-glob sv_fixtures_dir:
-         Path = Path(__file__).parent / "fixtures",
+glob sv_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
      sv_port: int = get_free_port(),
      sv_base_url: str = f"http://localhost:{sv_port}",
@@ -331,9 +330,7 @@ test "static and schema endpoints" {
         assert response.status_code == 404;
         assert "404" in response.text;
 
-        response = requests.get(
-            f"{sv_base_url}/static/nonexistent_file.css", timeout=5
-        );
+        response = requests.get(f"{sv_base_url}/static/nonexistent_file.css", timeout=5);
         assert response.status_code == 404;
         assert "not found" in response.text.lower();
 
@@ -824,9 +821,7 @@ test "walker calls" {
         assert response.status_code == 401;
 
         # Test: public walker 200 no auth
-        response = requests.post(
-            f"{sv_base_url}/walker/PublicInfo", json={}, timeout=5
-        );
+        response = requests.post(f"{sv_base_url}/walker/PublicInfo", json={}, timeout=5);
         assert response.status_code == 200;
         response_data = cast(
             dict[str, Any], _extract_transport_response_data(response.json())
@@ -1316,7 +1311,9 @@ test "websocket functionality" {
         # Test: websocket nonexistent walker
         async def test_nonexistent -> None {
             try {
-                async with websockets.connect(f"{sv_ws_url}/ws/NonExistentWalker") as ws {
+                async with websockets.connect(
+                    f"{sv_ws_url}/ws/NonExistentWalker"
+                ) as ws {
                     await ws.recv();
                     pytest.fail("Expected connection to be rejected");
                 }
@@ -1407,7 +1404,9 @@ test "websocket functionality" {
         query_token = response.json()["data"]["token"];
 
         async def test_query_token(t: str) -> None {
-            async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket?token={t}") as ws {
+            async with websockets.connect(
+                f"{sv_ws_url}/ws/PrivateWebSocket?token={t}"
+            ) as ws {
                 await ws.send(json.dumps({"message": "query auth hello"}));
                 response = json.loads(await ws.recv());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
@@ -1460,7 +1459,9 @@ test "websocket functionality" {
 
         # Test: private broadcast requires auth
         async def test_private_broadcast_no_auth -> None {
-            async with websockets.connect(f"{sv_ws_url}/ws/PrivateBroadcastChat") as ws {
+            async with websockets.connect(
+                f"{sv_ws_url}/ws/PrivateBroadcastChat"
+            ) as ws {
                 await ws.send(json.dumps({"message": "hello", "room": "general"}));
                 response = json.loads(await ws.recv());
                 assert response["ok"] is False;
@@ -1539,8 +1540,7 @@ test "websocket functionality" {
 # =============================================================================
 # GROUP 6: DEV MODE TESTS
 # =============================================================================
-glob dm_fixtures_dir:
-         Path = Path(__file__).parent / "fixtures",
+glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
      dm_api_port: int = dm_vite_port + 1,
@@ -1596,9 +1596,7 @@ def setup_dev_mode_server -> subprocess.Popen {
         try {
             response = requests.get(f"{dm_base_url}/docs", timeout=2);
             if response.status_code in (200, 404) {
-                print(
-                    f"Dev mode server started successfully on API port {dm_api_port}"
-                );
+                print(f"Dev mode server started successfully on API port {dm_api_port}");
                 server_ready = True;
                 break;
             }

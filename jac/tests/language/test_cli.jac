@@ -525,7 +525,9 @@ test "param arg" {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
         py_code = JacProgram().compile(file_path=filename).gen.py;
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as temp_file {
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as temp_file {
             temp_file.write(py_code);
             py_file_path = temp_file.name;
         }
@@ -534,7 +536,9 @@ test "param arg" {
             jac_code = (
                 JacProgram().compile(use_str=py_code, file_path=py_file_path).unparse()
             );
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_file {
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jac", delete=False
+            ) as temp_file {
                 temp_file.write(jac_code);
                 jac_file_path = temp_file.name;
             }
@@ -660,7 +664,9 @@ test "cli error exit codes" {
     assert result == 1 , "check command should exit with code 1 on type check error";
 
     # Test format command with file that needs changes
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_file {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False
+    ) as temp_file {
         temp_file.write('with entry{print("hello");}');
         temp_path = temp_file.name;
     }

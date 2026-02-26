@@ -43,7 +43,9 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
     import from jaclang.cli.console { console }
     # Ensure bun is available before proceeding
     if not ensure_bun_available() {
-        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+        raise ClientBundleError(
+            'Bun is required. Install manually: https://bun.sh'
+        ) from None ;
     }
     # Regenerate package.json from updated jac.toml
     bundler = ViteBundler(self.project_dir);

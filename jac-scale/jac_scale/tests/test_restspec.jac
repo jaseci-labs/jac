@@ -412,9 +412,7 @@ test "restspec path parameters" {
         assert d["user_id"] == "u99" and d["status"] == "all";
 
         # --- Function: multiple path params ---
-        r = requests.get(
-            f"{base_url}/orgs/myorg/repos/myrepo", headers=auth, timeout=5
-        );
+        r = requests.get(f"{base_url}/orgs/myorg/repos/myrepo", headers=auth, timeout=5);
         assert r.status_code == 200;
         d = _extract_data(r.json())["result"];
         assert d["org_id"] == "myorg" and d["repo_id"] == "myrepo";

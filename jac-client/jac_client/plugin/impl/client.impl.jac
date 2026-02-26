@@ -155,8 +155,8 @@ impl JacClient.render_page(
     # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
     init_data = {
         'module': introspector._module.__name__
-        if introspector._module
-        else introspector.module_name,
+            if introspector._module
+            else introspector.module_name,
         'function': function_name,
         'endpointEffects': introspector._client_manifest.get('endpoint_effects', {})
     };

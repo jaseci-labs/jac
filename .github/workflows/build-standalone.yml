@@ -1,0 +1,144 @@
+name: Build Standalone Binaries
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (must exist on PyPI, e.g. 2.3.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- jaclang (slim, core only) ---
+          - package: jaclang
+            asset-prefix: jac
+            os: ubuntu-latest
+            platform: linux-x86_64
+          - package: jaclang
+            asset-prefix: jac
+            os: macos-13
+            platform: macos-x86_64
+          - package: jaclang
+            asset-prefix: jac
+            os: macos-latest
+            platform: macos-aarch64
+
+          # --- jaseci (full, all plugins) ---
+          - package: jaseci
+            asset-prefix: jaseci
+            os: ubuntu-latest
+            platform: linux-x86_64
+          - package: jaseci
+            asset-prefix: jaseci
+            os: macos-13
+            platform: macos-x86_64
+          - package: jaseci
+            asset-prefix: jaseci
+            os: macos-latest
+            platform: macos-aarch64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pex
+        run: pip install pex
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Build standalone binary
+        run: |
+          ASSET="${{ matrix.asset-prefix }}-${{ steps.version.outputs.version }}-${{ matrix.platform }}"
+          echo "Building ${ASSET}..."
+
+          pex \
+            "${{ matrix.package }}==${{ steps.version.outputs.version }}" \
+            --console-script jac \
+            --scie eager \
+            --python-version 3.12 \
+            -o "$ASSET"
+
+          echo "asset_name=${ASSET}" >> "$GITHUB_ENV"
+
+      - name: Verify binary
+        run: |
+          chmod +x "${{ env.asset_name }}"
+          echo "Running --version check..."
+          ./${{ env.asset_name }} --version || true
+
+      - name: Generate checksum
+        run: |
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+          else
+            shasum -a 256 "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+          fi
+          echo "Checksum:"
+          cat "${{ env.asset_name }}.sha256"
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "${{ env.asset_name }}" \
+            "${{ env.asset_name }}.sha256" \
+            --clobber
+
+      - name: Upload as artifact (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.asset_name }}
+          path: |
+            ${{ env.asset_name }}
+            ${{ env.asset_name }}.sha256
+
+  summary:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Build summary
+        run: |
+          echo "## Standalone Binary Build Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Platform | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaclang (slim) | linux-x86_64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaclang (slim) | macos-x86_64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaclang (slim) | macos-aarch64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaseci (full) | linux-x86_64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaseci (full) | macos-x86_64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jaseci (full) | macos-aarch64 | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Note:** linux-aarch64 builds can be added when ARM runners are available." >> "$GITHUB_STEP_SUMMARY"

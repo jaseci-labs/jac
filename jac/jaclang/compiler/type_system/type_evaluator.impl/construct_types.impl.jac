@@ -304,7 +304,9 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
 
 """Return the built-in type with the given name."""
 impl TypeEvaluator._get_type_from_module(module: uni.Module, name: str) -> TypeBase {
-    if (symbol := type_utils.lookup_symtab(module, name, self.builtins_module)) is not None {
+    if (
+        symbol := type_utils.lookup_symtab(module, name, self.builtins_module)
+    ) is not None {
         return self.get_type_of_symbol(symbol);
     }
     return types.UnknownType();

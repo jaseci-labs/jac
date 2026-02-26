@@ -214,18 +214,30 @@ class StrEmitter[V, C] {
     def emit_translate(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_maketrans(self, ctx: C, args: list[V]) -> (V | None) abs;
     # --- Arithmetic operators ---
-    def emit_op_add(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # +  (concatenation)
+    def emit_op_add(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # +  (concatenation)
 
-    def emit_op_mul(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # *  (repetition)
 
-    def emit_op_mod(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # %  (printf formatting)
+    def emit_op_mul(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # *  (repetition)
+
+
+    def emit_op_mod(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # %  (printf formatting)
+
 
     # --- Comparison operators ---
     def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # ==
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (lexicographic)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (lexicographic)
+
 
     def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >
 
@@ -234,7 +246,9 @@ class StrEmitter[V, C] {
     def emit_op_ge(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >=
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in (substring test)
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in (substring test)
 
 }
 
@@ -290,18 +304,30 @@ class BytesEmitter[V, C] {
     def emit_translate(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_maketrans(self, ctx: C, args: list[V]) -> (V | None) abs;
     # --- Arithmetic operators ---
-    def emit_op_add(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # +  (concatenation)
+    def emit_op_add(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # +  (concatenation)
 
-    def emit_op_mul(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # *  (repetition)
 
-    def emit_op_mod(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # %  (printf formatting)
+    def emit_op_mul(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # *  (repetition)
+
+
+    def emit_op_mod(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # %  (printf formatting)
+
 
     # --- Comparison operators ---
     def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # ==
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (lexicographic)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (lexicographic)
+
 
     def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >
 
@@ -310,7 +336,9 @@ class BytesEmitter[V, C] {
     def emit_op_ge(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >=
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in (byte membership)
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in (byte membership)
 
 }
 
@@ -331,16 +359,28 @@ class ListEmitter[V, C] {
     def emit_reverse(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_copy(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     # --- Arithmetic operators ---
-    def emit_op_add(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # +  (concatenation)
+    def emit_op_add(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # +  (concatenation)
 
-    def emit_op_mul(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # *  (repetition)
+
+    def emit_op_mul(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # *  (repetition)
+
 
     # --- Comparison operators ---
-    def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # == (structural)
+    def emit_op_eq(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # == (structural)
+
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (lexicographic)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (lexicographic)
+
 
     def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >
 
@@ -352,9 +392,14 @@ class ListEmitter[V, C] {
     def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in
 
     # --- In-place operators ---
-    def emit_op_iadd(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # += (extend in-place)
+    def emit_op_iadd(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # += (extend in-place)
 
-    def emit_op_imul(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # *= (repeat in-place)
+
+    def emit_op_imul(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # *= (repeat in-place)
 
 }
 
@@ -372,18 +417,29 @@ class DictEmitter[V, C] {
     def emit_copy(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_fromkeys(self, ctx: C, args: list[V]) -> (V | None) abs;
     # --- Bitwise operators (dict merge, Python 3.9+) ---
-    def emit_op_or(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # |  (merge)
+    def emit_op_or(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # |  (merge)
+
 
     # --- Comparison operators ---
-    def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # == (structural)
+    def emit_op_eq(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # == (structural)
+
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in (key membership)
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in (key membership)
+
 
     # --- In-place operators ---
-    def emit_op_ior(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # |= (update in-place)
+    def emit_op_ior(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # |= (update in-place)
 
 }
 
@@ -398,11 +454,19 @@ class SetEmitter[V, C] {
     def emit_union(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_intersection(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_difference(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
-    def emit_symmetric_difference(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    def emit_symmetric_difference(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;
     # --- Named methods (in-place set algebra) ---
     def emit_update(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
-    def emit_intersection_update(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
-    def emit_difference_update(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    def emit_intersection_update(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;
+
+    def emit_difference_update(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;
+
     def emit_symmetric_difference_update(
         self, ctx: C, target: V, args: list[V]
     ) -> (V | None) abs;
@@ -412,38 +476,76 @@ class SetEmitter[V, C] {
     def emit_isdisjoint(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_copy(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     # --- Set algebra operators ---
-    def emit_op_or(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # |  (union)
+    def emit_op_or(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # |  (union)
 
-    def emit_op_and(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # &  (intersection)
 
-    def emit_op_sub(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # -  (difference)
+    def emit_op_and(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # &  (intersection)
 
-    def emit_op_xor(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # ^  (symmetric difference)
+
+    def emit_op_sub(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # -  (difference)
+
+
+    def emit_op_xor(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # ^  (symmetric difference)
+
 
     # --- Comparison operators (subset/superset) ---
-    def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # == (set equality)
+    def emit_op_eq(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # == (set equality)
+
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_le(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <= (subset)
+    def emit_op_le(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <= (subset)
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (proper subset)
 
-    def emit_op_ge(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >= (superset)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (proper subset)
 
-    def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >  (proper superset)
+
+    def emit_op_ge(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # >= (superset)
+
+
+    def emit_op_gt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # >  (proper superset)
+
 
     # --- Membership operators ---
     def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in
 
     # --- In-place operators ---
-    def emit_op_ior(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # |= (update)
+    def emit_op_ior(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # |= (update)
 
-    def emit_op_iand(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # &= (intersection_update)
 
-    def emit_op_isub(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # -= (difference_update)
+    def emit_op_iand(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # &= (intersection_update)
 
-    def emit_op_ixor(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # ^= (symmetric_difference_update)
+
+    def emit_op_isub(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # -= (difference_update)
+
+
+    def emit_op_ixor(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # ^= (symmetric_difference_update)
 
 }
 
@@ -452,35 +554,67 @@ class FrozensetEmitter[V, C] {
     def emit_union(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_intersection(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_difference(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
-    def emit_symmetric_difference(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    def emit_symmetric_difference(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;
+
     def emit_issubset(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_issuperset(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_isdisjoint(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_copy(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     # --- Set algebra operators ---
-    def emit_op_or(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # |  (union)
+    def emit_op_or(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # |  (union)
 
-    def emit_op_and(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # &  (intersection)
 
-    def emit_op_sub(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # -  (difference)
+    def emit_op_and(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # &  (intersection)
 
-    def emit_op_xor(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # ^  (symmetric difference)
+
+    def emit_op_sub(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # -  (difference)
+
+
+    def emit_op_xor(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # ^  (symmetric difference)
+
 
     # --- Comparison operators (subset/superset) ---
-    def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # == (set equality)
+    def emit_op_eq(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # == (set equality)
+
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_le(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <= (subset)
+    def emit_op_le(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <= (subset)
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (proper subset)
 
-    def emit_op_ge(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >= (superset)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (proper subset)
 
-    def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >  (proper superset)
+
+    def emit_op_ge(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # >= (superset)
+
+
+    def emit_op_gt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # >  (proper superset)
+
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in
 
 }
 
@@ -489,16 +623,28 @@ class TupleEmitter[V, C] {
     def emit_count(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     def emit_index(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
     # --- Arithmetic operators ---
-    def emit_op_add(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # +  (concatenation)
+    def emit_op_add(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # +  (concatenation)
 
-    def emit_op_mul(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # *  (repetition)
+
+    def emit_op_mul(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # *  (repetition)
+
 
     # --- Comparison operators ---
-    def emit_op_eq(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # == (structural)
+    def emit_op_eq(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # == (structural)
+
 
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
-    def emit_op_lt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # <  (lexicographic)
+    def emit_op_lt(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # <  (lexicographic)
+
 
     def emit_op_gt(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >
 
@@ -507,7 +653,9 @@ class TupleEmitter[V, C] {
     def emit_op_ge(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # >=
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in
 
 }
 
@@ -521,7 +669,9 @@ class RangeEmitter[V, C] {
     def emit_op_ne(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # !=
 
     # --- Membership operators ---
-    def emit_op_contains(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;  # in
+    def emit_op_contains(
+        self, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abs;  # in
 
 }
 

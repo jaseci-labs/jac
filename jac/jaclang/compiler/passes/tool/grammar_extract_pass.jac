@@ -109,8 +109,7 @@ obj MethodSemantics {
 #   "lookahead"     — non-consuming check for one token
 #   "lookahead_any" — non-consuming check for multiple tokens
 #   "ignore"        — no grammar effect
-glob METHOD_TABLE:
-         dict[str, MethodSemantics] = {
+glob METHOD_TABLE: dict[str, MethodSemantics] = {
          # Consuming methods
          "expect": MethodSemantics(kind="consume", token_args=True),
          "consume_uni": MethodSemantics(kind="consume", token_args=True),

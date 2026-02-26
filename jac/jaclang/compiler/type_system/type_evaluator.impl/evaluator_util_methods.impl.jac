@@ -168,7 +168,8 @@ impl TypeEvaluator._is_unbound_method_call(expr: uni.FuncCall) -> bool {
     # Check if target is Class.method pattern (method on instantiable class)
     if isinstance(expr.target, uni.AtomTrailer) and expr.target.is_attr {
         base_type = self.get_type_of_expression(expr.target.target);
-        if isinstance(base_type, types.ClassType) and base_type.is_instantiable_class() {
+        if isinstance(base_type, types.ClassType)
+        and base_type.is_instantiable_class() {
             # Accessing a method on a class (not instance)
             # Check if accessed member is a method
             if isinstance(expr.target.right, uni.Name) {
@@ -197,9 +198,7 @@ impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeB
 
 """Resolve the imported symbols to the actual symbol."""
 impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
-    if (
-        isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
-    ) {
+    if (isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)) {
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
@@ -340,7 +339,9 @@ impl TypeEvaluator._create_callable_type(
                 error_node,
                 "Callable requires at least one type argument for return type"
             );
-            return types.create_callable_type([], types.UnknownType(), is_gradual=True);
+            return types.create_callable_type(
+                [], types.UnknownType(), is_gradual=True
+            );
         }
         # First argument: parameter types list or ellipsis
         first_arg = type_arg_values[0];

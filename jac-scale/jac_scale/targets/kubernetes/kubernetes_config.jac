@@ -44,6 +44,7 @@ class KubernetesConfig(BaseConfig) {
         additional_packages: list[str] = [],
         plugin_versions: dict[str, str] = {},
         monitoring_enabled: bool = False,
+        k8s_metrics_enabled: bool = True,
         prometheus_admin_password: str = 'Adminpassword123',
         prometheus_node_port: int = 30090,
         grafana_node_port: int = 30300;
@@ -88,6 +89,7 @@ class KubernetesConfig(BaseConfig) {
         additional_packages: list[str] = [],
         plugin_versions: dict[str, str] = {},
         monitoring_enabled: bool = False,
+        k8s_metrics_enabled: bool = True,
         prometheus_admin_password: str = 'Adminpassword123',
         prometheus_node_port: int = 30090,
         grafana_node_port: int = 30300
@@ -137,6 +139,7 @@ class KubernetesConfig(BaseConfig) {
         self.plugin_versions = plugin_versions;
         # Monitoring configuration
         self.monitoring_enabled = monitoring_enabled;
+        self.k8s_metrics_enabled = k8s_metrics_enabled;
         self.prometheus_admin_password = prometheus_admin_password;
         self.prometheus_node_port = prometheus_node_port;
         self.grafana_node_port = grafana_node_port;
@@ -188,6 +191,7 @@ class KubernetesConfig(BaseConfig) {
                 'plugin_versions': self.plugin_versions,
                 # Monitoring configuration
                 'monitoring_enabled': self.monitoring_enabled,
+                'k8s_metrics_enabled': self.k8s_metrics_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
                 'prometheus_node_port': self.prometheus_node_port,
                 'grafana_node_port': self.grafana_node_port
@@ -238,6 +242,7 @@ class KubernetesConfig(BaseConfig) {
             additional_packages=config.get('additional_packages', []),
             plugin_versions=config.get('plugin_versions', {}),
             monitoring_enabled=config.get('monitoring_enabled', False),
+            k8s_metrics_enabled=config.get('k8s_metrics_enabled', True),
             prometheus_admin_password=config.get(
                 'prometheus_admin_password', 'Adminpassword123'
             ),
