@@ -1,10 +1,7 @@
-"""JacKit component handler — fetches, resolves dependencies, and installs components.
+"""Shadcn component handler — fetch, resolve dependencies, install/remove components.
 
-Reads [kit] config from jac.toml to determine:
-  - style: which style to resolve (nova, vega, etc.)
-  - registry: URL of the JacKit registry server
-
-Then fetches resolved components and writes them to components/ui/.
+Reads [jac-shadcn] config from jac.toml for style + registry URL,
+then fetches resolved components and writes them to components/ui/.
 """
 
 import os;
@@ -13,8 +10,7 @@ import tomllib;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-"""Read [kit] config from jac.toml. Returns dict or None."""
-def _read_kit_config(config: Any) -> Any {
+def _read_shadcn_config(config: Any) -> Any {
     if config.project_root is None {
         return None;
     }
@@ -25,10 +21,9 @@ def _read_kit_config(config: Any) -> Any {
     with open(toml_path, "rb") as f {
         data = tomllib.load(f);
     }
-    return data.get("kit");
+    return data.get("jac-shadcn");
 }
 
-"""Fetch JSON from a URL. Returns parsed dict or None."""
 def _fetch_json(url: str) -> Any {
     import urllib.request;
     import urllib.error;
@@ -56,8 +51,6 @@ def _fetch_json(url: str) -> Any {
     }
 }
 
-"""Resolve peer dependencies recursively.
-Returns the full list of components to install (including peers)."""
 def _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> list {
     components = registry_data.get("components", {});
     to_install: list = [];
@@ -89,9 +82,8 @@ def _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> l
     return to_install;
 }
 
-"""Add npm dependencies from components to jac.toml [dependencies.npm]."""
-def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
-    if not npm_deps_to_add {
+def _update_npm_deps(config: Any, npm_deps: dict) -> None {
+    if not npm_deps {
         return;
     }
     toml_path = Path(str(config.project_root)) / "jac.toml";
@@ -99,21 +91,17 @@ def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
         content = f.read();
     }
 
-    for (dep_name, dep_version) in npm_deps_to_add.items() {
-        quoted_name = '"' + dep_name + '"'
-            if not dep_name.replace("-", "").replace("_", "").isalnum()
-            else dep_name;
-        dep_line = quoted_name + ' = "' + dep_version + '"';
-
-        if dep_name in content {
+    for key in npm_deps {
+        ver = npm_deps[key];
+        if key in content {
             continue;
         }
-
         marker = "[dependencies.npm]";
         idx = content.find(marker);
         if idx >= 0 {
             insert_pos = idx + len(marker);
-            content = content[:insert_pos] + "\n" + dep_line + content[insert_pos:];
+            line = key + ' = "' + ver + '"';
+            content = content[:insert_pos] + "\n" + line + content[insert_pos:];
         }
     }
 
@@ -122,20 +110,15 @@ def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
     }
 }
 
-"""Add JacKit components to the project.
-Returns True on success."""
-def add_kit_components(config: Any, component_names: list) -> bool {
-    kit_config = _read_kit_config(config);
-    if not kit_config {
-        console.error(
-            "No [kit] section in jac.toml",
-            hint="Create project with: jac create --use \"https://kit.jaseci.org/jacpack?...\" myApp"
-        );
+def add_shadcn_components(config: Any, component_names: list) -> bool {
+    shadcn_config = _read_shadcn_config(config);
+    if not shadcn_config {
+        console.error("No [jac-shadcn] section in jac.toml", hint="Create project with: jac create --use jac-shadcn");
         return False;
     }
 
-    style = kit_config.get("style", "nova");
-    registry_url = kit_config.get("registry", "https://kit.jaseci.org");
+    style = shadcn_config.get("style", "nova");
+    registry_url = shadcn_config.get("registry", "https://jac-shadcn.jaseci.org");
     project_root = Path(str(config.project_root));
 
     console.print("\n Adding components (style: " + style + ")\n", style="bold cyan");
@@ -157,7 +140,6 @@ def add_kit_components(config: Any, component_names: list) -> bool {
     }
 
     to_install = _resolve_peer_deps(component_names, registry_data, existing);
-
     if not to_install {
         console.info("All requested components are already installed.");
         return True;
@@ -170,9 +152,7 @@ def add_kit_components(config: Any, component_names: list) -> bool {
         }
     }
     if auto_added {
-        console.print(
-            "  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted"
-        );
+        console.print("  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted");
     }
 
     ui_dir.mkdir(parents=True, exist_ok=True);
@@ -183,19 +163,11 @@ def add_kit_components(config: Any, component_names: list) -> bool {
 
     added: list = [];
     for name in to_install {
-        with console.status(
-            "[cyan]Fetching " + name + "...[/cyan]", spinner="dots"
-        ) as status {
-            comp_data = _fetch_json(
-                registry_url + "/component/" + name + "?style=" + style
-            );
-        }
+        comp_data = _fetch_json(registry_url + "/component/" + name + "?style=" + style);
 
         if not comp_data or "error" in comp_data {
-            err_msg = comp_data.get("error", "Unknown error")
-                if comp_data
-                else "No response";
-            console.error("  ✗ " + name + ": " + str(err_msg));
+            err_msg = str(comp_data.get("error", "Unknown error")) if comp_data else "No response";
+            console.error("  x " + name + ": " + err_msg);
             continue;
         }
 
@@ -213,37 +185,32 @@ def add_kit_components(config: Any, component_names: list) -> bool {
         }
 
         added.append(name);
-        console.print("  ✔ " + name, style="success");
+        console.print("  + " + name, style="green");
     }
 
     if all_npm_deps {
         _update_npm_deps(config, all_npm_deps);
-        console.print("\n  ✔ Updated jac.toml [dependencies.npm]", style="muted");
+        console.print("\n  Updated jac.toml [dependencies.npm]", style="muted");
     }
 
     utils_path = ui_dir.parent.parent / "lib" / "utils.cl.jac";
     if not utils_path.exists() {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
-            f.write(
-                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
-            );
+            f.write('cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n');
         }
-        console.print("  ✔ Created lib/utils.cl.jac", style="success");
+        console.print("  + Created lib/utils.cl.jac", style="green");
     }
 
     if added {
         console.print("");
-        summary = "Added " + str(len(added)) + " component(s): " + ", ".join(added);
-        console.success(summary);
+        console.print("Added " + str(len(added)) + " component(s): " + ", ".join(added), style="bold green");
     }
 
     return len(added) > 0;
 }
 
-"""Remove JacKit components from the project.
-Returns True on success."""
-def remove_kit_components(config: Any, component_names: list) -> bool {
+def remove_shadcn_components(config: Any, component_names: list) -> bool {
     project_root = Path(str(config.project_root));
     ui_dir = project_root / "components" / "ui";
 
@@ -258,16 +225,14 @@ def remove_kit_components(config: Any, component_names: list) -> bool {
         if filepath.exists() {
             filepath.unlink();
             removed.append(name);
-            console.print("  ✔ Removed " + name, style="success");
+            console.print("  - Removed " + name, style="green");
         } else {
             console.warning("  Component not found: " + name);
         }
     }
 
     if removed {
-        console.success(
-            "Removed " + str(len(removed)) + " component(s): " + ", ".join(removed)
-        );
+        console.print("Removed " + str(len(removed)) + " component(s): " + ", ".join(removed), style="bold green");
     }
 
     return len(removed) > 0;
