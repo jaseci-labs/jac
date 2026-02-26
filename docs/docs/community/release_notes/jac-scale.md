@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - Jac status command to check deployment status of each component of k8s
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
+- **Fix: Root-Level Font/Asset 404s**: Added `.jac/client/dist/` as a fallback search candidate in `serve_root_asset`, fixing 404s for font files (`.woff2`, `.ttf`, etc.) bundled by Vite with root-relative `@font-face url()` paths. Project-level files (`dist/`, `assets/`, `public/`, `src/`, project root) take priority to avoid shadowing user files.
 
 ## jac-scale 0.2.1 (Latest Release)
 
