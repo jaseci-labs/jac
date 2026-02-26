@@ -3,12 +3,18 @@ name: Release jaseci to PYPI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release-jaseci:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: jaseci-package
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -17,9 +23,19 @@ jobs:
           submodules: true
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
         run: |
@@ -31,3 +47,42 @@ jobs:
       - name: Publish package to PyPI
         run: |
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
+
+  create-github-release:
+    needs: release-jaseci
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Wait for PyPI availability
+        run: |
+          VERSION="${{ needs.release-jaseci.outputs.version }}"
+          echo "Waiting for jaseci==$VERSION to be available on PyPI..."
+          for i in $(seq 1 30); do
+            if pip index versions jaseci 2>/dev/null | grep -q "$VERSION"; then
+              echo "jaseci==$VERSION is available on PyPI."
+              exit 0
+            fi
+            echo "  Attempt $i/30 — not yet available, waiting 10s..."
+            sleep 10
+          done
+          echo "Warning: jaseci==$VERSION not found on PyPI after 5 minutes."
+          echo "Proceeding with GitHub Release creation anyway."
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.release-jaseci.outputs.version }}"
+          if gh release view "v$VERSION" &>/dev/null; then
+            echo "Release v$VERSION already exists, skipping."
+          else
+            gh release create "v$VERSION" \
+              --title "Jaseci v$VERSION" \
+              --generate-notes \
+              --latest
+            echo "Created release v$VERSION"
+            echo "Standalone binary build will be triggered automatically."
+          fi
