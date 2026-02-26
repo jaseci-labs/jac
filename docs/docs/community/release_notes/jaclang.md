@@ -13,6 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
 - **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
+- **Fix: py2jac semstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
 
 ## jaclang 0.11.1 (Latest Release)
 
@@ -29,7 +30,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - 3 Minor refactor
 - **Fix: Unparenthesized Lambda with Keyword Parameter Name**: Fixed `parse_lambda_param` rejecting keyword tokens (e.g., `props`, `root`, `here`) as unparenthesized lambda parameter names. The parser now correctly accepts special var ref keywords and emits a targeted error for other keywords with an escape hint.
 - **Refactor: Merge `JacSerializer` into `Serializer`**: Removed the `JacSerializer` wrapper class from `runtimelib.server` and merged its API-response behavior into `Serializer` via a new `api_mode: bool = False` parameter. Call `Serializer.serialize(obj, api_mode=True)` to get clean API output with `_jac_type`, `_jac_id`, and `_jac_archetype` metadata on `Archetype` objects (previously done by `JacSerializer`). Storage backends continue to use `Serializer.serialize(obj, include_type=True)` unchanged. Import from `jaclang.runtimelib.serializer`. This eliminates a redundant wrapper class with no unique serialization logic. Added `social_graph.jac` example fixture in jac-scale demonstrating native persistence and `db.find_nodes()` for querying persisted nodes with MongoDB filters.
-- **Fix: py2jac semstring conversion**: Fix py2jac to correctly convert `Semstrings` with escape sequences.
+
 
 ## jaclang 0.11.0
 
