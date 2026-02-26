@@ -646,4 +646,3 @@ def _handle_npm_remove(ctx: HookContext) -> None {
         ctx.set_data("cancel_return_code", 1);
     }
 }
-
