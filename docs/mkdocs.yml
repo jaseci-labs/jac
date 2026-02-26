@@ -51,9 +51,10 @@ nav:
           - Learn by Doing:
               - Local API Server: "tutorials/production/local.md"
               - Kubernetes: "tutorials/production/kubernetes.md"
-      - Tools & Config:
+      - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
           - Configuration: "reference/config/index.md"
+          - Code Organization: "reference/code-organization.md"
           - MCP Server: "reference/tools/mcp.md"
           - Testing: "reference/testing.md"
           - Debugging: "tutorials/language/debugging.md"

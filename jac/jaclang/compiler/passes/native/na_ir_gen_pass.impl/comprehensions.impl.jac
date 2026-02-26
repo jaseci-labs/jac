@@ -269,10 +269,24 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     val_type_name = "i64";
     key_type = ir.IntType(64);
     val_type = ir.IntType(64);
+    key_size = 0;
     # Check if key is a tuple
     if isinstance(key_expr, uni.TupleVal) {
-        key_type_name = "ptr";
-        key_type = ir.IntType(8).as_pointer();
+        # Build the actual tuple struct type for proper key comparison
+        elem_types: list[ir.Type] = [];
+        for v in key_expr.values {
+            elem_types.append(ir.IntType(64));
+        }
+        n = len(elem_types);
+        tuple_key_str = f"Tuple.{n}." + ".".join([str(t) for t in elem_types]);
+        if tuple_key_str not in self.tuple_types {
+            struct_type = ir.LiteralStructType(elem_types);
+            self.tuple_types[tuple_key_str] = struct_type;
+        }
+        struct_type = self.tuple_types[tuple_key_str];
+        key_type = struct_type.as_pointer();
+        key_size = self._get_struct_size(struct_type);
+        key_type_name = f"tuple{key_size}";
     }
     # Check if value is a struct, tuple, or array access that returns a pointer
     if isinstance(val_expr, uni.TupleVal) {
@@ -298,7 +312,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         }
     }
     # Ensure dict helpers exist
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type);
+    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
     if helpers is None {

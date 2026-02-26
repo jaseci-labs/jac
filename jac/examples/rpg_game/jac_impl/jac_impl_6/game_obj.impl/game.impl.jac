@@ -84,9 +84,7 @@ impl Game.game_over{
     self.score -= 2;
     text = self.font.render('GaMe OvEr', True, RED);
     text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2));
-    restart_button = Button(
-        10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32
-    );
+    restart_button = Button(10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32);
     for sprite in self.all_sprites {
         sprite.kill();
     }
@@ -140,9 +138,7 @@ impl Game.game_won{
     self.score += 5;
     text = self.font.render('YOU WON!', True, BLUE);
     text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2));
-    restart_button = Button(
-        10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32
-    );
+    restart_button = Button(10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32);
     for sprite in self.all_sprites {
         sprite.kill();
     }

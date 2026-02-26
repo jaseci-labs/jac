@@ -1,8 +1,6 @@
 # Card Component on Second Level
 # Imports from both above (root) and below (level2)
-cl import from ..ButtonRoot {
-    ButtonRoot
-}
+cl import from ..ButtonRoot { ButtonRoot }
 cl import from .level2.ButtonThirdL { ButtonThirdL }
 
 cl def:pub Card -> JsxElement {

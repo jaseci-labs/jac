@@ -413,3 +413,102 @@ def test_error_inheritance_wrong_subclass(
     }
     return "";
 }
+
+# =========================================================================
+# 16. Single class type narrowing (non-union base type)
+#     When parameter is a single class type (not a union), isinstance
+#     should still narrow to the subclass type.
+# =========================================================================
+obj BaseNode {
+    has name: str = "base";
+}
+
+obj CFGNode(BaseNode) {
+    has bb_out: list[CFGNode] | None = None;
+}
+
+obj SemiNode(CFGNode) {
+    has is_semi: bool = True;
+}
+
+# 16a. Simple isinstance with single class base type
+def test_single_class_isinstance(
+    nd: BaseNode
+) -> list[CFGNode] | None {
+    if isinstance(nd, CFGNode) {
+        # nd should be narrowed to CFGNode here
+        return nd.bb_out;  # <-- Ok after narrowing (CFGNode has bb_out)
+
+    }
+    return None;
+}
+
+# 16b. isinstance with 'and' condition
+def test_single_class_isinstance_and(
+    nd: BaseNode, flag: bool
+) -> list[CFGNode] | None {
+    if isinstance(nd, CFGNode) and flag {
+        return nd.bb_out;  # <-- Ok after narrowing
+
+    }
+    return None;
+}
+
+# 16c. isinstance with 'and not isinstance' pattern (from cfg_build_pass)
+def test_single_class_isinstance_and_not(
+    nd: BaseNode, to_connect: list[CFGNode]
+) -> None {
+    if isinstance(nd, CFGNode) and not isinstance(nd, SemiNode) {
+        if not nd.bb_out {  # <-- Ok after narrowing (CFGNode has bb_out)
+
+            to_connect.append(nd);  # <-- Ok after narrowing
+        }
+    }
+}
+
+# 16d. Nested isinstance with single class type
+def test_single_class_nested(
+    nd: BaseNode
+) -> str {
+    if isinstance(nd, CFGNode) {
+        if nd.bb_out {  # <-- Ok after narrowing
+
+            return "has_out";
+        }
+        return "no_out";
+    }
+    return "not_cfg";
+}
+
+# E10. Single class narrowing - cannot assign base type to subtype
+def test_error_single_class_no_narrow(
+    nd: BaseNode, to_connect: list[CFGNode]
+) -> None {
+    # Without isinstance check, nd is still BaseNode, cannot append to list[CFGNode]
+    to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
+}
+
+# =========================================================================
+# 17. Truthiness narrowing does NOT apply to non-None union types
+#     Regression test: `if x:` should NOT modify types that don't contain None
+# =========================================================================
+
+# 17a. Bool type should NOT be narrowed by truthiness check
+def test_truthiness_bool_no_narrow(api_mode: bool) -> bool {
+    if api_mode {
+        return True;
+    }
+    # api_mode is still bool here, NOT bool | None
+    result: bool = api_mode;  # <-- Ok, api_mode is still bool
+    return result;
+}
+
+# 17b. str | int should NOT be narrowed (no None in union)
+def test_truthiness_no_none_union(val: str | int) -> str | int {
+    if val {
+        return val;
+    }
+    # val is still str | int here, NOT changed
+    result: str | int = val;  # <-- Ok, val is still str | int
+    return result;
+}

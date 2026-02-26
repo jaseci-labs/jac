@@ -494,8 +494,7 @@ def run_webhook_revoked_api_key_test(base_url: str) -> None {
 # =========================================================================
 # Test class 1: Webhook tests WITHOUT MongoDB (file-based storage)
 # =========================================================================
-glob wh_fixtures_dir:
-         Path = Path(__file__).parent / "fixtures",
+glob wh_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      wh_test_file: Path = wh_fixtures_dir / "test_api.jac";
 
 test "webhook without mongo - endpoint exists" {

@@ -193,7 +193,9 @@ class JacCmd {
             console.print(
                 f"[bold red]WARNING:[/bold red] You are about to delete namespace '{namespace}' and all its associated resources."
             );
-            confirmation = input("Are you sure you want to proceed? (y/n): ").strip().lower();
+            confirmation = input(
+                "Are you sure you want to proceed? (y/n): "
+            ).strip().lower();
             if confirmation != 'y' {
                 console.print("Destroy cancelled.");
                 return 1;
@@ -251,7 +253,9 @@ class JacScalePlugin {
     which supports cloud backends (S3, GCS, Azure) via configuration.
     """
     @hookimpl
-    static def store(base_path: str = "./storage", create_dirs: bool = True) -> Storage {
+    static def store(
+        base_path: str = "./storage", create_dirs: bool = True
+    ) -> Storage {
         import from .factories.storage_factory { StorageFactory }
         return StorageFactory.get_default(base_path, create_dirs);
     }

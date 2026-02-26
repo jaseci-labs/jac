@@ -11,6 +11,7 @@ venv
 *.jir
 *.jbc
 _precompiled/
+content/docs/
 _planning/
 
 # Distribution / packaging

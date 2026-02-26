@@ -1371,6 +1371,7 @@ Response format:
 ```
 
 The admin dashboard monitoring page displays:
+
 - HTTP traffic breakdown by method and status code
 - Request latency statistics
 - Active requests gauge

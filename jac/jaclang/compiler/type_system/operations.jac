@@ -16,8 +16,7 @@ with entry {
 
 # FIX: py2jac bug - module-level constants must be declared with glob outside with entry block
 # Otherwise they become Field descriptors when accessed from functions
-glob BINARY_OPERATOR_MAP:
-         dict[str, tuple[str, str]] = {
+glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.PLUS: ('__add__', '__radd__'),
          Tok.MINUS: ('__sub__', '__rsub__'),
          Tok.STAR_MUL: ('__mul__', '__rmul__'),

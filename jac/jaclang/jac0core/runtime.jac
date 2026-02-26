@@ -385,9 +385,9 @@ class JacWalker {
         `walker: WalkerArchetype,
         expr:
             (
-                list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
-                    EdgeArchetype
-                ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+                list[
+                    (NodeArchetype | EdgeArchetype)
+                ] | list[NodeArchetype] | list[EdgeArchetype] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
             ),
         insert_loc: int = -1
     ) -> bool {
@@ -401,8 +401,8 @@ class JacWalker {
             before_len = len(wanch.next);
             next = [];
             for anchor in (i.__jac__ for i in expr)
-            if isinstance(expr, `list)
-            else [expr.__jac__] {
+                if isinstance(expr, `list)
+                else [expr.__jac__] {
                 if (anchor not in wanch.ignores) {
                     if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
                         next.append(anchor);
@@ -855,8 +855,8 @@ class JacWalker {
             for i in items {
                 a = i.__jac__;
                 `walker.next.append(a)
-                if isinstance(a, (NodeAnchor, EdgeAnchor))
-                else None;
+                    if isinstance(a, (NodeAnchor, EdgeAnchor))
+                    else None;
                 if (isinstance(a, EdgeAnchor) and a.target) {
                     `walker.next.append(a.target);
                 }
@@ -994,8 +994,8 @@ class JacBuiltin {
             edge_label = html.escape(str(`edge.__jac__.archetype));
             dot_content += (
                 f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} " + f' [label="{edge_label
-                if "GenericEdge" not in edge_label
-                else ""}"];\n'
+                    if "GenericEdge" not in edge_label
+                    else ""}"];\n'
             );
             if (('GenericEdge' in edge_label) or not edge_label.strip()) {
                 mermaid_content += (
@@ -1011,8 +1011,8 @@ class JacBuiltin {
         }
         for node_ in visited_nodes {
             color = colors[node_depths[node_]]
-            if (node_depths[node_] < 25)
-            else colors[24];
+                if (node_depths[node_] < 25)
+                else colors[24];
             label = html.escape(str(node_.__jac__.archetype));
             dot_content += (
                 f'{visited_nodes.index(node_)} [label="{label}"fillcolor="{color}"];\n'
@@ -1227,8 +1227,8 @@ system,
         _ = JacRuntime.get_program();
         if target.startswith('.') {
             caller_dir = base_path
-            if os.path.isdir(base_path)
-            else os.path.dirname(base_path);
+                if os.path.isdir(base_path)
+                else os.path.dirname(base_path);
             chomp_target = target;
             while chomp_target.startswith('.') {
                 if ((len(chomp_target) > 1) and (chomp_target[1] == '.')) {
@@ -1244,8 +1244,8 @@ system,
             module_name = target;
         }
         caller_dir = base_path
-        if os.path.isdir(base_path)
-        else os.path.dirname(base_path);
+            if os.path.isdir(base_path)
+            else os.path.dirname(base_path);
         original_path = None;
         if (caller_dir and (caller_dir not in sys.path)) {
             original_path = sys.path.copy();
@@ -1268,8 +1268,8 @@ system,
                     file_path = os.path.join(caller_dir, f"{module_name}.py");
                     if os.path.isfile(file_path) {
                         spec_name = '__main__'
-                        if (override_name == '__main__')
-                        else module_name;
+                            if (override_name == '__main__')
+                            else module_name;
                         spec = importlib.util.spec_from_file_location(
                             spec_name, file_path
                         );
@@ -1410,8 +1410,8 @@ system,
                     for file in files
                     if fnmatch.fnmatch(file, filter)
                 ]
-                if filter
-                else files;
+                    if filter
+                    else files;
                 files = [
                     file
                     for file in files
@@ -1578,8 +1578,8 @@ system,
                         and JacRuntimeInterface.check_connect_access(target)
                     ) {
                         JacRuntimeInterface.destroy([anchor])
-                        if anchor.persistent
-                        else JacRuntimeInterface.detach(anchor);
+                            if anchor.persistent
+                            else JacRuntimeInterface.detach(anchor);
                         disconnect_occurred = True;
                     }
                     if (
@@ -1589,8 +1589,8 @@ system,
                         and JacRuntimeInterface.check_connect_access(source)
                     ) {
                         JacRuntimeInterface.destroy([anchor])
-                        if anchor.persistent
-                        else JacRuntimeInterface.detach(anchor);
+                            if anchor.persistent
+                            else JacRuntimeInterface.detach(anchor);
                         disconnect_occurred = True;
                     }
                 }
@@ -1801,7 +1801,9 @@ class JacAPIServer {
     }
 
     """Create the API server instance."""
-    static def create_server(jac_server: JacServer, host: str, port: int) -> HTTPServer {
+    static def create_server(
+        jac_server: JacServer, host: str, port: int
+    ) -> HTTPServer {
         handler_class = jac_server.create_handler();
         return HTTPServer((host, port), handler_class);
     }
@@ -1832,8 +1834,8 @@ class JacAPIServer {
         };
         initial_state = {
             'module': introspector._module.__name__
-            if introspector._module
-            else introspector.module_name,
+                if introspector._module
+                else introspector.module_name,
             'function': function_name,
             'args': {
                 key: Serializer.serialize(value, api_mode=True)
@@ -2601,8 +2603,8 @@ class JacRuntime(JacRuntimeInterface) {
             JacRuntime.base_path_dir = None;
         } else {
             JacRuntime.base_path_dir = base_path
-            if os.path.isdir(base_path)
-            else os.path.dirname(base_path);
+                if os.path.isdir(base_path)
+                else os.path.dirname(base_path);
         }
     }
 

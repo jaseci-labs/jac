@@ -16,9 +16,7 @@ def cleanup_connections {
 }
 
 # Session-scoped containers created as globals
-glob _mongo_container = MongoDbContainer(
-         "mongo:7.0"
-     ),
+glob _mongo_container = MongoDbContainer("mongo:7.0"),
      _redis_container = RedisContainer("redis:7.2-alpine"),
      MONGO_URI: str = "",
      REDIS_URI: str = "";
@@ -55,7 +53,9 @@ test "mongodb crud" {
     # Bulk operations
     db.insert_many("scores", [{"score": 100}, {"score": 200}, {"score": 300}]);
     assert (
-        db.update_many("scores", {"score": {"$gte": 200}}, {"$set": {"tier": "gold"}}).modified_count == 2
+        db.update_many(
+            "scores", {"score": {"$gte": 200}}, {"$set": {"tier": "gold"}}
+        ).modified_count == 2
     );
     assert db.delete_many("scores", {"tier": "gold"}).deleted_count == 2;
 
@@ -256,7 +256,9 @@ test "cache aside pattern" {
 
     # Persist user in MongoDB, cache session in Redis
     user_id = str(
-        mongo.insert_one("users", {"email": "u@example.com", "name": "User"}).inserted_id
+        mongo.insert_one(
+            "users", {"email": "u@example.com", "name": "User"}
+        ).inserted_id
     );
     cache.set_with_ttl(
         f"session:{user_id}", {"user_id": user_id, "token": "abc"}, ttl=3600

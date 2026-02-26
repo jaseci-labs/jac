@@ -7,7 +7,9 @@ impl ClientBundleBuilder.postinit -> None {
 }
 
 """Build (or reuse) a client bundle for the supplied module."""
-impl ClientBundleBuilder.build(module: ModuleType, force: bool = False) -> ClientBundle {
+impl ClientBundleBuilder.build(
+    module: ModuleType, force: bool = False
+) -> ClientBundle {
     if not module?.__file__ {
         raise ClientBundleError(
             f"Module '{module.__name__}' has no __file__ attribute"
@@ -190,9 +192,7 @@ impl ClientBundleBuilder._compile_bundle(
     # First compile to ensure module is in hub and get JS code + manifest
     (module_js, compiled_mod) = self._compile_to_js(module_path);
     manifest = compiled_mod.gen.client_manifest if compiled_mod else None;
-    (import_pieces, bundled_module_names) = self._process_imports(
-        manifest, module_path
-    );
+    (import_pieces, bundled_module_names) = self._process_imports(manifest, module_path);
     module_js = self._strip_import_statements(module_js, bundled_module_names);
     client_exports = self._extract_client_exports(manifest);
     client_globals_map = self._extract_client_globals(manifest, module);
@@ -308,8 +308,8 @@ impl ClientBundleBuilder._generate_registration_js(
         globals_entries.append(f"{identifier}: {value_literal}");
     }
     globals_literal = '{ ' + ', '.join(globals_entries) + ' }'
-    if globals_entries
-    else '{}';
+        if globals_entries
+        else '{}';
     functions_literal = json.dumps(list(client_functions));
     module_literal = json.dumps(module_name);
     return f"__jacRegisterClientModule({module_literal}, {functions_literal}, {globals_literal});";

@@ -16,8 +16,8 @@ cl {
         handleReset = lambda e: any  -> None { count = 0;};
 
         countColorClass = "text-gray-800"
-        if count == 0
-        else ("text-green-600" if count > 0 else "text-red-600");
+            if count == 0
+            else ("text-green-600" if count > 0 else "text-red-600");
 
         return
             <div
