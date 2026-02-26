@@ -114,10 +114,16 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     key_type = self._resolve_jac_type(key_node);
                     val_type = self._resolve_jac_type(val_node);
                     key_type_name = "i64";
+                    key_size = 0;
                     if isinstance(key_type, ir.DoubleType) {
                         key_type_name = "f64";
                     } elif isinstance(key_type, ir.PointerType) {
                         key_type_name = "ptr";
+                        # Check if key is a tuple (pointer to LiteralStructType)
+                        if isinstance(key_type.pointee, ir.LiteralStructType) {
+                            key_size = self._get_struct_size(key_type.pointee);
+                            key_type_name = f"tuple{key_size}";
+                        }
                     }
                     val_type_name = "i64";
                     if isinstance(val_type, ir.DoubleType) {
@@ -129,7 +135,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     }
                     dict_key = f"{key_type_name}:{val_type_name}";
                     self._emit_dict_helpers(
-                        key_type_name, val_type_name, key_type, val_type
+                        key_type_name, val_type_name, key_type, val_type, key_size
                     );
                     return self.dict_types[dict_key].as_pointer();
                 }
@@ -202,6 +208,29 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Resolve a type for C library declarations -- clib structs use value types, not pointers."""
+impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
+    if type_expr is None {
+        return ir.IntType(64);
+    }
+    # Check if this is a clib struct name -- return VALUE type (not pointer)
+    type_name: (str | None) = None;
+    if isinstance(type_expr, uni.Name) {
+        type_name = type_expr.value;
+    } elif type_expr?.value and isinstance(getattr(type_expr, "value", None), str) {
+        type_name = type_expr.value;
+    }
+    if type_name is not None and type_name in self.clib_struct_names {
+        # Use ABI-coerced integer type for small structs (matches C calling convention)
+        if type_name in self.clib_struct_abi_types {
+            return self.clib_struct_abi_types[type_name];
+        }
+        return self.struct_types[type_name];
+    }
+    # For all other types, delegate to normal resolution
+    return self._resolve_jac_type(type_expr);
+}
+
 """Extract name string from a Name or similar node."""
 impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
     if nd is None {
@@ -264,15 +293,100 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
     }
+    # Int → Double (f64)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.DoubleType) {
         return self.builder.sitofp(val, target_type, name="cast");
     }
+    # Int → Float (f32)
+    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.FloatType) {
+        return self.builder.sitofp(val, target_type, name="cast.f32");
+    }
+    # Double (f64) → Int
     if isinstance(val.type, ir.DoubleType) and isinstance(target_type, ir.IntType) {
         return self.builder.fptosi(val, target_type, name="cast");
     }
+    # Float (f32) → Int
+    if isinstance(val.type, ir.FloatType) and isinstance(target_type, ir.IntType) {
+        return self.builder.fptosi(val, target_type, name="cast.i");
+    }
+    # Double (f64) → Float (f32)
+    if isinstance(val.type, ir.DoubleType) and isinstance(target_type, ir.FloatType) {
+        return self.builder.fptrunc(val, target_type, name="fptrunc");
+    }
+    # Float (f32) → Double (f64)
+    if isinstance(val.type, ir.FloatType) and isinstance(target_type, ir.DoubleType) {
+        return self.builder.fpext(val, target_type, name="fpext");
+    }
     # Pointer-to-pointer bitcast (e.g., different struct pointer types)
-    if isinstance(val.type, ir.PointerType) and isinstance(target_type, ir.PointerType) {
+    if isinstance(val.type, ir.PointerType)
+    and isinstance(target_type, ir.PointerType) {
         return self.builder.bitcast(val, target_type, name="ptrcast");
+    }
+    # Struct pointer → struct value (Jac pointer → C value at call boundary)
+    if isinstance(val.type, ir.PointerType)
+    and not isinstance(target_type, ir.PointerType) {
+        if val.type?.pointee and val.type.pointee == target_type {
+            return self.builder.load(val, name="struct.unbox");
+        }
+        # Struct pointer → ABI integer (e.g., %Color* → i32 for small C structs)
+        if isinstance(target_type, ir.IntType) and val.type?.pointee {
+            for (sname, abi_type) in self.clib_struct_abi_types.items() {
+                if val.type.pointee == self.struct_types.get(sname)
+                and abi_type == target_type {
+                    int_ptr = self.builder.bitcast(
+                        val, target_type.as_pointer(), name="struct.abi.cast"
+                    );
+                    return self.builder.load(int_ptr, name="struct.abi.unbox");
+                }
+            }
+        }
+    }
+    # Struct value → struct pointer (C value → Jac pointer at call boundary)
+    if not isinstance(val.type, ir.PointerType)
+    and isinstance(target_type, ir.PointerType) {
+        if target_type?.pointee and target_type.pointee == val.type {
+            gc_malloc = self._get_or_declare_extern(
+                "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+            );
+            null_ptr = ir.Constant(target_type, None);
+            size_gep = self.builder.gep(
+                null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.sizeof.gep"
+            );
+            size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="clib.sizeof");
+            raw_ptr = self.builder.call(gc_malloc, [size], name="clib.box.raw");
+            typed_ptr = self.builder.bitcast(raw_ptr, target_type, name="clib.box.ptr");
+            self.builder.store(val, typed_ptr);
+            return typed_ptr;
+        }
+        # ABI integer → struct pointer (e.g., i32 → %Color* for small C struct returns)
+        if isinstance(val.type, ir.IntType) and target_type?.pointee {
+            for (sname, abi_type) in self.clib_struct_abi_types.items() {
+                if target_type.pointee == self.struct_types.get(sname)
+                and abi_type == val.type {
+                    gc_malloc = self._get_or_declare_extern(
+                        "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+                    );
+                    null_ptr = ir.Constant(target_type, None);
+                    size_gep = self.builder.gep(
+                        null_ptr,
+                        [ir.Constant(ir.IntType(32), 1)],
+                        name="clib.sizeof.gep"
+                    );
+                    size = self.builder.ptrtoint(
+                        size_gep, ir.IntType(64), name="clib.sizeof"
+                    );
+                    raw_ptr = self.builder.call(gc_malloc, [size], name="clib.box.raw");
+                    int_ptr = self.builder.bitcast(
+                        raw_ptr, val.type.as_pointer(), name="clib.abi.cast"
+                    );
+                    self.builder.store(val, int_ptr);
+                    typed_ptr = self.builder.bitcast(
+                        raw_ptr, target_type, name="clib.box.ptr"
+                    );
+                    return typed_ptr;
+                }
+            }
+        }
     }
     # Int width coercion (i1 to i64, etc.)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.IntType) {
@@ -414,16 +528,12 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(
-                    helpers["len"], [right], name="lcat.rlen"
-                );
+                right_len = self.builder.call(helpers["len"], [right], name="lcat.rlen");
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(loop2_bb);
                 i2 = self.builder.phi(i64, name="lcat.i2");
                 i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(
-                    ">=", i2, right_len, name="lcat.end2"
-                );
+                end2 = self.builder.icmp_unsigned(">=", i2, right_len, name="lcat.end2");
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
@@ -590,7 +700,8 @@ impl NaIRGenPass._emit_comparison(
     op: str, left: ir.Value, right: ir.Value, is_float: bool
 ) -> (ir.Value | None) {
     # Pointer comparisons
-    if isinstance(left.type, ir.PointerType) and isinstance(right.type, ir.PointerType) {
+    if isinstance(left.type, ir.PointerType)
+    and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
         # String comparison: both operands must be i8* (char pointers)
         if left.type == i8_ptr and right.type == i8_ptr {

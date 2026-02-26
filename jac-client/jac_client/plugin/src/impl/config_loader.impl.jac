@@ -30,6 +30,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
         },
         'ts': {'compilerOptions': {}, 'include': [], 'exclude': []},
         'configs': {},  # Generic config file generation: { "postcss": {...}, "tailwind": {...} }
+        'paths': {},  # Import path aliases: { "@components/*": "./components/*" }
         'npm': {},  # NPM registry config: { "scoped_registries": {...}, "auth": {...} }
         'package': {
             'name': '',
@@ -59,14 +60,15 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     # These are stored in plugin_dependencies["npm"]["dev"] after parsing
     npm_plugin_deps = jac_config.plugin_dependencies.get('npm', {});
     npm_dev_deps = npm_plugin_deps.get('dev', {})
-    if isinstance(npm_plugin_deps.get('dev'), dict)
-    else {};
+        if isinstance(npm_plugin_deps.get('dev'), dict)
+        else {};
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
         'api': client_config.get('api', {}),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
+        'paths': client_config.get('paths', {}),
         'npm': client_config.get('npm', {}),
         'package': {
             'name': jac_config.project.name,
@@ -141,4 +143,10 @@ impl JacClientConfig.remove_dependency(
     # Invalidate cache
     self.invalidate();
     return result;
+}
+
+"""Get import path aliases from [plugins.client.paths] in jac.toml."""
+impl JacClientConfig.get_paths_config(self: JacClientConfig) -> dict[str, str] {
+    config = self.load();
+    return config.get('paths', {});
 }

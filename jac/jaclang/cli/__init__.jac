@@ -31,11 +31,7 @@ import from jaclang.cli.command {
 import from jaclang.cli.registry { CommandRegistry, get_registry }
 
 # Executor
-import from jaclang.cli.executor {
-    CommandExecutor,
-    ExecutionResult,
-    get_executor
-}
+import from jaclang.cli.executor { CommandExecutor, ExecutionResult, get_executor }
 
 # Help formatter
 import from jaclang.cli.help {

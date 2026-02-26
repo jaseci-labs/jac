@@ -32,16 +32,25 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             if mt_run.stream {
                 return self._stream_final_answer(mt_run);
             }
-            # Non-streaming: disable tools and ask for final answer once
+            # Non-streaming: keep only finish_tool and ask for final answer once
             final_instruction = Message(
                 role=MessageRole.USER,
                 content="Based on the tool calls and their results above, provide only your final answer.",
             );
             mt_run.add_message(final_instruction);
             original_tools = mt_run.tools;
-            mt_run.tools = [];
+            finish_tool_obj = mt_run.get_tool("finish_tool");
+            mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
             try {
                 final_resp = self.dispatch_no_streaming(mt_run);
+                if final_resp.tool_calls {
+                    for tool_call in final_resp.tool_calls {
+                        if tool_call.is_finish_call() {
+                            mt_run.add_message(tool_call());
+                            return tool_call.get_output();
+                        }
+                    }
+                }
                 return final_resp.output;
             } finally {
                 mt_run.tools = original_tools;
@@ -128,21 +137,21 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     {log_params["messages"][0]["content"]}
     {MAGENTA}[USER]{RESET}
     {log_params["messages"][1]["content"][0]['text']
-    if isinstance(log_params["messages"][1]["content"], list)
-    else log_params["messages"][1]["content"]}
+        if isinstance(log_params["messages"][1]["content"], list)
+        else log_params["messages"][1]["content"]}
     {MAGENTA}[TOOL]{RESET}
     {log_params["messages"][3]["content"]
-    if len(log_params["messages"]) > 3
-    else "No tools provided."}
+        if len(log_params["messages"]) > 3
+        else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
     {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)
-    if log_params.get("tools")
-    else ""}
+        if log_params.get("tools")
+        else ""}
     {MAGENTA}[RESPONSE FORMAT]{RESET}
     {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)
-    if log_params.get("response_format") is not None
-    else "None"}""";
+        if log_params.get("response_format") is not None
+        else "None"}""";
     return log;
 }
 
@@ -164,7 +173,9 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # https://docs.litellm.ai/docs/#response-format-openai-format
     #
     # TODO: Handle stream output (type ignoring stream response)
-    message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
+    message: LiteLLMMessage = response.get("choices", [])[0].get(
+        "message"
+    );  # type: ignore
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
@@ -244,10 +255,11 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         "Be comprehensive and synthesize all the information gathered.",
     );
     mt_run.add_message(final_instruction);
-    # Remove tools and make a streaming call to get the real-time answer
-    # We temporarily clear tools so the LLM just responds with text
+    # Keep only finish_tool so Anthropic sees a valid tools= param
+    # (conversation history may already contain tool call results)
     original_tools = mt_run.tools;
-    mt_run.tools = [];
+    finish_tool_obj = mt_run.get_tool("finish_tool");
+    mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
         yield from self.dispatch_streaming(mt_run);

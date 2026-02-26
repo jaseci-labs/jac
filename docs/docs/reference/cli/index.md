@@ -39,6 +39,31 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 
 ---
 
+## Version Info
+
+```bash
+jac --version
+```
+
+Displays the Jac version, Python version, platform, and all detected plugins with their versions:
+
+```
+ _
+(_) __ _  ___     Jac Language
+| |/ _` |/ __|
+| | (_| | (__     Version:  0.10.2
+_/ |\__,_|\___|    Python 3.12.3
+|__/                Platform: Linux x86_64
+
+🔌 Plugins Detected:
+   byllm==0.4.17
+   jac-client==0.2.13
+   jac-scale==0.1.4
+   jac-super==0.1.0
+```
+
+---
+
 ## Core Commands
 
 ### jac run
@@ -294,7 +319,7 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-s] [-l] paths [paths ...]
+jac format [-h] [-s] [-l] [-c] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -302,18 +327,22 @@ jac format [-h] [-s] [-l] paths [paths ...]
 | `paths` | Files/directories to format | Required |
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
+| `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
 
 **Examples:**
 
 ```bash
 # Preview formatting
-jac format main.jac -t
+jac format main.jac -s
 
 # Apply formatting
 jac format main.jac
 
 # Format entire directory
 jac format .
+
+# Check formatting without modifying (useful in CI)
+jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
@@ -1071,6 +1100,45 @@ jac tool ir sym main.jac
 
 # View generated Python
 jac tool ir py main.jac
+```
+
+---
+
+### jac nacompile
+
+Compile a `.na.jac` file to a standalone native ELF executable. No external compiler, assembler, or linker is required. The entire pipeline runs in pure Python using llvmlite and a built-in ELF linker.
+
+```bash
+jac nacompile filename [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `-o, --output` | Output binary path | filename without `.na.jac` |
+
+The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
+
+**What happens under the hood:**
+
+1. Compiles the `.na.jac` through the Jac pipeline to get LLVM IR
+2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
+3. Emits native object code via llvmlite's `emit_object()`
+4. Links into an ELF executable via the built-in pure-Python ELF linker
+
+The resulting binary dynamically links against `libc.so.6` (and `libgc.so.1` if available). When libgc is not installed, GC calls are automatically rewritten to use `malloc`.
+
+**Examples:**
+
+```bash
+# Compile to ./chess
+jac nacompile chess.na.jac
+
+# Compile with custom output name
+jac nacompile chess.na.jac -o mychess
+
+# Run the binary
+./mychess
 ```
 
 ---

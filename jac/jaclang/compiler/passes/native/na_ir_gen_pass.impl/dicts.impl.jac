@@ -40,11 +40,23 @@ Uses a simple linear-search dictionary: {len, cap, keys*, vals*}
 This is O(n) for lookups but sufficient for small dictionaries.
 """
 impl NaIRGenPass._emit_dict_helpers(
-    key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
+    key_type_name: str,
+    val_type_name: str,
+    key_type: ir.Type,
+    val_type: ir.Type,
+    key_size: int = 0
 ) -> None {
     dict_key = f"{key_type_name}:{val_type_name}";
     if dict_key in self.dict_helpers {
         return;
+    }
+    # Auto-detect key_size for tuple/struct pointer keys
+    _key_sz: int = int(key_size);
+    if _key_sz == 0 and isinstance(key_type, ir.PointerType) {
+        _pointee = getattr(key_type, "pointee", None);
+        if _pointee is not None and isinstance(_pointee, ir.LiteralStructType) {
+            _key_sz = self._get_struct_size(_pointee);
+        }
     }
     # Create dict struct type: { i64 len, i64 cap, key_type* keys, val_type* vals }
     dict_struct = self.llvm_module.context.get_identified_type(
@@ -146,7 +158,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_body = b.load(idx_alloca, name="idx.body");
     key_ptr = b.gep(keys_arr, [idx_body], name="key.ptr");
     key_val = b.load(key_ptr, name="key.val");
-    # Compare keys - use strcmp for string keys (i8*)
+    # Compare keys - use strcmp for string keys (i8*), memcmp for tuples
     if isinstance(key_type, ir.IntType) {
         key_eq = b.icmp_signed("==", key_val, k_arg, name="key.eq");
     } elif key_type == i8_ptr {
@@ -155,6 +167,19 @@ impl NaIRGenPass._emit_dict_helpers(
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
         );
         cmp_result = b.call(strcmp_fn, [key_val, k_arg], name="strcmp");
+        key_eq = b.icmp_signed(
+            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
+    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
+        # Struct/tuple pointer - use memcmp for content comparison
+        memcmp_fn = self._get_or_declare_extern(
+            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
+        );
+        key_i8 = b.bitcast(key_val, i8_ptr, name="key.i8");
+        arg_i8 = b.bitcast(k_arg, i8_ptr, name="arg.i8");
+        cmp_result = b.call(
+            memcmp_fn, [key_i8, arg_i8, ir.Constant(i64, _key_sz)], name="memcmp"
+        );
         key_eq = b.icmp_signed(
             "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
@@ -263,7 +288,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bg = b.load(idx_alloca_g, name="idx.body");
     key_ptr_g = b.gep(keys_g, [idx_bg], name="key.ptr");
     key_val_g = b.load(key_ptr_g, name="key.val");
-    # Use strcmp for string keys
+    # Use strcmp for string keys, memcmp for tuples
     if isinstance(key_type, ir.IntType) {
         key_eq_g = b.icmp_signed("==", key_val_g, k_arg_g, name="key.eq");
     } elif key_type == i8_ptr {
@@ -271,6 +296,19 @@ impl NaIRGenPass._emit_dict_helpers(
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
         );
         cmp_result_g = b.call(strcmp_fn, [key_val_g, k_arg_g], name="strcmp");
+        key_eq_g = b.icmp_signed(
+            "==", cmp_result_g, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
+    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
+        # Struct/tuple pointer - use memcmp for content comparison
+        memcmp_fn = self._get_or_declare_extern(
+            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
+        );
+        key_i8_g = b.bitcast(key_val_g, i8_ptr, name="key.i8");
+        arg_i8_g = b.bitcast(k_arg_g, i8_ptr, name="arg.i8");
+        cmp_result_g = b.call(
+            memcmp_fn, [key_i8_g, arg_i8_g, ir.Constant(i64, _key_sz)], name="memcmp"
+        );
         key_eq_g = b.icmp_signed(
             "==", cmp_result_g, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
@@ -352,7 +390,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bc = b.load(idx_alloca_c, name="idx.body");
     key_ptr_c = b.gep(keys_c, [idx_bc], name="key.ptr");
     key_val_c = b.load(key_ptr_c, name="key.val");
-    # Use strcmp for string keys
+    # Use strcmp for string keys, memcmp for tuples
     if isinstance(key_type, ir.IntType) {
         key_eq_c = b.icmp_signed("==", key_val_c, k_arg_c, name="key.eq");
     } elif key_type == i8_ptr {
@@ -360,6 +398,19 @@ impl NaIRGenPass._emit_dict_helpers(
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
         );
         cmp_result_c = b.call(strcmp_fn, [key_val_c, k_arg_c], name="strcmp");
+        key_eq_c = b.icmp_signed(
+            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
+    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
+        # Struct/tuple pointer - use memcmp for content comparison
+        memcmp_fn = self._get_or_declare_extern(
+            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
+        );
+        key_i8_c = b.bitcast(key_val_c, i8_ptr, name="key.i8");
+        arg_i8_c = b.bitcast(k_arg_c, i8_ptr, name="arg.i8");
+        cmp_result_c = b.call(
+            memcmp_fn, [key_i8_c, arg_i8_c, ir.Constant(i64, _key_sz)], name="memcmp"
+        );
         key_eq_c = b.icmp_signed(
             "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
@@ -469,10 +520,16 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     # Determine type names
     key_type = first_key.type;
     key_type_name = "i64";
+    key_size = 0;
     if isinstance(key_type, ir.DoubleType) {
         key_type_name = "f64";
     } elif isinstance(key_type, ir.PointerType) {
         key_type_name = "ptr";
+        # Check if key is a tuple (pointer to LiteralStructType)
+        if isinstance(key_type.pointee, ir.LiteralStructType) {
+            key_size = self._get_struct_size(key_type.pointee);
+            key_type_name = f"tuple{key_size}";
+        }
     }
     if use_jacval {
         val_type = self.jacval_type;
@@ -488,7 +545,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     }
     dict_key = f"{key_type_name}:{val_type_name}";
     # Ensure helpers exist
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type);
+    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     helpers = self.dict_helpers[dict_key];
     # Create new dict
     dict_val = self.builder.call(helpers["new"], [], name="dict.new");

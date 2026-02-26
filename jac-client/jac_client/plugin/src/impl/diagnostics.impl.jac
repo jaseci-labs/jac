@@ -58,9 +58,7 @@ impl DiagnosticCollection.add_all(
 }
 
 # ============== BaseDetector ==============
-impl BaseDetector.handle(
-    self: BaseDetector, error: str
-) -> bool {
+impl BaseDetector.handle(self: BaseDetector, error: str) -> bool {
     if not self.patterns {
         return False;
     }
@@ -493,9 +491,7 @@ impl DiagnosticFormatter._wrap(
 }
 
 # ============== Module Functions ==============
-impl get_default_detectors -> list[
-    BaseDetector
-] {
+impl get_default_detectors -> list[BaseDetector] {
     return [
         CompilationErrorDetector(),
         MissingDependencyDetector(),

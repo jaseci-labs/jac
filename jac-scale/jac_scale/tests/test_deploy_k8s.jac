@@ -237,11 +237,35 @@ test "deploy all in one" {
     );
 
     result = deployment_target.deploy(app_config);
-    result = deployment_target.deploy(app_config);
     details = result.details;
     assert len(details) == 10;
     assert result.success is True;
     print(f"Deployment successful: {result.message}");
+
+    full_status = deployment_target.get_full_status(app_name);
+    assert full_status is not None;
+    assert full_status["app_name"] == app_name;
+    assert full_status["namespace"] == namespace;
+    assert "components" in full_status;
+    assert len(full_status["components"]) > 0;
+    component_names = [c["name"] for c in full_status["components"]];
+    assert "Jaseci App" in component_names;
+    assert "Redis" in component_names;
+    assert "MongoDB" in component_names;
+    for component in full_status["components"] {
+        assert "name" in component;
+        assert "status" in component;
+        assert "ready" in component;
+        assert "total" in component;
+        assert component["status"] == "running";
+        assert component["ready"] == component["total"];
+    }
+    assert "urls" in full_status;
+    assert "app" in full_status["urls"];
+    assert "grafana" in full_status["urls"];
+    assert full_status["urls"]["app"].startswith("http://");
+    assert full_status["urls"]["grafana"].startswith("http://");
+    print(f"Full status: {full_status}");
 
     time.sleep(5);
 
@@ -422,6 +446,43 @@ test "deploy all in one" {
     assert response.status_code == 200;
     print(f"Successfully reached app page at {url}");
 
+    # --- Port conflict test ---
+    # Deploy the same app into a different namespace using the same node_port.
+    # check_node_ports_available must detect the conflict and the deploy must fail.
+    duplicate_namespace = "all-in-one-duplicate";
+    duplicate_app_name = duplicate_namespace;
+
+    os.environ.update(
+        {"APP_NAME": duplicate_app_name, "K8s_NAMESPACE": duplicate_namespace}
+    );
+
+    duplicate_target_config = app_scale_config.get_kubernetes_config();
+    duplicate_target_config["app_name"] = duplicate_app_name;
+    duplicate_target_config["namespace"] = duplicate_namespace;
+    duplicate_target_config["node_port"] = target_config[
+        "node_port"
+    ];  # same port — must conflict
+    duplicate_target_config["jaseci_repo_url"] = repo_url;
+    duplicate_target_config["jaseci_branch"] = branch;
+    duplicate_target_config["jaseci_commit"] = commit;
+
+    duplicate_target = DeploymentTargetFactory.create(
+        "kubernetes", duplicate_target_config, logger
+    );
+    duplicate_target.secrets = app_scale_config.get_secrets_config();
+
+    conflict_result = duplicate_target.deploy(app_config);
+    assert conflict_result.success is False , (
+        "Deploying with a conflicting NodePort should fail"
+    );
+    assert "NodePort conflict detected" in conflict_result.message , (
+        f"Expected NodePort conflict error, got: {conflict_result.message}"
+    );
+    print(f"Port conflict correctly detected: {conflict_result.message}");
+
+    # Restore env vars to point back at the original namespace for cleanup
+    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
+
     # Cleanup using new architecture
     deployment_target.destroy(app_name);
 
@@ -451,9 +512,7 @@ test "deploy all in one" {
     }
 
     try {
-        apps_v1.read_namespaced_stateful_set(
-            f"{app_name}-mongodb", namespace=namespace
-        );
+        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
         raise AssertionError("MongoDB StatefulSet should have been deleted") ;
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";

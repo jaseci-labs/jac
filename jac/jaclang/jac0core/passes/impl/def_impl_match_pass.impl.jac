@@ -8,11 +8,16 @@ impl DeclImplMatchPass.transform(
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
     for impl_module in ir_in.impl_mod {
         self.connect_impls(impl_module.sym_tab, ir_in.sym_tab);
+        # Set impl module's parent_scope to main module for import visibility.
+        # This ensures impl files can access imports from their parent .jac file.
+        impl_module.parent_scope = ir_in;
     }
     for variant_module in ir_in.variant_mod {
         self.connect_impls(variant_module.sym_tab, variant_module.sym_tab);
         for impl_module in variant_module.impl_mod {
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
+            # Set impl module's parent_scope to variant module for import visibility.
+            impl_module.parent_scope = variant_module;
         }
     }
     # Cross-variant: head impl files may provide impls for variant decls.
@@ -60,21 +65,21 @@ impl DeclImplMatchPass.connect_impls(
         lookup = target_sym_tab.lookup(arch_refs[0]);
         if (lookup and not isinstance(lookup.decl.name_of, uni.AstImplNeedingNode)) {
             lookup = target_sym_tab.parent_scope.lookup(arch_refs[0])
-            if target_sym_tab.parent_scope
-            else target_sym_tab.lookup(arch_refs[0]);
+                if target_sym_tab.parent_scope
+                else target_sym_tab.lookup(arch_refs[0]);
         }
         decl_node = self.defn_lookup(lookup)
-        if ((len(arch_refs) == 1) and lookup)
-        else lookup.defn[-1] if lookup else None;
+            if ((len(arch_refs) == 1) and lookup)
+            else lookup.defn[-1] if lookup else None;
         name_of_links.append(decl_node) if decl_node else None;
         for name in arch_refs[1:] {
             if decl_node {
                 lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
-                if decl_node.name_of.sym_tab
-                else None;
+                    if decl_node.name_of.sym_tab
+                    else None;
                 decl_node = self.defn_lookup(lookup)
-                if ((len(arch_refs) == 1) and lookup)
-                else lookup.defn[-1] if lookup else None;
+                    if ((len(arch_refs) == 1) and lookup)
+                    else lookup.defn[-1] if lookup else None;
                 name_of_links.append(decl_node) if decl_node else None;
             } else {
                 break;
@@ -97,7 +102,9 @@ impl DeclImplMatchPass.connect_impls(
             continue;
         }
         if (
-            not isinstance((valid_decl := decl_node.name_of), uni.AstImplNeedingNode)
+            not isinstance(
+                (valid_decl := decl_node.name_of), uni.AstImplNeedingNode
+            )
             or not (valid_decl.sym_tab and sym.decl.name_of.sym_tab)
         ) {
             raise self.ice(
@@ -126,6 +133,17 @@ impl DeclImplMatchPass.connect_impls(
         # that shadow `has tasks: list` from the parent scope.
         self._fix_shadowed_parent_symbols(sym.decl.name_of, valid_decl);
         self._resolve_impl_body_symbols(sym.decl.name_of);
+        # Populate self-member symbols from impl to archetype for method impls
+        # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
+        if (
+            len(name_of_links) >= 1
+            and name_of_links[0]
+            and isinstance(name_of_links[0].name_of, uni.Archetype)
+        ) {
+            self._populate_self_member_symbols(
+                sym.decl.name_of, name_of_links[0].name_of
+            );
+        }
     }
     for source_scope in source_sym_tab.kid_scope {
         if (source_sym_tab is target_sym_tab) {
@@ -246,5 +264,33 @@ impl DeclImplMatchPass._fix_shadowed_parent_symbols(
             name_node.sym = parent_sym;
             parent_sym.add_use(name_node.name_spec);
         }
+    }
+}
+
+"""Populate self-member symbols from impl body to archetype's symbol table."""
+impl DeclImplMatchPass._populate_self_member_symbols(
+    self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+) -> None {
+    # Find all self.x = value assignments in the impl body
+    for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer) {
+        # Check if this is a self.attr = value assignment
+        if not (
+            trailer_node.parent and isinstance(trailer_node.parent, uni.Assignment)
+        ) {
+            continue;
+        }
+        if (trailer_node != trailer_node.parent.target[0]) {
+            continue;
+        }
+        chain = trailer_node.as_attr_list;
+        if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
+            continue;
+        }
+        attr_name = chain[1];
+        # Skip if already defined in the archetype
+        if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
+            continue;
+        }
+        archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
     }
 }

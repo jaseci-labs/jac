@@ -9,9 +9,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         elem_type = ir.IntType(8).as_pointer();
     }
     # Create list struct type: { i64 len, i64 cap, elem_type* data }
-    list_struct = self.llvm_module.context.get_identified_type(
-        f"List.{elem_type_name}"
-    );
+    list_struct = self.llvm_module.context.get_identified_type(f"List.{elem_type_name}");
     list_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
     self.list_types[elem_type_name] = list_struct;
     list_ptr_type = list_struct.as_pointer();
@@ -273,15 +271,11 @@ impl NaIRGenPass._codegen_index_set(
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
     );
-    self._emit_runtime_raise(
-        is_neg, "IndexError", "list assignment index out of range"
-    );
+    self._emit_runtime_raise(is_neg, "IndexError", "list assignment index out of range");
     # IndexError: check index >= len
     len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
     is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
-    self._emit_runtime_raise(
-        is_oob, "IndexError", "list assignment index out of range"
-    );
+    self._emit_runtime_raise(is_oob, "IndexError", "list assignment index out of range");
     elem_type = helpers["elem_type"];
     value = self._coerce_type(value, elem_type);
     self.builder.call(helpers["set"], [target_val, index_val, value]);

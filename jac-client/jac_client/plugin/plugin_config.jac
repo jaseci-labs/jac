@@ -363,7 +363,9 @@ def _regenerate_and_install(project_dir: Path) -> None {
 
     # Ensure Bun is installed before proceeding (prompt to install if not)
     if not ensure_bun_available() {
-        raise RuntimeError("Bun is required. Install manually: https://bun.sh") from None ;
+        raise RuntimeError(
+            "Bun is required. Install manually: https://bun.sh"
+        ) from None ;
     }
 
     bundler = ViteBundler(project_dir);

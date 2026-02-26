@@ -246,8 +246,15 @@ def _generate_index_html(
   </head>
   <body>
     <div id="root"></div>
+<<<<<<< fix-asset-loading-on-desktop
     <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
     {script_tag}
+=======
+    <script id="__jac_init__" type="application/json">{html.escape(
+        init_json
+    )}</script>
+    <script type="module" src="{bundle_filename}"></script>
+>>>>>>> main
   </body>
 </html>''';
         index_html = dist_dir / 'index.html';

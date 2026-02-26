@@ -37,7 +37,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 # Check for dict type by inferring from value
                 for (dict_key, helpers) in self.dict_helpers.items() {
                     dict_type = self.dict_types.get(dict_key);
-                    if dict_type is not None and arg_val.type == dict_type.as_pointer() {
+                    if dict_type is not None
+                    and arg_val.type == dict_type.as_pointer() {
                         return self.builder.call(
                             helpers["len"], [arg_val], name="dict.len"
                         );
@@ -321,6 +322,28 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             coerced.append(arg);
         }
     }
-    return self.builder.call(func, coerced, name=f"call.{func_name}");
+    result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
+    if func_name in self.clib_extern_names {
+        # Check ABI integer return types first (small structs coerced to int)
+        for (sname, abi_type) in self.clib_struct_abi_types.items() {
+            if result.type == abi_type {
+                result = self._coerce_type(
+                    result, self.struct_types[sname].as_pointer()
+                );
+                break;
+            }
+        }
+        # Check direct struct return types (larger structs)
+        if not isinstance(result.type, ir.PointerType) {
+            for (sname, stype) in self.struct_types.items() {
+                if sname in self.clib_struct_names and result.type == stype {
+                    result = self._coerce_type(result, stype.as_pointer());
+                    break;
+                }
+            }
+        }
+    }
+    return result;
 }
 # ─── External Function Support ───────────────────────────────

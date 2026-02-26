@@ -223,9 +223,7 @@ cl obj ClientProfile {
 }
 
 # UI Components - Render a single tweet card
-cl def TweetCard(
-    tweet: ClientTweet
-) -> JsxElement {
+cl def TweetCard(tweet: ClientTweet) -> JsxElement {
     return
         <div
             class="tweet-card"
@@ -261,9 +259,7 @@ cl def TweetCard(
 
 # Handle liking a tweet - calls server walker directly
 # The compiler automatically transforms this to __jacCallFunction at compile time!
-cl async def like_tweet_action(
-    tweet_id: str
-) -> any {
+cl async def like_tweet_action(tweet_id: str) -> any {
     try {
         result = await like_tweet(tweet_id);
         print("Tweet liked:", result);

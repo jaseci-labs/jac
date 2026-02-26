@@ -1,57 +1,6 @@
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
-
-"""Serialize objects to JSON-compatible format."""
-impl JacSerializer.serialize(`obj: object) -> JsonValue {
-    import from jaclang.jac0core.constructs { Archetype }
-    if ((`obj is None) or isinstance(`obj, (str, int, float, bool))) {
-        return `obj;
-    }
-    if isinstance(`obj, (list, tuple)) {
-        return [JacSerializer.serialize(item) for item in `obj];
-    }
-    if isinstance(`obj, dict) {
-        return {key: JacSerializer.serialize(value) for (key, value) in `obj.items()};
-    }
-    if isinstance(`obj, Archetype) {
-        return JacSerializer._serialize_archetype(`obj);
-    }
-    if `obj?.__dict__ {
-        with suppress(Exception) {
-            return JacSerializer.serialize(
-                {
-                    k: v
-                    for (k, v) in `obj.__dict__.items()
-                    if not k.startswith('_')
-                }
-            );
-        }
-    }
-    return str(`obj);
-}
-
-"""Serialize Archetype instances."""
-impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
-    import from jaclang.jac0core.constructs { NodeArchetype, WalkerArchetype }
-    result: dict[(str, JsonValue)] = {
-        '_jac_type': type(arch).__name__,
-        '_jac_id': arch.__jac__.id.hex,
-        '_jac_archetype': 'node'
-        if isinstance(arch, NodeArchetype)
-        else 'walker' if isinstance(arch, WalkerArchetype) else 'archetype'
-    };
-    for attr_name in dir(arch) {
-        if (not attr_name.startswith('_') and (attr_name != '__jac__')) {
-            with suppress(Exception) {
-                attr_value = getattr(arch, attr_name);
-                if not callable(attr_value) {
-                    result[attr_name] = JacSerializer.serialize(attr_value);
-                }
-            }
-        }
-    }
-    return result;
-}
+import from jaclang.runtimelib.serializer { Serializer }
 
 impl UserManager.postinit -> None {
     import sqlite3;
@@ -130,9 +79,7 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
-    cursor = self._conn.execute(
-        "SELECT username FROM users WHERE token = ?", (token, )
-    );
+    cursor = self._conn.execute("SELECT username FROM users WHERE token = ?", (token, ));
     row = cursor.fetchone();
     return row[0] if row else None;
 }
@@ -273,8 +220,8 @@ impl ExecutionManager.execute_function(
             return reports;
         } else {
             return {
-                'result': JacSerializer.serialize(result),
-                'reports': JacSerializer.serialize(reports)
+                'result': Serializer.serialize(result, api_mode=True),
+                'reports': Serializer.serialize(reports, api_mode=True)
             };
         }
     } except Exception as e {
@@ -323,8 +270,8 @@ impl ExecutionManager.spawn_walker(
             return reports;
         } else {
             return {
-                'result': JacSerializer.serialize(result),
-                'reports': JacSerializer.serialize(reports)
+                'result': Serializer.serialize(result, api_mode=True),
+                'reports': Serializer.serialize(reports, api_mode=True)
             };
         }
     } except Exception as e {
@@ -422,7 +369,9 @@ impl ModuleIntrospector._extract_access_levels -> None {
     ) -> (bool | None) {
         for item in mod_ast.body {
             if isinstance(item, uni.Archetype) and item.name.sym_name == walker_name {
-                return not is_archetype_public(item);  # True = auth required, False = public
+                return not is_archetype_public(
+                    item
+                );  # True = auth required, False = public
 
             }
         }
@@ -775,8 +724,8 @@ impl ModuleIntrospector.introspect_callable(
             ),
             'required': (param.default == inspect.Parameter.empty),
             'default': None
-            if (param.default == inspect.Parameter.empty)
-            else str(param.default)
+                if (param.default == inspect.Parameter.empty)
+                else str(param.default)
         } for (name, param) in sig.parameters.items()
     };
     return_type = type_hints.get('return', Any);
@@ -822,8 +771,8 @@ impl ModuleIntrospector.introspect_walker(
             'type': type_name,
             'required': (param.default == inspect.Parameter.empty),
             'default': None
-            if (param.default == inspect.Parameter.empty)
-            else param.default
+                if (param.default == inspect.Parameter.empty)
+                else param.default
         };
     }
     fields['_jac_spawn_node'] = {
@@ -970,7 +919,9 @@ impl ResponseBuilder._add_custom_headers(handler: BaseHTTPRequestHandler) -> Non
     and config.environments
     and "response" in config.environments
     and "headers" in config.environments["response"] {
-        for (header_name, header_value) in config.environments["response"]["headers"].items() {
+        for (header_name, header_value) in config.environments["response"][
+            "headers"
+        ].items() {
             handler.send_header(header_name, header_value);
         }
     }
@@ -1091,9 +1042,7 @@ impl AuthHandler.update_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    result = self.user_manager.update_password(
-        username, current_password, new_password
-    );
+    result = self.user_manager.update_password(username, current_password, new_password);
     if ('error' in result) {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -1270,8 +1219,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         def _get_auth_token(self: JacRequestHandler) -> (str | None) {
             auth_header = self.headers.get('Authorization');
             return auth_header[7:]
-            if (auth_header and auth_header.startswith('Bearer '))
-            else None;
+                if (auth_header and auth_header.startswith('Bearer '))
+                else None;
         }
 
         """Authenticate request and return username."""
@@ -1284,8 +1233,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         def _read_json(self: JacRequestHandler) -> dict[str, Any] {
             content_length = int(self.headers.get('Content-Length', 0));
             body = self.rfile.read(content_length).decode()
-            if (content_length > 0)
-            else '{}';
+                if (content_length > 0)
+                else '{}';
             return json.loads(body);
         }
 
@@ -1380,8 +1329,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     # base_path_dir might be src/ when serving src/app.jac, but we need project root
                     import from jaclang.project.config { find_project_root }
                     base_path_dir = Path(Jac.base_path_dir)
-                    if Jac.base_path_dir
-                    else Path.cwd();
+                        if Jac.base_path_dir
+                        else Path.cwd();
                     project_root_result = find_project_root(base_path_dir);
                     if project_root_result {
                         (base_path, _) = project_root_result;
@@ -1432,9 +1381,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                             Jac.send_css(self, css_content);
                             return;
                         } elif assets_file_simple.exists() {
-                            css_content = assets_file_simple.read_text(
-                                encoding='utf-8'
-                            );
+                            css_content = assets_file_simple.read_text(encoding='utf-8');
                             Jac.send_css(self, css_content);
                             return;
                         } else {

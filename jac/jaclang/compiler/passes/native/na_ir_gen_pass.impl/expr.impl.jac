@@ -524,11 +524,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     # If chain type hint indicates this is a list, don't string-index
                     is_list_from_hint = (
                         chain_type_hint is not None
-                        and self._get_list_elem_from_type_node(chain_type_hint) is not None
+                        and self._get_list_elem_from_type_node(
+                            chain_type_hint
+                        ) is not None
                     );
                     inner_target_name = self._get_name(nd.target)
-                    if isinstance(nd.target, uni.Name)
-                    else None;
+                        if isinstance(nd.target, uni.Name)
+                        else None;
                     is_known_list = (
                         inner_target_name is not None
                         and inner_target_name in self.var_list_elem_type

@@ -38,11 +38,11 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         prometheus_name = f"{app_name}-prometheus";
         # Use the service port (80 on AWS LoadBalancer, container_port on local NodePort)
-        service_port = 80 if is_aws else self.k8s_config.container_port;
+        service_port = 80 if cluster_env == 'aws' else self.k8s_config.container_port;
 
         scrape_config = (
             "global:\n"
@@ -61,7 +61,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{prometheus_name}-config",
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'data': {'prometheus.yml': scrape_config}
         };
@@ -90,7 +90,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': prometheus_name,
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'replicas': 1,
@@ -148,7 +148,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{prometheus_name}-service",
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'type': 'ClusterIP',
@@ -186,7 +186,7 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
@@ -199,7 +199,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': grafana_secret_name,
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'type': 'Opaque',
             'stringData': {
@@ -240,7 +240,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-datasources",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'datasource.yaml': datasource_yaml}
         };
@@ -282,7 +282,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-dashboard-provider",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'provider.yaml': dashboard_provider_yaml}
         };
@@ -414,7 +414,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-dashboard",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'jac-scale.json': dashboard_json}
         };
@@ -443,7 +443,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': grafana_name,
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'replicas': 1,
@@ -510,14 +510,14 @@ class MonitoringDeployer {
         }
 
         # Service: NodePort locally, dedicated LoadBalancer (NLB) on AWS
-        if is_aws {
+        if cluster_env == 'aws' {
             grafana_service = {
                 'apiVersion': 'v1',
                 'kind': 'Service',
                 'metadata': {
                     'name': f"{grafana_name}-service",
                     'namespace': namespace,
-                    'labels': {'app': grafana_name},
+                    'labels': {'app': grafana_name, 'managed': 'jac-scale'},
                     'annotations': {
                         'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb'
                     }
@@ -535,7 +535,7 @@ class MonitoringDeployer {
                 'metadata': {
                     'name': f"{grafana_name}-service",
                     'namespace': namespace,
-                    'labels': {'app': grafana_name}
+                    'labels': {'app': grafana_name, 'managed': 'jac-scale'}
                 },
                 'spec': {
                     'type': 'NodePort',
@@ -567,7 +567,7 @@ class MonitoringDeployer {
         }
 
         if self.logger {
-            if is_aws {
+            if cluster_env == 'aws' {
                 self.logger.info(f"Grafana deployed for '{app_name}'");
             } else {
                 self.logger.info(
@@ -584,14 +584,14 @@ class MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        is_aws: bool
+        cluster_env: str
     ) -> None {
         if not self.k8s_config.monitoring_enabled {
             return;
         }
 
-        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, is_aws);
-        self._deploy_grafana(app_name, namespace, apps_v1, core_v1, is_aws);
+        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, cluster_env);
+        self._deploy_grafana(app_name, namespace, apps_v1, core_v1, cluster_env);
     }
 
     """Destroy all Prometheus and Grafana resources for an app namespace."""

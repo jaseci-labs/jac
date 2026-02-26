@@ -23,7 +23,9 @@ obj CFGBuildPass(UniPass) {
     def get_code_block_sequence(
         nd: (uni.UniNode | None)
     ) -> (list[uni.UniCFGNode] | None);
-
+    # Pyright-style affected_symbols tracking
+    def _collect_narrowing_symbols(condition: uni.Expr) -> set[str];
+    def _collect_assigned_symbols(nd: uni.UniNode) -> set[str];
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
     def after_pass -> None;

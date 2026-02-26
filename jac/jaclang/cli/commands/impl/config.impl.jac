@@ -548,7 +548,7 @@ def _config_groups -> None {
         "test": "Test command defaults (directory, filter, verbose, fail_fast)",
         "serve": "Serve command defaults (port, session, main, cl_route_prefix)",
         "format": "Format command defaults (outfile, fix)",
-        "check": "Check command defaults (print_errs, warnonly)",
+        "check": "Check command defaults (print_errs)",
         "dot": "Dot/graph visualization defaults (depth, traverse, format)",
         "cache": "Cache settings (enabled, dir)",
         "plugins": "Plugin settings (discovery, enabled, disabled)",
