@@ -80,7 +80,6 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
         style=style,
         markup=markup
     );
-    sys.stdout.flush();
 }
 
 """Context manager for status during long operations (basic implementation)."""
@@ -306,8 +305,8 @@ Args:
 """
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
     pc = _get_pretty_stdout();
-    watch_emoji = '👀' if self.use_emoji else '';
-    pc.print(f"[bold cyan]{watch_emoji} Watching for changes...[/]");
+    watch_emoji = '👀 ' if self.use_emoji else '';
+    pc.print(f"[bold cyan]{watch_emoji}Watching for changes...[/]");
     pc.print(
         f"   [dim]Monitoring:[/] [bright_white]{pattern}[/] [dim]({count} files)[/]"
     );
