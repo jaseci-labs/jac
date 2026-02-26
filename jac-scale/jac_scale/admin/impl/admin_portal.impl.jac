@@ -998,12 +998,10 @@ impl JacAPIServerAdmin.admin_get_metrics(
 ) -> TransportResponse {
     import re;
     import from prometheus_client { generate_latest, REGISTRY }
-
     error = self.require_admin(Authorization);
     if error {
         return error;
     }
-
     if not self._metrics or not self._metrics.is_enabled() {
         return TransportResponse.success(
             data={
@@ -1014,7 +1012,6 @@ impl JacAPIServerAdmin.admin_get_metrics(
             meta=Meta(extra={'http_status': 200})
         );
     }
-
     try {
         raw_metrics = generate_latest(REGISTRY).decode('utf-8');
         metrics_data = _parse_prometheus_text(raw_metrics);
@@ -1044,7 +1041,9 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
 
     metrics_data: list[dict] = [];
     current_metric: dict | None = None;
-    metric_line_re = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)((?:\{[^}]*\})?)[ \t]+(.+)$');
+    metric_line_re = re.compile(
+        r'^([a-zA-Z_:][a-zA-Z0-9_:]*)((?:\{[^}]*\})?)[ \t]+(.+)$'
+    );
     label_re = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"');
 
     for line in raw_metrics.split('\n') {
@@ -1075,41 +1074,46 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
                 metric_name = regex_match.group(1);
                 labels_str = regex_match.group(2);
                 value_str = regex_match.group(3);
-
                 labels: dict = {};
-                if labels_str and labels_str.startswith('{') and labels_str.endswith('}') {
+                if labels_str
+                and labels_str.startswith('{')
+                and labels_str.endswith('}') {
                     for lm in label_re.finditer(labels_str[1:-1]) {
                         labels[lm.group(1)] = lm.group(2);
                     }
                 }
-
                 try {
                     value = float(value_str);
                 } except ValueError {
                     value = value_str;
                 }
-
                 found_metric = None;
                 for m in metrics_data {
-                    if m['name'] == metric_name or metric_name.startswith(m['name'] + '_') {
+                    if m['name'] == metric_name
+                    or metric_name.startswith(m['name'] + '_') {
                         found_metric = m;
                         break;
                     }
                 }
-
                 suffix = '';
                 if found_metric {
                     if metric_name.startswith(found_metric['name']) {
                         suffix = metric_name[len(found_metric['name']):];
                     }
-                    found_metric['values'].append({'labels': labels, 'value': value, 'suffix': suffix});
+                    found_metric['values'].append(
+                        {'labels': labels, 'value': value, 'suffix': suffix}
+                    );
                 } else {
-                    metrics_data.append({
-                        'name': metric_name,
-                        'description': '',
-                        'type': 'unknown',
-                        'values': [{'labels': labels, 'value': value, 'suffix': ''}]
-                    });
+                    metrics_data.append(
+                        {
+                            'name': metric_name,
+                            'description': '',
+                            'type': 'unknown',
+                            'values': [
+                                {'labels': labels, 'value': value, 'suffix': ''}
+                            ]
+                        }
+                    );
                 }
             }
         }
