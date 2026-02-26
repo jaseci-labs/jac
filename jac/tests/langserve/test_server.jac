@@ -257,7 +257,7 @@ test "test_go_to_definition_connect_filter" {
     try {
         lsp = create_server("");
         import_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("checker_connect_filter.jac")
+            passes_main_fixture_abs_path("checker/checker_connect_filter.jac")
         );
         lsp.type_check_file(import_file);
         positions = [
