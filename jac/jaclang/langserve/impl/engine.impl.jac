@@ -110,8 +110,8 @@ impl JacLangServer.type_check_file(
         self.publish_diagnostics(
             (
                 uris.from_fs_path(annex_view)
-                if annex_view
-                else uris.from_fs_path(fs_path)
+                    if annex_view
+                    else uris.from_fs_path(fs_path)
                 # to display diagnostic , it need URI starts with "file://"
             ),
             utils.gen_diagnostics((annex_view or fs_path), all_errors, all_warnings)
@@ -294,11 +294,11 @@ impl JacLangServer.get_definition(
         mod_path = node_.type.file_uri if is_module else node_.loc.mod_path;
         decl_range = (
             utils.create_range(node_.loc)
-            if not is_module
-            else lspt.Range(
-                start=lspt.Position(line=0, character=0),
-                end=lspt.Position(line=0, character=0)
-            )
+                if not is_module
+                else lspt.Range(
+                    start=lspt.Position(line=0, character=0),
+                    end=lspt.Position(line=0, character=0)
+                )
         );
         return lspt.Location(uri=uris.from_fs_path(str(mod_path)), range=decl_range);
     }
@@ -418,8 +418,8 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
             source_str=document.source, file_path=document.path
         );
         formatted_text = prog.mod.main.gen.jac
-        if not prog.errors_had
-        else document.source;
+            if not prog.errors_had
+            else document.source;
     } except Exception as e {
         self.log_error(f"'Error during formatting: '{e}");
         formatted_text = document.source;
@@ -603,7 +603,9 @@ impl JacLangServer.get_completion(
                         return self.get_completion_of_node(node_at_pos.parent.target);
                     }
                     # Just a name field.
-                    if scope_node := node_at_pos.find_parent_of_type(uni.UniScopeNode) {
+                    if scope_node := node_at_pos.find_parent_of_type(
+                        uni.UniScopeNode
+                    ) {
                         self.debug("found name in scope node " + str(scope_node));
                         return self.get_completion_of_node(scope_node);
                     }

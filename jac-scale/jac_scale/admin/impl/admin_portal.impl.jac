@@ -589,9 +589,7 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     # Update password
-    result = self.user_manager.update_password(
-        username, current_password, new_password
-    );
+    result = self.user_manager.update_password(username, current_password, new_password);
     if 'error' in result {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -949,10 +947,7 @@ impl JacAPIServerAdmin.admin_graph_data(
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {
-                'from': str(id(source_node)),
-                'to': str(id(target_node))
-            };
+            edge_data: dict = {'from': str(id(source_node)), 'to': str(id(target_node))};
             if repr(edge_arch) != 'GenericEdge()' {
                 edge_data['label'] = repr(edge_arch);
             }
@@ -1095,8 +1090,8 @@ impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
         if asset_path.exists() {
             guess_result = mimetypes.guess_type(str(asset_path));
             content_type = guess_result[0]
-            if guess_result[0]
-            else "application/octet-stream";
+                if guess_result[0]
+                else "application/octet-stream";
             return FileResponse(path=str(asset_path), media_type=content_type);
         }
     }

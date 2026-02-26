@@ -13,6 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
 - **Fix: `jac create --use` with jac-scale endpoints**: Fixed `jac create --use <URL>` failing when the URL points to a jac-scale `@restspec` endpoint. The template loader now unwraps the `TransportResponse` envelope (`{data: {result: {...}}}`) before parsing the jacpack JSON.
+- **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
 
 ## jaclang 0.11.1 (Latest Release)
 

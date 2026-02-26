@@ -70,7 +70,6 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             }
 
             if expr.is_attr {  # <expr>.member
-
                 assert isinstance(expr.right, uni.Name);
                 if isinstance(base_type, types.ModuleType) {
                     # getTypeOfMemberAccessWithBaseType()
@@ -95,7 +94,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
                     assert isinstance(base_type, types.ClassType);
-                    if member := self._lookup_class_member(base_type, expr.right.value) {
+                    if member := self._lookup_class_member(
+                        base_type, expr.right.value
+                    ) {
                         value = self._set_symbol_to_expr(expr.right, member.symbol);
                         # Handle direct enum member access (e.g., Color.RED)
                         if base_type.is_enum_class() {
@@ -105,9 +106,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 base_type.shared.enum_members
                                 and member_name in base_type.shared.enum_members
                             ) {
-                                member_info = base_type.shared.enum_members[
-                                    member_name
-                                ];
+                                member_info = base_type.shared.enum_members[member_name];
                                 return types.EnumMemberType(
                                     enum_class=base_type,
                                     member_info=member_info,
@@ -190,7 +189,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 # TODO: In the future, we might want to union the return types
                                 if overloaded_ty.overloads
                                 and len(overloaded_ty.overloads) > 0 {
-                                    prop_return_type = overloaded_ty.overloads[0].return_type;
+                                    prop_return_type = overloaded_ty.overloads[
+                                        0
+                                    ].return_type;
                                     if prop_return_type {
                                         member.symbol.add_use(expr.right);
                                         expr.right.type = prop_return_type;
@@ -310,7 +311,6 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 }
                 return base_type;
             } else {  # <expr>[<expr>]
-
                 # --- Handle Callable special form ---
                 # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
                 # Similar to Pyright's handling in createSpecializedClassType() which checks
@@ -392,9 +392,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             sym_name = val.params[0].value;
                             type_arg = val.params[1];
                             isinstance_type = self.get_type_of_expression(type_arg);
-                            isinstance_inst = self._convert_to_instance(
-                                isinstance_type
-                            );
+                            isinstance_inst = self._convert_to_instance(isinstance_type);
                             self._add_and_narrowing(sym_name, isinstance_inst);
                         }
                         # Evaluate and collect operand type
@@ -582,9 +580,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             for overload_symbol in symbol_scope.names_in_scope_overload[
                                 expr.value
                             ] {
-                                overload_type = self.get_type_of_symbol(
-                                    overload_symbol
-                                );
+                                overload_type = self.get_type_of_symbol(overload_symbol);
                                 if isinstance(overload_type, types.FunctionType) {
                                     overloaded_fns.append(overload_type);
                                 }
@@ -679,7 +675,6 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     );
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
-
                     if node_.parent.value is not None {
                         return self.get_type_of_expression(node_.parent.value);
                     }
@@ -1373,9 +1368,7 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
         self.typing_module, "TypeVar"
     );
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
-    self.jac_builtins_module = self._load_stub_module(
-        self._JAC_BUILTINS_STUB_FILE_PATH
-    );
+    self.jac_builtins_module = self._load_stub_module(self._JAC_BUILTINS_STUB_FILE_PATH);
     # This avoids parent_scope chaining which can cause recursion issues
     for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
         if name not in self.builtins_module.names_in_scope {
@@ -1518,9 +1511,7 @@ impl TypeEvaluator._compute_narrowed_at(
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
                 # Assert passed means condition is true
-                narrowed = self._apply_narrowing(
-                    predicate, pred_narrowed, True, symbol
-                );
+                narrowed = self._apply_narrowing(predicate, pred_narrowed, True, symbol);
                 if narrowed is not None {
                     incoming_types.append(narrowed);
                 } else {
@@ -1539,9 +1530,7 @@ impl TypeEvaluator._compute_narrowed_at(
                     uni.MatchCase
                 );
                 if match_case is not None and match_case.pattern {
-                    pattern_type = self._get_type_from_match_pattern(
-                        match_case.pattern
-                    );
+                    pattern_type = self._get_type_from_match_pattern(match_case.pattern);
                     if pattern_type is not None {
                         incoming_types.append(pattern_type);
                         continue;
@@ -1836,12 +1825,10 @@ impl TypeEvaluator._find_predicate_for(
             if isinstance(right_expr, (uni.String, uni.Int, uni.Float, uni.Bool)) {
                 literal_type = self.get_type_of_expression(right_expr);
                 if op_name == Tok.EE {  # ==
-
                     return NarrowingPredicate(
                         sym_name=sym_name, narrow_type=literal_type, is_inverted=False
                     );
                 } elif op_name == Tok.NE {  # !=
-
                     return NarrowingPredicate(
                         sym_name=sym_name, narrow_type=literal_type, is_inverted=True
                     );
@@ -1859,8 +1846,8 @@ impl TypeEvaluator._find_predicate_for(
             # Only apply truthiness narrowing for union types containing None
             if isinstance(sym_type, types.UnionType) and sym_type.types {
                 none_shared = self.prefetch.none_type_class.shared
-                if self.prefetch.none_type_class
-                else None;
+                    if self.prefetch.none_type_class
+                    else None;
                 has_none = False;
                 for t in sym_type.types {
                     if isinstance(t, types.ClassType) and t.shared == none_shared {
@@ -1869,9 +1856,7 @@ impl TypeEvaluator._find_predicate_for(
                     }
                 }
                 if has_none {
-                    none_inst = self._convert_to_instance(
-                        self.prefetch.none_type_class
-                    );
+                    none_inst = self._convert_to_instance(self.prefetch.none_type_class);
                     return NarrowingPredicate(
                         sym_name=sym_name, narrow_type=none_inst, is_inverted=True
                     );
@@ -1975,7 +1960,9 @@ Returns True if:
 1. t is the same class as target_type
 2. t is a subclass of target_type
 """
-impl TypeEvaluator._type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool {
+impl TypeEvaluator._type_matches_isinstance(
+    t: TypeBase, target_type: TypeBase
+) -> bool {
     # Handle target_type being a union (isinstance(x, (A, B)))
     if isinstance(target_type, types.UnionType) and target_type.types {
         for target_t in target_type.types {

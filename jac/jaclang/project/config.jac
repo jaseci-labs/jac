@@ -143,14 +143,10 @@ obj EnvironmentConfig {
 
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
-def interpolate_env_vars(
-    value: str
-) -> str;
+def interpolate_env_vars(value: str) -> str;
 
 # Find project root by looking for jac.toml.
-def find_project_root(
-    start: Path | None = None
-) -> tuple[Path, Path] | None;
+def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
 # Check if currently in a Jac project.
 def is_in_project -> bool;
@@ -223,19 +219,13 @@ obj JacConfig {
 
 # Discover config files for a project in load order.
 # Returns list of paths: [jac.toml, jac.<profile>.toml?, jac.local.toml?]
-def discover_config_files(
-    project_root: Path, profile: str | None = None
-) -> list[Path];
+def discover_config_files(project_root: Path, profile: str | None = None) -> list[Path];
 
 # Parse TOML data into JacConfig object
-def _parse_toml_data(
-    data: dict[str, Any], toml_path: Path | None = None
-) -> JacConfig;
+def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
 
 # Recursively apply environment variable interpolation
-def _interpolate_recursive(
-    obj: Any
-) -> Any;
+def _interpolate_recursive(obj: Any) -> Any;
 
 glob _config: JacConfig | None = None;
 

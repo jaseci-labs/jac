@@ -1,10 +1,5 @@
 # Simple Authentication App with Jac Client Utils
-cl import from '@jac/runtime' {
-    jacSignup,
-    jacLogin,
-    jacLogout,
-    jacIsLoggedIn
-}
+cl import from '@jac/runtime' { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 cl {
     def:pub app -> JsxElement {
@@ -211,8 +206,8 @@ cl {
                         <p style={{"color": "#6b7280", "fontSize": "0.95rem"}}>
                             {(
                                 "Sign up to get started"
-                                if isSignup
-                                else "Sign in to continue"
+                                    if isSignup
+                                    else "Sign in to continue"
                             )}
                         </p>
                     </div>
@@ -297,8 +292,8 @@ cl {
                                 </p>
                             </div>
                         )
-                        if error
-                        else None}
+                            if error
+                            else None}
                         <button
                             type="submit"
                             disabled={loading}
@@ -319,8 +314,8 @@ cl {
                             {(
                                 (
                                     "Processing..."
-                                    if loading
-                                    else ("Sign Up" if isSignup else "Sign In")
+                                        if loading
+                                        else ("Sign Up" if isSignup else "Sign In")
                                 )
                             )}
                         </button>
@@ -337,8 +332,8 @@ cl {
                             {(
                                 (
                                     "Already have an account?"
-                                    if isSignup
-                                    else "Don't have an account?"
+                                        if isSignup
+                                        else "Don't have an account?"
                                 )
                             )}
                         </p>

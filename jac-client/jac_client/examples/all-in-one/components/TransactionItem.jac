@@ -1,9 +1,6 @@
 # Single transaction item component
 # Demonstrates: NEW PROPS PATTERN (direct parameters, NOT props dict)
-cl import from ..utils.formatters {
-    formatCurrency,
-    formatDate
-}
+cl import from ..utils.formatters { formatCurrency, formatDate }
 cl import from ..constants.categories { CATEGORY_COLORS, CATEGORY_LABELS }
 
 cl {
@@ -44,8 +41,8 @@ cl {
                 <div className="tx-right">
                     <span
                         className={("tx-amount income")
-                        if isIncome
-                        else ("tx-amount expense")}
+                            if isIncome
+                            else ("tx-amount expense")}
                     >
                         {("+") if isIncome else ("-")}{formatCurrency(amount)}
                     </span>

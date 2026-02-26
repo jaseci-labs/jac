@@ -582,7 +582,9 @@ class KubernetesTarget(DeploymentTarget) {
                     app_name=app_name
                 );
                 if not (deployment_status) {
-                    raise Exception("Deployment failed: Application failed to deploy.") ;
+                    raise Exception(
+                        "Deployment failed: Application failed to deploy."
+                    ) ;
                 }
             }
         } else {
@@ -664,7 +666,9 @@ class KubernetesTarget(DeploymentTarget) {
             secret_ref_name: str | None = None;
             if self.secrets {
                 secret_ref_name = f"{app_name}-secrets";
-                if create_k8s_secret(core_v1, namespace, secret_ref_name, self.secrets) {
+                if create_k8s_secret(
+                    core_v1, namespace, secret_ref_name, self.secrets
+                ) {
                     if self.logger {
                         self.logger.info(f"Created K8s Secret '{secret_ref_name}'");
                     }
@@ -676,8 +680,8 @@ class KubernetesTarget(DeploymentTarget) {
             # 4. Determine cluster type
             cluster_env = cluster_type();
             service_type = 'LoadBalancer'
-            if cluster_env in ('aws', 'gcp', 'azure')
-            else 'NodePort';
+                if cluster_env in ('aws', 'gcp', 'azure')
+                else 'NodePort';
 
             # 4b. On local clusters, verify that the requested NodePorts are not
             #     already bound by a service in another namespace.
@@ -686,13 +690,13 @@ class KubernetesTarget(DeploymentTarget) {
                     node_port=self.k8s_config.node_port,
                     prometheus_node_port=(
                         self.k8s_config.prometheus_node_port
-                        if self.k8s_config.monitoring_enabled
-                        else None
+                            if self.k8s_config.monitoring_enabled
+                            else None
                     ),
                     grafana_node_port=(
                         self.k8s_config.grafana_node_port
-                        if self.k8s_config.monitoring_enabled
-                        else None
+                            if self.k8s_config.monitoring_enabled
+                            else None
                     ),
                     current_namespace=namespace
                 );

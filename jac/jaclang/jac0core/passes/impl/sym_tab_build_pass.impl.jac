@@ -104,7 +104,9 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
                 and not isinstance(
                     i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
                 )
-                and ((outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
+                and (
+                    (outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
+                )
                 and self._outer_has_type_annotation(outer)
             ) {
                 outer.add_use(i.name_spec);

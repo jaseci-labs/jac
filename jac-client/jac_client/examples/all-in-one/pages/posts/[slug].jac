@@ -46,10 +46,7 @@ cl {
 
         return
             <article style={{"padding": "2rem", "maxWidth": "700px"}}>
-                <Link
-                    to="/posts"
-                    style={{"color": "#3b82f6", "textDecoration": "none"}}
-                >
+                <Link to="/posts" style={{"color": "#3b82f6", "textDecoration": "none"}}>
                     ← Back to Posts
                 </Link>
                 <h1 style={{"marginTop": "1rem", "fontSize": "2rem"}}>

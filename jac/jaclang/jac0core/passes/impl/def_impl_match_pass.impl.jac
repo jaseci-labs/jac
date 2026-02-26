@@ -60,21 +60,21 @@ impl DeclImplMatchPass.connect_impls(
         lookup = target_sym_tab.lookup(arch_refs[0]);
         if (lookup and not isinstance(lookup.decl.name_of, uni.AstImplNeedingNode)) {
             lookup = target_sym_tab.parent_scope.lookup(arch_refs[0])
-            if target_sym_tab.parent_scope
-            else target_sym_tab.lookup(arch_refs[0]);
+                if target_sym_tab.parent_scope
+                else target_sym_tab.lookup(arch_refs[0]);
         }
         decl_node = self.defn_lookup(lookup)
-        if ((len(arch_refs) == 1) and lookup)
-        else lookup.defn[-1] if lookup else None;
+            if ((len(arch_refs) == 1) and lookup)
+            else lookup.defn[-1] if lookup else None;
         name_of_links.append(decl_node) if decl_node else None;
         for name in arch_refs[1:] {
             if decl_node {
                 lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
-                if decl_node.name_of.sym_tab
-                else None;
+                    if decl_node.name_of.sym_tab
+                    else None;
                 decl_node = self.defn_lookup(lookup)
-                if ((len(arch_refs) == 1) and lookup)
-                else lookup.defn[-1] if lookup else None;
+                    if ((len(arch_refs) == 1) and lookup)
+                    else lookup.defn[-1] if lookup else None;
                 name_of_links.append(decl_node) if decl_node else None;
             } else {
                 break;
@@ -97,7 +97,9 @@ impl DeclImplMatchPass.connect_impls(
             continue;
         }
         if (
-            not isinstance((valid_decl := decl_node.name_of), uni.AstImplNeedingNode)
+            not isinstance(
+                (valid_decl := decl_node.name_of), uni.AstImplNeedingNode
+            )
             or not (valid_decl.sym_tab and sym.decl.name_of.sym_tab)
         ) {
             raise self.ice(

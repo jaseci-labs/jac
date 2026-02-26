@@ -45,8 +45,8 @@ impl UniNode._construct_sub_node_tab(self: UniNode) -> None {
 @ property
 impl UniNode.sym_tab(self: UniNode) -> UniScopeNode {
     return self
-    if isinstance(self, UniScopeNode)
-    else self.parent_of_type(UniScopeNode);
+        if isinstance(self, UniScopeNode)
+        else self.parent_of_type(UniScopeNode);
 }
 
 """Add kid left."""
@@ -136,8 +136,8 @@ impl UniNode.gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> 
     value = value
     or (
         DELIM_MAP[name]
-        if (name in DELIM_MAP)
-        else TOKEN_MAP.get(name.value, name.value)
+            if (name in DELIM_MAP)
+            else TOKEN_MAP.get(name.value, name.value)
     );
     return Token(
         name=name,
@@ -427,12 +427,12 @@ impl UniScopeNode.insert(
     imported: bool = False
 ) -> (UniNode | None) {
     collision = self.names_in_scope[nd.sym_name].defn[-1]
-    if (single and (nd.sym_name in self.names_in_scope))
-    else None;
+        if (single and (nd.sym_name in self.names_in_scope))
+        else None;
     symbol = nd.name_spec.create_symbol(
         access=access_spec
-        if isinstance(access_spec, SymbolAccess)
-        else access_spec.access_type if access_spec else SymbolAccess.PUBLIC,
+            if isinstance(access_spec, SymbolAccess)
+            else access_spec.access_type if access_spec else SymbolAccess.PUBLIC,
         parent_tab=self,
         imported=imported
     );
@@ -514,8 +514,8 @@ impl UniScopeNode.chain_def_insert(
     node_list = node_list[:-1];
     for i in node_list {
         cur_sym_tab = lookup.decl.sym_tab
-        if (lookup := self.use_lookup(i, sym_table=cur_sym_tab))
-        else None;
+            if (lookup := self.use_lookup(i, sym_table=cur_sym_tab))
+            else None;
     }
 }
 
@@ -665,10 +665,10 @@ impl AstAccessNode.init(self: AstAccessNode, access: (SubTag[Token] | None)) -> 
 @ property
 impl AstAccessNode.access_type(self: AstAccessNode) -> SymbolAccess {
     return SymbolAccess.PRIVATE
-    if (self.access and (self.access.tag.name == Tok.KW_PRIV))
-    else SymbolAccess.PROTECTED
-    if (self.access and (self.access.tag.name == Tok.KW_PROT))
-    else SymbolAccess.PUBLIC;
+        if (self.access and (self.access.tag.name == Tok.KW_PRIV))
+        else SymbolAccess.PROTECTED
+            if (self.access and (self.access.tag.name == Tok.KW_PROT))
+            else SymbolAccess.PUBLIC;
 }
 
 @ property
@@ -830,8 +830,8 @@ impl NameAtom.sem_token(self: NameAtom) -> (tuple[(SemTokType, SemTokMod)] | Non
         return (SemTokType.CLASS, SemTokMod.DECLARATION);
     }
     name_of = self.sym.decl.name_of
-    if (self.sym and not isinstance(self.sym.decl.name_of, Name))
-    else self.name_of;
+        if (self.sym and not isinstance(self.sym.decl.name_of, Name))
+        else self.name_of;
     if isinstance(name_of, ModulePath) {
         return (SemTokType.NAMESPACE, SemTokMod.DEFINITION);
     }
@@ -1014,22 +1014,22 @@ impl Test.init(
     self.description: (String | None) = description;
     Test.TEST_COUNT += 1 if isinstance(name, Token) else 0;
     self.name: Name = name
-    if isinstance(name, Name)
-    else Name(
-        orig_src=name.orig_src,
-        name=Tok.NAME.value,
-        value=f"_jac_gen_{Test.TEST_COUNT}",
-        col_start=name.loc.col_start,
-        col_end=name.loc.col_end,
-        line=name.loc.first_line,
-        end_line=name.loc.last_line,
-        pos_start=name.pos_start,
-        pos_end=name.pos_end
-    );
+        if isinstance(name, Name)
+        else Name(
+            orig_src=name.orig_src,
+            name=Tok.NAME.value,
+            value=f"_jac_gen_{Test.TEST_COUNT}",
+            col_start=name.loc.col_start,
+            col_end=name.loc.col_end,
+            line=name.loc.first_line,
+            end_line=name.loc.last_line,
+            pos_start=name.pos_start,
+            pos_end=name.pos_end
+        );
     self.name.parent = self;
     self.name._sym_name = f"test_{self.name.value}"
-    if not self.name.value.startswith('test_')
-    else self.name.value;
+        if not self.name.value.startswith('test_')
+        else self.name.value;
     self.body: list[CodeBlockStmt] = `list(body);
     UniNode.init(self, kid=kid);
     # Only insert synthetic name into kids if no description string present
@@ -1335,10 +1335,12 @@ impl Archetype.init(
 
 impl Archetype._get_impl_resolved_body(self: Archetype) -> list {
     return `list(self.body)
-    if isinstance(self.body, Sequence)
-    else `list(self.body.body)
-    if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
-    else [];
+        if isinstance(self.body, Sequence)
+        else `list(self.body.body)
+            if (
+                isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence)
+            )
+            else [];
 }
 
 @ property
@@ -1497,14 +1499,16 @@ impl Ability.init(
     if (name_ref is None) {
         first_tok = kid[0] if (kid and isinstance(kid[0], Token)) else None;
         if (first_tok is None) {
-            raise ValueError('Cannot create synthetic name_ref without location info.') ;
+            raise ValueError(
+                'Cannot create synthetic name_ref without location info.'
+            ) ;
         }
         event_type = 'entry'
-        if (
-            isinstance(signature, EventSignature)
-            and (signature.event.name == Tok.KW_ENTRY)
-        )
-        else 'exit';
+            if (
+                isinstance(signature, EventSignature)
+                and (signature.event.name == Tok.KW_ENTRY)
+            )
+            else 'exit';
         synthetic_name = f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
         synthetic_name_ref: NameAtom = Name(
             orig_src=first_tok.orig_src,
@@ -1564,17 +1568,17 @@ impl Ability.is_def(self: Ability) -> bool {
 impl Ability.method_owner(self: Ability) -> Archetype | Enum | None {
     found = (
         self.parent
-        if (self.parent and isinstance(self.parent, (Archetype, Enum)))
-        else None
+            if (self.parent and isinstance(self.parent, (Archetype, Enum)))
+            else None
     )
     or (
         self.parent.decl_link
-        if (
-            self.parent
-            and isinstance(self.parent, ImplDef)
-            and isinstance(self.parent.decl_link, (Archetype, Enum))
-        )
-        else None
+            if (
+                self.parent
+                and isinstance(self.parent, ImplDef)
+                and isinstance(self.parent.decl_link, (Archetype, Enum))
+            )
+            else None
     );
     return found;
 }
@@ -1609,11 +1613,11 @@ impl Ability.get_pos_argc_range(self: Ability) -> tuple[(int, int)] {
 impl Ability.py_resolve_name(self: Ability) -> str {
     if (self.name_ref is None) {
         event_type = 'entry'
-        if (
-            isinstance(self.signature, EventSignature)
-            and (self.signature.event.name == Tok.KW_ENTRY)
-        )
-        else 'exit';
+            if (
+                isinstance(self.signature, EventSignature)
+                and (self.signature.event.name == Tok.KW_ENTRY)
+            )
+            else 'exit';
         return f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__";
     } elif isinstance(self.name_ref, Name) {
         return self.name_ref.value;
@@ -1966,8 +1970,8 @@ impl DeleteStmt.init(self: DeleteStmt, target: Expr, kid: Sequence[UniNode]) -> 
 @ property
 impl DeleteStmt.py_ast_targets(self: DeleteStmt) -> list[ast3.AST] {
     return [i.gen.py_ast[0] for i in self.target.values]
-    if (isinstance(self.target, TupleVal) and self.target.values)
-    else self.target.gen.py_ast;
+        if (isinstance(self.target, TupleVal) and self.target.values)
+        else self.target.gen.py_ast;
 }
 
 impl ReportStmt.init(self: ReportStmt, expr: Expr, kid: Sequence[UniNode]) -> None {
@@ -2276,9 +2280,7 @@ impl AtomTrailer.init(
 impl AtomTrailer.as_attr_list(self: AtomTrailer) -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
-    trag_list: list[AstSymbolNode] = [right]
-    if isinstance(right, AstSymbolNode)
-    else [];
+    trag_list: list[AstSymbolNode] = [right] if isinstance(right, AstSymbolNode) else [];
     while (isinstance(left, AtomTrailer) and left.is_attr) {
         if isinstance(left.right, AstSymbolNode) {
             trag_list.insert(0, left.right);

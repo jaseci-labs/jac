@@ -51,16 +51,16 @@ impl CoalesceBBPass.printgraph_cfg -> str {
                 cfg[key]['bb_stmts'][i] = 'obj ' + bbs.name.unparse();
             } elif isinstance(bbs, uni.Ability) {
                 cfg[key]['bb_stmts'][i] = 'can ' + bbs.name_ref.unparse() + bbs.signature.unparse()
-                if bbs.signature
-                else '';
+                    if bbs.signature
+                    else '';
             } elif isinstance(bbs, (uni.InForStmt, uni.IterForStmt)) {
                 cfg[key]['bb_stmts'][i] = (
                     'for ' + bbs.target.unparse() + ' in ' + bbs.collection.unparse()
                 )
-                if isinstance(bbs, uni.InForStmt)
-                else (
-                    'for ' + bbs.iter.unparse() + bbs.condition.unparse() + bbs.count_by.unparse()
-                );
+                    if isinstance(bbs, uni.InForStmt)
+                    else (
+                        'for ' + bbs.iter.unparse() + bbs.condition.unparse() + bbs.count_by.unparse()
+                    );
             } elif isinstance(bbs, uni.WhileStmt) {
                 cfg[key]['bb_stmts'][i] = 'while ' + bbs.condition.unparse();
             } else {
@@ -70,9 +70,7 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     }
     for (key, value) in cfg.items() {
         if value.get('bb_stmts') {
-            stmts = '\\n'.join(
-                [stmt.replace('"', '\\"') for stmt in value['bb_stmts']]
-            );
+            stmts = '\\n'.join([stmt.replace('"', '\\"') for stmt in value['bb_stmts']]);
             dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
@@ -409,7 +407,8 @@ impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
         }
     }
     # Pattern: (parenthesized) - unwrap
-    elif isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
+    elif isinstance(condition, uni.AtomUnit)
+    and isinstance(condition.value, uni.Expr) {
         symbols.update(self._collect_narrowing_symbols(condition.value));
     }
     # Pattern: x (truthiness check like `if val:`) - collect 'x'

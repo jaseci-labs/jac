@@ -1,8 +1,5 @@
 # Full Stack Todo App with Auth and React Router
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useState, useEffect }
 cl import from "@jac/runtime" {
     Router,
     Routes,
@@ -586,9 +583,13 @@ cl {
             id spawn toggle_todo();
             setTodos(
                 [
-                    {"_jac_id": todo._jac_id, "text": todo.text, "done": not todo.done}
-                    if todo._jac_id == id
-                    else todo for todo in todos
+                    {
+                        "_jac_id": todo._jac_id,
+                        "text": todo.text,
+                        "done": not todo.done
+                    }
+                        if todo._jac_id == id
+                        else todo for todo in todos
                 ]
             );
         }
@@ -667,8 +668,8 @@ cl {
                         {activeCount}{"item" if activeCount == 1 else "items"}left
                     </div>
                 )
-                if len(todos) > 0
-                else None}
+                    if len(todos) > 0
+                    else None}
             </div>;
     }
 

@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.2 (Unreleased)
 
+- **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 - 1 small refactor/change
 - **JacKit Component Registry (`jac add/remove --kit`)**: Added `--kit` flag for shadcn/ui-style component management. Fetches components from a remote registry, auto-resolves peer dependencies, writes `.cl.jac` files to `components/ui/`, and updates `[dependencies.npm]` in `jac.toml`. Configure via `[kit]` section in `jac.toml`.
 
