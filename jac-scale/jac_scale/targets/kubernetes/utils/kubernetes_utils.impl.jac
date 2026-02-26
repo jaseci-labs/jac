@@ -105,7 +105,7 @@ impl sync_code_to_pvc(
     pod_body = {
         'apiVersion': 'v1',
         'kind': 'Pod',
-        'metadata': {'name': sync_pod_name},
+        'metadata': {'name': sync_pod_name, 'labels': {'managed': 'jac-scale'}},
         'spec': {
             'restartPolicy': 'Never',
             'containers': [
@@ -305,7 +305,7 @@ impl ensure_pvc_exists(
     pvc_body: dict[(str, Any)] = {
         'apiVersion': 'v1',
         'kind': 'PersistentVolumeClaim',
-        'metadata': {'name': pvc_name},
+        'metadata': {'name': pvc_name, 'labels': {'managed': 'jac-scale'}},
         'spec': {
             'accessModes': [access_mode],
             'resources': {'requests': {'storage': storage_size}}
@@ -422,7 +422,7 @@ impl cluster_type -> str {
 impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     try {
         config.load_kube_config();
-    } except Exception {
+    } except ConfigException {
         config.load_incluster_config();
     }
     v1 = client.CoreV1Api();
@@ -494,7 +494,11 @@ impl check_deployment_status(
 impl create_or_update_configmap(
     namespace: str, configmap_name: str, tar_path: str
 ) -> None {
-    config.load_kube_config();
+    try {
+        config.load_kube_config();
+    } except ConfigException {
+        config.load_incluster_config();
+    }
     v1 = client.CoreV1Api();
     with open(tar_path, 'rb') as f {
         encoded_data = base64.b64encode(f.read()).decode('utf-8');
@@ -547,7 +551,11 @@ impl delete_namespace(namespace: str) -> None {
         return;
     }
     try {
-        config.load_kube_config();
+        try {
+            config.load_kube_config();
+        } except ConfigException {
+            config.load_incluster_config();
+        }
         core_v1 = client.CoreV1Api();
         core_v1.delete_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' deleted successfully.");
@@ -569,7 +577,11 @@ impl ensure_namespace_exists(namespace: str) -> None {
         return;
     }
     try {
-        config.load_kube_config();
+        try {
+            config.load_kube_config();
+        } except ConfigException {
+            config.load_incluster_config();
+        }
         core_v1 = client.CoreV1Api();
         core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
@@ -654,7 +666,11 @@ impl create_k8s_secret(
     secret_body = {
         'apiVersion': 'v1',
         'kind': 'Secret',
-        'metadata': {'name': secret_name, 'namespace': namespace},
+        'metadata': {
+            'name': secret_name,
+            'namespace': namespace,
+            'labels': {'managed': 'jac-scale'}
+        },
         'type': 'Opaque',
         'stringData': secret_data
     };

@@ -5,6 +5,7 @@ import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
+import from rich.table { Table }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
@@ -89,6 +90,71 @@ def _scale_pre_hook(context: HookContext) -> None {
         # Cancel normal start execution since we handled it
         context.set_data("cancel_execution", True);
         context.set_data("cancel_return_code", 0);
+    }
+}
+
+"""Print deployment status as a formatted table."""
+def _print_deployment_status(status_data: dict) -> None {
+    app_name = status_data.get('app_name', 'unknown');
+    namespace = status_data.get('namespace', 'default');
+    components = status_data.get('components', []);
+    urls = status_data.get('urls', {});
+    error = status_data.get('error');
+
+    console.print();
+    console.print("[bold cyan]  Jac Scale — Deployment Status[/bold cyan]");
+    console.print(
+        f"  [bold]App:[/bold] {app_name}   [bold]Namespace:[/bold] {namespace}"
+    );
+    console.print();
+
+    if error {
+        console.print(f"  [bold red]Cannot connect to cluster:[/bold red] {error}");
+        console.print();
+        return;
+    }
+
+    table = Table(show_header=True, header_style="bold dim", box=None, padding=(0, 2));
+    table.add_column("Component", min_width=18);
+    table.add_column("Status", min_width=22);
+    table.add_column("Pods", justify="right", min_width=6);
+
+    status_display = {
+        'running': '[bold green]● Running[/bold green]',
+        'degraded': '[bold yellow]◑ Degraded[/bold yellow]',
+        'pending': '[bold yellow]⟳ Pending[/bold yellow]',
+        'restarting': '[bold red]↺ Restarting[/bold red]',
+        'failed': '[bold red]✗ Failed[/bold red]',
+        'not_deployed': '[dim]○ Not Deployed[/dim]',
+        'unknown': '[dim]? Unknown[/dim]',
+
+    };
+
+    for comp in components {
+        s = comp.get('status', 'unknown');
+        ready = comp.get('ready', 0);
+        total = comp.get('total', 0);
+        icon = status_display.get(s, s);
+        if s in ['not_deployed', 'unknown'] {
+            pods_str = '—';
+        } else {
+            pods_str = f"{ready}/{total}";
+        }
+        table.add_row(comp.get('name', ''), icon, pods_str);
+    }
+
+    console.print(table);
+
+    if urls {
+        console.print("  [bold]Service URLs[/bold]");
+        console.print(f"  [dim]{'─' * 48}[/dim]");
+        if 'app' in urls {
+            console.print(f"  [bold]Application:[/bold]  {urls['app']}");
+        }
+        if 'grafana' in urls {
+            console.print(f"  [bold]Grafana:[/bold]      {urls['grafana']}");
+        }
+        console.print();
     }
 }
 
@@ -210,6 +276,59 @@ class JacCmd {
             console.print(
                 f"Successfully destroyed deployment '{app_name}' from {target}"
             );
+            return 0;
+        }
+
+        @registry.command(
+            name="status",
+            help="Show deployment status of jaseci application on target platform",
+            args=[
+                Arg.create(
+                    "file_path", kind=ArgKind.POSITIONAL, help="Path to .jac file"
+                ),
+                Arg.create(
+                    "target",
+                    typ=str,
+                    default="kubernetes",
+                    help="Deployment target (kubernetes, aws, gcp, etc.)",
+                ),
+
+            ],
+            examples=[("jac status app.jac", "Show deployment status of app"), ],
+            group="deployment",
+            priority=CommandPriority.PLUGIN,
+            source="jac-scale"
+        )
+        def status(file_path: str, target: str = "kubernetes") -> int {
+            if not os.path.exists(file_path) {
+                raise FileNotFoundError(f"File not found: '{file_path}'") ;
+            }
+            code_folder = os.path.dirname(file_path) or '.';
+            dotenv_path = os.path.join(code_folder, '.env');
+            load_dotenv(dotenv_path);
+
+            # Get configuration
+            scale_config = get_scale_config();
+
+            # Create logger
+            logger = UtilityFactory.create_logger('standard');
+
+            # Get target-specific config
+            if target == 'kubernetes' {
+                target_config = scale_config.get_kubernetes_config();
+            } else {
+                target_config = scale_config.get_kubernetes_config();  # Default for now
+            }
+
+            # Create deployment target
+            deployment_target = DeploymentTargetFactory.create(
+                target, target_config, logger
+            );
+            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
+
+            # Get and display status
+            status_data = deployment_target.get_full_status(app_name);
+            _print_deployment_status(status_data);
             return 0;
         }
     }
