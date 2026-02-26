@@ -234,6 +234,11 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
+    # Progressive narrowing context for AND expressions
+    def _push_and_narrowing_scope -> None;
+    def _pop_and_narrowing_scope -> None;
+    def _add_and_narrowing(sym_name: str, narrowed_type: types.TypeBase) -> None;
+    def _get_and_narrowing(sym_name: str) -> types.TypeBase | None;
     def _find_predicate_for(
         symbol: uni.Symbol, condition: uni.Expr
     ) -> NarrowingPredicate | None;
@@ -252,4 +257,5 @@ obj TypeEvaluator {
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
+    def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
 }

@@ -2903,6 +2903,14 @@ impl Parser.parse_lambda_expr -> Expr {
 impl Parser.parse_lambda_params(sig_kid: list) -> list {
     params: list = [];
     while self.check_name()
+    or self.check_any(
+        TokenKind.KW_SELF,
+        TokenKind.KW_PROPS,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_HERE,
+        TokenKind.KW_VISITOR
+    )
     or self.is_keyword_token()
     or self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW, TokenKind.DIV) {
         # Handle bare * (keyword-only separator)
@@ -2945,12 +2953,31 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         unpack_tok = self.advance();
         unpack = self.make_uni_token(unpack_tok);
     }
-    if not (self.check_name() or self.is_keyword_token()) {
+    # Allow NAME, KWESC_NAME, or special var ref keywords as parameter names
+    if self.check_name() {
+        name_tok = self.expect_name();
+        name = self.make_name_or_special(name_tok);
+    } elif self.check_any(
+        TokenKind.KW_SELF,
+        TokenKind.KW_PROPS,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_HERE,
+        TokenKind.KW_VISITOR
+    ) {
+        name_tok = self.advance();
+        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
+    } elif self.is_keyword_token() {
+        kw = self.current().value;
+        self.error(
+            f"'{kw}' is a keyword and cannot be used as a lambda parameter"
+            f" name (prefix with backtick to escape: {chr(96)}{kw})"
+        );
+        return None;
+    } else {
         # No name follows - not a valid parameter
         return None;
     }
-    name_tok = self.expect_name();
-    name = self.make_name_or_special(name_tok);
     type_tag: SubTag | None = None;
     # Heuristic to distinguish type annotation from lambda body colon:
     # Type annotation COLON is followed by a type and then COMMA, EQ, COLON, RETURN_HINT, or LBRACE

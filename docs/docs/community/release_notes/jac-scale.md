@@ -2,15 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.1 (Unreleased)
+## jac-scale 0.2.2 (Unreleased)
 
+## jac-scale 0.2.1 (Latest Release)
+
+- **Admin Portal**: Added a built-in `/admin` dashboard for user management and administration. Features include user CRUD operations (list, create, edit, delete), role-based access control with `admin`, `moderator`, and `user` roles, force password reset, and SSO account management view.
+- **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
+- **Admin Configuration**: New `[plugins.scale.admin]` section in `jac.toml` to configure admin portal settings. Environment variables `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_DEFAULT_PASSWORD` supported.
 - **Refactor: `JacSerializer` removed, use `Serializer(api_mode=True)`**: `JacSerializer` has been removed from `jaclang.runtimelib.server`. API serialization is now handled directly by `Serializer.serialize(obj, api_mode=True)` from `jaclang.runtimelib.serializer`. Storage backends are unaffected; continue using `Serializer.serialize(obj, include_type=True)` for round-trip persistence. Added `social_graph.jac` fixture demonstrating native persistence with `db.find_nodes()` for querying the `_anchors` collection using MongoDB filters.
 - Internal: refactor jac-scale k8s loadbalancer/service to support other vendors
 - Before deploying to the local Kubernetes cluster, check whether the required NodePorts are already in use in any namespace; if they are, throw an error.
 - jac destroy command deletes non default namespace
 - 1 Minor refactor
 
-## jac-scale 0.2.0 (Latest Release)
+## jac-scale 0.2.0
 
 - **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `client_auth_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
 - **Graph Visualization Tests**: Added tests for `/graph` and `/graph/data` endpoints.

@@ -114,10 +114,16 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     key_type = self._resolve_jac_type(key_node);
                     val_type = self._resolve_jac_type(val_node);
                     key_type_name = "i64";
+                    key_size = 0;
                     if isinstance(key_type, ir.DoubleType) {
                         key_type_name = "f64";
                     } elif isinstance(key_type, ir.PointerType) {
                         key_type_name = "ptr";
+                        # Check if key is a tuple (pointer to LiteralStructType)
+                        if isinstance(key_type.pointee, ir.LiteralStructType) {
+                            key_size = self._get_struct_size(key_type.pointee);
+                            key_type_name = f"tuple{key_size}";
+                        }
                     }
                     val_type_name = "i64";
                     if isinstance(val_type, ir.DoubleType) {
@@ -129,7 +135,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     }
                     dict_key = f"{key_type_name}:{val_type_name}";
                     self._emit_dict_helpers(
-                        key_type_name, val_type_name, key_type, val_type
+                        key_type_name, val_type_name, key_type, val_type, key_size
                     );
                     return self.dict_types[dict_key].as_pointer();
                 }

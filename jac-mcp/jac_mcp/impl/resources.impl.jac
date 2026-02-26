@@ -28,14 +28,75 @@ impl find_repo_root -> str | None {
     return None;
 }
 
+"""Mapping from URI to (relative doc path, bundled filename, description)."""
+glob DOC_MAPPINGS: dict[str, tuple] = {
+         "jac://docs/foundation": (
+             "reference/language/foundation.md",
+             "foundation.md",
+             "Foundation - Core language concepts"
+         ),
+         "jac://docs/primitives": (
+             "reference/language/primitives.md",
+             "primitives.md",
+             "Primitives & Codespace Semantics"
+         ),
+         "jac://docs/functions-objects": (
+             "reference/language/functions-objects.md",
+             "functions-objects.md",
+             "Functions & Objects - Archetypes, abilities, has"
+         ),
+         "jac://docs/osp": (
+             "reference/language/osp.md",
+             "osp.md",
+             "Object-Spatial Programming - Nodes, edges, walkers"
+         ),
+         "jac://docs/concurrency": (
+             "reference/language/concurrency.md",
+             "concurrency.md",
+             "Concurrency - flow, wait, async"
+         ),
+         "jac://docs/advanced": (
+             "reference/language/advanced.md",
+             "advanced.md",
+             "Comprehensions & Filters"
+         ),
+         "jac://docs/cheatsheet": (
+             "quick-guide/syntax-cheatsheet.md",
+             "syntax-cheatsheet.md",
+             "Syntax Cheatsheet - Quick reference"
+         ),
+         "jac://docs/python-integration": (
+             "reference/language/python-integration.md",
+             "python-integration.md",
+             "Python Integration - Interop with Python"
+         ),
+         "jac://docs/byllm": (
+             "reference/plugins/byllm.md",
+             "byllm.md",
+             "byLLM - LLM integration reference"
+         ),
+         "jac://docs/jac-client": (
+             "reference/plugins/jac-client.md",
+             "jac-client.md",
+             "jac-client - Full-stack web reference"
+         ),
+         "jac://docs/jac-scale": (
+             "reference/plugins/jac-scale.md",
+             "jac-scale.md",
+             "jac-scale - Deployment/scaling reference"
+         ),
+
+     };
+
 """Scan paths and build URI to filepath mapping."""
 impl ResourceProvider.index_resources -> None {
     self._package_dir = str(Path(__file__).parent);
     self._repo_root = find_repo_root();
     self._resources = {};
     if self._repo_root is None {
-        # PyPI install — only bundled content
+        # PyPI install — bundled content + bundled docs
         self._index_bundled();
+        self._index_bundled_docs();
         return;
     }
     repo_root = Path(self._repo_root);
@@ -60,56 +121,9 @@ impl ResourceProvider.index_resources -> None {
             "path": str(tokens_path)
         };
     }
-    # Documentation resources
-    doc_mappings: dict[str, tuple] = {
-        "jac://docs/foundation": (
-            "reference/language/foundation.md",
-            "Foundation - Core language concepts"
-        ),
-        "jac://docs/primitives": (
-            "reference/language/primitives.md",
-            "Primitives & Codespace Semantics"
-        ),
-        "jac://docs/functions-objects": (
-            "reference/language/functions-objects.md",
-            "Functions & Objects - Archetypes, abilities, has"
-        ),
-        "jac://docs/osp": (
-            "reference/language/osp.md",
-            "Object-Spatial Programming - Nodes, edges, walkers"
-        ),
-        "jac://docs/concurrency": (
-            "reference/language/concurrency.md",
-            "Concurrency - flow, wait, async"
-        ),
-        "jac://docs/advanced": (
-            "reference/language/advanced.md",
-            "Comprehensions & Filters"
-        ),
-        "jac://docs/cheatsheet": (
-            "quick-guide/syntax-cheatsheet.md",
-            "Syntax Cheatsheet - Quick reference"
-        ),
-        "jac://docs/python-integration": (
-            "reference/language/python-integration.md",
-            "Python Integration - Interop with Python"
-        ),
-        "jac://docs/byllm": (
-            "reference/plugins/byllm.md",
-            "byLLM - LLM integration reference"
-        ),
-        "jac://docs/jac-client": (
-            "reference/plugins/jac-client.md",
-            "jac-client - Full-stack web reference"
-        ),
-        "jac://docs/jac-scale": (
-            "reference/plugins/jac-scale.md",
-            "jac-scale - Deployment/scaling reference"
-        ),
-
-    };
-    for (uri, mapping) in doc_mappings.items() {
-        (rel_path, desc) = mapping;
+    # Documentation resources (from repo docs/)
+    for (uri, mapping) in DOC_MAPPINGS.items() {
+        (rel_path, _, desc) = mapping;
         full_path = repo_root / "docs" / "docs" / rel_path;
         if full_path.exists() {
             name = desc.split(" - ")[0] if " - " in desc else desc;
@@ -176,6 +190,51 @@ impl ResourceProvider._index_bundled -> None {
             "mimeType": "text/markdown",
             "path": str(patterns_path)
         };
+    }
+}
+
+"""Index bundled docs copied at release time."""
+impl ResourceProvider._index_bundled_docs -> None {
+    docs_dir = Path(self._package_dir) / "content" / "docs";
+    if not docs_dir.exists() {
+        return;
+    }
+    # Grammar spec
+    spec_path = docs_dir / "jac-grammar.spec";
+    if spec_path.exists() {
+        self._resources["jac://grammar/spec"] = {
+            "uri": "jac://grammar/spec",
+            "name": "Jac Grammar Specification",
+            "description": "Full EBNF grammar for the Jac language",
+            "mimeType": "text/plain",
+            "path": str(spec_path)
+        };
+    }
+    # Token definitions
+    tokens_path = docs_dir / "tokens.jac";
+    if tokens_path.exists() {
+        self._resources["jac://grammar/tokens"] = {
+            "uri": "jac://grammar/tokens",
+            "name": "Jac Token Definitions",
+            "description": "Token definitions and keywords for the Jac language",
+            "mimeType": "text/plain",
+            "path": str(tokens_path)
+        };
+    }
+    # Documentation markdown files
+    for (uri, mapping) in DOC_MAPPINGS.items() {
+        (_, bundled_name, desc) = mapping;
+        full_path = docs_dir / bundled_name;
+        if full_path.exists() {
+            name = desc.split(" - ")[0] if " - " in desc else desc;
+            self._resources[uri] = {
+                "uri": uri,
+                "name": name,
+                "description": desc,
+                "mimeType": "text/markdown",
+                "path": str(full_path)
+            };
+        }
     }
 }
 
