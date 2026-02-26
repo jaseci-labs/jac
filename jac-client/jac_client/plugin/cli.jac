@@ -170,10 +170,7 @@ class JacCmd {
             command_name="remove",
             args=[
                 Arg.create(
-                    "kit",
-                    typ=bool,
-                    default=False,
-                    help="Remove JacKit component(s)"
+                    "kit", typ=bool, default=False, help="Remove JacKit component(s)"
                 ),
 
             ],
@@ -681,7 +678,6 @@ def _handle_npm_remove(ctx: HookContext) -> None {
     }
 }
 
-
 """Pre-hook to handle --kit flag for adding JacKit components."""
 def _handle_kit_add(ctx: HookContext) -> None {
     kit_flag = ctx.get_arg("kit", False);
@@ -695,7 +691,9 @@ def _handle_kit_add(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -703,7 +701,9 @@ def _handle_kit_add(ctx: HookContext) -> None {
 
     packages = ctx.get_arg("packages", []);
     if not packages {
-        console.error("No components specified", hint="Usage: jac add --kit button card dialog");
+        console.error(
+            "No components specified", hint="Usage: jac add --kit button card dialog"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -720,7 +720,6 @@ def _handle_kit_add(ctx: HookContext) -> None {
     }
 }
 
-
 """Pre-hook to handle --kit flag for removing JacKit components."""
 def _handle_kit_remove(ctx: HookContext) -> None {
     kit_flag = ctx.get_arg("kit", False);
@@ -734,7 +733,9 @@ def _handle_kit_remove(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;

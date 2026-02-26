@@ -13,7 +13,6 @@ import tomllib;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-
 """Read [kit] config from jac.toml. Returns dict or None."""
 def _read_kit_config(config: Any) -> Any {
     if config.project_root is None {
@@ -29,7 +28,6 @@ def _read_kit_config(config: Any) -> Any {
     return data.get("kit");
 }
 
-
 """Fetch JSON from a URL. Returns parsed dict or None."""
 def _fetch_json(url: str) -> Any {
     import urllib.request;
@@ -42,7 +40,10 @@ def _fetch_json(url: str) -> Any {
             raw = response.read().decode("utf-8");
         }
         data = json_mod.loads(raw);
-        if isinstance(data, dict) and "data" in data and isinstance(data.get("data"), dict) and "result" in data["data"] {
+        if isinstance(data, dict)
+        and "data" in data
+        and isinstance(data.get("data"), dict)
+        and "result" in data["data"] {
             return data["data"]["result"];
         }
         return data;
@@ -55,14 +56,9 @@ def _fetch_json(url: str) -> Any {
     }
 }
 
-
 """Resolve peer dependencies recursively.
 Returns the full list of components to install (including peers)."""
-def _resolve_peer_deps(
-    requested: list,
-    registry_data: dict,
-    existing: set
-) -> list {
+def _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> list {
     components = registry_data.get("components", {});
     to_install: list = [];
     visited: set = set();
@@ -93,7 +89,6 @@ def _resolve_peer_deps(
     return to_install;
 }
 
-
 """Add npm dependencies from components to jac.toml [dependencies.npm]."""
 def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
     if not npm_deps_to_add {
@@ -105,7 +100,9 @@ def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
     }
 
     for (dep_name, dep_version) in npm_deps_to_add.items() {
-        quoted_name = '"' + dep_name + '"' if not dep_name.replace("-", "").replace("_", "").isalnum() else dep_name;
+        quoted_name = '"' + dep_name + '"'
+        if not dep_name.replace("-", "").replace("_", "").isalnum()
+        else dep_name;
         dep_line = quoted_name + ' = "' + dep_version + '"';
 
         if dep_name in content {
@@ -124,7 +121,6 @@ def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
         f.write(content);
     }
 }
-
 
 """Add JacKit components to the project.
 Returns True on success."""
@@ -174,7 +170,9 @@ def add_kit_components(config: Any, component_names: list) -> bool {
         }
     }
     if auto_added {
-        console.print("  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted");
+        console.print(
+            "  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted"
+        );
     }
 
     ui_dir.mkdir(parents=True, exist_ok=True);
@@ -186,11 +184,15 @@ def add_kit_components(config: Any, component_names: list) -> bool {
     added: list = [];
     for name in to_install {
         with console.status("[cyan]Fetching " + name + "...[/cyan]", spinner="dots") as status {
-            comp_data = _fetch_json(registry_url + "/component/" + name + "?style=" + style);
+            comp_data = _fetch_json(
+                registry_url + "/component/" + name + "?style=" + style
+            );
         }
 
         if not comp_data or "error" in comp_data {
-            err_msg = comp_data.get("error", "Unknown error") if comp_data else "No response";
+            err_msg = comp_data.get("error", "Unknown error")
+            if comp_data
+            else "No response";
             console.error("  ✗ " + name + ": " + str(err_msg));
             continue;
         }
@@ -221,7 +223,9 @@ def add_kit_components(config: Any, component_names: list) -> bool {
     if not utils_path.exists() {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
-            f.write('cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n');
+            f.write(
+                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
+            );
         }
         console.print("  ✔ Created lib/utils.cl.jac", style="success");
     }
@@ -234,7 +238,6 @@ def add_kit_components(config: Any, component_names: list) -> bool {
 
     return len(added) > 0;
 }
-
 
 """Remove JacKit components from the project.
 Returns True on success."""
@@ -260,7 +263,9 @@ def remove_kit_components(config: Any, component_names: list) -> bool {
     }
 
     if removed {
-        console.success("Removed " + str(len(removed)) + " component(s): " + ", ".join(removed));
+        console.success(
+            "Removed " + str(len(removed)) + " component(s): " + ", ".join(removed)
+        );
     }
 
     return len(removed) > 0;

@@ -208,7 +208,9 @@ impl load_template_from_json(
     }
     # Unwrap jac-scale TransportResponse envelope if present
     # (when fetched from a jac-scale @restspec endpoint via URL)
-    if "data" in data and isinstance(data.get("data"), dict) and "result" in data["data"] {
+    if "data" in data
+    and isinstance(data.get("data"), dict)
+    and "result" in data["data"] {
         unwrapped = data["data"]["result"];
         if isinstance(unwrapped, dict) and "name" in unwrapped and "files" in unwrapped {
             data = unwrapped;
