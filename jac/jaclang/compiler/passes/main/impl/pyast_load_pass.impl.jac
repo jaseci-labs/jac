@@ -12,14 +12,19 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
 
 """Convert a string to a docstring."""
 impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
-    import codecs;
-    content = string.value[1:-1];
-    try {
-        decoded = codecs.decode(content, 'unicode_escape');
-    } except Exception {
-        decoded = content;
+    # Determine quote style and extract content
+    val = string.value;
+    if val.startswith('"""') or val.startswith("'''") {
+        # Already triple-quoted, nothing to do
+        return;
+    } elif val.startswith('"') or val.startswith("'") {
+        content = val[1:-1];
+    } else {
+        # No quotes, wrap as-is
+        content = val;
     }
-    string.value = f'"""{decoded}"""';
+    # Use triple-double-quotes, preserving escape sequences as-is
+    string.value = f'"""{content}"""';
 }
 
 """
