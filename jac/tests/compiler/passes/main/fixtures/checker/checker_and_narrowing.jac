@@ -17,9 +17,7 @@ obj SemiNode(CFGNode) {
 }
 
 # 1. Multiple isinstance checks - most specific wins
-def test_and_most_specific(
-    x: BaseNode
-) -> None {
+def test_and_most_specific(x: BaseNode) -> None {
     if isinstance(x, BaseNode) and isinstance(x, CFGNode) {
         # x should be CFGNode here (most specific)
         x.bb_out;  # <-- Ok after narrowing (CFGNode has bb_out)
@@ -27,9 +25,7 @@ def test_and_most_specific(
 }
 
 # 2. Order doesn't matter - most specific wins
-def test_and_order_independent(
-    x: BaseNode
-) -> None {
+def test_and_order_independent(x: BaseNode) -> None {
     if isinstance(x, CFGNode) and isinstance(x, BaseNode) {
         # x should be CFGNode here (most specific)
         x.bb_out;  # <-- Ok after narrowing
@@ -37,9 +33,7 @@ def test_and_order_independent(
 }
 
 # 3. With negative isinstance - positive wins for narrowing
-def test_and_with_not_isinstance(
-    x: BaseNode
-) -> None {
+def test_and_with_not_isinstance(x: BaseNode) -> None {
     if isinstance(x, CFGNode) and not isinstance(x, SemiNode) {
         # x should be CFGNode here (SemiNode excluded but CFGNode is the narrowed type)
         x.bb_out;  # <-- Ok after narrowing
@@ -63,9 +57,7 @@ def test_and_with_flag(x: BaseNode, flag: bool) -> None {
 }
 
 # 6. Progressive narrowing - method call AFTER isinstance in same AND
-def test_progressive_narrowing_method(
-    x: BaseNode
-) -> None {
+def test_progressive_narrowing_method(x: BaseNode) -> None {
     if isinstance(x, CFGNode) and x.bb_out {
         # x.bb_out sees x as CFGNode due to preceding isinstance
         return;  # Ok
@@ -74,9 +66,7 @@ def test_progressive_narrowing_method(
 }
 
 # 7. Progressive narrowing - multiple isinstance then method
-def test_progressive_narrowing_multi(
-    x: BaseNode
-) -> None {
+def test_progressive_narrowing_multi(x: BaseNode) -> None {
     if isinstance(x, BaseNode)
     and isinstance(x, CFGNode)
     and isinstance(x, SemiNode)
@@ -87,10 +77,34 @@ def test_progressive_narrowing_multi(
     }
 }
 
+# 8. Progressive narrowing with member access
+obj Container {
+    has field: BaseNode;
+}
+
+def test_progressive_narrowing_member_access(c: Container) -> None {
+    if isinstance(c.field, CFGNode) and c.field.bb_out {
+        # c.field is narrowed to CFGNode due to preceding isinstance
+        return;  # Ok
+
+    }
+}
+
+# 9. Progressive narrowing with chained member access
+obj NestedContainer {
+    has inner: Container;
+}
+
+def test_progressive_narrowing_chained_member(nc: NestedContainer) -> None {
+    if isinstance(nc.inner.field, CFGNode) and nc.inner.field.bb_out {
+        # nc.inner.field is narrowed to CFGNode
+        return;  # Ok
+
+    }
+}
+
 # E1. After AND block, type reverts
-def test_error_after_and_block(
-    x: BaseNode
-) -> list[CFGNode] | None {
+def test_error_after_and_block(x: BaseNode) -> list[CFGNode] | None {
     if isinstance(x, CFGNode) {
         return x.bb_out;  # Ok inside
 
