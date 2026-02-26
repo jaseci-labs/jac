@@ -6,6 +6,8 @@ native machine code, and produce correct results when executed via ctypes.
 
 import ctypes;
 import os;
+import subprocess;
+import sys;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
@@ -61,9 +63,7 @@ test "arithmetic negate" {
 
 test "arithmetic float add" {
     (eng, _) = compile_native("arithmetic.na.jac");
-    fadd = get_func(
-        eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double
-    );
+    fadd = get_func(eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double);
     assert abs(fadd(1.5, 2.5) - 4.0) < 1e-10;
     assert abs(fadd(-1.0, 1.0)) < 1e-10;
 }
@@ -214,9 +214,7 @@ test "strings str equal" {
 
 test "strings str not equal" {
     (eng, _) = compile_native("strings.na.jac");
-    f = get_func(
-        eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
-    );
+    f = get_func(eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);
     assert f(b"hello", b"world") == 1;
     assert f(b"hello", b"hello") == 0;
 }
@@ -618,6 +616,31 @@ test "chess game methods" {
         addr = eng.get_function_address(method);
         assert addr != 0 , f"{method} not found";
     }
+}
+
+test "chess play random moves stress" {
+    # Stress test: play 20 random moves then quit.
+    # Exercises global dict GC root survival, tuple-keyed dict access,
+    # and repeated make_move/undo_move cycles across many game iterations.
+    chess_path = os.path.join(FIXTURES, "chess.na.jac");
+    # 20 blank lines (random moves) followed by "quit"
+    stdin_data = "\n" * 20 + "quit\n";
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run", chess_path],
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        timeout=120
+    );
+    assert result.returncode == 0 , (
+        f"Chess crashed with exit code {result.returncode}.\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
+    assert "Game ended." in result.stdout , (
+        f"Expected 'Game ended.' in output.\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
 }
 
 # --- TestNativeDicts ---

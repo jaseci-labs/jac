@@ -228,7 +228,9 @@ def _generate_index_html(
   </head>
   <body>
     <div id="root"></div>
-    <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
+    <script id="__jac_init__" type="application/json">{html.escape(
+        init_json
+    )}</script>
     <script type="module" src="{bundle_filename}"></script>
   </body>
 </html>''';

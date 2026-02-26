@@ -179,7 +179,7 @@ jobs:
 
     - name: Run admin API tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_admin_api.jac
+        pytest -x jac-scale/jac_scale/tests/test_admin.jac
 
     - name: Run Serializer tests
       run: |

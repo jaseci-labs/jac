@@ -118,7 +118,9 @@ impl ParamAssignmentTracker.match_positional_argument(
                 self.matched_params.add(param);
                 return param;
             }
-            if (param.param_kind in (types.ParamKind.NORMAL, types.ParamKind.POSONLY)) {
+            if (
+                param.param_kind in (types.ParamKind.NORMAL, types.ParamKind.POSONLY)
+            ) {
                 self.curr_param_idx += 1;
                 self.matched_params.add(param);
                 return param;

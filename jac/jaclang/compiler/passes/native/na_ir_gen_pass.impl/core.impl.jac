@@ -151,6 +151,14 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Store LLVM module on AST
     if self.has_native_code {
         self.ir_in.gen.llvm_ir = self.llvm_module;
+        # Debug: dump IR to file
+        import os;
+        _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
+        if _ir_dump_path {
+            with open(_ir_dump_path, "w") as _f {
+                _f.write(str(self.llvm_module));
+            }
+        }
     }
     return self.ir_in;
 }

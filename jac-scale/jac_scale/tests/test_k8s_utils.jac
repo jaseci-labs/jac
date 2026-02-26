@@ -61,7 +61,11 @@ def _test_parse_memory_valid(pair: tuple) {
 with entry {
     parametrize(
         "parse memory quantity valid",
-        [("256Mi", float(256 * 1024 ** 2)), ("1Gi", float(1024 ** 3)), ("2", 2.0)],
+        [
+            ("256Mi", float(256 * 1024 ** 2)),
+            ("1Gi", float(1024 ** 3)),
+            ("2", 2.0)
+        ],
         _test_parse_memory_valid
     );
 }

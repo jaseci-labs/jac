@@ -285,7 +285,10 @@ test "admin login non-admin user rejected" {
         # First register the user through normal registration
         requests.post(
             f"{admin_base_url}/user/register",
-            json={"username": f"nonmin_{uuid.uuid4().hex[:8]}", "password": "testpass"},
+            json={
+                "username": f"nonmin_{uuid.uuid4().hex[:8]}",
+                "password": "testpass"
+            },
             timeout=10
         );
 

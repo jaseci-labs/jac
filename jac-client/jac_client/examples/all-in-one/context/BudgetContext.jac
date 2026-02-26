@@ -1,9 +1,6 @@
 # Budget Context for global state management
 # Demonstrates: createContext, useContext, Context.Provider
-cl import from react {
-    createContext,
-    useContext
-}
+cl import from react { createContext, useContext }
 cl import from ..hooks.useBudget { useBudget }
 
 cl {

@@ -1234,7 +1234,7 @@ test "type_narrowing" {
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 10 , f"Expected exactly 10 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 11 , f"Expected exactly 11 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1278,6 +1278,10 @@ test "type_narrowing" {
         """
         r: Reptile = creature;  # <-- Error: Lion cannot assign to Reptile
         ^^^^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
+                          ^^
         """
     ];
 
@@ -1325,6 +1329,18 @@ test "impl_body_type_checking" {
         program.errors_had[2].pretty_print()
     );
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
+}
+
+"""Test that self.x = value in impl files creates valid archetype attributes."""
+test "impl_self_member_assignment" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_impl", "checker_impl_self_member.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
 test "super_init_with_has_vars" {
@@ -1591,4 +1607,75 @@ test "type_narrowing_none_assignment_errors" {
     """,
         program.errors_had[1].pretty_print()
     );
+}
+
+"""Test match case type narrowing - validates type narrowing inside match cases."""
+test "match_type_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_match_type_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have exactly 2 errors (E1 and E2 in the test file)
+    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        i: IntVal = val;  # <-- Error: StringVal cannot assign to IntVal
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        s: StringVal = val;  # <-- Error: StringVal | IntVal cannot assign to StringVal
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
+"""Test union of subclasses assignable to base class (match narrowing support)."""
+test "union_subclass_to_base_assignment" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_match_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have exactly 1 error (E1 - wrong type inside match case)
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        c: Cat = animal;  # <-- Error: Dog cannot assign to Cat
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+"""Test compound AND narrowing picks most specific type."""
+test "compound_and_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_and_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All positive cases should pass. E1 (attribute error after if block) is not
+    # reported because "has no attribute" errors are disabled in the type evaluator.
+    # TODO: Re-enable when attribute error reporting is fixed for generics.
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Test assert isinstance type narrowing."""
+test "assert_isinstance_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_assert_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - assert isinstance narrows the type
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }

@@ -364,7 +364,9 @@ impl check_node_ports_available(
     for (param_name, port_val) in requested.items() {
         if port_val in used_ports {
             conflicts.append(
-                f"  {param_name}={port_val} is already in use by '{used_ports[port_val]}'"
+                f"  {param_name}={port_val} is already in use by '{used_ports[
+                    port_val
+                ]}'"
             );
         }
     }

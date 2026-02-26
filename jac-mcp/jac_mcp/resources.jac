@@ -21,6 +21,9 @@ obj ResourceProvider {
     """Index bundled content (pitfalls, patterns)."""
     def _index_bundled -> None;
 
+    """Index bundled docs copied at release time."""
+    def _index_bundled_docs -> None;
+
     """Return list of available resources."""
     def list_resources -> list[dict[str, str]];
 

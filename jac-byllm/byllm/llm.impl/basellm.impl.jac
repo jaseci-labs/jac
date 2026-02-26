@@ -137,21 +137,21 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     {log_params["messages"][0]["content"]}
     {MAGENTA}[USER]{RESET}
     {log_params["messages"][1]["content"][0]['text']
-    if isinstance(log_params["messages"][1]["content"], list)
-    else log_params["messages"][1]["content"]}
+        if isinstance(log_params["messages"][1]["content"], list)
+        else log_params["messages"][1]["content"]}
     {MAGENTA}[TOOL]{RESET}
     {log_params["messages"][3]["content"]
-    if len(log_params["messages"]) > 3
-    else "No tools provided."}
+        if len(log_params["messages"]) > 3
+        else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
     {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)
-    if log_params.get("tools")
-    else ""}
+        if log_params.get("tools")
+        else ""}
     {MAGENTA}[RESPONSE FORMAT]{RESET}
     {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)
-    if log_params.get("response_format") is not None
-    else "None"}""";
+        if log_params.get("response_format") is not None
+        else "None"}""";
     return log;
 }
 
@@ -173,7 +173,9 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # https://docs.litellm.ai/docs/#response-format-openai-format
     #
     # TODO: Handle stream output (type ignoring stream response)
-    message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
+    message: LiteLLMMessage = response.get("choices", [])[0].get(
+        "message"
+    );  # type: ignore
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");

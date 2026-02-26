@@ -63,6 +63,9 @@ test "str2doc" {
         prog=JacProgram()
     ).ir_out.unparse();
     assert '"""This is a test function."""\ndef foo()' in code;
+    # \n and \t must remain as escape sequences, not real control characters
+    assert '"""hello\\nworld"""' in code;
+    assert '"""line1\\ttabbed"""' in code;
 }
 
 test "fstring triple quotes" {

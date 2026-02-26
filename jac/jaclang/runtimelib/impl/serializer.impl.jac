@@ -1,8 +1,11 @@
 """Helper: get type metadata dict."""
 impl Serializer._type_info(obj: object, include: bool) -> dict[str, object] {
-    return {'__type__': type(obj).__name__, '__module__': type(obj).__module__}
-    if include
-    else {};
+    return {
+        '__type__': type(obj).__name__,
+        '__module__': type(obj).__module__
+    }
+        if include
+        else {};
 }
 
 """Helper: serialize object attributes (non-private, non-callable)."""
@@ -92,8 +95,8 @@ impl Serializer._serialize_value(
                 '_jac_type': type(val).__name__,
                 '_jac_id': val.__jac__.id.hex if val?.__jac__ else None,
                 '_jac_archetype': 'node'
-                if isinstance(val, NodeArchetype)
-                else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
+                    if isinstance(val, NodeArchetype)
+                    else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
             };
         }
         return result | Serializer._serialize_attrs(val, include_type, api_mode);
@@ -160,8 +163,8 @@ impl Serializer._deserialize_value(val: object) -> object {
     }
     if isinstance(val, dict) {
         return Serializer.deserialize(val)
-        if '__type__' in val
-        else {k: Serializer._deserialize_value(v) for (k, v) in val.items()};
+            if '__type__' in val
+            else {k: Serializer._deserialize_value(v) for (k, v) in val.items()};
     }
     return val;
 }

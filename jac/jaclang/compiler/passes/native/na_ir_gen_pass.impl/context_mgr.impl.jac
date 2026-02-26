@@ -29,7 +29,9 @@ impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
 }
 
 """Recursively generate nested with blocks for multiple context managers."""
-impl NaIRGenPass._codegen_with_recursive(exprs: object, idx: int, body: object) -> None {
+impl NaIRGenPass._codegen_with_recursive(
+    exprs: object, idx: int, body: object
+) -> None {
     if idx >= len(exprs) {
         # Base case: generate the actual body
         if isinstance(body, (list, tuple)) {

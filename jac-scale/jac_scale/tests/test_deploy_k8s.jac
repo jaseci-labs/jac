@@ -434,7 +434,9 @@ test "deploy all in one" {
     duplicate_target_config = app_scale_config.get_kubernetes_config();
     duplicate_target_config["app_name"] = duplicate_app_name;
     duplicate_target_config["namespace"] = duplicate_namespace;
-    duplicate_target_config["node_port"] = target_config["node_port"];  # same port — must conflict
+    duplicate_target_config["node_port"] = target_config[
+        "node_port"
+    ];  # same port — must conflict
     duplicate_target_config["jaseci_repo_url"] = repo_url;
     duplicate_target_config["jaseci_branch"] = branch;
     duplicate_target_config["jaseci_commit"] = commit;
@@ -485,9 +487,7 @@ test "deploy all in one" {
     }
 
     try {
-        apps_v1.read_namespaced_stateful_set(
-            f"{app_name}-mongodb", namespace=namespace
-        );
+        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
         raise AssertionError("MongoDB StatefulSet should have been deleted") ;
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";

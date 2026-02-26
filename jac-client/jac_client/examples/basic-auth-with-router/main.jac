@@ -1,8 +1,5 @@
 # Simple Authentication App with React Router
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useState, useEffect }
 cl import from "@jac/runtime" {
     Router,
     Routes,

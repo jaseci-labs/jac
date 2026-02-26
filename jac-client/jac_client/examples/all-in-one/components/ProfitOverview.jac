@@ -1,8 +1,6 @@
 # Profit Overview component - monthly profit snapshot
 # Demonstrates: context usage, calculated displays, formatting
-cl import from ..context.BudgetContext {
-    useBudgetContext
-}
+cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..utils.formatters { formatCurrency }
 
 cl {
@@ -50,8 +48,8 @@ cl {
                         </span>
                         <span
                             className={("profit-value bold positive")
-                            if netProfit >= 0
-                            else ("profit-value bold negative")}
+                                if netProfit >= 0
+                                else ("profit-value bold negative")}
                         >
                             {("+") if netProfit > 0 else ("")}{formatCurrency(
                                 netProfit
