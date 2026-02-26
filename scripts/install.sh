@@ -219,32 +219,29 @@ install_via_uv() {
         info "uv is already installed."
     fi
 
-    # Determine package
-    local pkg
-    if $CORE_ONLY; then
-        pkg="jaclang"
-    else
-        pkg="jaseci"
+    # Always install jaclang as the tool (it provides the 'jac' entry point).
+    # For full ecosystem, add all plugins via --with flags.
+    local spec="jaclang"
+    if [[ -n "$VERSION" ]]; then
+        spec="jaclang==${VERSION}"
     fi
 
-    # Build version spec
-    local spec="$pkg"
-    if [[ -n "$VERSION" ]]; then
-        spec="${pkg}==${VERSION}"
+    local -a with_args=()
+    if ! $CORE_ONLY; then
+        with_args+=(--with byllm --with jac-client --with jac-scale --with jac-super --with jac-mcp)
     fi
 
     # Check if already installed and upgrade vs fresh install
-    if uv tool list 2>/dev/null | grep -q "^${pkg} "; then
-        info "Upgrading ${pkg}..."
+    if uv tool list 2>/dev/null | grep -q "^jaclang "; then
+        info "Upgrading jaclang..."
         if [[ -n "$VERSION" ]]; then
-            # For pinned version, reinstall
-            uv tool install "$spec" --python ">=3.12" --force
+            uv tool install "$spec" "${with_args[@]}" --python ">=3.12" --force
         else
-            uv tool upgrade "$pkg" --python ">=3.12"
+            uv tool upgrade jaclang "${with_args[@]}" --python ">=3.12"
         fi
     else
-        info "Installing ${pkg}..."
-        uv tool install "$spec" --python ">=3.12"
+        info "Installing jaclang..."
+        uv tool install "$spec" "${with_args[@]}" --python ">=3.12"
     fi
 
     ensure_on_path
@@ -287,25 +284,52 @@ get_latest_version() {
     echo "$tag"
 }
 
+resolve_jaclang_version_from_release() {
+    local release_tag="$1"
+    local response
+    response=$(curl -fsSL "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
+        err "Failed to query GitHub API for release v${release_tag}."
+        exit 1
+    }
+
+    # Find jac-*-linux-x86_64 or jac-*-macos-* asset to extract the jaclang version
+    local jac_version
+    jac_version=$(echo "$response" | grep -o '"name":[[:space:]]*"jac-[^"]*"' | head -1 | grep -oE 'jac-[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^jac-//')
+
+    if [[ -z "$jac_version" ]]; then
+        err "Could not determine jaclang version from release v${release_tag} assets."
+        err "The jaclang standalone binary may not have been built yet for this release."
+        exit 1
+    fi
+
+    echo "$jac_version"
+}
+
 install_standalone() {
     need_cmd "curl"
 
-    # Resolve version
+    # Resolve version (this is the jaseci/release version)
     if [[ -z "$VERSION" ]]; then
         info "Fetching latest version..."
         VERSION=$(get_latest_version)
-        info "Latest version: ${VERSION}"
+        info "Latest release: ${VERSION}"
     fi
 
     # Determine asset name
-    local asset_prefix
+    # The jaclang (slim) binary uses the jaclang version in its filename,
+    # which differs from the jaseci release version.
+    local asset_prefix asset_version
     if $CORE_ONLY; then
         asset_prefix="jac"
+        info "Resolving jaclang version for release v${VERSION}..."
+        asset_version=$(resolve_jaclang_version_from_release "$VERSION")
+        info "jaclang version: ${asset_version}"
     else
         asset_prefix="jaseci"
+        asset_version="$VERSION"
     fi
 
-    local asset="${asset_prefix}-${VERSION}-${OS}-${ARCH}"
+    local asset="${asset_prefix}-${asset_version}-${OS}-${ARCH}"
     local download_url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
     local checksum_url="${download_url}.sha256"
 

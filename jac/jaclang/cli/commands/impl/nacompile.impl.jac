@@ -114,32 +114,9 @@ impl nacompile(filename: str, output: str = "") -> int {
     # Step 4: Inject main() + _start (pure LLVM IR, zero assembly)
     llvm_ir_str = _inject_entry(llvm_ir_str);
 
-    # Step 5: Determine needed libraries and handle GC fallback
-    # (must happen before parse_assembly so IR substitutions take effect)
-    import ctypes.util;
+    # Step 5: Determine needed libraries
+    # Note: libgc (Boehm GC) no longer needed — using reference counting
     needed_libs: list[str] = ["libc.so.6"];
-
-    libgc_name = ctypes.util.find_library("gc");
-    gc_needed = "GC_malloc" in llvm_ir_str or "GC_add_roots" in llvm_ir_str;
-    if gc_needed and libgc_name {
-        needed_libs.append("libgc.so.1");
-    } elif gc_needed {
-        # libgc not available: rewrite GC calls to libc fallbacks at IR level.
-        # GC_malloc -> malloc, GC_add_roots -> noop stub (matching JIT fallback).
-        import re;
-        llvm_ir_str = llvm_ir_str.replace(
-            'declare i8* @"GC_malloc"(i64 %".1")', 'declare i8* @"malloc"(i64 %".1")'
-        );
-        llvm_ir_str = re.sub(
-            r'call i8\* @"GC_malloc"\(', 'call i8* @"malloc"(', llvm_ir_str
-        );
-        # Replace GC_add_roots with a no-op: remove calls and declaration
-        llvm_ir_str = re.sub(r'call void @"GC_add_roots"\([^)]*\)\n', '', llvm_ir_str);
-        llvm_ir_str = llvm_ir_str.replace(
-            'declare void @"GC_add_roots"(i8* %".1", i8* %".2")', ''
-        );
-        console.print("  Note: libgc not found, using malloc fallback.");
-    }
 
     # Step 6: Emit object code via llvmlite
     try {

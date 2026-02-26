@@ -4,12 +4,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.3 (Unreleased)
 
+- **Native Memory Management: Reference Counting Replaces Boehm GC**: Replaced the external Boehm GC (`libgc`) dependency with a self-contained reference counting scheme. All heap allocations use an 8-byte RC header (`rc_alloc`), container data arrays use plain `malloc`/`free`, and type-specific destructors are emitted for lists, dicts, sets, and archetypes. String literals are copied into RC-managed memory on use. Old values are released on variable reassignment and container growth paths free old data arrays. This eliminates the `libgc` system dependency entirely -- the native compiler only requires `libc`.
+
 ## jaclang 0.11.2 (Latest Release)
 
+- **Improved Memory Efficiency for Large Graphs**: Jac now uses lazy loading for graph data in MongoDB/Redis, nodes and edges are fetched only when accessed, instead of loading the entire graph upfront.
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.
 - **Fix: Union of Subclasses Assignable to Base Class**: Fixed type checker rejecting valid assignments where a union of subclasses (e.g., `Dog | Cat`) is passed to a parameter expecting the base class (e.g., `Animal`). This commonly occurs after match statement narrowing and now works correctly.
 - **Fix: Compound AND Narrowing**: Multiple isinstance checks in the same AND expression now narrow to the most specific type. Example: `isinstance(x, BaseNode) and isinstance(x, CFGNode)` correctly narrows `x` to `CFGNode` inside the if block.
-- **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`. Now also supports member access expressions: `isinstance(x.field, CFGNode) and x.field.bb_out` correctly narrows `x.field` to `CFGNode`.
+- **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`.
 - **Fix: Assert isinstance Type Narrowing**: `assert isinstance(x, T)` now narrows the type of `x` to `T` for subsequent statements. Example: `assert isinstance(x, CFGNode); x.bb_out;` works correctly.
 - **Fix: Type Narrowing for Inheritance-Based isinstance**: Fixed `isinstance(nd, SubClass)` not narrowing the type when the variable is declared as a base class (e.g., `nd: BaseNode`). Previously, type narrowing only worked with union types; now single-class types are correctly narrowed to their subclass after isinstance checks.
 - **Fix: Native Global Pointer Variables Collected by GC**: MCJIT global variables (e.g. `glob WHITE_SYMBOLS: dict[...]`) live outside Boehm GC's scanned memory, causing global dicts/lists/objects to be freed after enough allocations trigger a collection. Fixed by emitting `GC_add_roots` calls for every pointer-typed global after initialization.

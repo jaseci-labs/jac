@@ -1185,7 +1185,7 @@ The file must contain a `with entry { }` block (which defines the `jac_entry()` 
 3. Emits native object code via llvmlite's `emit_object()`
 4. Links into an ELF executable via the built-in pure-Python ELF linker
 
-The resulting binary dynamically links against `libc.so.6` (and `libgc.so.1` if available). When libgc is not installed, GC calls are automatically rewritten to use `malloc`.
+The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required.
 
 **Examples:**
 
