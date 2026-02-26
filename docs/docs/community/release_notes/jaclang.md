@@ -17,7 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`jac nacompile` -- Standalone ELF Binaries**: New `jac nacompile` CLI command compiles `.na.jac` files to standalone ELF executables with no external compiler or linker required. Uses llvmlite's code generator to emit object code and a pure-Python ELF linker (`elf_linker.jac`) to produce dynamically-linked ELF binaries against libc/libgc. The `_start` entry point is written in pure LLVM IR (zero inline assembly), making the entire pipeline architecture-agnostic. Includes automatic GC fallback (rewrites `GC_malloc` to `malloc` at the IR level when libgc is unavailable). Usage: `jac nacompile program.na.jac` or `jac nacompile program.na.jac -o mybin`.
 - **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
 - 1 Minor refactors/changes
-- **Fix: jacpretty**: New CLI style library to enhance readability and colorful design.
+- **Fix: jacpretty**: New CLI style library to enhance readability and colorfull design.
 
 ## jaclang 0.11.1 (Latest Release)
 
