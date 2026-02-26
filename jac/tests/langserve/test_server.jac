@@ -569,3 +569,62 @@ test "test_hover_narrowing_in_loop" {
         teardown_test();
     }
 }
+
+test "test_hover_types" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        narrowing_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_and_narrowing.jac")
+        );
+        lsp.type_check_file(narrowing_file);
+
+        # Test hover shows types correctly
+        # Format: (line, col, expected_in_hover, should_not_contain)
+        hover_cases: list[tuple] = [
+            # --- Has vars (class fields) ---
+            # has name: str (line 8)
+            (8, 9, "str", None),
+            # has offspring: list[Mammal] | None (line 12)
+            (12, 9, "list", None),
+            # has is_primate: bool (line 16)
+            (16, 9, "bool", None),
+            # --- Function parameters ---
+            # def test_and_most_specific(x: Animal) - param x (line 20)
+            (20, 28, "Animal", None),
+            # --- Member access ---
+            # x.offspring - field access on narrowed x
+            (23, 11, "offspring", None),
+            # --- Narrowed member access ---
+            # c.field narrowed from Mammal|None to Mammal via `c.field is not None`
+            (150, 29, "Mammal", "None"),
+            # --- Simple Name narrowing in AND (isinstance(expr, T) and expr.value) ---
+            # Line 210: `expr.value` - hover on 'value' shows str (NamedNode's field)
+            (210, 21, "str", None),
+            # --- Nested isinstance: outer if + inner AND ---
+            # Line 248: `w.inner.offspring` - hover on second 'inner' (col 40) shows Mammal
+            (248, 40, "Mammal", "None"),
+            # --- Deep nested narrowing ---
+            # Line 265: `dw.data.inner.offspring` - hover on second 'inner' (col 58) shows Mammal
+            (265, 58, "Mammal", "None"),
+            # --- Multiple member narrowings in AND chain ---
+            # Line 319: `dw.left.offspring` - hover on 'left' (col 12) shows Mammal
+            (319, 12, "Mammal", "None"),
+            # Line 320: `dw.right.is_primate` - hover on 'right' (col 12) shows Primate
+            (320, 12, "Primate", "None"),
+
+        ];
+
+        for case in hover_cases {
+            (line, col, expected, should_not_contain) = case;
+            hover = lsp.get_hover_info(narrowing_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Hover should exist at line {line}, col {col}";
+            assert expected in hover.contents.value , f"Line {line}: expected '{expected}' in hover, got: {hover.contents.value}";
+            if should_not_contain {
+                assert should_not_contain not in hover.contents.value , f"Line {line}: should NOT contain '{should_not_contain}', got: {hover.contents.value}";
+            }
+        }
+    } finally {
+        teardown_test();
+    }
+}
