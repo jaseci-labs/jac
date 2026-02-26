@@ -29,7 +29,7 @@ include = ["jac_mcp*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
-jac_mcp = ["content/*.md", "_precompiled/**/*.jbc", "_precompiled/manifest.json"]
+jac_mcp = ["content/*.md", "content/docs/*.md", "content/docs/*.spec", "content/docs/*.jac", "_precompiled/**/*.jbc", "_precompiled/manifest.json"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

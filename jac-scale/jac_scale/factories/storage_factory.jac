@@ -55,7 +55,8 @@ class StorageFactory {
             storage_type = StorageType(jac_config.storage.storage_type);
             base_path = jac_config.storage.base_path;
             create_dirs = jac_config.storage.create_dirs;
-        } elif os.environ.get("JAC_STORAGE_TYPE") or os.environ.get("JAC_STORAGE_PATH") {
+        } elif os.environ.get("JAC_STORAGE_TYPE")
+        or os.environ.get("JAC_STORAGE_PATH") {
             storage_type_str = os.environ.get(
                 "JAC_STORAGE_TYPE", StorageType.LOCAL.value
             );

@@ -1,21 +1,14 @@
 # # Features Test Page - Client-side UI
 # # Demonstrates: props, exports, cl files, TypeScript imports, string methods,
 # # imports from JAC/JS/TS, spawning walkers from cl file
-import from "@jac/runtime" {
-    Link,
-    useNavigate
-}
+import from "@jac/runtime" { Link, useNavigate }
 import from react { useState }
 
 # # Import TypeScript component
 # import from ..components.PieChart { PieChart }
 
 # # Import JavaScript helpers
-import from ..utils.helpers {
-    generateId,
-    calculatePercentage,
-    sumBy
-}
+import from ..utils.helpers { generateId, calculatePercentage, sumBy }
 
 # # Import from other JAC files
 import from ..utils.formatters { formatCurrency }
@@ -36,9 +29,7 @@ sv import from ..main {
 # ============================================================================
 
 # Button component demonstrating props - NEW PATTERN: Direct parameters
-def:pub TestButton(
-    text: str, onClick: any, variant: str
-) -> JsxElement {
+def:pub TestButton(text: str, onClick: any, variant: str) -> JsxElement {
     bg_color = "#3b82f6" if variant == "primary" else "#6b7280";
     hover_color = "#2563eb" if variant == "primary" else "#4b5563";
 
@@ -64,9 +55,7 @@ def:pub TestButton(
 }
 
 # # Card component with props - NEW PATTERN: Direct parameters
-def:pub TestCard(
-    title: str, children: any, color: str
-) -> JsxElement {
+def:pub TestCard(title: str, children: any, color: str) -> JsxElement {
     return
         <div
             style={{
@@ -104,9 +93,7 @@ def:pub TestCard(
 }
 
 # Result display component - NEW PATTERN: Direct parameters
-def:pub ResultDisplay(
-    data: any, label: str
-) -> JsxElement {
+def:pub ResultDisplay(data: any, label: str) -> JsxElement {
     if not data {
         return
             <div style={{"color": "#9ca3af", "fontStyle": "italic"}}>
@@ -367,10 +354,7 @@ def:pub FeaturesTest -> JsxElement {
                 Processing...
             </div>}
             # Section 1: Walker CRUD Operations
-            <TestCard
-                title="1. Walker CRUD Operations (Spawn from CL)"
-                color="#dbeafe"
-            >
+            <TestCard title="1. Walker CRUD Operations (Spawn from CL)" color="#dbeafe">
                 <div style={{"marginBottom": "15px"}}>
                     <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
                         Test creating, reading, updating, and deleting data using walkers spawned from client code.
@@ -528,9 +512,7 @@ def:pub FeaturesTest -> JsxElement {
                     <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
                         Process arrays/lists using walker operations.
                     </p>
-                    <div
-                        style={{"display": "flex", "gap": "10px", "marginTop": "10px"}}
-                    >
+                    <div style={{"display": "flex", "gap": "10px", "marginTop": "10px"}}>
                         <input
                             type="text"
                             value={numberList}

@@ -54,14 +54,14 @@ impl _type_to_schema(
                     arg,
                     info=(
                         info.type_info[i + 1]
-                        if (
-                            info
-                            and info?.type_info
-                            and info.type_info
-                            and isinstance(info.type_info, (list, tuple))
-                            and len(info.type_info) > i + 1
-                        )
-                        else None
+                            if (
+                                info
+                                and info?.type_info
+                                and info.type_info
+                                and isinstance(info.type_info, (list, tuple))
+                                and len(info.type_info) > i + 1
+                            )
+                            else None
                     ),
                 ) for (i, arg) in enumerate(args)
             ],
@@ -123,8 +123,8 @@ impl _type_to_schema(
                 field_type,
                 field_name,
                 info_fields_map[field_name].semstr
-                if field_name in info_fields_map
-                else "",
+                    if field_name in info_fields_map
+                    else "",
                 info=info_fields_map.get(field_name)
             ) for (field_name, field_type) in fields.items()
         };

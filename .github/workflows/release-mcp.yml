@@ -53,6 +53,12 @@ jobs:
           path: jac-mcp/jac_mcp/_precompiled/
           pattern: precompiled-mcp-*
           merge-multiple: true
+      - name: Install jaclang and jac-mcp
+        run: |
+          pip install -e ../jac
+          pip install -e .
+      - name: Bundle documentation
+        run: jac run scripts/bundle_docs.jac
       - name: Install build tools
         run: |
           pip install build twine

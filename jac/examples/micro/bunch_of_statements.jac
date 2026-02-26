@@ -23,7 +23,6 @@ def example_function(numbers: list[int]) -> int {
         result = 100;
         result %= 2;
         if result == 0 {  # Jac improved version
-
             even_numbers.append(number);
             counter += 1;
             # assert

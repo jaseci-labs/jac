@@ -136,11 +136,7 @@ test "bool return" {
 # =============================================================================
 # Case: Enum (auto/int)
 # =============================================================================
-enum Color {
-    RED,
-    GREEN,
-    BLUE,
-}
+enum Color { RED, GREEN, BLUE, }
 
 def get_random_color -> Color by llm();
 
@@ -198,9 +194,7 @@ def get_weather(city: str) -> WeatherData {
 }
 
 # Althought this is an llm function, we'll use it as a tool.
-def translate_from_english(
-    to_language: str, sentence: str
-) -> str by llm();
+def translate_from_english(to_language: str, sentence: str) -> str by llm();
 
 def answer_user(question: str) -> str by llm(
     tools=[get_weather, translate_from_english],
@@ -239,9 +233,7 @@ test "semstrings attached in schema" {
 # =============================================================================
 # Case: Annotated list
 # =============================================================================
-def get_first_n_numbers_of_fibonacci(
-    n: int
-) -> list[int] by llm();
+def get_first_n_numbers_of_fibonacci(n: int) -> list[int] by llm();
 
 test "annotated list" {
     n = 10;
@@ -282,10 +274,7 @@ test "annotated tuple" {
 # =============================================================================
 # Case: Annotated dictionary
 # =============================================================================
-def generate_random_name_and_age -> dict[
-    str,
-    int
-] by llm();
+def generate_random_name_and_age -> dict[str, int] by llm();
 
 sem generate_random_name_and_age.name = "Returns a dictionary with names as keys and ages as values";
 
@@ -304,10 +293,7 @@ test "annotated dictionary" {
 # =============================================================================
 # Case: Recursive dictionary
 # =============================================================================
-def generate_student_data -> dict[
-    str,
-    dict[str, int]
-] by llm();
+def generate_student_data -> dict[str, dict[str, int]] by llm();
 
 sem generate_student_data = """
 Returns a dictionary where each key is the class name and value is another

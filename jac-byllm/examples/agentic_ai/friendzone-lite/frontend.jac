@@ -68,15 +68,16 @@ def bootstrap_frontend(token: str) {
                 try {
                     response = requests.post(
                         "http://localhost:8000/walker/update_session",
-                        json={"image_url": st.session_state.image_url, "utterance": ""},
+                        json={
+                            "image_url": st.session_state.image_url,
+                            "utterance": ""
+                        },
                         headers={"Authorization": f"Bearer {token}"}
                     );
 
                     if response.status_code == 200 {
                         result = response.json();
-                        st.session_state.memory_results = result.get("reports", [{}])[
-                            0
-                        ];
+                        st.session_state.memory_results = result.get("reports", [{}])[0];
                         st.session_state.loading = False;
                         st.success("✅ Memory session started!");
                         st.rerun();

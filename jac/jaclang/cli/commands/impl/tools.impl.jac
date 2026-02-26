@@ -238,8 +238,8 @@ def _install_completion(shell: str, code: str) -> int {
         action = "Updated";
     } else {
         content = content.rstrip() + "\n\n" + new_block
-        if content.strip()
-        else new_block;
+            if content.strip()
+            else new_block;
         action = "Added";
     }
     try {

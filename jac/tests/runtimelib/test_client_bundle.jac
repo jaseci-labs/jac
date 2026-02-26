@@ -118,7 +118,9 @@ test "no import statements in bundle" {
     ];
 
     # Should be exactly 0 import statements
-    assert len(import_lines) == 0 , f"Found {len(import_lines)} import statement(s) in bundle: {import_lines[:3]}";
+    assert len(import_lines) == 0 , f"Found {len(
+        import_lines
+    )} import statement(s) in bundle: {import_lines[:3]}";
 
     # Also verify using regex pattern
     import_pattern = r'^\s*import\s+.*\s+from\s+["\'].*["\'];?\s*$';

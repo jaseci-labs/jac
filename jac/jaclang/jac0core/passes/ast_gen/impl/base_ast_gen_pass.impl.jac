@@ -56,7 +56,9 @@ impl BaseAstGenPass._init_child_passes(
         sub_modules.extend(variant.impl_mod);
         sub_modules.extend(variant.test_mod);
     }
-    return [pass_class(ir_in=sub_module, prog=self.prog) for sub_module in sub_modules];
+    return [
+        pass_class(ir_in=sub_module, prog=self.prog) for sub_module in sub_modules
+    ];
 }
 
 """Flatten nested AST lists while skipping ``None`` entries."""

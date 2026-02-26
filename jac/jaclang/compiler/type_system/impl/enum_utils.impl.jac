@@ -98,8 +98,8 @@ impl build_enum_members(
                 # Next member should get current value + 1
                 # Example: FIRST=1, SECOND=2, THIRD=10, FOURTH → FOURTH gets 11 (not 3)
                 auto_value = member_info.literal_value + 1
-                if isinstance(member_info.literal_value, int)
-                else auto_value;
+                    if isinstance(member_info.literal_value, int)
+                    else auto_value;
             }
             # Case 2: Name-only member (RED, GREEN) - gets auto-incremented int value
         } elif (

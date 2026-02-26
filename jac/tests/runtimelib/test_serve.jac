@@ -153,12 +153,7 @@ test "faux flag with littlex example" {
         # Verify that littleX endpoints are discovered
         assert "WALKERS" in output;
         # Check for key littleX walkers
-        littlex_walkers = [
-            "update_profile",
-            "get_profile",
-            "create_tweet",
-            "load_feed"
-        ];
+        littlex_walkers = ["update_profile", "get_profile", "create_tweet", "load_feed"];
         for w in littlex_walkers {
             assert w in output or "walker" in output.lower();
         }

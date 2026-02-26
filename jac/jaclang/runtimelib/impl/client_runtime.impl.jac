@@ -435,8 +435,8 @@ impl jacSignup(username: str, password: str) -> dict {
             error_payload = JSON.parse(error_text);
             # Handle TransportResponse envelope format
             error_data = error_payload["data"]
-            if error_payload["data"]
-            else error_payload;
+                if error_payload["data"]
+                else error_payload;
             error_msg = None;
             try {
                 if error_data["error"] {
@@ -598,8 +598,8 @@ impl __jacResolveRenderer(scope: any) -> any {
 impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any {
     moduleFunctions = (
         moduleRecord.moduleFunctions
-        if moduleRecord and moduleRecord.moduleFunctions
-        else {}
+            if moduleRecord and moduleRecord.moduleFunctions
+            else {}
     );
     if __jacHasOwn(moduleFunctions, name) {
         return moduleFunctions[name];
@@ -716,8 +716,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     registry = __jacEnsureRegistry();
     modulesStore = registry.modules or {};
     moduleRecord = modulesStore[moduleName]
-    if __jacHasOwn(modulesStore, moduleName)
-    else None;
+        if __jacHasOwn(modulesStore, moduleName)
+        else None;
     if not moduleRecord {
         console.error("[Jac] Client module not registered: " + moduleName);
         return;
@@ -752,7 +752,9 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(lambda nd: any  -> None { __jacApplyRender(renderer, rootEl, nd);}).catch(
+        value.then(
+            lambda nd: any  -> None { __jacApplyRender(renderer, rootEl, nd);}
+        ).catch(
             lambda err: any  -> None { console.error(
                 "[Jac] Error resolving client function promise", err
             );}
@@ -834,8 +836,8 @@ impl __jacRegisterClientModule(
     }
     modulesStore = registry.modules or {};
     existingRecord = modulesStore[moduleName]
-    if __jacHasOwn(modulesStore, moduleName)
-    else None;
+        if __jacHasOwn(modulesStore, moduleName)
+        else None;
     moduleRecord = existingRecord or {};
     moduleRecord.moduleFunctions = moduleFunctions;
     moduleRecord.moduleGlobals = moduleGlobals;

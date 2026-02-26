@@ -27,7 +27,8 @@ obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
         sem_tokens: List[int] by postinit,
-        static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
+        static_sem_tokens:
+            List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 
     def postinit -> None;
     def collect_resolved_nodes(ir: uni.Module) -> list;
