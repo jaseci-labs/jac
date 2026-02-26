@@ -42,8 +42,8 @@ impl HTTPTransport.send(data: Any) -> None {
     if isinstance(data, TransportResponse) {
         # Extract HTTP status from meta.extra or use defaults
         status = data.meta.extra.get('http_status', 200 if data.ok else 500)
-        if data.meta.extra
-        else (200 if data.ok else 500);
+            if data.meta.extra
+            else (200 if data.ok else 500);
         # Build response body following TransportResponse envelope pattern
         response_body = {
             'ok': data.ok,

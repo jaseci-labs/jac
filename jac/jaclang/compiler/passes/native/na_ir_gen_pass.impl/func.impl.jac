@@ -184,9 +184,7 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
                     self.builder.store(coerced, global_var);
                     # Register pointer globals as GC roots
                     if isinstance(var_type, ir.PointerType) {
-                        root_lo = self.builder.bitcast(
-                            global_var, i8_ptr, name="gc.lo"
-                        );
+                        root_lo = self.builder.bitcast(global_var, i8_ptr, name="gc.lo");
                         # high = low + sizeof(pointer)
                         one_past = self.builder.gep(
                             global_var,

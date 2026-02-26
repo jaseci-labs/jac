@@ -47,9 +47,7 @@ impl Db._get_redis_key(col_name: str, key: str) -> str {
 }
 
 # ===== COMMON METHODS (work for both) =====
-impl Db.get(
-    key: str, col_name: str = 'default'
-) -> dict | None {
+impl Db.get(key: str, col_name: str = 'default') -> dict | None {
     if self.db_type == DatabaseType.MONGODB {
         # Try string key first, then ObjectId if valid
         result = self._get_mongo_collection(col_name).find_one({'_id': key});
@@ -129,9 +127,7 @@ impl Db.exists(key: str, col_name: str = 'default') -> bool {
 }
 
 # ===== MONGODB-ONLY METHODS =====
-impl Db.find_one(
-    col_name: str, filter: dict
-) -> dict | None {
+impl Db.find_one(col_name: str, filter: dict) -> dict | None {
     if self.db_type == DatabaseType.REDIS {
         raise NotImplementedError(
             "find_one() with filters is not supported for Redis. "
@@ -230,9 +226,7 @@ impl Db.delete_many(col_name: str, filter: dict) -> PyMongoDeleteResult | Delete
 }
 
 # ID-based convenience methods (MongoDB only, but map to get/set/delete for Redis)
-impl Db.find_by_id(
-    col_name: str, id: str
-) -> dict | None {
+impl Db.find_by_id(col_name: str, id: str) -> dict | None {
     if self.db_type == DatabaseType.MONGODB {
         return self._get_mongo_collection(col_name).find_one({'_id': ObjectId(id)});
     } elif self.db_type == DatabaseType.REDIS {

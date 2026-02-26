@@ -232,12 +232,7 @@ test "export semantics for pub declarations" {
 
     # All :pub items in export, private items excluded
     pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"];
-    priv_items = [
-        "PRIVATE_SECRET",
-        "PrivateClass",
-        "private_function",
-        "PrivateStatus"
-    ];
+    priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"];
     assert all(item in last_line for item in pub_items) , (
         "All :pub items should be exported"
     );

@@ -13,6 +13,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Global Pointer Variables Collected by GC**: MCJIT global variables (e.g. `glob WHITE_SYMBOLS: dict[...]`) live outside Boehm GC's scanned memory, causing global dicts/lists/objects to be freed after enough allocations trigger a collection. Fixed by emitting `GC_add_roots` calls for every pointer-typed global after initialization.
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
+- **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
+- **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
 
 ## jaclang 0.11.1 (Latest Release)
 

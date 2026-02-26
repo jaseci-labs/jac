@@ -34,9 +34,7 @@ impl TypeCheckPass.exit_formatted_value(
 
 """Handle the return statement node."""
 impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
-    returning_type = self.evaluator._convert_to_instance(
-        self.evaluator.get_none_type()
-    );
+    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
     if nd.expr {
         returning_type = self.evaluator.get_type_of_expression(nd.expr);
     }
@@ -195,7 +193,6 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
                     and ability_start_line <= mod_nd.loc.first_line <= ability_end_line
                     and isinstance(mod_nd.parent, uni.SubTag)
                 ) {  # SubTag is the type annotation wrapper
-
                     self.evaluator.get_type_of_expression(mod_nd);
                 }
             }

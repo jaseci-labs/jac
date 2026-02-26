@@ -142,9 +142,7 @@ impl JacAPIServerCore.start(
                         emoji=True
                     );
                     console.print(file=sys.stderr);
-                    console.info(
-                        'Try again after running: jac clean --all', emoji=True
-                    );
+                    console.info('Try again after running: jac clean --all', emoji=True);
                     console.info(
                         f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                         emoji=True
@@ -515,9 +513,7 @@ impl JacAPIServerCore.update_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    result = self.user_manager.update_password(
-        username, current_password, new_password
-    );
+    result = self.user_manager.update_password(username, current_password, new_password);
     if ('error' in result) {
         return TransportResponse.fail(
             code='UPDATE_FAILED',

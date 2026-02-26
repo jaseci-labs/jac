@@ -21,20 +21,20 @@ def walrus_example() {
 with entry {
     c = (
         a()
-        if 1
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        else (
-            999
-            if isinstance(a, int)
+            if 1
             and isinstance(a, int)
             and isinstance(a, int)
-            and isinstance(4, bool)
-            else 7
-        )
+            and isinstance(a, int)
+            and isinstance(a, int)
+            and isinstance(a, int)
+            else (
+                999
+                    if isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(4, bool)
+                    else 7
+            )
     );
     print("""This is a long
         line of code.""");

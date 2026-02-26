@@ -41,7 +41,8 @@ obj Lexer {
         jsx_brace_depth: int = 0,  # Track nested braces in JSX expressions
         jsx_brace_depth_stack: list[int] = [],  # Stack for nested JSX brace depth
         jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
-        prev_token_kind: TokenKind | None = None,  # Previous token kind for JSX disambiguation
+        prev_token_kind:
+            TokenKind | None = None,  # Previous token kind for JSX disambiguation
         comments: list[tuple] = [];  # Captured comments: (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
 
     # Mode management

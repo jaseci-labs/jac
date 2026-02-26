@@ -347,3 +347,63 @@ test "unknown prompt returns error" {
     result = pp.get_prompt("nonexistent", {});
     assert "Unknown" in result.get("description", "") or "messages" in result;
 }
+
+# ── Bundle Script Tests ──
+test "all doc mapping source files exist" {
+    """Verify every DOC_MAPPINGS entry points to a real file in docs/."""
+    import from jac_mcp.resources { find_repo_root, DOC_MAPPINGS }
+    import from pathlib { Path }
+
+    repo_root = find_repo_root();
+    if repo_root is None {
+        # Skip in non-repo (PyPI) environments
+        return;
+    }
+    docs_dir = Path(repo_root) / "docs" / "docs";
+    missing: list[str] = [];
+    for (uri, mapping) in DOC_MAPPINGS.items() {
+        (rel_path, bundled_name, desc) = mapping;
+        full_path = docs_dir / rel_path;
+        if not full_path.exists() {
+            missing.append(f"{uri} -> {rel_path}");
+        }
+    }
+    assert len(missing) == 0 , f"Missing doc files: {missing}";
+}
+
+test "bundle script runs successfully" {
+    """Verify the bundle_docs.jac script exits 0."""
+    import subprocess;
+    import from pathlib { Path }
+    import from jac_mcp.resources { find_repo_root }
+
+    repo_root = find_repo_root();
+    if repo_root is None {
+        return;
+    }
+    script = Path(repo_root) / "jac-mcp" / "scripts" / "bundle_docs.jac";
+    if not script.exists() {
+        return;
+    }
+    result = subprocess.run(
+        ["jac", "run", str(script)], capture_output=True, text=True, timeout=60
+    );
+    assert result.returncode == 0 , f"bundle_docs.jac failed:\n{result.stdout}\n{result.stderr}";
+}
+
+test "doc mappings have unique bundled names" {
+    """Verify no two DOC_MAPPINGS entries share the same bundled filename."""
+    import from jac_mcp.resources { DOC_MAPPINGS }
+
+    seen: dict[str, str] = {};
+    dupes: list[str] = [];
+    for (uri, mapping) in DOC_MAPPINGS.items() {
+        bundled_name = mapping[1];
+        if bundled_name in seen {
+            dupes.append(f"{bundled_name}: {seen[bundled_name]} vs {uri}");
+        } else {
+            seen[bundled_name] = uri;
+        }
+    }
+    assert len(dupes) == 0 , f"Duplicate bundled names: {dupes}";
+}

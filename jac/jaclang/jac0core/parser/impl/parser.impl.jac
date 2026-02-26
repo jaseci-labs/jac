@@ -5,11 +5,7 @@ The signatures are defined in parser.jac.
 """
 
 # Import unitree classes from Python
-import from jaclang.jac0core.unitree {
-    UniNode,
-    Token as UniToken,
-    Expr
-}
+import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
     Ellipsis as EllipsisLit,
@@ -99,12 +95,7 @@ import from jaclang.jac0core.unitree {
     GenCompr,
     InnerCompr
 }
-import from jaclang.jac0core.unitree {
-    FString,
-    FormattedValue,
-    MultiString,
-    LambdaExpr
-}
+import from jaclang.jac0core.unitree { FString, FormattedValue, MultiString, LambdaExpr }
 import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
@@ -403,8 +394,8 @@ impl Parser.expect_name -> Token {
 impl Parser.make_uni_token(tok: Token) -> UniToken {
     # Convert parser Token into unitree UniToken
     tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-    if tok.kind in TOKEN_KIND_TO_TOK
-    else tok.kind.value;
+        if tok.kind in TOKEN_KIND_TO_TOK
+        else tok.kind.value;
     return UniToken(
         orig_src=self.get_source(),
         name=tok_name,
@@ -453,8 +444,8 @@ impl Parser.make_special_name(tok: Token) -> Name {
     # Create a unitree Name from a special token (self, super, etc.)
     # Using the token's kind as the name attribute for SpecialVarRef compatibility
     tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-    if tok.kind in TOKEN_KIND_TO_TOK
-    else tok.kind.value;
+        if tok.kind in TOKEN_KIND_TO_TOK
+        else tok.kind.value;
     return Name(
         orig_src=self.get_source(),
         name=tok_name,
@@ -807,7 +798,9 @@ impl Parser.parse_by_expr -> Expr {
     if self.match_tok(TokenKind.KW_BY) {
         by_uni = self.make_uni_token(self.previous());
         right = self.parse_by_expr();
-        return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
+        return BinaryExpr(
+            left=left, op=by_uni, right=right, kid=[left, by_uni, right]
+        );
     }
     return left;
 }
@@ -1040,8 +1033,8 @@ impl Parser.parse_edge_op_ref_inline -> EdgeOpRef | None {
         tok = self.advance();
         edge_op = self.make_uni_token(tok);
         dir = EdgeDir.OUT
-        if tok.kind == TokenKind.ARROW_R
-        else EdgeDir.IN if tok.kind == TokenKind.ARROW_L else EdgeDir.ANY;
+            if tok.kind == TokenKind.ARROW_R
+            else EdgeDir.IN if tok.kind == TokenKind.ARROW_L else EdgeDir.ANY;
         return EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_op]);
     }
     if self.match_tok(TokenKind.ARROW_R_P1) {
@@ -1420,7 +1413,9 @@ impl Parser.parse_atomic_chain -> Expr {
                 }
                 expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
             }
-        } elif (self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE))
+        } elif (
+            self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE)
+        )
         or self.check(TokenKind.LSQUARE) {
             # Parse index or slice: a[x], a?[x], a[x,y], a[1:2], a[::3], etc.
             is_null_ok_index = False;
@@ -1601,7 +1596,8 @@ impl Parser.parse_call_args(kid: list) -> list {
 
 impl Parser.parse_call_arg -> Expr | KWPair {
     # Check for keyword argument: NAME = expr (also KWESC_NAME like `type)
-    if (self.check_name() or self.is_keyword_token()) and self.check_peek(TokenKind.EQ) {
+    if (self.check_name() or self.is_keyword_token())
+    and self.check_peek(TokenKind.EQ) {
         name_tok = self.advance();
         name: Name;
         if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME {
@@ -1862,8 +1858,8 @@ impl Parser.parse_builtin_type -> Expr {
     ) {
         tok = self.advance();
         builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-        if tok.kind in TOKEN_KIND_TO_TOK
-        else tok.kind.value;
+            if tok.kind in TOKEN_KIND_TO_TOK
+            else tok.kind.value;
         return BuiltinType(
             orig_src=self.get_source(),
             name=builtin_name,
@@ -2293,8 +2289,8 @@ impl Parser.parse_fstring -> FString {
                         if self.check(TokenKind.CONV) {
                             nc_tok = self.advance();
                             nested_conv = ord(nc_tok.value[1])
-                            if len(nc_tok.value) > 1
-                            else -1;
+                                if len(nc_tok.value) > 1
+                                else -1;
                             nested_fv_kid.append(self.make_uni_token(nc_tok));
                         }
                         nested_fv_kid.append(self.consume_uni(TokenKind.RBRACE));
@@ -4048,9 +4044,7 @@ impl Parser.parse_for_stmt{
         if is_async {
             kid.append(async_uni);
         }
-        kid.extend(
-            [for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]
-        );
+        kid.extend([for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]);
         kid.extend(body);
         kid.append(rb_uni);
         if else_body {
@@ -4255,7 +4249,8 @@ impl Parser.parse_match_case -> MatchCase {
     }
     colon_uni = self.consume_uni(TokenKind.COLON);
     body: list = [];
-    while not self.check_any(TokenKind.KW_CASE, TokenKind.RBRACE) and not self.at_end() {
+    while not self.check_any(TokenKind.KW_CASE, TokenKind.RBRACE)
+    and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
@@ -4811,8 +4806,8 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
     if self.match_tok(TokenKind.EQ) {
         eq_unis.append(self.make_uni_token(self.previous()));
         value = self.parse_yield_stmt()
-        if self.check(TokenKind.KW_YIELD)
-        else self.parse_expression();
+            if self.check(TokenKind.KW_YIELD)
+            else self.parse_expression();
         # Chain assignment: l1 = l2 = ... = expr
         while self.check(TokenKind.EQ)
         and not self.check_any(TokenKind.SEMI, TokenKind.RBRACE) {
@@ -4820,8 +4815,8 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
             eq_unis.append(self.make_uni_token(self.previous()));
             targets.append(value);
             value = self.parse_yield_stmt()
-            if self.check(TokenKind.KW_YIELD)
-            else self.parse_expression();
+                if self.check(TokenKind.KW_YIELD)
+                else self.parse_expression();
         }
     } elif self.check_any(
         TokenKind.ADD_EQ,
@@ -4841,8 +4836,8 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
         aug_tok = self.advance();
         aug_op = self.make_uni_token(aug_tok);
         value = self.parse_yield_stmt()
-        if self.check(TokenKind.KW_YIELD)
-        else self.parse_expression();
+            if self.check(TokenKind.KW_YIELD)
+            else self.parse_expression();
     }
     kid: list = [];
     eq_idx = 0;
@@ -5537,8 +5532,8 @@ impl Parser.parse_ability -> Ability {
     if is_can and self.check(TokenKind.KW_WITH) {
         with_uni = self.make_uni_token(self.advance());
         event_type = self.parse_expression()
-        if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
-        else None;
+            if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
+            else None;
         event_tok = self.advance();
         event_uni_tok = self.make_uni_token(event_tok);
         # Build EventSignature kid list
@@ -6099,7 +6094,9 @@ impl Parser.parse_switch_case -> SwitchCase {
     }
     colon_uni = self.consume_uni(TokenKind.COLON);
     body: list = [];
-    while not self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE)
+    while not self.check_any(
+        TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE
+    )
     and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
@@ -6279,8 +6276,8 @@ impl Parser.parse_impl_def -> ImplDef {
         # event_clause
         with_tok = self.advance();
         event_type = self.parse_expression()
-        if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
-        else None;
+            if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
+            else None;
         event_tok = self.advance();
         ev_kid: list = [self.make_uni_token(with_tok)];
         if event_type is not None {
@@ -6477,7 +6474,9 @@ impl Parser.parse_impl_target_name -> Name {
     } elif self.check_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT) {
         name_tok = self.advance();
         return SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT) {
+    } elif self.check_any(
+        TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT
+    ) {
         name_tok = self.advance();
         return self.make_special_name(name_tok);
     } elif self.is_keyword_token() {

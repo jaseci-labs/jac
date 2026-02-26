@@ -17,7 +17,9 @@ impl AstTool.autodoc_uninode -> str {
             }
             typ_str = str(kid.typ);
             arrow = '-.->' if ('Optional' in typ_str) else '-->';
-            typ = typ_str.replace('typing.', '').replace(
+            typ = typ_str.replace(
+                'typing.', ''
+            ).replace(
                 'jaclang.jac0core.unitree.', ''
             ).replace(
                 'Optional[', ''
@@ -93,8 +95,8 @@ impl AstTool.ir(args: list[str]) -> str {
 
             case 'sym.':
                 return ir.sym_tab.sym_printgraph()
-                if isinstance(ir.sym_tab, UniScopeNode)
-                else 'Sym_tab is None.';
+                    if isinstance(ir.sym_tab, UniScopeNode)
+                    else 'Sym_tab is None.';
 
             case 'ast':
                 out = '';
@@ -117,8 +119,8 @@ impl AstTool.ir(args: list[str]) -> str {
             case 'pyast':
                 ir = prog.compile(file_name);
                 return f"{py_ast.dump(ir.gen.py_ast[0], indent=2)}"
-                if isinstance(ir.gen.py_ast[0], py_ast.AST)
-                else 'Compile failed.';
+                    if isinstance(ir.gen.py_ast[0], py_ast.AST)
+                    else 'Compile failed.';
 
             case 'docir':
                 return str(DocIRGenPass(ir, prog).ir_out.gen.doc_ir);
@@ -126,8 +128,8 @@ impl AstTool.ir(args: list[str]) -> str {
             case 'py':
                 ir = prog.compile(file_name);
                 return f"{ir.gen.py}"
-                if isinstance(ir.gen.py[0], str)
-                else 'Compile failed.';
+                    if isinstance(ir.gen.py[0], str)
+                    else 'Compile failed.';
 
             case 'esast':
                 esast_pass = EsastGenPass(ir, prog);
@@ -205,13 +207,17 @@ impl AstTool.pass_template -> str {
         for kid in cls.kids {
             emit(
                 f"    {kid.name}: {kid.typ}{(' =' + str(kid.default))
-                if kid.default
-                else ''},"
+                    if kid.default
+                    else ''},"
             );
         }
         emit('    """\n');
     }
-    output = output.replace('jaclang.jac0core.unitree.', '').replace('typing.', '').replace(
+    output = output.replace(
+        'jaclang.jac0core.unitree.', ''
+    ).replace(
+        'typing.', ''
+    ).replace(
         "<enum '", ''
     ).replace(
         "'>", ''
@@ -287,11 +293,11 @@ impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     for (param_name, param) in self.init_sig.parameters.items() {
         if (param_name not in ['self', 'parent', 'kid', 'line', 'sym_tab']) {
             param_type = param.annotation
-            if (param.annotation != inspect.Parameter.empty)
-            else 'Any';
+                if (param.annotation != inspect.Parameter.empty)
+                else 'Any';
             param_default = param.default
-            if (param.default != inspect.Parameter.empty)
-            else None;
+                if (param.default != inspect.Parameter.empty)
+                else None;
             self.kids.append(AstKidInfo(param_name, param_type, param_default));
         }
     }

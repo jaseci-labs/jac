@@ -2,6 +2,9 @@
 
 ## jac-mcp 0.1.1 (Unreleased)
 
+- **Expanded documentation resources**: DOC_MAPPINGS now covers all 42 mkdocs pages (up from 12), including tutorials, developer workflow, and quick-start guides
+- **Auto-generated doc bundling**: New `scripts/bundle_docs.jac` script replaces hardcoded CI copy commands, using DOC_MAPPINGS as the single source of truth for PyPI release bundling
+
 ## jac-mcp 0.1.0
 
 Initial release of jac-mcp, the MCP (Model Context Protocol) server plugin for Jac.

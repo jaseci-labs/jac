@@ -96,7 +96,9 @@ test "test_impl_stay_connected" {
         lsp.type_check_file(circle_file);
         pos = lspt.Position(20, 8);
         assert (
-            "Circle class inherits from Shape." in lsp.get_hover_info(circle_file, pos).contents.value
+            "Circle class inherits from Shape." in lsp.get_hover_info(
+                circle_file, pos
+            ).contents.value
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
@@ -362,14 +364,9 @@ test "test_go_to_reference" {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle.jac"));
         lsp.type_check_file(circle_file);
-        test_cases = [
-            (45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]),
-
-        ];
+        test_cases = [(45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]), ];
         for (line, char, expected_refs) in test_cases {
-            references = str(
-                lsp.get_references(circle_file, lspt.Position(line, char))
-            );
+            references = str(lsp.get_references(circle_file, lspt.Position(line, char)));
             for expected in expected_refs {
                 assert expected in references;
             }
@@ -511,9 +508,7 @@ test "test_go_to_definition_directory_import" {
         ];
 
         for (line, char, expected) in positions {
-            def_loc = lsp.get_definition(
-                import_file, lspt.Position(line - 1, char - 1)
-            );
+            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
             assert def_loc is not None , f"Definition at line {line}, col {char} not found";
             assert expected in str(def_loc) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {def_loc}";

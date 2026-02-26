@@ -1,8 +1,6 @@
 # Summary component - displays budget totals with business/personal breakdown
 # Demonstrates: context usage, conditional rendering, ternary operator, 6-card layout
-cl import from ..context.BudgetContext {
-    useBudgetContext
-}
+cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..utils.formatters { formatCurrency }
 
 cl {
@@ -61,8 +59,8 @@ cl {
                 </div>
                 <div
                     className={("summary-card net-profit positive")
-                    if netProfit >= 0
-                    else ("summary-card net-profit negative")}
+                        if netProfit >= 0
+                        else ("summary-card net-profit negative")}
                 >
                     <span className="summary-label">
                         Net Profit
