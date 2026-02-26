@@ -22,6 +22,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac plugins` | Manage plugins |
 | `jac config` | Manage project configuration |
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
+| `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
@@ -660,6 +661,64 @@ jac start --scale --build   # Build and deploy
 
 ---
 
+### jac status
+
+Show the deployment status of your Jac application on Kubernetes. Displays a color-coded table with the health of each component (application, Redis, MongoDB, Prometheus, Grafana), pod readiness counts, and service URLs.
+
+```bash
+jac status [-h] file_path [--target TARGET]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `file_path` | Path to the `.jac` file | Required |
+| `--target` | Deployment target platform | `kubernetes` |
+
+**Example output:**
+
+```
+  Jac Scale - Deployment Status
+  App: my-app   Namespace: default
+
+┌───────────────────┬────────────────────────┬───────┐
+│ Component         │ Status                 │ Pods  │
+├───────────────────┼────────────────────────┼───────┤
+│ Jaseci App        │ ● Running              │  1/1  │
+│ Redis             │ ● Running              │  1/1  │
+│ MongoDB           │ ● Running              │  1/1  │
+│ Prometheus        │ ● Running              │  1/1  │
+│ Grafana           │ ● Running              │  1/1  │
+└───────────────────┴────────────────────────┴───────┘
+
+  Service URLs
+  ────────────────────────────────────────────
+  Application:  http://localhost:30001
+  Grafana:      http://localhost:30003
+```
+
+**Status indicators:**
+
+| Symbol | Meaning |
+|--------|---------|
+| `● Running` | All pods healthy and ready |
+| `◑ Degraded` | Some pods ready, but not all |
+| `⟳ Pending` | Pods are starting up |
+| `↺ Restarting` | Pods are crash-looping |
+| `✗ Failed` | Component has failed |
+| `○ Not Deployed` | Component is not present in the cluster |
+
+**Examples:**
+
+```bash
+# Check deployment status
+jac status app.jac
+
+# Check status with explicit target
+jac status app.jac --target kubernetes
+```
+
+---
+
 ### jac destroy
 
 Remove a deployment.
@@ -1285,6 +1344,9 @@ jac start -p 8000
 
 # Deploy to Kubernetes
 jac start main.jac --scale
+
+# Check deployment status
+jac status main.jac
 
 # Remove deployment
 jac destroy main.jac
