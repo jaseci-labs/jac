@@ -12,7 +12,6 @@ import from jaclang.cli.command { Arg, HookContext }
 import from jaclang.jac0core.runtime { hookimpl }
 
 class JacShadcnPlugin {
-
     @hookimpl
     static def create_cmd -> None {
         registry = get_registry();
@@ -26,6 +25,7 @@ class JacShadcnPlugin {
                     default=False,
                     help="Add shadcn UI component(s) from registry"
                 ),
+
             ],
             pre_hook=_handle_shadcn_add,
             source="jac-shadcn"
@@ -40,6 +40,7 @@ class JacShadcnPlugin {
                     default=False,
                     help="Remove shadcn UI component(s)"
                 ),
+
             ],
             pre_hook=_handle_shadcn_remove,
             source="jac-shadcn"
@@ -73,7 +74,9 @@ def _handle_shadcn_add(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create --use jac-shadcn' first.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create --use jac-shadcn' first."
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -81,7 +84,10 @@ def _handle_shadcn_add(ctx: HookContext) -> None {
 
     packages = ctx.get_arg("packages", []);
     if not packages {
-        console.error("No components specified", hint="Usage: jac add --shadcn button card dialog");
+        console.error(
+            "No components specified",
+            hint="Usage: jac add --shadcn button card dialog"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -109,7 +115,9 @@ def _handle_shadcn_remove(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create --use jac-shadcn' first.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create --use jac-shadcn' first."
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -117,7 +125,9 @@ def _handle_shadcn_remove(ctx: HookContext) -> None {
 
     packages = ctx.get_arg("packages", []);
     if not packages {
-        console.error("No components specified", hint="Usage: jac remove --shadcn button");
+        console.error(
+            "No components specified", hint="Usage: jac remove --shadcn button"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -134,7 +144,7 @@ def _handle_shadcn_remove(ctx: HookContext) -> None {
     }
 }
 
-def _get_default_template() -> dict {
+def _get_default_template -> dict {
     return {
         "name": "jac-shadcn",
         "description": "Jac project with shadcn UI components and theming",
