@@ -139,6 +139,11 @@ class UniNode {
     def flatten(self: UniNode) -> list[UniNode];
 
     def unparse(self: UniNode) -> str;
+    """Get pickle state — exclude circular refs and non-serializable fields."""
+    def __getstate__(self: UniNode) -> dict;
+
+    """Restore state from pickle."""
+    def __setstate__(self: UniNode, state: dict) -> None;
 }
 
 """Symbol."""

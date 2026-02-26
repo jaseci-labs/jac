@@ -10,6 +10,67 @@ impl UniNode.init(self: UniNode, kid: Sequence[UniNode]) -> None {
     self.loc: CodeLocInfo = CodeLocInfo(*self.resolve_tok_range());
 }
 
+"""Get pickle state — exclude circular refs and non-serializable fields."""
+impl UniNode.__getstate__(self: UniNode) -> dict {
+    state = self.__dict__.copy();
+    # Remove circular parent reference (rebuilt by _recalculate_parents)
+    state.pop('parent', None);
+    # Remove lazy/transient fields
+    state.pop('_UniNode__sub_node_tab', None);
+    state.pop('_in_mod_nodes', None);
+    state.pop('_gen', None);
+    # Symbol table fields (parent_scope, kid_scope, names_in_scope, etc.)
+    # and symbol references (_sym) are PRESERVED — pickle handles the
+    # circular references natively via its memo table.
+    # Convert _py_ctx_func type to string for pickling
+    if isinstance(self, NameAtom) {
+        py_ctx = state.get('_py_ctx_func');
+        if py_ctx is not None {
+            state['_py_ctx_func'] = py_ctx.__name__;
+        }
+    }
+    # Remove type info (rebuilt by type checker)
+    if isinstance(self, Expr) {
+        state.pop('_sym_type', None);
+        state.pop('_type_sym_tab', None);
+        state.pop('type', None);
+    }
+    # Remove CFG data (rebuilt by CFGBuildPass)
+    if isinstance(self, UniCFGNode) {
+        state.pop('bb_in', None);
+        state.pop('bb_out', None);
+    }
+    return state;
+}
+
+"""Restore state from pickle."""
+impl UniNode.__setstate__(self: UniNode, state: dict) -> None {
+    import ast as ast3;
+    # Restore _py_ctx_func from string name
+    if ('_py_ctx_func' in state) {
+        ctx_name = state['_py_ctx_func'];
+        ctx_map: dict = {'Load': ast3.Load, 'Store': ast3.Store, 'Del': ast3.Del};
+        state['_py_ctx_func'] = ctx_map.get(ctx_name, ast3.Load);
+    }
+    self.__dict__.update(state);
+    # Restore defaults for excluded fields only.
+    # Symbol table fields (parent_scope, kid_scope, names_in_scope, _sym)
+    # are already in state — they are preserved through serialization.
+    self.parent = None;
+    self.__sub_node_tab = None;
+    self._in_mod_nodes = [];
+    self._gen = None;
+    if isinstance(self, Expr) {
+        self._sym_type = 'NoType';
+        self._type_sym_tab = None;
+        self.type = None;
+    }
+    if isinstance(self, UniCFGNode) {
+        self.bb_in = [];
+        self.bb_out = [];
+    }
+}
+
 """Lazy initialization of sub node table."""
 @ property
 impl UniNode._sub_node_tab(self: UniNode) -> dict[(type, list[UniNode])] {

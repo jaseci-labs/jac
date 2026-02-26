@@ -3,11 +3,19 @@
 This module provides the JacProgram class which holds the state of a compiled
 Jac program. The actual compilation is performed by JacCompiler.
 """
+import os;
+import sys;
+import time;
 import types;
 import from threading { Event }
 import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { BytecodeCache, get_bytecode_cache }
+import from jaclang.jac0core.bccache {
+    BytecodeCache,
+    CacheKey,
+    DiskBytecodeCache,
+    get_bytecode_cache
+}
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.jac0core.passes { Alert }
@@ -40,6 +48,13 @@ class JacProgram {
 
     """Get the bytecode for a specific module."""
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
+
+    """Get the AST Module for a specific source file on demand.
+
+        Checks the in-memory hub first, then falls back to the disk cache.
+        Returns None if no AST is available.
+        """
+    def get_ast(self: JacProgram, full_target: str) -> (uni.Module | None);
 
     """Parse source string into an AST module."""
     def parse_str(

@@ -257,6 +257,7 @@ class DiskBytecodeCache(BytecodeCache) {
         MTIR_EXTENSION: Final[str] = '.mtir.pkl';
         LLVMIR_EXTENSION: Final[str] = '.llvmir';
         INTEROP_EXTENSION: Final[str] = '.interop.pkl';
+        AST_EXTENSION: Final[str] = '.ast.pkl';
     }
 
     """Initialize the cache with optional config."""
@@ -499,6 +500,56 @@ class DiskBytecodeCache(BytecodeCache) {
             interop_cache_path.parent.mkdir(parents=True, exist_ok=True);
             with open(interop_cache_path, 'wb') as f {
                 pickle.dump(interop_data, f, protocol=pickle.HIGHEST_PROTOCOL);
+            }
+        } except (OSError, pickle.PickleError) {
+            ;
+        }
+    }
+
+    """Generate the AST cache file path for a given key.
+
+        AST cache is stored alongside bytecode cache with .ast.pkl extension.
+        """
+    def _get_ast_cache_path(self: DiskBytecodeCache, key: CacheKey) -> Path {
+        source = Path(key.source_path).resolve();
+        cache_dir = self._get_cache_dir();
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
+        (major, minor) = key.python_version;
+        py_version = f"cpython-{major}{minor}";
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.AST_EXTENSION}";
+        return (cache_dir / cache_name);
+    }
+
+    """Retrieve cached AST Module if valid.
+
+        Returns the serialized AST Module node, or None if not cached/invalid.
+        """
+    def get_ast(self: DiskBytecodeCache, key: CacheKey) -> (Any | None) {
+        ast_cache_path = self._get_ast_cache_path(key);
+        if not self._is_valid(key, ast_cache_path) {
+            return None;
+        }
+        try {
+            with open(ast_cache_path, 'rb') as f {
+                return pickle.load(f);
+            }
+        } except (OSError, pickle.PickleError, EOFError) {
+            return None;
+        }
+    }
+
+    """Store AST Module in the cache.
+
+        Args:
+            key: Cache key identifying the source file
+            ast_node: The AST Module node to cache
+        """
+    def put_ast(self: DiskBytecodeCache, key: CacheKey, ast_node: Any) -> None {
+        ast_cache_path = self._get_ast_cache_path(key);
+        try {
+            ast_cache_path.parent.mkdir(parents=True, exist_ok=True);
+            with open(ast_cache_path, 'wb') as f {
+                pickle.dump(ast_node, f, protocol=pickle.HIGHEST_PROTOCOL);
             }
         } except (OSError, pickle.PickleError) {
             ;

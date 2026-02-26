@@ -293,6 +293,9 @@ prim_float_cmp.jac
 prim_builtins_extra.jac
 features_test_ui.cl.jac
 prim_dict_extra.jac
+<<<<<<< BaichuanLi/SerializeAST
+test_ast_serialize.jac
+=======
 CreateUserModal.cl.jac
 EditUserModal.cl.jac
 CategoryTabs.cl.jac
@@ -310,3 +313,4 @@ nacompile.jac
 nacompile.impl.jac
 elf_linker.jac
 elf_linker.impl.jac
+>>>>>>> main

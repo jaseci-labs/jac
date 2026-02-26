@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.3 (Unreleased)
 
+- **AST Serialization/Deserialization**: Compile-time AST is now serialized via pickle and cached alongside bytecode in `~/.cache/jac/bytecode/`. On subsequent runs, the cached AST is automatically deserialized and restored into the module hub, eliminating redundant re-parsing for unchanged sources.
+
 ## jaclang 0.11.2 (Latest Release)
 
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.

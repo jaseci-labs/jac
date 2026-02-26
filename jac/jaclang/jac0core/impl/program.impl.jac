@@ -62,6 +62,33 @@ impl JacProgram.get_bytecode(
     return self._get_compiler().get_bytecode(full_target, self);
 }
 
+"""Get the AST Module for a specific source file on demand.
+
+    Checks the in-memory hub first. If not present, loads from the
+    disk cache (deserializes + rebuilds parent pointers).
+    Returns None if no AST is available anywhere.
+    """
+impl JacProgram.get_ast(self: JacProgram, full_target: str) -> (uni.Module | None) {
+    # 1. Already in memory — return immediately.
+    if (full_target in self.mod.hub) {
+        return self.mod.hub[full_target];
+    }
+    # 2. Try disk cache.
+    if isinstance(self._bytecode_cache, DiskBytecodeCache) {
+        import from jaclang.jac0core.compiler { _recalculate_parents }
+        cache_key = CacheKey.for_source(full_target);
+        ast_deser_start = time.perf_counter();
+        cached_ast = self._bytecode_cache.get_ast(cache_key);
+        if (cached_ast is not None) {
+            _recalculate_parents(cached_ast);
+            self.mod.hub[full_target] = cached_ast;
+            ast_deser_elapsed = time.perf_counter() - ast_deser_start;
+            return cached_ast;
+        }
+    }
+    return None;
+}
+
 """Parse source string into an AST module."""
 impl JacProgram.parse_str(
     self: JacProgram,
