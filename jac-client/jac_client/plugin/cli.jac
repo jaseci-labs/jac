@@ -133,6 +133,22 @@ class JacCmd {
             source="jac-client"
         );
 
+        # Extend the core 'add' command with --kit flag (JacKit components)
+        registry.extend_command(
+            command_name="add",
+            args=[
+                Arg.create(
+                    "kit",
+                    typ=bool,
+                    default=False,
+                    help="Add JacKit component(s) from registry"
+                ),
+
+            ],
+            pre_hook=_handle_kit_add,
+            source="jac-client"
+        );
+
         # Extend the core 'remove' command with --npm flag
         registry.extend_command(
             command_name="remove",
@@ -146,6 +162,22 @@ class JacCmd {
 
             ],
             pre_hook=_handle_npm_remove,
+            source="jac-client"
+        );
+
+        # Extend the core 'remove' command with --kit flag (JacKit components)
+        registry.extend_command(
+            command_name="remove",
+            args=[
+                Arg.create(
+                    "kit",
+                    typ=bool,
+                    default=False,
+                    help="Remove JacKit component(s)"
+                ),
+
+            ],
+            pre_hook=_handle_kit_remove,
             source="jac-client"
         );
 
@@ -644,6 +676,84 @@ def _handle_npm_remove(ctx: HookContext) -> None {
         ctx.set_data("cancel_return_code", 0);
     } except Exception as e {
         console.error(f"Error removing packages: {e}");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    }
+}
+
+
+"""Pre-hook to handle --kit flag for adding JacKit components."""
+def _handle_kit_add(ctx: HookContext) -> None {
+    kit_flag = ctx.get_arg("kit", False);
+    if not kit_flag {
+        return;
+    }
+
+    import from jaclang.project.config { get_config }
+    import from jaclang.cli.console { console }
+    import from jac_client.plugin.kit_handler { add_kit_components }
+
+    config = get_config();
+    if config is None {
+        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    packages = ctx.get_arg("packages", []);
+    if not packages {
+        console.error("No components specified", hint="Usage: jac add --kit button card dialog");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    try {
+        result = add_kit_components(config, packages);
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0 if result else 1);
+    } except Exception as e {
+        console.error("Failed to add components: " + str(e));
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    }
+}
+
+
+"""Pre-hook to handle --kit flag for removing JacKit components."""
+def _handle_kit_remove(ctx: HookContext) -> None {
+    kit_flag = ctx.get_arg("kit", False);
+    if not kit_flag {
+        return;
+    }
+
+    import from jaclang.project.config { get_config }
+    import from jaclang.cli.console { console }
+    import from jac_client.plugin.kit_handler { remove_kit_components }
+
+    config = get_config();
+    if config is None {
+        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    packages = ctx.get_arg("packages", []);
+    if not packages {
+        console.error("No components specified", hint="Usage: jac remove --kit button");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    try {
+        result = remove_kit_components(config, packages);
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0 if result else 1);
+    } except Exception as e {
+        console.error("Failed to remove components: " + str(e));
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     }
