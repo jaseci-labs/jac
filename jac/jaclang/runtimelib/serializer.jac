@@ -57,6 +57,7 @@ obj Serializer {
 
     static def _deserialize_value(val: object) -> object;
     static def _get_class(module_name: str, class_name: str) -> (type | None);
+    static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);
     static def _deserialize_permission(data: object) -> object;
     static def _deserialize_access(data: object) -> object;

@@ -186,6 +186,20 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
     return cls;
 }
 
+"""Helper: Convert string ID to unpopulated anchor stub."""
+impl Serializer._id_to_stub(anchor_cls: type, id_str: str) -> (Anchor | None) {
+    try {
+        stub = anchor_cls.__new__(anchor_cls);
+        stub.id = UUID(id_str);
+        return stub;
+    } except Exception as e {
+        logger.error(
+            f"Failed to create stub for {anchor_cls.__name__} with id {id_str}: {e}"
+        );
+        return None;
+    }
+}
+
 """Deserialize Anchor (Node/Edge)."""
 impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) {
     anchor_cls = {'NodeAnchor': NodeAnchor, 'EdgeAnchor': EdgeAnchor}.get(
@@ -202,11 +216,29 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
             anchor.archetype = Serializer._deserialize_archetype(arch_data, anchor);
         }
         if isinstance(anchor, NodeAnchor) {
-            anchor.edges = [];  # Edges loaded lazily via populate()
+            # Restore edges from serialized edge IDs
+            edge_ids = data.get('edges');
+            if not edge_ids {
+                anchor.edges = [];
+            } else {
+                edges = [];
+                for eid in edge_ids {
+                    if (stub := Serializer._id_to_stub(EdgeAnchor, eid)) {
+                        edges.append(stub);
+                    }
+                }
+                anchor.edges = edges;
+            }
         }
         if isinstance(anchor, EdgeAnchor) {
             anchor.is_undirected = data.get('is_undirected', False);
-            # source/target loaded lazily via populate()
+            # Restore source and target from serialized IDs
+            if (source_id := data.get('source')) {
+                anchor.source = Serializer._id_to_stub(NodeAnchor, source_id);
+            }
+            if (target_id := data.get('target')) {
+                anchor.target = Serializer._id_to_stub(NodeAnchor, target_id);
+            }
         }
         return anchor;
     } except Exception as e {

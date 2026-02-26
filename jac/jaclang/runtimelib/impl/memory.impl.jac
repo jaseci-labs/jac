@@ -226,9 +226,21 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Store an anchor. Writes to memory immediately, database on sync."""
+"""Store an anchor. Writes to memory and immediately persists to database."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
+    if anchor.persistent {
+        self._ensure_connection();
+        try {
+            self.__conn__.execute(
+                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
+                (str(anchor.id), dumps(anchor))
+            );
+            self.__conn__.commit();
+        } except Exception as e {
+            logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
+        }
+    }
 }
 
 """Delete an anchor and track for garbage collection (only if persistent)."""
