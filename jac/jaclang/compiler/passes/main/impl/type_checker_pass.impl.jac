@@ -98,14 +98,18 @@ impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> Non
                 isinstance(val, uni.FuncCall)
                 and isinstance(val.target, uni.Name)
                 and val.target.value == "isinstance"
+                and val.params
                 and len(val.params) == 2
-                and isinstance(val.params[0], uni.Name)
             ) {
-                sym_name = val.params[0].value;
-                type_arg = val.params[1];
-                isinstance_type = self.evaluator.get_type_of_expression(type_arg);
-                isinstance_inst = self.evaluator._convert_to_instance(isinstance_type);
-                self.evaluator._add_and_narrowing(sym_name, isinstance_inst);
+                # Support both simple names (x) and member access (x.foo)
+                if narrowing_key := self.evaluator._get_narrowing_key(val.params[0]) {
+                    type_arg = val.params[1];
+                    isinstance_type = self.evaluator.get_type_of_expression(type_arg);
+                    isinstance_inst = self.evaluator._convert_to_instance(
+                        isinstance_type
+                    );
+                    self.evaluator._add_and_narrowing(narrowing_key, isinstance_inst);
+                }
             }
         }
     }
