@@ -110,12 +110,15 @@ impl sync_code_to_pvc(
             'restartPolicy': 'Never',
             'affinity': {
                 'podAffinity': {
-                    'requiredDuringSchedulingIgnoredDuringExecution': [
+                    'preferredDuringSchedulingIgnoredDuringExecution': [
                         {
-                            'labelSelector': {
-                                'matchLabels': {'app': f"{app_name}-code-server"}
-                            },
-                            'topologyKey': 'kubernetes.io/hostname'
+                            'weight': 100,
+                            'podAffinityTerm': {
+                                'labelSelector': {
+                                    'matchLabels': {'app': f"{app_name}-code-server"}
+                                },
+                                'topologyKey': 'kubernetes.io/hostname'
+                            }
                         }
                     ]
                 }

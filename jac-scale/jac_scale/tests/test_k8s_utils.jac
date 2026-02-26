@@ -272,8 +272,10 @@ test "sync code to pvc sets pod affinity to code server" {
     assert affinity is not None , "Pod spec must include affinity";
     pod_affinity = affinity.get("podAffinity");
     assert pod_affinity is not None , "Pod spec must include podAffinity";
-    rules = pod_affinity["requiredDuringSchedulingIgnoredDuringExecution"];
+    rules = pod_affinity["preferredDuringSchedulingIgnoredDuringExecution"];
     assert len(rules) == 1;
-    assert rules[0]["labelSelector"]["matchLabels"] == {"app": "myapp-code-server"};
-    assert rules[0]["topologyKey"] == "kubernetes.io/hostname";
+    assert rules[0]["weight"] == 100;
+    term = rules[0]["podAffinityTerm"];
+    assert term["labelSelector"]["matchLabels"] == {"app": "myapp-code-server"};
+    assert term["topologyKey"] == "kubernetes.io/hostname";
 }
