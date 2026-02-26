@@ -236,8 +236,8 @@ def _generate_index_html(
         bundle_filename = bundle_path.name;
         script_tag = (
             f'<script src="{bundle_filename}" defer></script>'
-            if script_loading == "defer"
-            else f'<script type="module" src="{bundle_filename}"></script>'
+                if script_loading == "defer"
+                else f'<script type="module" src="{bundle_filename}"></script>'
         );
         html_content = f'''<!DOCTYPE html>
 <html lang="en">
@@ -246,15 +246,11 @@ def _generate_index_html(
   </head>
   <body>
     <div id="root"></div>
-<<<<<<< fix-asset-loading-on-desktop
-    <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
+
     {script_tag}
-=======
     <script id="__jac_init__" type="application/json">{html.escape(
-        init_json
-    )}</script>
-    <script type="module" src="{bundle_filename}"></script>
->>>>>>> main
+            init_json
+        )}</script>
   </body>
 </html>''';
         index_html = dist_dir / 'index.html';
