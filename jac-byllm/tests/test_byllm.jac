@@ -368,6 +368,19 @@ test "max react iterations with finish tool call" {
     assert "UNIT_TOOL_CALLS: 1" in stdout_value;
 }
 
+test "plain text recovery - LLM bypasses finish_tool" {
+    # Verifies the Bug 2B fix: when a model (e.g. gpt-4o) returns plain conversational
+    # text instead of calling finish_tool, the invoke loop detects the failure,
+    # re-prompts with only finish_tool available, and correctly extracts the typed result.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("plain_text_recovery", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "PERSON: Merchant" in stdout_value;
+    assert "MESSAGE: Greetings traveller, I have wares to trade!" in stdout_value;
+}
+
 test "api key from constructor" {
     model = Model(model_name="gpt-4o-mini", api_key="sk-constructor-key");
     assert model.api_key == "sk-constructor-key";
