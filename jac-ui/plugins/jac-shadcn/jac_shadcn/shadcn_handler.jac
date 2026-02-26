@@ -113,7 +113,10 @@ def _update_npm_deps(config: Any, npm_deps: dict) -> None {
 def add_shadcn_components(config: Any, component_names: list) -> bool {
     shadcn_config = _read_shadcn_config(config);
     if not shadcn_config {
-        console.error("No [jac-shadcn] section in jac.toml", hint="Create project with: jac create --use jac-shadcn");
+        console.error(
+            "No [jac-shadcn] section in jac.toml",
+            hint="Create project with: jac create --use jac-shadcn"
+        );
         return False;
     }
 
@@ -152,7 +155,9 @@ def add_shadcn_components(config: Any, component_names: list) -> bool {
         }
     }
     if auto_added {
-        console.print("  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted");
+        console.print(
+            "  Auto-adding peer dependencies: " + ", ".join(auto_added), style="muted"
+        );
     }
 
     ui_dir.mkdir(parents=True, exist_ok=True);
@@ -166,7 +171,9 @@ def add_shadcn_components(config: Any, component_names: list) -> bool {
         comp_data = _fetch_json(registry_url + "/component/" + name + "?style=" + style);
 
         if not comp_data or "error" in comp_data {
-            err_msg = str(comp_data.get("error", "Unknown error")) if comp_data else "No response";
+            err_msg = str(comp_data.get("error", "Unknown error"))
+                if comp_data
+                else "No response";
             console.error("  x " + name + ": " + err_msg);
             continue;
         }
@@ -197,14 +204,19 @@ def add_shadcn_components(config: Any, component_names: list) -> bool {
     if not utils_path.exists() {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
-            f.write('cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n');
+            f.write(
+                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
+            );
         }
         console.print("  + Created lib/utils.cl.jac", style="green");
     }
 
     if added {
         console.print("");
-        console.print("Added " + str(len(added)) + " component(s): " + ", ".join(added), style="bold green");
+        console.print(
+            "Added " + str(len(added)) + " component(s): " + ", ".join(added),
+            style="bold green"
+        );
     }
 
     return len(added) > 0;
@@ -232,7 +244,10 @@ def remove_shadcn_components(config: Any, component_names: list) -> bool {
     }
 
     if removed {
-        console.print("Removed " + str(len(removed)) + " component(s): " + ", ".join(removed), style="bold green");
+        console.print(
+            "Removed " + str(len(removed)) + " component(s): " + ", ".join(removed),
+            style="bold green"
+        );
     }
 
     return len(removed) > 0;
