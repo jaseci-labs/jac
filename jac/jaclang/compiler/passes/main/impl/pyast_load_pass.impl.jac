@@ -1289,14 +1289,34 @@ Process python node.
         values: list[expr]
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
+
+     # First, detect if this is a triple-quoted f-string
+    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
+    if (ast_seg is None) {
+        ast_seg = 'f""';
+    }
+    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    is_triple_quoted = fstr_match and len(fstr_match.group(2)) == 3;
+
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
+
+            # Use repr to properly escape special characters
+            raw_repr = repr(i.value);
+            escaped_value = raw_repr[1:-1];  # Remove quotes
+            # For triple-quoted f-strings
+            if is_triple_quoted {
+                escaped_value = escaped_value.replace('\\n', '\n');
+                escaped_value = escaped_value.replace('\\t', '\t');
+                escaped_value = escaped_value.replace('\\r', '\r');
+            }
+
             valid.append(
                 uni.String(
                     orig_src=self.orig_src,
                     name='STRING',
-                    value=i.value,
+                    value=escaped_value,
                     line=i.lineno,
                     end_line=i.end_lineno or i.lineno,
                     col_start=i.col_offset,
@@ -1314,11 +1334,6 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
             raise self.ice('Invalid node in joined str') ;
         }
     }
-    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
-    if (ast_seg is None) {
-        ast_seg = 'f""';
-    }
-    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
     if fstr_match {
         (prefix, quote) = fstr_match.groups();
         start = fstr_match.group(0);
