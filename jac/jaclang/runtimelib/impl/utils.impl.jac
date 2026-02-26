@@ -269,7 +269,6 @@ impl is_adhoc_file(file_path: (Path | None) = None) -> bool {
     }
     # Check if any parent directory matches adhoc patterns
     for part in file_path.parts[:-1] {  # Exclude filename (last part)
-
         if part.lower() in ADHOC_DIRS {
             return True;
         }
