@@ -97,18 +97,23 @@ test "py2jac escape sequences" {
         prog=JacProgram()
     ).ir_out.unparse();
 
-    # Hex escapes should be preserved as \x1b, not converted to actual ESC char
-    assert "\\x1b[31m" in code , f"Hex escape not preserved in: {code}";
-    assert "\\x1b[0m" in code , f"Hex reset not preserved in: {code}";
+    # No actual ESC character (0x1b) should leak into output
+    assert chr(0x1b) not in code;
 
-    # Octal escapes \033 should be converted to hex \x1b in output
-    # (Python normalizes \033 to \x1b in the AST)
-    assert "\\x1b[32m" in code or "\\033[32m" in code , f"Octal escape not preserved: {code}";
+    # Hex/octal/standard escapes preserved
+    assert "\\x1b[31m" in code and "\\x1b[0m" in code;
+    assert "\\x1b[32m" in code or "\\033[32m" in code;
+    assert "\\n" in code and "\\t" in code;
 
-    # Standard escapes should be preserved
-    assert "\\n" in code , f"Newline escape not preserved: {code}";
-    assert "\\t" in code , f"Tab escape not preserved: {code}";
+    # F-strings, raw strings, triple-quoted
+    assert "f\"\\x1b[" in code or "f'\\x1b[" in code;
+    assert 'r"\\x1b[31m' in code or "r'\\x1b[31m" in code;
+    assert 'f"""Hello {name}' in code or "f'''Hello {name}" in code;
 
-    # F-string with escapes should work
-    assert "f\"\\x1b[" in code or "f'\\x1b[" in code , f"F-string escape not preserved: {code}";
+    # Backslashes, quotes, unicode, braces, hash
+    assert "path\\\\to\\\\file" in code;
+    assert "\\u0041" in code or "A" in code;
+    assert "{{literal braces}}" in code;
+    assert "# not a comment" in code;
+    assert "\\x00" in code;
 }

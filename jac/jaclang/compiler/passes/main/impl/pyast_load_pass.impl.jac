@@ -1289,25 +1289,22 @@ Process python node.
         values: list[expr]
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
-    # First, detect if this is a triple-quoted f-string
+    # Get the original f-string source to detect quote style
     ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
     if (ast_seg is None) {
         ast_seg = 'f""';
     }
     fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
-    is_triple_quoted = fstr_match and len(fstr_match.group(2)) == 3;
 
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
-            # Use repr to properly escape special characters
-            raw_repr = repr(i.value);
-            escaped_value = raw_repr[1:-1];  # Remove quotes
-            # For triple-quoted f-strings
-            if is_triple_quoted {
-                escaped_value = escaped_value.replace('\\n', '\n');
-                escaped_value = escaped_value.replace('\\t', '\t');
-                escaped_value = escaped_value.replace('\\r', '\r');
+            # Use get_source_segment to preserve original escape sequences exactly as written
+            escaped_value = py_ast.get_source_segment(self.orig_src.code, i);
+            if escaped_value is None {
+                # Fallback to repr approach if source segment unavailable
+                raw_repr = repr(i.value);
+                escaped_value = raw_repr[1:-1];
             }
 
             valid.append(
@@ -1802,9 +1799,14 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
             token_type = f"{value_type.__name__.upper()}";
         }
         if (value_type is str) {
-            raw_repr = repr(nd.value);
-            quote = "'" if raw_repr.startswith("'") else '"';
-            value = f"{quote}{raw_repr[1:-1]}{quote}";
+            # Use get_source_segment to preserve original escape sequences and quote style
+            value = py_ast.get_source_segment(self.orig_src.code, nd);
+            if value is None {
+                # Fallback to repr approach if source segment unavailable
+                raw_repr = repr(nd.value);
+                quote = "'" if raw_repr.startswith("'") else '"';
+                value = f"{quote}{raw_repr[1:-1]}{quote}";
+            }
         } else {
             value = str(nd.value);
         }
