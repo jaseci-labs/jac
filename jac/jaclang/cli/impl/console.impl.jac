@@ -80,6 +80,10 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
         style=style,
         markup=markup
     );
+    # Flush explicitly: jacpretty's Console.print() only flushes when is_terminal
+    # is True, but subprocess/PIPE stdout is fully buffered (not line-buffered).
+    # Without this, server output never reaches the PIPE reader.
+    sys.stdout.flush();
 }
 
 """Context manager for status during long operations (basic implementation)."""
