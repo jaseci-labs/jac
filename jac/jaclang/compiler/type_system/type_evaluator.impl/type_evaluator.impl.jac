@@ -68,6 +68,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     base_type = and_narrowed;
                 }
             }
+            # Progressive narrowing for member access targets (e.g., x.foo.bar after isinstance(x.foo, T))
+            elif target_key := self._get_narrowing_key(expr.target) {
+                if and_narrowed := self._get_and_narrowing(target_key) {
+                    base_type = and_narrowed;
+                }
+            }
 
             if expr.is_attr {  # <expr>.member
                 assert isinstance(expr.right, uni.Name);
@@ -380,20 +386,26 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 case Tok.KW_AND:
                     self._push_and_narrowing_scope();
                     for val in expr.values {
-                        # If it's isinstance(x, T), add narrowing for x BEFORE evaluating
-                        # so subsequent expressions see the narrowed type
+                        # If it's isinstance(x, T) or isinstance(x.foo, T), add narrowing
+                        # BEFORE evaluating so subsequent expressions see the narrowed type
                         if (
                             isinstance(val, uni.FuncCall)
                             and isinstance(val.target, uni.Name)
                             and val.target.value == "isinstance"
+                            and val.params
                             and len(val.params) == 2
-                            and isinstance(val.params[0], uni.Name)
                         ) {
-                            sym_name = val.params[0].value;
-                            type_arg = val.params[1];
-                            isinstance_type = self.get_type_of_expression(type_arg);
-                            isinstance_inst = self._convert_to_instance(isinstance_type);
-                            self._add_and_narrowing(sym_name, isinstance_inst);
+                            # Support both simple names (x) and member access (x.foo)
+                            if narrowing_key := self._get_narrowing_key(
+                                val.params[0]
+                            ) {
+                                type_arg = val.params[1];
+                                isinstance_type = self.get_type_of_expression(type_arg);
+                                isinstance_inst = self._convert_to_instance(
+                                    isinstance_type
+                                );
+                                self._add_and_narrowing(narrowing_key, isinstance_inst);
+                            }
                         }
                         # Evaluate and collect operand type
                         operand_types.append(self.get_type_of_expression(val));
@@ -1629,6 +1641,25 @@ impl TypeEvaluator._get_and_narrowing(sym_name: str) -> types.TypeBase | None {
     for scope in reversed(self._and_narrowing_context) {
         if sym_name in scope {
             return scope[sym_name];
+        }
+    }
+    return None;
+}
+
+"""Get a string key for an expression to use in narrowing context.
+
+Handles both simple names (x) and attribute access chains (x.foo.bar).
+Returns None if the expression is not suitable for narrowing tracking.
+"""
+impl TypeEvaluator._get_narrowing_key(expr: uni.Expr) -> str | None {
+    if isinstance(expr, uni.Name) {
+        return expr.value;
+    }
+    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        # Build path like "x.foo.bar"
+        base_key = self._get_narrowing_key(expr.target);
+        if base_key and isinstance(expr.right, uni.Name) {
+            return f"{base_key}.{expr.right.value}";
         }
     }
     return None;

@@ -191,9 +191,13 @@ test "deploy all in one" {
     config.load_kube_config();
     apps_v1 = client.AppsV1Api();
     core_v1 = client.CoreV1Api();
+    rbac_v1 = client.RbacAuthorizationV1Api();
 
     namespace = "all-in-one";
     app_name = namespace;
+    ksm_name = f"{app_name}-kube-state-metrics";
+    ne_name = f"{app_name}-node-exporter";
+    cluster_role_name = f"{namespace}-{ksm_name}";
 
     test_secret_value = "test-secret-value-12345";
     os.environ.update(
@@ -327,8 +331,13 @@ test "deploy all in one" {
         name=f"{prometheus_name}-config", namespace=namespace
     );
     assert "prometheus.yml" in prometheus_config.data;
-    assert f"{app_name}-service" in prometheus_config.data["prometheus.yml"];
-    print(f"Prometheus ConfigMap '{prometheus_name}-config' exists with scrape target");
+    scrape_cfg = prometheus_config.data["prometheus.yml"];
+    assert f"{app_name}-service" in scrape_cfg;
+    assert f"{ksm_name}-service:8080" in scrape_cfg;
+    assert f"{ne_name}-service:9100" in scrape_cfg;
+    print(
+        f"Prometheus ConfigMap '{prometheus_name}-config' exists with all three scrape targets"
+    );
 
     # Validate Grafana Deployment, Service, Secret, and ConfigMaps
     grafana_name = f"{app_name}-grafana";
@@ -367,13 +376,57 @@ test "deploy all in one" {
     );
     assert "jac-scale.json" in grafana_dashboard.data;
     assert "Jac Scale - App Metrics" in grafana_dashboard.data["jac-scale.json"];
-    print("Grafana dashboard ConfigMap exists with Jac Scale dashboard");
+    assert "k8s-metrics.json" in grafana_dashboard.data;
+    assert "Kubernetes Cluster Metrics" in grafana_dashboard.data["k8s-metrics.json"];
+    print(
+        "Grafana dashboard ConfigMap exists with Jac Scale + Kubernetes Cluster Metrics dashboards"
+    );
 
     grafana_provider = core_v1.read_namespaced_config_map(
         name=f"{grafana_name}-dashboard-provider", namespace=namespace
     );
     assert "provider.yaml" in grafana_provider.data;
     print("Grafana dashboard provider ConfigMap exists");
+
+    # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding
+    ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
+    assert ksm_deploy.metadata.name == ksm_name;
+    assert ksm_deploy.spec.replicas == 1;
+    assert "kube-state-metrics" in ksm_deploy.spec.template.spec.containers[0].image;
+    print(f"kube-state-metrics Deployment '{ksm_name}' exists");
+
+    ksm_service = core_v1.read_namespaced_service(
+        name=f"{ksm_name}-service", namespace=namespace
+    );
+    assert ksm_service.spec.type == "ClusterIP";
+    assert ksm_service.spec.ports[0].port == 8080;
+    print(f"kube-state-metrics Service '{ksm_name}-service' (ClusterIP:8080) exists");
+
+    ksm_sa = core_v1.read_namespaced_service_account(
+        name=f"{ksm_name}-sa", namespace=namespace
+    );
+    assert ksm_sa.metadata.name == f"{ksm_name}-sa";
+    print(f"kube-state-metrics ServiceAccount '{ksm_name}-sa' exists");
+
+    ksm_cluster_role = rbac_v1.read_cluster_role(name=cluster_role_name);
+    assert ksm_cluster_role.metadata.name == cluster_role_name;
+    print(f"kube-state-metrics ClusterRole '{cluster_role_name}' exists");
+
+    ksm_crb = rbac_v1.read_cluster_role_binding(name=cluster_role_name);
+    assert ksm_crb.metadata.name == cluster_role_name;
+    print(f"kube-state-metrics ClusterRoleBinding '{cluster_role_name}' exists");
+
+    # Validate node-exporter DaemonSet and Service
+    ne_daemonset = apps_v1.read_namespaced_daemon_set(name=ne_name, namespace=namespace);
+    assert ne_daemonset.metadata.name == ne_name;
+    print(f"node-exporter DaemonSet '{ne_name}' exists");
+
+    ne_service = core_v1.read_namespaced_service(
+        name=f"{ne_name}-service", namespace=namespace
+    );
+    assert ne_service.spec.type == "ClusterIP";
+    assert ne_service.spec.ports[0].port == 9100;
+    print(f"node-exporter Service '{ne_name}-service' (ClusterIP:9100) exists");
 
     # Validate code-server Deployment and Service
     code_server_deploy = apps_v1.read_namespaced_deployment(
@@ -586,6 +639,67 @@ test "deploy all in one" {
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    # Verify kube-state-metrics cleanup
+    try {
+        apps_v1.read_namespaced_deployment(ksm_name, namespace=namespace);
+        raise AssertionError("kube-state-metrics Deployment should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{ksm_name}-service", namespace=namespace);
+        raise AssertionError("kube-state-metrics Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{ksm_name}-sa", namespace=namespace
+        );
+        raise AssertionError(
+            "kube-state-metrics ServiceAccount should have been deleted"
+        ) ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role(name=cluster_role_name);
+        raise AssertionError(
+            "kube-state-metrics ClusterRole should have been deleted"
+        ) ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=cluster_role_name);
+        raise AssertionError(
+            "kube-state-metrics ClusterRoleBinding should have been deleted"
+        ) ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify node-exporter cleanup
+    try {
+        apps_v1.read_namespaced_daemon_set(ne_name, namespace=namespace);
+        raise AssertionError("node-exporter DaemonSet should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{ne_name}-service", namespace=namespace);
+        raise AssertionError("node-exporter Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("K8s metrics stack (kube-state-metrics + node-exporter) cleanup verified");
 
     # Verify Grafana cleanup
     grafana_name = f"{app_name}-grafana";

@@ -108,6 +108,21 @@ impl sync_code_to_pvc(
         'metadata': {'name': sync_pod_name, 'labels': {'managed': 'jac-scale'}},
         'spec': {
             'restartPolicy': 'Never',
+            'affinity': {
+                'podAffinity': {
+                    'preferredDuringSchedulingIgnoredDuringExecution': [
+                        {
+                            'weight': 100,
+                            'podAffinityTerm': {
+                                'labelSelector': {
+                                    'matchLabels': {'app': f"{app_name}-code-server"}
+                                },
+                                'topologyKey': 'kubernetes.io/hostname'
+                            }
+                        }
+                    ]
+                }
+            },
             'containers': [
                 {
                     'name': 'sync',

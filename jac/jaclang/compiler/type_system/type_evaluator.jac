@@ -234,6 +234,7 @@ obj TypeEvaluator {
     def _pop_and_narrowing_scope -> None;
     def _add_and_narrowing(sym_name: str, narrowed_type: types.TypeBase) -> None;
     def _get_and_narrowing(sym_name: str) -> types.TypeBase | None;
+    def _get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_predicate_for(
         symbol: uni.Symbol, condition: uni.Expr
     ) -> NarrowingPredicate | None;

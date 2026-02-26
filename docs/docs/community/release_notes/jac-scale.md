@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.2 (Unreleased)
 
+- k8s metrics dashboard in prometheus and grafana
 - Jac status command to check deployment status of each component of k8s
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 
@@ -16,6 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - Internal: refactor jac-scale k8s loadbalancer/service to support other vendors
 - Before deploying to the local Kubernetes cluster, check whether the required NodePorts are already in use in any namespace; if they are, throw an error.
 - jac destroy command deletes non default namespace
+- **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
 - 1 Minor refactor
 
 ## jac-scale 0.2.0
