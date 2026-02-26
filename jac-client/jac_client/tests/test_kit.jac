@@ -28,10 +28,7 @@ def make_kit_project(
 
     npm_section = 'radix-ui = "*"\n' + extra_npm;
     toml_content = (
-        '[project]\nname = "kit-test"\nversion = "1.0.0"\nentry-point = "main.jac"\n\n'
-        + '[dependencies.npm]\n' + npm_section + '\n'
-        + '[kit]\nstyle = "' + style + '"\n'
-        + 'registry = "' + registry_url + '"\n'
+        '[project]\nname = "kit-test"\nversion = "1.0.0"\nentry-point = "main.jac"\n\n' + '[dependencies.npm]\n' + npm_section + '\n' + '[kit]\nstyle = "' + style + '"\n' + 'registry = "' + registry_url + '"\n'
     );
 
     jac_toml = project_dir / "jac.toml";
@@ -50,7 +47,7 @@ def make_mock_config(project_dir: Path) -> Any {
 
 
 """Build a mock registry response."""
-def make_mock_registry() -> dict {
+def make_mock_registry -> dict {
     return {
         "version": "1.0.0",
         "components": {
@@ -59,11 +56,7 @@ def make_mock_registry() -> dict {
                 "npmDeps": ["class-variance-authority"],
                 "peerComponents": []
             },
-            "input": {
-                "file": "input.cl.jac",
-                "npmDeps": [],
-                "peerComponents": []
-            },
+            "input": {"file": "input.cl.jac", "npmDeps": [], "peerComponents": []},
             "textarea": {
                 "file": "textarea.cl.jac",
                 "npmDeps": [],
@@ -79,16 +72,9 @@ def make_mock_registry() -> dict {
                 "npmDeps": [],
                 "peerComponents": ["button"]
             },
-            "card": {
-                "file": "card.cl.jac",
-                "npmDeps": [],
-                "peerComponents": []
-            }
+            "card": {"file": "card.cl.jac", "npmDeps": [], "peerComponents": []}
         },
-        "sharedDeps": {
-            "clsx": "*",
-            "tailwind-merge": "*"
-        }
+        "sharedDeps": {"clsx": "*", "tailwind-merge": "*"}
     };
 }
 
@@ -98,7 +84,9 @@ def make_mock_component(name: str) -> dict {
     return {
         "name": name,
         "file": name + ".cl.jac",
-        "content": 'cl {\n    def:pub ' + name.replace("-", "_").title().replace("_", "") + '(props: Any) -> JsxElement {\n        return <div>{"' + name + '"}</div>;\n    }\n}\n',
+        "content": 'cl {\n    def:pub ' + name.replace("-", "_").title().replace(
+            "_", ""
+        ) + '(props: Any) -> JsxElement {\n        return <div>{"' + name + '"}</div>;\n    }\n}\n',
         "npmDeps": ["class-variance-authority"] if name == "button" else [],
         "peerComponents": []
     };
@@ -106,7 +94,6 @@ def make_mock_component(name: str) -> dict {
 
 
 # ===== _read_kit_config tests =====
-
 test "read kit config returns config when present" {
     (tmp, project_dir) = make_kit_project();
     try {
@@ -143,7 +130,6 @@ test "read kit config returns None when no project root" {
 
 
 # ===== _resolve_peer_deps tests =====
-
 test "resolve peer deps no peers" {
     registry = make_mock_registry();
     result = _resolve_peer_deps(["button", "card"], registry, set());
@@ -162,7 +148,7 @@ test "resolve peer deps with peers" {
 
 test "resolve peer deps skips existing" {
     registry = make_mock_registry();
-    existing: set = {"button", "input"};
+    existing: set = {"button","input"};
     result = _resolve_peer_deps(["input-group"], registry, existing);
     assert "input-group" in result;
     assert "textarea" in result;
@@ -206,7 +192,6 @@ test "resolve peer deps no duplicates" {
 
 
 # ===== _update_npm_deps tests =====
-
 test "update npm deps adds new deps" {
     (tmp, project_dir) = make_kit_project();
     try {
@@ -250,7 +235,6 @@ test "update npm deps empty dict is noop" {
 
 
 # ===== add_kit_components tests =====
-
 test "add single component" {
     (tmp, project_dir) = make_kit_project();
     try {
@@ -268,7 +252,9 @@ test "add single component" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["button"]);
         }
 
@@ -298,7 +284,9 @@ test "add component creates utils" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             add_kit_components(config, ["button"]);
         }
 
@@ -330,7 +318,9 @@ test "add component with peer deps" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["input-group"]);
         }
 
@@ -362,7 +352,9 @@ test "add component skips existing" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["button"]);
         }
 
@@ -392,7 +384,9 @@ test "add multiple components" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["button", "card", "input"]);
         }
 
@@ -423,7 +417,9 @@ test "add component updates npm deps" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             add_kit_components(config, ["button"]);
         }
 
@@ -459,7 +455,9 @@ test "add component registry fetch fails" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["button"]);
         }
 
@@ -485,7 +483,9 @@ test "add component fetch error skips component" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             result = add_kit_components(config, ["button"]);
         }
 
@@ -516,7 +516,9 @@ test "add passes style to component fetch" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             add_kit_components(config, ["button"]);
         }
 
@@ -553,7 +555,9 @@ test "add does not recreate existing utils" {
             return None;
         }
 
-        with patch("jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch) {
+        with patch(
+            "jac_client.plugin.kit_handler._fetch_json", side_effect=mock_fetch
+        ) {
             add_kit_components(config, ["button"]);
         }
 
@@ -566,7 +570,6 @@ test "add does not recreate existing utils" {
 
 
 # ===== remove_kit_components tests =====
-
 test "remove single component" {
     (tmp, project_dir) = make_kit_project();
     try {
