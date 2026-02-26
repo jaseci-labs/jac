@@ -7,8 +7,7 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole, render_markup }
 # ===============================================================================
 # Internal jacpretty Console Instances
 # ===============================================================================
-glob _pretty_stdout:
-         Optional[_PrettyConsole] = None,
+glob _pretty_stdout: Optional[_PrettyConsole] = None,
      _pretty_stderr: Optional[_PrettyConsole] = None;
 
 def _get_pretty_stdout -> _PrettyConsole {

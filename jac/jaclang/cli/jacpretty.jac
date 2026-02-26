@@ -6,8 +6,7 @@ import from typing { Dict, Optional, Tuple, Any }
 # ═══════════════════════════════════════════════════════════════════════════════
 # Color and Style Constants
 # ═══════════════════════════════════════════════════════════════════════════════
-glob COLORS:
-         Dict[(str, int)] = {
+glob COLORS: Dict[(str, int)] = {
          'black': 0,
          'red': 1,
          'green': 2,
@@ -48,9 +47,7 @@ glob COLORS:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helper Functions
 # ═══════════════════════════════════════════════════════════════════════════════
-def _parse_color(
-    color: str, bg: bool = False
-) -> Optional[Tuple[(str, ...)]] {
+def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]] {
     color = color.lower().strip();
     base = 40 if bg else 30;
     mode = '48' if bg else '38';
@@ -76,8 +73,8 @@ def _parse_color(
     if (color.startswith('rgb(') and color.endswith(')')) {
         p = color[4:-1].split(',');
         return (mode, '2', p[0].strip(), p[1].strip(), p[2].strip())
-        if (len(p) == 3)
-        else None;
+            if (len(p) == 3)
+            else None;
     }
 
     # 256 color palette color(n)
@@ -110,8 +107,8 @@ class Style {
 
     def __add__(self: Style, other: 'Style') -> 'Style' {
         return Style(f"{self._def} {other._def}")
-        if (self and other)
-        else (self or other);
+            if (self and other)
+            else (self or other);
     }
 
     @property
@@ -164,9 +161,7 @@ class Style {
 # ═══════════════════════════════════════════════════════════════════════════════
 # Markup Rendering
 # ═══════════════════════════════════════════════════════════════════════════════
-glob RE_MARKUP = re.compile(
-         '\\[(/)?([^\\[\\]]*)\\]'
-     );
+glob RE_MARKUP = re.compile('\\[(/)?([^\\[\\]]*)\\]');
 
 def render_markup(markup: str, base_style: str = '') -> str {
     # Escape literal brackets
@@ -267,8 +262,8 @@ class Console {
             text = str(`obj);
             if (self.is_terminal and not self._no_color) {
                 text = render_markup(text, style)
-                if markup
-                else Style(style).render(text) if style else text;
+                    if markup
+                    else Style(style).render(text) if style else text;
             }
             parts.append(text);
         }
@@ -285,8 +280,8 @@ class Console {
         line = (char * ((w - len(title) - 2) // 2)) + f" {title} " + (
             char * ((w - len(title) - 1) // 2)
         )
-        if title
-        else (char * w);
+            if title
+            else (char * w);
         self.print(f"[{style}]{line}[/]" if style else line);
     }
 
@@ -301,8 +296,7 @@ class Console {
 # ═══════════════════════════════════════════════════════════════════════════════
 # Global Console Instance
 # ═══════════════════════════════════════════════════════════════════════════════
-glob _console:
-         Optional[Console] = None;
+glob _console: Optional[Console] = None;
 
 def get_console -> Console {
     global _console;
@@ -317,10 +311,4 @@ def print(*objects: Any, **kwargs: Any) -> None {
 }
 
 # Export public API
-glob __all__ = [
-         'Console',
-         'Style',
-         'print',
-         'render_markup',
-         'get_console'
-     ];
+glob __all__ = ['Console', 'Style', 'print', 'render_markup', 'get_console'];
