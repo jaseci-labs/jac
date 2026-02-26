@@ -30,7 +30,7 @@ class KubernetesRedisProvider(DatabaseProvider) {
         redis_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
-            'metadata': {'name': redis_name},
+            'metadata': {'name': redis_name, 'labels': {'managed': 'jac-scale'}},
             'spec': {
                 'replicas': 1,
                 'selector': {'matchLabels': {'app': redis_name}},
@@ -57,7 +57,10 @@ class KubernetesRedisProvider(DatabaseProvider) {
         redis_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
-            'metadata': {'name': redis_service_name},
+            'metadata': {
+                'name': redis_service_name,
+                'labels': {'managed': 'jac-scale'}
+            },
             'spec': {
                 'selector': {'app': redis_name},
                 'ports': [

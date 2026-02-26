@@ -2,21 +2,25 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.11.2 (Unreleased)
+## jaclang 0.11.3 (Unreleased)
+
+## jaclang 0.11.2 (Latest Release)
 
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.
 - **Fix: Union of Subclasses Assignable to Base Class**: Fixed type checker rejecting valid assignments where a union of subclasses (e.g., `Dog | Cat`) is passed to a parameter expecting the base class (e.g., `Animal`). This commonly occurs after match statement narrowing and now works correctly.
 - **Fix: Compound AND Narrowing**: Multiple isinstance checks in the same AND expression now narrow to the most specific type. Example: `isinstance(x, BaseNode) and isinstance(x, CFGNode)` correctly narrows `x` to `CFGNode` inside the if block.
-- **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`.
+- **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`. Now also supports member access expressions: `isinstance(x.field, CFGNode) and x.field.bb_out` correctly narrows `x.field` to `CFGNode`.
 - **Fix: Assert isinstance Type Narrowing**: `assert isinstance(x, T)` now narrows the type of `x` to `T` for subsequent statements. Example: `assert isinstance(x, CFGNode); x.bb_out;` works correctly.
 - **Fix: Type Narrowing for Inheritance-Based isinstance**: Fixed `isinstance(nd, SubClass)` not narrowing the type when the variable is declared as a base class (e.g., `nd: BaseNode`). Previously, type narrowing only worked with union types; now single-class types are correctly narrowed to their subclass after isinstance checks.
 - **Fix: Native Global Pointer Variables Collected by GC**: MCJIT global variables (e.g. `glob WHITE_SYMBOLS: dict[...]`) live outside Boehm GC's scanned memory, causing global dicts/lists/objects to be freed after enough allocations trigger a collection. Fixed by emitting `GC_add_roots` calls for every pointer-typed global after initialization.
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
 - **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
+- **`jac nacompile` -- Standalone ELF Binaries**: New `jac nacompile` CLI command compiles `.na.jac` files to standalone ELF executables with no external compiler or linker required. Uses llvmlite's code generator to emit object code and a pure-Python ELF linker (`elf_linker.jac`) to produce dynamically-linked ELF binaries against libc/libgc. The `_start` entry point is written in pure LLVM IR (zero inline assembly), making the entire pipeline architecture-agnostic. Includes automatic GC fallback (rewrites `GC_malloc` to `malloc` at the IR level when libgc is unavailable). Usage: `jac nacompile program.na.jac` or `jac nacompile program.na.jac -o mybin`.
 - **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
+- 1 Minor refactors/changes
 
-## jaclang 0.11.1 (Latest Release)
+## jaclang 0.11.1
 
 - **Perf: Type Narrowing Optimization**: Fixed exponential slowdown in `jac check` with many `if` statements (~1 min → ~2s). Member access now uses narrowed types and reports errors for invalid attribute access on `None`.
 - **Import Path Alias Resolution**: The module resolver now supports path aliases configured in `[plugins.client.paths]` in `jac.toml`. Aliases like `@components/Button` are resolved to their filesystem paths before standard module lookup, enabling cleaner imports in client-side Jac code.
@@ -73,7 +77,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Lexer Infinite Loop on Malformed JSX**: Fixed three infinite-loop scenarios where the lexer would hang forever when hitting EOF inside a non-NORMAL mode (JSX content, JSX tag, or f-string). Added a stuck detector in `tokenize()` that forces EOF when the lexer stops advancing or overshoots the source, preventing `jac run`, `jac start`, and `jac js` from hanging on malformed input (e.g., unterminated JSX like `<div>hello` with no closing tag).
 - **Fix: Bare `<` in JSX Content No Longer Hangs Lexer**: A `<` character in JSX content that does not start a valid tag (e.g., `<--`) is now consumed as text instead of causing an infinite loop. The text scanner only breaks on `<` when the next character forms a real JSX construct (`</`, `<>`, or `<` + identifier).
 - **Fix: Grammar Extraction Accuracy**: Fixed multiple issues in `jac grammar` output: `atomic_chain` and `jsx_attributes` now show `*` repetition, `compare` no longer duplicates operators, `assignment_with_target` correctly extracts ternary expressions, excessive top-level `?` wrapping is stripped from multi-branch rules, f-string tokens use proper quoting, and added `GPlus` (one-or-more `+`) grammar expression type.
-- 1 Minor refactors/chages
+- 1 Minor refactors/changes
 
 ## jaclang 0.10.3
 

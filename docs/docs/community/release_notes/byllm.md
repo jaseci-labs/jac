@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.2 (Unreleased)
+## byllm 0.5.3 (Unreleased)
+
+## byllm 0.5.2 (Latest Release)
 
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 
-## byllm 0.5.1 (Latest Release)
+## byllm 0.5.1
 
 - **Fix: Enum/structured return types failing with Anthropic models**: Fixed a bug where `by llm()` functions returning non-string types (enums, objects) would crash with Anthropic/Claude models (`"Attempted to call tool: 'json_tool_call' which was not present"`). The issue was that `finish_tool` was only added when explicit tools were provided, so when no tools were passed but a structured return type was set, LiteLLM's Anthropic adapter would inject a hidden `json_tool_call` tool that byllm couldn't find. The fix ensures `finish_tool` is always created for non-string return types, regardless of whether explicit tools are provided.
 - **Fix: ReAct final answer tool calling error with Anthropic models**: Fixed a bug where the ReAct loop's final answer step would clear `tools=[]`, causing Anthropic to fail when the conversation history already contained tool call results (`"tools must be defined"` / `"tools must not be empty"`). The fix retains `finish_tool` in the tools list during the final answer step (for both streaming and non-streaming paths) and also handles the case where Anthropic returns the final answer via a `finish_tool` call rather than plain text.
