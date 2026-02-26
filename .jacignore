@@ -32,12 +32,14 @@ checker_float.jac
 checker_function_overload.jac
 checker_generics.jac
 checker_impl_body.impl.jac
+checker_impl_imports.jac
 checker_importer.jac
 checker_inherit_init_params.jac
 checker_list_assignment.jac
 checker_list_iteration.jac
 checker_magic_call.jac
 checker_match_type_narrowing.jac
+checker_match_narrowing.jac
 checker_mod_path.jac
 checker_numeric_promotion.jac
 checker_overload.jac
@@ -304,3 +306,7 @@ na_compile_pass.jac
 pyjac_ast_link_pass.jac
 test_parser.jac
 type_checker_pass.jac
+nacompile.jac
+nacompile.impl.jac
+elf_linker.jac
+elf_linker.impl.jac

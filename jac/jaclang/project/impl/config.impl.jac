@@ -3,9 +3,7 @@
 # ===============================================================================
 # Environment Variable Interpolation Implementation
 # ===============================================================================
-impl interpolate_env_vars(
-    value: str
-) -> str {
+impl interpolate_env_vars(value: str) -> str {
     import os;
     import re;
     if not isinstance(value, str) {
@@ -27,7 +25,9 @@ impl interpolate_env_vars(
         if operator == ":-" {
             return operand;
         } elif operator == ":?" {
-            raise ValueError(f"Environment variable {var_name} is required: {operand}") ;
+            raise ValueError(
+                f"Environment variable {var_name} is required: {operand}"
+            ) ;
         } else {
             raise ValueError(f"Environment variable {var_name} is not set") ;
         }
@@ -38,9 +38,7 @@ impl interpolate_env_vars(
 # ===============================================================================
 # Project Discovery Implementation
 # ===============================================================================
-impl find_project_root(
-    start: Path | None = None
-) -> tuple[Path, Path] | None {
+impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
     import from pathlib { Path }
     if start is None {
         start = Path.cwd();
@@ -169,7 +167,9 @@ impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
 def _deep_merge(base: dict, override: dict) -> dict {
     result = base.copy();
     for (key, value) in override.items() {
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict) {
+        if key in result
+        and isinstance(result[key], dict)
+        and isinstance(value, dict) {
             result[key] = _deep_merge(result[key], value);
         } else {
             result[key] = value;
@@ -569,9 +569,7 @@ impl JacConfig.save -> None {
 }
 
 # Check if a TOML key needs quoting (bare keys can only contain A-Za-z0-9_-)
-def _needs_quoting(
-    key: str
-) -> bool {
+def _needs_quoting(key: str) -> bool {
     import re;
     return not bool(re.match(r'^[A-Za-z0-9_-]+$', key));
 }
@@ -586,9 +584,7 @@ def _quote_key(key: str) -> str {
 }
 
 # Simple TOML serializer (does not preserve comments)
-def _serialize_toml(
-    data: dict, prefix: str = ""
-) -> str {
+def _serialize_toml(data: dict, prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
@@ -734,9 +730,7 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
-impl _parse_toml_data(
-    data: dict[str, Any], toml_path: Path | None = None
-) -> JacConfig {
+impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig {
     config = JacConfig();
     config._raw_data = data;
     if toml_path {

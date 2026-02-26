@@ -242,6 +242,31 @@ test "deploy all in one" {
     assert result.success is True;
     print(f"Deployment successful: {result.message}");
 
+    full_status = deployment_target.get_full_status(app_name);
+    assert full_status is not None;
+    assert full_status["app_name"] == app_name;
+    assert full_status["namespace"] == namespace;
+    assert "components" in full_status;
+    assert len(full_status["components"]) > 0;
+    component_names = [c["name"] for c in full_status["components"]];
+    assert "Jaseci App" in component_names;
+    assert "Redis" in component_names;
+    assert "MongoDB" in component_names;
+    for component in full_status["components"] {
+        assert "name" in component;
+        assert "status" in component;
+        assert "ready" in component;
+        assert "total" in component;
+        assert component["status"] == "running";
+        assert component["ready"] == component["total"];
+    }
+    assert "urls" in full_status;
+    assert "app" in full_status["urls"];
+    assert "grafana" in full_status["urls"];
+    assert full_status["urls"]["app"].startswith("http://");
+    assert full_status["urls"]["grafana"].startswith("http://");
+    print(f"Full status: {full_status}");
+
     time.sleep(5);
 
     # Validate the main deployment exists
@@ -434,7 +459,9 @@ test "deploy all in one" {
     duplicate_target_config = app_scale_config.get_kubernetes_config();
     duplicate_target_config["app_name"] = duplicate_app_name;
     duplicate_target_config["namespace"] = duplicate_namespace;
-    duplicate_target_config["node_port"] = target_config["node_port"];  # same port — must conflict
+    duplicate_target_config["node_port"] = target_config[
+        "node_port"
+    ];  # same port — must conflict
     duplicate_target_config["jaseci_repo_url"] = repo_url;
     duplicate_target_config["jaseci_branch"] = branch;
     duplicate_target_config["jaseci_commit"] = commit;
@@ -485,9 +512,7 @@ test "deploy all in one" {
     }
 
     try {
-        apps_v1.read_namespaced_stateful_set(
-            f"{app_name}-mongodb", namespace=namespace
-        );
+        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
         raise AssertionError("MongoDB StatefulSet should have been deleted") ;
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";

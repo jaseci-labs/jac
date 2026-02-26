@@ -187,7 +187,9 @@ def _build_service_worker_content(cache_name: str, precache_files: list[str]) ->
 const CACHE_NAME = '{cache_name}';
 const PRECACHE_ASSETS = [
   './',
-  {', '.join(precache_files)}
+  {', '.join(
+        precache_files
+    )}
 ];
 
 // Install event - precache assets

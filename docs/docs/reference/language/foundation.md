@@ -1877,6 +1877,26 @@ with entry {
 }
 ```
 
+### Standalone Binaries
+
+Self-contained `.na.jac` files (those with a `with entry {}` block and no Python dependencies) can be compiled to standalone native executables:
+
+```bash
+# Compile to a standalone binary
+jac nacompile program.na.jac
+
+# Run it directly -- no jac or Python needed
+./program
+```
+
+The `nacompile` command requires no external compiler, assembler, or linker. The entire pipeline runs in pure Python:
+
+1. The Jac compiler generates LLVM IR from the `.na.jac` source
+2. llvmlite emits native object code for the host architecture
+3. A built-in pure-Python ELF linker produces a dynamically-linked executable
+
+The resulting binary links only against `libc` at runtime. See [`jac nacompile`](../../reference/cli/index.md#jac-nacompile) for full usage details.
+
 ---
 
 ## Learn More

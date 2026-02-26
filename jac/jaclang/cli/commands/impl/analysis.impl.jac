@@ -181,17 +181,20 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                 err_count = len(prog.errors_had) or 1;
                 return (False, err_count, err_count);
             }
-            error_count = 0;
+            # Count fixed warnings and unfixable errors
+            fixed_count = 0;
             unfixable_count = 0;
+            for warning in prog.warnings_had {
+                console.warning(f"{warning}");
+                fixed_count += 1;
+            }
             for error in prog.errors_had {
                 console.error(f"{error}");
-                error_count += 1;
-                if "[no-print]" in str(error) {
-                    unfixable_count += 1;
-                }
+                unfixable_count += 1;
             }
-            # Only write if there were lint violations to fix
-            if error_count > unfixable_count {
+            error_count = fixed_count + unfixable_count;
+            # Write if there were lint violations that were fixed
+            if fixed_count > 0 {
                 changed = formatted_code != original_code;
                 if changed {
                     with open(str(path_obj), 'w', encoding='utf-8') as f {
@@ -315,7 +318,7 @@ impl format(
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
-            if prog.errors_had {
+            if prog.errors_had and not lintfix {
                 for error in prog.errors_had {
                     console.error(f"{error}");
                 }
@@ -344,9 +347,12 @@ impl format(
                 }
                 return (False, False, 0);
             }
-            # Report unfixable lint errors (e.g. [no-print])
+            # Report auto-fixed lint warnings and unfixable lint errors
             lint_errors = 0;
             if lintfix {
+                for warning in prog.warnings_had {
+                    console.warning(f"{warning}");
+                }
                 for error in prog.errors_had {
                     console.error(f"{error}");
                     lint_errors += 1;

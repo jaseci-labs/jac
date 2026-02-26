@@ -423,7 +423,11 @@ impl JacScaleUserManager.set_user_role(username: str, role: str) -> dict[str, st
     if cursor.rowcount == 0 {
         return {'error': 'User not found'};
     }
-    return {'message': f"Role updated to '{role}'", 'username': username, 'role': role};
+    return {
+        'message': f"Role updated to '{role}'",
+        'username': username,
+        'role': role
+    };
 }
 
 """Check if user is an admin."""

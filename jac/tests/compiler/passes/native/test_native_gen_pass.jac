@@ -63,9 +63,7 @@ test "arithmetic negate" {
 
 test "arithmetic float add" {
     (eng, _) = compile_native("arithmetic.na.jac");
-    fadd = get_func(
-        eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double
-    );
+    fadd = get_func(eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double);
     assert abs(fadd(1.5, 2.5) - 4.0) < 1e-10;
     assert abs(fadd(-1.0, 1.0)) < 1e-10;
 }
@@ -216,9 +214,7 @@ test "strings str equal" {
 
 test "strings str not equal" {
     (eng, _) = compile_native("strings.na.jac");
-    f = get_func(
-        eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
-    );
+    f = get_func(eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);
     assert f(b"hello", b"world") == 1;
     assert f(b"hello", b"hello") == 0;
 }

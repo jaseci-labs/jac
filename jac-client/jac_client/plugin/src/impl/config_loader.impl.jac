@@ -60,8 +60,8 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     # These are stored in plugin_dependencies["npm"]["dev"] after parsing
     npm_plugin_deps = jac_config.plugin_dependencies.get('npm', {});
     npm_dev_deps = npm_plugin_deps.get('dev', {})
-    if isinstance(npm_plugin_deps.get('dev'), dict)
-    else {};
+        if isinstance(npm_plugin_deps.get('dev'), dict)
+        else {};
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
         'api': client_config.get('api', {}),

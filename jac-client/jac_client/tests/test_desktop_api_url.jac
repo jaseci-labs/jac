@@ -26,9 +26,7 @@ import from .test_helpers { get_env_with_bun, get_jac_command }
 # =============================================================================
 # Shared path constants (avoid repeating long path constructions)
 # =============================================================================
-glob _plugin_src = Path(
-         __file__
-     ).parent.parent / "plugin" / "src",
+glob _plugin_src = Path(__file__).parent.parent / "plugin" / "src",
      _sidecar_main_path = _plugin_src / "targets" / "desktop" / "sidecar" / "main.py",
      _desktop_target_impl_path = _plugin_src / "targets" / "impl" / "desktop_target.impl.jac",
      _vite_bundler_jac_path = _plugin_src / "vite_bundler.jac",

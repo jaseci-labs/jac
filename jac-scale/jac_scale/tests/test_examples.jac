@@ -419,7 +419,9 @@ class JacScaleTestRunner {
 """Test the all-in-one example file."""
 test "all in one" {
     example_file = JacClientExamples / "all-in-one" / "main.jac";
-    with JacScaleTestRunner(example_file, session_name="custom_test", setup_npm=True) as runner {
+    with JacScaleTestRunner(
+        example_file, session_name="custom_test", setup_npm=True
+    ) as runner {
         assert "background-image" in runner.request_raw("GET", "/styles/styles.css");
         assert "PNG" in runner.request_raw("GET", "/static/assets/burger.png");
         assert "/static/client.js" in runner.request_raw("GET", "/cl/app");
@@ -456,7 +458,9 @@ test "material ui" {
 """Test Pure CSS example."""
 test "pure css" {
     example_file = JacClientExamples / "css-styling" / "pure-css" / "main.jac";
-    with JacScaleTestRunner(example_file, session_name="pure_css_test", setup_npm=True) as runner {
+    with JacScaleTestRunner(
+        example_file, session_name="pure_css_test", setup_npm=True
+    ) as runner {
         page_content = runner.request_raw("GET", "/cl/app");
         assert "/static/client.js" in page_content;
         assert ".container {" in runner.request_raw("GET", "/styles.css");
@@ -465,9 +469,7 @@ test "pure css" {
 
 """Test Styled Components example."""
 test "styled components" {
-    example_file = (
-        JacClientExamples / "css-styling" / "styled-components" / "main.jac"
-    );
+    example_file = JacClientExamples / "css-styling" / "styled-components" / "main.jac";
     with JacScaleTestRunner(
         example_file, session_name="styled_components_test", setup_npm=True
     ) as runner {

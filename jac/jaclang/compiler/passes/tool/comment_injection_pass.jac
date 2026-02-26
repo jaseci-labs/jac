@@ -92,7 +92,7 @@ obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
     def _fix_empty_region_spacing(parts: list[doc.DocType]) -> list[doc.DocType];
     def _make_standalone_comment(comment: uni.CommentToken) -> doc.DocType;
     def _make_inline_comment(
-        comment: uni.CommentToken, add_line: bool = True
+        comment: uni.CommentToken, add_line: bool = True, anchor_col_end: int = 0
     ) -> doc.DocType;
 
     def _emit_standalone_comments(

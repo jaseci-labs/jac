@@ -154,12 +154,8 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
             for i in range(1, len(orig_fn_type.args)) {
                 new_param_types.append(orig_fn_type.args[i]);
             }
-            wrapper_fn_type = ir.FunctionType(
-                orig_fn_type.return_type, new_param_types
-            );
-            wrapper_fn = ir.Function(
-                self.llvm_module, wrapper_fn_type, name=child_full
-            );
+            wrapper_fn_type = ir.FunctionType(orig_fn_type.return_type, new_param_types);
+            wrapper_fn = ir.Function(self.llvm_module, wrapper_fn_type, name=child_full);
             # Copy parameter names
             wrapper_fn.args[0].name = "self";
             for i in range(1, len(impl_func.args)) {

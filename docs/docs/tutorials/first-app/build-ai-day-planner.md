@@ -1,6 +1,6 @@
 # Build an AI Day Planner with Jac
 
-By the end of this tutorial, you'll have built a full-stack AI day planner -- a single application that lets you manage daily tasks (auto-categorized by AI) and generate meal shopping lists from natural language descriptions. Along the way, you'll learn every major feature of the Jac programming language.
+In this tutorial, you'll build a full-stack AI day planner from scratch -- a single application that manages daily tasks (auto-categorized by AI) and generates meal shopping lists from natural language descriptions. Each part introduces new concepts incrementally, so by the end you'll have hands-on experience with every major feature of the Jac programming language.
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
@@ -46,7 +46,7 @@ The tutorial is split into seven parts. Each builds on the last:
 
 ## Part 1: Your First Lines of Jac
 
-Jac is a programming language whose compiler can generate Python bytecode, ES JavaScript, and native binaries. The language design is based on Python, so if you know Python, Jac will feel familiar -- but with curly braces instead of indentation, semicolons at the end of statements, and built-in support for graphs, AI, and full-stack web apps. This section covers the fundamentals. **The Goal** of this section is to orient you to the syntax style of the language.
+Before building anything complex, it's important to get comfortable with Jac's syntax. Jac is a programming language whose compiler can generate Python bytecode, ES JavaScript, and native binaries. Its design is rooted in Python, so if you have Python experience, much of Jac will feel familiar -- but there are deliberate differences: curly braces replace indentation for block scoping, semicolons terminate statements, and the language has built-in support for graphs, AI, and full-stack web development. **The goal** of this section is to give you a solid foundation in the basics so that everything that follows feels natural.
 
 **Hello, World**
 
@@ -64,14 +64,14 @@ Run it:
 jac hello.jac
 ```
 
-In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks run when you execute a `.jac` file as a script and at the point it's imported, similar to top-level code in Python. We require this explicit demarcation because it's important to be deliberate about code that executes once on module load -- a common source of bugs in real programs.
+In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks execute when you run a `.jac` file as a script, and also at the point it's imported -- similar to top-level code in Python. The reason Jac requires this explicit demarcation is an important design principle: code that runs once on module load is a common source of subtle bugs in larger programs. By making it visually distinct, Jac ensures you're always intentional about side effects at the module level.
 
 !!! info "Why `with entry`?"
     Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
 
 **Variables and Types**
 
-Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. Type annotations are required when declaring variables with explicit types:
+Understanding Jac's type system is essential for everything that follows, especially the AI features in later parts. Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. When you declare a variable with an explicit type, a type annotation is required:
 
 ```jac
 with entry {
@@ -97,7 +97,7 @@ Jac supports **f-strings** for string interpolation (just like Python), **commen
 
 **Functions**
 
-Functions use the familiar `def` keyword. Both parameters and return values need type annotations:
+Functions in Jac use the familiar `def` keyword. A key difference from Python is that both parameters and return values require type annotations. This strictness pays off later -- when you delegate functions to an LLM in Part 5, the type signatures become the specification that guides the AI's output:
 
 ```jac
 def greet(name: str) -> str {
@@ -118,7 +118,7 @@ Functions that don't return a value use `-> None` (or you can omit the return ty
 
 **Control Flow**
 
-Jac uses curly braces `{}` for all blocks -- no significant indentation:
+Jac uses curly braces `{}` for all blocks, which means indentation is purely cosmetic -- there's no significant whitespace. This is a deliberate departure from Python that eliminates an entire class of formatting bugs:
 
 ```jac
 def check_time(hour: int) -> str {
@@ -157,7 +157,7 @@ with entry {
 }
 ```
 
-Jac supports both **`switch`/`case`** and **`match`/`case`**. Use `switch` when you want the classic simple value matching with no fall-through and no explicit `break` needed:
+Jac provides two pattern-matching constructs, each designed for a different purpose. **`switch`/`case`** is for classic simple value matching -- there's no fall-through and no `break` needed, which avoids a common source of bugs in C-family languages:
 
 ```jac
 def categorize(fruit: str) -> str {
@@ -172,7 +172,7 @@ def categorize(fruit: str) -> str {
 }
 ```
 
-Use `match` for Python-style structural pattern matching when you need to destructure or match complex patterns:
+**`match`/`case`**, on the other hand, is for Python-style structural pattern matching -- use it when you need to destructure values or match more complex patterns:
 
 ```jac
 def describe(value: any) -> str {
@@ -189,7 +189,7 @@ def describe(value: any) -> str {
 
 **Classes and Objects**
 
-Since Jac's design is based on Python, you can use Python-style classes directly with the `class` keyword:
+Since Jac's design is based on Python, it supports Python-style classes directly with the `class` keyword. This is a good starting point if you're coming from Python, but pay attention to what comes after -- Jac offers a better alternative:
 
 ```jac
 class Animal {
@@ -211,7 +211,7 @@ with entry {
 }
 ```
 
-This works, but notice all the `self` boilerplate. Jac introduces **`obj`** as an improved alternative -- fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicit in methods.
+This works, but notice the boilerplate: you must write `self` in every method signature, and the `init` method manually assigns each parameter to an instance variable. This repetitive pattern is exactly the kind of ceremony that slows down development. Jac addresses this with **`obj`** -- a first-class construct where fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicitly available in methods without being listed in parameters.
 
 !!! note "Why `obj`?"
     Python's `dataclass` decorator was an admission that traditional classes have too much boilerplate for simple data types. Jac's `obj` builds this idea into the language itself. For a deeper dive, see [Dataclasses: Python's Admission That Classes Are Broken](https://www.mars.ninja/blog/2025/10/25/dataclasses-and-jac-objects/).
@@ -232,7 +232,7 @@ with entry {
 }
 ```
 
-With `obj`, you don't write `self` in method signatures -- it's always available inside the body. Fields listed in `has` become constructor parameters automatically, so there's no need to write an `init` method for simple cases. Throughout this tutorial, we'll use `obj` for plain data types and `node` (introduced in Part 2) for data that lives in the graph.
+Take a moment to compare the two versions. With `obj`, you don't write `self` in method signatures -- it's always available inside the body. Fields listed in `has` become constructor parameters automatically, so there's no `init` method to write for simple cases. This isn't just syntactic sugar -- it's a design philosophy: the less ceremony around data types, the more clearly your code expresses its intent. Throughout this tutorial, we'll use `obj` for plain data types and `node` (introduced in Part 2) for data that lives in the graph.
 
 **What You Learned**
 
@@ -255,11 +255,11 @@ For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../quick
 
 ## Part 2: Modeling Data with Nodes
 
-Most languages store data in variables, objects, or database rows. Jac adds another option: **nodes** that live in a **graph**. Nodes persist automatically -- no database setup, no ORM, no SQL. **The Goal** of this section is to introduce you to the concept of graphs as a first-class citizen of the language and how databases can disappear.
+In most programming languages, data lives in one of a few places: local variables, object instances in memory, or rows in a database. Each has trade-offs -- variables are temporary, objects require manual serialization to persist, and databases demand configuration, schemas, and query languages. Jac introduces a fundamentally different option: **nodes** that live in a **graph** and persist automatically. There's no database to set up, no ORM to configure, and no SQL to write. **The goal** of this section is to help you understand graphs as a first-class citizen of the language and see how the traditional database layer can disappear entirely.
 
 **What is a Node?**
 
-A node is an `obj` style class type declared with the `node` keyword. Its fields are similarly declared with `has`:
+A node is structurally similar to an `obj` -- it's declared with the `node` keyword and its fields use `has`, just like you learned in Part 1. The difference is what the runtime does with it:
 
 ```jac
 node Task {
@@ -269,28 +269,28 @@ node Task {
 }
 ```
 
-This looks similar to a class, but nodes have a superpower: they can be connected to other nodes with **edges** (also `obj` style classes), forming a graph. Instead of class instance objects floating in space, these objects can have relationships that form first-class graphs in the language.
+The syntax looks almost identical to an `obj`, but nodes have a crucial additional capability: they can be connected to other nodes with **edges** (also `obj`-style classes), forming a graph. Think about the difference this makes. In traditional programming, objects exist independently in memory -- relationships between them must be maintained manually through references, foreign keys, or join tables. In Jac, relationships are structural. Objects are connected, and those connections form first-class graphs in the language.
 
-Beyond never needing a graph library again, a key capability emerges when we couple this with one more abstraction: the self-referential `root`.
+This becomes especially powerful when coupled with one more abstraction: the self-referential `root`.
 
 **The Root Node and the Graph**
 
-Every Jac program has a built-in `root` node -- the entry point of the graph. Just as `self` in an object method is a self-referential pointer to the *current instance*, `root` is a self-referential pointer to the *current runner* of the program -- whether that's you executing a script or an authenticated user making a request. And like `self`, `root` is ambiently available everywhere; you never import or declare it, it's just there in every code block. Think of it as the top of a tree of things that should persist:
+Every Jac program has a built-in `root` node -- the entry point of the graph. This is a concept worth pausing on, because it's central to how Jac works. Just as `self` in an object method is a self-referential pointer to the *current instance*, `root` is a self-referential pointer to the *current runner* of the program -- whether that's you executing a script or an authenticated user making a request. And like `self`, `root` is ambiently available everywhere; you never import or declare it, it's just there in every code block. Think of it as the top of a tree of everything that should persist:
 
 ```mermaid
 graph LR
     root((root))
 ```
 
-Any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` is the declaration that it should be saved. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
+Here's the key insight: any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` *is* the declaration that it should be saved. This is a fundamentally different model from traditional persistence, where you explicitly serialize data to a database. In Jac, persistence is a property of graph connectivity. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
 
 When your app serves multiple users, each user gets their **own isolated `root`**. User A's tasks and User B's tasks live in completely separate graphs -- same code, isolated data, enforced by the runtime. Connections *between* user graphs are possible when explicitly created, but by default each user's `root` is a private, independent entry point. We'll see this in action in [Part 6](#part-6-authentication-and-multi-file-organization) when we add authentication.
 
-You add data by creating nodes and connecting them with edges.
+Now that you understand the concept, let's see it in practice by creating nodes and connecting them with edges.
 
 **Creating and Connecting Nodes**
 
-The `++>` operator creates a node and connects it to an existing node with an edge:
+The `++>` operator creates a node and connects it to an existing node with an edge. This single operator does what would typically require multiple steps in traditional code: instantiating an object, saving it to a database, and creating a foreign key relationship:
 
 ```jac
 node Task {
@@ -332,7 +332,7 @@ print(task.title);  # "Buy groceries"
 
 **Filter Comprehensions**
 
-Before we query the graph, let's learn a Jac feature that works on *any* collection of objects: **filter comprehensions**. The `(?...)` syntax filters a list by field conditions, and `(?:Type)` filters by type:
+Before querying the graph, it's worth learning a Jac feature that works on *any* collection of objects, not just graph queries: **filter comprehensions**. Understanding this distinction is important -- filter comprehensions are a general-purpose tool that happens to work beautifully with graph queries. The `(?...)` syntax filters a list by field conditions, and `(?:Type)` filters by type:
 
 ```jac
 obj Dog { has name: str, age: int; }
@@ -363,7 +363,7 @@ This works on any list of objects -- not just graph queries. That's important fo
 
 **Querying the Graph**
 
-Now here's where it comes together. The `[-->]` syntax gives you a list of connected nodes -- and filter comprehensions work on it just like any other list:
+Now here's where the two concepts come together. The `[-->]` syntax gives you a list of connected nodes -- and because filter comprehensions work on any list, they apply to graph queries seamlessly:
 
 ```jac
 with entry {
@@ -385,7 +385,7 @@ with entry {
 }
 ```
 
-`[root-->]` reads as "all nodes connected *from* root." The `(?:Task)` filter keeps only nodes of type `Task`. There's nothing special about graph queries here -- `[-->]` returns a list, and `(?...)` filters it, the same way it filters any collection.
+`[root-->]` reads as "all nodes connected *from* root." The `(?:Task)` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `(?...)` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
 
 Other directions work too:
 
@@ -462,7 +462,7 @@ This is useful when data isn't appearing as expected.
 
 ## Part 3: Building the Backend API
 
-Time to build a real backend. You'll create HTTP endpoints that manage tasks -- without a web framework, route decorators, or serializers.
+With the fundamentals of Jac syntax and graph data in place, you're now ready to build something practical. In this part, you'll create HTTP endpoints that manage tasks -- and you'll see how Jac eliminates the boilerplate that typically comes with web frameworks: no route decorators, no serializers, no request/response handling code.
 
 **Create the Project**
 
@@ -475,7 +475,7 @@ You can delete the scaffolded `main.jac` -- you'll replace it with the code belo
 
 **Imports**
 
-Jac can import any Python package. We need `uuid` for generating unique IDs:
+An important feature of Jac is full interoperability with the Python ecosystem. You can import any Python package -- from the standard library or from PyPI. Here, we need `uuid` for generating unique task IDs:
 
 ```jac
 import from uuid { uuid4 }
@@ -485,7 +485,7 @@ The syntax is `import from module { names }` -- it imports `uuid4` from Python's
 
 **def:pub -- Functions as Endpoints**
 
-Mark a function `def:pub` and Jac automatically generates an HTTP endpoint for it:
+This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` and the compiler automatically generates an HTTP endpoint for it -- complete with request parsing, response serialization, and API documentation:
 
 ```jac
 """Add a task and return it."""
@@ -495,16 +495,16 @@ def:pub add_task(title: str) -> dict {
 }
 ```
 
-That single function is now:
+That single annotation transforms the function into two things simultaneously:
 
 - A server-side function you can call from Jac code
 - An HTTP endpoint that clients can call over the network
 
-No route configuration, no controllers, no request parsing. The function **is** the API.
+Consider what this replaces in a traditional web framework: you'd need a route decorator, a request parser to extract `title` from the request body, serialization logic to convert the response to JSON, and error handling for malformed requests. In Jac, the function signature *is* the API contract. The function's parameters define the request schema, and its return type defines the response format.
 
 **Building the CRUD Endpoints**
 
-Here are all four operations for managing tasks:
+With that understanding, here are all four CRUD (Create, Read, Update, Delete) operations for managing tasks:
 
 ```jac
 import from uuid { uuid4 }
@@ -549,7 +549,7 @@ def:pub delete_task(id: str) -> dict {
 }
 ```
 
-Let's look at the new patterns used here.
+Before moving on, let's examine the new patterns used in this code. These are foundational data structures you'll use throughout the rest of the tutorial.
 
 **Collections**
 
@@ -586,7 +586,7 @@ task_data["done"] = True;   # Update a value
 
 **Run It**
 
-You can start the server now -- the `def:pub` functions are live HTTP endpoints even without a frontend:
+Even without a frontend, you can start the server and interact with your API right away. This is a good practice for verifying your backend logic works correctly before adding UI complexity:
 
 ```bash
 jac start main.jac
@@ -619,11 +619,11 @@ You can also visit [http://localhost:8000/graph](http://localhost:8000/graph) to
 
 ## Part 4: A Reactive Frontend
 
-Jac isn't just a backend language. It can render full UIs in the browser using JSX syntax -- similar to React, but without the JavaScript toolchain.
+So far, you've been working entirely on the server side. Now you'll learn how Jac handles the frontend. Unlike most backend languages that require a separate JavaScript project for the UI, Jac can render full UIs in the browser using JSX syntax -- similar to React, but without requiring a separate JavaScript toolchain or build system.
 
 **The cl Prefix**
 
-Code prefixed with `cl` runs in the **browser**, not on the server:
+Jac uses the `cl` (client) prefix to distinguish between server-side and browser-side code. Any code marked with `cl` is compiled to JavaScript and runs in the **browser**, not on the server:
 
 ```jac
 cl import "./styles.css";
@@ -644,7 +644,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-**`has`** inside a component declares **reactive state**. When `tasks` or `task_text` changes, the UI automatically re-renders -- same idea as React's `useState`, but declared as simple properties.
+Notice the `has` keyword appearing again -- you first saw it in `obj` and `node` declarations. Inside a component, `has` declares **reactive state**. When any of these values change, the UI automatically re-renders to reflect the new data. If you're familiar with React, this is the same concept as `useState`, but expressed as simple property declarations rather than hook function calls.
 
 ??? info "You can also use React's `useState` directly"
     Since Jac's client-side code compiles to JavaScript that runs in a React context, you can import and use `useState` from React directly if you prefer:
@@ -696,7 +696,7 @@ This fetches all tasks from the server when the page loads.
 
 **Lambdas**
 
-Before we build the UI, we need **lambdas** -- Jac's anonymous functions. They're essential for event handlers:
+Before building the UI, you need to understand **lambdas** -- Jac's anonymous functions. These are essential for event handlers in JSX, where you need to pass small inline functions to respond to user actions like clicks and key presses:
 
 <!-- jac-skip -->
 ```jac
@@ -716,7 +716,7 @@ onChange={lambda e: any -> None { task_text = e.target.value; }}
 
 **Transparent Server Calls**
 
-Here's a key insight: **`await add_task(text)`** calls the server function as if it were local. Because `add_task` is `def:pub`, Jac generated an HTTP endpoint on the server and a matching client stub automatically. You never write fetch calls, parse JSON, or handle HTTP status codes.
+This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible.
 
 ```jac
     async def add_new_task -> None {
@@ -752,7 +752,7 @@ Here's a key insight: **`await add_task(text)`** calls the server function as if
 
 **Building the Frontend Step by Step**
 
-Add `cl import "./styles.css";` after your existing import. Now let's build the component incrementally. Start with the input, add button, and a basic task list:
+Now that you understand the individual pieces -- reactive state, lifecycle hooks, lambdas, transparent server calls, and JSX rendering -- it's time to assemble them into a working component. Add `cl import "./styles.css";` after your existing import. Start with the input, add button, and a basic task list:
 
 ```jac
 cl def:pub app -> JsxElement {
@@ -795,7 +795,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-This is already functional -- you can type a task, press Enter, and see it appear. Reactive `has` state re-renders the UI automatically, the lifecycle hook loads existing data, and `await add_task()` transparently calls the server.
+This is already functional -- you can type a task, press Enter, and see it appear. Take a moment to appreciate how the concepts you've learned work together: reactive `has` state re-renders the UI automatically when data changes, the lifecycle hook loads existing data on mount, and `await add_task()` transparently calls the server without any HTTP code.
 
 **Adding Toggle and Delete**
 
@@ -872,12 +872,12 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-A few things to notice:
+There are several important patterns to understand in this code:
 
-- **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`)
-- **Conditional comprehensions** update matching items (e.g., `[updated if t.id == id else t for t in tasks]`)
-- **`tasks + [task]`** creates a new list with the item appended
-- **`async`** marks methods that call the server (since network calls are asynchronous)
+- **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`). These are the same Python-style comprehensions you may already know, and they're essential for working with reactive state.
+- **Conditional comprehensions** update matching items (e.g., `[updated if t.id == id else t for t in tasks]`). This pattern creates a new list where one item is modified -- crucial for immutable state updates.
+- **`tasks + [task]`** creates a new list with the item appended, rather than mutating the existing list. This immutability is important because the reactive system needs to detect that the list has changed.
+- **`async`** marks methods that call the server, since network calls are inherently asynchronous.
 
 **Add Styles**
 
@@ -1024,7 +1024,7 @@ Open [http://localhost:8000](http://localhost:8000). You should see a clean day 
 3. Click X -- it disappears
 4. Stop the server and restart it -- your tasks are still there
 
-That last point is important. The data persisted because nodes live in the graph database, not in memory.
+That last point deserves emphasis. You didn't write any code to save data or load it on startup -- the data persisted automatically because the task nodes are connected to `root` in the graph. This is the persistence model you learned in Part 2 working seamlessly with the full-stack architecture.
 
 !!! tip "Visualize the graph"
     Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see your tasks as nodes connected to `root`. This visual view updates live as you add, toggle, and delete tasks.
@@ -1049,7 +1049,7 @@ That last point is important. The data persisted because nodes live in the graph
 
 ## Part 5: Making It Smart with AI
 
-Your day planner works, but it's not smart. Let's add two AI features: **automatic task categorization** and a **meal shopping list generator**. Both take surprisingly little code.
+Your day planner works, but it doesn't leverage AI yet. This part introduces one of Jac's most distinctive capabilities: the ability to delegate functions to a large language model using nothing more than type signatures and semantic hints. You'll add two AI features -- **automatic task categorization** and a **meal shopping list generator** -- and in doing so, you'll see how Jac's type system becomes a bridge between traditional programming and AI.
 
 !!! tip "Starting fresh"
     If you have leftover data from Parts 1–4, delete the `.jac/data/` directory before running Part 5. The schema changes (adding `category` to Task) may conflict with old nodes.
@@ -1093,31 +1093,31 @@ glob llm = Model(model_name="claude-sonnet-4-20250514");
 
 **Enums as Output Constraints**
 
-An **enum** defines a fixed set of named values. Access them with `Category.WORK` and convert to string with `str(Category.WORK)`:
+Before using AI, you need a way to constrain its output. An **enum** defines a fixed set of named values -- and when used as a return type for an AI function, it forces the LLM to pick from your predefined options. Access values with `Category.WORK` and convert to string with `str(Category.WORK)`:
 
 ```jac
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 ```
 
-This enum constrains the AI to return *exactly one* of these values. Without it, the LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing. The enum eliminates that ambiguity.
+This is a crucial concept: the enum constrains the AI to return *exactly one* of these predefined values. Without it, an LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing but impossible to handle consistently in code. The enum eliminates that ambiguity entirely, making AI output as predictable as any other function return value.
 
 **by llm() -- AI Function Delegation**
 
-Here's the key feature:
+Now for the core idea. Pay close attention, because this pattern is central to how Jac integrates AI:
 
 ```jac
 def categorize(title: str) -> Category by llm();
 sem categorize = "Categorize a task based on its title";
 ```
 
-That's the **entire function**. There's no body -- `by llm()` tells Jac to have the LLM generate the return value. The compiler extracts meaning from:
+That's the **entire function**. There's no body to write -- `by llm()` tells Jac to delegate the implementation to the LLM. The compiler constructs a prompt from everything it knows about the function:
 
 - The **function name** -- `categorize` tells the LLM what to do
 - The **parameter names and types** -- `title: str` is what the LLM receives
 - The **return type** -- `Category` constrains output to one of the enum values
 - The **`sem` hint** -- additional context for the LLM
 
-The function name, parameter names, types, and `sem` hint **are the specification**. The LLM fulfills it.
+This is why the type annotations you learned in Part 1 matter so much. The function name, parameter names, types, and `sem` hint collectively **are the specification**. The LLM fulfills it. In other words, the same type system that catches bugs at compile time also guides the AI at runtime.
 
 !!! info "`sem` vs docstrings"
     Use **`sem`** to provide semantic context for any declaration that the LLM needs to understand. While docstrings describe code for humans (and auto-generate API docs), `sem` is specifically designed to guide the LLM compiler. Always prefer `sem` for `by llm()` functions and their parameters.
@@ -1181,9 +1181,9 @@ def:pub toggle_task(id: str) -> dict {
 
 **Structured Output with obj and sem**
 
-Now for the shopping list. We need the AI to return *structured* data -- not just a string, but a list of ingredients with quantities, units, and costs.
+Now for a more advanced use case: the shopping list. The `categorize` function returns a single enum value -- simple. But what if you need the AI to return *structured* data -- not just a string or a category, but a list of ingredients, each with a name, quantity, unit, and estimated cost? This is where `obj` and `sem` come together.
 
-**`obj`** defines a structured data type. Unlike `node`, objects aren't stored in the graph -- they're just data containers:
+**`obj`** defines a structured data type that serves as an output schema for the LLM. Unlike `node`, objects aren't stored in the graph -- they're data containers that describe the *shape* of what the AI should return:
 
 ```jac
 enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
@@ -1204,7 +1204,7 @@ sem Ingredient.cost = "Estimated cost in USD";
 sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 ```
 
-Without `sem`, `cost: float` is ambiguous (cost in what currency? per unit or total?). With the hint, the LLM knows exactly what to generate.
+Consider why this matters: without `sem`, `cost: float` is ambiguous to the LLM -- cost in what currency? Per unit or total? Per serving? With the semantic hint, the LLM knows exactly what to generate. This is a general principle: **the more precise your types and hints, the more reliable the AI output**.
 
 Now the AI function:
 
@@ -1213,11 +1213,11 @@ def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
 sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 ```
 
-The LLM returns a `list[Ingredient]` -- a list of typed objects, each with name, quantity, unit, cost, and carb flag. Jac validates the structure automatically.
+The LLM returns a `list[Ingredient]` -- a list of typed objects, each with name, quantity, unit, cost, and carb flag. Jac validates the structure automatically, ensuring every field has the correct type. If the LLM produces malformed output, the runtime catches it rather than letting bad data propagate through your application.
 
 **Shopping List Nodes and Endpoints**
 
-Add a node for persisting generated ingredients:
+Now you need to persist the AI-generated ingredients in the graph. Notice that `Ingredient` (an `obj`) is used for AI output, while `ShoppingItem` (a `node`) is used for persistence. This separation is intentional -- the AI schema and the storage schema can evolve independently:
 
 ```jac
 node ShoppingItem {
@@ -1276,7 +1276,7 @@ def:pub clear_shopping_list -> dict {
 }
 ```
 
-Notice how `generate_list` clears old shopping items before generating new ones. The graph now holds both task and shopping data:
+Notice how `generate_list` clears old shopping items before generating new ones -- this ensures you always see a fresh list. The graph now holds both task and shopping data, demonstrating how different types of nodes coexist naturally:
 
 ```mermaid
 graph LR
@@ -1779,7 +1779,7 @@ Open [http://localhost:8000](http://localhost:8000). The app now has two columns
 4. **Type "chicken stir fry for 4"** in the meal planner and click Generate -- a structured shopping list appears with quantities, units, costs, and carb flags
 5. **Restart the server** -- everything persists (both tasks and shopping list)
 
-The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. The type system constrains the LLM's output automatically.
+The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. This is the key takeaway of this part: **Jac's type system constrains the LLM's output automatically**. You don't write prompt engineering logic or output parsers. The types *are* the constraints.
 
 !!! tip "Visualize the graph"
     Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see both `Task` and `ShoppingItem` nodes connected to `root`. After generating a shopping list, you'll see the graph grow with ingredient nodes alongside your tasks.
@@ -1803,7 +1803,7 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 
 ## Part 6: Authentication and Multi-File Organization
 
-Your day planner has AI-powered task categorization and a shopping list generator, and everything persists in the graph. But right now there's no concept of users -- anyone who visits the app sees the same data. Let's add authentication and reorganize the growing codebase into multiple files.
+Your day planner has AI-powered task categorization, a shopping list generator, and automatic persistence. But there's a fundamental gap: there's no concept of users. Anyone who visits the app sees the same data. In a real application, each user needs their own private data. This part teaches two important concepts: how Jac handles authentication and per-user data isolation, and how to organize a growing codebase across multiple files.
 
 **Built-in Auth**
 
@@ -1818,20 +1818,20 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 - **`jacLogout()`** -- log out
 - **`jacIsLoggedIn()`** -- check login status
 
-No JWT handling, no session management, no token storage -- it's all built in.
+Authentication is often one of the most complex parts of a web application -- JWT tokens, session management, token storage, refresh logic. Jac handles all of this internally, so you can focus on your application logic rather than security plumbing.
 
 **`def:priv` -- Per-User Endpoints**
 
-In Parts 3-5, we used `def:pub` to create public endpoints where all users share the same `root`. Now that we have authentication, we want each user's data to be private. Change `def:pub` to `def:priv`:
+Remember from Part 2 that `root` is a self-referential pointer to the *current runner* of the program. In Parts 3-5, you used `def:pub` to create public endpoints where all users shared the same `root`. Now that you have authentication, you want each user's data to be private. The change is remarkably simple -- replace `def:pub` with `def:priv`:
 
 - **`def:pub`** -- public endpoint, shared data (no authentication required)
 - **`def:priv`** -- private endpoint, requires authentication, operates on the user's **own `root`**
 
-With `def:priv`, each authenticated user gets their own isolated graph. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime.
+With `def:priv`, each authenticated user gets their own isolated graph with its own `root`. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime. This is the payoff of the `root` abstraction you learned earlier: because all your code already references `root` rather than a global variable, switching to per-user isolation requires no changes to your business logic.
 
 **Multi-File Organization**
 
-As the app grows, putting everything in one file gets unwieldy. Jac supports splitting code across files with a **declaration/implementation pattern** that keeps UI and logic separate.
+As your application grows, keeping everything in a single file becomes hard to navigate and maintain. Jac supports splitting code across files using a **declaration/implementation pattern** -- a clean architectural approach that separates *what* a component looks like from *how* it behaves.
 
 **`frontend.cl.jac`** -- state, method signatures, and the render tree:
 
@@ -1856,7 +1856,7 @@ impl app.fetchTasks -> None {
 }
 ```
 
-The `.cl.jac` file focuses on what the component *looks like* and what state it has. The `.impl.jac` file focuses on what the methods *do*. It's optional -- you could keep everything in one file -- but it keeps things readable as the app grows.
+The `.cl.jac` file focuses on what the component *looks like* and what state it has -- think of it as the interface. The `.impl.jac` file focuses on what the methods *do* -- the implementation details. This separation is optional -- you could keep everything in one file -- but it's a best practice that pays off as your application grows, because you can understand the component's structure at a glance without scrolling through method bodies.
 
 **`sv import`** brings server functions into client code. When a `.cl.jac` file calls `def:priv` (or `def:pub`) functions defined in a server module, it needs `sv import` so the compiler generates HTTP stubs instead of raw function calls:
 
@@ -1884,7 +1884,7 @@ Everything outside `cl { }` runs on the server. Everything inside runs in the br
 
 **Dependency-Triggered Abilities**
 
-A **dependency-triggered ability** re-runs whenever specific state changes -- like React's `useEffect` with a dependency array:
+One more concept to learn before assembling the full app. A **dependency-triggered ability** re-runs whenever specific state changes -- conceptually similar to React's `useEffect` with a dependency array, but expressed more declaratively:
 
 ```jac
     can with [isLoggedIn] entry {
@@ -1895,7 +1895,7 @@ A **dependency-triggered ability** re-runs whenever specific state changes -- li
     }
 ```
 
-When `isLoggedIn` changes from `False` to `True` (user logs in), this ability fires automatically and loads their data.
+When `isLoggedIn` changes from `False` to `True` (user logs in), this ability fires automatically and loads their data. This is a powerful pattern: instead of manually calling data-loading functions after every login action, the reactive system handles it for you.
 
 **The Complete Authenticated App**
 
@@ -2535,7 +2535,7 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 !!! tip "Visualize per-user graphs"
     Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see the graph for the currently logged-in user. Log in as different users and compare -- each has their own isolated graph with their own `root`, tasks, and shopping items.
 
-Your day planner is now a **complete, fully functional application** -- authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. All built with `def:priv` endpoints, nodes, and edges.
+Step back and consider what you've built: a **complete, fully functional application** with authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. In a traditional stack, this would require a web framework, an ORM, a database, an authentication library, a frontend build system, and AI integration code. In Jac, it's built with `def:priv` endpoints, nodes, and edges.
 
 **What You Learned**
 
@@ -2554,11 +2554,11 @@ Your day planner is now a **complete, fully functional application** -- authenti
 
 ## Part 7: Object-Spatial Programming with Walkers
 
-Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists. Everything works using `def:priv` functions that directly manipulate graph nodes.
+Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists. Everything works using `def:priv` functions that directly manipulate graph nodes. So why learn another approach?
 
-Now let's learn Jac's most distinctive feature: **Object-Spatial Programming (OSP)**. OSP introduces **walkers** -- mobile units of computation that *travel through* the graph -- and **abilities** -- logic that triggers automatically when a walker arrives at a node. It's a different way of thinking about code: instead of functions that reach into data, you have agents that move to data.
+This final part introduces Jac's most distinctive feature: **Object-Spatial Programming (OSP)**. It represents a fundamentally different way of thinking about code. In traditional programming, functions *reach into* data structures to read and modify them. In OSP, you create **walkers** -- mobile units of computation that *travel through* the graph -- and **abilities** -- logic that triggers automatically when a walker arrives at a node. Instead of functions that know about the entire graph, you have agents that move to data and react to what they find.
 
-This section reimplements the day planner's backend using walkers to show how OSP works. The app behavior stays the same -- this is about learning an alternative programming paradigm.
+This section reimplements the day planner's backend using walkers. The app behavior stays identical -- the purpose here is purely educational: to teach you a paradigm that becomes increasingly valuable as your graphs grow deeper and more complex.
 
 **What is a Walker?**
 
@@ -2577,7 +2577,7 @@ graph LR
     classDef ability stroke-width:2px,stroke-dasharray:3 3
 ```
 
-Think of it like a robot walking through a building. At each room (node), it can look around (`here`), check its own clipboard (`self`), move to connected rooms (`visit`), and write down findings (`report`).
+A helpful mental model: think of a walker like a robot moving through a building. At each room (node), it can look around (`here`), check its own clipboard (`self`), move to connected rooms (`visit`), and write down findings (`report`). The building doesn't change -- only the robot's position and what it does at each stop.
 
 The core keywords:
 
@@ -2589,7 +2589,7 @@ The core keywords:
 
 **Functions vs Walkers: Side by Side**
 
-Here's `add_task` as a `def:priv` function (what you already have):
+The best way to understand walkers is to compare them directly with the functions you already know. Here's `add_task` as a `def:priv` function (what you built in Part 6):
 
 ```jac
 def:priv add_task(title: str) -> dict {
@@ -2622,14 +2622,14 @@ walker AddTask {
 }
 ```
 
-The differences:
+Study the differences carefully -- each maps directly to a concept from the function version:
 
-- **`walker AddTask`** -- declares a walker (like a node, but mobile)
-- **`has title: str`** -- data the walker carries with it (passed when spawning)
-- **`can create with Root entry`** -- an **ability** that fires when the walker enters a `Root` node
-- **`here`** -- the current node (what `root` was in the function version)
-- **`self.title`** -- the walker's own properties (what `title` parameter was)
-- **`report { ... }`** -- sends data back (what `return` was)
+- **`walker AddTask`** -- declares a walker (like a node, but mobile). Think of it as a function that *goes to* the data.
+- **`has title: str`** -- data the walker carries with it, passed when spawning. This replaces function parameters.
+- **`can create with Root entry`** -- an **ability** that fires when the walker enters a `Root` node. The `with Root entry` part means "execute this code when I arrive at a Root node."
+- **`here`** -- the current node the walker is visiting. In the function version, you wrote `root` directly; in the walker version, `here` is whatever node the walker is currently at.
+- **`self.title`** -- the walker's own properties. Since the walker *is* an object, its data is accessed through `self`.
+- **`report { ... }`** -- sends data back to whoever spawned the walker. This replaces `return`.
 
 Spawn it:
 
@@ -2643,7 +2643,7 @@ print(result.reports[0]);  # The reported dict
 
 **The Accumulator Pattern**
 
-The power of walkers becomes clearer with `ListTasks` -- collecting data across multiple nodes:
+The `AddTask` walker may seem like unnecessary complexity compared to the function. The value of walkers becomes clearer with `ListTasks`, which demonstrates the **accumulator pattern** -- collecting data across multiple nodes as the walker traverses the graph:
 
 ```jac
 walker ListTasks {
@@ -2674,7 +2674,7 @@ Three abilities work together:
 2. **`with Task entry`** -- fires at each Task node, appending data to `self.results`
 3. **`with Root exit`** -- after visiting all children, the walker returns to root and reports the accumulated list
 
-The walker's `has results: list = []` state **persists across the entire traversal** -- that's how it collects results from multiple nodes.
+A key insight here: the walker's `has results: list = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node.
 
 Compare this to the function version:
 
@@ -2685,14 +2685,14 @@ def:priv get_tasks -> list {
 }
 ```
 
-The function is shorter for this simple case. But walkers shine when the graph is deeper -- imagine tasks containing subtasks containing notes. A walker naturally recurses through the whole structure with `visit [-->]` at each level.
+For this simple, flat graph, the function version is clearly more concise. So when do walkers earn their keep? They shine when the graph is deeper. Imagine tasks containing subtasks, subtasks containing notes, and notes linking to related resources. A walker naturally recurses through the whole structure with `visit [-->]` at each level -- no nested loops, no recursive function calls, just "visit connected nodes" repeated at each depth.
 
 !!! warning "Common issue"
     If walker reports come back empty, make sure you have `visit [-->]` to send the walker to connected nodes, and that the node type in `with X entry` matches your graph structure.
 
 **Node Abilities**
 
-So far, abilities have lived on the **walker** (e.g., `can collect with Task entry`). But abilities can also live on the **node** itself:
+So far, all abilities have been defined on the **walker** (e.g., `can collect with Task entry`). But Jac offers an alternative: abilities can also live on the **node** itself. This is an important architectural choice to understand:
 
 ```jac
 node Task {
@@ -2714,7 +2714,7 @@ node Task {
 
 When a `ListTasks` walker visits a `Task` node, the node's `respond` ability fires automatically. Inside a node ability, **`visitor`** refers to the visiting walker (so you can access `visitor.results`).
 
-Both patterns work -- walker-side abilities and node-side abilities. Choose whichever reads more clearly for your use case. Walker-side abilities are great when the logic is about the traversal. Node-side abilities are great when the logic is about the node's data.
+Both patterns achieve the same result. The design question is: where does the logic naturally belong? **Walker-side abilities** make sense when the logic is about the *traversal* -- how to navigate, what to collect, when to stop. **Node-side abilities** make sense when the logic is about the *data* -- how a node should present itself, what it should do when visited. In practice, you'll often mix both approaches within the same application.
 
 **visit and disengage**
 
@@ -2728,7 +2728,7 @@ visit [-->] else {         # Fallback if no nodes to visit
 };
 ```
 
-**`disengage`** stops the walker immediately -- useful when you've found what you're looking for:
+**`disengage`** stops the walker immediately -- this is an optimization for cases where you've found what you're looking for and don't need to visit the remaining nodes:
 
 ```jac
 walker ToggleTask {
@@ -2768,7 +2768,7 @@ walker DeleteTask {
 
 **Multi-Step Traversals**
 
-The `GenerateShoppingList` walker shows the real power of OSP -- doing two things in one traversal:
+The `GenerateShoppingList` walker demonstrates the real power of OSP -- performing multiple operations in a single graph traversal. Read this carefully, because the execution order is subtle and important:
 
 ```jac
 walker GenerateShoppingList {
@@ -2803,9 +2803,9 @@ walker GenerateShoppingList {
 }
 ```
 
-When `visit [-->]` runs, it queues all connected nodes for traversal **after the current ability body completes**. So the rest of `generate` runs first -- creating new `ShoppingItem` nodes and building the result list. Then, once the ability body finishes, the walker traverses to the queued nodes. If any are `ShoppingItem` nodes that existed before this ability ran, the `clear_old` ability fires and deletes them.
+Here's the key to understanding this walker: when `visit [-->]` runs, it doesn't immediately move the walker. Instead, it **queues** all connected nodes for traversal **after the current ability body completes**. So the rest of `generate` runs first -- creating new `ShoppingItem` nodes and building the result list. Then, once the ability body finishes, the walker traverses to the queued nodes. If any of those are `ShoppingItem` nodes that existed *before* this ability ran, the `clear_old` ability fires and deletes them.
 
-Compare this to the function version where you needed an explicit loop to clear old items. The walker version expresses the same intent more declaratively: "when I encounter a ShoppingItem, delete it."
+Compare this to the function version, where you needed an explicit loop to clear old items before generating new ones. The walker version expresses the same intent more declaratively: "when I encounter a ShoppingItem, delete it." The cleanup logic is separated from the generation logic, making each piece easier to reason about independently.
 
 The remaining shopping walkers follow familiar patterns:
 
@@ -2837,7 +2837,7 @@ walker ClearShoppingList {
 
 **Spawning Walkers from the Frontend**
 
-In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead.
+Now that you understand how walkers work on the server, let's connect them to the frontend. In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead -- a different syntax but the same transparent client-server communication.
 
 **`sv import`** brings server walkers into client code:
 
@@ -2866,7 +2866,7 @@ The key pattern: **`root spawn Walker(params)`** creates a walker and starts it 
 
 **walker:priv -- Per-User Data Isolation**
 
-Walkers can be marked with access modifiers:
+Just as `def:priv` gave functions per-user isolation, walkers can be marked with access modifiers for the same purpose:
 
 - **`walker AddTask`** -- public, anyone can spawn it
 - **`walker:priv AddTask`** -- private, requires authentication
@@ -3602,7 +3602,7 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 
 ## Summary
 
-Over seven parts, you built a complete app and then reimplemented it using OSP:
+Over seven parts, you progressed from basic syntax to a complete full-stack application, then explored an alternative programming paradigm. Here's what you accomplished:
 
 | Parts | What You Built | What It Teaches |
 |-------|----------------|-----------------|
@@ -3611,7 +3611,7 @@ Over seven parts, you built a complete app and then reimplemented it using OSP:
 | 6 | + Auth & multi-file | Authentication, `def:priv`, per-user isolation, declaration/implementation split |
 | 7 | OSP reimplementation | Walkers, abilities, graph traversal |
 
-Here's a quick reference of every Jac concept covered in this tutorial:
+The concepts you've learned are interconnected. Types constrain AI output. Graphs eliminate databases. `root` enables per-user isolation. Walkers provide an alternative to functions for graph-heavy logic. Here's a quick reference of every Jac concept covered in this tutorial:
 
 **Data & Types:** `node`, `edge`, `obj`, `enum`, `has`, `glob`, `sem`, type annotations, `str | None` unions
 
@@ -3631,8 +3631,10 @@ Here's a quick reference of every Jac concept covered in this tutorial:
 
 ## Next Steps
 
-- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale`
-- **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns
-- **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for tool-using agents
-- **Examples** -- Check the [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for more projects
-- **Language Reference** -- [Full Language Reference](../../reference/language/foundation.md) for complete syntax documentation
+Now that you have a solid foundation, here are some directions to deepen your understanding:
+
+- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale` to take your app to production
+- **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns like recursive traversals and multi-hop queries
+- **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for building tool-using agents
+- **Examples** -- Explore [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for inspiration on what to build next
+- **Language Reference** -- [Full Language Reference](../../reference/language/foundation.md) for complete syntax documentation when you need to look up specifics

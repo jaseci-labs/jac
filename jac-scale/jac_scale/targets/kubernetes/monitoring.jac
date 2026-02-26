@@ -61,7 +61,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{prometheus_name}-config",
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'data': {'prometheus.yml': scrape_config}
         };
@@ -90,7 +90,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': prometheus_name,
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'replicas': 1,
@@ -148,7 +148,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{prometheus_name}-service",
                 'namespace': namespace,
-                'labels': {'app': prometheus_name}
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'type': 'ClusterIP',
@@ -199,7 +199,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': grafana_secret_name,
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'type': 'Opaque',
             'stringData': {
@@ -240,7 +240,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-datasources",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'datasource.yaml': datasource_yaml}
         };
@@ -282,7 +282,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-dashboard-provider",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'provider.yaml': dashboard_provider_yaml}
         };
@@ -414,7 +414,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': f"{grafana_name}-dashboard",
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'data': {'jac-scale.json': dashboard_json}
         };
@@ -443,7 +443,7 @@ class MonitoringDeployer {
             'metadata': {
                 'name': grafana_name,
                 'namespace': namespace,
-                'labels': {'app': grafana_name}
+                'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
             'spec': {
                 'replicas': 1,
@@ -517,7 +517,7 @@ class MonitoringDeployer {
                 'metadata': {
                     'name': f"{grafana_name}-service",
                     'namespace': namespace,
-                    'labels': {'app': grafana_name},
+                    'labels': {'app': grafana_name, 'managed': 'jac-scale'},
                     'annotations': {
                         'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb'
                     }
@@ -535,7 +535,7 @@ class MonitoringDeployer {
                 'metadata': {
                     'name': f"{grafana_name}-service",
                     'namespace': namespace,
-                    'labels': {'app': grafana_name}
+                    'labels': {'app': grafana_name, 'managed': 'jac-scale'}
                 },
                 'spec': {
                     'type': 'NodePort',
