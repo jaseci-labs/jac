@@ -6,12 +6,17 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.
 - **Fix: Union of Subclasses Assignable to Base Class**: Fixed type checker rejecting valid assignments where a union of subclasses (e.g., `Dog | Cat`) is passed to a parameter expecting the base class (e.g., `Animal`). This commonly occurs after match statement narrowing and now works correctly.
-- **Fix: Compound AND Narrowing**: Multiple isinstance checks in the same AND expression now narrow to the most specific type. Example: `isinstance(x, BaseNode) and isinstance(x, CFGNode)` correctly narrows `x` to `CFGNode` inside the if block.
-- **Fix: Assignment-Based Type Narrowing**: Assigning a more specific value to a union-typed variable now narrows the type for subsequent uses. Example: `a: int | None = None; a = 90; add_one(a)` works without false positives because `a` is narrowed to `int` after the assignment.
-- **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`. Now also supports member access expressions: `isinstance(x.field, CFGNode) and x.field.bb_out` correctly narrows `x.field` to `CFGNode`.
-- **Fix: Truthiness Guard Narrowing for Member Access**: `if obj.field` guards now narrow `obj.field` from `T | None` to `T` inside the block. Example: `if self.prefetch.list_class { use(self.prefetch.list_class); }` works without false positives.
-- **Fix: Assert isinstance Type Narrowing**: `assert isinstance(x, T)` now narrows the type of `x` to `T` for subsequent statements. Example: `assert isinstance(x, CFGNode); x.bb_out;` works correctly.
-- **Fix: Type Narrowing for Inheritance-Based isinstance**: Fixed `isinstance(nd, SubClass)` not narrowing the type when the variable is declared as a base class (e.g., `nd: BaseNode`). Previously, type narrowing only worked with union types; now single-class types are correctly narrowed to their subclass after isinstance checks.
+- **Type Narrowing Improvements**: Comprehensive fixes to type narrowing for better type inference:
+  - AND expressions: `isinstance(x, T) and x.member` correctly narrows `x` to `T` when accessing members
+  - Assignment narrowing: `a: int | None = None; a = 90;` narrows `a` to `int`
+  - Guard narrowing: `if not isinstance(x, T): return;` narrows `x` to `T` after the guard
+  - Else-branch fix: narrowings no longer incorrectly apply to else branches
+  - Member access: `isinstance(x.field, T) and x.field.member` narrowing now works
+  - Truthiness guards: `if obj.field` narrows `obj.field` from `T | None` to `T`
+  - Assert narrowing: `assert isinstance(x, T)` narrows `x` for subsequent code
+  - Inheritance: `isinstance(nd, SubClass)` narrowing works for base class variables
+- **Union Type Member Access**: Accessing members on union types now works with IDE features. Example: `x.name` where `x: Dog | Cat` resolves to the member type and enables go-to-definition.
+- **IDE: Hover Types for Parameters and Fields**: Function parameters and class fields (`has` vars) now display their types on hover.
 - **Fix: Native Global Pointer Variables Collected by GC**: MCJIT global variables (e.g. `glob WHITE_SYMBOLS: dict[...]`) live outside Boehm GC's scanned memory, causing global dicts/lists/objects to be freed after enough allocations trigger a collection. Fixed by emitting `GC_add_roots` calls for every pointer-typed global after initialization.
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
