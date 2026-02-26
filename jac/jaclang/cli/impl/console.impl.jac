@@ -1,29 +1,24 @@
 """Implementation of console utilities for terminal output (jacpretty-powered)."""
 import os, sys;
 import from contextlib { contextmanager }
-import from typing { Any, Optional }
-import from jaclang.cli.jacpretty { Console as _PrettyConsole, render_markup }
+import from typing { Any }
+import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 
 # ===============================================================================
-# Internal jacpretty Console Instances
+# Internal jacpretty Console Factories
 # ===============================================================================
-glob _pretty_stdout: Optional[_PrettyConsole] = None,
-     _pretty_stderr: Optional[_PrettyConsole] = None;
-
+# NOTE: These are intentionally NOT singletons. A singleton would cache
+# sys.stdout/sys.stderr at creation time, causing test stdout/stderr redirects
+# (sys.stdout = io.StringIO()) to be bypassed — output would go to the original
+# stream, making captured_output.getvalue() return ''. Creating fresh instances
+# per call ensures Console.__init__ always picks up the *current* sys.stdout
+# or sys.stderr, exactly like Python's built-in print() does.
 def _get_pretty_stdout -> _PrettyConsole {
-    global _pretty_stdout;
-    if _pretty_stdout is None {
-        _pretty_stdout = _PrettyConsole();
-    }
-    return _pretty_stdout;
+    return _PrettyConsole();
 }
 
 def _get_pretty_stderr -> _PrettyConsole {
-    global _pretty_stderr;
-    if _pretty_stderr is None {
-        _pretty_stderr = _PrettyConsole(file=sys.stderr);
-    }
-    return _pretty_stderr;
+    return _PrettyConsole(file=sys.stderr);
 }
 
 # ===============================================================================
