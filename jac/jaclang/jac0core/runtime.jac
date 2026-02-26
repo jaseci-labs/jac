@@ -2561,6 +2561,7 @@ with entry {
 class JacRuntime(JacRuntimeInterface) {
     with entry {
         base_path_dir: (str | None) = os.getcwd();
+        entry_file_path: (str | None) = None;
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();

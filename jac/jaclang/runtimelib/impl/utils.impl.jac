@@ -237,23 +237,19 @@ impl sys_path_context(path: str) -> Iterator[None] {
     }
 }
 
-"""Helper to get entry file path from sys.argv or __main__."""
+"""Get entry file path using JacRuntime tracked state only.
+"""
 def _get_entry_path -> (Path | None) {
     import from pathlib { Path }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
     try {
-        # Check sys.argv first
-        if sys.argv and len(sys.argv) > 0 {
-            return Path(sys.argv[0]).resolve();
-        }
-        # Fallback to __main__ module
-        if '__main__' in sys.modules {
-            main_module = sys.modules['__main__'];
-            if main_module?.__file__ and main_module.__file__ {
-                return Path(main_module.__file__).resolve();
-            }
+        # This is set early, before TieredMemory initialization
+        if JacRuntime.entry_file_path {
+            return Path(JacRuntime.entry_file_path);
         }
     } except Exception {
-    # If any error occurs (e.g., sys.argv[0] doesn't exist), return None
+        ;
     }
     return None;
 }
