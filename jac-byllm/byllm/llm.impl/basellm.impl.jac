@@ -78,7 +78,9 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             finish_tool_obj = mt_run.get_tool("finish_tool");
             # Only recover when a structured (non-str, non-None) return type was expected.
             # A plain string output on a str-typed function IS the correct final answer.
-            if not finish_tool_obj or mt_run.resp_type is None or mt_run.resp_type is str {
+            if not finish_tool_obj
+            or mt_run.resp_type is None
+            or mt_run.resp_type is str {
                 break;
             }
             recovery_msg = Message(
@@ -213,7 +215,9 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # Only parse the content as the final output when there are no tool calls.
     # gpt-4o may return non-JSON content alongside tool calls (e.g. "I'll handle that."),
     # which would cause json.loads to fail if we parsed it as the typed response.
-    output_value = mt_run.parse_response(output_content) if not tool_calls_list else output_content;
+    output_value = mt_run.parse_response(output_content)
+        if not tool_calls_list
+        else output_content;
     for tool_call in tool_calls_list {
         if tool := mt_run.get_tool(tool_call.function.name) {
             args_json = json.loads(tool_call.function.arguments);
