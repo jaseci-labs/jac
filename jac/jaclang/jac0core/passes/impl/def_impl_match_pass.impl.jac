@@ -8,11 +8,16 @@ impl DeclImplMatchPass.transform(
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
     for impl_module in ir_in.impl_mod {
         self.connect_impls(impl_module.sym_tab, ir_in.sym_tab);
+        # Set impl module's parent_scope to main module for import visibility.
+        # This ensures impl files can access imports from their parent .jac file.
+        impl_module.parent_scope = ir_in;
     }
     for variant_module in ir_in.variant_mod {
         self.connect_impls(variant_module.sym_tab, variant_module.sym_tab);
         for impl_module in variant_module.impl_mod {
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
+            # Set impl module's parent_scope to variant module for import visibility.
+            impl_module.parent_scope = variant_module;
         }
     }
     # Cross-variant: head impl files may provide impls for variant decls.

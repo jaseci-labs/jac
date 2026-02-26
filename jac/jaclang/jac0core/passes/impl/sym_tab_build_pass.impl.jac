@@ -172,7 +172,7 @@ impl SymTabBuildPass._exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) 
         for sym in module.names_in_scope.values() {
             if (sym.access != SymbolAccess.PRIVATE) {
                 sym_table_to_update.def_insert(
-                    sym.defn[0], single_decl='import absorb'
+                    sym.defn[0], single_decl='import absorb', imported=True
                 );
             }
         }
@@ -189,7 +189,7 @@ impl SymTabBuildPass.exit_module_path(
     self: SymTabBuildPass, nd: uni.ModulePath
 ) -> None {
     if nd.alias {
-        nd.alias.sym_tab.def_insert(nd.alias, single_decl='import');
+        nd.alias.sym_tab.def_insert(nd.alias, single_decl='import', imported=True);
     } elif (
         nd.path
         and not nd.is_import_from
@@ -200,7 +200,7 @@ impl SymTabBuildPass.exit_module_path(
         )
     ) {
         if isinstance(nd.path[0], uni.Name) {
-            nd.path[0].sym_tab.def_insert(nd.path[0]);
+            nd.path[0].sym_tab.def_insert(nd.path[0], imported=True);
         }
     } else {
         ;
@@ -215,7 +215,7 @@ impl SymTabBuildPass.exit_module_item(
 ) -> None {
     if isinstance(nd.name, uni.Name) {
         sym_node = nd.alias or nd.name;
-        sym_node.sym_tab.def_insert(sym_node, single_decl='import');
+        sym_node.sym_tab.def_insert(sym_node, single_decl='import', imported=True);
         if nd.alias {
             nd.name.sym = nd.name.create_symbol(
                 access=SymbolAccess.PUBLIC, imported=True
@@ -223,7 +223,7 @@ impl SymTabBuildPass.exit_module_item(
         }
     } elif (isinstance(nd.name, uni.Token) and nd.alias) {
         sym_node = nd.alias;
-        sym_node.sym_tab.def_insert(sym_node, single_decl='import');
+        sym_node.sym_tab.def_insert(sym_node, single_decl='import', imported=True);
     }
 }
 

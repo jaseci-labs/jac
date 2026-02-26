@@ -26,7 +26,22 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    return symtable.lookup(name, deep=True, incl_inner_scope=True);
+    symbol = symtable.lookup(name, deep=True, incl_inner_scope=True);
+    # Filter out imported symbols from builtins module when accessed from user code.
+    # In Python stub files, imports are NOT re-exported by default.
+    # Symbols like 'types', 'SupportsAdd' are imported into builtins.pyi
+    # for internal use, not for user code access.
+    # Only filter when the lookup originates from OUTSIDE builtins (user code).
+    if (
+        symbol
+        and symbol.imported
+        and symbol.parent_tab is builtins_to_inject
+        and mod is not None
+        and mod is not builtins_to_inject
+    ) {
+        return None;
+    }
+    return symbol;
 }
 
 """Return a list of completion items for the type."""

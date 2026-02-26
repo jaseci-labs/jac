@@ -1679,3 +1679,29 @@ test "assert_isinstance_narrowing" {
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
+
+"""Test impl files can access imports from their parent .jac file."""
+test "impl_imports_from_parent" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_impl_imports.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    # Verify errors reference jaclang types (ClassType, FunctionType), not Python stdlib
+    assert_error_pretty_found(
+        """x: types.ClassType = 90;  # <-- Error: Cannot assign int to ClassType""",
+        program.errors_had[0].pretty_print()
+    );
+    assert "checker_impl_imports.impl.jac" in program.errors_had[0].loc.mod_path;
+
+    assert_error_pretty_found(
+        """y: types.FunctionType = "wrong";  # <-- Error: Cannot assign str to FunctionType""",
+        program.errors_had[1].pretty_print()
+    );
+    assert "checker_impl_imports.impl.jac" in program.errors_had[1].loc.mod_path;
+}
