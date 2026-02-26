@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.2 (Unreleased)
 
+- **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.
 - **Fix: Union of Subclasses Assignable to Base Class**: Fixed type checker rejecting valid assignments where a union of subclasses (e.g., `Dog | Cat`) is passed to a parameter expecting the base class (e.g., `Animal`). This commonly occurs after match statement narrowing and now works correctly.
 - **Fix: Compound AND Narrowing**: Multiple isinstance checks in the same AND expression now narrow to the most specific type. Example: `isinstance(x, BaseNode) and isinstance(x, CFGNode)` correctly narrows `x` to `CFGNode` inside the if block.
 - **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`.
@@ -13,6 +14,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Dict Tuple Key Comparison**: Dict key comparison for tuple/struct pointer types used pointer equality instead of structural comparison, so two separately-allocated tuples with the same values would never match. Fixed by using `memcmp` for tuple keys, matching the existing pattern in set helpers.
 - **Match Case Type Narrowing**: The type checker now narrows variable types inside match cases based on the pattern being matched. For example, `case MyClass():` narrows the matched variable to `MyClass`, and union patterns like `case A() | B():` narrow to `A | B`.
 - **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
+- **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
+- 1 Minor refactors/changes
 
 ## jaclang 0.11.1 (Latest Release)
 
@@ -69,7 +72,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Lexer Infinite Loop on Malformed JSX**: Fixed three infinite-loop scenarios where the lexer would hang forever when hitting EOF inside a non-NORMAL mode (JSX content, JSX tag, or f-string). Added a stuck detector in `tokenize()` that forces EOF when the lexer stops advancing or overshoots the source, preventing `jac run`, `jac start`, and `jac js` from hanging on malformed input (e.g., unterminated JSX like `<div>hello` with no closing tag).
 - **Fix: Bare `<` in JSX Content No Longer Hangs Lexer**: A `<` character in JSX content that does not start a valid tag (e.g., `<--`) is now consumed as text instead of causing an infinite loop. The text scanner only breaks on `<` when the next character forms a real JSX construct (`</`, `<>`, or `<` + identifier).
 - **Fix: Grammar Extraction Accuracy**: Fixed multiple issues in `jac grammar` output: `atomic_chain` and `jsx_attributes` now show `*` repetition, `compare` no longer duplicates operators, `assignment_with_target` correctly extracts ternary expressions, excessive top-level `?` wrapping is stripped from multi-branch rules, f-string tokens use proper quoting, and added `GPlus` (one-or-more `+`) grammar expression type.
-- 1 Minor refactors/chages
+- 1 Minor refactors/changes
 
 ## jaclang 0.10.3
 

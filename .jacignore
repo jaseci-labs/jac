@@ -32,6 +32,7 @@ checker_float.jac
 checker_function_overload.jac
 checker_generics.jac
 checker_impl_body.impl.jac
+checker_impl_imports.jac
 checker_importer.jac
 checker_inherit_init_params.jac
 checker_list_assignment.jac
