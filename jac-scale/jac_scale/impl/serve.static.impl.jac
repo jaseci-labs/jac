@@ -299,9 +299,7 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path / 'public' / file_path,
         base_path / 'src' / file_path,
         base_path / 'src' / file_name,
-        (base_path / file_path),
-        base_path / '.jac' / 'client' / 'dist' / file_path,
-        base_path / '.jac' / 'client' / 'dist' / file_name
+        (base_path / file_path)
     ];
     for candidate_file in candidates {
         if (candidate_file.exists() and candidate_file.is_file()) {
