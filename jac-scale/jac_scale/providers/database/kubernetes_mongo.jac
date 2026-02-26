@@ -31,7 +31,7 @@ class KubernetesMongoProvider(DatabaseProvider) {
         mongodb_statefulset = {
             'apiVersion': 'apps/v1',
             'kind': 'StatefulSet',
-            'metadata': {'name': mongodb_name},
+            'metadata': {'name': mongodb_name, 'labels': {'managed': 'jac-scale'}},
             'spec': {
                 'serviceName': mongodb_service_name,
                 'replicas': 1,
@@ -79,7 +79,10 @@ class KubernetesMongoProvider(DatabaseProvider) {
         mongodb_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
-            'metadata': {'name': mongodb_service_name},
+            'metadata': {
+                'name': mongodb_service_name,
+                'labels': {'managed': 'jac-scale'}
+            },
             'spec': {
                 'clusterIP': 'None',
                 'selector': {'app': mongodb_name},
