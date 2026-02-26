@@ -61,4 +61,15 @@ class DeploymentTarget {
         Service URL or None if not available
     """
     def get_service_url(self: DeploymentTarget, app_name: str) -> (str | None);
+
+    """Get comprehensive status of all deployed components.
+
+    Args:
+        app_name: Name of the application
+
+    Returns:
+        Dictionary with 'app_name', 'namespace', 'components' list, and 'urls' dict.
+        Each component has 'name', 'status', 'ready', 'total' keys.
+    """
+    def get_full_status(self: DeploymentTarget, app_name: str) -> dict;
 }

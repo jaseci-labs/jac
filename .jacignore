@@ -306,3 +306,7 @@ na_compile_pass.jac
 pyjac_ast_link_pass.jac
 test_parser.jac
 type_checker_pass.jac
+nacompile.jac
+nacompile.impl.jac
+elf_linker.jac
+elf_linker.impl.jac

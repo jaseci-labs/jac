@@ -1104,6 +1104,45 @@ jac tool ir py main.jac
 
 ---
 
+### jac nacompile
+
+Compile a `.na.jac` file to a standalone native ELF executable. No external compiler, assembler, or linker is required. The entire pipeline runs in pure Python using llvmlite and a built-in ELF linker.
+
+```bash
+jac nacompile filename [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `-o, --output` | Output binary path | filename without `.na.jac` |
+
+The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
+
+**What happens under the hood:**
+
+1. Compiles the `.na.jac` through the Jac pipeline to get LLVM IR
+2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
+3. Emits native object code via llvmlite's `emit_object()`
+4. Links into an ELF executable via the built-in pure-Python ELF linker
+
+The resulting binary dynamically links against `libc.so.6` (and `libgc.so.1` if available). When libgc is not installed, GC calls are automatically rewritten to use `malloc`.
+
+**Examples:**
+
+```bash
+# Compile to ./chess
+jac nacompile chess.na.jac
+
+# Compile with custom output name
+jac nacompile chess.na.jac -o mychess
+
+# Run the binary
+./mychess
+```
+
+---
+
 ### jac completions
 
 Generate and install shell completion scripts for the `jac` CLI.
