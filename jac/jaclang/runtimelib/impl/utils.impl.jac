@@ -267,23 +267,15 @@ impl is_adhoc_file(file_path: (Path | None) = None) -> bool {
     if not file_path {
         return False;
     }
-    # Check if any parent directory matches adhoc patterns
-    for part in file_path.parts[:-1] {  # Exclude filename (last part)
-        if part.lower() in ADHOC_DIRS {
-            return True;
-        }
-    }
-    return False;
+    # Check if any parent directory name matches adhoc patterns
+    return any(parent.name.lower() in ADHOC_DIRS for parent in file_path.parents);
 }
 
 """Get project name from jac.toml if exists, None otherwise."""
-impl get_project_name(file_path: (Path | None) = None) -> str | None {
+impl get_name(file_path: (Path | None) = None) -> str | None {
     import from jaclang.project.config { JacConfig }
     if file_path is None {
         file_path = _get_entry_path();
-    }
-    if not file_path or file_path.suffix not in ['.jac', '.py'] {
-        return None;
     }
     # Only check the same directory as the entry file, NOT parent directories
     # This prevents test fixtures from accidentally using the repo's root jac.toml
@@ -294,22 +286,13 @@ impl get_project_name(file_path: (Path | None) = None) -> str | None {
             if config.project.name {
                 return config.project.name;
             }
+        } else {
+            return file_path.stem
+                if file_path.stem not in ['jac', '__main__']
+                else None;
         }
     } except Exception {
         ;  # No project found or error reading config
-    }
-    return None;
-}
-
-"""Get entry file stem (filename without extension) from __main__ module."""
-impl get_entry_file_stem(file_path: (Path | None) = None) -> str | None {
-    if file_path is None {
-        file_path = _get_entry_path();
-    }
-    if file_path
-    and file_path.suffix in ['.jac', '.py']
-    and file_path.stem not in ['jac', '__main__'] {
-        return file_path.stem;
     }
     return None;
 }
@@ -321,22 +304,17 @@ impl get_entry_file_stem(file_path: (Path | None) = None) -> str | None {
 """
 impl get_db_path(base_path: str) -> (str | None) {
     import from pathlib { Path }
-    # Resolve entry path once and reuse across all checks
     file_path = _get_entry_path();
     base = Path(base_path);
     data_dir = base / ".jac" / "data";
-    # 1. Check for project (jac.toml in same directory)
-    if (project_name := get_project_name(file_path)) {
-        return str(data_dir / f"{project_name}.db");
-    }
-    # 2. Check if ad-hoc/test file → NO PERSISTENCE (volatile memory only)
+    # 1. Check if ad-hoc/test file → NO PERSISTENCE (volatile memory only)
     # Tests should be isolated and repeatable, not share persistent state
     if is_adhoc_file(file_path) {
         return None;
     }
-    # 3. Real standalone app → use filename
-    if (entry_stem := get_entry_file_stem(file_path)) {
-        return str(data_dir / f"{entry_stem}.db");
+    # 2. Check for project (jac.toml in same directory)
+    if (project_name := get_name(file_path)) {
+        return str(data_dir / f"{project_name}.db");
     }
     # 4. Ultimate fallback
     return str(data_dir / "main.db");
