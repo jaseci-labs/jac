@@ -1289,8 +1289,7 @@ Process python node.
         values: list[expr]
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
-
-     # First, detect if this is a triple-quoted f-string
+    # First, detect if this is a triple-quoted f-string
     ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
     if (ast_seg is None) {
         ast_seg = 'f""';
@@ -1301,7 +1300,6 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
-
             # Use repr to properly escape special characters
             raw_repr = repr(i.value);
             escaped_value = raw_repr[1:-1];  # Remove quotes
