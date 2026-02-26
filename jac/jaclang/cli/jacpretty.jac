@@ -264,8 +264,6 @@ class Console {
                 text = render_markup(text, style)
                     if markup
                     else Style(style).render(text) if style else text;
-            } elif markup {
-                text = RE_MARKUP.sub('', text);
             }
             parts.append(text);
         }
