@@ -101,8 +101,8 @@ def _update_npm_deps(config: Any, npm_deps_to_add: dict) -> None {
 
     for (dep_name, dep_version) in npm_deps_to_add.items() {
         quoted_name = '"' + dep_name + '"'
-        if not dep_name.replace("-", "").replace("_", "").isalnum()
-        else dep_name;
+            if not dep_name.replace("-", "").replace("_", "").isalnum()
+            else dep_name;
         dep_line = quoted_name + ' = "' + dep_version + '"';
 
         if dep_name in content {
@@ -183,7 +183,9 @@ def add_kit_components(config: Any, component_names: list) -> bool {
 
     added: list = [];
     for name in to_install {
-        with console.status("[cyan]Fetching " + name + "...[/cyan]", spinner="dots") as status {
+        with console.status(
+            "[cyan]Fetching " + name + "...[/cyan]", spinner="dots"
+        ) as status {
             comp_data = _fetch_json(
                 registry_url + "/component/" + name + "?style=" + style
             );
@@ -191,8 +193,8 @@ def add_kit_components(config: Any, component_names: list) -> bool {
 
         if not comp_data or "error" in comp_data {
             err_msg = comp_data.get("error", "Unknown error")
-            if comp_data
-            else "No response";
+                if comp_data
+                else "No response";
             console.error("  ✗ " + name + ": " + str(err_msg));
             continue;
         }

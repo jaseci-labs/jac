@@ -212,7 +212,9 @@ impl load_template_from_json(
     and isinstance(data.get("data"), dict)
     and "result" in data["data"] {
         unwrapped = data["data"]["result"];
-        if isinstance(unwrapped, dict) and "name" in unwrapped and "files" in unwrapped {
+        if isinstance(unwrapped, dict)
+        and "name" in unwrapped
+        and "files" in unwrapped {
             data = unwrapped;
         }
     }
