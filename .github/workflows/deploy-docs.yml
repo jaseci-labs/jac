@@ -43,9 +43,6 @@ jobs:
           fetch-depth: 0  # Full git history for changelog generation
           submodules: true
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -151,7 +148,10 @@ jobs:
           CMD ["python", "docs/scripts/mkdocs_serve.py"]
           EOF
 
-          docker buildx build --load -t docs-smoke-test .
+          docker buildx build --load \
+            --cache-to type=gha,mode=max \
+            --cache-from type=gha \
+            -t docs-smoke-test .
 
       - name: Smoke test container
         run: |
@@ -177,7 +177,8 @@ jobs:
         working-directory: .
         run: |
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64 \
+            --cache-from type=gha \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.tag.outputs.tag }} \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             --push \
