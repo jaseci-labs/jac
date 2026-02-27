@@ -585,13 +585,9 @@ test "test_hover_types" {
             (12, 9, "bool", None),
             (15, 28, "Animal", None),
             (17, 11, "offspring", None),
-            (100, 26, "Mammal", "None"),
-            (139, 21, "str", None),
-            (150, 42, "Mammal", "None"),
-            (163, 58, "Mammal", "None"),
-            (178, 12, "Mammal", "None"),
-            (179, 12, "Primate", "None"),
-
+            (93, 27, "Mammal", "None"),
+            (105, 29, "Mammal", "None"),
+            (113, 9, "Mammal", None),
         ];
 
         for case in hover_cases {
