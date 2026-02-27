@@ -1,18 +1,19 @@
 """Implementation of the nacompile command.
 
-Compiles a .na.jac file to a standalone ELF binary:
+Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
-2. Inject main() + _start as pure LLVM IR (zero assembly)
+2. Inject main() (+ _start on Linux) as pure LLVM IR (zero assembly)
 3. Emit object code via llvmlite
-4. Link into ELF executable via pure Python ELF linker
+4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS)
 """
 
 import os;
+import sys;
 
 import from jaclang.cli.console { console }
 
 
-"""Inject main() and _start into the LLVM IR.
+"""Inject main() and _start into the LLVM IR for ELF (Linux).
 
 main() calls jac_entry() and returns 0.
 _start is the ELF entry point, written in pure LLVM IR — no inline
@@ -23,8 +24,20 @@ alignstack(16) is needed because _start is jumped to by the kernel
 (not called), so there's no return address on the stack and LLVM's
 default stack alignment assumption is wrong.
 """
-def _inject_entry(llvm_ir_str: str) -> str {
+def _inject_entry_elf(llvm_ir_str: str) -> str {
     ir = '\n; --- injected entry point ---\n' + 'declare void @exit(i32) noreturn\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() noreturn alignstack(16) {\n' + 'entry:\n' + '    %ret = call i32 @main(i32 0, ptr null)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n';
+    return llvm_ir_str + ir;
+}
+
+
+"""Inject main() into the LLVM IR for Mach-O (macOS).
+
+Only main() is needed — dyld handles entry via LC_MAIN, and the
+system CRT manages _start. No exit() declaration needed since
+returning from main() is handled by dyld.
+"""
+def _inject_entry_macho(llvm_ir_str: str) -> str {
+    ir = '\n; --- injected entry point ---\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n';
     return llvm_ir_str + ir;
 }
 
@@ -40,6 +53,9 @@ impl nacompile(filename: str, output: str = "") -> int {
         console.error(f"File not found: {filename}");
         return 1;
     }
+
+    # Detect platform
+    is_macos = sys.platform == "darwin";
 
     # Determine output path
     if not output {
@@ -111,12 +127,20 @@ impl nacompile(filename: str, output: str = "") -> int {
     triple = llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
-    # Step 4: Inject main() + _start (pure LLVM IR, zero assembly)
-    llvm_ir_str = _inject_entry(llvm_ir_str);
+    # Step 4: Inject entry point (platform-specific)
+    if is_macos {
+        llvm_ir_str = _inject_entry_macho(llvm_ir_str);
+    } else {
+        llvm_ir_str = _inject_entry_elf(llvm_ir_str);
+    }
 
     # Step 5: Determine needed libraries
     # Note: libgc (Boehm GC) no longer needed — using reference counting
-    needed_libs: list[str] = ["libc.so.6"];
+    if is_macos {
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
+    } else {
+        needed_libs: list[str] = ["libc.so.6"];
+    }
 
     # Step 6: Emit object code via llvmlite
     try {
@@ -132,23 +156,41 @@ impl nacompile(filename: str, output: str = "") -> int {
     obj_bytes = target_machine.emit_object(mod);
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
 
-    # Step 7: Link into ELF executable
-    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    # Step 7: Link into native executable (platform-specific)
+    if is_macos {
+        import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 
-    try {
-        success = ElfLinker.link(
-            obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
-        );
-    } except Exception as e {
-        console.error(f"ELF linking failed: {e}");
-        import traceback;
-        traceback.print_exc();
-        return 1;
-    }
+        try {
+            success = MachOLinker.link(
+                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+            );
+        } except Exception as e {
+            console.error(f"Mach-O linking failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
 
-    if not success {
-        console.error("ELF linking failed: could not parse object file.");
-        return 1;
+        if not success {
+            console.error("Mach-O linking failed: could not parse object file.");
+            return 1;
+        }
+    } else {
+        import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+        try {
+            success = ElfLinker.link(
+                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+            );
+        } except Exception as e {
+            console.error(f"ELF linking failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        if not success {
+            console.error("ELF linking failed: could not parse object file.");
+            return 1;
+        }
     }
 
     file_size = os.path.getsize(output);
