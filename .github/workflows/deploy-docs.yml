@@ -18,6 +18,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
+  ECR_REPOSITORY: jac-lang-website
+
 jobs:
   deploy-jac-lang-website:
     runs-on: ubuntu-latest
@@ -33,28 +37,23 @@ jobs:
         working-directory: docs
 
     steps:
-      # Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full git history for changelog generation
           submodules: true
 
-      # Set up QEMU for multi-architecture builds
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # Set up Docker Buildx for multi-architecture builds
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
 
-      # Cache pip dependencies
       - name: Cache pip dependencies
         uses: actions/cache@v3
         with:
@@ -63,16 +62,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # Install documentation dependencies
       - name: Install documentation dependencies
         run: |
           python -m pip install --upgrade pip
-          # Install jaclang first
           pip install -e ../jac
-          # Install docs dependencies
           pip install -e .
 
-      # Configure AWS credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
@@ -81,27 +76,16 @@ jobs:
           role-session-name: GitHubActions-JacLang-Docs
           audience: sts.amazonaws.com
 
-      - name: Debug AWS Credentials
-        run: |
-          aws sts get-caller-identity
-
-      # Login to AWS ECR
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Extract tag name from GitHub ref
       - name: Get tag name
         id: tag
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Manual dispatch - use timestamp
             TAG="manual-$(date +%Y%m%d-%H%M%S)"
           elif [[ "${{ github.event_name }}" == "release" ]]; then
-            # Release event - clean tag name
             TAG_NAME=${GITHUB_REF#refs/tags/}
-
-            # Remove prefixes: jac-lang-docs-v1.2.3 -> v1.2.3 or jac-lang-docs-1.2.3 -> 1.2.3
             if [[ $TAG_NAME =~ ^jac-lang-docs-(.+)$ ]]; then
               TAG="${BASH_REMATCH[1]}"
             elif [[ $TAG_NAME =~ ^jaclang-(.+)$ ]]; then
@@ -109,31 +93,20 @@ jobs:
             elif [[ $TAG_NAME =~ ^v(.+)$ ]]; then
               TAG="$TAG_NAME"
             else
-              # Use tag as-is if no prefix
               TAG="$TAG_NAME"
             fi
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            # For scheduled builds, use date-based versioning
             TAG="nightly-$(date +'%Y%m%d')"
           else
-            # For push builds, use semantic versioning based on commit
             COMMIT_COUNT=$(git rev-list --count HEAD)
             SHORT_SHA=$(git rev-parse --short=8 HEAD)
             TAG="v1.${COMMIT_COUNT}.${SHORT_SHA}"
           fi
-
-          echo "Tag: $TAG"
-          echo "Event: ${{ github.event_name }}"
-          echo "Original Tag Name: ${TAG_NAME:-N/A}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      # Prepare documentation for serving
       - name: Prepare documentation for serving
         working-directory: .
         run: |
-          echo "Preparing MkDocs for serving..."
-
-          # Create build info file in docs directory
           echo "Build Information:" > docs/build-info.txt
           echo "Version: ${{ steps.tag.outputs.tag }}" >> docs/build-info.txt
           echo "Built: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> docs/build-info.txt
@@ -141,41 +114,26 @@ jobs:
           echo "Branch: ${{ github.ref_name }}" >> docs/build-info.txt
           echo "Trigger: ${{ github.event_name }}" >> docs/build-info.txt
 
-          echo "Documentation prepared for serving"
-
-      # Set up Node.js for playground build
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Build and push Docker image
-      - name: Build and push Docker image
-        env:
-          ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
-          ECR_REPOSITORY: jac-lang-website
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+      - name: Build Docker image
         working-directory: .
         run: |
-          echo "Building and pushing to: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
           cat > Dockerfile << 'EOF'
           FROM python:3.12-slim
 
-          # Install system dependencies including git for contributor data
           RUN apt-get update && apt-get install -y \
               curl \
               git \
               graphviz \
               && rm -rf /var/lib/apt/lists/*
 
-          # Set working directory
           WORKDIR /app
 
-          # Copy git repository for real-time contributor data
           COPY .git/ ./.git/
-
-          # Copy documentation files
           COPY docs/ ./docs/
           COPY jac/ ./jac/
           COPY jac-client/ ./jac-client/
@@ -183,24 +141,44 @@ jobs:
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          # Install Python dependencies
           RUN pip install -e ./jac
           RUN pip install -e ./docs
 
-          # Expose port 8000
           EXPOSE 8000
 
-          # Health check
           HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/health || exit 1
 
-          # Start the custom mkdocs server
           CMD ["python", "docs/scripts/mkdocs_serve.py"]
           EOF
 
-          # Build and push multi-architecture image
+          docker buildx build --load -t docs-smoke-test .
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name docs-test -p 8000:8000 docs-smoke-test
+
+          echo "Waiting for container to start..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Health check passed after ${i}0 seconds"
+              docker rm -f docs-test
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting 10s..."
+            sleep 10
+          done
+
+          echo "Container failed to become healthy"
+          docker logs docs-test
+          docker rm -f docs-test
+          exit 1
+
+      - name: Push Docker image to ECR
+        working-directory: .
+        run: |
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.tag.outputs.tag }} \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             --push \
             .
@@ -214,14 +192,12 @@ jobs:
         run: |
           echo "## jac-lang.org Documentation Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
           echo "### Documentation Website" >> $GITHUB_STEP_SUMMARY
           echo "- **Image Tag**: ${{ needs.deploy-jac-lang-website.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **ECR Repository**: 776241927220.dkr.ecr.us-east-2.amazonaws.com/jac-lang-website" >> $GITHUB_STEP_SUMMARY
+          echo "- **ECR Repository**: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ needs.deploy-jac-lang-website.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Production URLs**:" >> $GITHUB_STEP_SUMMARY
           echo "  - https://jac-lang.org" >> $GITHUB_STEP_SUMMARY
           echo "  - https://www.jac-lang.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
           echo "**Note**: Deployment will be handled automatically by Flux in jaseci-cluster." >> $GITHUB_STEP_SUMMARY
