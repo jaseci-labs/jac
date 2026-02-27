@@ -1,6 +1,6 @@
 """Test fixture for JSX fragments and spread props functionality."""
 
-cl def FragmentTest() -> JsxElement {
+cl def FragmentTest() {
     # Test that fragments work
     return <>
         <h1>
@@ -12,7 +12,7 @@ cl def FragmentTest() -> JsxElement {
     </>;
 }
 
-cl def SpreadPropsTest() -> JsxElement {
+cl def SpreadPropsTest() {
     # Test spread props
     unwrapped = {"id": "my-div", "class": "container", "data-role": "main"};
 
@@ -25,7 +25,7 @@ cl def SpreadPropsTest() -> JsxElement {
     </div>;
 }
 
-cl def MixedTest() -> JsxElement {
+cl def MixedTest() {
     # Test mixing spread props with regular props
     baseStyle = {"id": "base-id", "color": "blue"};
 
@@ -42,7 +42,7 @@ cl def MixedTest() -> JsxElement {
     </>;
 }
 
-cl def NestedFragments() -> JsxElement {
+cl def NestedFragments() {
     return <div class="wrapper">
         <>
             <h2>
@@ -57,7 +57,7 @@ cl def NestedFragments() -> JsxElement {
     </div>;
 }
 
-cl def app() -> JsxElement {
+cl def app() {
     return <div>
         <FragmentTest />
         <SpreadPropsTest />

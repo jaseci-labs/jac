@@ -7,7 +7,7 @@ cl {
     def useLocalStorage(key: str, initialValue: list) -> list {
         # Initialize state with value from localStorage or default
         [storedValue, setStoredValue] = useState(
-            lambda -> Any { try {
+            lambda -> any { try {
                 item = window.localStorage.getItem(key);
                 if item {
                     return JSON.parse(item);

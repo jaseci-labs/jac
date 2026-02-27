@@ -54,7 +54,7 @@ cl {
         }
 
         # Toggle todo completion status
-        async def toggleTodo(id) -> None {
+        async def toggleTodo(id: any) -> None {
             print("toggleTodo", id);
             id spawn toggle_todo();
             todos = [
@@ -70,7 +70,7 @@ cl {
         }
 
         # Delete a todo
-        def deleteTodo(id) -> None {
+        def deleteTodo(id: any) -> None {
             todos = [
                 todo
                 for todo in todos
@@ -153,8 +153,8 @@ cl {
                     <input
                         type="text"
                         value={inputValue}
-                        onChange={lambda e  -> None { inputValue = e.target.value;}}
-                        onKeyPress={lambda e  -> None { if e.key == "Enter" {
+                        onChange={lambda e: any  -> None { inputValue = e.target.value;}}
+                        onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
                             addTodo();
                         }}}
                         placeholder="What needs to be done?"
@@ -370,7 +370,7 @@ cl {
                             </button>
                         )
                             if todos.some(
-                                lambda todo  -> bool { return todo.done; }
+                                lambda todo: any  -> bool { return todo.done; }
                             )
                             else None}
                     </div>

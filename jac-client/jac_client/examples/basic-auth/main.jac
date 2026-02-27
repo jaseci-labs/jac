@@ -67,7 +67,7 @@ cl {
         }
 
         # Handle form submit
-        async def handleSubmit(e) -> None {
+        async def handleSubmit(e: any) -> None {
             e.preventDefault();
             if isSignup {
                 await handleSignup();
@@ -228,7 +228,7 @@ cl {
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e  -> None { username = e.target.value;}}
+                                onChange={lambda e: any  -> None { username = e.target.value;}}
                                 placeholder="Enter your username"
                                 style={{
                                     "width": "100%",
@@ -257,7 +257,7 @@ cl {
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e  -> None { password = e.target.value;}}
+                                onChange={lambda e: any  -> None { password = e.target.value;}}
                                 placeholder="Enter your password"
                                 style={{
                                     "width": "100%",

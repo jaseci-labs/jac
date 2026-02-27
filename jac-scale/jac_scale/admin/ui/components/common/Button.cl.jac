@@ -2,8 +2,8 @@
 
 cl {
     def:pub Button(
-        children,
-        onClick = None,
+        children: any,
+        onClick: any = None,
         variant: str = "primary",
         size: str = "md",
         type: str = "button",

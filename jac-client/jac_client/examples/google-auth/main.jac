@@ -44,7 +44,7 @@ cl {
             </nav>;
     }
 
-    def:pub app -> Any {
+    def:pub app -> any {
         return
             <AuthProvider>
                 <Router>
