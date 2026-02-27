@@ -9,11 +9,11 @@ cl {
             print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: any  -> None { count = count + 1;};
+        handleIncrement = lambda e: Any  -> None { count = count + 1;};
 
-        handleDecrement = lambda e: any  -> None { count = count - 1;};
+        handleDecrement = lambda e: Any  -> None { count = count - 1;};
 
-        handleReset = lambda e: any  -> None { count = 0;};
+        handleReset = lambda e: Any  -> None { count = 0;};
 
         countClass = "countDisplay " + (
             "positive" if count > 0 else "negative" if count < 0 else "zero"

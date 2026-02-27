@@ -47,7 +47,7 @@ cl with entry {
     # Expected: 15
 
     # Test 6: Lambda as higher-order function argument
-    apply_operation = lambda  op: any , x: int , y: int  -> int{ return op(x, y); } ;
+    apply_operation = lambda  op: Any , x: int , y: int  -> int{ return op(x, y); } ;
 
     multiply_op = lambda  a: int , b: int  -> int{ result = a * b;return result; } ;
 

@@ -297,7 +297,7 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                 # ---- Track walker HTTP requests ----
                 walker_requests: list = [];
 
-                def _track_request(request: any) -> None {
+                def _track_request(request: Any) -> None {
                     if "/walker/" in request.url {
                         walker_requests.append(request.url);
                     }

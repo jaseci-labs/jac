@@ -3,7 +3,7 @@
 cl {
     import from ..common.Button { Button }
 
-    def:pub Header(username: str, onLogout: any) -> JsxElement {
+    def:pub Header(username: str, onLogout: Any) -> JsxElement {
         return
             <div className="flex items-center justify-between px-4 h-12">
                 <h1 className="text-sm font-semibold text-white">

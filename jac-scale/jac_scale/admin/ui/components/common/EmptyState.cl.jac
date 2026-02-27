@@ -15,7 +15,7 @@ cl {
     }
 
     def:pub PlaceholderCard(
-        title: str, message: str = "Coming soon", action: any = None
+        title: str, message: str = "Coming soon", action: Any = None
     ) -> JsxElement {
         return
             <div

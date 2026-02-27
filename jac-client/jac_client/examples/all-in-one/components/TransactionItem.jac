@@ -13,8 +13,8 @@ cl {
         txType: str,
         date: str,
         isBusiness: bool,
-        clientName: any,
-        onDelete: any
+        clientName: Any,
+        onDelete: Any
     ) -> JsxElement {
         isIncome = txType == "income";
         color = CATEGORY_COLORS[category];

@@ -91,7 +91,7 @@ enum Color {
 # Test hasattr conversion with comments
 obj NullSafeTest {
     has data: dict | None;
-    has obj: any | None;
+    has obj: Any | None;
 
     def check_attr -> any {
         # Comment before hasattr usage

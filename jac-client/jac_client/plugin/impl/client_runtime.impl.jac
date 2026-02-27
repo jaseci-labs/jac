@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
+impl __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -118,7 +118,7 @@ impl __cacheGet(key: str) -> dict {
 }
 
 # Store an entry in the cache with LRU eviction
-impl __cacheSet(key: str, data: any, ttl: int) -> None {
+impl __cacheSet(key: str, data: Any, ttl: int) -> None {
     state = __getCacheState();
     # Remove existing entry if present
     if state["cache"][key] {
@@ -242,7 +242,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
 # ============================================================================
 # AUTO-CACHE DISPATCH — shared by __jacSpawn and __jacCallFunction
 # ============================================================================
-impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: Any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
@@ -441,7 +441,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
         <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
     return
         <div
             role="alert"

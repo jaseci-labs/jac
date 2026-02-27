@@ -1,9 +1,9 @@
 """Sub-tab navigation pills."""
 
 cl {
-    def:pub SubTabs(tabs: list, activeTab: str, onTabChange: any) -> JsxElement {
+    def:pub SubTabs(tabs: list, activeTab: str, onTabChange: Any) -> JsxElement {
         def makeHandler(tabId: str) -> any {
-            return lambda e: any  -> None { onTabChange(tabId);};
+            return lambda e: Any  -> None { onTabChange(tabId);};
         }
 
         return

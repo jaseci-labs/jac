@@ -8,7 +8,7 @@ cl {
 
     glob:pub AuthContext = createContext(None);
 
-    def:pub AuthProvider(children: any) -> JsxElement {
+    def:pub AuthProvider(children: Any) -> JsxElement {
         has authToken: str = "",
             currentUsername: str = "",
             tempToken: str = "",

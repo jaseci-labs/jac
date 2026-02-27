@@ -4,7 +4,7 @@ cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS, CATEGORY_CO
 
 cl {
     # Filter buttons for categories
-    def:pub CategoryFilter(selectedCategory: str, onSelect: any) -> JsxElement {
+    def:pub CategoryFilter(selectedCategory: str, onSelect: Any) -> JsxElement {
         # Add "ALL" to the beginning of categories
         allCategories = ["ALL"].concat(CATEGORIES);
 

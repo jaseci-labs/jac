@@ -371,7 +371,7 @@ cl def LoginForm -> JsxElement {
 }
 
 # Handle login form submission
-cl async def handle_login(event: any) -> None {
+cl async def handle_login(event: Any) -> None {
     event.preventDefault();
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
@@ -472,7 +472,7 @@ cl def SignupForm -> JsxElement {
 # Navigation helper functions removed - using Link component and navigate() directly
 
 # Handle signup form submission
-cl async def handle_signup(event: any) -> None {
+cl async def handle_signup(event: Any) -> None {
     event.preventDefault();
     username = document.getElementById("signup-username").value;
     password = document.getElementById("signup-password").value;

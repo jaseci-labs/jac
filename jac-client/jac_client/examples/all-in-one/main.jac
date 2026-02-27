@@ -152,7 +152,7 @@ cl import ".styles/styles.css";
 
 # App wrapper -- file-based routing is handled automatically via pages/ directory
 cl {
-    def:pub app(children: any = None) -> JsxElement {
+    def:pub app(children: Any = None) -> JsxElement {
         return
             <div style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}>
                 {children}

@@ -16,7 +16,7 @@ import from 'react-router-dom' {
 }
 import from 'react-error-boundary' { ErrorBoundary }
 
-def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
+def:pub __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement;
 
 # React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
 glob:pub useState = reactUseState,
@@ -46,7 +46,7 @@ def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
-def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+def:pub ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 
 # ============================================================================
@@ -56,12 +56,12 @@ def:pub __getEndpointEffects -> dict;
 def:pub __getCacheState -> dict;
 def:pub __isFresh(entry: dict) -> bool;
 def:pub __cacheGet(key: str) -> dict;
-def:pub __cacheSet(key: str, data: any, ttl: int) -> None;
+def:pub __cacheSet(key: str, data: Any, ttl: int) -> None;
 def:pub __evictOldest -> None;
 async def:pub __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> any;
 async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
 async def:pub __cachedEndpointCall(
-    endpoint_key: str, args_key: str, fetch_fn: any
+    endpoint_key: str, args_key: str, fetch_fn: Any
 ) -> any;
 
 def:pub __invalidateEndpoint(endpoint_key: str) -> None;
