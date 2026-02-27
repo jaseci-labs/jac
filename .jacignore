@@ -1,3 +1,6 @@
+access_mod_check.jac
+actions.jac
+advanced_language_features.jac
 app.jac
 archetype.impl.jac
 archetype.jac
@@ -28,6 +31,7 @@ context.jac
 corelib_fmt.jac
 custom_access_validation.jac
 data_spatial_types.jac
+decorator_stack.jac
 def_impl_match_pass.jac
 defn_decl_mismatch.jac
 dependencies.jac
@@ -85,6 +89,7 @@ kubernetes_utils.jac
 lang_tools.jac
 level_genarator.jac
 level_manager.jac
+line_spacing.jac
 llm.jac
 macho_linker.impl.jac
 macho_linker.jac
@@ -190,6 +195,7 @@ treeprinter.jac
 type_annotation_assignment.jac
 type_checker_pass.jac
 type_error_snippet.jac
+type_evaluator.impl.jac
 type_evaluator.jac
 type_info.jac
 types.jac
