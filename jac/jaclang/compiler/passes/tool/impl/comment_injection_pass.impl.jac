@@ -331,11 +331,7 @@ impl CommentInjectionPass._emit_standalone_comments(
 impl CommentInjectionPass._make_inline_comment(
     comment: uni.CommentToken, add_line: bool = True, anchor_col_end: int = 0
 ) -> doc.DocType {
-    # Preserve original spacing from source (minimum 2 spaces)
-    padding = max(2, comment.loc.col_start - anchor_col_end)
-        if anchor_col_end > 0
-        else 2;
-    parts: list[doc.DocType] = [doc.Text(' ' * padding), doc.Text(comment.value)];
+    parts: list[doc.DocType] = [doc.Text('  '), doc.Text(comment.value)];
     if add_line {
         parts.append(doc.Line(hard=True));
     }

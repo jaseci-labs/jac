@@ -1128,6 +1128,35 @@ export K8s_MEMORY_REQUEST="256Mi"
 export K8s_MEMORY_LIMIT="512Mi"
 ```
 
+### Deployment Status
+
+Check the live status of all components in your Kubernetes deployment:
+
+```bash
+jac status app.jac
+```
+
+This queries the cluster and displays a table showing:
+
+- **Component health** -- status of the Jaseci App, Redis, MongoDB, Prometheus, and Grafana
+- **Pod readiness** -- ready vs total replica counts for each component
+- **Service URLs** -- application and Grafana endpoints
+
+Status values include `Running`, `Degraded` (partial readiness), `Pending` (starting up), `Restarting` (crash-looping pods), `Failed`, and `Not Deployed`.
+
+The command makes efficient bulk API calls (listing all Deployments, StatefulSets, and Pods in the namespace at once) rather than querying each component individually.
+
+### Resource Tagging
+
+All Kubernetes resources created by jac-scale are automatically labeled with `managed: jac-scale`. This enables easy identification and auditing of jac-scale-owned resources:
+
+```bash
+# List all jac-scale managed resources across namespaces
+kubectl get all -l managed=jac-scale -A
+```
+
+Tagged resources include Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, and HorizontalPodAutoscalers.
+
 ### Remove Deployment
 
 ```bash

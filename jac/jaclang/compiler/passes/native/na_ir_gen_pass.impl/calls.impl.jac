@@ -153,8 +153,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         buf = self.builder.alloca(buf_type, name="input.buf");
         buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
         # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
-        # Declare stdin as external global
-        stdin_name = "stdin";
+        # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
+        import platform;
+        stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
         if stdin_name not in self.extern_funcs {
             stdin_type = i8p;
             stdin_global = ir.GlobalVariable(
@@ -180,9 +181,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.cbranch(is_eof, eof_bb, ok_bb);
         # EOF path: return empty string
         self.builder.position_at_start(eof_bb);
-        gc_malloc_eof = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
         eof_str = self.builder.call(
-            gc_malloc_eof, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
+            self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
         );
         self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
         self.builder.branch(merge_bb);
@@ -192,12 +192,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
         strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
         slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
-        # Copy to GC-allocated string
-        gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
+        # Copy to RC-managed string
         alloc_size = self.builder.add(
             slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
         );
-        result_ptr = self.builder.call(gc_malloc, [alloc_size], name="input.result");
+        result_ptr = self.builder.call(
+            self.rc_alloc_fn, [alloc_size], name="input.result"
+        );
         memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
         self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
         # Strip trailing newline if present (only if slen > 0)

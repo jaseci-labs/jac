@@ -22,6 +22,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac plugins` | Manage plugins |
 | `jac config` | Manage project configuration |
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
+| `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
@@ -660,6 +661,64 @@ jac start --scale --build   # Build and deploy
 
 ---
 
+### jac status
+
+Show the deployment status of your Jac application on Kubernetes. Displays a color-coded table with the health of each component (application, Redis, MongoDB, Prometheus, Grafana), pod readiness counts, and service URLs.
+
+```bash
+jac status [-h] file_path [--target TARGET]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `file_path` | Path to the `.jac` file | Required |
+| `--target` | Deployment target platform | `kubernetes` |
+
+**Example output:**
+
+```
+  Jac Scale - Deployment Status
+  App: my-app   Namespace: default
+
+┌───────────────────┬────────────────────────┬───────┐
+│ Component         │ Status                 │ Pods  │
+├───────────────────┼────────────────────────┼───────┤
+│ Jaseci App        │ ● Running              │  1/1  │
+│ Redis             │ ● Running              │  1/1  │
+│ MongoDB           │ ● Running              │  1/1  │
+│ Prometheus        │ ● Running              │  1/1  │
+│ Grafana           │ ● Running              │  1/1  │
+└───────────────────┴────────────────────────┴───────┘
+
+  Service URLs
+  ────────────────────────────────────────────
+  Application:  http://localhost:30001
+  Grafana:      http://localhost:30003
+```
+
+**Status indicators:**
+
+| Symbol | Meaning |
+|--------|---------|
+| `● Running` | All pods healthy and ready |
+| `◑ Degraded` | Some pods ready, but not all |
+| `⟳ Pending` | Pods are starting up |
+| `↺ Restarting` | Pods are crash-looping |
+| `✗ Failed` | Component has failed |
+| `○ Not Deployed` | Component is not present in the cluster |
+
+**Examples:**
+
+```bash
+# Check deployment status
+jac status app.jac
+
+# Check status with explicit target
+jac status app.jac --target kubernetes
+```
+
+---
+
 ### jac destroy
 
 Remove a deployment.
@@ -1104,6 +1163,45 @@ jac tool ir py main.jac
 
 ---
 
+### jac nacompile
+
+Compile a `.na.jac` file to a standalone native ELF executable. No external compiler, assembler, or linker is required. The entire pipeline runs in pure Python using llvmlite and a built-in ELF linker.
+
+```bash
+jac nacompile filename [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `-o, --output` | Output binary path | filename without `.na.jac` |
+
+The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
+
+**What happens under the hood:**
+
+1. Compiles the `.na.jac` through the Jac pipeline to get LLVM IR
+2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
+3. Emits native object code via llvmlite's `emit_object()`
+4. Links into an ELF executable via the built-in pure-Python ELF linker
+
+The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required.
+
+**Examples:**
+
+```bash
+# Compile to ./chess
+jac nacompile chess.na.jac
+
+# Compile with custom output name
+jac nacompile chess.na.jac -o mychess
+
+# Run the binary
+./mychess
+```
+
+---
+
 ### jac completions
 
 Generate and install shell completion scripts for the `jac` CLI.
@@ -1246,6 +1344,9 @@ jac start -p 8000
 
 # Deploy to Kubernetes
 jac start main.jac --scale
+
+# Check deployment status
+jac status main.jac
 
 # Remove deployment
 jac destroy main.jac

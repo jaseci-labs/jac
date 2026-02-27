@@ -1117,6 +1117,17 @@ test "union_type_annotation" {
     );
 }
 
+"""Test member access on union types."""
+test "union_member_access" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac")
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # TODO: test_union_uncommon_member should error when attribute errors are enabled
+    assert len(program.errors_had) == 0;
+}
+
 test "list_indexing" {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"));
@@ -1699,6 +1710,32 @@ test "assert_isinstance_narrowing" {
 
     # All cases should pass - assert isinstance narrows the type
     assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Test assignment-based type narrowing."""
+test "assignment_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_narrowing.jac")
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - assignment narrows union types appropriately
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Test truthiness guard narrowing for member access."""
+test "guard_narrowing" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_guard_narrowing.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass - if guard narrows T|None to T
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }

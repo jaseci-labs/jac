@@ -85,7 +85,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             ],
             'prometheus_admin_password': 'Adminpassword123',
             'prometheus_node_port': 30090,
-            'grafana_node_port': 30300
+            'grafana_node_port': 30300,
+            'k8s_metrics_enabled': True
         },
         'admin': {
             'enabled': True,
@@ -147,6 +148,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
     # Merge monitoring config into kubernetes config
     monitoring = self.get_monitoring_config();
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
+    k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
     k8s_config['prometheus_node_port'] = monitoring['prometheus_node_port'];
     k8s_config['grafana_node_port'] = monitoring['grafana_node_port'];
@@ -246,6 +248,7 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
         'histogram_buckets': monitoring_config.get(
             'histogram_buckets', default_buckets
         ),
+        'k8s_metrics_enabled': monitoring_config.get('k8s_metrics_enabled', True),
         'prometheus_admin_password': monitoring_config.get(
             'prometheus_admin_password', 'Adminpassword123'
         ),
