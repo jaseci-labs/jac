@@ -310,5 +310,12 @@ nacompile.jac
 nacompile.impl.jac
 elf_linker.jac
 elf_linker.impl.jac
+<<<<<<< fix/type-narrowing-and-union-member-access
+transport.jac
+transport.impl.jac
+mtp.jac
+mtp.impl.jac
+=======
 macho_linker.jac
 macho_linker.impl.jac
+>>>>>>> main

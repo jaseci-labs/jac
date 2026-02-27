@@ -7,6 +7,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Memory Management: Reference Counting Replaces Boehm GC**: Replaced the external Boehm GC (`libgc`) dependency with a self-contained reference counting scheme. All heap allocations use an 8-byte RC header (`rc_alloc`), container data arrays use plain `malloc`/`free`, and type-specific destructors are emitted for lists, dicts, sets, and archetypes. String literals are copied into RC-managed memory on use. Old values are released on variable reassignment and container growth paths free old data arrays. This eliminates the `libgc` system dependency entirely -- the native compiler only requires `libc`.
 - **Fix: Py2Jac String Escapes**: Fixed `py2jac` to correctly preserve escape sequences in strings, including hex (`\x1b`), octal (`\033`), and standard escapes (`\n`, `\t`). Previously these were being lost or corrupted during conversion.
 - **`jac nacompile` Mach-O Support (macOS arm64)**: Extended `jac nacompile` to produce standalone Mach-O executables on macOS arm64, in addition to the existing ELF support on Linux. Includes a pure-Python Mach-O linker (`macho_linker.jac`) that handles GOT construction, stub generation, rebase/bind opcodes, and ad-hoc code signing with SHA-256 page hashes. Platform is auto-detected -- the same `jac nacompile program.na.jac` command works on both Linux and macOS.
+- **Type Narrowing Improvements**: Fixed scope-based narrowing for AND expressions (`isinstance(x, T) and x.member`), assignment narrowing (`a = 90` narrows `a: int|None` to `int`), guard patterns (`if not isinstance(x, T): return`), member access chains, truthiness checks, and assert statements. Else-branch no longer incorrectly inherits true-branch narrowings.
+- **Union Type Member Access**: `x.name` where `x: Dog | Cat` now resolves member types and enables go-to-definition.
+- **IDE Hover Types**: Function parameters and `has` vars now display types on hover.
 
 ## jaclang 0.11.2 (Latest Release)
 
@@ -23,7 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Formatter Line-Breaking, Comment Spacing, and DocIR Generation**: Improved `jac format` line-breaking by accounting for trailing sibling width when deciding group breaks, fixed budget tracking after newlines, preserved original source spacing for inline comments, added proper indentation for ternary (if-else) continuation lines, among others.
 - **`jac nacompile` -- Standalone ELF Binaries**: New `jac nacompile` CLI command compiles `.na.jac` files to standalone ELF executables with no external compiler or linker required. Uses llvmlite's code generator to emit object code and a pure-Python ELF linker (`elf_linker.jac`) to produce dynamically-linked ELF binaries against libc/libgc. The `_start` entry point is written in pure LLVM IR (zero inline assembly), making the entire pipeline architecture-agnostic. Includes automatic GC fallback (rewrites `GC_malloc` to `malloc` at the IR level when libgc is unavailable). Usage: `jac nacompile program.na.jac` or `jac nacompile program.na.jac -o mybin`.
 - **Fix: py2jac docstring conversion**: Fix py2jac to correctly convert `Docstrings` with escape sequences.
-- 1 Minor refactors/changes
+- 2 Minor refactors/changes
 
 ## jaclang 0.11.1
 
