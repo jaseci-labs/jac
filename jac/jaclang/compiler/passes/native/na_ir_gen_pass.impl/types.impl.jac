@@ -28,7 +28,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return self.type_map[type_name];
         }
     }
-    # Generic fallback: any node with .value matching a known type (handles Tokens)
+    # Generic fallback node with .value matching a known type (handles Tokens)
     if type_expr?.value and isinstance(getattr(type_expr, "value", None), str) {
         type_name = type_expr.value;
         if type_name in self.type_map {

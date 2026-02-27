@@ -92,7 +92,7 @@ test "client import local jac module gets relative path" {
 }
 
 test "def pub called from client imports jac call function" {
-    test_code = '"""\nTest def:pub called from client context.\n"""\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> any {\n        data = await get_server_data("World");\n        return <div>{data}</div>;\n    }\n}\n';
+    test_code = '"""\nTest def:pub called from client context.\n"""\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_server_data("World");\n        return <div>{data}</div>;\n    }\n}\n';
 
     with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
         f.write(test_code);
