@@ -6,23 +6,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Native Memory Management: Reference Counting Replaces Boehm GC**: Replaced the external Boehm GC (`libgc`) dependency with a self-contained reference counting scheme. All heap allocations use an 8-byte RC header (`rc_alloc`), container data arrays use plain `malloc`/`free`, and type-specific destructors are emitted for lists, dicts, sets, and archetypes. String literals are copied into RC-managed memory on use. Old values are released on variable reassignment and container growth paths free old data arrays. This eliminates the `libgc` system dependency entirely -- the native compiler only requires `libc`.
 - **`jac nacompile` Mach-O Support (macOS arm64)**: Extended `jac nacompile` to produce standalone Mach-O executables on macOS arm64, in addition to the existing ELF support on Linux. Includes a pure-Python Mach-O linker (`macho_linker.jac`) that handles GOT construction, stub generation, rebase/bind opcodes, and ad-hoc code signing with SHA-256 page hashes. Platform is auto-detected -- the same `jac nacompile program.na.jac` command works on both Linux and macOS.
+- **Type Narrowing Improvements**: Fixed scope-based narrowing for AND expressions (`isinstance(x, T) and x.member`), assignment narrowing (`a = 90` narrows `a: int|None` to `int`), guard patterns (`if not isinstance(x, T): return`), member access chains, truthiness checks, and assert statements. Else-branch no longer incorrectly inherits true-branch narrowings.
+- **Union Type Member Access**: `x.name` where `x: Dog | Cat` now resolves member types and enables go-to-definition.
+- **IDE Hover Types**: Function parameters and `has` vars now display types on hover.
 
 ## jaclang 0.11.2 (Latest Release)
 
 - **Improved Memory Efficiency for Large Graphs**: Jac now uses lazy loading for graph data in MongoDB/Redis, nodes and edges are fetched only when accessed, instead of loading the entire graph upfront.
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.
 - **Fix: Union of Subclasses Assignable to Base Class**: Fixed type checker rejecting valid assignments where a union of subclasses (e.g., `Dog | Cat`) is passed to a parameter expecting the base class (e.g., `Animal`). This commonly occurs after match statement narrowing and now works correctly.
-- **Type Narrowing Improvements**: Comprehensive fixes to type narrowing for better type inference:
-  - AND expressions: `isinstance(x, T) and x.member` correctly narrows `x` to `T` when accessing members
-  - Assignment narrowing: `a: int | None = None; a = 90;` narrows `a` to `int`
-  - Guard narrowing: `if not isinstance(x, T): return;` narrows `x` to `T` after the guard
-  - Else-branch fix: narrowings no longer incorrectly apply to else branches
-  - Member access: `isinstance(x.field, T) and x.field.member` narrowing now works
-  - Truthiness guards: `if obj.field` narrows `obj.field` from `T | None` to `T`
-  - Assert narrowing: `assert isinstance(x, T)` narrows `x` for subsequent code
-  - Inheritance: `isinstance(nd, SubClass)` narrowing works for base class variables
-- **Union Type Member Access**: Accessing members on union types now works with IDE features. Example: `x.name` where `x: Dog | Cat` resolves to the member type and enables go-to-definition.
-- **IDE: Hover Types for Parameters and Fields**: Function parameters and class fields (`has` vars) now display their types on hover.
 - **Fix: Compound AND Narrowing**: Multiple isinstance checks in the same AND expression now narrow to the most specific type. Example: `isinstance(x, BaseNode) and isinstance(x, CFGNode)` correctly narrows `x` to `CFGNode` inside the if block.
 - **Fix: Progressive Narrowing in AND Expressions**: Earlier isinstance checks in an AND expression now narrow the type for subsequent parts. Example: `isinstance(x, CFGNode) and x.bb_out` works correctly because `x.bb_out` sees `x` as `CFGNode`.
 - **Fix: Assert isinstance Type Narrowing**: `assert isinstance(x, T)` now narrows the type of `x` to `T` for subsequent statements. Example: `assert isinstance(x, CFGNode); x.bb_out;` works correctly.
