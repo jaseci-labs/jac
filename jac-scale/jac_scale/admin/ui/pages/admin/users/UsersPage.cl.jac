@@ -92,13 +92,13 @@ cl {
             showEditModal = True;
         }
 
-        def makeEditHandler(username: str, role: str, resetRequired: bool) -> any {
+        def makeEditHandler(username: str, role: str, resetRequired: bool) -> Any {
             return lambda e: Any  -> None { openEditModal(
                 username, role, resetRequired
             );};
         }
 
-        def makeDeleteHandler(username: str) -> any {
+        def makeDeleteHandler(username: str) -> Any {
             return lambda e: Any  -> None { handleDelete(username);};
         }
 

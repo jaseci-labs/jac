@@ -1,7 +1,7 @@
 """Test fixture for has statement combining inside abilities (functions)."""
 
 # has statements inside a function should be combined
-def app() -> any {
+def app() -> Any {
     has count: int = 0;
     has name: str = "test";
     has enabled: bool = True;

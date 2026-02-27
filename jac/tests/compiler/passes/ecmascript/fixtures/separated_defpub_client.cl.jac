@@ -32,7 +32,7 @@ def:pub app -> JsxElement {
     async def toggleTask(id: str) -> None {
         await toggle_task(id);
         tasks = tasks.map(
-            lambda t: Any -> any {
+            lambda t: Any -> Any {
                 return {"id": t.id, "title": t.title, "done": not t.done}
                 if t.id == id else t;
             }

@@ -34,9 +34,9 @@ glob:pub useState = reactUseState,
 
 def:pub useRouter -> dict;
 def:pub navigate(path: str) -> None;
-async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
+async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
+def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
+async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> Any;
 async def:pub jacSignup(username: str, password: str) -> dict;
 async def:pub jacLogin(username: str, password: str) -> bool;
 def:pub jacLogout -> None;
@@ -58,11 +58,11 @@ def:pub __isFresh(entry: dict) -> bool;
 def:pub __cacheGet(key: str) -> dict;
 def:pub __cacheSet(key: str, data: Any, ttl: int) -> None;
 def:pub __evictOldest -> None;
-async def:pub __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> any;
-async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
+async def:pub __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> Any;
+async def:pub __doFuncFetch(function_name: str, args: dict) -> Any;
 async def:pub __cachedEndpointCall(
     endpoint_key: str, args_key: str, fetch_fn: Any
-) -> any;
+) -> Any;
 
 def:pub __invalidateEndpoint(endpoint_key: str) -> None;
 def:pub __overlaps(list1: list, list2: list) -> bool;

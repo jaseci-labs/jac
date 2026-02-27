@@ -187,7 +187,7 @@ cl {
 
         return <div>
             {filteredTodos.map(
-                lambda  todo: Any  -> any{ return <TodoItem
+                lambda  todo: Any  -> Any{ return <TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     toggleTodo={toggleTodo}
@@ -209,7 +209,7 @@ cl {
 
         return <div>
             {props.filteredTodos.map(
-                lambda  todo: Any  -> any{ return <TodoItem
+                lambda  todo: Any  -> Any{ return <TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     toggleTodo={props.toggleTodo}

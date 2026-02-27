@@ -11,7 +11,7 @@ def __jacJsx(tag: Any, props: dict = {}, children: list = []) -> JsxElement;
 # DOM rendering function
 def renderJsxTree(nd: JsxElement, container: Any) -> None;
 # Internal: Build DOM from JSX tree
-def __buildDom(nd: Any) -> any;
+def __buildDom(nd: Any) -> Any;
 # Internal: Apply property to DOM element
 def __applyProp(element: Any, key: str, value: Any) -> None;
 # ============================================================================
@@ -82,9 +82,9 @@ def __jacGetPath -> str;
 # ============================================================================
 # Walker spawn function
 # ============================================================================
-async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 # Function call function - calls server-side functions from client
-async def __jacCallFunction(function_name: str, args: dict = {}) -> any;
+async def __jacCallFunction(function_name: str, args: dict = {}) -> Any;
 # Authentication helpers
 async def jacSignup(username: str, password: str) -> dict;
 async def jacLogin(username: str, password: str) -> bool;
@@ -105,18 +105,18 @@ def __jacHasOwn(obj: Any, key: Any) -> bool;
 # Internal polyfill for Python-style dict.get on plain JS objects
 def __jacEnsureObjectGetPolyfill -> None;
 # Common utility helpers
-def __jacGetDocument(scope: Any) -> any;
-def __jacParseJsonObject(text: str) -> any;
+def __jacGetDocument(scope: Any) -> Any;
+def __jacParseJsonObject(text: str) -> Any;
 
 def __jacBuildOrderedArgs(order: list, argsDict: dict) -> list;
-def __jacResolveRenderer(scope: Any) -> any;
+def __jacResolveRenderer(scope: Any) -> Any;
 
-def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any;
+def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> Any;
 def __jacSafeCallTarget(
     target: Any, scope: Any, orderedArgs: list, targetName: str
 ) -> dict;
 # Runtime support helpers for client module registration / hydration
-def __jacGlobalScope -> any;
+def __jacGlobalScope -> Any;
 def __jacEnsureRegistry -> dict;
 def __jacApplyRender(renderer: Any, container: Any, nd: Any) -> None;
 

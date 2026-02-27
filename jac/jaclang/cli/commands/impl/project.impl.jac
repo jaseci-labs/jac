@@ -171,7 +171,7 @@ Supports:
 
 Returns the ProjectTemplate or None if resolution fails.
 """
-def _resolve_template(use: str, registry: Any) -> any {
+def _resolve_template(use: str, registry: Any) -> Any {
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory

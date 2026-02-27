@@ -38,7 +38,7 @@ def:pub app()  -> JsxElement {
         </button>
         <div>
             {todos.map(
-                lambda  todo: Any  -> any{ return <div
+                lambda  todo: Any  -> Any{ return <div
                     key={todo._jac_id}
                 >
                     <span>
