@@ -579,39 +579,18 @@ test "test_hover_types" {
         );
         lsp.type_check_file(narrowing_file);
 
-        # Test hover shows types correctly
-        # Format: (line, col, expected_in_hover, should_not_contain)
         hover_cases: list[tuple] = [
-            # --- Has vars (class fields) ---
-            # has name: str (line 8)
-            (8, 9, "str", None),
-            # has offspring: list[Mammal] | None (line 12)
-            (12, 9, "list", None),
-            # has is_primate: bool (line 16)
-            (16, 9, "bool", None),
-            # --- Function parameters ---
-            # def test_and_most_specific(x: Animal) - param x (line 20)
-            (20, 28, "Animal", None),
-            # --- Member access ---
-            # x.offspring - field access on narrowed x
-            (23, 11, "offspring", None),
-            # --- Narrowed member access ---
-            # c.field narrowed from Mammal|None to Mammal via `c.field is not None`
-            (150, 29, "Mammal", "None"),
-            # --- Simple Name narrowing in AND (isinstance(expr, T) and expr.value) ---
-            # Line 210: `expr.value` - hover on 'value' shows str (NamedNode's field)
-            (210, 21, "str", None),
-            # --- Nested isinstance: outer if + inner AND ---
-            # Line 248: `w.inner.offspring` - hover on second 'inner' (col 40) shows Mammal
-            (248, 40, "Mammal", "None"),
-            # --- Deep nested narrowing ---
-            # Line 265: `dw.data.inner.offspring` - hover on second 'inner' (col 58) shows Mammal
-            (265, 58, "Mammal", "None"),
-            # --- Multiple member narrowings in AND chain ---
-            # Line 319: `dw.left.offspring` - hover on 'left' (col 12) shows Mammal
-            (319, 12, "Mammal", "None"),
-            # Line 320: `dw.right.is_primate` - hover on 'right' (col 12) shows Primate
-            (320, 12, "Primate", "None"),
+            (4, 9, "str", None),
+            (8, 9, "list", None),
+            (12, 9, "bool", None),
+            (15, 28, "Animal", None),
+            (17, 11, "offspring", None),
+            (116, 26, "Mammal", "None"),
+            (161, 21, "str", None),
+            (190, 40, "Mammal", "None"),
+            (203, 58, "Mammal", "None"),
+            (244, 12, "Mammal", "None"),
+            (245, 12, "Primate", "None"),
 
         ];
 
