@@ -96,7 +96,9 @@ test "test_impl_stay_connected" {
         lsp.type_check_file(circle_file);
         pos = lspt.Position(20, 8);
         assert (
-            "Circle class inherits from Shape." in lsp.get_hover_info(circle_file, pos).contents.value
+            "Circle class inherits from Shape." in lsp.get_hover_info(
+                circle_file, pos
+            ).contents.value
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
@@ -152,7 +154,7 @@ test "test_go_to_definition" {
         assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
             lsp.get_definition(circle_file, lspt.Position(9, 16))
         );
-        assert "fixtures/circle_pure.jac:13:11-13:16" in str(
+        assert "fixtures/circle_pure.jac:13:9-13:14" in str(
             lsp.get_definition(circle_file, lspt.Position(20, 16))
         );
 
@@ -175,6 +177,16 @@ test "test_go_to_definition" {
         # Test when the left of assignment is a list.
         assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
             lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
+        );
+
+        # Test go-to-definition for self-member assigned in impl file.
+        # t2.program (line 20) should go to self.program in impl file (line 4).
+        self_member_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_impl/checker_impl_self_member.jac")
+        );
+        lsp.type_check_file(self_member_file);
+        assert "checker_impl_self_member.impl.jac:3" in str(
+            lsp.get_definition(self_member_file, lspt.Position(19, 14))
         );
     } finally {
         teardown_test();
@@ -245,7 +257,7 @@ test "test_go_to_definition_connect_filter" {
     try {
         lsp = create_server("");
         import_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("checker_connect_filter.jac")
+            passes_main_fixture_abs_path("checker/checker_connect_filter.jac")
         );
         lsp.type_check_file(import_file);
         positions = [
@@ -352,14 +364,9 @@ test "test_go_to_reference" {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle.jac"));
         lsp.type_check_file(circle_file);
-        test_cases = [
-            (45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]),
-
-        ];
+        test_cases = [(45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]), ];
         for (line, char, expected_refs) in test_cases {
-            references = str(
-                lsp.get_references(circle_file, lspt.Position(line, char))
-            );
+            references = str(lsp.get_references(circle_file, lspt.Position(line, char)));
             for expected in expected_refs {
                 assert expected in references;
             }
@@ -501,9 +508,7 @@ test "test_go_to_definition_directory_import" {
         ];
 
         for (line, char, expected) in positions {
-            def_loc = lsp.get_definition(
-                import_file, lspt.Position(line - 1, char - 1)
-            );
+            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
             assert def_loc is not None , f"Definition at line {line}, col {char} not found";
             assert expected in str(def_loc) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {def_loc}";
@@ -560,6 +565,41 @@ test "test_hover_narrowing_in_loop" {
         assert "MyString" in hover.contents.value , f"Hover should show MyString, got: {hover.contents.value}";
         # Verify it does NOT show the union type MyInt or None
         assert "MyInt" not in hover.contents.value , "Hover should NOT show MyInt (it should be narrowed)";
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_hover_types" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        narrowing_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_and_narrowing.jac")
+        );
+        lsp.type_check_file(narrowing_file);
+
+        hover_cases: list[tuple] = [
+            (4, 9, "str", None),
+            (8, 9, "list", None),
+            (12, 9, "bool", None),
+            (15, 28, "Animal", None),
+            (17, 11, "offspring", None),
+            (93, 27, "Mammal", "None"),
+            (105, 29, "Mammal", "None"),
+            (113, 9, "Mammal", None),
+
+        ];
+
+        for case in hover_cases {
+            (line, col, expected, should_not_contain) = case;
+            hover = lsp.get_hover_info(narrowing_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Hover should exist at line {line}, col {col}";
+            assert expected in hover.contents.value , f"Line {line}: expected '{expected}' in hover, got: {hover.contents.value}";
+            if should_not_contain {
+                assert should_not_contain not in hover.contents.value , f"Line {line}: should NOT contain '{should_not_contain}', got: {hover.contents.value}";
+            }
+        }
     } finally {
         teardown_test();
     }

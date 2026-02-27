@@ -1,11 +1,10 @@
 # Test failing variable arguments cases (*args, **kwargs)
-def simple_args_only(
-    *args: int
-) -> int {
+def simple_args_only( *args:
+    int)  -> int {
     return sum(args);
 }
 
-def simple_kwargs_only(**kwargs: str) -> int {
+def simple_kwargs_only( **kwargs: str)  -> int {
     return len(kwargs);
 }
 
@@ -25,7 +24,7 @@ def full_varargs_signature(
     *args: int,
     kw_req: bool,
     kw_opt: str = "default",
-    **kwargs: Any
+    **kwargs: any
 ) -> dict {
     return {
         "pos": pos,
@@ -42,7 +41,7 @@ def conflicting_names(name: str, *args: str, name_kw: str, **kwargs: str) -> dic
     return {"name": name, "args": list(args), "name_kw": name_kw, "kwargs": kwargs};
 }
 
-def type_sensitive_varargs(*args: int, **kwargs: int) -> dict {
+def type_sensitive_varargs( *args: int , **kwargs: int)  -> dict {
     return {"args_sum": sum(args), "kwargs_sum": sum(kwargs.values())};
 }
 
@@ -50,7 +49,7 @@ def edge_case_empty_varargs(required: str, *args: float, **kwargs: bool) -> str 
     return f"{required}: args={len(args)}, kwargs={len(kwargs)}";
 }
 
-def double_star_issues(**kwargs: dict) -> int {
+def double_star_issues( **kwargs: dict)  -> int {
     total = 0;
     for (k, v) in kwargs.items() {
         if isinstance(v, dict) {
@@ -62,11 +61,11 @@ def double_star_issues(**kwargs: dict) -> int {
     return total;
 }
 
-def additional_varargs_edge_cases() -> None {
+def additional_varargs_edge_cases()  -> None {
     print("\n=== ADDITIONAL VARARGS EDGE CASES ===");
 
     # Test 16: Empty containers passed to varargs
-    def test_empty_containers(*args: list, **kwargs: dict) -> dict {
+    def test_empty_containers( *args: list , **kwargs: dict)  -> dict {
         return {"args_count": len(args), "kwargs_count": len(kwargs)};
     }
 
@@ -78,7 +77,7 @@ def additional_varargs_edge_cases() -> None {
     }
 
     # Test 17: Nested data structures
-    def complex_data_varargs(*args: dict, **kwargs: list) -> dict {
+    def complex_data_varargs( *args: dict , **kwargs: list)  -> dict {
         return {"total_keys": sum(args), "total_items": len(kwargs)};
     }
 
@@ -90,7 +89,7 @@ def additional_varargs_edge_cases() -> None {
     }
 
     # Test 18: Special character handling in kwargs keys
-    def special_chars_kwargs(**kwargs: str) -> dict {
+    def special_chars_kwargs( **kwargs: str)  -> dict {
         return {"keys": list(kwargs.keys()), "count": len(kwargs)};
     }
 
@@ -103,7 +102,7 @@ def additional_varargs_edge_cases() -> None {
     }
 
     # Test 19: Very large argument counts
-    def stress_test_args(*args: int) -> dict {
+    def stress_test_args( *args: int)  -> dict {
         return {
             "count": len(args),
             "sum": sum(args),

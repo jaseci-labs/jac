@@ -20,7 +20,7 @@ glob y = 2;  # Inline comment on second glob
 glob z = 3;  # Inline comment on third glob
 
 # Different access modifier - should not combine
-glob:priv private_var = 100;  # Inline on private glob
+glob : priv private_var = 100;  # Inline on private glob
 
 # Comment before obj definition
 obj Calculator {
@@ -31,7 +31,7 @@ obj Calculator {
     # Comment before third has
     has count: int = 0;  # Inline comment on count
     # Different modifier - should stay separate
-    has:priv secret: str;  # Inline on private has
+    has : priv secret: str;  # Inline on private has
     # Static has fields with comments
     static has instance_count: int = 0;  # Inline on static has
     # Between static has
@@ -91,9 +91,9 @@ enum Color {
 # Test hasattr conversion with comments
 obj NullSafeTest {
     has data: dict | None;
-    has obj: Any | None;
+    has obj: any | None;
 
-    def check_attr -> Any {
+    def check_attr -> any {
         # Comment before hasattr usage
         if hasattr(self.obj, "value") {  # Inline on if hasattr
 
@@ -106,7 +106,7 @@ obj NullSafeTest {
 
     }
 
-    def check_with_default -> Any {
+    def check_with_default -> any {
         # Comment before ternary with hasattr
         result = self.obj.attr if hasattr(self.obj, "attr") else "default";  # Inline on ternary
         # Comment after assignment
@@ -189,9 +189,9 @@ obj ComplexHasTest {
     # Multi-line again
     has field3: list[int] = [];  # Third field inline
     # Comment before different access
-    has:priv private1: int = 0;  # Private field inline
+    has : priv private1: int = 0;  # Private field inline
     # Between private fields
-    has:priv private2: str = "";  # Second private inline
+    has : priv private2: str = "";  # Second private inline
 }
 
 # Test static vs non-static has - should not combine
@@ -227,20 +227,20 @@ impl SignatureTest.method2(x: int) -> int {
 
 # Test empty parens removal with comments
 obj EmptyParensTest {
-    def no_params() -> None;  # Declaration with empty parens
+    def no_params()  -> None;  # Declaration with empty parens
 
-    def also_no_params() -> int;  # Another empty parens
+    def also_no_params()  -> int;  # Another empty parens
 
     def really_no_params_no_return();  # No params no return
 
 }
 
-impl EmptyParensTest.no_params() -> None {
+impl EmptyParensTest.no_params()  -> None {
     # Inside no_params
     print("no params");  # Print comment
 }
 
-impl EmptyParensTest.also_no_params() -> int {
+impl EmptyParensTest.also_no_params()  -> int {
     # Inside also_no_params
     return 42;  # Return answer
 

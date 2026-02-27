@@ -341,11 +341,7 @@ impl TypeBase.category -> TypeCategory {
 """Return true if this type is UnknownType, AnyType, TypeVarType, or object."""
 impl TypeBase.is_any_type -> bool {
     # Check for UnknownType, AnyType, or TypeVarType using category
-    if self.category in (
-        TypeCategory.Unknown,
-        TypeCategory.AnyKind,
-        TypeCategory.TypeVar
-    ) {
+    if self.category in (TypeCategory.Unknown, TypeCategory.Any, TypeCategory.TypeVar) {
         return True;
     }
     # Check for object type

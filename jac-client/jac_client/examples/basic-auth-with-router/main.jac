@@ -1,8 +1,5 @@
 # Simple Authentication App with React Router
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useState, useEffect }
 cl import from "@jac/runtime" {
     Router,
     Routes,
@@ -23,7 +20,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: Any) -> None {
+        def handleLogout(e: any) -> None {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -117,7 +114,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: Any) -> None {
+        async def handleLogin(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -132,11 +129,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: any) -> None {
             password = e.target.value;
         }
 
@@ -241,7 +238,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleSignup(e: Any) -> None {
+        async def handleSignup(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -256,11 +253,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: any) -> None {
             password = e.target.value;
         }
 

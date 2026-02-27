@@ -16,7 +16,7 @@ enum TypeCategory ( IntEnum ) {
     Unbound,
     Unknown,
     Never,
-    AnyKind,
+    Any,
     Module,
     TypeVar,
     Class,
@@ -112,7 +112,7 @@ obj NeverType(TypeBase) {
 """Represents a type that can be anything."""
 obj AnyType(TypeBase) {
     with entry {
-        CATEGORY: ClassVar[TypeCategory] = TypeCategory.AnyKind;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
 
     def __str__ -> str;
@@ -306,8 +306,8 @@ def create_callable_type(
 
     # Set GradualCallableForm flag only for Callable[..., T] form
     flags: int = FunctionTypeFlags.GradualCallableForm
-    if is_gradual
-    else FunctionTypeFlags.Null;
+        if is_gradual
+        else FunctionTypeFlags.Null;
 
     return FunctionType(
         func_name="",

@@ -12,14 +12,19 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
 
 """Convert a string to a docstring."""
 impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
-    import codecs;
-    content = string.value[1:-1];
-    try {
-        decoded = codecs.decode(content, 'unicode_escape');
-    } except Exception {
-        decoded = content;
+    # Determine quote style and extract content
+    val = string.value;
+    if val.startswith('"""') or val.startswith("'''") {
+        # Already triple-quoted, nothing to do
+        return;
+    } elif val.startswith('"') or val.startswith("'") {
+        content = val[1:-1];
+    } else {
+        # No quotes, wrap as-is
+        content = val;
     }
-    string.value = f'"""{decoded}"""';
+    # Use triple-double-quotes, preserving escape sequences as-is
+    string.value = f'"""{content}"""';
 }
 
 """
@@ -458,18 +463,18 @@ impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
     );
     self.in_type_annotation = True;
     ann_expr = self.convert(nd.annotation)
-    if nd.annotation
-    else uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value='Any',
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + 3),
-        pos_start=0,
-        pos_end=0
-    );
+        if nd.annotation
+        else uni.Name(
+            orig_src=self.orig_src,
+            name=Tok.NAME,
+            value='Any',
+            line=nd.lineno,
+            end_line=nd.end_lineno or nd.lineno,
+            col_start=nd.col_offset,
+            col_end=(nd.col_offset + 3),
+            pos_start=0,
+            pos_end=0
+        );
     self.in_type_annotation = False;
     if not isinstance(ann_expr, uni.Expr) {
         raise self.ice('Expected annotation to be an expression') ;
@@ -511,8 +516,8 @@ impl PyastBuildPass.proc_alias(nd: py_ast.alias) -> uni.ExprAsItem {
         pos_start=0,
         pos_end=0
     )
-    if nd.asname
-    else None;
+        if nd.asname
+        else None;
     return uni.ExprAsItem(
         expr=name, alias=asname, kid=[name, asname] if asname else [name]
     );
@@ -1284,14 +1289,29 @@ Process python node.
         values: list[expr]
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
+    # Get the original f-string source to detect quote style
+    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
+    if (ast_seg is None) {
+        ast_seg = 'f""';
+    }
+    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
+            # Use get_source_segment to preserve original escape sequences exactly as written
+            escaped_value = py_ast.get_source_segment(self.orig_src.code, i);
+            if escaped_value is None {
+                # Fallback to repr approach if source segment unavailable
+                raw_repr = repr(i.value);
+                escaped_value = raw_repr[1:-1];
+            }
+
             valid.append(
                 uni.String(
                     orig_src=self.orig_src,
                     name='STRING',
-                    value=i.value,
+                    value=escaped_value,
                     line=i.lineno,
                     end_line=i.end_lineno or i.lineno,
                     col_start=i.col_offset,
@@ -1309,11 +1329,6 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
             raise self.ice('Invalid node in joined str') ;
         }
     }
-    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
-    if (ast_seg is None) {
-        ast_seg = 'f""';
-    }
-    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
     if fstr_match {
         (prefix, quote) = fstr_match.groups();
         start = fstr_match.group(0);
@@ -1430,9 +1445,7 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
     }
     pytag = uni.SubTag[uni.Name](tag=lang, kid=[lang]);
     if ((len(nd.names) == 1) and (nd.names[0].name == '*')) {
-        ret = uni.Import(
-            from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]
-        );
+        ret = uni.Import(from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]);
         return ret;
     }
     ret = uni.Import(
@@ -1651,8 +1664,8 @@ impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> uni.Except 
             pos_start=0,
             pos_end=0
         )
-        if nd.name
-        else None;
+            if nd.name
+            else None;
     }
     body = [self.convert(i) for i in nd.body];
     valid = [
@@ -1736,8 +1749,8 @@ impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> uni.DictVal {
     return uni.DictVal(
         kv_pairs=kvpair,
         kid=[*kvpair]
-        if len(kvpair)
-        else [self.operator(Tok.LBRACE, '{'), self.operator(Tok.RBRACE, '}')]
+            if len(kvpair)
+            else [self.operator(Tok.LBRACE, '{'), self.operator(Tok.RBRACE, '}')]
     );
 }
 
@@ -1786,9 +1799,14 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
             token_type = f"{value_type.__name__.upper()}";
         }
         if (value_type is str) {
-            raw_repr = repr(nd.value);
-            quote = "'" if raw_repr.startswith("'") else '"';
-            value = f"{quote}{raw_repr[1:-1]}{quote}";
+            # Use get_source_segment to preserve original escape sequences and quote style
+            value = py_ast.get_source_segment(self.orig_src.code, nd);
+            if value is None {
+                # Fallback to repr approach if source segment unavailable
+                raw_repr = repr(nd.value);
+                quote = "'" if raw_repr.startswith("'") else '"';
+                value = f"{quote}{raw_repr[1:-1]}{quote}";
+            }
         } else {
             value = str(nd.value);
         }
@@ -2334,8 +2352,8 @@ impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt {
             body=valid_body,
             else_body=fin_orelse,
             kid=[target, iter, *valid_body, fin_orelse]
-            if fin_orelse
-            else [target, iter, *valid_body]
+                if fin_orelse
+                else [target, iter, *valid_body]
         );
     } else {
         raise self.ice() ;
@@ -2383,8 +2401,8 @@ impl PyastBuildPass.proc_for(nd: py_ast.For) -> uni.InForStmt {
             body=valid_body,
             else_body=fin_orelse,
             kid=[target, iter, *valid_body, fin_orelse]
-            if fin_orelse
-            else [target, iter, *valid_body]
+                if fin_orelse
+                else [target, iter, *valid_body]
         );
     } else {
         raise self.ice() ;
@@ -2423,8 +2441,8 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> uni.Assignment {
             type_tag=annotation_subtag,
             mutable=False,
             kid=[target, annotation_subtag, value]
-            if value
-            else [target, annotation_subtag]
+                if value
+                else [target, annotation_subtag]
         );
     } else {
         raise self.ice() ;
@@ -2515,8 +2533,8 @@ impl PyastBuildPass.proc_delete(nd: py_ast.Delete) -> uni.DeleteStmt {
         raise self.ice('Length mismatch in delete targets') ;
     }
     target_1 = valid_exprs[0]
-    if (len(valid_exprs) > 1)
-    else uni.TupleVal(values=valid_exprs, kid=[*valid_exprs]);
+        if (len(valid_exprs) > 1)
+        else uni.TupleVal(values=valid_exprs, kid=[*valid_exprs]);
     return uni.DeleteStmt(target=target_1, kid=[*valid_exprs]);
 }
 
@@ -2614,13 +2632,15 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         }
     }
     doc = body[0].expr
-    if (isinstance(body[0], uni.ExprStmt) and isinstance(body[0].expr, uni.String))
-    else None;
+        if (
+            isinstance(body[0], uni.ExprStmt) and isinstance(body[0].expr, uni.String)
+        )
+        else None;
     self.convert_to_doc(doc) if doc else None;
     body = body[1:] if doc else body;
     valid: list[uni.ArchBlockStmt] = self.extract_with_entry(body, uni.ArchBlockStmt)
-    if (body and not (isinstance(body[0], uni.Semi) and (len(body) == 1)))
-    else [];
+        if (body and not (isinstance(body[0], uni.Semi) and (len(body) == 1)))
+        else [];
     empty_block: Sequence[uni.UniNode] = [
         self.operator(Tok.LBRACE, '{'),
         self.operator(Tok.RBRACE, '}')
@@ -2643,10 +2663,10 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     valid_decorators = decorators or None;
     kid = [name, *base_classes, *valid_body, doc]
-    if (doc and base_classes)
-    else [name, *base_classes, *valid_body]
-    if base_classes
-    else [name, *valid_body, doc] if doc else [name, *valid_body];
+        if (doc and base_classes)
+        else [name, *base_classes, *valid_body]
+            if base_classes
+            else [name, *valid_body, doc] if doc else [name, *valid_body];
     return uni.Archetype(
         arch_type=arch_type,
         name=name,
@@ -2673,7 +2693,9 @@ Process python node.
             if sys.version_info >= (3, 12):
                 type_params: list[type_param]
 """
-impl PyastBuildPass.proc_async_function_def(nd: py_ast.AsyncFunctionDef) -> uni.Ability {
+impl PyastBuildPass.proc_async_function_def(
+    nd: py_ast.AsyncFunctionDef
+) -> uni.Ability {
     ability = self.proc_function_def(nd);
     ability.is_async = True;
     return ability;
@@ -2741,8 +2763,8 @@ impl PyastBuildPass.proc_function_def(
     valid_decorators = valid_dec or None;
     res = self.convert(nd.args);
     sig: (uni.FuncSignature | None) = res
-    if isinstance(res, uni.FuncSignature)
-    else None;
+        if isinstance(res, uni.FuncSignature)
+        else None;
     self.in_type_annotation = True;
     ret_sig = self.convert(nd.returns) if nd.returns else None;
     if ret_sig is None {
@@ -2819,19 +2841,19 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
     }
     elements: list[uni.UniNode] = [self.convert(i) for i in nd.body];
     elements[0] = elements[0].expr
-    if (
-        isinstance(elements[0], uni.ExprStmt)
-        and isinstance(elements[0].expr, uni.String)
-    )
-    else elements[0];
+        if (
+            isinstance(elements[0], uni.ExprStmt)
+            and isinstance(elements[0].expr, uni.String)
+        )
+        else elements[0];
     doc_str_list = [elements[0]] if isinstance(elements[0], uni.String) else [];
     valid = (
         doc_str_list + self.extract_with_entry(
             elements[1:], (uni.ElementStmt, uni.EmptyToken)
         )
     )
-    if doc_str_list
-    else self.extract_with_entry(elements[:], (uni.ElementStmt, uni.EmptyToken));
+        if doc_str_list
+        else self.extract_with_entry(elements[:], (uni.ElementStmt, uni.EmptyToken));
     doc_str = elements[0] if isinstance(elements[0], uni.String) else None;
     self.convert_to_doc(doc_str) if doc_str else None;
     ret = uni.Module(

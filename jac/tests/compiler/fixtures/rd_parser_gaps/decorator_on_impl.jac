@@ -1,5 +1,5 @@
 # Decorator on impl definition
-def my_decorator(func: Any) -> Any {
+def my_decorator(func: any) -> any {
     return func;
 }
 
@@ -7,7 +7,7 @@ obj MyObj {
     def greet -> None;
 }
 
-@ my_decorator
+@my_decorator
 impl MyObj.greet -> None {
     print("hello");
 }

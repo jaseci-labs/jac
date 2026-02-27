@@ -58,7 +58,7 @@ test "pyfunc 1" {
     }
     assert "def greet2(**kwargs: Any) -> None {" in output;
     assert output.count("with entry {") == 14;
-    assert "assert (x == 5) , 'x should be equal to 5';" in output;
+    assert 'assert (x == 5) , "x should be equal to 5";' in output;
     assert "if not (x == y) {" in output;
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output;
     assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello() -> object {' in output;
@@ -196,8 +196,8 @@ test "py2jac reassign semantics" {
     );
     assert (
         "let status = " not in jac_code.split("let status = ")[2]
-        if jac_code.count("let status = ") > 1
-        else True
+            if jac_code.count("let status = ") > 1
+            else True
     ) , "py2jac bug: 'let' used for reassignment in conditional";
 
     # Execute the converted code and verify it produces correct results
@@ -517,9 +517,7 @@ test "import jac from py" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        jac_from_py_mod = importlib.import_module(
-            "tests.language.fixtures.jac_from_py"
-        );
+        jac_from_py_mod = importlib.import_module("tests.language.fixtures.jac_from_py");
         jac_from_py_mod.main();
     } finally {
         sys.stdout = old_stdout;

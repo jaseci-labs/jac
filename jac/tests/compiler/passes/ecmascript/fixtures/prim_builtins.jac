@@ -8,6 +8,7 @@ def builtins_py() -> dict {
         # Length
         "len_list": len(nums),
         "len_str": len(s),
+
         # Math
         "abs_pos": abs(5),
         "abs_neg": abs(-7),
@@ -17,12 +18,14 @@ def builtins_py() -> dict {
         "max_args": max(3, 1, 2),
         "pow_result": pow(2, 10),
         "divmod_result": list(divmod(17, 5)),
+
         # Sequence
         "reversed_list": list(reversed(nums)),
         "any_true": any([0, 1, 0]),
         "any_false": any([0, 0, 0]),
         "all_true": all([1, 1, 1]),
         "all_false": all([1, 0, 1]),
+
         # Character / encoding
         "chr_A": chr(65),
         "chr_z": chr(122),
@@ -34,6 +37,7 @@ def builtins_py() -> dict {
         "oct_0": oct(0),
         "bin_5": bin(5),
         "bin_0": bin(0),
+
         # Type conversions
         "str_from_int": str(42),
         "str_from_float": str(3.5),
@@ -55,6 +59,7 @@ cl def builtins_cl() -> dict {
         # Length
         "len_list": len(nums),
         "len_str": len(s),
+
         # Math
         "abs_pos": abs(5),
         "abs_neg": abs(-7),
@@ -64,12 +69,14 @@ cl def builtins_cl() -> dict {
         "max_args": max(3, 1, 2),
         "pow_result": pow(2, 10),
         "divmod_result": list(divmod(17, 5)),
+
         # Sequence
         "reversed_list": list(reversed(nums)),
         "any_true": any([0, 1, 0]),
         "any_false": any([0, 0, 0]),
         "all_true": all([1, 1, 1]),
         "all_false": all([1, 0, 1]),
+
         # Character / encoding
         "chr_A": chr(65),
         "chr_z": chr(122),
@@ -81,6 +88,7 @@ cl def builtins_cl() -> dict {
         "oct_0": oct(0),
         "bin_5": bin(5),
         "bin_0": bin(0),
+
         # Type conversions
         "str_from_int": str(42),
         "str_from_float": str(3.5),

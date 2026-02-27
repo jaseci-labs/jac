@@ -47,7 +47,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'cpu_request': None,
             'cpu_limit': None,
             'memory_request': None,
-            'memory_limit': None,
+            'memory_limit': '12Gi',
             # Probe timings
             'readiness_initial_delay': 10,
             'readiness_period': 20,
@@ -85,7 +85,16 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             ],
             'prometheus_admin_password': 'Adminpassword123',
             'prometheus_node_port': 30090,
-            'grafana_node_port': 30300
+            'grafana_node_port': 30300,
+            'k8s_metrics_enabled': True
+        },
+        'admin': {
+            'enabled': True,
+            'username': 'admin',
+            'email': 'admin@localhost',
+            'default_password': 'changeme',
+            'session_expiry_hours': 24,
+            'require_password_reset': True
         }
     };
 }
@@ -139,6 +148,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
     # Merge monitoring config into kubernetes config
     monitoring = self.get_monitoring_config();
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
+    k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
     k8s_config['prometheus_node_port'] = monitoring['prometheus_node_port'];
     k8s_config['grafana_node_port'] = monitoring['grafana_node_port'];
@@ -238,6 +248,7 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
         'histogram_buckets': monitoring_config.get(
             'histogram_buckets', default_buckets
         ),
+        'k8s_metrics_enabled': monitoring_config.get('k8s_metrics_enabled', True),
         'prometheus_admin_password': monitoring_config.get(
             'prometheus_admin_password', 'Adminpassword123'
         ),
@@ -251,14 +262,33 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
 """Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
-    if _scale_config_instance is None {
-        _scale_config_instance = JacScaleConfig(project_dir);
+    if _scale_config_instance is not None {
+        return _scale_config_instance;
     }
-    return _scale_config_instance;
+    new_instance = JacScaleConfig(project_dir);
+    _scale_config_instance = new_instance;
+    return new_instance;
 }
 
 """Reset the global config instance (useful for testing)."""
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+"""Get admin configuration from jac.toml."""
+impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    admin_config = config.get('admin', {});
+    return {
+        'enabled': admin_config.get('enabled', True),
+        'username': os.environ.get('ADMIN_USERNAME')
+        or admin_config.get('username', 'admin'),
+        'email': os.environ.get('ADMIN_EMAIL')
+        or admin_config.get('email', 'admin@localhost'),
+        'default_password': os.environ.get('ADMIN_DEFAULT_PASSWORD')
+        or admin_config.get('default_password', 'changeme'),
+        'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
+        'require_password_reset': admin_config.get('require_password_reset', True)
+    };
 }

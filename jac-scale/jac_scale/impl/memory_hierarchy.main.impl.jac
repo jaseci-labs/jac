@@ -2,10 +2,6 @@
 
 Storage configuration comes from environment variables or jac.toml.
 """
-import logging;
-import from jaclang.runtimelib.memory { SqliteMemory }
-
-glob logger = logging.getLogger(__name__);
 
 """Initialize ScaleTieredMemory with distributed backends."""
 impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
@@ -35,7 +31,9 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
         } except Exception { }
     } else {
         # Fall back to jaclang's SqliteMemory using configured path
-        self.l3 = SqliteMemory(path=_db_config['shelf_db_path']);
+        self.l3 = SqliteMemory(
+            path=get_scale_config().get_database_config()['shelf_db_path']
+        );
         self._persistence_type = PersistenceType.SQLITE;
         logger.debug("MongoDB not available, using SqliteMemory for persistence");
         # Show subtle message
@@ -46,8 +44,55 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     }
 }
 
+"""Commit changes: flush L1 anchors to persistent storage (MongoDB/SQLite)."""
+impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
+    if self.l3 is None {
+        return;
+    }
+    # Single anchor commit
+    if anchor is not None {
+        # Early return if anchor is not valid for persistence
+        if not isinstance(anchor, Anchor) or not anchor.persistent {
+            return;
+        }
+        typed_anchor = cast(Anchor, anchor);
+        # Early return if no write access
+        if not Jac.check_write_access(typed_anchor) {
+            return;
+        }
+        try {
+            self.l3.put(typed_anchor);
+            # Also update L2 cache if available
+            if self.l2 {
+                self.l2.put(typed_anchor);
+            }
+        } except Exception as e {
+            logger.warning(f"ScaleTieredMemory.commit(anchor) failed: {e}");
+        }
+        return;
+    }
+    # Flush all L1 anchors to L3 (and L2 if available)
+    for (_, mem_anchor) in list(self.__mem__.items()) {
+        if not mem_anchor.persistent or not Jac.check_write_access(mem_anchor) {
+            continue;
+        }
+        try {
+            self.l3.put(mem_anchor);
+            if self.l2 {
+                self.l2.put(mem_anchor);
+            }
+        } except Exception as e {
+            logger.warning(
+                f"ScaleTieredMemory.commit flush failed for anchor "
+                f"{mem_anchor.id}: {e}"
+            );
+        }
+    }
+}
+
 """Close all backends."""
 impl ScaleTieredMemory.close -> None {
+    self.commit();
     # Sync and close L3 persistence
     if self.l3 {
         self.l3.sync();

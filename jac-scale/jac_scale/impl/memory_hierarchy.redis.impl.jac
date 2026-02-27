@@ -1,21 +1,15 @@
 """Redis CacheBackend Implementation."""
-import redis;
-import logging;
-import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps, loads }
-import from uuid { UUID }
-import from jaclang.jac0core.archetype { Anchor, Root }
-import from jaclang.runtimelib.utils { storage_key, to_uuid }
-
-glob logger = logging.getLogger(__name__);
 
 """Post-initialization: connect to Redis."""
 impl RedisBackend.postinit -> None {
+    if self.redis_url is None {
+        self.redis_url = _get_db_config().get('redis_url');
+    }
     if self.redis_url and self.redis_client is None {
         try {
             self.redis_client = redis.from_url(self.redis_url);
         } except Exception as e {
-            logger.debug(f"Redis connection failed: {e}");
+            logger.warning(f"Redis connection failed: {e}");
             self.redis_client = None;
         }
     }
@@ -23,6 +17,9 @@ impl RedisBackend.postinit -> None {
 
 """Check if Redis is available and connected."""
 impl RedisBackend.is_available -> bool {
+    if not self.redis_url {
+        self.redis_url = _get_db_config().get('redis_url');
+    }
     if not self.redis_url {
         return False;
     }
@@ -54,7 +51,8 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
         if not raw {
             return None;
         }
-        return loads(raw);
+        data = json.loads(raw);
+        return Serializer.deserialize(data);
     } except Exception as e {
         logger.debug(f"Redis get failed: {e}");
         return None;
@@ -67,9 +65,9 @@ impl RedisBackend.put(anchor: Anchor) -> None {
         return;
     }
     try {
-        data = dumps(anchor);
+        data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
-        self.redis_client.set(key, data);
+        self.redis_client.set(key, json.dumps(data));
     } except Exception as e {
         logger.debug(f"Redis put failed: {e}");
     }

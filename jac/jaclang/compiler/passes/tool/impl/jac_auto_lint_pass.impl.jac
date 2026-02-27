@@ -164,7 +164,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
             }
         }
         if has_staticmethod {
-            self.log_error(
+            self.log_warning(
                 "@staticmethod should use 'static' keyword [staticmethod-to-static]",
                 node_override=ability_node
             );
@@ -179,7 +179,8 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
             ability_node.decorators = new_decorators or None;
         }
     }
-    if self.is_rule_enabled(LintRule.STATICMETHOD_TO_STATIC) and ability_node.is_static {
+    if self.is_rule_enabled(LintRule.STATICMETHOD_TO_STATIC)
+    and ability_node.is_static {
         self._remove_staticmethod_from_kids(ability_node);
     }
     if self.is_rule_enabled(LintRule.COMBINE_HAS)
@@ -188,7 +189,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
         old_body = list(ability_node.body);
         new_body = self.combine_consecutive_has(old_body);
         if len(new_body) != len(old_body) {
-            self.log_error(
+            self.log_warning(
                 "Consecutive 'has' declarations can be combined [combine-has]",
                 node_override=ability_node
             );
@@ -222,7 +223,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     }
     if new_tok is not None {
         init_name = ability_node.name_ref.value;
-        self.log_error(
+        self.log_warning(
             f"'{init_name}' should use Jac keyword [init-to-can]",
             node_override=ability_node
         );
@@ -256,7 +257,7 @@ impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
     and isinstance(impl_node.body, list) {
         new_body = self.combine_consecutive_has(list(impl_node.body));
         if len(new_body) != len(impl_node.body) {
-            self.log_error(
+            self.log_warning(
                 "Consecutive 'has' declarations can be combined [combine-has]",
                 node_override=impl_node
             );
@@ -292,7 +293,7 @@ impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
         old_body = list(enum_node.body);
         new_body = self.combine_consecutive_has(old_body);
         if len(new_body) != len(old_body) {
-            self.log_error(
+            self.log_warning(
                 "Consecutive 'has' declarations can be combined [combine-has]",
                 node_override=enum_node
             );
@@ -324,7 +325,7 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
         old_body = list(arch.body);
         new_body = self.combine_consecutive_has(old_body);
         if len(new_body) != len(old_body) {
-            self.log_error(
+            self.log_warning(
                 "Consecutive 'has' declarations can be combined [combine-has]",
                 node_override=arch
             );
@@ -372,8 +373,9 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                     break;
                 }
             }
-            if len(merged_globs) > 1 {
-                self.log_error(
+            all_single = all(len(g.assignments) == 1 for g in merged_globs);
+            if len(merged_globs) > 1 and all_single {
+                self.log_warning(
                     "Consecutive 'glob' declarations can be combined [combine-glob]",
                     node_override=base_glob
                 );
@@ -404,7 +406,9 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                 base_glob.set_kids(nodes=new_kid);
                 new_body.append(base_glob);
             } else {
-                new_body.append(stmt);
+                for g in merged_globs {
+                    new_body.append(g);
+                }
             }
             i = j;
         } else {
@@ -479,10 +483,13 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
     return new_body;
 }
 
-"""Check if two GlobalVars nodes can be combined (same access, frozen)."""
+"""Check if two GlobalVars nodes can be combined (same access, frozen, no docstrings)."""
 impl JacAutoLintPass.can_combine_glob(
     glob1: uni.GlobalVars, glob2: uni.GlobalVars
 ) -> bool {
+    if glob1.doc or glob2.doc {
+        return False;
+    }
     if glob1.is_frozen != glob2.is_frozen {
         return False;
     }
@@ -599,7 +606,7 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     for stmt in module.body {
         if self.is_rule_enabled(LintRule.REMOVE_FUTURE_ANNOTATIONS)
         and self._is_future_annotations_import(stmt) {
-            self.log_error(
+            self.log_warning(
                 "'from __future__ import annotations' is unnecessary [remove-future-annotations]",
                 node_override=stmt
             );
@@ -669,7 +676,7 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
     reserved = jac_keywords | python_keywords;
     raw_value = nd.value[1:] if nd.value.startswith("`") else nd.value;
     if raw_value not in reserved {
-        self.log_error(
+        self.log_warning(
             f"Unnecessary keyword escape on '{raw_value}' [remove-kwesc]",
             node_override=nd
         );
@@ -691,7 +698,7 @@ impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
         return;
     }
     if nd.orig.is_kwesc {
-        self.log_error(
+        self.log_warning(
             f"Unnecessary keyword escape on '{nd.orig.value}' [remove-kwesc]",
             node_override=nd
         );
@@ -716,7 +723,7 @@ impl JacAutoLintPass.enter_builtin_type(nd: uni.BuiltinType) -> None {
         return;
     }
     if nd.is_kwesc {
-        self.log_error(
+        self.log_warning(
             f"Unnecessary keyword escape on '{nd.value}' [remove-kwesc]",
             node_override=nd
         );
@@ -756,7 +763,8 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
         attr_value = attr_expr.value;
         string_node = attr_expr;
     } elif isinstance(attr_expr, uni.MultiString) {
-        if len(attr_expr.strings) == 1 and isinstance(attr_expr.strings[0], uni.String) {
+        if len(attr_expr.strings) == 1
+        and isinstance(attr_expr.strings[0], uni.String) {
             attr_value = attr_expr.strings[0].value;
             string_node = attr_expr.strings[0];
         }
@@ -913,7 +921,7 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         # IfStmt, WhileStmt, UnaryExpr, BinaryExpr — standalone boolean check, not safe
         return;
     }
-    self.log_error(
+    self.log_warning(
         "hasattr() should use null-safe access [hasattr-to-null-ok]", node_override=nd
     );
     replacement.parent = parent;
@@ -1074,7 +1082,7 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     if parent is None {
         return False;
     }
-    self.log_error(
+    self.log_warning(
         "Ternary can be simplified [simplify-ternary]", node_override=if_else_node
     );
     if isinstance(if_else_node.else_value, uni.Null) {
@@ -1345,7 +1353,7 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     if self._signatures_match(decl_sig, impl_sig) {
         return;
     }
-    self.log_error(
+    self.log_warning(
         "Implementation signature does not match declaration [fix-impl-signature]",
         node_override=impl_node
     );
@@ -1449,7 +1457,7 @@ impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
         return;
     }
     if idx + 1 < len(body) and isinstance(body[idx + 1], uni.Semi) {
-        self.log_error(
+        self.log_warning(
             "Unnecessary semicolon after import [remove-import-semi]",
             node_override=import_node
         );
@@ -1490,7 +1498,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
         return;
     }
     if sig.return_type is None {
-        self.log_error(
+        self.log_warning(
             "Empty parentheses can be removed [remove-empty-parens]",
             node_override=target_node
         );
@@ -1510,7 +1518,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
         if not has_parens {
             return;
         }
-        self.log_error(
+        self.log_warning(
             "Empty parentheses can be removed [remove-empty-parens]",
             node_override=target_node
         );

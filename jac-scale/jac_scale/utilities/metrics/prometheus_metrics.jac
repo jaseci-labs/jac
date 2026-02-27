@@ -17,8 +17,7 @@ import from prometheus_client {
 import from fastapi.responses { Response }
 
 # Default histogram buckets (in seconds) - optimized for typical web latencies
-glob DEFAULT_BUCKETS:
-         tuple = (
+glob DEFAULT_BUCKETS: tuple = (
          0.005,
          0.01,
          0.025,

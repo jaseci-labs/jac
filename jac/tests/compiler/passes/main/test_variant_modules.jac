@@ -178,9 +178,7 @@ test "variant precedence fallback — sv.jac as head when no plain .jac" {
 
     # --- 6. Client impl from same dir ---
     v_impl_names = [m.name for m in cl_variant.impl_mod];
-    assert "svc.cl.impl" in v_impl_names , (
-        f"Expected svc.cl.impl, got {v_impl_names}"
-    );
+    assert "svc.cl.impl" in v_impl_names , (f"Expected svc.cl.impl, got {v_impl_names}");
 
     # --- 7. Head body has SERVER context ---
     for elem in state.body {

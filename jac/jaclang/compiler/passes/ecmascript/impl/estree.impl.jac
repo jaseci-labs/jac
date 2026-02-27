@@ -21,11 +21,11 @@ impl es_node_to_dict(nd: Node) -> dict[str, Any] {
         result['loc'] = {
             'source': nd.loc.source,
             'start': {'line': nd.loc.start.line, 'column': nd.loc.start.column}
-            if nd.loc.start
-            else None,
+                if nd.loc.start
+                else None,
             'end': {'line': nd.loc.end.line, 'column': nd.loc.end.column}
-            if nd.loc.end
-            else None
+                if nd.loc.end
+                else None
         };
     }
     return result;

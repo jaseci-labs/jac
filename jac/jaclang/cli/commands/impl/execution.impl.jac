@@ -214,9 +214,7 @@ impl start(
     import from pathlib { Path }
     if not Path(filename).exists() {
         if filename == "main.jac" {
-            console.error(
-                f"Error: File 'main.jac' not found in the current directory."
-            );
+            console.error(f"Error: File 'main.jac' not found in the current directory.");
             console.error(f"  Current directory: {os.getcwd()}");
             console.error(
                 "  Please specify a file: jac start <filename.jac> or make sure main.jac exists in the current directory"
@@ -299,9 +297,7 @@ impl start(
             import from jaclang.runtimelib.watcher { JacFileWatcher }
 
             watcher = JacFileWatcher(watch_paths=[base]);
-            hot_reloader = HotReloader(
-                base_path=base, module_name=mod, watcher=watcher
-            );
+            hot_reloader = HotReloader(base_path=base, module_name=mod, watcher=watcher);
             hot_reloader.start();
             # Connect the hot reloader to the server for HMR support
             if server?.enable_hmr {

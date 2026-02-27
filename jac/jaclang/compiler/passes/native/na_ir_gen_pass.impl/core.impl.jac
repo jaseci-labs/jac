@@ -12,11 +12,31 @@ impl NaIRGenPass.init(
         "int": ir.IntType(64),
         "float": ir.DoubleType(),
         "bool": ir.IntType(1),
-        "str": ir.IntType(8).as_pointer()
+        "str": ir.IntType(8).as_pointer(),
+        # Fixed-width C-compatible integer types
+        "i8": ir.IntType(8),
+        "u8": ir.IntType(8),
+        "i16": ir.IntType(16),
+        "u16": ir.IntType(16),
+        "i32": ir.IntType(32),
+        "u32": ir.IntType(32),
+        "i64": ir.IntType(64),
+        "u64": ir.IntType(64),
+        # Fixed-width C-compatible float types
+        "f32": ir.FloatType(),
+        "f64": ir.DoubleType(),
+        # C void pointer (opaque handle)
+        "c_void": ir.IntType(8).as_pointer()
     };
     self._fmt_strings: dict[(str, ir.GlobalVariable)] = {};
     # External function cache (Phase 0)
     self.extern_funcs: dict[(str, ir.Function)] = {};
+    # C library extern function names (from import from "lib" { def ...; })
+    self.clib_extern_names: set[str] = set();
+    # C library struct names (value-type structs declared in clib import blocks)
+    self.clib_struct_names: set[str] = set();
+    # ABI-coerced integer types for small clib structs (struct_name → ir.IntType)
+    self.clib_struct_abi_types: dict[str, ir.Type] = {};
     # Enum support (Phase 1)
     self.enum_values: dict[(str, ir.Constant)] = {};
     self.enum_types: dict[(str, ir.IntType)] = {};
@@ -78,12 +98,26 @@ impl NaIRGenPass.init(
     # Primitive emitter singletons (lazily initialized)
     self._native_emitters: (dict[str, object] | None) = None;
     self._native_builtin_emitter: (object | None) = None;
+    # Reference counting support (Phase RC)
+    self.rc_alloc_fn: (ir.Function | None) = None;
+    self.rc_retain_fn: (ir.Function | None) = None;
+    self.rc_release_simple_fn: (ir.Function | None) = None;
+    self.malloc_fn: (ir.Function | None) = None;
+    self.free_fn: (ir.Function | None) = None;
+    self.struct_release_fns: dict[(str, ir.Function)] = {};
+    self.list_release_fns: dict[(str, ir.Function)] = {};
+    self.dict_release_fns: dict[(str, ir.Function)] = {};
+    self.set_release_fns: dict[(str, ir.Function)] = {};
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 
 # ─── Main Pass Logic ─────────────────────────────────────────
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Emit reference counting helper functions (must be first)
+    self._emit_rc_helpers();
+    # Process C library imports: import from "libname" { def ...; }
+    self._process_clib_imports(self.ir_in);
     # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
     self._register_enums(self.ir_in);
     self._register_globals(self.ir_in);
@@ -129,8 +163,130 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # Store LLVM module on AST
     if self.has_native_code {
         self.ir_in.gen.llvm_ir = self.llvm_module;
+        # Debug: dump IR to file
+        import os;
+        _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
+        if _ir_dump_path {
+            with open(_ir_dump_path, "w") as _f {
+                _f.write(str(self.llvm_module));
+            }
+        }
     }
     return self.ir_in;
+}
+
+# ─── C Library Import Processing ──────────────────────────────
+"""Process import from "libname" { def ...; } statements.
+
+Extracts library paths for loading and forward-declares
+extern symbols from the clib declarations.
+"""
+impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
+    # Collect imports from top-level and inside na {} blocks
+    imports: list = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.Import) {
+            imports.append(stmt);
+        } elif isinstance(stmt, uni.NativeBlock) {
+            for inner in stmt.body {
+                if isinstance(inner, uni.Import) {
+                    imports.append(inner);
+                }
+            }
+        }
+    }
+    for stmt in imports {
+        if not stmt.clib_decls {
+            continue;
+        }
+        # Extract library path from from_loc
+        if stmt.from_loc is not None and stmt.from_loc.path {
+            for path_part in stmt.from_loc.path {
+                if isinstance(path_part, uni.String) {
+                    raw = path_part.value;
+                    # Strip quotes
+                    if (len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'") {
+                        raw = raw[1:-1];
+                    }
+                    # Store library path for NativeCompilePass to load
+                    if not self?._clib_paths {
+                        self._clib_paths: list[str] = [];
+                    }
+                    self._clib_paths.append(raw);
+                }
+            }
+        }
+        # Three-pass processing of clib declarations:
+        # Pass 1: Register struct types (opaque, for forward refs)
+        for decl in stmt.clib_decls {
+            if isinstance(decl, uni.Archetype) {
+                arch_name = decl.name.value if decl.name else None;
+                if arch_name is not None {
+                    struct_type = self.llvm_module.context.get_identified_type(
+                        arch_name
+                    );
+                    self.struct_types[arch_name] = struct_type;
+                    self.clib_struct_names.add(arch_name);
+                    self.has_native_code = True;
+                }
+            }
+        }
+        # Pass 1.5: Define struct bodies (field layout)
+        for decl in stmt.clib_decls {
+            if isinstance(decl, uni.Archetype) {
+                arch_name = decl.name.value if decl.name else None;
+                if arch_name is not None and arch_name in self.struct_types {
+                    self._codegen_archetype(decl);
+                    # Compute ABI integer type for small structs (C ABI coercion)
+                    stype = self.struct_types[arch_name];
+                    if stype?.elements and stype.elements {
+                        total_bits = 0;
+                        all_int = True;
+                        for elem in stype.elements {
+                            if isinstance(elem, ir.IntType) {
+                                total_bits += elem.width;
+                            } else {
+                                all_int = False;
+                                break;
+                            }
+                        }
+                        if all_int and 0 < total_bits <= 64 {
+                            # Round up to nearest power-of-2 byte size
+                            abi_bits = 8;
+                            while abi_bits < total_bits {
+                                abi_bits *= 2;
+                            }
+                            self.clib_struct_abi_types[arch_name] = ir.IntType(
+                                abi_bits
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        # Pass 2: Forward-declare extern functions (with value types for clib structs)
+        for decl in stmt.clib_decls {
+            if isinstance(decl, uni.Ability) {
+                fn_name = decl.name_ref.sym_name if decl.name_ref else None;
+                if decl.body is not None {
+                    self.log_error(
+                        f"C library import declaration '{fn_name}' "
+                        "must not have a body"
+                    );
+                    continue;
+                }
+                self._declare_clib_ability(decl);
+                if fn_name {
+                    self.clib_extern_names.add(fn_name);
+                }
+            }
+        }
+        # Store clib paths on module gen for compile pass
+        if self?._clib_paths and self._clib_paths {
+            module.gen._clib_paths = self._clib_paths;
+            self.has_native_code = True;
+        }
+    }
 }
 
 # ─── Primitive Emitter Dispatch ────────────────────────────────

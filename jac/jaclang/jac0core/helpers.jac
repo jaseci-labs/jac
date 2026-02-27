@@ -258,7 +258,7 @@ class Jdb(pdb.Pdb) {
     def has_breakpoint(self: Jdb, bytecode: bytes) -> bool {
         code = marshal.loads(bytecode);
         instructions = dis.get_instructions(code);
-        return any(
+        return `any(
             (
                 (instruction.opname in ('LOAD_GLOBAL', 'LOAD_NAME', 'LOAD_FAST'))
                 and (instruction.argval == 'breakpoint')
@@ -369,7 +369,9 @@ def _describe_node(`obj: object) -> str {
 
 """One object per line, index-friendly for returning list."""
 def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
+    return '\n'.join(
+        f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects)
+    );
 }
 
 """Minimal distribution facade for tracking plugin origins.

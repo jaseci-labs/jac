@@ -207,7 +207,11 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Constant | None);
     # Phase 12: Dictionaries
     def _emit_dict_helpers(
-        key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
+        key_type_name: str,
+        val_type_name: str,
+        key_type: ir.Type,
+        val_type: ir.Type,
+        key_size: int = 0
     ) -> None;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
@@ -255,6 +259,10 @@ obj NaIRGenPass(Transform) {
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
+    # C library imports: import from "libname" { def ...; }
+    def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_clib_ability(nd: uni.Ability) -> None;
+    def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
     def _dispatch_primitive_method(
@@ -266,4 +274,17 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
+    # Reference counting (Phase RC)
+    def _emit_rc_helpers -> None;
+    def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
+    def _rc_alloc_typed(
+        size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
+    ) -> ir.Value;
+
+    def _emit_rc_retain(ptr: ir.Value) -> None;
+    def _emit_rc_release_simple(ptr: ir.Value) -> None;
+    def _emit_rc_release_typed(val: ir.Value) -> None;
+    def _emit_scope_cleanup(skip_var: (str | None) = None) -> None;
+    def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
+    def _emit_struct_release_fn(arch_name: str) -> None;
 }

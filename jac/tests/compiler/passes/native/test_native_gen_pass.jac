@@ -6,6 +6,8 @@ native machine code, and produce correct results when executed via ctypes.
 
 import ctypes;
 import os;
+import subprocess;
+import sys;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
@@ -61,9 +63,7 @@ test "arithmetic negate" {
 
 test "arithmetic float add" {
     (eng, _) = compile_native("arithmetic.na.jac");
-    fadd = get_func(
-        eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double
-    );
+    fadd = get_func(eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double);
     assert abs(fadd(1.5, 2.5) - 4.0) < 1e-10;
     assert abs(fadd(-1.0, 1.0)) < 1e-10;
 }
@@ -214,9 +214,7 @@ test "strings str equal" {
 
 test "strings str not equal" {
     (eng, _) = compile_native("strings.na.jac");
-    f = get_func(
-        eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
-    );
+    f = get_func(eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);
     assert f(b"hello", b"world") == 1;
     assert f(b"hello", b"hello") == 0;
 }
@@ -618,6 +616,31 @@ test "chess game methods" {
         addr = eng.get_function_address(method);
         assert addr != 0 , f"{method} not found";
     }
+}
+
+test "chess play random moves stress" {
+    # Stress test: play 20 random moves then quit.
+    # Exercises global dict GC root survival, tuple-keyed dict access,
+    # and repeated make_move/undo_move cycles across many game iterations.
+    chess_path = os.path.join(FIXTURES, "chess.na.jac");
+    # 20 blank lines (random moves) followed by "quit"
+    stdin_data = "\n" * 20 + "quit\n";
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run", chess_path],
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        timeout=120
+    );
+    assert result.returncode == 0 , (
+        f"Chess crashed with exit code {result.returncode}.\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
+    assert "Game ended." in result.stdout , (
+        f"Expected 'Game ended.' in output.\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
 }
 
 # --- TestNativeDicts ---
@@ -1373,4 +1396,169 @@ test "llvmir ir has function definitions" {
     assert 'define i64 @"multiply"' in llvm_ir_str;
     assert 'define i64 @"negate"' in llvm_ir_str;
     assert 'define double @"float_add"' in llvm_ir_str;
+}
+
+# --- TestCLibImportSyntax ---
+test "clib import produces extern declares" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # Extern C functions should be 'declare' (no body), not 'define'
+    assert 'declare double @"sqrt"' in llvm_ir_str;
+    assert 'declare double @"pow"' in llvm_ir_str;
+    assert 'define double @"sqrt"' not in llvm_ir_str;
+    assert 'define double @"pow"' not in llvm_ir_str;
+    # Native Jac function should be 'define' (has body)
+    assert 'define double @"hypotenuse"' in llvm_ir_str;
+    # Library path should be stored for the compile pass
+    assert ir.gen._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "clib import inside na block" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # Extern C functions from na {} block should be 'declare'
+    assert 'declare double @"ceil"' in llvm_ir_str;
+    assert 'declare double @"floor"' in llvm_ir_str;
+    # Native Jac function should be 'define'
+    assert 'define double @"round_up"' in llvm_ir_str;
+    # Library path should be stored
+    assert ir.gen._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "clib struct value-type coercion" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # --- Large struct (Vec2: 128-bit, float fields) ---
+    # Extern sqrt should use value type (f64 -> f64)
+    assert 'declare double @"sqrt"' in llvm_ir_str;
+    # Vec2 struct type should be defined
+    assert '%"Vec2"' in llvm_ir_str , "Vec2 struct type not found in IR";
+    # Jac functions should use pointer types for Vec2 (Jac semantics)
+    assert '%"Vec2"* @"make_vec"' in llvm_ir_str , "make_vec should return Vec2 pointer";
+    assert '%"Vec2"* %"v"' in llvm_ir_str , "vec_length should take Vec2 pointer param";
+    # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
+    # Color struct type should be defined
+    assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
+    # Extern draw should have Color param ABI-coerced to i32
+    assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
+    # Jac test_draw function should use Color pointer internally
+    assert 'define void @"test_draw"' in llvm_ir_str;
+    # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
+    assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+}
+
+# --- TestRefCounting ---
+test "rc basic alloc" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_alloc_basic", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "rc object lifecycle" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_object_lifecycle", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "rc reassignment" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_reassign", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "rc list growth" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_list_growth", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "rc list of objects" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_list_of_objects", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "rc nested structure" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_nested_structure", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "rc string alloc" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_string_alloc", ctypes.c_int64);
+    assert f() == 11;
+}
+
+test "rc return transfer" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_return_transfer", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "rc dict growth" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_dict_growth", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "rc loop reassign" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_loop_reassign", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "rc set operations" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_set_operations", ctypes.c_int64);
+    assert f() == 5;
+}
+
+test "rc string reassign" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_string_reassign", ctypes.c_int64);
+    assert f() == 5;
+}
+
+# --- TestRefCountingStress ---
+test "rc stress many objects" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_many_objects", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
+}
+
+test "rc stress rapid reassign" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_rapid_reassign", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 999;
+}
+
+test "rc stress large list" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_large_list", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
+}
+
+test "rc stress string concat" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_string_concat_stress", ctypes.c_int64, ctypes.c_int64);
+    assert f(100) == 100;
+}
+
+test "rc stress large dict" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_large_dict", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
 }

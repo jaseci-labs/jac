@@ -177,10 +177,13 @@ For model name formats, configuration options, and 100+ additional providers (Az
 
 ### Temperature
 
-Control creativity (0.0 = deterministic, 2.0 = very creative):
+Control creativity (0.0 = deterministic, higher = more creative):
+
+!!! note "Provider-Specific Limits"
+    Temperature range varies by provider: Anthropic supports 0.0–1.0, OpenAI supports 0.0–2.0. Use a value within your provider's range.
 
 ```jac
-def write_story(topic: str) -> str by llm(temperature=1.5);
+def write_story(topic: str) -> str by llm(temperature=0.9);
 
 def extract_facts(text: str) -> str by llm(temperature=0.0);
 ```

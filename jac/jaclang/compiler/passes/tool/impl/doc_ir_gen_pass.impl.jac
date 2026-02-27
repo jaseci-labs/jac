@@ -58,11 +58,11 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
             return;
         }
         start_token = nd.kid[0]
-        if (nd.kid and isinstance(nd.kid[0], uni.Token))
-        else None;
+            if (nd.kid and isinstance(nd.kid[0], uni.Token))
+            else None;
         end_token = nd.kid[-1]
-        if (nd.kid and isinstance(nd.kid[-1], uni.Token))
-        else None;
+            if (nd.kid and isinstance(nd.kid[-1], uni.Token))
+            else None;
         if (not start_token or not end_token) {
             nd.gen.doc_ir = self.group(self.concat([kid.gen.doc_ir for kid in nd.kid]));
             return;
@@ -278,6 +278,7 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
+    prev_body_item: (uni.UniNode | None) = None;
     for i in nd.kid {
         if ((i == nd.doc) or (nd.decorators and (i in nd.decorators))) {
             parts.append(i.gen.doc_ir);
@@ -301,13 +302,16 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
             }
             if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
                 body_parts.pop();
+                body_parts.append(i.gen.doc_ir);
+                body_parts.append(self.hard_line());
+            } else {
+                self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+                prev_body_item = i;
             }
-            body_parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
             in_body = True;
             if (in_body and isinstance(nd.body, Sequence) and (i == nd.body[-1])) {
                 in_body = False;
-                body_parts.pop();
+                self.trim_trailing_line(body_parts);
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());
             }
@@ -1169,19 +1173,30 @@ impl DocIRGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 """Generate DocIR for conditional expressions."""
 impl DocIRGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     parts: list[doc.DocType] = [];
+    continuation: list[doc.DocType] = [];
+    seen_first_expr = False;
     for i in nd.kid {
-        if isinstance(i, uni.Expr) {
+        if isinstance(i, uni.Expr) and not seen_first_expr {
+            # First expression (the value) goes into main parts
             parts.append(i.gen.doc_ir);
-            parts.append(self.line());
-        } elif isinstance(i, uni.Token) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
+            seen_first_expr = True;
+        } elif (isinstance(i, uni.Token) and not isinstance(i, uni.Expr)) {
+            # Pure tokens (if/else keywords) — not Expr subclasses like Int, Bool
+            continuation.append(i.gen.doc_ir);
+            continuation.append(self.space());
+        } elif isinstance(i, uni.Expr) {
+            continuation.append(i.gen.doc_ir);
+            continuation.append(self.line());
         } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.line());
+            continuation.append(i.gen.doc_ir);
+            continuation.append(self.line());
         }
     }
-    parts.pop();
+    if continuation and isinstance(continuation[-1], doc.Line) {
+        continuation.pop();
+    }
+    # Wrap continuation (if cond else default) in Indent so it indents when broken
+    parts.append(self.indent(self.concat([self.line(), *continuation])));
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
@@ -1678,14 +1693,15 @@ impl DocIRGenPass.exit_else_if(nd: uni.ElseIf) -> None {
 impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
+    prev_body_item: (uni.UniNode | None) = None;
     for i in nd.kid {
         if (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
             if (i == nd.body[0]) {
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());
             }
-            body_parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
+            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+            prev_body_item = i;
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
@@ -2089,6 +2105,26 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
                 )
             ) {
                 parts.append(self.hard_line());
+                # Preserve double blank lines when source had 2+ consecutive blank lines
+                if prev_kid and nd.source {
+                    src_lines = nd.source.code.split('\n');
+                    # Check lines between prev_kid end and current item start
+                    # (source lines are 1-indexed, list is 0-indexed)
+                    start = prev_kid.loc.last_line;  # 0-indexed = line after prev_kid
+                    end = i.loc.first_line - 1;  # 0-indexed = line before current
+                    consecutive_blanks = 0;
+                    for line_idx in range(start, min(end, len(src_lines))) {
+                        if not src_lines[line_idx].strip() {
+                            consecutive_blanks += 1;
+                            if consecutive_blanks >= 2 {
+                                parts.append(self.hard_line());
+                                break;
+                            }
+                        } else {
+                            consecutive_blanks = 0;
+                        }
+                    }
+                }
             }
             parts.append(i.gen.doc_ir);
         }
@@ -2342,7 +2378,9 @@ impl DocIRGenPass.join_with_space(parts: list[doc.DocType]) -> doc.DocType {
 }
 
 """Join parts with separator."""
-impl DocIRGenPass.join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType {
+impl DocIRGenPass.join(
+    separator: doc.DocType, parts: list[doc.DocType]
+) -> doc.DocType {
     if not parts {
         return self.concat([]);
     }

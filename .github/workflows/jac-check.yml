@@ -34,5 +34,4 @@ jobs:
 
       - name: Run jac check (using .jacignore)
         run: |
-          IGNORE_LIST=$(paste -sd, .jacignore)
-          jac check . --no-print_errs --ignore pyast_gen_pass.impl.jac
+          jac check . --ignore checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn

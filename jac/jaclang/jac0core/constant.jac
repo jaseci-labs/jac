@@ -560,7 +560,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'STAR_POW_EQ': '**=',
          'STRING': '',
          'SUB_EQ': '-=',
-         'TYP_ANY': 'Any',
+         'TYP_ANY': 'any',
          'TYP_BOOL': 'bool',
          'TYP_BYTES': 'bytes',
          'TYP_DICT': 'dict',

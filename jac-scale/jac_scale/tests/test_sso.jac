@@ -16,7 +16,8 @@ import from fastapi.responses { JSONResponse, RedirectResponse }
 
 import from jac_scale.config_loader { reset_scale_config }
 import from jac_scale.google_sso_provider { GoogleSSOProvider }
-import from jac_scale.serve { JacAPIServer, Operations, Platforms }
+import from jac_scale.serve { JacAPIServer }
+import from jac_scale.enums { Operations, Platforms }
 import from jac_scale.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.transport { TransportResponse }
 
@@ -373,7 +374,9 @@ test "sso callback login success" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="test@example.com")
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             with unittest.mock.patch.object(
                 user_manager, "create_jwt_token", return_value="mock_jwt_token"
             ) {
@@ -408,7 +411,9 @@ test "sso callback register success" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="newuser@example.com")
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             with unittest.mock.patch.object(
                 user_manager, "create_jwt_token", return_value="mock_jwt_token"
             ) {
@@ -445,7 +450,9 @@ test "sso callback login user not found" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="nonexistent@example.com")
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             result = asyncio.run(
                 user_manager.sso_callback(
                     mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
@@ -473,7 +480,9 @@ test "sso callback register user already exists" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="existing@example.com")
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             result = asyncio.run(
                 user_manager.sso_callback(
                     mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
@@ -574,7 +583,9 @@ test "sso callback when email not provided" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=mock_user_info
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             result = asyncio.run(
                 user_manager.sso_callback(
                     mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
@@ -598,7 +609,9 @@ test "sso callback authentication failure" {
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             side_effect=Exception("Authentication failed")
         );
-        with unittest.mock.patch.object(user_manager, "get_sso", return_value=mock_sso) {
+        with unittest.mock.patch.object(
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
             result = asyncio.run(
                 user_manager.sso_callback(
                     mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value

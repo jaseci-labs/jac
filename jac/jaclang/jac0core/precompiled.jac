@@ -154,8 +154,8 @@ def _patch_code_filenames(
 
     new_consts = tuple(
         _patch_code_filenames(c, sentinel, real_root)
-        if isinstance(c, types.CodeType)
-        else c for c in code.co_consts
+            if isinstance(c, types.CodeType)
+            else c for c in code.co_consts
     );
 
     return code.replace(co_filename=new_filename, co_consts=new_consts);
