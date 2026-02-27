@@ -585,12 +585,12 @@ test "test_hover_types" {
             (12, 9, "bool", None),
             (15, 28, "Animal", None),
             (17, 11, "offspring", None),
-            (116, 26, "Mammal", "None"),
-            (161, 21, "str", None),
-            (190, 40, "Mammal", "None"),
-            (203, 58, "Mammal", "None"),
-            (244, 12, "Mammal", "None"),
-            (245, 12, "Primate", "None"),
+            (100, 26, "Mammal", "None"),
+            (139, 21, "str", None),
+            (150, 42, "Mammal", "None"),
+            (163, 58, "Mammal", "None"),
+            (178, 12, "Mammal", "None"),
+            (179, 12, "Primate", "None"),
 
         ];
 

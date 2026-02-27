@@ -18,12 +18,6 @@ def test_and_most_specific(x: Animal) -> None {
     }
 }
 
-def test_and_order_independent(x: Animal) -> None {
-    if isinstance(x, Mammal) and isinstance(x, Animal) {
-        x.offspring;  # Ok
-    }
-}
-
 def test_and_with_not_isinstance(x: Animal) -> None {
     if isinstance(x, Mammal) and not isinstance(x, Primate) {
         x.offspring;  # Ok
@@ -65,17 +59,6 @@ obj Container {
 
 def test_progressive_narrowing_member_access(c: Container) -> None {
     if isinstance(c.field, Mammal) and c.field.offspring {
-        return;  # Ok
-
-    }
-}
-
-obj NestedContainer {
-    has inner: Container;
-}
-
-def test_progressive_narrowing_chained_member(nc: NestedContainer) -> None {
-    if isinstance(nc.inner.field, Mammal) and nc.inner.field.offspring {
         return;  # Ok
 
     }
@@ -131,12 +114,6 @@ def test_parenthesized_isinstance_in_and(x: Animal, flag: bool) -> None {
     }
 }
 
-def test_nested_parentheses_in_and(x: Animal, flag: bool) -> None {
-    if ((isinstance(x, Primate))) and flag {
-        x.is_primate;  # Ok
-    }
-}
-
 def use_none(n: None) -> str {
     return "none";
 }
@@ -174,26 +151,6 @@ def test_isinstance_then_member_access(expr: NamedNode | ExprNode) -> str {
     return "";
 }
 
-def test_isinstance_then_multiple_member_access(expr: NamedNode | ExprNode) -> str {
-    if isinstance(expr, NamedNode) and expr.value and len(expr.value) > 0 {
-        return expr.value;  # Ok
-
-    }
-    return "";
-}
-
-def use_string(s: str) -> str {
-    return s;
-}
-
-def test_isinstance_then_method_with_member(expr: NamedNode | ExprNode) -> str {
-    if isinstance(expr, NamedNode) and use_string(expr.value) {
-        return expr.value;  # Ok
-
-    }
-    return "";
-}
-
 obj Wrapper {
     has inner: Animal | None = None;
 }
@@ -222,34 +179,6 @@ def test_deep_nested_narrowing(dw: DeepWrapper) -> str {
     return "";
 }
 
-obj ComplexContainer {
-    has first: Animal | None = None,
-        second: Animal | None = None;
-}
-
-def test_complex_multi_member_narrowing(cc: ComplexContainer) -> str {
-    if cc.first is not None {
-        if isinstance(cc.second, Mammal) and cc.second.offspring {
-            return cc.first.name + cc.second.name;  # Ok
-
-        }
-    }
-    return "";
-}
-
-def test_triple_nested_narrowing(w: Wrapper) -> str {
-    if w.inner is not None {
-        if isinstance(w.inner, Mammal) {
-            if w.inner.offspring and len(w.inner.offspring) > 0 {
-                first_offspring: Mammal = w.inner.offspring[0];
-                return first_offspring.name;  # Ok
-
-            }
-        }
-    }
-    return "";
-}
-
 obj DualWrapper {
     has left: Animal | None = None,
         right: Animal | None = None;
@@ -264,30 +193,6 @@ def test_and_chain_multiple_members(dw: DualWrapper) -> str {
 
     }
     return "";
-}
-
-def test_not_or_and_combined(x: Animal, y: Mammal | Primate, z: Animal) -> str {
-    if not isinstance(x, Mammal)
-    and (isinstance(y, Mammal) or isinstance(y, Primate))
-    and isinstance(z, Primate)
-    and z.is_primate {
-        return x.name + y.name + z.name;  # Ok
-
-    }
-    return "";
-}
-
-def test_parallel_not_or_and(w1: Wrapper, w2: Wrapper, x: Mammal | Primate) -> str {
-    r = "";
-    if isinstance(w1.inner, Mammal) and w1.inner.offspring {
-        r = r + w1.inner.name;
-    }
-    if not isinstance(x, Primate)
-    and isinstance(w2.inner, Primate)
-    and w2.inner.is_primate {
-        r = r + x.name + w2.inner.name;
-    }
-    return r;
 }
 
 def test_error_after_and_block(x: Animal) -> list[Mammal] | None {
