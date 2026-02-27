@@ -310,3 +310,10 @@ nacompile.jac
 nacompile.impl.jac
 elf_linker.jac
 elf_linker.impl.jac
+transport.jac
+transport.impl.jac
+refcount.na.jac
+rc_stress.na.jac
+control_flow.na.jac
+mtp.jac
+mtp.impl.jac
