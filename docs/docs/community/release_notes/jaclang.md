@@ -13,6 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **IDE Hover Types**: Function parameters and `has` vars now display types on hover.
 - **Fix: Bug Fix**: Stop appending lint warnings to `py2jac` converted files.
 - **Structured GitHub Issue Forms**: Replaced blank markdown issue templates with guided YAML forms, making it easier to submit well-structured bug reports, feature requests, and docs issues.
+- 1 Minor refactor/change.
 
 ## jaclang 0.11.2 (Latest Release)
 

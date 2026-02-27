@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.3 (Unreleased)
 
+- 1 Minor refactor/change.
+
 ## jac-client 0.3.2 (Latest Release)
 
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
