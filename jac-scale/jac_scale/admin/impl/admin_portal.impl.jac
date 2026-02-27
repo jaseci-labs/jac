@@ -1148,7 +1148,8 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
             for v in metric['values'] {
                 if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
                     total_sum += v['value'];
-                } elif v['suffix'] == '_count' and isinstance(v['value'], (int, float)) {
+                } elif v['suffix'] == '_count'
+                and isinstance(v['value'], (int, float)) {
                     total_count += int(v['value']);
                 }
             }

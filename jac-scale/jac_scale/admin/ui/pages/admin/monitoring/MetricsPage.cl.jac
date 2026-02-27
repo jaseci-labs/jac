@@ -204,9 +204,7 @@ cl {
                                 !
                             </span>
                         </div>
-                        <h2
-                            className="text-xl font-bold text-white mb-2 tracking-wide"
-                        >
+                        <h2 className="text-xl font-bold text-white mb-2 tracking-wide">
                             METRICS OFFLINE
                         </h2>
                         <p className="text-sm text-slate-400 font-mono">
@@ -396,9 +394,7 @@ cl {
                             <div
                                 className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
                             >
-                                <div
-                                    className="flex items-center justify-between mb-4"
-                                >
+                                <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
                                         <div
                                             className="w-2 h-2 rounded-full bg-teal-400"
@@ -476,7 +472,9 @@ cl {
                                                         className="bg-teal-400 h-1 rounded-full"
                                                         style={{
                                                             "width": getBarHeight(
-                                                                req["count"],
+                                                                req[
+                                                                    "count"
+                                                                ],
                                                                 maxReqCount
                                                             )
                                                         }}
@@ -512,9 +510,7 @@ cl {
                                 className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
-                                    <div
-                                        className="w-2 h-2 rounded-full bg-orange-400"
-                                    ></div>
+                                    <div className="w-2 h-2 rounded-full bg-orange-400"></div>
                                     <span
                                         className="text-sm font-bold text-white tracking-wide"
                                     >
@@ -655,10 +651,7 @@ cl {
                                                 y2="0%"
                                             >
                                                 <stop offset="0%" stopColor="#14b8a6"></stop>
-                                                <stop
-                                                    offset="100%"
-                                                    stopColor="#22d3ee"
-                                                ></stop>
+                                                <stop offset="100%" stopColor="#22d3ee"></stop>
                                             </linearGradient>
                                         </defs>
                                     </svg>
@@ -717,9 +710,7 @@ cl {
                                 className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-5 shadow-xl"
                             >
                                 <div className="flex items-center gap-2 mb-4">
-                                    <div
-                                        className="w-2 h-2 rounded-full bg-purple-400"
-                                    ></div>
+                                    <div className="w-2 h-2 rounded-full bg-purple-400"></div>
                                     <span
                                         className="text-sm font-bold text-white tracking-wide"
                                     >
