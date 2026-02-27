@@ -1765,3 +1765,15 @@ test "impl_imports_from_parent" {
     );
     assert "checker_impl_imports.impl.jac" in program.errors_had[1].loc.mod_path;
 }
+
+"""Test walrus operator type narrowing."""
+test "walrus_operator_type_narrowing" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_walrus_narrowing.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}

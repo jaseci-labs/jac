@@ -2014,7 +2014,15 @@ impl TypeEvaluator._find_predicate_for(
             }
         }
     }
-    # Pattern 7: Truthiness narrowing - if x: (where x is a Name)
+    # Pattern 7: Walrus operator - if (x := expr): recurse into the assigned variable
+    if (
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == Tok.WALRUS_EQ
+    ) {
+        return self._find_predicate_for(symbol, condition.left);
+    }
+    # Pattern 8: Truthiness narrowing - if x: (where x is a Name)
     # This excludes None from the type when the condition is truthy.
     # Only apply if the symbol's type actually contains None (e.g., X | None).
     if isinstance(condition, uni.Name) and condition.value == sym_name {

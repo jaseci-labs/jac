@@ -415,6 +415,17 @@ impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     elif isinstance(condition, uni.Name) {
         symbols.add(condition.value);
     }
+    # Pattern: walrus operator `if (x := expr):` - collect 'x' and recurse into right
+    elif isinstance(condition, uni.BinaryExpr) and isinstance(condition.op, uni.Token) {
+        import from jaclang.jac0core.constant { Tokens as Tok }
+        if condition.op.name == Tok.WALRUS_EQ {
+            if isinstance(condition.left, uni.Name) {
+                symbols.add(condition.left.value);
+            }
+            # Also recurse into right side for nested walrus/conditions
+            symbols.update(self._collect_narrowing_symbols(condition.right));
+        }
+    }
     return symbols;
 }
 
