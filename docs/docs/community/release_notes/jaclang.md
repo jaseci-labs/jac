@@ -10,6 +10,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Narrowing Improvements**: Fixed scope-based narrowing for AND expressions (`isinstance(x, T) and x.member`), assignment narrowing (`a = 90` narrows `a: int|None` to `int`), guard patterns (`if not isinstance(x, T): return`), member access chains, truthiness checks, and assert statements. Else-branch no longer incorrectly inherits true-branch narrowings.
 - **Union Type Member Access**: `x.name` where `x: Dog | Cat` now resolves member types and enables go-to-definition.
 - **IDE Hover Types**: Function parameters and `has` vars now display types on hover.
+- **Structured GitHub Issue Forms**: Replaced blank markdown issue templates with guided YAML forms, making it easier to submit well-structured bug reports, feature requests, and docs issues.
 
 ## jaclang 0.11.2 (Latest Release)
 
