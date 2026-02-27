@@ -2,6 +2,8 @@
 
 ## jac-mcp 0.1.2 (Unreleased)
 
+- 2 Minor refactors/changes
+
 ## jac-mcp 0.1.1 (Latest Release)
 
 - **Expanded documentation resources**: DOC_MAPPINGS now covers all 42 mkdocs pages (up from 12), including tutorials, developer workflow, and quick-start guides
