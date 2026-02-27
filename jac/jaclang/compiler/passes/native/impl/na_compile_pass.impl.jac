@@ -30,15 +30,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         if libc_name {
             llvm.load_library_permanently(libc_name);
         }
-        libgc_name = ctypes.util.find_library("gc");
-        if libgc_name {
-            llvm.load_library_permanently(libgc_name);
-        } else {
-            # Fallback: map GC_malloc/GC_init to libc malloc/noop
-            libc = _ct.CDLL(libc_name);
-            malloc_addr = _ct.cast(libc.malloc, _ct.c_void_p).value;
-            llvm.add_symbol("GC_malloc", malloc_addr);
-        }
+        # Note: libgc (Boehm GC) no longer needed — using reference counting
         # Load C shared libraries from import from "lib" { ... } declarations
         import os;
         clib_paths = getattr(module.gen, '_clib_paths', None);

@@ -123,15 +123,31 @@ impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) 
 """Create a global constant string and return an i8* pointer to it."""
 impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir.Value {
     str_bytes = bytearray((text + "\0").encode("utf8"));
-    c_str = ir.Constant(ir.ArrayType(ir.IntType(8), len(str_bytes)), str_bytes);
+    i64 = ir.IntType(64);
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i32 = ir.IntType(32);
+    arr_type = ir.ArrayType(i8, len(str_bytes));
+    # Embed RC sentinel header: { i64 RC_SENTINEL, [N x i8] data }
+    # This makes ptr-8 point to the sentinel, so rc_release/retain skip it.
+    struct_type = ir.LiteralStructType([i64, arr_type]);
+    sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
+    c_str = ir.Constant(arr_type, str_bytes);
+    struct_val = ir.Constant(struct_type, [sentinel_val, c_str]);
     global_str = ir.GlobalVariable(
-        self.llvm_module, c_str.type, name=f"{name_prefix}.{self._str_count}"
+        self.llvm_module, struct_type, name=f"{name_prefix}.{self._str_count}"
     );
     self._str_count = self._str_count + 1;
     global_str.linkage = "private";
     global_str.global_constant = True;
-    global_str.initializer = c_str;
-    return self.builder.bitcast(global_str, ir.IntType(8).as_pointer());
+    global_str.initializer = struct_val;
+    # Return pointer to the string data (field 1, offset +8 from struct start)
+    gep = self.builder.gep(
+        global_str,
+        [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 0)],
+        name="str.data"
+    );
+    return gep;
 }
 
 """Generate a string literal as a global constant, returning i8*."""
@@ -196,12 +212,9 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
         }
     }
     fmt_str = "".join(fmt_parts);
-    # Allocate buffer via GC_malloc
-    gc_malloc = self._get_or_declare_extern(
-        "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
-    );
+    # Allocate buffer via rc_alloc (RC-managed)
     buf_size = ir.Constant(ir.IntType(64), 1024);
-    buf = self.builder.call(gc_malloc, [buf_size], name="fstr.buf");
+    buf = self.builder.call(self.rc_alloc_fn, [buf_size], name="fstr.buf");
     # Call snprintf(buf, 1024, fmt, args...)
     snprintf_fn = self._get_or_declare_extern(
         "snprintf",
@@ -229,10 +242,9 @@ impl NaIRGenPass._codegen_string_index(
     # GEP to the character
     char_ptr = self.builder.gep(target_val, [index_val], name="char.ptr");
     char_val = self.builder.load(char_ptr, name="char.val");
-    # Allocate a 2-byte string: [char, null]
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [i64]);
+    # Allocate a 2-byte string: [char, null] via rc_alloc (RC-managed)
     two = ir.Constant(i64, 2);
-    new_str = self.builder.call(gc_malloc, [two], name="char.str");
+    new_str = self.builder.call(self.rc_alloc_fn, [two], name="char.str");
     self.builder.store(char_val, new_str);
     # Store null terminator at index 1
     one_ptr = self.builder.gep(new_str, [ir.Constant(i64, 1)], name="null.ptr");
@@ -318,8 +330,7 @@ impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
     # Allocate result: end - start + 1 (for null terminator)
     result_len = self.builder.sub(final_end, final_start, name="result.len");
     alloc_size = self.builder.add(result_len, ir.Constant(i64, 1), name="alloc.size");
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [i64]);
-    result_ptr = self.builder.call(gc_malloc, [alloc_size], name="strip.result");
+    result_ptr = self.builder.call(self.rc_alloc_fn, [alloc_size], name="strip.result");
     # memcpy from str_val + start to result
     src_ptr = self.builder.gep(str_val, [final_start], name="src.ptr");
     memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
@@ -350,7 +361,6 @@ impl NaIRGenPass._codegen_str_split(
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     str_len = self.builder.call(strlen_fn, [str_val], name="str.len");
     sep_len = self.builder.call(strlen_fn, [sep_val], name="sep.len");
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [i64]);
     memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     strncmp_fn = self._get_or_declare_extern("strncmp", ir.IntType(32), [i8p, i8p, i64]);
     # Loop: scan through string, find separator matches
@@ -387,7 +397,7 @@ impl NaIRGenPass._codegen_str_split(
     ts = self.builder.load(token_start_alloca, name="token.start");
     token_len = self.builder.sub(cur_i, ts, name="token.len");
     alloc_len = self.builder.add(token_len, ir.Constant(i64, 1), name="token.alloc");
-    token_ptr = self.builder.call(gc_malloc, [alloc_len], name="token.ptr");
+    token_ptr = self.builder.call(self.rc_alloc_fn, [alloc_len], name="token.ptr");
     src = self.builder.gep(str_val, [ts], name="token.src");
     self.builder.call(memcpy, [token_ptr, src, token_len]);
     null_pos = self.builder.gep(token_ptr, [token_len], name="token.null");
@@ -409,7 +419,7 @@ impl NaIRGenPass._codegen_str_split(
     final_ts = self.builder.load(token_start_alloca, name="final.ts");
     last_len = self.builder.sub(str_len, final_ts, name="last.len");
     last_alloc = self.builder.add(last_len, ir.Constant(i64, 1), name="last.alloc");
-    last_ptr = self.builder.call(gc_malloc, [last_alloc], name="last.ptr");
+    last_ptr = self.builder.call(self.rc_alloc_fn, [last_alloc], name="last.ptr");
     last_src = self.builder.gep(str_val, [final_ts], name="last.src");
     self.builder.call(memcpy, [last_ptr, last_src, last_len]);
     last_null = self.builder.gep(last_ptr, [last_len], name="last.null");

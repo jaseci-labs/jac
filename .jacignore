@@ -310,3 +310,5 @@ nacompile.jac
 nacompile.impl.jac
 elf_linker.jac
 elf_linker.impl.jac
+macho_linker.jac
+macho_linker.impl.jac

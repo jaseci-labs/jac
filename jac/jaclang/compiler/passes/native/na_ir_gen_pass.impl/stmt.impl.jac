@@ -514,6 +514,14 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             coerced = self._coerce_type(value, alloca.type.pointee);
+            # RC: release old value before storing new (pointer types only).
+            # The new value keeps its birth rc=1. Scope exit does NOT release
+            # locals (to avoid double-free for aliased values). Instead,
+            # only reassignment triggers release of the previous value.
+            if isinstance(alloca.type.pointee, ir.PointerType) {
+                old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                self._emit_rc_release_typed(old_val);
+            }
             self.builder.store(coerced, alloca);
         } else {
             # New variable — allocate and store
