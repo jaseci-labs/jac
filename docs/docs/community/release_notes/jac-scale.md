@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.3 (Unreleased)
 
+- Set default maximum memory limit of k8s pods from unlimited to 12Gb
+
 ## jac-scale 0.2.2 (Latest Release)
 
 - **Data Persists Across Server Restarts**: Graph nodes and edges created during a session now persist automatically in MongoDB. When you restart your `jac start` server, previously created data is restored and accessible - no manual save operations required.
