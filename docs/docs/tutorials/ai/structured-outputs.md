@@ -376,4 +376,3 @@ If the LLM returns invalid types, byLLM will:
 
 - [Agentic AI](agentic.md) - Add tools for the LLM to use
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation
-- [Examples Gallery](../examples/index.md) - See structured outputs in action
