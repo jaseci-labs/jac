@@ -235,13 +235,13 @@ install_via_uv() {
     if uv tool list 2>/dev/null | grep -q "^jaclang "; then
         info "Upgrading jaclang..."
         if [[ -n "$VERSION" ]]; then
-            uv tool install "$spec" "${with_args[@]}" --python ">=3.12,<3.14" --force
+            uv tool install "$spec" "${with_args[@]}" --python ">=3.12" --force
         else
-            uv tool upgrade jaclang "${with_args[@]}" --python ">=3.12,<3.14"
+            uv tool upgrade jaclang "${with_args[@]}" --python ">=3.12"
         fi
     else
         info "Installing jaclang..."
-        uv tool install "$spec" "${with_args[@]}" --python ">=3.12,<3.14"
+        uv tool install "$spec" "${with_args[@]}" --python ">=3.12"
     fi
 
     ensure_on_path
