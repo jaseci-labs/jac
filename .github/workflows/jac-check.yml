@@ -30,4 +30,4 @@ jobs:
 
       - name: Run jac check (audit all files - show failed files only)
         run: |
-          jac check . --no-print_errs --nowarn || true
+          jac check . --ignore checker_*.jac *_err.jac --no-print_errs --nowarn || true
