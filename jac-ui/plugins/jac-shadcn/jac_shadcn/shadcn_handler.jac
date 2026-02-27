@@ -6,7 +6,6 @@ then fetches resolved components and writes them to components/ui/.
 
 import os;
 import json as json_mod;
-import tomllib;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
@@ -14,14 +13,10 @@ def _read_shadcn_config(config: Any) -> Any {
     if config.project_root is None {
         return None;
     }
-    toml_path = Path(str(config.project_root)) / "jac.toml";
-    if not toml_path.exists() {
+    if not hasattr(config, "_raw_data") or config._raw_data is None {
         return None;
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
-    return data.get("jac-shadcn");
+    return config._raw_data.get("jac-shadcn");
 }
 
 def _fetch_json(url: str) -> Any {
