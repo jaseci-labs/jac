@@ -1,0 +1,51 @@
+name: "Feature Request"
+description: "Propose a new feature or enhancement for Jaseci."
+title: "[Feature]: "
+labels: ["Type: Feature"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### We love hearing ideas from the community!
+        Please describe your proposal clearly and provide as much context as possible.
+
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Priority"
+      options:
+        - "Nice to have"
+        - "Important"
+        - "Critical / Blocking my work"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Feature Description"
+      description: "A clear and concise description of what you want to happen."
+      placeholder: "Describe the feature, the problem it solves, and your proposed solution."
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: "Examples & References"
+      description: "Include code snippets, screenshots, or links that illustrate the feature."
+      placeholder: "Add Jac code snippets, screenshots, or references to similar features in other tools."
