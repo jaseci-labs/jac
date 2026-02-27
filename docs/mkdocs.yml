@@ -238,10 +238,6 @@ plugins:
         communityhub/release_notes/byllm.md: community/release_notes/byllm.md
         communityhub/release_notes/jac-client.md: community/release_notes/jac-client.md
         communityhub/release_notes/jac-scale.md: community/release_notes/jac-scale.md
-        communityhub/release_notes/jac-cloud.md: community/release_notes/jac-cloud.md
-
-        # Examples redirects
-        learn/examples/index.md: tutorials/examples/index.md
 
         # Legacy content redirects
         learn/library_mode.md: reference/language/library-mode.md

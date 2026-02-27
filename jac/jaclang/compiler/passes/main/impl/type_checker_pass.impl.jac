@@ -86,42 +86,39 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing context for AND expressions."""
+"""Enter a boolean expression - set up narrowing scope for AND expressions."""
 impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
     # For AND expressions, push a narrowing scope
     if nd.op.name == Tok.KW_AND {
-        self.evaluator._push_and_narrowing_scope();
-        # Pre-process isinstance checks to add narrowings BEFORE children are evaluated
+        self.evaluator.push_narrowing_scope();
+        # Pre-process conditions to add narrowings BEFORE children are evaluated
         for val in nd.values {
-            if (
-                isinstance(val, uni.FuncCall)
-                and isinstance(val.target, uni.Name)
-                and val.target.value == "isinstance"
-                and val.params
-                and len(val.params) == 2
-            ) {
-                # Support both simple names (x) and member access (x.foo)
-                if narrowing_key := self.evaluator._get_narrowing_key(val.params[0]) {
-                    type_arg = val.params[1];
-                    isinstance_type = self.evaluator.get_type_of_expression(type_arg);
-                    isinstance_inst = self.evaluator._convert_to_instance(
-                        isinstance_type
-                    );
-                    self.evaluator._add_and_narrowing(narrowing_key, isinstance_inst);
-                }
-            }
+            self.evaluator.process_condition(val);
         }
     }
 }
 
-"""Exit a boolean expression - clean up narrowing context."""
+"""Exit a boolean expression - clean up narrowing scope."""
 impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
     # Pop the narrowing scope for AND expressions
     if nd.op.name == Tok.KW_AND {
-        self.evaluator._pop_and_narrowing_scope();
+        self.evaluator.pop_narrowing_scope();
     }
+}
+
+"""Enter an if statement - set up narrowing scope for the if body."""
+impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    # Push a narrowing scope for the if body
+    self.evaluator.push_narrowing_scope();
+    # Process the condition to add narrowings
+    self.evaluator.process_condition(nd.condition);
+}
+
+"""Exit an if statement - clean up narrowing scope."""
+impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    self.evaluator.pop_narrowing_scope();
 }
 
 """Handle the atom trailer node."""
@@ -254,4 +251,18 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
+}
+
+"""Set type on function/method parameters for hover info."""
+impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
+}
+
+"""Set type on class fields (has vars) for hover info."""
+impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
 }

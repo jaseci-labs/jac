@@ -58,8 +58,6 @@ impl UnparsePass.exit_name(nd: uni.Name) -> None {
 """String: handle f-string literal escaping."""
 impl UnparsePass.exit_string(nd: uni.String) -> None {
     if nd.parent and isinstance(nd.parent, uni.FString) {
-        # Use nd.value (the source representation) instead of nd.lit_value
-        # to preserve escape sequences like \x1b, \n, etc.
         escaped = nd.value.replace("{", "{{").replace("}", "}}");
         nd.gen.jac = escaped.replace("#", "\\#");
     } else {

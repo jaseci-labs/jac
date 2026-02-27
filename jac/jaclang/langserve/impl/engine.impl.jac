@@ -373,10 +373,13 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
         }
         access = (sym_node.sym.access.value + ' ') if sym_node.sym else None;
         node_info = f"'('{(access or '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
-        if sym_node.name_spec.clean_type {
+        # Prefer narrowed/evaluated type (.type) over declared type (name_spec.type)
+        # This shows the correct type after narrowing (e.g., Mammal instead of Mammal|None)
+        if sym_node?.type and sym_node.type {
+            node_info += f"': '{sym_node.type}";
+        } elif sym_node.name_spec.clean_type {
             node_info += f"': '{sym_node.name_spec.clean_type}";
-        }
-        if (
+        } elif (
             isinstance(sym_node, uni.AstSymbolNode)
             and isinstance(sym_node.name_spec.type, ClassType)
         ) {

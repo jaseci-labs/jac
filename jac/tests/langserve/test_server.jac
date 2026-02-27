@@ -569,3 +569,38 @@ test "test_hover_narrowing_in_loop" {
         teardown_test();
     }
 }
+
+test "test_hover_types" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        narrowing_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_and_narrowing.jac")
+        );
+        lsp.type_check_file(narrowing_file);
+
+        hover_cases: list[tuple] = [
+            (4, 9, "str", None),
+            (8, 9, "list", None),
+            (12, 9, "bool", None),
+            (15, 28, "Animal", None),
+            (17, 11, "offspring", None),
+            (93, 27, "Mammal", "None"),
+            (105, 29, "Mammal", "None"),
+            (113, 9, "Mammal", None),
+
+        ];
+
+        for case in hover_cases {
+            (line, col, expected, should_not_contain) = case;
+            hover = lsp.get_hover_info(narrowing_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Hover should exist at line {line}, col {col}";
+            assert expected in hover.contents.value , f"Line {line}: expected '{expected}' in hover, got: {hover.contents.value}";
+            if should_not_contain {
+                assert should_not_contain not in hover.contents.value , f"Line {line}: should NOT contain '{should_not_contain}', got: {hover.contents.value}";
+            }
+        }
+    } finally {
+        teardown_test();
+    }
+}

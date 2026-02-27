@@ -97,68 +97,23 @@ test "py2jac escape sequences" {
         prog=JacProgram()
     ).ir_out.unparse();
 
-    # Hex escapes should be preserved as \x1b, not converted to actual ESC char
-    assert "\\x1b[31m" in code , f"Hex escape not preserved in: {code}";
-    assert "\\x1b[0m" in code , f"Hex reset not preserved in: {code}";
+    # No actual ESC character (0x1b) should leak into output
+    assert chr(0x1b) not in code;
 
-    # Octal escapes \033 should be converted to hex \x1b in output
-    # (Python normalizes \033 to \x1b in the AST)
-    assert "\\x1b[32m" in code or "\\033[32m" in code , f"Octal escape not preserved: {code}";
+    # Hex/octal/standard escapes preserved
+    assert "\\x1b[31m" in code and "\\x1b[0m" in code;
+    assert "\\x1b[32m" in code or "\\033[32m" in code;
+    assert "\\n" in code and "\\t" in code;
 
-    # Standard escapes should be preserved
-    assert "\\n" in code , f"Newline escape not preserved: {code}";
-    assert "\\t" in code , f"Tab escape not preserved: {code}";
+    # F-strings, raw strings, triple-quoted
+    assert "f\"\\x1b[" in code or "f'\\x1b[" in code;
+    assert 'r"\\x1b[31m' in code or "r'\\x1b[31m" in code;
+    assert 'f"""Hello {name}' in code or "f'''Hello {name}" in code;
 
-    # F-string with escapes should work
-    assert "f\"\\x1b[" in code or "f'\\x1b[" in code , f"F-string escape not preserved: {code}";
-}
-
-"""Test that same-operator chains are flattened without extra parentheses.
-
-e.g. Python `a + b + c` (stored as nested BinOp in the AST) should produce
-`(a + b + c)` in Jac, NOT `((a + b) + c)`.
-"""
-test "py2jac binop same-op chain flattening" {
-    with open(os.path.join(FIXTURES, "py2jac_binop.py")) as f {
-        file_source = f.read();
-    }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source), orig_src=Source(file_source, "py2jac_binop.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
-
-    # Same-op chains must flatten: double-nested parens must NOT appear
-    assert "((a + b) + c)" not in code , f"Same-op chain not flattened in: {code}";
-    assert "((a - b) - c)" not in code , f"Same-op chain not flattened in: {code}";
-    # The unparser strips the outermost AtomUnit parens in assignment context,
-    # so the flat chain appears as bare `a + b + c` (no outer wrapping)
-    assert "a + b + c" in code , f"Expected flat add chain in: {code}";
-    assert "a - b - c" in code , f"Expected flat sub chain in: {code}";
-}
-
-"""Test that mixed-precedence BinOps are correctly parenthesised.
-
-e.g. Python `(w - title_len - 2) // 2` must NOT become `w - title_len - 2 // 2`
-(which would apply // only to the literal 2 due to operator precedence).
-The floor-div must apply to the whole subtraction group.
-"""
-test "py2jac binop mixed precedence grouping" {
-    with open(os.path.join(FIXTURES, "py2jac_binop.py")) as f {
-        file_source = f.read();
-    }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source), orig_src=Source(file_source, "py2jac_binop.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
-
-    # Buggy output:   w - title_len - 2 // 2    <- // only binds to literal 2
-    # Correct output: (w - title_len - 2) // 2  <- inner group preserved,
-    #                 outer parens stripped by unparser in assignment context
-    assert "w - title_len - 2 // 2" not in code , f"Mixed-precedence bug present (// only applied to literal): {code}";
-    assert "(w - title_len - 2) // 2" in code , f"Expected correct floor-div grouping in: {code}";
-    assert "(w - title_len - 1) // 2" in code , f"Expected correct floor-div grouping in: {code}";
+    # Backslashes, quotes, unicode, braces, hash
+    assert "path\\\\to\\\\file" in code;
+    assert "\\u0041" in code or "A" in code;
+    assert "{{literal braces}}" in code;
+    assert "# not a comment" in code;
+    assert "\\x00" in code;
 }

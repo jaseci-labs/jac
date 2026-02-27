@@ -153,8 +153,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         buf = self.builder.alloca(buf_type, name="input.buf");
         buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
         # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
-        # Declare stdin as external global
-        stdin_name = "stdin";
+        # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
+        import platform;
+        stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
         if stdin_name not in self.extern_funcs {
             stdin_type = i8p;
             stdin_global = ir.GlobalVariable(
