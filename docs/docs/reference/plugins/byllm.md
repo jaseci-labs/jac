@@ -1361,6 +1361,5 @@ walker Coordinator {
 - [Structured Outputs Tutorial](../../tutorials/ai/structured-outputs.md)
 - [Agentic AI Tutorial](../../tutorials/ai/agentic.md)
 - [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md)
-- [Creating byLLM Plugins](creating-plugins.md)
 - [MTP Research Paper](https://arxiv.org/abs/2405.08965)
 - [LiteLLM Documentation](https://docs.litellm.ai/docs)

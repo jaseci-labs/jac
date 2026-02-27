@@ -274,4 +274,17 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
+    # Reference counting (Phase RC)
+    def _emit_rc_helpers -> None;
+    def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
+    def _rc_alloc_typed(
+        size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
+    ) -> ir.Value;
+
+    def _emit_rc_retain(ptr: ir.Value) -> None;
+    def _emit_rc_release_simple(ptr: ir.Value) -> None;
+    def _emit_rc_release_typed(val: ir.Value) -> None;
+    def _emit_scope_cleanup(skip_var: (str | None) = None) -> None;
+    def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
+    def _emit_struct_release_fn(arch_name: str) -> None;
 }

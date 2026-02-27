@@ -4,13 +4,50 @@ Get Jac installed and ready to use in under 2 minutes.
 
 ---
 
-## Requirements
+## One-Line Install (Recommended)
 
-- **Python 3.12+** (check with `python --version`)
+Install Jac with a single command -- no Python setup required:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+```
+
+This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Python 3.12+ runtime, and the full Jac ecosystem including all plugins.
+
+### Installer Options
+
+Pass flags after `--` to customize the install:
+
+```bash
+# Core language only (no plugins)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
+
+# Specific version
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
+
+# Standalone binary (self-contained, no Python/uv needed at runtime)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --standalone
+
+# Uninstall
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --uninstall
+```
+
+| Flag | Description |
+|------|-------------|
+| `--core` | Install only the Jac language compiler, no plugins |
+| `--standalone` | Download a pre-built binary from GitHub Releases |
+| `--version V` | Install a specific version |
+| `--uninstall` | Remove Jac |
+
+### Upgrading
+
+Re-run the install command to upgrade to the latest version. The installer detects existing installations and upgrades in place.
 
 ---
 
-## Quick Install
+## Install via pip
+
+If you already have Python 3.12+ and prefer pip:
 
 ```bash
 pip install jaseci
@@ -201,6 +238,14 @@ jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/m
 ---
 
 ## Upgrading Jac
+
+If you installed via the one-line installer, re-run it to upgrade:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+```
+
+If you installed via pip:
 
 ```bash
 # Upgrade everything at once

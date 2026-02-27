@@ -69,6 +69,11 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             self._codegen_archetype(arch);
         }
     }
+    # Pass 2.5: Emit per-archetype RC destructors (struct bodies must be defined)
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        self._emit_struct_release_fn(arch_name);
+    }
     # Pass 3: Forward-declare all methods
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
@@ -337,11 +342,8 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
         null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
     );
     size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
-    # Allocate via GC_malloc
-    gc_malloc = self._get_or_declare_extern(
-        "GC_malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
-    );
-    raw_ptr = self.builder.call(gc_malloc, [size], name="raw.ptr");
+    # Allocate via rc_alloc (RC-managed)
+    raw_ptr = self.builder.call(self.rc_alloc_fn, [size], name="raw.ptr");
     obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
     # Store vtable pointer if class has vtable
     if type_name in self.vtable_globals {
