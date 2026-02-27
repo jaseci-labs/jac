@@ -15,6 +15,7 @@ nav:
       - Build to Learn - AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+      - MCP Server: "quick-guide/mcp.md"
       - FAQ: "quick-guide/faq.md"
 
   - Full Reference:
@@ -55,7 +56,6 @@ nav:
           - CLI Commands: "reference/cli/index.md"
           - Configuration: "reference/config/index.md"
           - Code Organization: "reference/code-organization.md"
-          - MCP Server: "reference/tools/mcp.md"
           - Testing: "reference/testing.md"
           - Debugging: "tutorials/language/debugging.md"
       - Python Integration:
@@ -263,6 +263,7 @@ plugins:
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md
+        reference/tools/mcp.md: quick-guide/mcp.md
 
         # Nav reorganization - merged pages redirects
         reference/language/ai-integration.md: reference/plugins/byllm.md
