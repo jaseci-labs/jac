@@ -588,6 +588,7 @@ test "test_hover_types" {
             (93, 27, "Mammal", "None"),
             (105, 29, "Mammal", "None"),
             (113, 9, "Mammal", None),
+
         ];
 
         for case in hover_cases {
