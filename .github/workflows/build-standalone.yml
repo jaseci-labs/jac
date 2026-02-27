@@ -64,8 +64,6 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
-          - os: macos-13
-            platform: macos-x86_64
           - os: macos-latest
             platform: macos-aarch64
 
@@ -142,8 +140,6 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
-          - os: macos-13
-            platform: macos-x86_64
           - os: macos-latest
             platform: macos-aarch64
 
@@ -226,10 +222,8 @@ jobs:
           echo "| Package | Platform | Status |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|----------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| jaclang (slim) | linux-x86_64 | ${{ needs.build-jaclang.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaclang (slim) | macos-x86_64 | ${{ needs.build-jaclang.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| jaclang (slim) | macos-aarch64 | ${{ needs.build-jaclang.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| jaseci (full) | linux-x86_64 | ${{ needs.build-jaseci.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaseci (full) | macos-x86_64 | ${{ needs.build-jaseci.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| jaseci (full) | macos-aarch64 | ${{ needs.build-jaseci.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Note:** linux-aarch64 builds can be added when ARM runners are available." >> "$GITHUB_STEP_SUMMARY"

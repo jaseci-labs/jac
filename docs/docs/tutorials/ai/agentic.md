@@ -412,5 +412,4 @@ with entry {
 ## Next Steps
 
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete tool documentation
-- [Examples: EmailBuddy](../examples/emailbuddy.md) - Agentic email assistant
 - [Full-Stack Tutorial](../fullstack/setup.md) - Add UI to your agent
