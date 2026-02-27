@@ -1,3 +1,0 @@
-with entry {
-    x = x;
-}
