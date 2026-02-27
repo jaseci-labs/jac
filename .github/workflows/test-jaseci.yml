@@ -101,6 +101,13 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-byllm
 
+    - name: Install docs dependencies
+      run: pip install -e docs
+
+    - name: Build documentation
+      run: mkdocs build --strict
+      working-directory: docs
+
     - name: Run documentation validation tests
       run: pytest -q -x docs/tests/test_validate_md_files.jac
 

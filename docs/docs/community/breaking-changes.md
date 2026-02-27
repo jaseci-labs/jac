@@ -221,7 +221,7 @@ http://localhost:8000/user/123
 1. Update any hardcoded hash-based URLs (`#/path`) to clean paths (`/path`) in your code
 2. If using the vanilla runtime's `Link` component, `href` values no longer need a `#` prefix
 3. Ensure `base_route_app` is set in `jac.toml` `[serve]` section for direct navigation and page refresh to work
-4. If deploying as a static site, configure your hosting provider's SPA fallback (see [routing documentation](../../learn/tools/jac_serve.md))
+4. If deploying as a static site, configure your hosting provider's SPA fallback
 
 ### `--cl` Flag Replaced with `--npm` and `--use client`
 
