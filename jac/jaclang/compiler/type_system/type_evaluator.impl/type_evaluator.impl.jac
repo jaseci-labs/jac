@@ -894,10 +894,14 @@ impl TypeEvaluator._assign_class(
     # TODO: We can actually check if the Final type is modified and
     # prevent that, but for now just unwrap it.
     if dest_type.shared == self.prefetch.final_class.shared {
-        dest_type = dest_type.private.type_args[0];
+        if len(dest_type.private.type_args) > 0 {
+            dest_type = dest_type.private.type_args[0];
+        }
     }
     if src_type.shared == self.prefetch.final_class.shared {
-        src_type = src_type.private.type_args[0];
+        if len(src_type.private.type_args) > 0 {
+            src_type = src_type.private.type_args[0];
+        }
     }
     if src_type.shared == dest_type.shared {
         return True;
