@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.11.3 (Unreleased)
 
 - **Native Memory Management: Reference Counting Replaces Boehm GC**: Replaced the external Boehm GC (`libgc`) dependency with a self-contained reference counting scheme. All heap allocations use an 8-byte RC header (`rc_alloc`), container data arrays use plain `malloc`/`free`, and type-specific destructors are emitted for lists, dicts, sets, and archetypes. String literals are copied into RC-managed memory on use. Old values are released on variable reassignment and container growth paths free old data arrays. This eliminates the `libgc` system dependency entirely -- the native compiler only requires `libc`.
+- **`jac nacompile` Mach-O Support (macOS arm64)**: Extended `jac nacompile` to produce standalone Mach-O executables on macOS arm64, in addition to the existing ELF support on Linux. Includes a pure-Python Mach-O linker (`macho_linker.jac`) that handles GOT construction, stub generation, rebase/bind opcodes, and ad-hoc code signing with SHA-256 page hashes. Platform is auto-detected -- the same `jac nacompile program.na.jac` command works on both Linux and macOS.
 
 ## jaclang 0.11.2 (Latest Release)
 
