@@ -1380,6 +1380,10 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     # Scope-based narrowing stack for if/AND blocks (forward traversal).
     # Each scope is a dict mapping narrowing keys (e.g., "x", "x.foo") to types.
     self._narrowing_scope_stack: list[dict[str, types.TypeBase]] = [];
+    # Track symbols currently being narrowed to prevent recursive cycles.
+    # Uses id(symbol) for unique identity, avoiding name collisions between
+    # different symbols with the same name in different scopes.
+    self._narrowing_in_progress: set[int] = set();
     # Cache for module types by resolved path to avoid redundant lookups.
     self._module_type_cache: dict[str, types.ModuleType] = {};
     # NOTE: The initialization order here is important.
@@ -1411,6 +1415,14 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
+    sym_id = id(symbol);
+    # Reentrancy guard: Skip if we're already computing narrowing for THIS symbol.
+    # This happens when get_type_of_expression(assignment.value) triggers get_narrowed_type
+    # for the same symbol, which would cause infinite recursion.
+    # Uses id(symbol) to avoid name collisions between different scopes.
+    if sym_id in self._narrowing_in_progress {
+        return None;
+    }
     # Performance optimization: Only do CFG walk for types that can be narrowed.
     # 1. Union types (e.g., X | None, A | B) - narrow to subset
     # 2. Class types with potential subclasses - narrow via isinstance
@@ -1430,7 +1442,13 @@ impl TypeEvaluator.get_narrowed_type(
     if stmt is None {
         return None;
     }
-    return self._compute_narrowed_at(symbol, stmt, set());
+    # Mark this symbol as in-progress before computing narrowing.
+    self._narrowing_in_progress.add(sym_id);
+    try {
+        return self._compute_narrowed_at(symbol, stmt, set());
+    } finally {
+        self._narrowing_in_progress.discard(sym_id);
+    }
 }
 
 """Demand-driven backward CFG walk to compute narrowed type at a statement.
