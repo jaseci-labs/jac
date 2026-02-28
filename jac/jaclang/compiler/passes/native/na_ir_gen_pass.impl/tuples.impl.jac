@@ -23,11 +23,9 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         self.tuple_types[tuple_key] = struct_type;
     }
     struct_type = self.tuple_types[tuple_key];
-    # Allocate tuple struct on heap using GC_malloc
-    i8p = ir.IntType(8).as_pointer();
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
+    # Allocate tuple struct on heap via rc_alloc (RC-managed)
     size = ir.Constant(ir.IntType(64), self._get_struct_size(struct_type));
-    raw_ptr = self.builder.call(gc_malloc, [size], name="tuple.raw");
+    raw_ptr = self.builder.call(self.rc_alloc_fn, [size], name="tuple.raw");
     tuple_ptr = self.builder.bitcast(
         raw_ptr, struct_type.as_pointer(), name="tuple.ptr"
     );

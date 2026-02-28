@@ -83,3 +83,37 @@ test "fstring triple quotes" {
     assert "f'''Hello\n{name}'''''''" not in code;
     assert 'f"""Hello\n{name}"""""""' not in code;
 }
+
+"""Test that escape sequences are preserved when converting Python to Jac."""
+test "py2jac escape sequences" {
+    with open(os.path.join(FIXTURES, "py2jac_escape_sequences.py")) as f {
+        file_source = f.read();
+    }
+    code = PyastBuildPass(
+        ir_in=PythonModuleAst(
+            py_ast.parse(file_source),
+            orig_src=Source(file_source, "py2jac_escape_sequences.py")
+        ),
+        prog=JacProgram()
+    ).ir_out.unparse();
+
+    # No actual ESC character (0x1b) should leak into output
+    assert chr(0x1b) not in code;
+
+    # Hex/octal/standard escapes preserved
+    assert "\\x1b[31m" in code and "\\x1b[0m" in code;
+    assert "\\x1b[32m" in code or "\\033[32m" in code;
+    assert "\\n" in code and "\\t" in code;
+
+    # F-strings, raw strings, triple-quoted
+    assert "f\"\\x1b[" in code or "f'\\x1b[" in code;
+    assert 'r"\\x1b[31m' in code or "r'\\x1b[31m" in code;
+    assert 'f"""Hello {name}' in code or "f'''Hello {name}" in code;
+
+    # Backslashes, quotes, unicode, braces, hash
+    assert "path\\\\to\\\\file" in code;
+    assert "\\u0041" in code or "A" in code;
+    assert "{{literal braces}}" in code;
+    assert "# not a comment" in code;
+    assert "\\x00" in code;
+}

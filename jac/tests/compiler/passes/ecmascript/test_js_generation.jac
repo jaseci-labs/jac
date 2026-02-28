@@ -132,7 +132,7 @@ test "core fixture emits expected constructs" {
     }
 
     # Exception handling
-    for pattern in ["try", "catch (err)", "finally"] {
+    for pattern in ["try", "catch (__jac_e)", "finally"] {
         assert pattern in js_code;
     }
 

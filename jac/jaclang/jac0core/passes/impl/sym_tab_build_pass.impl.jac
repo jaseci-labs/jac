@@ -81,9 +81,11 @@ impl SymTabBuildPass.enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) 
 impl SymTabBuildPass.exit_global_vars(
     self: SymTabBuildPass, nd: uni.GlobalVars
 ) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.assignments {
         for j in i.target {
             if isinstance(j, uni.AstSymbolNode) {
+                j.name_spec._sym_category = SymbolType.MOD_VAR;
                 j.sym_tab.def_insert(j, access_spec=nd, single_decl='global var');
             } else {
                 self.ice('Expected name type for global vars');
@@ -93,6 +95,7 @@ impl SymTabBuildPass.exit_global_vars(
 }
 
 impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
@@ -111,6 +114,10 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
             ) {
                 outer.add_use(i.name_spec);
             } else {
+                # Tag enum members with the correct sym_category
+                if isinstance(i.sym_tab, uni.Enum) {
+                    i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
+                }
                 i.sym_tab.def_insert(i, single_decl='local var');
             }
         }
@@ -142,7 +149,9 @@ impl SymTabBuildPass.enter_test(self: SymTabBuildPass, nd: uni.Test) -> None {
         for j in dir(unittest.TestCase())
         if j.startswith('assert')
     ] {
-        nd.sym_tab.def_insert(uni.Name.gen_stub_from_node(nd, i, set_name_of=nd));
+        nd.sym_tab.def_insert(
+            uni.Name.gen_stub_from_node(nd, i, set_name_of=nd), imported=True
+        );
     }
 }
 

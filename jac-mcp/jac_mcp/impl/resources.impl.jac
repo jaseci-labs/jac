@@ -213,7 +213,7 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "Code Organization - Project structure guide"
          ),
          "jac://docs/mcp": (
-             "reference/tools/mcp.md",
+             "quick-guide/mcp.md",
              "mcp.md",
              "MCP Server - Model Context Protocol reference"
          ),

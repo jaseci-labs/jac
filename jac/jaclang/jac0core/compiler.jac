@@ -79,8 +79,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
 """Type checking schedule."""
 def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.main { TypeCheckPass }
-    return [TypeCheckPass];
+    import from jaclang.compiler.passes.main { TypeCheckPass, StaticAnalysisPass }
+    return [TypeCheckPass, StaticAnalysisPass];
 }
 
 """Full Python code generation schedule.
@@ -101,8 +101,12 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
             InteropAnalysisPass,
             EsastGenPass
         ];
-        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-        passes.extend([NaIRGenPass, NativeCompilePass]);
+        import from jaclang.compiler.passes.native {
+            NativeCompatCheckPass,
+            NaIRGenPass,
+            NativeCompilePass
+        }
+        passes.extend([NativeCompatCheckPass, NaIRGenPass, NativeCompilePass]);
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {

@@ -28,7 +28,8 @@ obj ProjectConfig {
 obj RunConfig {
     has session: str = "",
         main: bool = True,
-        cache: bool = True;
+        cache: bool = True,
+        autonative: bool = False;
 }
 
 """Build command defaults and artifact directories from [build] section."""

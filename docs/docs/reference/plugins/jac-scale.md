@@ -49,7 +49,7 @@ jac start app.jac --port 3000
 jac start app.jac --dev
 
 # API only -- skip client bundling
-jac start app.jac --dev --no-client
+jac start app.jac --dev --no_client
 
 # Preview generated API endpoints without starting
 jac start app.jac --faux
@@ -1065,6 +1065,23 @@ graph TD
 
 ## Kubernetes Deployment
 
+### Memory Resource Configuration
+
+Control how much memory Kubernetes allows for your application container.
+
+| Parameter | TOML Key | Default | Description |
+|-----------|----------|---------|-------------|
+| `K8s_MEMORY_LIMIT` | `memory_limit` | `12Gi` | Maximum memory the container may use before being OOM-killed |
+
+Override the default in your `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+memory_limit = "2Gi"
+```
+
+Accepted suffixes: `Ki`, `Mi`, `Gi` (binary) or `K`, `M`, `G` (decimal).
+
 ### Deployment Modes
 
 | Mode | Command | Use Case |
@@ -1127,6 +1144,35 @@ export K8s_CPU_LIMIT="1000m"
 export K8s_MEMORY_REQUEST="256Mi"
 export K8s_MEMORY_LIMIT="512Mi"
 ```
+
+### Deployment Status
+
+Check the live status of all components in your Kubernetes deployment:
+
+```bash
+jac status app.jac
+```
+
+This queries the cluster and displays a table showing:
+
+- **Component health** -- status of the Jaseci App, Redis, MongoDB, Prometheus, and Grafana
+- **Pod readiness** -- ready vs total replica counts for each component
+- **Service URLs** -- application and Grafana endpoints
+
+Status values include `Running`, `Degraded` (partial readiness), `Pending` (starting up), `Restarting` (crash-looping pods), `Failed`, and `Not Deployed`.
+
+The command makes efficient bulk API calls (listing all Deployments, StatefulSets, and Pods in the namespace at once) rather than querying each component individually.
+
+### Resource Tagging
+
+All Kubernetes resources created by jac-scale are automatically labeled with `managed: jac-scale`. This enables easy identification and auditing of jac-scale-owned resources:
+
+```bash
+# List all jac-scale managed resources across namespaces
+kubectl get all -l managed=jac-scale -A
+```
+
+Tagged resources include Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, and HorizontalPodAutoscalers.
 
 ### Remove Deployment
 

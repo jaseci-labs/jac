@@ -233,8 +233,8 @@ obj Example {
 }
 ```
 
-!!! warning
-    Backtick-escaped keywords in `has` declarations may cause runtime issues with the underlying dataclass machinery. Use with caution and consider choosing a non-keyword identifier instead.
+!!! danger
+    Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
 ### 7 Entry Point Variants
 

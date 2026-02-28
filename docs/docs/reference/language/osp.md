@@ -127,9 +127,11 @@ node SecureRoom {
         }
     }
 
-    # Type reference entry - using Root for root
+    # Typed entry for Root walker - in node abilities, the type in
+    # 'with Type entry' refers to the *walker* type visiting this node,
+    # NOT the node type. This triggers when a walker of type Root visits.
     can at_root with Root entry {
-        print("At root node");
+        print("A Root-type walker is visiting this node");
     }
 
     # Walker exiting
@@ -150,7 +152,7 @@ node SecureRoom {
 |------|---------------|
 | `with entry` | Any walker enters (no type filter) |
 | `with TypeName entry` | Walker of TypeName enters |
-| `with Root entry` | At root node entry |
+| `with Root entry` | Walker of type Root visits (in node context, the type refers to the *walker* type) |
 | `with Type1 \| Type2 entry` | Walker of either type enters |
 | `with exit` | Any walker exits |
 | `with TypeName exit` | Walker of TypeName exits |
@@ -207,6 +209,9 @@ edge Road {
     }
 }
 ```
+
+!!! warning "Known Limitation"
+    Edge entry/exit abilities are not currently triggered during walker traversal. This feature is planned but not yet implemented. For now, perform edge-related logic in the walker's node abilities instead.
 
 ### 3 Directed vs Undirected
 
@@ -376,7 +381,10 @@ Out-of-bounds indices fall back to appending at the end.
 
 ### 4 The `report` Statement
 
-Send data back without stopping:
+Send data back without stopping. Each `report` appends to the `.reports` array and also prints the value to stdout.
+
+!!! note
+    `report value;` both adds `value` to `.reports` **and** prints it to stdout. Keep this in mind when reading output from walker examples.
 
 ```jac
 node DataNode {
@@ -514,12 +522,14 @@ Walker `has` properties become the request body. The `report` values become the 
 walker BaseVisitor {
     can log with entry {
         print(f"Visiting: {here}");
+        visit [-->];
     }
 }
 
 walker DetailedVisitor(BaseVisitor) {
     override can log with entry {
         print(f"Detailed visit to: {type(here).__name__}");
+        visit [-->];
     }
 }
 ```
@@ -607,6 +617,7 @@ with entry {
 !!! note "The `++>` operator returns a list"
     The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
 
+    <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
     new_node = here ++> Todo(id="123", title="Buy groceries");
     created_todo = new_node[0];  # Access the actual node
@@ -945,6 +956,9 @@ walker AnimalVisitor {
 - Code typically on same line with closing brace
 - Use `->_` for default/catch-all case
 
+!!! warning "Known Limitation"
+    The `->_{}` wildcard/default case is not currently supported at runtime and will produce a `name '_' is not defined` error. Use an explicit base type or `else` branch instead.
+
 ### 2 Tuple-Based Dispatch
 
 ```jac
@@ -1083,6 +1097,10 @@ walker:priv SearchItems {
 
 ### Hierarchical Traversal
 
+<!-- This example illustrates the pattern conceptually; [node -->] inside a def
+     method is not standard walker traversal syntax. A production implementation
+     would use recursive walker spawning or accumulate results via entry/exit abilities. -->
+
 ```
 walker:priv GetTree {
     def build_tree(node: any) -> dict {
@@ -1103,6 +1121,9 @@ walker:priv GetTree {
     }
 }
 ```
+
+!!! note "Pseudocode"
+    The above example illustrates the hierarchical traversal pattern conceptually. The `[node -->]` syntax inside a `def` method and the use of `here` outside a walker ability context may not work as written. In practice, use recursive walker spawning or accumulate results via entry/exit abilities.
 
 ### Aggregate Walker
 

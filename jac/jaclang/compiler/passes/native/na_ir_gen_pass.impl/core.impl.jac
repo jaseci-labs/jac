@@ -50,6 +50,7 @@ impl NaIRGenPass.init(
     self.struct_field_types: dict[(str, dict)] = {};
     self.struct_field_defaults: dict[(str, object)] = {};
     self.method_funcs: dict[(str, ir.Function)] = {};
+    self.method_ast_sigs: dict[(str, object)] = {};  # "Arch.method" → FuncSignature AST node
     self.type_var_map: dict[(str, str)] = {};
     # List support (Phase 4)
     self.list_types: dict[(str, object)] = {};  # elem_type_name → list struct type
@@ -98,16 +99,30 @@ impl NaIRGenPass.init(
     # Primitive emitter singletons (lazily initialized)
     self._native_emitters: (dict[str, object] | None) = None;
     self._native_builtin_emitter: (object | None) = None;
+    # Reference counting support (Phase RC)
+    self.rc_alloc_fn: (ir.Function | None) = None;
+    self.rc_retain_fn: (ir.Function | None) = None;
+    self.rc_release_simple_fn: (ir.Function | None) = None;
+    self.malloc_fn: (ir.Function | None) = None;
+    self.free_fn: (ir.Function | None) = None;
+    self.struct_release_fns: dict[(str, ir.Function)] = {};
+    self.list_release_fns: dict[(str, ir.Function)] = {};
+    self.dict_release_fns: dict[(str, ir.Function)] = {};
+    self.set_release_fns: dict[(str, ir.Function)] = {};
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 
 # ─── Main Pass Logic ─────────────────────────────────────────
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Emit reference counting helper functions (must be first)
+    self._emit_rc_helpers();
     # Process C library imports: import from "libname" { def ...; }
     self._process_clib_imports(self.ir_in);
     # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
     self._register_enums(self.ir_in);
+    # Pre-register archetype names as opaque struct types so globals can reference them
+    self._forward_declare_archetype_names(self.ir_in);
     self._register_globals(self.ir_in);
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
@@ -184,7 +199,28 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         }
     }
     for stmt in imports {
+        # Recognize `import sys;` for native sys module support
         if not stmt.clib_decls {
+            if stmt.items {
+                for item in stmt.items {
+                    mod_name = None;
+                    if isinstance(item, uni.ModulePath) and item.path {
+                        parts = [];
+                        for p in item.path {
+                            parts.append(
+                                p.value if isinstance(p, uni.Name) else str(p)
+                            );
+                        }
+                        mod_name = ".".join(parts);
+                    }
+                    if mod_name == "sys" {
+                        if not self?._native_stdlib_modules {
+                            self._native_stdlib_modules: set[str] = set();
+                        }
+                        self._native_stdlib_modules.add("sys");
+                    }
+                }
+            }
             continue;
         }
         # Extract library path from from_loc

@@ -384,7 +384,7 @@ Create a `layout.jac` file in a route group:
 ```
 
 pages/
-└── (dashboard)/           # Route group
+└── dashboard/             # URL segment: /dashboard
     ├── layout.jac         # Shared layout
     ├── index.jac          # /dashboard
     ├── settings.jac       # /dashboard/settings
@@ -393,7 +393,7 @@ pages/
 ```
 
 ```jac
-# pages/(dashboard)/layout.jac
+# pages/dashboard/layout.jac
 cl import from "@jac/runtime" { Outlet, Link }
 
 cl {

@@ -124,6 +124,7 @@ class CodeGenTarget {
         self.interop_manifest: InteropManifest = InteropManifest();
         self.interop_py_funcs: dict[(str, Any)] = {};
         self._interop_callbacks: list[Any] = [];
+        self._auto_promoted_native: bool = False;
     }
 
     """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""

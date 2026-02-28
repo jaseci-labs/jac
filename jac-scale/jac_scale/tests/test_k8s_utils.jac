@@ -14,6 +14,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     load_env_variables,
     parse_cpu_quantity,
     parse_memory_quantity,
+    sync_code_to_pvc,
     validate_resource_limits
 }
 
@@ -236,4 +237,49 @@ test "create tarball missing source" {
         raised = True;
     }
     assert raised , "Expected FileNotFoundError for missing source directory";
+}
+
+# --- sync_code_to_pvc pod affinity ---
+test "sync code to pvc sets pod affinity to code server" {
+    tmp = Path(mkdtemp());
+    code_dir = tmp / "app";
+    code_dir.mkdir();
+    (code_dir / "main.jac").write_text("with entry { print('hi'); }");
+
+    core_v1 = unittest.mock.MagicMock();
+
+    # Patch out I/O helpers so sync_code_to_pvc only builds the pod spec
+    with unittest.mock.patch.object(utils, "wait_for_pod_phase") {
+        with unittest.mock.patch.object(utils, "wait_for_pod_deletion") {
+            with unittest.mock.patch.object(utils, "run_kubectl_command") {
+                with unittest.mock.patch.object(utils, "create_tarball") {
+                    sync_code_to_pvc(
+                        core_v1,
+                        namespace="test-ns",
+                        pvc_name="test-pvc",
+                        code_folder=str(code_dir),
+                        app_name="myapp",
+                        sync_image="busybox:latest"
+                    );
+                }
+            }
+        }
+    }
+
+    call_args = core_v1.create_namespaced_pod.call_args;
+    assert call_args is not None , "create_namespaced_pod was not called";
+    pod_body = call_args[0][1];
+    spec = pod_body["spec"];
+
+    # Verify podAffinity exists and targets code-server
+    affinity = spec.get("affinity");
+    assert affinity is not None , "Pod spec must include affinity";
+    pod_affinity = affinity.get("podAffinity");
+    assert pod_affinity is not None , "Pod spec must include podAffinity";
+    rules = pod_affinity["preferredDuringSchedulingIgnoredDuringExecution"];
+    assert len(rules) == 1;
+    assert rules[0]["weight"] == 100;
+    term = rules[0]["podAffinityTerm"];
+    assert term["labelSelector"]["matchLabels"] == {"app": "myapp-code-server"};
+    assert term["topologyKey"] == "kubernetes.io/hostname";
 }
