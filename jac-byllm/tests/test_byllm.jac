@@ -13,8 +13,10 @@ import from fixtures { python_lib_mode }
 
 import byllm.llm as _byllm_llm_mod;
 import from byllm.lib { Model }
+import types;
 import from byllm.mtir { MTRuntime }
-import from byllm.exceptions { OutputConversionError }
+import from byllm.exceptions { OutputConversionError, ConfigurationError, UnknownToolError, FinishToolError }
+import from byllm.types { Tool, Message, MessageRole }
 import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
 
@@ -597,6 +599,104 @@ test "output conversion error not raised for valid json" {
 
     raw = "{\"schema_object_wrapper\": {\"name\": \"Alice\", \"age\": 30}}";
     result = mt_run.parse_response(raw);
+    assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
+    assert result.age == 30 , f"Expected age=30, got '{result.age}'";
+}
+
+# ConfigurationError tests call get_output_schema directly because schema generation
+# is what rejects bare unparameterized types (list, dict, set, tuple).
+
+test "configuration error on bare list return type" {
+    # Bare list (no type parameter) is rejected by schema generation
+    mt_run = MTRuntime(
+        messages=[], resp_type=list, stream=False,
+        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+    );
+
+    raised = False;
+    try {
+        mt_run.get_output_schema();
+    } except ConfigurationError as e {
+        raised = True;
+        assert "list" in str(e).lower() , f"Error message should mention 'list', got: {e}";
+    }
+    assert raised , "Expected ConfigurationError for bare list return type";
+}
+
+test "configuration error on bare dict return type" {
+    # Bare dict (no type parameters) is rejected by schema generation
+    mt_run = MTRuntime(
+        messages=[], resp_type=dict, stream=False,
+        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+    );
+
+    raised = False;
+    try {
+        mt_run.get_output_schema();
+    } except ConfigurationError as e {
+        raised = True;
+        assert "dict" in str(e).lower() , f"Error message should mention 'dict', got: {e}";
+    }
+    assert raised , "Expected ConfigurationError for bare dict return type";
+}
+
+# UnknownToolError is raised in BaseLLM.dispatch_no_streaming when the LLM responds
+# with a tool_call whose name is not registered in MTRuntime.tools.
+# model_call_no_stream is mocked so no real API key is needed.
+
+test "unknown tool error when llm calls unregistered tool" {
+    model = Model(model_name="test-model");
+    messages_list = [
+        Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+        Message(role=MessageRole.USER, content="Do something."),
+    ];
+    mt_run = MTRuntime(
+        messages=messages_list, resp_type=None, stream=False,
+        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+    );
+
+    # Fake LLM response referencing a tool not registered in mt_run.tools
+    fake_fn = types.SimpleNamespace(name="nonexistent_tool", arguments="{}");
+    fake_tool_call = types.SimpleNamespace(id="call_abc", function=fake_fn);
+    fake_response = {
+        "choices": [{"message": {"content": None, "tool_calls": [fake_tool_call]}}],
+    };
+
+    raised = False;
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) {
+        try {
+            model.dispatch_no_streaming(mt_run);
+        } except UnknownToolError as e {
+            raised = True;
+            assert "nonexistent_tool" in str(e) , f"Error should name the tool, got: {e}";
+        }
+    }
+    assert raised , "Expected UnknownToolError for unregistered tool name";
+}
+
+# FinishToolError is raised inside the finish_tool closure when the final output
+# fails pydantic validation against the declared return type.
+
+test "finish tool error on type mismatch" {
+    # Input missing required Person fields cannot be validated — raises FinishToolError
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+
+    raised = False;
+    try {
+        finish_tool({"wrong_key": "value"});
+    } except FinishToolError as e {
+        raised = True;
+        assert "Person" in str(e) , f"Error should name the target type, got: {e}";
+    }
+    assert raised , "Expected FinishToolError for mismatched input type";
+}
+
+test "finish tool error not raised for valid type" {
+    # Valid input matching the declared type should return the constructed instance
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    result = finish_tool({"name": "Alice", "age": 30});
     assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
     assert result.age == 30 , f"Expected age=30, got '{result.age}'";
 }
