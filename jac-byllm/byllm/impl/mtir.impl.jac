@@ -217,13 +217,13 @@ impl MTRuntime.parse_response(response: str) -> object {
             json_dict = json.loads(response);
             return json_to_instance(json_dict, self.resp_type);
         } except OutputConversionError {
-            raise;
+            raise ;
         } except Exception as e {
             err = OutputConversionError(
                 f"Failed to convert LLM output to '{self.resp_type.__name__}': {e}"
             );
             err.raw_output = response;
-            raise err;
+            raise err ;
         }
     }
     return response;
@@ -255,7 +255,9 @@ impl MTRuntime.get_output_schema -> dict | None {
 
         }
         # Use MTIR info if available, otherwise None (Python library mode)
-        return_type_info = self.mtir.ir_info.return_type if (self.mtir and self.mtir.ir_info) else None;
+        return_type_info = self.mtir.ir_info.return_type
+            if (self.mtir and self.mtir.ir_info)
+            else None;
         return type_to_schema(resp_type=self.resp_type, info=return_type_info);
     }
     # If the are tools, the final output will be sent to the finish_tool

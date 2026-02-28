@@ -15,7 +15,12 @@ import byllm.llm as _byllm_llm_mod;
 import from byllm.lib { Model }
 import types;
 import from byllm.mtir { MTRuntime }
-import from byllm.exceptions { OutputConversionError, ConfigurationError, UnknownToolError, FinishToolError }
+import from byllm.exceptions {
+    OutputConversionError,
+    ConfigurationError,
+    UnknownToolError,
+    FinishToolError
+}
 import from byllm.types { Tool, Message, MessageRole }
 import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -518,16 +523,19 @@ test "builtin llm compiles without glob" {
 # MockLLM.dispatch_no_streaming bypasses parse_response, returning the pre-built
 # output object straight from CompletionResult. The error lives in parse_response,
 # so that is the correct unit to test.
-
 glob _TestPerson = dataclasses.make_dataclass(
-    "Person", [("name", str), ("age", int)]
-);
+         "Person", [("name", str), ("age", int)]
+     );
 
 test "output conversion error on plain text" {
     # LLM returns a narrative string instead of JSON
     mt_run = MTRuntime(
-        messages=[], resp_type=_TestPerson, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raw = "Alice is a 30 year old engineer.";
@@ -545,8 +553,12 @@ test "output conversion error on plain text" {
 test "output conversion error on markdown fenced json" {
     # LLM wraps JSON in markdown code fences — json.loads fails
     mt_run = MTRuntime(
-        messages=[], resp_type=_TestPerson, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raw = "```json\n{\"name\": \"Alice\", \"age\": 30}\n```";
@@ -563,8 +575,12 @@ test "output conversion error on markdown fenced json" {
 test "output conversion error on wrong json structure" {
     # LLM returns valid JSON but it doesn't match the declared type
     mt_run = MTRuntime(
-        messages=[], resp_type=_TestPerson, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raw = "{\"foo\": \"bar\", \"baz\": 99}";
@@ -581,8 +597,12 @@ test "output conversion error on wrong json structure" {
 test "output conversion error not raised for str return type" {
     # parse_response should pass through raw strings without attempting conversion
     mt_run = MTRuntime(
-        messages=[], resp_type=str, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=str,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raw = "This is not JSON at all";
@@ -593,8 +613,12 @@ test "output conversion error not raised for str return type" {
 test "output conversion error not raised for valid json" {
     # Valid JSON that matches the type should succeed with no exception
     mt_run = MTRuntime(
-        messages=[], resp_type=_TestPerson, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raw = "{\"schema_object_wrapper\": {\"name\": \"Alice\", \"age\": 30}}";
@@ -605,12 +629,15 @@ test "output conversion error not raised for valid json" {
 
 # ConfigurationError tests call get_output_schema directly because schema generation
 # is what rejects bare unparameterized types (list, dict, set, tuple).
-
 test "configuration error on bare list return type" {
     # Bare list (no type parameter) is rejected by schema generation
     mt_run = MTRuntime(
-        messages=[], resp_type=list, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=list,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raised = False;
@@ -626,8 +653,12 @@ test "configuration error on bare list return type" {
 test "configuration error on bare dict return type" {
     # Bare dict (no type parameters) is rejected by schema generation
     mt_run = MTRuntime(
-        messages=[], resp_type=dict, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=[],
+        resp_type=dict,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     raised = False;
@@ -643,16 +674,20 @@ test "configuration error on bare dict return type" {
 # UnknownToolError is raised in BaseLLM.dispatch_no_streaming when the LLM responds
 # with a tool_call whose name is not registered in MTRuntime.tools.
 # model_call_no_stream is mocked so no real API key is needed.
-
 test "unknown tool error when llm calls unregistered tool" {
     model = Model(model_name="test-model");
     messages_list = [
         Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
         Message(role=MessageRole.USER, content="Do something."),
+
     ];
     mt_run = MTRuntime(
-        messages=messages_list, resp_type=None, stream=False,
-        tools=[], call_params={}, mtir=None  # type: ignore[arg-type]
+        messages=messages_list,
+        resp_type=None,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
     );
 
     # Fake LLM response referencing a tool not registered in mt_run.tools
@@ -660,6 +695,7 @@ test "unknown tool error when llm calls unregistered tool" {
     fake_tool_call = types.SimpleNamespace(id="call_abc", function=fake_fn);
     fake_response = {
         "choices": [{"message": {"content": None, "tool_calls": [fake_tool_call]}}],
+
     };
 
     raised = False;
@@ -678,7 +714,6 @@ test "unknown tool error when llm calls unregistered tool" {
 
 # FinishToolError is raised inside the finish_tool closure when the final output
 # fails pydantic validation against the declared return type.
-
 test "finish tool error on type mismatch" {
     # Input missing required Person fields cannot be validated — raises FinishToolError
     finish_tool = Tool.make_finish_tool(_TestPerson);

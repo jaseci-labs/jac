@@ -11,6 +11,7 @@ str(e) and e.args[0] work as expected for all subclasses.
 """
 obj ByLLMError(Exception) {
     has message: str = "";
+
     def postinit -> None;
 }
 
