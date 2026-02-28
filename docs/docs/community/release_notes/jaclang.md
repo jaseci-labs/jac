@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.11.3 (Unreleased)
+## jaclang 0.11.4 (Unreleased)
+
+## jaclang 0.11.3 (Latest Release)
 
 - **Static Analysis Pass: Unused Variables, Undefined Names, Unreachable Code**: Added a new `StaticAnalysisPass` to the type-check pipeline that detects three classes of issues: (1) variables defined but never referenced, (2) name references that fail to resolve, and (3) code following `return`/`raise`/`break`/`continue` statements. All diagnostics surface as warnings in both `jac check` output and LSP (IDE squiggles). The pass runs after `TypeCheckPass` and respects conventional skip patterns (`_`-prefixed names, `has` fields, imported symbols, abstract ability parameters, archetype/ability definitions).
 - **Overload Resolution: `lookup_all()` Symbol Table Method**: Added `UniScopeNode.lookup_all(name, deep)` which returns the primary symbol plus all overloads for a given name. The type evaluator and `ClassType.lookup_member_symbol` now use this centralized method instead of directly accessing the internal `names_in_scope_overload` dict, improving encapsulation and consistency of overload handling.
@@ -28,7 +30,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native `str.replace(old, new, count)` Count Argument Ignored**: The third `count` parameter to `str.replace` is now respected. A `remaining` count phi is threaded through the replacement loop and decrements on each substitution; when it reaches zero the rest of the string is copied unchanged. Omitting the argument (or passing a negative value) retains the replace-all behaviour.
 - **Fix: Native `for (k, v) in d.items()` Iteration**: Dict `.items()` iteration in native codegen was silently elided. Fixed by adding a `__dict_get_val` index helper (mirroring the existing `__dict_get_key`) and a dedicated items-loop path in `_codegen_for` that detects the `d.items()` method-call pattern, binds both loop variables, and emits a standard index-based loop.
 
-## jaclang 0.11.2 (Latest Release)
+## jaclang 0.11.2
 
 - **Improved Memory Efficiency for Large Graphs**: Jac now uses lazy loading for graph data in MongoDB/Redis, nodes and edges are fetched only when accessed, instead of loading the entire graph upfront.
 - **Fix: Impl File Import Resolution**: Impl files (`.impl.jac`) can now access imports from their parent `.jac` file without requiring duplicate import statements. Also fixed internal builtins imports (like `SupportsAdd`, `types`) incorrectly being visible to user code.

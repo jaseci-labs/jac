@@ -2,9 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.3 (Unreleased)
+## byllm 0.5.4 (Unreleased)
 
-## byllm 0.5.2 (Latest Release)
+## byllm 0.5.3 (Latest Release)
+
+## byllm 0.5.2
 
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 

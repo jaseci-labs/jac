@@ -1,6 +1,6 @@
 [project]
 name = "jac-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP server for AI-assisted Jac development"
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["jac", "jaclang", "jaseci", "mcp", "ai", "model-context-protocol"]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.11.2",
+    "jaclang>=0.11.3",
     "mcp>=1.0.0",
 ]
 
