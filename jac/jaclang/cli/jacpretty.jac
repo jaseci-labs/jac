@@ -1,99 +1,80 @@
 """jacpretty - Lightweight colored terminal output for Jac CLI."""
-
 import os, re, sys;
-import from typing { Dict, Optional, Tuple, Any }
+import from typing { Dict, Optional, Tuple }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Color and Style Constants
-# ═══════════════════════════════════════════════════════════════════════════════
 glob COLORS: Dict[(str, int)] = {
-         'black': 0,
-         'red': 1,
-         'green': 2,
-         'yellow': 3,
-         'blue': 4,
-         'magenta': 5,
-         'cyan': 6,
-         'white': 7,
-         'bright_black': 8,
-         'bright_red': 9,
-         'bright_green': 10,
-         'bright_yellow': 11,
-         'bright_blue': 12,
-         'bright_magenta': 13,
-         'bright_cyan': 14,
-         'bright_white': 15
+         "black": 0,
+         "red": 1,
+         "green": 2,
+         "yellow": 3,
+         "blue": 4,
+         "magenta": 5,
+         "cyan": 6,
+         "white": 7,
+         "bright_black": 8,
+         "bright_red": 9,
+         "bright_green": 10,
+         "bright_yellow": 11,
+         "bright_blue": 12,
+         "bright_magenta": 13,
+         "bright_cyan": 14,
+         "bright_white": 15
      },
      STYLES: Dict[(str, str)] = {
-         'bold': '1',
-         'dim': '2',
-         'italic': '3',
-         'underline': '4',
-         'blink': '5',
-         'reverse': '7',
-         'conceal': '8',
-         'strike': '9'
+         "bold": "1",
+         "dim": "2",
+         "italic": "3",
+         "underline": "4",
+         "blink": "5",
+         "reverse": "7",
+         "conceal": "8",
+         "strike": "9"
      },
      STYLE_ALIASES: Dict[(str, str)] = {
-         'b': 'bold',
-         'd': 'dim',
-         'i': 'italic',
-         'u': 'underline',
-         'r': 'reverse',
-         's': 'strike',
-         'c': 'conceal'
+         "b": "bold",
+         "d": "dim",
+         "i": "italic",
+         "u": "underline",
+         "r": "reverse",
+         "s": "strike",
+         "c": "conceal"
      };
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Helper Functions
-# ═══════════════════════════════════════════════════════════════════════════════
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]] {
     color = color.lower().strip();
     base = 40 if bg else 30;
-    mode = '48' if bg else '38';
-
-    # Named colors
+    mode = "48" if bg else "38";
     if (color in COLORS) {
         n = COLORS[color];
         return (str((base + n)) if (n < 8) else str(base + 52 + n), );
     }
-
-    # Hex colors (#rrggbb)
-    if (color.startswith('#') and (len(color) == 7)) {
+    if (color.startswith("#") and (len(color) == 7)) {
         return (
             mode,
-            '2',
+            "2",
             str(int(color[1:3], 16)),
             str(int(color[3:5], 16)),
             str(int(color[5:7], 16))
         );
     }
-
-    # RGB colors rgb(r,g,b)
-    if (color.startswith('rgb(') and color.endswith(')')) {
-        p = color[4:-1].split(',');
-        return (mode, '2', p[0].strip(), p[1].strip(), p[2].strip())
+    if (color.startswith("rgb(") and color.endswith(")")) {
+        p = color[4:-1].split(",");
+        return (mode, "2", p[0].strip(), p[1].strip(), p[2].strip())
             if (len(p) == 3)
             else None;
     }
-
-    # 256 color palette color(n)
-    if (color.startswith('color(') and color.endswith(')')) {
-        return (mode, '5', color[6:-1]);
+    if (color.startswith("color(") and color.endswith(")")) {
+        return (mode, "5", color[6:-1]);
     }
-
     return None;
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Style Class
-# ═══════════════════════════════════════════════════════════════════════════════
 class Style {
     with entry {
-        __slots__ = ['_def', '_codes'];
+        __slots__ = ["_def", "_codes"];
     }
 
-    def init(self: Style, definition: str = '') -> object {
+    def init(self: Style, definition: str = "") -> object {
         (self._def, self._codes) = (definition, None);
     }
 
@@ -105,7 +86,7 @@ class Style {
         return bool(self._def);
     }
 
-    def __add__(self: Style, other: 'Style') -> 'Style' {
+    def __add__(self: Style, other: "Style") -> "Style" {
         return Style(f"{self._def} {other._def}")
             if (self and other)
             else (self or other);
@@ -121,13 +102,13 @@ class Style {
 
     def _parse(self: Style) -> str {
         if not self._def {
-            return '';
+            return "";
         }
         (codes, words, i) = ([], self._def.lower().split(), 0);
         while (i < len(words)) {
             w = words[i];
             if (
-                (w == 'on')
+                (w == "on")
                 and ((i + 1) < len(words))
                 and (bg := _parse_color(words[(i + 1)], True))
             ) {
@@ -145,70 +126,44 @@ class Style {
             }
             i += 1;
         }
-        return ';'.join(codes);
+        return ";".join(codes);
     }
 
     def render(self: Style, text: str) -> str {
-        return f"[{self.codes}m{text}[0m" if self.codes else text;
+        return f"\x1b[{self.codes}m{text}\x1b[0m" if self.codes else text;
     }
 
     @classmethod
-    def parse(cls: Any, definition: str) -> 'Style' {
+    def parse(cls: Any, definition: str) -> "Style" {
         return cls(definition);
     }
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Markup Rendering
-# ═══════════════════════════════════════════════════════════════════════════════
-glob RE_MARKUP = re.compile('\\[(/)?([^\\[\\]]*)\\]');
+glob RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]");
 
-def render_markup(markup: str, base_style: str = '') -> str {
-    # Escape literal brackets
-    markup = markup.replace('\\[', '\x00').replace('\\]', '\x01');
-
+def render_markup(markup: str, base_style: str = "") -> str {
+    markup = markup.replace("\\[", "\x00").replace("\\]", "\x01");
     (result, stack, pos) = ([], [base_style] if base_style else [], 0);
-
     for m in RE_MARKUP.finditer(markup) {
-        # Add text before the tag
         if (m.start() > pos) {
-            txt = markup[pos:m.start()].replace('\x00', '[').replace('\x01', ']');
-            result.append(Style(' '.join(stack)).render(txt) if stack else txt);
+            txt = markup[pos:m.start()].replace("\x00", "[").replace("\x01", "]");
+            result.append(Style(" ".join(stack)).render(txt) if stack else txt);
         }
-
-        # Handle closing tag
         if (m.group(1) and stack) {
             stack.pop();
-        }
-        # Handle opening tag
-        elif m.group(2).strip() {
+        } elif m.group(2).strip() {
             stack.append(m.group(2).strip());
         }
-
         pos = m.end();
     }
-
-    # Add remaining text
     if (pos < len(markup)) {
-        txt = markup[pos:].replace('\x00', '[').replace('\x01', ']');
-        result.append(Style(' '.join(stack)).render(txt) if stack else txt);
+        txt = markup[pos:].replace("\x00", "[").replace("\x01", "]");
+        result.append(Style(" ".join(stack)).render(txt) if stack else txt);
     }
-
-    return ''.join(result);
+    return "".join(result);
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Console Class
-# ═══════════════════════════════════════════════════════════════════════════════
 class Console {
-    """A console for rich terminal output.
-
-    Features:
-    - Colored and styled text output
-    - Markup rendering ([bold], [red], etc.)
-    - Rules (horizontal lines with optional titles)
-    - Timestamped logging
-    """
     def init(
         self: Console,
         *,
@@ -222,7 +177,7 @@ class Console {
             width,
             force_terminal
         );
-        self._no_color = no_color or bool(os.environ.get('NO_COLOR'));
+        self._no_color = no_color or bool(os.environ.get("NO_COLOR"));
     }
 
     @property
@@ -252,9 +207,9 @@ class Console {
     def print(
         self: Console,
         *objects: Any,
-        sep: str = ' ',
-        end: str = '\n',
-        style: str = '',
+        sep: str = " ",
+        end: str = "\n",
+        style: str = "",
         markup: bool = True
     ) -> None {
         parts = [];
@@ -274,7 +229,7 @@ class Console {
     }
 
     def rule(
-        self: Console, title: str = '', char: str = '─', style: str = 'dim'
+        self: Console, title: str = "", char: str = "─", style: str = "dim"
     ) -> None {
         w = self.width;
         line = (char * ((w - len(title) - 2) // 2)) + f" {title} " + (
@@ -293,9 +248,6 @@ class Console {
     }
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Global Console Instance
-# ═══════════════════════════════════════════════════════════════════════════════
 glob _console: Optional[Console] = None;
 
 def get_console -> Console {
@@ -310,5 +262,4 @@ def print(*objects: Any, **kwargs: Any) -> None {
     get_console().print(*objects, **kwargs);
 }
 
-# Export public API
-glob __all__ = ['Console', 'Style', 'print', 'render_markup', 'get_console'];
+glob __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
