@@ -8,7 +8,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Error handling & propagation**: Updated LLM implementations and core modules (`byllm/lib.jac`, `byllm/llm.jac`, `byllm/mtir.jac`, `byllm/schema.jac`, `byllm/llm.impl/*`, `byllm/types.*`) to raise and propagate the new exceptions instead of swallowing or returning generic errors.
 - **Tests: Updated to assert exception semantics**: `jac-byllm/tests/test_byllm.jac` and related tests now validate the new failure modes and edge cases.
 
-
 ## byllm 0.5.3 (Latest Release)
 
 ## byllm 0.5.2
