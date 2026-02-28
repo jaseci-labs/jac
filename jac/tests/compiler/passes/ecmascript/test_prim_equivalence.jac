@@ -334,3 +334,17 @@ test "extra builtins match across backends" {
     js_result = run_js_function(js_code, "builtins_extra_cl");
     compare_results(py_result, js_result, "builtins_extra");
 }
+
+test "exception hierarchy matches across backends" {
+    py_result = run_py_fixture("prim_exceptions", "exceptions_py");
+    js_code = compile_fixture_to_js("prim_exceptions.jac");
+    js_result = run_js_function(js_code, "exceptions_cl");
+    compare_results(py_result, js_result, "exceptions");
+}
+
+test "runtime error hierarchy matches across backends" {
+    py_result = run_py_fixture("prim_runtime_errors", "runtime_errors_py");
+    js_code = compile_fixture_to_js("prim_runtime_errors.jac");
+    js_result = run_js_function(js_code, "runtime_errors_cl");
+    compare_results(py_result, js_result, "runtime_errors");
+}

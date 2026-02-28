@@ -53,23 +53,40 @@ import from os { path }
 import from typing { Any }
 ```
 
-### 4. Class declaration uses `obj` (or `node`/`edge`/`walker`)
+### 4. Prefer `obj` over Python-style `class`
 
-WRONG:
+Jac supports both `obj` (dataclass-like, auto-generates `__init__`, `__eq__`, `__repr__`) and `class` (standard Python class behavior). **Prefer `obj`** unless you specifically need Python class semantics.
+
+WRONG (Python syntax):
 
 ```
 class Foo:
     pass
 ```
 
-RIGHT:
+RIGHT (idiomatic Jac):
 
 ```jac
 obj Foo {
+    has x: int = 5;
 }
 ```
 
-### 5. Methods use `can` keyword in archetypes
+ALSO VALID (when you need Python class behavior):
+
+```jac
+class Foo {
+    def init(name: str) {
+        self.name = name;
+    }
+}
+```
+
+For graph programming, use `node`, `edge`, and `walker` archetypes instead.
+
+### 5. `def` for regular methods, `can` ONLY for event-driven abilities
+
+Use `def` for regular methods in archetypes. The `can` keyword is ONLY for data-spatial abilities that respond to walker entry/exit events --the compiler enforces this with: *"Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"*
 
 WRONG:
 
@@ -78,15 +95,42 @@ def my_method(self, x: int) -> int:
     return x + 1
 ```
 
-RIGHT:
+RIGHT --regular method:
 
 ```jac
-can my_method(x: int) -> int;  # in .jac declaration
+obj Foo {
+    has x: int = 0;
+    def my_method(val: int) -> int {
+        return val + 1;
+    }
+}
+```
+
+RIGHT --event-driven ability (uses `can` with `with` clause):
+
+```jac
+walker MyWalker {
+    can process with MyNode entry {
+        report here.value;
+        visit [-->];
+    }
+}
+```
+
+For declaration/implementation separation:
+
+```jac
+# In .jac file: declare method signature
+obj Foo {
+    has x: int = 0;
+    def my_method(val: int) -> int;
+}
 ```
 
 ```jac
-impl Foo.my_method(x: int) -> int {  # in .impl.jac
-    return x + 1;
+# In .impl.jac file: implement it
+impl Foo.my_method(val: int) -> int {
+    return val + 1;
 }
 ```
 
@@ -113,7 +157,9 @@ obj Foo {
 
 NOTE: You must explicitly call `super.init()` in the init body. Without a `def init`, the compiled class gets an empty `__init__`.
 
-### 7. No `enumerate()` in for loops
+### 7. `enumerate()` requires tuple unpacking with parentheses
+
+`enumerate()` works in Jac, but you MUST wrap the loop variables in parentheses for tuple unpacking.
 
 WRONG:
 
@@ -126,18 +172,20 @@ for i, x in enumerate(items) {
 RIGHT:
 
 ```jac
-for i in range(len(items)) {
-    print(i, items[i]);
+for (i, x) in enumerate(items) {
+    print(i, x);
 }
 ```
 
-### 8. `<>` prefix means ByRef (mutable parameter)
+### 8. Mutable objects are passed by reference automatically
+
+In Jac (like Python), mutable objects (lists, dicts) are passed by reference by default. You don't need any special syntax:
 
 ```jac
-can modify(<>data: list) -> None;
+def modify(data: list) -> None {
+    data.append(42);
+}
 ```
-
-This passes `data` by reference so the function can mutate it.
 
 ### 9. Instance variables use `has`, not `self`
 
@@ -159,22 +207,32 @@ obj Foo {
 }
 ```
 
-### 10. Static methods don't use `self`
+### 10. Static methods use `static def`
 
 WRONG:
 
 ```
 obj Foo {
-    can bar(self) -> int {
+    def bar(self) -> int {
         return 42;
     }
 }
 ```
 
-For standalone functions, just define them at module level:
+RIGHT --static method:
 
 ```jac
-can bar -> int {
+obj Foo {
+    static def bar() -> int {
+        return 42;
+    }
+}
+```
+
+Or as a standalone module-level function:
+
+```jac
+def bar() -> int {
     return 42;
 }
 ```
@@ -304,8 +362,8 @@ Declaration file (`module.jac`):
 ```jac
 obj Calculator {
     has result: float = 0.0;
-    can add(x: float) -> float;
-    can reset -> None;
+    def add(x: float) -> float;
+    def reset() -> None;
 }
 ```
 
@@ -326,11 +384,7 @@ impl Calculator.reset -> None {
 
 A single syntax error in an impl file causes all implementations in that file to produce 0 body items. Always check syntax carefully.
 
-### 23. Must clear caches when modifying .jac files
-
-Delete `__jac_gen__` and `__pycache__` directories when making changes to `.jac` or `.impl.jac` files to avoid stale cached bytecode.
-
-### 24. Module entry point
+### 23. Module entry point
 
 Use `with entry { }` for code that runs when the module is executed:
 
@@ -340,7 +394,7 @@ with entry {
 }
 ```
 
-### 25. Global variables
+### 24. Global variables
 
 Use `glob` for module-level variables:
 

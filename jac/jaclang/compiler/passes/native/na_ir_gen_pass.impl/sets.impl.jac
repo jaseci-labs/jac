@@ -20,7 +20,8 @@ impl NaIRGenPass._emit_set_helpers(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8_ptr, [i64]);
+    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __set_new: create an empty set with capacity 8 ---
     new_fnty = ir.FunctionType(set_ptr_type, []);
@@ -28,11 +29,11 @@ impl NaIRGenPass._emit_set_helpers(
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    # Allocate set struct
+    # Allocate set struct via rc_alloc (RC-managed)
     null_ptr = ir.Constant(set_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
     struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(gc_malloc, [struct_size], name="raw");
+    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
     set_ptr = b.bitcast(raw, set_ptr_type, name="set");
     # len = 0
     len_p = b.gep(set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
@@ -40,12 +41,12 @@ impl NaIRGenPass._emit_set_helpers(
     # cap = 8
     cap_p = b.gep(set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
     b.store(ir.Constant(i64, 8), cap_p);
-    # Allocate elems: 8 * sizeof(elem)
+    # Allocate elems: 8 * sizeof(elem) via plain malloc (internal, not RC-managed)
     elem_null = ir.Constant(elem_type.as_pointer(), None);
     elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
     elem_sizeof_val = b.ptrtoint(elem_gep, i64, name="elem.size");
     elems_bytes = b.mul(ir.Constant(i64, 8), elem_sizeof_val, name="elems.bytes");
-    elems_raw = b.call(gc_malloc, [elems_bytes], name="elems.raw");
+    elems_raw = b.call(malloc_fn, [elems_bytes], name="elems.raw");
     elems = b.bitcast(elems_raw, elem_type.as_pointer(), name="elems");
     elems_p = b.gep(
         set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="elems.ptr"
@@ -140,12 +141,14 @@ impl NaIRGenPass._emit_set_helpers(
     elem_gep2 = b.gep(elem_null2, [ir.Constant(i32, 1)], name="elem.sizeof");
     elem_sz = b.ptrtoint(elem_gep2, i64, name="elem.size");
     new_elems_bytes = b.mul(new_cap, elem_sz, name="new.elems.bytes");
-    new_elems_raw = b.call(gc_malloc, [new_elems_bytes], name="new.elems.raw");
+    new_elems_raw = b.call(malloc_fn, [new_elems_bytes], name="new.elems.raw");
     new_elems = b.bitcast(new_elems_raw, elem_type.as_pointer(), name="new.elems");
     old_elems_bytes = b.mul(cur_len, elem_sz, name="old.elems.bytes");
     old_elems_i8 = b.bitcast(elems_arr, i8_ptr, name="old.elems.i8");
     new_elems_i8 = b.bitcast(new_elems, i8_ptr, name="new.elems.i8");
     b.call(memcpy_fn, [new_elems_i8, old_elems_i8, old_elems_bytes]);
+    # Free old elements array (plain malloc'd, not RC-managed)
+    b.call(free_fn, [old_elems_i8]);
     b.store(new_elems, elems_p2);
     b.branch(append_bb);
     # Append block
@@ -242,6 +245,82 @@ impl NaIRGenPass._emit_set_helpers(
     );
     length = b.load(lp, name="len");
     b.ret(length);
+    # --- __rc_release_set_T: type-specific destructor ---
+    release_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
+    release_fn = ir.Function(
+        self.llvm_module, release_fnty, name=f"__rc_release_set_{elem_type_name}"
+    );
+    release_fn.linkage = "private";
+    release_fn.args[0].name = "set";
+    entry_bb = release_fn.append_basic_block("entry");
+    dec_bb = release_fn.append_basic_block("dec");
+    free_bb = release_fn.append_basic_block("do_free");
+    done_bb = release_fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    is_null = b.icmp_unsigned(
+        "==", release_fn.args[0], ir.Constant(set_ptr_type, None), name="is.null"
+    );
+    b.cbranch(is_null, done_bb, dec_bb);
+    b = ir.IRBuilder(dec_bb);
+    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
+    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
+    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
+    old_rc = b.load(rc_ptr_r, name="old.rc");
+    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
+    b.store(new_rc, rc_ptr_r);
+    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
+    b.cbranch(is_zero, free_bb, done_bb);
+    b = ir.IRBuilder(free_bb);
+    # Release pointer-typed elements if applicable
+    if isinstance(elem_type, ir.PointerType) {
+        len_p_r = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name="len.ptr.r"
+        );
+        cur_len_r = b.load(len_p_r, name="len.r");
+        elems_p_r = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+            name="elems.ptr.r"
+        );
+        elems_r = b.load(elems_p_r, name="elems.r");
+        loop_alloca = b.alloca(i64, name="loop.i");
+        b.store(ir.Constant(i64, 0), loop_alloca);
+        lcond = release_fn.append_basic_block("loop.cond");
+        lbody = release_fn.append_basic_block("loop.body");
+        lend = release_fn.append_basic_block("loop.end");
+        b.branch(lcond);
+        b = ir.IRBuilder(lcond);
+        li = b.load(loop_alloca, name="li");
+        b.cbranch(b.icmp_unsigned("<", li, cur_len_r, name="lcmp"), lbody, lend);
+        b = ir.IRBuilder(lbody);
+        ep = b.gep(elems_r, [b.load(loop_alloca, name="li2")], name="e.ptr");
+        ev = b.load(ep, name="e.val");
+        b.call(self.rc_release_simple_fn, [b.bitcast(ev, i8_ptr, name="e.cast")]);
+        b.store(
+            b.add(
+                b.load(loop_alloca, name="li3"), ir.Constant(i64, 1), name="linc"
+            ),
+            loop_alloca
+        );
+        b.branch(lcond);
+        b = ir.IRBuilder(lend);
+    }
+    # Free elems array
+    elems_p_f = b.gep(
+        release_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+        name="elems.ptr.f"
+    );
+    elems_f = b.load(elems_p_f, name="elems.f");
+    b.call(free_fn, [b.bitcast(elems_f, i8_ptr, name="elems.cast")]);
+    # Free set struct
+    b.call(free_fn, [rc_raw]);
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    self.set_release_fns[elem_type_name] = release_fn;
     # Store helpers
     self.set_helpers[elem_type_name] = {
         "new": new_fn,

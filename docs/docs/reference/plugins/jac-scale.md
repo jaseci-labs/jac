@@ -49,7 +49,7 @@ jac start app.jac --port 3000
 jac start app.jac --dev
 
 # API only -- skip client bundling
-jac start app.jac --dev --no-client
+jac start app.jac --dev --no_client
 
 # Preview generated API endpoints without starting
 jac start app.jac --faux
@@ -1064,6 +1064,23 @@ graph TD
 ---
 
 ## Kubernetes Deployment
+
+### Memory Resource Configuration
+
+Control how much memory Kubernetes allows for your application container.
+
+| Parameter | TOML Key | Default | Description |
+|-----------|----------|---------|-------------|
+| `K8s_MEMORY_LIMIT` | `memory_limit` | `12Gi` | Maximum memory the container may use before being OOM-killed |
+
+Override the default in your `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+memory_limit = "2Gi"
+```
+
+Accepted suffixes: `Ki`, `Mi`, `Gi` (binary) or `K`, `M`, `G` (decimal).
 
 ### Deployment Modes
 

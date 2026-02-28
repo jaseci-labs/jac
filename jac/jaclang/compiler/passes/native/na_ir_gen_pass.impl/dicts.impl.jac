@@ -70,7 +70,8 @@ impl NaIRGenPass._emit_dict_helpers(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8_ptr, [i64]);
+    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __dict_new: create an empty dict with capacity 8 ---
     new_fnty = ir.FunctionType(dict_ptr_type, []);
@@ -80,11 +81,11 @@ impl NaIRGenPass._emit_dict_helpers(
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    # Allocate dict struct
+    # Allocate dict struct via rc_alloc (RC-managed)
     null_ptr = ir.Constant(dict_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
     struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(gc_malloc, [struct_size], name="raw");
+    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
     dict_ptr = b.bitcast(raw, dict_ptr_type, name="dict");
     # len = 0
     len_p = b.gep(dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
@@ -92,23 +93,23 @@ impl NaIRGenPass._emit_dict_helpers(
     # cap = 8
     cap_p = b.gep(dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
     b.store(ir.Constant(i64, 8), cap_p);
-    # Allocate keys: 8 * sizeof(key)
+    # Allocate keys: 8 * sizeof(key) via plain malloc (internal, not RC-managed)
     key_null = ir.Constant(key_type.as_pointer(), None);
     key_gep = b.gep(key_null, [ir.Constant(i32, 1)], name="key.sizeof");
     key_size = b.ptrtoint(key_gep, i64, name="key.size");
     keys_bytes = b.mul(ir.Constant(i64, 8), key_size, name="keys.bytes");
-    keys_raw = b.call(gc_malloc, [keys_bytes], name="keys.raw");
+    keys_raw = b.call(malloc_fn, [keys_bytes], name="keys.raw");
     keys = b.bitcast(keys_raw, key_type.as_pointer(), name="keys");
     keys_p = b.gep(
         dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
     );
     b.store(keys, keys_p);
-    # Allocate vals: 8 * sizeof(val)
+    # Allocate vals: 8 * sizeof(val) via plain malloc (internal, not RC-managed)
     val_null = ir.Constant(val_type.as_pointer(), None);
     val_gep = b.gep(val_null, [ir.Constant(i32, 1)], name="val.sizeof");
     val_size = b.ptrtoint(val_gep, i64, name="val.size");
     vals_bytes = b.mul(ir.Constant(i64, 8), val_size, name="vals.bytes");
-    vals_raw = b.call(gc_malloc, [vals_bytes], name="vals.raw");
+    vals_raw = b.call(malloc_fn, [vals_bytes], name="vals.raw");
     vals = b.bitcast(vals_raw, val_type.as_pointer(), name="vals");
     vals_p = b.gep(
         dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="vals.ptr"
@@ -215,24 +216,28 @@ impl NaIRGenPass._emit_dict_helpers(
     key_gep2 = b.gep(key_null2, [ir.Constant(i32, 1)], name="key.sizeof");
     key_sz = b.ptrtoint(key_gep2, i64, name="key.size");
     new_keys_bytes = b.mul(new_cap, key_sz, name="new.keys.bytes");
-    new_keys_raw = b.call(gc_malloc, [new_keys_bytes], name="new.keys.raw");
+    new_keys_raw = b.call(malloc_fn, [new_keys_bytes], name="new.keys.raw");
     new_keys = b.bitcast(new_keys_raw, key_type.as_pointer(), name="new.keys");
     old_keys_bytes = b.mul(cur_len, key_sz, name="old.keys.bytes");
     old_keys_i8 = b.bitcast(keys_arr, i8_ptr, name="old.keys.i8");
     new_keys_i8 = b.bitcast(new_keys, i8_ptr, name="new.keys.i8");
     b.call(memcpy_fn, [new_keys_i8, old_keys_i8, old_keys_bytes]);
+    # Free old keys array (plain malloc'd, not RC-managed)
+    b.call(free_fn, [old_keys_i8]);
     b.store(new_keys, keys_p2);
     # Reallocate vals
     val_null2 = ir.Constant(val_type.as_pointer(), None);
     val_gep2 = b.gep(val_null2, [ir.Constant(i32, 1)], name="val.sizeof");
     val_sz = b.ptrtoint(val_gep2, i64, name="val.size");
     new_vals_bytes = b.mul(new_cap, val_sz, name="new.vals.bytes");
-    new_vals_raw = b.call(gc_malloc, [new_vals_bytes], name="new.vals.raw");
+    new_vals_raw = b.call(malloc_fn, [new_vals_bytes], name="new.vals.raw");
     new_vals = b.bitcast(new_vals_raw, val_type.as_pointer(), name="new.vals");
     old_vals_bytes = b.mul(cur_len, val_sz, name="old.vals.bytes");
     old_vals_i8 = b.bitcast(vals_arr, i8_ptr, name="old.vals.i8");
     new_vals_i8 = b.bitcast(new_vals, i8_ptr, name="new.vals.i8");
     b.call(memcpy_fn, [new_vals_i8, old_vals_i8, old_vals_bytes]);
+    # Free old vals array (plain malloc'd, not RC-managed)
+    b.call(free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
     # Append block
@@ -448,6 +453,128 @@ impl NaIRGenPass._emit_dict_helpers(
     key_elem_ptr = b.gep(keys_arr_gk, [idx_arg_gk], name="key.elem.ptr");
     key_result = b.load(key_elem_ptr, name="key.result");
     b.ret(key_result);
+    # --- __rc_release_dict_K_V: type-specific destructor ---
+    release_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
+    release_fn = ir.Function(
+        self.llvm_module,
+        release_fnty,
+        name=f"__rc_release_dict_{dict_key.replace(':', '_')}"
+    );
+    release_fn.linkage = "private";
+    release_fn.args[0].name = "dict";
+    entry_bb = release_fn.append_basic_block("entry");
+    dec_bb = release_fn.append_basic_block("dec");
+    free_bb = release_fn.append_basic_block("do_free");
+    done_bb = release_fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    is_null = b.icmp_unsigned(
+        "==", release_fn.args[0], ir.Constant(dict_ptr_type, None), name="is.null"
+    );
+    b.cbranch(is_null, done_bb, dec_bb);
+    b = ir.IRBuilder(dec_bb);
+    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
+    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
+    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
+    old_rc = b.load(rc_ptr_r, name="old.rc");
+    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
+    b.store(new_rc, rc_ptr_r);
+    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
+    b.cbranch(is_zero, free_bb, done_bb);
+    b = ir.IRBuilder(free_bb);
+    # Release pointer-typed keys if applicable
+    if isinstance(key_type, ir.PointerType) {
+        len_p_dk = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name="len.ptr.dk"
+        );
+        cur_len_dk = b.load(len_p_dk, name="len.dk");
+        keys_p_dk = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+            name="keys.ptr.dk"
+        );
+        keys_dk = b.load(keys_p_dk, name="keys.dk");
+        loop_alloca_k = b.alloca(i64, name="loop.k");
+        b.store(ir.Constant(i64, 0), loop_alloca_k);
+        lcond_k = release_fn.append_basic_block("loop.cond.k");
+        lbody_k = release_fn.append_basic_block("loop.body.k");
+        lend_k = release_fn.append_basic_block("loop.end.k");
+        b.branch(lcond_k);
+        b = ir.IRBuilder(lcond_k);
+        ki = b.load(loop_alloca_k, name="ki");
+        b.cbranch(b.icmp_unsigned("<", ki, cur_len_dk, name="kcmp"), lbody_k, lend_k);
+        b = ir.IRBuilder(lbody_k);
+        kp = b.gep(keys_dk, [b.load(loop_alloca_k, name="ki2")], name="k.ptr");
+        kv = b.load(kp, name="k.val");
+        b.call(self.rc_release_simple_fn, [b.bitcast(kv, i8_ptr, name="k.cast")]);
+        b.store(
+            b.add(
+                b.load(loop_alloca_k, name="ki3"), ir.Constant(i64, 1), name="kinc"
+            ),
+            loop_alloca_k
+        );
+        b.branch(lcond_k);
+        b = ir.IRBuilder(lend_k);
+    }
+    # Release pointer-typed vals if applicable
+    if isinstance(val_type, ir.PointerType) {
+        len_p_dv = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
+            name="len.ptr.dv"
+        );
+        cur_len_dv = b.load(len_p_dv, name="len.dv");
+        vals_p_dv = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, 3)],
+            name="vals.ptr.dv"
+        );
+        vals_dv = b.load(vals_p_dv, name="vals.dv");
+        loop_alloca_v = b.alloca(i64, name="loop.v");
+        b.store(ir.Constant(i64, 0), loop_alloca_v);
+        lcond_v = release_fn.append_basic_block("loop.cond.v");
+        lbody_v = release_fn.append_basic_block("loop.body.v");
+        lend_v = release_fn.append_basic_block("loop.end.v");
+        b.branch(lcond_v);
+        b = ir.IRBuilder(lcond_v);
+        vi = b.load(loop_alloca_v, name="vi");
+        b.cbranch(b.icmp_unsigned("<", vi, cur_len_dv, name="vcmp"), lbody_v, lend_v);
+        b = ir.IRBuilder(lbody_v);
+        vp = b.gep(vals_dv, [b.load(loop_alloca_v, name="vi2")], name="v.ptr");
+        vv = b.load(vp, name="v.val");
+        b.call(self.rc_release_simple_fn, [b.bitcast(vv, i8_ptr, name="v.cast")]);
+        b.store(
+            b.add(
+                b.load(loop_alloca_v, name="vi3"), ir.Constant(i64, 1), name="vinc"
+            ),
+            loop_alloca_v
+        );
+        b.branch(lcond_v);
+        b = ir.IRBuilder(lend_v);
+    }
+    # Free keys array
+    keys_p_f = b.gep(
+        release_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+        name="keys.ptr.f"
+    );
+    keys_f = b.load(keys_p_f, name="keys.f");
+    b.call(free_fn, [b.bitcast(keys_f, i8_ptr, name="keys.cast")]);
+    # Free vals array
+    vals_p_f = b.gep(
+        release_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 3)],
+        name="vals.ptr.f"
+    );
+    vals_f = b.load(vals_p_f, name="vals.f");
+    b.call(free_fn, [b.bitcast(vals_f, i8_ptr, name="vals.cast")]);
+    # Free dict struct
+    b.call(free_fn, [rc_raw]);
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    self.dict_release_fns[dict_key] = release_fn;
     # Store helpers
     self.dict_helpers[dict_key] = {
         "new": new_fn,

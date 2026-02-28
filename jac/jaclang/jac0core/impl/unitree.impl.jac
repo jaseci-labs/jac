@@ -2856,13 +2856,18 @@ impl String.lit_value(self: String) -> str {
                 is_raw2 = 'r' in prefix2;
             }
             if not is_raw2 {
+                import codecs;
                 result = self.value;
-                placeholder = '\x00';
-                result = result.replace('\\\\', placeholder);
-                result = result.replace('\\n', '\n');
-                result = result.replace('\\t', '\t');
-                result = result.replace('\\r', '\r');
-                result = result.replace(placeholder, '\\');
+                try {
+                    result = codecs.decode(result, 'unicode_escape');
+                } except Exception {
+                    placeholder = '\x00';
+                    result = result.replace('\\\\', placeholder);
+                    result = result.replace('\\n', '\n');
+                    result = result.replace('\\t', '\t');
+                    result = result.replace('\\r', '\r');
+                    result = result.replace(placeholder, '\\');
+                }
                 return result;
             }
             return self.value;
@@ -2876,13 +2881,20 @@ impl String.lit_value(self: String) -> str {
                 is_raw = 'r' in prefix;
             }
             if not is_raw {
+                import codecs;
                 result = self.value;
-                placeholder = '\x00';
-                result = result.replace('\\\\', placeholder);
-                result = result.replace('\\n', '\n');
-                result = result.replace('\\t', '\t');
-                result = result.replace('\\r', '\r');
-                result = result.replace(placeholder, '\\');
+                # Use codecs to decode all escape sequences (like \x1b, \n, \t, etc.)
+                try {
+                    result = codecs.decode(result, 'unicode_escape');
+                } except Exception {
+                    # Fallback to manual handling if decode fails
+                    placeholder = '\x00';
+                    result = result.replace('\\\\', placeholder);
+                    result = result.replace('\\n', '\n');
+                    result = result.replace('\\t', '\t');
+                    result = result.replace('\\r', '\r');
+                    result = result.replace(placeholder, '\\');
+                }
                 return result;
             }
         }

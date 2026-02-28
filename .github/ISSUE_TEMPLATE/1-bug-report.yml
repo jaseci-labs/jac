@@ -1,0 +1,133 @@
+name: "Bug Report"
+description: "Report a reproducible bug to help us improve Jaseci."
+title: "[Bug]: "
+labels: ["Type: Bug"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Thank you for helping us improve Jaseci!
+        To ensure we can address your report efficiently, please fill out all sections and provide as much detail as possible.
+        Before submitting, search [existing issues](https://github.com/Jaseci-Labs/jaseci/issues) to avoid duplicates.
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: "Bug Summary"
+      description: "A clear, one-sentence description of the bug."
+      placeholder: "e.g. `jac run` throws a TypeError on valid code that worked in the previous version."
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: markdown
+    attributes:
+      value: "## Environment"
+
+  - type: input
+    id: os
+    attributes:
+      label: "Operating System"
+      placeholder: "e.g. macOS Sequoia 15.2, Windows 11 64-bit, Ubuntu 22.04"
+    validations:
+      required: true
+
+  - type: input
+    id: jac-version
+    attributes:
+      label: "Jac Version"
+      placeholder: "Run `jac -V` — e.g. 0.11.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: "Python Version"
+      placeholder: "Run `python --version` — e.g. 3.12.2"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: markdown
+    attributes:
+      value: "**Other Jaseci Stack Versions** *(leave blank if not installed)*"
+
+  - type: input
+    id: byllm-version
+    attributes:
+      label: "jac-byllm Version"
+      placeholder: "e.g. 0.5.0"
+
+  - type: input
+    id: client-version
+    attributes:
+      label: "jac-client Version"
+      placeholder: "e.g. 0.2.19"
+
+  - type: input
+    id: scale-version
+    attributes:
+      label: "jac-scale Version"
+      placeholder: "e.g. 0.1.10"
+
+  - type: input
+    id: super-version
+    attributes:
+      label: "jac-super Version"
+      placeholder: "e.g. 0.1.4"
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Steps to Reproduce"
+      placeholder: |
+        1. Create a `.jac` file with minimal reproduction code:
+           ```jac
+           # minimal reproduction
+           ```
+        2. Run: `jac run <file>.jac`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected Behavior"
+      placeholder: "e.g. Should print `Hello, Alice` and exit with code 0."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual Behavior"
+      description: "Paste the full error output or stack trace."
+      placeholder: |
+        ```
+        TypeError: can only concatenate str (not "NoneType") to str
+          File "test.jac", line 6, in say_hello
+        ```
+      render: shell
+    validations:
+      required: true

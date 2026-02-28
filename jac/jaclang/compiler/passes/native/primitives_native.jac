@@ -221,12 +221,12 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         toupper_fn = p._get_or_declare_extern("toupper", i32, [i32]);
         tolower_fn = p._get_or_declare_extern("tolower", i32, [i32]);
         slen = b.call(strlen_fn, [target], name="cap.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="cap.alloc.sz");
-        result = b.call(gc_malloc, [alloc_size], name="cap.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="cap.buf");
         is_empty = b.icmp_unsigned("==", slen, ir.Constant(i64, 0), name="cap.empty");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
@@ -296,9 +296,9 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
         slen = b.call(strlen_fn, [target], name="case.len");
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="case.alloc.sz");
-        result = b.call(gc_malloc, [alloc_size], name="case.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="case.buf");
         transform_fn = p._get_or_declare_extern(cfunc_name, i32, [i32]);
         func = b.basic_block.function;
         entry_bb = b.basic_block;
@@ -340,13 +340,13 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         toupper_fn = p._get_or_declare_extern("toupper", i32, [i32]);
         tolower_fn = p._get_or_declare_extern("tolower", i32, [i32]);
         isalpha_fn = p._get_or_declare_extern("isalpha", i32, [i32]);
         slen = b.call(strlen_fn, [target], name="title.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="title.alloc");
-        result = b.call(gc_malloc, [alloc_size], name="title.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="title.buf");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
         loop_bb = func.append_basic_block(name="title.loop");
@@ -409,14 +409,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         toupper_fn = p._get_or_declare_extern("toupper", i32, [i32]);
         tolower_fn = p._get_or_declare_extern("tolower", i32, [i32]);
         islower_fn = p._get_or_declare_extern("islower", i32, [i32]);
         isupper_fn = p._get_or_declare_extern("isupper", i32, [i32]);
         slen = b.call(strlen_fn, [target], name="swap.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="swap.alloc.sz");
-        result = b.call(gc_malloc, [alloc_size], name="swap.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="swap.buf");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
         loop_bb = func.append_basic_block(name="swap.loop");
@@ -673,7 +673,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
         strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         old_str = args[0];
         new_str = args[1];
@@ -684,7 +684,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         generous_factor = b.add(new_len, ir.Constant(i64, 1), name="repl.factor");
         generous_size = b.mul(target_len, generous_factor, name="repl.generous");
         alloc_size = b.add(generous_size, ir.Constant(i64, 1), name="repl.alloc");
-        result = b.call(gc_malloc, [alloc_size], name="repl.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="repl.buf");
         null_ptr = ir.Constant(i8p, None);
         func = b.basic_block.function;
         entry_bb = b.basic_block;
@@ -745,7 +745,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
         strcpy_fn = p._get_or_declare_extern("strcpy", i8p, [i8p, i8p]);
         slen = b.call(strlen_fn, [target], name="lstrip.len");
@@ -777,7 +777,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         start.add_incoming(idx, body_bb);
         new_len = b.sub(slen, start, name="lstrip.newlen");
         alloc_size = b.add(new_len, ir.Constant(i64, 1), name="lstrip.alloc");
-        result = b.call(gc_malloc, [alloc_size], name="lstrip.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="lstrip.buf");
         start_ptr = b.gep(target, [start], name="lstrip.start.ptr");
         b.call(strcpy_fn, [result, start_ptr]);
         return result;
@@ -794,7 +794,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         slen = b.call(strlen_fn, [target], name="rstrip.len");
@@ -825,7 +825,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         final_end.add_incoming(end, loop_bb);
         final_end.add_incoming(end, body_bb);
         alloc_size = b.add(final_end, ir.Constant(i64, 1), name="rstrip.alloc");
-        result = b.call(gc_malloc, [alloc_size], name="rstrip.buf");
+        result = b.call(rc_alloc_fn, [alloc_size], name="rstrip.buf");
         b.call(memcpy_fn, [result, target, final_end]);
         null_ptr = b.gep(result, [final_end], name="rstrip.null.ptr");
         b.store(ir.Constant(i8, 0), null_ptr);
@@ -846,7 +846,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
         strncmp_fn = p._get_or_declare_extern("strncmp", i32, [i8p, i8p, i64]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         strcpy_fn = p._get_or_declare_extern("strcpy", i8p, [i8p, i8p]);
         prefix_len = b.call(strlen_fn, [args[0]], name="rmpfx.pfx.len");
         target_len = b.call(strlen_fn, [target], name="rmpfx.tgt.len");
@@ -865,14 +865,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(match_bb);
         rest_len = b.sub(target_len, prefix_len, name="rmpfx.rest.len");
         alloc_m = b.add(rest_len, ir.Constant(i64, 1), name="rmpfx.alloc.m");
-        result_m = b.call(gc_malloc, [alloc_m], name="rmpfx.buf.m");
+        result_m = b.call(rc_alloc_fn, [alloc_m], name="rmpfx.buf.m");
         rest_ptr = b.gep(target, [prefix_len], name="rmpfx.rest.ptr");
         b.call(strcpy_fn, [result_m, rest_ptr]);
         b.branch(done_bb);
         # Not matched: return copy of original
         b.position_at_start(nomatch_bb);
         alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmpfx.alloc.n");
-        result_n = b.call(gc_malloc, [alloc_n], name="rmpfx.buf.n");
+        result_n = b.call(rc_alloc_fn, [alloc_n], name="rmpfx.buf.n");
         b.call(strcpy_fn, [result_n, target]);
         b.branch(done_bb);
         b.position_at_start(done_bb);
@@ -896,7 +896,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
         strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         suffix_len = b.call(strlen_fn, [args[0]], name="rmsfx.sfx.len");
         target_len = b.call(strlen_fn, [target], name="rmsfx.tgt.len");
@@ -917,7 +917,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(match_bb);
         new_len = b.sub(target_len, suffix_len, name="rmsfx.newlen");
         alloc_m = b.add(new_len, ir.Constant(i64, 1), name="rmsfx.alloc.m");
-        result_m = b.call(gc_malloc, [alloc_m], name="rmsfx.buf.m");
+        result_m = b.call(rc_alloc_fn, [alloc_m], name="rmsfx.buf.m");
         b.call(memcpy_fn, [result_m, target, new_len]);
         null_ptr_m = b.gep(result_m, [new_len], name="rmsfx.null.m");
         b.store(ir.Constant(i8, 0), null_ptr_m);
@@ -925,7 +925,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # Not matched: copy original
         b.position_at_start(nomatch_bb);
         alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmsfx.alloc.n");
-        result_n = b.call(gc_malloc, [alloc_n], name="rmsfx.buf.n");
+        result_n = b.call(rc_alloc_fn, [alloc_n], name="rmsfx.buf.n");
         b.call(memcpy_fn, [result_n, target, target_len]);
         null_ptr_n = b.gep(result_n, [target_len], name="rmsfx.null.n");
         b.store(ir.Constant(i8, 0), null_ptr_n);
@@ -974,7 +974,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         zero = ir.Constant(i64, 0);
         one = ir.Constant(i64, 1);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         # Ensure list helpers for "ptr" (string list)
         p._emit_list_helpers("ptr", i8p);
@@ -994,7 +994,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.cbranch(is_empty, empty_bb, pass1_bb);
         # Empty list: return empty string
         b.position_at_start(empty_bb);
-        empty_buf = b.call(gc_malloc, [one], name="jn.empty.buf");
+        empty_buf = b.call(rc_alloc_fn, [one], name="jn.empty.buf");
         b.store(ir.Constant(i8, 0), empty_buf);
         b.branch(done_bb);
         # Pass 1: compute total length
@@ -1027,7 +1027,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         sep_total = b.mul(sep_len, sep_count, name="jn.septotal");
         grand_total = b.add(total_phi, sep_total, name="jn.grand");
         alloc_sz = b.add(grand_total, one, name="jn.alloc");
-        buf = b.call(gc_malloc, [alloc_sz], name="jn.buf");
+        buf = b.call(rc_alloc_fn, [alloc_sz], name="jn.buf");
         # Pass 2: copy elements with separator
         entry_p2 = b.basic_block;
         loop2_bb = func.append_basic_block(name="jn.cp.loop");
@@ -1122,7 +1122,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
         slen = b.call(strlen_fn, [target], name="center.len");
@@ -1142,7 +1142,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         left_pad = b.add(half, adj, name="center.lpad");
         right_pad = b.sub(total_pad, left_pad, name="center.rpad");
         alloc_pad = b.add(width, ir.Constant(i64, 1), name="center.alloc");
-        buf_pad = b.call(gc_malloc, [alloc_pad], name="center.buf");
+        buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="center.buf");
         # Fill left padding with spaces
         b.call(memset_fn, [buf_pad, ir.Constant(ir.IntType(32), 32), left_pad]);
         # Copy string after left padding
@@ -1158,7 +1158,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # No pad: return copy
         b.position_at_start(nopad_bb);
         alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="center.alloc.np");
-        buf_nopad = b.call(gc_malloc, [alloc_nopad], name="center.buf.np");
+        buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="center.buf.np");
         b.call(memcpy_fn, [buf_nopad, target, slen]);
         null_nopad = b.gep(buf_nopad, [slen], name="center.null.np");
         b.store(ir.Constant(i8, 0), null_nopad);
@@ -1183,7 +1183,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
         slen = b.call(strlen_fn, [target], name="ljust.len");
@@ -1197,7 +1197,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # Pad case: copy string + fill spaces
         b.position_at_start(pad_bb);
         alloc_pad = b.add(width, ir.Constant(i64, 1), name="ljust.alloc");
-        buf_pad = b.call(gc_malloc, [alloc_pad], name="ljust.buf");
+        buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="ljust.buf");
         b.call(memcpy_fn, [buf_pad, target, slen]);
         pad_ptr = b.gep(buf_pad, [slen], name="ljust.pad.ptr");
         pad_len = b.sub(width, slen, name="ljust.pad.len");
@@ -1208,7 +1208,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # No pad: return copy
         b.position_at_start(nopad_bb);
         alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="ljust.alloc.np");
-        buf_nopad = b.call(gc_malloc, [alloc_nopad], name="ljust.buf.np");
+        buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="ljust.buf.np");
         b.call(memcpy_fn, [buf_nopad, target, slen]);
         null_nopad = b.gep(buf_nopad, [slen], name="ljust.null.np");
         b.store(ir.Constant(i8, 0), null_nopad);
@@ -1233,7 +1233,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
         slen = b.call(strlen_fn, [target], name="rjust.len");
@@ -1246,7 +1246,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.cbranch(needs_pad, pad_bb, nopad_bb);
         b.position_at_start(pad_bb);
         alloc_pad = b.add(width, ir.Constant(i64, 1), name="rjust.alloc");
-        buf_pad = b.call(gc_malloc, [alloc_pad], name="rjust.buf");
+        buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="rjust.buf");
         pad_len = b.sub(width, slen, name="rjust.pad.len");
         b.call(memset_fn, [buf_pad, ir.Constant(ir.IntType(32), 32), pad_len]);
         str_dst = b.gep(buf_pad, [pad_len], name="rjust.str.dst");
@@ -1256,7 +1256,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.branch(done_bb);
         b.position_at_start(nopad_bb);
         alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="rjust.alloc.np");
-        buf_nopad = b.call(gc_malloc, [alloc_nopad], name="rjust.buf.np");
+        buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="rjust.buf.np");
         b.call(memcpy_fn, [buf_nopad, target, slen]);
         null_nopad = b.gep(buf_nopad, [slen], name="rjust.null.np");
         b.store(ir.Constant(i8, 0), null_nopad);
@@ -1281,7 +1281,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
         slen = b.call(strlen_fn, [target], name="zfill.len");
@@ -1295,7 +1295,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # Pad case: check for sign char
         b.position_at_start(pad_bb);
         alloc_pad = b.add(width, ir.Constant(i64, 1), name="zfill.alloc");
-        buf_pad = b.call(gc_malloc, [alloc_pad], name="zfill.buf");
+        buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="zfill.buf");
         first_ch = b.load(target, name="zfill.first");
         is_plus = b.icmp_unsigned(
             "==", first_ch, ir.Constant(i8, 43), name="zfill.plus"
@@ -1345,7 +1345,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         # No pad: return copy
         b.position_at_start(nopad_bb);
         alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="zfill.alloc.np");
-        buf_nopad = b.call(gc_malloc, [alloc_nopad], name="zfill.buf.np");
+        buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="zfill.buf.np");
         b.call(memcpy_fn, [buf_nopad, target, slen]);
         null_nopad = b.gep(buf_nopad, [slen], name="zfill.null.np");
         b.store(ir.Constant(i8, 0), null_nopad);
@@ -1369,7 +1369,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         zero = ir.Constant(i64, 0);
         one = ir.Constant(i64, 1);
         strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         slen = b.call(strlen_fn, [target], name="et.len");
         # tabsize: default 8 if no args
         if args {
@@ -1383,7 +1383,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         );
         worst = b.mul(slen, ts_or_one, name="et.worst");
         alloc_sz = b.add(worst, one, name="et.alloc");
-        buf = b.call(gc_malloc, [alloc_sz], name="et.buf");
+        buf = b.call(rc_alloc_fn, [alloc_sz], name="et.buf");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
         loop_bb = func.append_basic_block(name="et.loop");
@@ -4024,8 +4024,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         b = p.builder;
         i8p = ir.IntType(8).as_pointer();
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
-        str_ptr = b.call(gc_malloc, [ir.Constant(ir.IntType(64), 2)], name="chr.buf");
+        rc_alloc_fn = p.rc_alloc_fn;
+        str_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 2)], name="chr.buf");
         byte_val = b.trunc(arg_val, ir.IntType(8), name="chr.byte");
         b.store(byte_val, str_ptr);
         idx1_ptr = b.gep(str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr");
@@ -4051,11 +4051,11 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = p.builder;
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         snprintf = p._get_or_declare_extern(
             "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
         );
-        buf = b.call(gc_malloc, [ir.Constant(i64, 32)], name="hex.buf");
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="hex.buf");
         # Check if negative
         arg_val = args[0];
         zero = ir.Constant(i64, 0);
@@ -4079,11 +4079,11 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = p.builder;
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         snprintf = p._get_or_declare_extern(
             "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
         );
-        buf = b.call(gc_malloc, [ir.Constant(i64, 32)], name="oct.buf");
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="oct.buf");
         arg_val = args[0];
         zero = ir.Constant(i64, 0);
         is_neg = b.icmp_signed("<", arg_val, zero, name="oct.neg");
@@ -4107,12 +4107,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         i8 = ir.IntType(8);
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [i64]);
+        rc_alloc_fn = p.rc_alloc_fn;
         snprintf = p._get_or_declare_extern(
             "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
         );
         # Allocate buffer: "0b" + up to 64 digits + sign + null = 68
-        buf = b.call(gc_malloc, [ir.Constant(i64, 68)], name="bin.buf");
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 68)], name="bin.buf");
         arg_val = args[0];
         zero = ir.Constant(i64, 0);
         is_neg = b.icmp_signed("<", arg_val, zero, name="bin.neg");
@@ -4305,8 +4305,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         b = p.builder;
         i8p = ir.IntType(8).as_pointer();
-        gc_malloc = p._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
-        buf_ptr = b.call(gc_malloc, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
+        rc_alloc_fn = p.rc_alloc_fn;
+        buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
         snprintf = p._get_or_declare_extern(
             "snprintf", ir.IntType(32), [i8p, ir.IntType(64), i8p], var_arg=True
         );
