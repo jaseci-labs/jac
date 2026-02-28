@@ -375,15 +375,18 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
         node_info = f"'('{(access or '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
         # Prefer narrowed/evaluated type (.type) over declared type (name_spec.type)
         # This shows the correct type after narrowing (e.g., Mammal instead of Mammal|None)
-        if sym_node?.type and sym_node.type {
-            node_info += f"': '{sym_node.type}";
-        } elif sym_node.name_spec.clean_type {
-            node_info += f"': '{sym_node.name_spec.clean_type}";
-        } elif (
-            isinstance(sym_node, uni.AstSymbolNode)
-            and isinstance(sym_node.name_spec.type, ClassType)
-        ) {
-            node_info += f"': '{sym_node.name_spec.type.shared.class_name}";
+        # Skip type display for Ability nodes — their signature is shown separately below
+        if not isinstance(sym_node, uni.Ability) {
+            if sym_node?.type and sym_node.type {
+                node_info += f"': '{sym_node.type}";
+            } elif sym_node.name_spec.clean_type {
+                node_info += f"': '{sym_node.name_spec.clean_type}";
+            } elif (
+                isinstance(sym_node, uni.AstSymbolNode)
+                and isinstance(sym_node.name_spec.type, ClassType)
+            ) {
+                node_info += f"': '{sym_node.name_spec.type.shared.class_name}";
+            }
         }
         if isinstance(sym_node, uni.AstDocNode) and sym_node.doc {
             node_info += f"'\n'{sym_node.doc.value}";

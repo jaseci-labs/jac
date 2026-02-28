@@ -469,6 +469,8 @@ The `AuthGuard` component:
 For complex apps that need shared auth state across components:
 
 ```jac
+cl import from "@jac/runtime" { jacIsLoggedIn, jacLogin, jacLogout }
+
 cl {
     import from react { createContext, useContext }
 

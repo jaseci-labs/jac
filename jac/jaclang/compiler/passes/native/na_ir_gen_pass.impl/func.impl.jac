@@ -46,6 +46,8 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    # Store AST signature for return type propagation in for-loops
+    self.method_ast_sigs[name] = sig;
     self.has_native_code = True;
 }
 
@@ -131,9 +133,12 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             }
         }
     }
-    # Generate body via manual tree-walking
-    if isinstance((nd).body, (list, tuple)) {
-        self._codegen_body((nd).body);
+    # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
+    body = (nd).body;
+    if isinstance(body, (list, tuple)) {
+        self._codegen_body(body);
+    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
+        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
@@ -171,6 +176,36 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             init_node = init_tuple[1];
             var_type = init_tuple[2];
             init_val = self._codegen_expr(init_node);
+            # For empty dict literals ({}) _codegen_dict_val returns None.
+            # Fall back to calling helpers["new"] for the matching dict type.
+            if init_val is None and isinstance(var_type, ir.PointerType) {
+                for (dict_key, dtype) in self.dict_types.items() {
+                    if var_type == dtype.as_pointer() {
+                        helpers = self.dict_helpers.get(dict_key);
+                        if helpers is not None {
+                            init_val = self.builder.call(
+                                helpers["new"], [], name=f"dict.init.{var_name}"
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            # For empty list literals ([]) _codegen_list_val may return None.
+            # Fall back to calling helpers["new"] for the matching list elem type.
+            if init_val is None and isinstance(var_type, ir.PointerType) {
+                for (elem_key, ltype) in self.list_types.items() {
+                    if var_type == ltype.as_pointer() {
+                        helpers = self.list_helpers.get(elem_key);
+                        if helpers is not None {
+                            init_val = self.builder.call(
+                                helpers["new"], [], name=f"list.init.{var_name}"
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
             if init_val is not None {
                 global_var = self.global_vars.get(var_name);
                 if global_var is not None {
@@ -184,8 +219,13 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     if (nd).body {
         self._codegen_body((nd).body);
     }
-    # Ensure function has a terminator
+    # Flush all stdio buffers before returning to caller
     if not self.builder.block.is_terminated {
+        i32 = ir.IntType(32);
+        i8p = ir.IntType(8).as_pointer();
+        fflush_fn = self._get_or_declare_extern("fflush", i32, [i8p]);
+        null_ptr = ir.Constant(i8p, None);
+        self.builder.call(fflush_fn, [null_ptr]);
         self.builder.ret_void();
     }
     self.has_native_code = True;

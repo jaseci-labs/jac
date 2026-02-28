@@ -45,8 +45,8 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 """Compile a .na.jac file to a standalone native binary."""
 impl nacompile(filename: str, output: str = "") -> int {
     # Validate input
-    if not filename.endswith(".na.jac") {
-        console.error("Input must be a .na.jac file.");
+    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+        console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
     if not os.path.exists(filename) {
@@ -54,15 +54,18 @@ impl nacompile(filename: str, output: str = "") -> int {
         return 1;
     }
 
+    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+
     # Detect platform
     is_macos = sys.platform == "darwin";
 
     # Determine output path
     if not output {
         output = os.path.basename(filename);
-        # Strip .na.jac extension
         if output.endswith(".na.jac") {
             output = output[:-7];
+        } elif output.endswith(".jac") {
+            output = output[:-4];
         }
     }
 
@@ -74,6 +77,10 @@ impl nacompile(filename: str, output: str = "") -> int {
 
     try {
         prog = JacProgram();
+        if auto_promote {
+            prog._auto_promote_native = True;
+            prog._auto_promote_target = os.path.abspath(filename);
+        }
         options = CompileOptions(skip_native_engine=True);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
@@ -84,13 +91,29 @@ impl nacompile(filename: str, output: str = "") -> int {
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
-        console.error("Native compilation produced no LLVM IR.");
+        if auto_promote
+        and not getattr(
+            ir_module.gen if ir_module else None, '_auto_promoted_native', False
+        ) {
+            console.error(
+                "This .jac file is not compatible with native compilation.\n"
+                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  constructs not supported by the native backend.\n"
+                "  Use a .na.jac file or remove incompatible constructs."
+            );
+        } else {
+            console.error("Native compilation produced no LLVM IR.");
+        }
         if prog.errors_had {
             for err in prog.errors_had {
                 console.error(f"  {err}");
             }
         }
         return 1;
+    }
+
+    if auto_promote {
+        console.print("  Auto-promoted to native compilation.");
     }
 
     # Step 2: Check for Python/server interop (can't compile standalone)

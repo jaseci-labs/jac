@@ -50,6 +50,7 @@ impl NaIRGenPass.init(
     self.struct_field_types: dict[(str, dict)] = {};
     self.struct_field_defaults: dict[(str, object)] = {};
     self.method_funcs: dict[(str, ir.Function)] = {};
+    self.method_ast_sigs: dict[(str, object)] = {};  # "Arch.method" → FuncSignature AST node
     self.type_var_map: dict[(str, str)] = {};
     # List support (Phase 4)
     self.list_types: dict[(str, object)] = {};  # elem_type_name → list struct type
@@ -120,6 +121,8 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self._process_clib_imports(self.ir_in);
     # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
     self._register_enums(self.ir_in);
+    # Pre-register archetype names as opaque struct types so globals can reference them
+    self._forward_declare_archetype_names(self.ir_in);
     self._register_globals(self.ir_in);
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks

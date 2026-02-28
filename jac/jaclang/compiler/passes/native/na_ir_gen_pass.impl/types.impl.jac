@@ -201,9 +201,12 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             }
         }
     }
-    # Try expr_type string
-    if type_expr?.expr_type and type_expr.expr_type in self.type_map {
-        return self.type_map[type_expr.expr_type];
+    # Try structured type
+    if isinstance(type_expr, uni.Expr) and type_expr.type {
+        type_str = str(type_expr.type);
+        if type_str in self.type_map {
+            return self.type_map[type_str];
+        }
     }
     return ir.IntType(64);
 }
@@ -831,6 +834,97 @@ impl NaIRGenPass._get_list_elem_from_type_node(
 ) -> (str | None) {
     (inner, inner_type, elem_name) = self._peel_list_type(type_node);
     return elem_name;
+}
+
+"""Infer the struct type name of a comprehension loop variable from its collection.
+For `for m in piece.raw_moves(self)`, returns 'Move' by looking up the method's
+return type in method_ast_sigs and peeling the list type."""
+impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
+    collection = compr.collection;
+    # Determine target and method name from the collection expression.
+    # Two AST shapes for method calls:
+    #   1. FuncCall(target=AtomTrailer(target=obj, right=method, is_attr=True), params=[...])
+    #   2. AtomTrailer(target=obj, right=FuncCall(target=method, ...), is_attr=False)
+    target_name: (str | None) = None;
+    method_name: (str | None) = None;
+    if isinstance(collection, uni.FuncCall) {
+        if isinstance(collection.target, uni.AtomTrailer)
+        and collection.target.is_attr {
+            target_name = self._get_name(collection.target.target);
+            method_name = self._get_name(collection.target.right);
+        }
+    } elif isinstance(collection, uni.AtomTrailer) and not collection.is_attr {
+        target_name = self._get_name(collection.target);
+        if isinstance(collection.right, uni.FuncCall) {
+            method_name = self._get_name(collection.right.target);
+        } else {
+            method_name = self._get_name(collection.right);
+        }
+    }
+    if target_name is None or method_name is None {
+        # Fallback: if collection is a simple variable (Name node), try to
+        # resolve its list element type from the variable's type annotation
+        coll_name = self._get_name(collection);
+        if coll_name is not None {
+            # Check var_type_node for type annotation like list[Move]
+            type_node = self.var_type_node.get(coll_name);
+            if type_node is not None {
+                (inner, _, _) = self._peel_list_type(type_node);
+                if inner is not None {
+                    inner_name = self._get_name(inner);
+                    if inner_name is not None and inner_name in self.struct_types {
+                        return inner_name;
+                    }
+                }
+            }
+            # Check var_list_elem_type for computed element type name
+            elem_type = self.var_list_elem_type.get(coll_name);
+            if elem_type is not None and elem_type in self.struct_types {
+                return elem_type;
+            }
+        }
+        return None;
+    }
+    # Look up the struct type for target variable
+    type_name = self.type_var_map.get(target_name);
+    if type_name is None {
+        if target_name in self.local_vars {
+            lv = self.local_vars[target_name];
+            if isinstance(lv.type, ir.PointerType) {
+                pointee = lv.type.pointee;
+                for (sname, stype) in self.struct_types.items() {
+                    if pointee == stype.as_pointer() {
+                        type_name = sname;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if type_name is None {
+        return None;
+    }
+    # Walk hierarchy to find method signature and extract return element type
+    check = type_name;
+    while check is not None {
+        full = f"{check}.{method_name}";
+        if full in self.method_ast_sigs {
+            sig = self.method_ast_sigs[full];
+            ret_type = getattr(sig, 'return_type', None);
+            if ret_type is not None {
+                (inner, _, _) = self._peel_list_type(ret_type);
+                if inner is not None {
+                    inner_name = self._get_name(inner);
+                    if inner_name is not None and inner_name in self.struct_types {
+                        return inner_name;
+                    }
+                }
+            }
+            break;
+        }
+        check = self.class_hierarchy.get(check);
+    }
+    return None;
 }
 
 """Resolve the LLVM type of elements in a ptr list for a for-loop variable.

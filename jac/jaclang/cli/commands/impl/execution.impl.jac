@@ -93,7 +93,13 @@ def _proc_file(filename: str) -> tuple {
 }
 
 """Run the specified .jac file."""
-impl run(filename: str, main: bool = True, cache: bool = True, args: list = []) -> int {
+impl run(
+    filename: str,
+    main: bool = True,
+    cache: bool = True,
+    autonative: bool = False,
+    args: list = []
+) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -116,7 +122,8 @@ impl run(filename: str, main: bool = True, cache: bool = True, args: list = []) 
                 if main {
                     addr = engine.get_function_address("jac_entry");
                     if addr != 0 {
-                        ctypes.CFUNCTYPE(None)(addr)();
+                        fn = ctypes.CFUNCTYPE(None)(addr);
+                        fn();
                     }
                 }
             } else {
@@ -124,7 +131,54 @@ impl run(filename: str, main: bool = True, cache: bool = True, args: list = []) 
                 mach.close();
                 return 1;
             }
+        } elif filename.endswith('.jac') {
+            native_executed = False;
+            if autonative {
+                # Try auto-promotion to native using an isolated program instance
+                try {
+                    import from jaclang.jac0core.program { JacProgram }
+                    full_path = os.path.abspath(filename);
+                    na_program = JacProgram();
+                    na_program._auto_promote_native = True;
+                    na_program._auto_promote_target = full_path;
+                    ir_mod = na_program.compile(file_path=full_path);
+                    if (
+                        ir_mod
+                        and getattr(ir_mod.gen, '_auto_promoted_native', False)
+                        and ir_mod.gen.native_engine
+                    ) {
+                        # Auto-promoted native module: execute via JIT
+                        import ctypes;
+                        engine = ir_mod.gen.native_engine;
+                        if main {
+                            addr = engine.get_function_address("jac_entry");
+                            if addr != 0 {
+                                fn = ctypes.CFUNCTYPE(None)(addr);
+                                fn();
+                                native_executed = True;
+                                console.print(
+                                    f"[Module '{filename}' executed natively]",
+                                    style="dim"
+                                );
+                            }
+                        }
+                    }
+                } except Exception as _auto_err {
+                    # Auto-promotion failed, fall through to normal path
+                    _ = _auto_err;
+                }
+            }
+            if not native_executed {
+                # Normal Python/Jac path
+                Jac.jac_import(
+                    target=mod,
+                    base_path=base,
+                    override_name='__main__' if main else None,
+                    lng=lng
+                );
+            }
         } else {
+            # Python files and other formats
             Jac.jac_import(
                 target=mod,
                 base_path=base,

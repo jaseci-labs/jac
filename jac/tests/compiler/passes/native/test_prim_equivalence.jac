@@ -313,3 +313,130 @@ test "list sort matches across backends" {
     na_result = run_native_function(eng, "list_sort_na");
     compare_results(py_result, na_result, "list_sort");
 }
+
+test "exception hierarchy basic catch" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_basic_catch_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "exception hierarchy catch parent" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_catch_parent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "exception hierarchy catch grandparent" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_catch_grandparent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "exception hierarchy catch wrong type" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_catch_wrong_type_na", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "exception hierarchy multiple handlers" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_multiple_handlers_na", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "exception hierarchy nested" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_nested_hierarchy_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "exception hierarchy finally runs" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_finally_runs_na", ctypes.c_int64);
+    assert f() == 11;
+}
+
+test "exception hierarchy no exception" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_no_exception_na", ctypes.c_int64);
+    assert f() == 11;
+}
+
+test "exception hierarchy as binding" {
+    (eng, _) = compile_native("prim_exceptions.jac");
+    f = get_func(eng, "test_exc_as_binding_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+# --- Runtime error hierarchy tests (actual errors, not explicit raise) ---
+test "runtime: divzero caught by exact type" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_divzero_catch_exact_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: divzero caught by parent ArithmeticError" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_divzero_catch_parent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: divzero caught by grandparent Exception" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_divzero_catch_grandparent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: divzero falls through wrong handler" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_divzero_wrong_handler_na", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "runtime: modulo zero caught by ArithmeticError" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_modulo_zero_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: index OOB caught by exact type" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_index_oob_catch_exact_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: index OOB caught by parent LookupError" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_index_oob_catch_parent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: index OOB caught by Exception" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_index_oob_catch_exception_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: dict key error caught by exact type" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_key_error_catch_exact_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: dict key error caught by parent LookupError" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_key_error_catch_parent_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime: multi handler picks correct type" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_multi_handler_runtime_na", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "runtime: error with finally block" {
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_runtime_finally_na", ctypes.c_int64);
+    assert f() == 11;
+}

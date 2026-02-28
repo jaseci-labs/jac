@@ -412,6 +412,26 @@ impl UniScopeNode.lookup(
     return None;
 }
 
+"""Lookup all overloads of a symbol in the symbol table."""
+impl UniScopeNode.lookup_all(
+    self: UniScopeNode, name: str, deep: bool = True
+) -> list[Symbol] {
+    result: list[Symbol] = [];
+    if name in self.names_in_scope {
+        result.append(self.names_in_scope[name]);
+    }
+    if name in self.names_in_scope_overload {
+        result.extend(self.names_in_scope_overload[name]);
+    }
+    if result {
+        return result;
+    }
+    if deep and self.parent_scope {
+        return self.parent_scope.lookup_all(name, deep);
+    }
+    return result;
+}
+
 """Set a variable in the symbol table.
 
         Returns original symbol as collision if single check fails, none
@@ -638,11 +658,6 @@ impl AstSymbolNode.py_ctx_func(self: AstSymbolNode) -> type[ast3.AST] {
     return self.name_spec.py_ctx_func;
 }
 
-@ property
-impl AstSymbolNode.expr_type(self: AstSymbolNode) -> str {
-    return self.name_spec.expr_type;
-}
-
 """Get type symbol table."""
 @ property
 impl AstSymbolNode.type_sym_tab(self: AstSymbolNode) -> (UniScopeNode | None) {
@@ -762,7 +777,6 @@ impl UniCFGNode.get_tail(self: UniCFGNode) -> UniCFGNode {
 }
 
 impl Expr.init(self: Expr) -> None {
-    self._sym_type: str = 'NoType';
     self._type_sym_tab: (UniScopeNode | None) = None;
     self.type: (TypeBase | None) = None;
     self.attached_tokens: (list[Token] | None) = None;
@@ -819,8 +833,10 @@ impl NameAtom.create_symbol(
 
 @ property
 impl NameAtom.clean_type(self: NameAtom) -> str {
-    ret_type = self.expr_type.replace('builtins.', '').replace('NoType', '');
-    return ret_type;
+    if self.type {
+        return str(self.type).replace('builtins.', '');
+    }
+    return '';
 }
 
 """Resolve semantic token."""

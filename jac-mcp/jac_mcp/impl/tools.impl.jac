@@ -8,7 +8,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
     return [
         {
             "name": "validate_jac",
-            "description": "Validate Jac code with full type checking. Returns structured errors and warnings.",
+            "description": "Validate Jac code with full type checking. IMPORTANT: You MUST call this tool after generating or modifying any Jac code to verify it compiles correctly. Returns structured errors and warnings. If errors are returned, fix the code and re-validate before presenting it to the user.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -27,7 +27,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "check_syntax",
-            "description": "Quick syntax check (parse-only, no type checking). Faster than validate_jac.",
+            "description": "Quick syntax-only check (parse-only, no type checking). Use this for a fast first pass when iterating on code. For final validation, use validate_jac instead.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -41,7 +41,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "format_jac",
-            "description": "Format Jac code according to standard style.",
+            "description": "Format Jac code according to standard style. Use this to ensure code follows Jac formatting conventions before presenting it to the user.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -55,7 +55,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "py_to_jac",
-            "description": "Convert Python code to Jac. Returns converted code with warnings.",
+            "description": "Convert Python code to Jac using the official compiler transpiler. Use this as a starting point when migrating Python code — the output may need manual refinement for idiomatic Jac style.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -69,7 +69,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "explain_error",
-            "description": "Explain a Jac compiler error with suggestions and examples.",
+            "description": "Explain a Jac compiler error with suggestions and examples. Use this when validate_jac returns errors you need to understand. Returns a structured explanation with the error category, root cause, and corrected code pattern.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -83,7 +83,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "list_examples",
-            "description": "List available Jac example code categories.",
+            "description": "List available Jac example code categories. Use this to discover working Jac code examples that demonstrate correct patterns before writing new code.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -96,7 +96,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "get_example",
-            "description": "Get all .jac files from an example category.",
+            "description": "Get all .jac files from an example category. Use this to study working code before writing similar functionality — these examples are tested and verified.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -107,7 +107,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "search_docs",
-            "description": "Search Jac documentation by keyword. Returns ranked snippets with resource URIs.",
+            "description": "Search Jac documentation by keyword. Use this when you are unsure about Jac syntax or features — the results come from the official documentation and are authoritative. Returns ranked snippets with resource URIs.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -123,7 +123,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "get_ast",
-            "description": "Parse Jac code and return AST representation.",
+            "description": "Parse Jac code and return AST representation. Useful for understanding code structure.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

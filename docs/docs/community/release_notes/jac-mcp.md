@@ -2,7 +2,16 @@
 
 ## jac-mcp 0.1.2 (Unreleased)
 
-- 2 Minor refactors/changes
+- **Compiler-validated MCP content**: Cross-validated all code snippets in pitfalls.md and patterns.md against the Jac compiler, fixing critical issues where the server was teaching syntax the compiler rejects
+- **Fixed `can` vs `def` guidance**: `can` is only for event-driven abilities (`can X with Y entry`); `def` is correct for regular methods. Updated pitfalls, patterns, and SERVER_INSTRUCTIONS accordingly
+- **Fixed `enumerate()` pitfall**: Corrected documentation that wrongly said `enumerate()` is unsupported in Jac
+- **Removed invalid `<>` ByRef pitfall**: This syntax does not exist in current Jac
+- **Fixed `class` vs `obj` pitfall**: `class` is valid Jac syntax alongside `obj`
+- **Fixed match/case syntax in patterns**: Uses colon syntax, not braces
+- **Enhanced SERVER_INSTRUCTIONS**: Corrected `can`/`def` guidance sent to AI clients during MCP initialization
+- **Enhanced tool descriptions**: Added workflow guidance (MUST validate, use before writing, etc.)
+- **System/user role separation**: All 9 prompt templates now use proper role separation
+- **QA test suite**: Added 149-test `qa_server.jac` covering resources, tools, prompts, server instructions, and compiler validation
 
 ## jac-mcp 0.1.1 (Latest Release)
 

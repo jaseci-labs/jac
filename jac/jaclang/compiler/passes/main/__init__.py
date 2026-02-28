@@ -16,6 +16,7 @@ _LAZY_PASSES = {
     "PyastBuildPass": ".pyast_load_pass",
     "PyJacAstLinkPass": ".pyjac_ast_link_pass",
     "SemDefMatchPass": ".sem_def_match_pass",
+    "StaticAnalysisPass": ".static_analysis_pass",
     "TypeCheckPass": ".type_checker_pass",
 }
 
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from .pyast_load_pass import PyastBuildPass as PyastBuildPass
     from .pyjac_ast_link_pass import PyJacAstLinkPass as PyJacAstLinkPass
     from .sem_def_match_pass import SemDefMatchPass as SemDefMatchPass
+    from .static_analysis_pass import StaticAnalysisPass as StaticAnalysisPass
     from .type_checker_pass import TypeCheckPass as TypeCheckPass
 
 
@@ -85,5 +87,6 @@ __all__ = [
     "PyastBuildPass",
     "PyJacAstLinkPass",
     "SemDefMatchPass",
+    "StaticAnalysisPass",
     "TypeCheckPass",
 ]

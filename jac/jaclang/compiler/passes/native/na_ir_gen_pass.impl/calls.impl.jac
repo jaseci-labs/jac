@@ -305,6 +305,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
+    # Propagate return type hint for for-loop element resolution
+    if func_name in self.method_ast_sigs {
+        fn_sig = self.method_ast_sigs[func_name];
+        if fn_sig?.return_type and fn_sig.return_type is not None {
+            self._last_type_node_hint = fn_sig.return_type;
+        }
+    }
     # Build arguments
     args: list[ir.Value] = [];
     params = nd.params or [];
@@ -312,6 +319,26 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         val = self._codegen_expr(param);
         if val is not None {
             args.append(val);
+        }
+    }
+    # Fill in missing optional parameters with their AST default values
+    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
+        sig_params = self.method_ast_sigs[func_name].get_parameters();
+        for pix in range(len(args), len(sig_params)) {
+            p = sig_params[pix];
+            expected_type = func.args[len(args)].type
+                if len(args) < len(func.args)
+                else ir.IntType(64);
+            if p.value is not None {
+                dval = self._codegen_expr(p.value);
+                if dval is not None {
+                    args.append(self._coerce_type(dval, expected_type));
+                } else {
+                    args.append(ir.Constant(expected_type, 0));
+                }
+            } else {
+                args.append(ir.Constant(expected_type, 0));
+            }
         }
     }
     # Type coerce arguments

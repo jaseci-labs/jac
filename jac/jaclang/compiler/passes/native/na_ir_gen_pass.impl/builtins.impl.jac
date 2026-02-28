@@ -30,24 +30,43 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.call(printf, [fmt_ptr]);
         return ir.Constant(ir.IntType(64), 0);
     }
-    val = self._codegen_expr(params[0]);
-    if val is None {
-        return ir.Constant(ir.IntType(64), 0);
+    # Build format string and collect args for all parameters
+    fmt_parts = [];
+    args = [];
+    for (i, param) in enumerate(params) {
+        val = self._codegen_expr(param);
+        if val is None {
+            continue;
+        }
+
+        # Add space separator between arguments (except before first)
+        if i > 0 {
+            fmt_parts.append(" ");
+        }
+
+        # Determine format specifier based on type
+        if isinstance(val.type, ir.IntType) and val.type.width == 64 {
+            fmt_parts.append("%lld");
+            args.append(val);
+        } elif isinstance(val.type, ir.DoubleType) {
+            fmt_parts.append("%f");
+            args.append(val);
+        } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
+            val = self.builder.zext(val, ir.IntType(64));
+            fmt_parts.append("%lld");
+            args.append(val);
+        } elif isinstance(val.type, ir.PointerType) {
+            fmt_parts.append("%s");
+            args.append(val);
+        }
     }
-    if isinstance(val.type, ir.IntType) and val.type.width == 64 {
-        fmt = self._get_fmt_string("%lld");
-    } elif isinstance(val.type, ir.DoubleType) {
-        fmt = self._get_fmt_string("%f");
-    } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
-        val = self.builder.zext(val, ir.IntType(64));
-        fmt = self._get_fmt_string("%lld");
-    } elif isinstance(val.type, ir.PointerType) {
-        fmt = self._get_fmt_string("%s");
-    } else {
-        return ir.Constant(ir.IntType(64), 0);
+    # Build complete format string and emit single printf call
+    if fmt_parts {
+        fmt_str = "".join(fmt_parts);
+        fmt = self._get_fmt_string(fmt_str);
+        fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
+        self.builder.call(printf, [fmt_ptr] + args);
     }
-    fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
-    self.builder.call(printf, [fmt_ptr, val]);
     return ir.Constant(ir.IntType(64), 0);
 }
 

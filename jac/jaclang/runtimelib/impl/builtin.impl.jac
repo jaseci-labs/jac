@@ -161,3 +161,22 @@ impl restspec(**specs: Any) -> Callable {
     }
     return decorator;
 }
+
+"""Schedule decorator factory — attaches ScheduleSpec to a walker or function."""
+impl schedule(**kwargs: Any) -> Callable {
+    import from jaclang.runtimelib.scheduler { ScheduleSpec }
+    import from jaclang.runtimelib.builtin { ScheduleTrigger }
+    trigger = kwargs.pop("trigger", ScheduleTrigger.STATIC);
+    if isinstance(trigger, str) {
+        trigger = ScheduleTrigger(trigger);
+    }
+    if trigger == ScheduleTrigger.DYNAMIC {
+        raise NotImplementedError("Dynamic scheduling requires jac-scale.") ;
+    }
+    spec = ScheduleSpec(trigger=trigger, **kwargs);
+    def decorator(target: type) -> type {
+        target.schedule_spec = spec;
+        return target;
+    }
+    return decorator;
+}

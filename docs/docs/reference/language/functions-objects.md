@@ -12,7 +12,7 @@ This part covers Jac's approach to functions and object-oriented programming. Ja
 
 ## Functions and Abilities
 
-Functions in Jac use familiar `def` syntax with mandatory type annotations. Jac also introduces "abilities" (`can`) for methods attached to objects, nodes, edges, and walkers. Abilities can be triggered automatically based on context (like when a walker visits a node) rather than being called explicitly.
+Functions in Jac use familiar `def` syntax with mandatory type annotations. Jac also introduces "abilities" (`can`) for methods attached to nodes, edges, and walkers. Abilities can be triggered automatically based on context (like when a walker visits a node) rather than being called explicitly.
 
 ### 1 Function Declaration
 
@@ -115,12 +115,12 @@ def sum_all(*values: int) -> int {
 }
 
 # **kwargs collects extra keyword arguments
-def build_config(**options: any) -> dict {
+def build_config(**options: object) -> dict {
     return dict(options);
 }
 
 # Combined
-def flexible(required: int, *args: int, **kwargs: any) -> None {
+def flexible(required: int, *args: int, **kwargs: object) -> None {
     print(f"Required: {required}");
     print(f"Extra positional: {args}");
     print(f"Extra keyword: {kwargs}");
@@ -271,12 +271,12 @@ with entry {
 ### 9 Decorators
 
 ```jac
-def decorator(func: any) -> any {
+def decorator(func: object) -> object {
     return func;
 }
 
-def decorator_with_args(arg1: any, arg2: any) -> any {
-    return lambda func: any: func;
+def decorator_with_args(arg1: object, arg2: object) -> object {
+    return lambda func: object: func;
 }
 
 @decorator
@@ -381,9 +381,17 @@ obj Cat(Animal) {
     }
 }
 
+# Trackable mixin
+obj Trackable {
+    has tracked: bool = False;
+}
+
 # Multiple inheritance
+# Note: When a parent has fields with defaults, all child fields
+# must also have defaults (Python dataclass constraint)
 obj Pet(Animal, Trackable) {
-    has owner: str;
+    has owner: str = "";
+    has name: str = "";
 }
 ```
 
