@@ -107,7 +107,7 @@ Changes to your `.jac` files will automatically reload.
 Skip client bundling and only serve the API:
 
 ```bash
-jac start app.jac --dev --no-client
+jac start app.jac --dev --no_client
 ```
 
 ---
@@ -324,7 +324,11 @@ walker:pub health {
 ```
 
 ```bash
+# Built-in health endpoint (provided by jac-scale)
 curl http://localhost:8000/health
+
+# Custom health walker endpoint (POST to /walker/<name>)
+curl -X POST http://localhost:8000/walker/health
 # {"status": "healthy"}
 ```
 
@@ -354,7 +358,7 @@ walker:pub ready {
 |--------|-------------|---------|
 | `--port`, `-p` | Server port | 8000 |
 | `--dev`, `-d` | Enable Hot Module Replacement | false |
-| `--no-client`, `-n` | Skip client bundling (API only) | false |
+| `--no_client`, `-n` | Skip client bundling (API only) | false |
 | `--faux`, `-f` | Print API docs only (no server) | false |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | false |
 

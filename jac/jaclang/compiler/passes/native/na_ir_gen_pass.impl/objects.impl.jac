@@ -1,4 +1,34 @@
 """Archetype (object) codegen: structs, fields, methods, instantiation."""
+"""Pre-register archetype names as opaque struct types for global type resolution."""
+impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
+    for stmt in module.body {
+        if isinstance(stmt, uni.NativeBlock) {
+            for inner in stmt.body {
+                if isinstance(inner, uni.Archetype) {
+                    aname = inner.name.value if inner.name else None;
+                    if aname is not None and aname not in self.struct_types {
+                        struct_type = self.llvm_module.context.get_identified_type(
+                            aname
+                        );
+                        self.struct_types[aname] = struct_type;
+                    }
+                }
+            }
+        } elif isinstance(stmt, uni.Archetype) {
+            if (
+                isinstance(stmt, uni.ContextAwareNode)
+                and stmt.code_context == CodeContext.NATIVE
+            ) {
+                aname = stmt.name.value if stmt.name else None;
+                if aname is not None and aname not in self.struct_types {
+                    struct_type = self.llvm_module.context.get_identified_type(aname);
+                    self.struct_types[aname] = struct_type;
+                }
+            }
+        }
+    }
+}
+
 """Walk the module and register all native archetypes (obj definitions)."""
 impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     # Collect all archetype nodes, deduplicating forward declarations
@@ -83,6 +113,19 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                     if stmt.signature is not None
                     and isinstance(stmt.signature, uni.FuncSignature) {
                         self._forward_declare_method(arch_name, stmt);
+                    } elif stmt.signature is None and stmt.body is not None {
+                        # Handle methods without FuncSignature (e.g., postinit)
+                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
+                        if method_name is not None {
+                            full_name = f"{arch_name}.{method_name}";
+                            struct_ptr = self.struct_types[arch_name].as_pointer();
+                            fnty = ir.FunctionType(ir.VoidType(), [struct_ptr]);
+                            func = ir.Function(self.llvm_module, fnty, name=full_name);
+                            func.args[0].name = "self";
+                            self.func_symtab[full_name] = func;
+                            self.method_funcs[full_name] = func;
+                            self.has_native_code = True;
+                        }
                     }
                 }
             }
@@ -116,6 +159,9 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                     if stmt.signature is not None
                     and isinstance(stmt.signature, uni.FuncSignature) {
                         self._codegen_method(arch_name, stmt);
+                    } elif stmt.signature is None and stmt.body is not None {
+                        # Generate body for methods without FuncSignature (e.g., postinit)
+                        self._codegen_no_sig_method(arch_name, stmt);
                     }
                 }
             }
@@ -231,6 +277,8 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
+    # Store AST signature for return type propagation in method calls
+    self.method_ast_sigs[full_name] = sig;
 }
 
 """Generate LLVM IR for a method body."""
@@ -302,9 +350,12 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
             }
         }
     }
-    # Generate body
-    if isinstance(method.body, (list, tuple)) {
-        self._codegen_body(method.body);
+    # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
+    body = method.body;
+    if isinstance(body, (list, tuple)) {
+        self._codegen_body(body);
+    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
+        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
@@ -316,6 +367,56 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         } else {
             self.builder.ret(ir.Constant(ret_type, 0));
         }
+    }
+    method.gen.llvm_ir = func;
+    # Restore saved state
+    self.builder = saved_builder;
+    self.local_vars = saved_locals;
+    self.type_var_map = saved_type_map;
+    self.var_type_node = saved_type_node;
+    self.var_list_elem_type = saved_list_elem;
+    self.var_dict_type = saved_dict_type;
+    self.var_set_elem_type = saved_set_elem;
+}
+
+"""Generate method body for methods without FuncSignature (e.g., postinit)."""
+impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None {
+    method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
+    full_name = f"{arch_name}.{method_name}";
+    func = self.method_funcs.get(full_name);
+    if func is None {
+        return;
+    }
+    # Create entry block
+    block = func.append_basic_block(name="entry");
+    saved_builder = self.builder;
+    saved_locals = self.local_vars;
+    saved_type_map = dict(self.type_var_map);
+    saved_type_node = dict(self.var_type_node);
+    saved_list_elem = dict(self.var_list_elem_type);
+    saved_dict_type = dict(self.var_dict_type);
+    saved_set_elem = dict(self.var_set_elem_type);
+    self.builder = ir.IRBuilder(block);
+    self.local_vars = {};
+    self.var_type_node = {};
+    self.var_list_elem_type = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
+    # Store self pointer (only parameter)
+    self_alloca = self.builder.alloca(func.args[0].type, name="self");
+    self.builder.store(func.args[0], self_alloca);
+    self.local_vars["self"] = self_alloca;
+    self.type_var_map["self"] = arch_name;
+    # Generate body — handle both list bodies and ImplDef wrapper nodes
+    body = method.body;
+    if isinstance(body, (list, tuple)) {
+        self._codegen_body(body);
+    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
+        self._codegen_body(body.body);
+    }
+    # Ensure function has a terminator
+    if not self.builder.block.is_terminated {
+        self.builder.ret_void();
     }
     method.gen.llvm_ir = func;
     # Restore saved state
@@ -380,6 +481,10 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             idx = field_indices[key_name];
             ftype = field_types[key_name];
             val = self._coerce_type(val, ftype);
+            # RC: retain pointer values stored into struct fields
+            if isinstance(ftype, ir.PointerType) {
+                self._emit_rc_retain(val);
+            }
             field_ptr = self.builder.gep(
                 obj_ptr,
                 [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -397,6 +502,10 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
                 val = self._coerce_type(val, ftype);
+                # RC: retain pointer defaults stored into struct fields
+                if isinstance(ftype, ir.PointerType) {
+                    self._emit_rc_retain(val);
+                }
                 field_ptr = self.builder.gep(
                     obj_ptr,
                     [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -664,6 +773,14 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
+    # Save return type hint — will be set AFTER args evaluation to avoid overwrite
+    method_ret_type_hint: (object | None) = None;
+    if full_name in self.method_ast_sigs {
+        method_sig = self.method_ast_sigs[full_name];
+        if method_sig?.return_type and method_sig.return_type is not None {
+            method_ret_type_hint = method_sig.return_type;
+        }
+    }
     # Get the object pointer (reuse if already computed in chained path)
     if obj_val is None {
         obj_val = self._codegen_expr(trailer.target);
@@ -694,6 +811,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if type_name in self.has_vtable {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
+            # Set return type hint AFTER call (args eval may have overwritten it)
+            if method_ret_type_hint is not None {
+                self._last_type_node_hint = method_ret_type_hint;
+            }
             if isinstance(func.return_value.type, ir.VoidType) {
                 return ir.Constant(ir.IntType(64), 0);
             }
@@ -710,6 +831,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
+    # Set return type hint AFTER call (args eval may have overwritten it)
+    if method_ret_type_hint is not None {
+        self._last_type_node_hint = method_ret_type_hint;
+    }
     # Return void calls as None
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
@@ -742,6 +867,93 @@ impl NaIRGenPass._codegen_field_access(
         name=f"field.{field_name}.ptr"
     );
     return self.builder.load(field_ptr, name=f"field.{field_name}");
+}
+
+"""Apply augmented assignment op to a field: load current, compute new value."""
+impl NaIRGenPass._codegen_field_aug_assign(
+    target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
+) -> (ir.Value | None) {
+    # Resolve the object and field
+    target_name = self._get_name(target.target);
+    field_name = self._get_name(target.right);
+    if field_name is None {
+        return None;
+    }
+    type_name: (str | None) = None;
+    if target_name is not None {
+        type_name = self.type_var_map.get(target_name);
+    }
+    obj_val = self._codegen_expr(target.target);
+    if obj_val is None {
+        return None;
+    }
+    if type_name is None {
+        type_name = self._infer_type_name(obj_val);
+    }
+    if type_name is None {
+        return None;
+    }
+    # Load current field value
+    current = self._codegen_field_access(obj_val, field_name, type_name);
+    if current is None {
+        return None;
+    }
+    # Coerce RHS to match field type
+    coerced = self._coerce_type(rhs, current.type);
+    # Apply the augmented operation
+    if aug_op == "+=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.add(current, coerced, name="field.add");
+        } elif isinstance(current.type, ir.DoubleType) {
+            return self.builder.fadd(current, coerced, name="field.fadd");
+        } elif isinstance(current.type, ir.PointerType) {
+            # String concatenation
+            result = self._emit_binary_op(Tok.PLUS, current, coerced);
+            return result if result is not None else current;
+        }
+    } elif aug_op == "-=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.sub(current, coerced, name="field.sub");
+        } elif isinstance(current.type, ir.DoubleType) {
+            return self.builder.fsub(current, coerced, name="field.fsub");
+        }
+    } elif aug_op == "*=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.mul(current, coerced, name="field.mul");
+        } elif isinstance(current.type, ir.DoubleType) {
+            return self.builder.fmul(current, coerced, name="field.fmul");
+        }
+    } elif aug_op == "//=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.sdiv(current, coerced, name="field.sdiv");
+        }
+    } elif aug_op == "%=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.srem(current, coerced, name="field.srem");
+        }
+    } elif aug_op == "&=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.and_(current, coerced, name="field.and");
+        }
+    } elif aug_op == "|=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.or_(current, coerced, name="field.or");
+        }
+    } elif aug_op == "^=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.xor(current, coerced, name="field.xor");
+        }
+    } elif aug_op == "<<=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.shl(current, coerced, name="field.shl");
+        }
+    } elif aug_op == ">>=" {
+        if isinstance(current.type, ir.IntType) {
+            return self.builder.ashr(current, coerced, name="field.ashr");
+        }
+    }
+    # Fallback: just return the RHS (plain assignment)
+    return coerced;
 }
 
 """Generate field assignment: GEP into struct + store."""
@@ -781,6 +993,12 @@ impl NaIRGenPass._codegen_field_assign(
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
         name=f"field.{field_name}.ptr"
     );
+    # RC: retain new value and release old value for pointer fields
+    if isinstance(ftype, ir.PointerType) {
+        self._emit_rc_retain(value);
+        old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
+        self._emit_rc_release_simple(old_field_val);
+    }
     self.builder.store(value, field_ptr);
 }
 # ─── Phase 4: Lists ──────────────────────────────────────────

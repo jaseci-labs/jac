@@ -8,6 +8,9 @@ Learn Jac's unique graph-based programming paradigm with nodes, edges, and walke
 > - Recommended: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
 > - Time: ~45 minutes
 
+!!! warning "Graph Persistence Between Runs"
+    `jac run` persists graph state to a `.jac/` directory. If you run an example multiple times, you may see duplicate nodes or `NodeAnchor ... is not a valid reference!` errors. To start fresh, clean the `.jac/` directory: `jac clean --all`
+
 ---
 
 ## What is Object-Spatial Programming?
@@ -517,12 +520,12 @@ with entry {
 **Output:**
 
 ```
-User(username='bob')
-User(username='carol')
+User(username='bob', bio='')
+User(username='carol', bio='')
 Alice's followers:
   - bob
   - carol
-User(username='bob')
+User(username='bob', bio='')
 Alice's mutual follows:
   - bob
 ```

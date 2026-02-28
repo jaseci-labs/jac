@@ -305,6 +305,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
+    # Propagate return type hint for for-loop element resolution
+    if func_name in self.method_ast_sigs {
+        fn_sig = self.method_ast_sigs[func_name];
+        if fn_sig?.return_type and fn_sig.return_type is not None {
+            self._last_type_node_hint = fn_sig.return_type;
+        }
+    }
     # Build arguments
     args: list[ir.Value] = [];
     params = nd.params or [];

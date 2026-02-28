@@ -24,14 +24,11 @@ impl py2jac(filename: str) -> int {
             requires_format=False
         );
         prog = JacProgram.jac_str_formatter(
-            source_str=code, file_path=filename, auto_lint=True
+            source_str=code, file_path=filename, auto_lint=False
         );
         console.print(prog.mod.main.gen.jac, markup=False, highlight=False);
         for error in prog.errors_had {
             console.error(f"{error}");
-        }
-        for w in prog.warnings_had {
-            console.warning(f"{w}");
         }
     } else {
         console.error('Not a .py file.');

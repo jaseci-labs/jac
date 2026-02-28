@@ -116,7 +116,8 @@ impl run(filename: str, main: bool = True, cache: bool = True, args: list = []) 
                 if main {
                     addr = engine.get_function_address("jac_entry");
                     if addr != 0 {
-                        ctypes.CFUNCTYPE(None)(addr)();
+                        fn = ctypes.CFUNCTYPE(None)(addr);
+                        fn();
                     }
                 }
             } else {

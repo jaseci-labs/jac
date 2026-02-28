@@ -46,6 +46,8 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    # Store AST signature for return type propagation in for-loops
+    self.method_ast_sigs[name] = sig;
     self.has_native_code = True;
 }
 
@@ -131,9 +133,12 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             }
         }
     }
-    # Generate body via manual tree-walking
-    if isinstance((nd).body, (list, tuple)) {
-        self._codegen_body((nd).body);
+    # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
+    body = (nd).body;
+    if isinstance(body, (list, tuple)) {
+        self._codegen_body(body);
+    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
+        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {

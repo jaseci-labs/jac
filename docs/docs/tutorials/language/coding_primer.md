@@ -2288,6 +2288,7 @@ with entry {
 node Person {
     has name: str;
     has birth_year: int;
+    has depth: int = 0;  # Tracks depth in the ancestry tree
 }
 
 edge Parent {
@@ -2295,7 +2296,6 @@ edge Parent {
 }
 
 walker FindAncestors {
-    has generations: int = 0;
     has max_generations: int = 3;
 
     can start with Root entry {
@@ -2303,16 +2303,15 @@ walker FindAncestors {
     }
 
     can explore with Person entry {
-        print(f"{'  ' * self.generations}{here.name} (born {here.birth_year})");
+        print(f"{'  ' * here.depth}{here.name} (born {here.birth_year})");
 
-        if self.generations < self.max_generations {
-            # Visit parents
+        if here.depth < self.max_generations {
+            # Set depth on parents before visiting
             parents = [here <-:Parent:<-];
-            if parents {
-                self.generations += 1;
-                visit parents;
-                self.generations -= 1;
+            for p in parents {
+                p.depth = here.depth + 1;
             }
+            visit parents;
         }
     }
 }

@@ -60,14 +60,14 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"id": todo[0].id, "title": todo[0].title};
+        report {"title": todo[0].title, "done": todo[0].done};
     }
 }
 
 walker:pub list_todos {
     can fetch with Root entry {
         todos = [-->](?:Todo);
-        report [{"id": t.id, "title": t.title, "done": t.done} for t in todos];
+        report [{"title": t.title, "done": t.done} for t in todos];
     }
 }
 
