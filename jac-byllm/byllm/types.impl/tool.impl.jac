@@ -48,7 +48,13 @@ impl Tool.get_func_description(func: Callable) -> str {
 """Create a finish tool that validates and returns the final output."""
 impl Tool.make_finish_tool(resp_type: type) -> Tool {
     def finish_tool(final_output: object) -> object {
-        return TypeAdapter(resp_type).validate_python(final_output);
+        try {
+            return TypeAdapter(resp_type).validate_python(final_output);
+        } except Exception as e {
+            raise FinishToolError(
+                f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
+            );
+        }
     }
     finish_tool.__annotations__["return"] = resp_type;
     finish_tool.__annotations__["final_output"] = resp_type;

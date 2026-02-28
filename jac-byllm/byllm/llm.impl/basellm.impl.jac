@@ -188,7 +188,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             args = tool.parse_arguments(args_json);
             tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
         } else {
-            raise RuntimeError(
+            raise UnknownToolError(
                 f"Attempted to call tool: '{tool_call.function.name}' which was not present."
             ) ;
         }

@@ -5,6 +5,7 @@ import from jaclang.jac0core.mtp { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { Callable, get_type_hints }
 import from byllm.schema { json_to_instance, type_to_schema }
+import from byllm.exceptions { ConfigurationError, OutputConversionError }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.types {
     LiteLLMMessage,
@@ -44,7 +45,7 @@ obj MTRuntime {
         stream: bool,
         tools: list[Tool],
         call_params: dict[(str, object)],
-        mtir: MTIR;
+        mtir: MTIR | None = None;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def dispatch_params -> dict[str, object];

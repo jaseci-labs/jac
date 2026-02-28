@@ -18,6 +18,7 @@ import from PIL.Image { open as open_image }
 import from litellm.types.utils { Message as LiteLLMMessage }
 import from pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
+import from byllm.exceptions { ByLLMError, FinishToolError, UnknownToolError }
 
 import from jaclang.jac0core.mtp { Info }
 
