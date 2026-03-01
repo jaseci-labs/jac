@@ -217,6 +217,9 @@ class UniScopeNode(UniNode) {
         incl_inner_scope: bool = False
     ) -> (Symbol | None);
 
+    """Lookup all overloads of a symbol in the symbol table."""
+    def lookup_all(self: UniScopeNode, name: str, deep: bool = True) -> list[Symbol];
+
     """Set a variable in the symbol table.
 
         Returns original symbol as collision if single check fails, none
@@ -297,9 +300,6 @@ class AstSymbolNode(UniNode) {
 
     @property
     def py_ctx_func(self: AstSymbolNode) -> type[ast3.AST];
-
-    @property
-    def expr_type(self: AstSymbolNode) -> str;
 
     """Get type symbol table."""
     @property
@@ -406,16 +406,6 @@ are evaluated to produce a value.
     """
 class Expr(UniNode) {
     def init(self: Expr) -> None;
-    @property
-    def expr_type(self: Expr) -> str {
-        return self._sym_type;
-    }
-
-    @expr_type.setter
-    def expr_type(self: Expr, sym_type: str) -> None {
-        self._sym_type = sym_type;
-    }
-
     """Get type symbol table."""
     @property
     def type_sym_tab(self: Expr) -> (UniScopeNode | None) {

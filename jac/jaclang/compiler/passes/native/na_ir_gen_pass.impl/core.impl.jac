@@ -8,26 +8,38 @@ impl NaIRGenPass.init(
     self.func_symtab: dict[(str, ir.Function)] = {};
     self.local_vars: dict[(str, ir.AllocaInstr)] = {};
     self.has_native_code = False;
-    self.type_map: dict[(str, ir.Type)] = {
-        "int": ir.IntType(64),
-        "float": ir.DoubleType(),
-        "bool": ir.IntType(1),
-        "str": ir.IntType(8).as_pointer(),
-        # Fixed-width C-compatible integer types
-        "i8": ir.IntType(8),
-        "u8": ir.IntType(8),
-        "i16": ir.IntType(16),
-        "u16": ir.IntType(16),
-        "i32": ir.IntType(32),
-        "u32": ir.IntType(32),
+    # Build type_map from the centralized type registry
+    _spec_map: dict[str, ir.Type] = {
         "i64": ir.IntType(64),
-        "u64": ir.IntType(64),
-        # Fixed-width C-compatible float types
-        "f32": ir.FloatType(),
         "f64": ir.DoubleType(),
-        # C void pointer (opaque handle)
-        "c_void": ir.IntType(8).as_pointer()
+        "i1": ir.IntType(1),
+        "i8*": ir.IntType(8).as_pointer()
     };
+    self.type_map: dict[(str, ir.Type)] = {};
+    try {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+        for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
+            self.type_map[_name] = _spec_map[_spec];
+        }
+    } except ImportError {
+        # Bootstrap: type_registry not yet compiled; use inline defaults
+        self.type_map["int"] = _spec_map["i64"];
+        self.type_map["float"] = _spec_map["f64"];
+        self.type_map["bool"] = _spec_map["i1"];
+        self.type_map["str"] = _spec_map["i8*"];
+    }
+    # Fixed-width C-compatible types (NA-specific, not Jac primitives)
+    self.type_map["i8"] = ir.IntType(8);
+    self.type_map["u8"] = ir.IntType(8);
+    self.type_map["i16"] = ir.IntType(16);
+    self.type_map["u16"] = ir.IntType(16);
+    self.type_map["i32"] = ir.IntType(32);
+    self.type_map["u32"] = ir.IntType(32);
+    self.type_map["i64"] = ir.IntType(64);
+    self.type_map["u64"] = ir.IntType(64);
+    self.type_map["f32"] = ir.FloatType();
+    self.type_map["f64"] = ir.DoubleType();
+    self.type_map["c_void"] = ir.IntType(8).as_pointer();
     self._fmt_strings: dict[(str, ir.GlobalVariable)] = {};
     # External function cache (Phase 0)
     self.extern_funcs: dict[(str, ir.Function)] = {};
@@ -199,7 +211,28 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         }
     }
     for stmt in imports {
+        # Recognize `import sys;` for native sys module support
         if not stmt.clib_decls {
+            if stmt.items {
+                for item in stmt.items {
+                    mod_name = None;
+                    if isinstance(item, uni.ModulePath) and item.path {
+                        parts = [];
+                        for p in item.path {
+                            parts.append(
+                                p.value if isinstance(p, uni.Name) else str(p)
+                            );
+                        }
+                        mod_name = ".".join(parts);
+                    }
+                    if mod_name == "sys" {
+                        if not self?._native_stdlib_modules {
+                            self._native_stdlib_modules: set[str] = set();
+                        }
+                        self._native_stdlib_modules.add("sys");
+                    }
+                }
+            }
             continue;
         }
         # Extract library path from from_loc
@@ -298,23 +331,15 @@ impl NaIRGenPass._ensure_emitters -> None {
     if self._native_emitters is not None {
         return;
     }
-    _pn = __import__(
-        "jaclang.compiler.passes.native.primitives_native",
-        fromlist=["NativeListEmitter"]
-    );
-    self._native_emitters = {
-        "int": _pn.NativeIntEmitter(),
-        "float": _pn.NativeFloatEmitter(),
-        "complex": _pn.NativeComplexEmitter(),
-        "str": _pn.NativeStrEmitter(),
-        "bytes": _pn.NativeBytesEmitter(),
-        "list": _pn.NativeListEmitter(),
-        "dict": _pn.NativeDictEmitter(),
-        "set": _pn.NativeSetEmitter(),
-        "frozenset": _pn.NativeFrozensetEmitter(),
-        "tuple": _pn.NativeTupleEmitter(),
-        "range": _pn.NativeRangeEmitter()
-    };
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import jaclang.compiler.passes.native.primitives_native as _pn;
+    self._native_emitters = {};
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pn, "Native" + _suffix, None);
+        if _ecls is not None {
+            self._native_emitters[_tn] = _ecls();
+        }
+    }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
     self._native_emit_ctx_class = _pn.NativeEmitCtx;
 }

@@ -639,6 +639,68 @@ impl Game.move_summary -> str {
     return f"Move {full_moves + 1}" + ("..." if half == 1 else "");
 }
 
+impl Game.play_auto -> str {
+    """Play one full game with random moves. Returns 'White', 'Black', or 'Draw'."""
+    max_moves = 500;
+    while not self.is_over and self.move_count < max_moves {
+        all_legal: list[Move] = self.legal_moves(self.current_turn);
+        if len(all_legal) == 0 {
+            if self.in_check(self.current_turn) {
+                winner = "White" if self.current_turn == Color.BLACK else "Black";
+                return winner;
+            } else {
+                return "Draw";
+            }
+        }
+        idx = random_int(len(all_legal));
+        chosen = all_legal[idx];
+        self.board.make_move(chosen);
+        self.move_count += 1;
+        self.current_turn = opposite_color(self.current_turn);
+
+        if self.is_checkmate(self.current_turn) {
+            winner = "White" if self.current_turn == Color.BLACK else "Black";
+            return winner;
+        } elif self.is_stalemate(self.current_turn) {
+            return "Draw";
+        }
+    }
+    return "Draw";
+}
+
+impl Game.benchmark(num_games: int) -> None {
+    """Run num_games automated random games and print results."""
+    white_wins = 0;
+    black_wins = 0;
+    draws = 0;
+
+    print(f"Running {num_games} games...\n");
+
+    for i in range(num_games) {
+        g = Game();
+        seed_random(i * 7919 + 42);
+        result = g.play_auto();
+
+        if result == "White" {
+            white_wins += 1;
+        } elif result == "Black" {
+            black_wins += 1;
+        } else {
+            draws += 1;
+        }
+        print(
+            f"Game {i + 1}: {result} wins"
+                if result != "Draw"
+                else f"Game {i + 1}: Draw"
+        );
+    }
+
+    print(f"\n--- Results ({num_games} games) ---");
+    print(f"White wins: {white_wins}");
+    print(f"Black wins: {black_wins}");
+    print(f"Draws:      {draws}");
+}
+
 impl Game.play -> None {
     while not self.is_over {
         self.board.display();

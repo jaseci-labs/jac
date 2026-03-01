@@ -893,15 +893,138 @@ Too many tools can confuse the LLM. Keep to 5-10 relevant tools per function.
 
 ## Error Handling
 
+byLLM raises typed exceptions that all inherit from `ByLLMError`. Catching the base class handles any library error; catching a specific subclass lets you respond to exactly the failure that occurred.
+
+### Exception Hierarchy
+
+```
+ByLLMError (base)
+├── AuthenticationError   - API key missing, expired, or rejected
+├── RateLimitError        - Rate limit or quota exceeded
+├── ModelNotFoundError    - Model name does not exist or is unavailable
+├── OutputConversionError - LLM response cannot be parsed / converted to the declared return type
+├── UnknownToolError      - LLM called a tool name that was not registered
+├── FinishToolError       - finish_tool output failed validation against the declared return type
+└── ConfigurationError    - Invalid byLLM usage (e.g. streaming with a non-str return type)
+```
+
+All exceptions are importable from `byllm.lib`.
+
+### Quick Reference
+
+| Exception | When raised |
+|-----------|-------------|
+| `AuthenticationError` | API key is missing, expired, or rejected by the provider |
+| `RateLimitError` | Provider rate limit or token quota is exceeded |
+| `ModelNotFoundError` | The requested `model_name` does not exist or is unavailable |
+| `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
+| `UnknownToolError` | The LLM tried to call a tool function that was not in the registered tool list |
+| `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
+| `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+
+### Importing Exceptions
+
+=== "Jac"
+    ```jac
+    import from byllm.lib {
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        UnknownToolError,
+        ConfigurationError
+    }
+    ```
+
+=== "Python"
+    ```python
+    from byllm.lib import (
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        UnknownToolError,
+        ConfigurationError,
+    )
+    ```
+
+### Catching All byLLM Errors
+
 ```jac
+import from byllm.lib { ByLLMError }
+
 with entry {
     try {
         result = my_llm_function(input);
-    } except Exception as e {
-        print(f"LLM error: {e}");
+    } except ByLLMError as e {
+        print(f"byLLM error: {e}");
         # Fallback logic
     }
 }
+```
+
+### Catching Specific Errors
+
+```jac
+import from byllm.lib {
+    AuthenticationError,
+    RateLimitError,
+    ModelNotFoundError,
+    OutputConversionError
+}
+
+with entry {
+    try {
+        result = my_llm_function(input);
+    } except AuthenticationError as e {
+        print(f"Auth failed - check your API key: {e}");
+    } except RateLimitError as e {
+        print(f"Rate limit hit - back off and retry: {e}");
+    } except ModelNotFoundError as e {
+        print(f"Unknown model - check model_name in jac.toml: {e}");
+    } except OutputConversionError as e {
+        print(f"Bad LLM output: {e}");
+        print(f"Raw output was: {e.raw_output}");   # inspect the raw string
+    }
+}
+```
+
+### `OutputConversionError.raw_output`
+
+When the LLM returns a value that cannot be converted to the function's declared return type, `OutputConversionError` is raised and the original LLM string is attached as `raw_output`:
+
+```jac
+import from byllm.lib { OutputConversionError }
+
+obj Product {
+    has name: str;
+    has price: float;
+}
+
+def extract_product(text: str) -> Product by llm();
+
+with entry {
+    try {
+        p = extract_product("some ambiguous text");
+    } except OutputConversionError as e {
+        print(f"Conversion failed: {e}");
+        print(f"Raw LLM output: {e.raw_output}");
+    }
+}
+```
+
+### `ConfigurationError`
+
+Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
+
+```jac
+import from byllm.lib { ConfigurationError }
+
+# This will raise ConfigurationError at call time:
+# streaming is only supported for str return types.
+def get_product(prompt: str) -> Product by llm(stream=True);
 ```
 
 ---

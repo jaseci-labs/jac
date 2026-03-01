@@ -22,7 +22,7 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution, transform }
 import from jaclang.jac0core.bccache { get_global_cache_dir }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.compiler.passes.main { PyastBuildPass }
+import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),

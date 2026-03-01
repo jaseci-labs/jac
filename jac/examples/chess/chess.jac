@@ -197,11 +197,29 @@ obj Game {
     def parse_input(text: str) -> tuple[int, int, int, int] | None;
     def move_summary -> str;
     def play -> None;
+    def play_auto -> str;
+    def benchmark(num_games: int) -> None;
 }
 
 # ────────────────────── Entry ──────────────────────
-glob game = Game();
+import sys;
+
+glob game = Game(),
+     _benchmark_mode: int = 0,
+     _args = sys.argv;
 
 with entry {
-    game.play();
+    for i in range(1, len(_args)) {
+        arg = _args[i];
+        if arg == "--benchmark" or arg == "-b" {
+            _benchmark_mode = 10;
+        } elif arg == "--benchmark" {
+            _benchmark_mode = 10;
+        }
+    }
+    if _benchmark_mode > 0 {
+        game.benchmark(_benchmark_mode);
+    } else {
+        game.play();
+    }
 }

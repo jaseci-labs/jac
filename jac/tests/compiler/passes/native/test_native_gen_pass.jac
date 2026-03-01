@@ -248,6 +248,64 @@ test "strings fstring mixed" {
     assert f(b"Alice", 30) == b"name=Alice, age=30";
 }
 
+test "strings str replace count arg respected" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_replace_first_only", ctypes.c_char_p, ctypes.c_char_p);
+    # only the first 'a' should be replaced; remaining 'a's must be untouched
+    assert f(b"aaa") == b"Xaa";
+    assert f(b"banana") == b"bXnana";
+}
+
+test "strings for-in-str join" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_for_in_join", ctypes.c_char_p, ctypes.c_char_p);
+    assert f(b"Hello") == b"Hello";
+    assert f(b"") == b"";
+}
+
+test "strings for-in-str count" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_for_in_count", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"Hello") == 5;
+    assert f(b"") == 0;
+}
+
+# --- TestNativePrintMultiArgs ---
+test "print multi args compiles" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    assert eng is not None;
+}
+
+test "print multi args multiple args" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_multiple_args", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args mixed types" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_mixed_types", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args variables" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_variables", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args single arg" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_single_arg", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args many args" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_many_args", ctypes.c_int64);
+    assert f() == 0;
+}
+
 # --- TestNativeObjects ---
 test "objects make point" {
     (eng, _) = compile_native("objects.na.jac");
@@ -274,6 +332,37 @@ test "objects counter" {
 test "objects none check" {
     (eng, _) = compile_native("objects.na.jac");
     f = get_func(eng, "test_none", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "objects init called" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_called", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "objects init executed" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_executed", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "objects init no args" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_no_args", ctypes.c_int64);
+    assert f() == 99;
+}
+
+test "objects init positional" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_positional", ctypes.c_int64);
+    # KWInit(10, 20) → init adds 1 to each → x=11, y=21 → sum=32
+    assert f() == 32;
+}
+
+test "objects init side effects" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_side_effects", ctypes.c_int64);
     assert f() == 1;
 }
 
@@ -1561,4 +1650,193 @@ test "rc stress large dict" {
     (eng, _) = compile_native("rc_stress.na.jac");
     f = get_func(eng, "test_large_dict", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
+}
+
+test "dicts items iteration sum" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
+    assert f() == 60;
+}
+
+# --- TestNativeEmptyGlobDict (regression: empty-dict-glob-var-init-null-ptr) ---
+test "dicts empty glob dict set and get" {
+    # glob x: dict[K,V] = {} previously left the global as null -> segfault on first access.
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "empty_glob_dict_set_get", ctypes.c_int64);
+    assert f() == 7;
+}
+
+test "default params omitted trailing defaults" {
+    (eng, _) = compile_native("default_params.na.jac");
+    method_f = get_func(eng, "test_method_default_omitted", ctypes.c_int64);
+    assert method_f() == 22;  # 5 + 7 + 10 (offset default)
+    free_f = get_func(eng, "test_free_fn_default_omitted", ctypes.c_int64);
+    assert free_f() == 142;  # 42 + 100 (bias default)
+}
+
+# --- Auto-Promotion Tests ---
+glob CHESS_JAC = str(
+         Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
+     );
+
+"""Compile a regular .jac file with auto-promotion and return the engine."""
+def compile_auto_native(file_path: str) -> tuple {
+    prog = JacProgram();
+    prog._auto_promote_native = True;
+    prog._auto_promote_target = os.path.abspath(file_path);
+    ir = prog.compile(file_path=file_path);
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors: {errors}";
+    return (ir, prog);
+}
+
+test "auto promote chess.jac detects native compatible" {
+    (ir, _) = compile_auto_native(CHESS_JAC);
+    assert ir is not None;
+    assert getattr(ir.gen, '_auto_promoted_native', False) , (
+        "chess.jac should be auto-promoted to native"
+    );
+    assert ir.gen.native_engine is not None , (
+        "Auto-promoted chess.jac should have a native engine"
+    );
+}
+
+test "auto promote chess.jac has entry and key functions" {
+    (ir, _) = compile_auto_native(CHESS_JAC);
+    eng = ir.gen.native_engine;
+    # jac_entry must exist
+    assert eng.get_function_address("jac_entry") != 0;
+    # Key game functions must be present
+    for func_name in [
+        "opposite_color",
+        "create_piece",
+        "Board.display",
+        "Game.is_checkmate",
+        "Game.find_king",
+        "Game.play"
+    ] {
+        assert eng.get_function_address(func_name) != 0 , (
+            f"{func_name} not found in auto-promoted native engine"
+        );
+    }
+}
+
+test "auto promote chess.jac runs via cli" {
+    # End-to-end: jac run --autonative chess.jac should execute natively.
+    stdin_data = "\n" * 20 + "quit\n";
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run", "--autonative", CHESS_JAC],
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        timeout=120
+    );
+    assert result.returncode == 0 , (
+        f"Auto-promoted chess crashed with exit code {result.returncode}.\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+    );
+    assert "Game ended." in result.stdout , (
+        f"Expected 'Game ended.' in output.\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
+    # Verify the native execution message appears (may be line-wrapped by Rich)
+    combined = " ".join((result.stdout + result.stderr).split());
+    assert "executed natively" in combined , (
+        f"Expected native execution message.\n" f"output tail: {combined[-500:]}"
+    );
+}
+
+# --- Native sys Module Tests ---
+test "sys argv via jac run autonative" {
+    # Test that sys.argv works when running via `jac run --autonative`
+    fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jaclang",
+            "run",
+            "--autonative",
+            fixture,
+            "hello",
+            "--test-flag",
+            "world"
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        f"sys_argv fixture crashed: exit={result.returncode}\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+    );
+    out = result.stdout;
+    # Should report correct argc (fixture path + 3 args = 4)
+    assert "argc: 4" in out , (f"Expected 'argc: 4' in output.\nstdout: {out}");
+    # Should find the --test-flag
+    assert "FLAG_FOUND" in out , (f"Expected 'FLAG_FOUND' in output.\nstdout: {out}");
+    # Should print each argument
+    assert "arg: hello" in out , (f"Expected 'arg: hello' in output.\nstdout: {out}");
+    assert "arg: world" in out , (f"Expected 'arg: world' in output.\nstdout: {out}");
+    assert "DONE" in out , (f"Expected 'DONE' in output.\nstdout: {out}");
+}
+
+test "sys argv via nacompile" {
+    # Test that sys.argv works when compiled to a standalone binary via nacompile
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "sys_argv_bin");
+        # Step 1: Compile to native binary
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        # Step 2: Run the binary with arguments
+        result = subprocess.run(
+            [out_bin, "hello", "--test-flag", "world"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        );
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        out = result.stdout;
+        # Should report correct argc (binary path + 3 args = 4)
+        assert "argc: 4" in out , (f"Expected 'argc: 4' in output.\nstdout: {out}");
+        # Should find the --test-flag
+        assert "FLAG_FOUND" in out , (
+            f"Expected 'FLAG_FOUND' in output.\nstdout: {out}"
+        );
+        # Should print each argument
+        assert "arg: hello" in out , (
+            f"Expected 'arg: hello' in output.\nstdout: {out}"
+        );
+        assert "arg: world" in out , (
+            f"Expected 'arg: world' in output.\nstdout: {out}"
+        );
+        assert "DONE" in out , (f"Expected 'DONE' in output.\nstdout: {out}");
+        # Step 3: Run with --exit-code flag to test sys.exit()
+        exit_result = subprocess.run(
+            [out_bin, "--exit-code", "1"], capture_output=True, text=True, timeout=10
+        );
+        assert exit_result.returncode == 1 , (
+            f"Expected exit code 1, got {exit_result.returncode}"
+        );
+        # DONE should NOT appear (sys.exit called before it)
+        assert "DONE" not in exit_result.stdout , (
+            f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
+        );
+    }
 }

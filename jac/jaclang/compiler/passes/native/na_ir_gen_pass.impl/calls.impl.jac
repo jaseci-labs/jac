@@ -321,6 +321,26 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             args.append(val);
         }
     }
+    # Fill in missing optional parameters with their AST default values
+    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
+        sig_params = self.method_ast_sigs[func_name].get_parameters();
+        for pix in range(len(args), len(sig_params)) {
+            p = sig_params[pix];
+            expected_type = func.args[len(args)].type
+                if len(args) < len(func.args)
+                else ir.IntType(64);
+            if p.value is not None {
+                dval = self._codegen_expr(p.value);
+                if dval is not None {
+                    args.append(self._coerce_type(dval, expected_type));
+                } else {
+                    args.append(ir.Constant(expected_type, 0));
+                }
+            } else {
+                args.append(ir.Constant(expected_type, 0));
+            }
+        }
+    }
     # Type coerce arguments
     coerced: list[ir.Value] = [];
     for (i, arg) in enumerate(args) {

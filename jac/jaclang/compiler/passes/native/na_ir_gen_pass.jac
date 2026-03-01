@@ -134,6 +134,9 @@ obj NaIRGenPass(Transform) {
 
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    # Native stdlib: sys module
+    def _emit_sys_argv -> (ir.Value | None);
+    def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples

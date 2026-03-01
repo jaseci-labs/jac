@@ -453,6 +453,27 @@ impl NaIRGenPass._emit_dict_helpers(
     key_elem_ptr = b.gep(keys_arr_gk, [idx_arg_gk], name="key.elem.ptr");
     key_result = b.load(key_elem_ptr, name="key.result");
     b.ret(key_result);
+    # --- __dict_get_val: return val at index i (for .items() iteration) ---
+    get_val_fnty = ir.FunctionType(val_type, [dict_ptr_type, i64]);
+    get_val_fn = ir.Function(
+        self.llvm_module,
+        get_val_fnty,
+        name=f"__dict_get_val_{key_type_name}_{val_type_name}"
+    );
+    get_val_fn.linkage = "private";
+    get_val_fn.args[0].name = "dict";
+    get_val_fn.args[1].name = "idx";
+    bb_gv = get_val_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb_gv);
+    d_arg_gv = get_val_fn.args[0];
+    idx_arg_gv = get_val_fn.args[1];
+    vals_ptr_gv = b.gep(
+        d_arg_gv, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="vals.ptr"
+    );
+    vals_arr_gv = b.load(vals_ptr_gv, name="vals");
+    val_elem_ptr = b.gep(vals_arr_gv, [idx_arg_gv], name="val.elem.ptr");
+    val_result = b.load(val_elem_ptr, name="val.result");
+    b.ret(val_result);
     # --- __rc_release_dict_K_V: type-specific destructor ---
     release_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
     release_fn = ir.Function(
@@ -583,6 +604,7 @@ impl NaIRGenPass._emit_dict_helpers(
         "len": len_fn,
         "contains": contains_fn,
         "get_key": get_key_fn,
+        "get_val": get_val_fn,
         "key_type": key_type,
         "val_type": val_type
     };

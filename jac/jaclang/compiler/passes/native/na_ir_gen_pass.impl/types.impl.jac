@@ -201,9 +201,12 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             }
         }
     }
-    # Try expr_type string
-    if type_expr?.expr_type and type_expr.expr_type in self.type_map {
-        return self.type_map[type_expr.expr_type];
+    # Try structured type
+    if isinstance(type_expr, uni.Expr) and type_expr.type {
+        type_str = str(type_expr.type);
+        if type_str in self.type_map {
+            return self.type_map[type_str];
+        }
     }
     return ir.IntType(64);
 }

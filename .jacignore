@@ -149,6 +149,7 @@ rename.jac
 runtime_errors.na.jac
 runtime.jac
 safe_call_operator.jac
+scheduler.jac
 schema.impl.jac
 schema.jac
 sem_manager.impl.jac

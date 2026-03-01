@@ -598,11 +598,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             }
                         }
                         # Check if there are overloads in the symbol's scope
-                        if symbol_scope
-                        and expr.value in symbol_scope.names_in_scope_overload {
-                            for overload_symbol in symbol_scope.names_in_scope_overload[
-                                expr.value
-                            ] {
+                        if symbol_scope {
+                            all_syms = symbol_scope.lookup_all(expr.value, deep=False);
+                            for overload_symbol in all_syms {
+                                if overload_symbol == symbol {
+                                    continue;
+                                }
                                 overload_type = self.get_type_of_symbol(overload_symbol);
                                 if isinstance(overload_type, types.FunctionType) {
                                     overloaded_fns.append(overload_type);

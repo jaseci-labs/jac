@@ -825,6 +825,89 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         self.builder.position_at_end(end_bb);
         return;
     }
+    # ── Dict .items() iteration: for (k, v) in d.items() ──
+    if isinstance(nd.target, uni.TupleVal) and isinstance(nd.collection, uni.FuncCall) {
+        coll_call = nd.collection;
+        if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
+            items_method = self._get_name(coll_call.target.right);
+            items_base = self._get_name(coll_call.target.target);
+            if (
+                items_method == "items"
+                and items_base is not None
+                and items_base in self.var_dict_type
+            ) {
+                dict_type_key = self.var_dict_type[items_base];
+                helpers = self.dict_helpers.get(dict_type_key);
+                unpack_targets = nd.target.values or [];
+                if helpers is not None and len(unpack_targets) == 2 {
+                    key_var_name = self._get_name(unpack_targets[0]);
+                    val_var_name = self._get_name(unpack_targets[1]);
+                    if key_var_name is not None and val_var_name is not None {
+                        collection_val = self._codegen_expr(coll_call.target.target);
+                        if collection_val is not None {
+                            i64 = ir.IntType(64);
+                            key_type = helpers["key_type"];
+                            val_type = helpers["val_type"];
+                            len_val = self.builder.call(
+                                helpers["len"], [collection_val], name="fori.len"
+                            );
+                            idx_alloca = self._entry_alloca(i64, "fori.idx");
+                            self.builder.store(ir.Constant(i64, 0), idx_alloca);
+                            key_alloca = self._entry_alloca(key_type, key_var_name);
+                            val_alloca = self._entry_alloca(val_type, val_var_name);
+                            self.local_vars[key_var_name] = key_alloca;
+                            self.local_vars[val_var_name] = val_alloca;
+                            func = self.builder.function;
+                            cond_bb = func.append_basic_block(name="fori.cond");
+                            body_bb = func.append_basic_block(name="fori.body");
+                            incr_bb = func.append_basic_block(name="fori.incr");
+                            end_bb = func.append_basic_block(name="fori.end");
+                            self.builder.branch(cond_bb);
+                            self.builder.position_at_end(cond_bb);
+                            cur_idx = self.builder.load(idx_alloca, name="fori.cur.idx");
+                            cmp = self.builder.icmp_signed(
+                                "<", cur_idx, len_val, name="fori.cmp"
+                            );
+                            self.builder.cbranch(cmp, body_bb, end_bb);
+                            self.loop_stack.append((incr_bb, end_bb));
+                            self.builder.position_at_end(body_bb);
+                            body_idx = self.builder.load(
+                                idx_alloca, name="fori.body.idx"
+                            );
+                            key_val = self.builder.call(
+                                helpers["get_key"],
+                                [collection_val, body_idx],
+                                name="fori.key"
+                            );
+                            val_val = self.builder.call(
+                                helpers["get_val"],
+                                [collection_val, body_idx],
+                                name="fori.val"
+                            );
+                            self.builder.store(key_val, key_alloca);
+                            self.builder.store(val_val, val_alloca);
+                            if isinstance(nd.body, (list, tuple)) {
+                                self._codegen_body(nd.body);
+                            }
+                            if not self.builder.block.is_terminated {
+                                self.builder.branch(incr_bb);
+                            }
+                            self.loop_stack.pop();
+                            self.builder.position_at_end(incr_bb);
+                            inc_idx = self.builder.load(idx_alloca, name="fori.inc.idx");
+                            next_idx = self.builder.add(
+                                inc_idx, ir.Constant(i64, 1), name="fori.next.idx"
+                            );
+                            self.builder.store(next_idx, idx_alloca);
+                            self.builder.branch(cond_bb);
+                            self.builder.position_at_end(end_bb);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
     # ── Dict iteration: for k in dict ──
     # Only use dict iteration if the collection variable is explicitly tracked as a dict
     # (This avoids premature code generation from type inference)
@@ -889,6 +972,61 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 self.builder.position_at_end(end_bb);
                 return;
             }
+        }
+    }
+    # ── String iteration: for c in str ──
+    # Must be checked before the list path: a raw `i8*` string would otherwise
+    # be misclassified as a `list[ptr]` and hit a type-mismatch when calling
+    # the List.ptr helpers.
+    coll_name_str = self._get_name(nd.collection);
+    is_list_coll = (
+        coll_name_str is not None and coll_name_str in self.var_list_elem_type
+    );
+    is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
+    if not is_list_coll and not is_dict_coll {
+        str_coll_val = self._codegen_expr(nd.collection);
+        i8p_s = ir.IntType(8).as_pointer();
+        if str_coll_val is not None and str_coll_val.type == i8p_s {
+            i64 = ir.IntType(64);
+            strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p_s]);
+            str_len = self.builder.call(strlen_fn, [str_coll_val], name="fors.len");
+            idx_alloca = self._entry_alloca(i64, "fors.idx");
+            self.builder.store(ir.Constant(i64, 0), idx_alloca);
+            loop_alloca = self._entry_alloca(i8p_s, loop_var_name);
+            self.local_vars[loop_var_name] = loop_alloca;
+            func = self.builder.function;
+            cond_bb = func.append_basic_block(name="fors.cond");
+            body_bb = func.append_basic_block(name="fors.body");
+            incr_bb = func.append_basic_block(name="fors.incr");
+            end_bb = func.append_basic_block(name="fors.end");
+            self.builder.branch(cond_bb);
+            self.builder.position_at_end(cond_bb);
+            cur_idx = self.builder.load(idx_alloca, name="fors.cur.idx");
+            cmp = self.builder.icmp_signed("<", cur_idx, str_len, name="fors.cmp");
+            self.builder.cbranch(cmp, body_bb, end_bb);
+            self.loop_stack.append((incr_bb, end_bb));
+            self.builder.position_at_end(body_bb);
+            body_idx = self.builder.load(idx_alloca, name="fors.body.idx");
+            char_str = self._codegen_string_index(str_coll_val, body_idx);
+            if char_str is not None {
+                self.builder.store(char_str, loop_alloca);
+            }
+            if isinstance(nd.body, (list, tuple)) {
+                self._codegen_body(nd.body);
+            }
+            if not self.builder.block.is_terminated {
+                self.builder.branch(incr_bb);
+            }
+            self.loop_stack.pop();
+            self.builder.position_at_end(incr_bb);
+            inc_idx = self.builder.load(idx_alloca, name="fors.inc.idx");
+            next_idx = self.builder.add(
+                inc_idx, ir.Constant(i64, 1), name="fors.next.idx"
+            );
+            self.builder.store(next_idx, idx_alloca);
+            self.builder.branch(cond_bb);
+            self.builder.position_at_end(end_bb);
+            return;
         }
     }
     # ── List iteration: for x in items ──

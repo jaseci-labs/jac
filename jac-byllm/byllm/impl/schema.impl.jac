@@ -24,7 +24,7 @@ impl _type_to_schema(
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
     # Raise on unsupported types
     if ty in (list, dict, set, tuple) {
-        raise ValueError(
+        raise ConfigurationError(
             f"Untyped {ty.__name__} is not supported for schema generation. "
             f"Use {ty.__name__}[T, ...] instead."
         ) ;
@@ -94,7 +94,7 @@ impl _type_to_schema(
 
             } | context;
         }
-        raise ValueError(
+        raise ConfigurationError(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
         ) ;
     }
@@ -160,7 +160,7 @@ impl _type_to_schema(
                     if enum_type is None {
                         enum_type = member_type_str;
                     } elif member_type_str != enum_type {
-                        raise ValueError(
+                        raise ConfigurationError(
                             f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
                         ) ;
                     }
@@ -181,7 +181,7 @@ impl _type_to_schema(
             enum_type = enum_type or "int";
             # Validate supported types
             if enum_type not in ("int", "str") {
-                raise ValueError(
+                raise ConfigurationError(
                     f"Enum {ty.__name__} has unsupported type {enum_type}. "
                     "Only int and str enums are supported for schema generation."
                 ) ;
@@ -223,7 +223,7 @@ impl _type_to_schema(
             if enum_type is None {
                 enum_type = type(member.value);
             } elif type(member.value) is not enum_type {
-                raise ValueError(
+                raise ConfigurationError(
                     f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
                 ) ;
             }
@@ -232,7 +232,7 @@ impl _type_to_schema(
         enum_desc = f"\nThe value *should* be one in this list: {enum_values} where";
         enum_desc += " the names are [" + ", ".join([e.name for e in ty]) + "].";
         if enum_type not in (int, str) {
-            raise ValueError(
+            raise ConfigurationError(
                 f"Enum {ty.__name__} has unsupported type {enum_type}. "
                 "Only int and str enums are supported for schema generation."
             ) ;
@@ -271,7 +271,7 @@ impl _type_to_schema(
 
         };
     }
-    raise ValueError(
+    raise ConfigurationError(
         f"Unsupported type for schema generation: {ty}. Only primitive types, dataclasses, and Union types are supported."
     ) ;
 }
@@ -291,7 +291,7 @@ impl _name_of_type(ty: type, info: Info = None) -> str {
 """Convert a dictionary type to a schema with key-value array structure."""
 impl _convert_dict_to_schema(ty_dict: type) -> dict {
     if get_origin(ty_dict) is not dict {
-        raise ValueError(f"Expected a dictionary type, got {ty_dict}.") ;
+        raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.") ;
     }
     (key_type, value_type) = get_args(ty_dict);
     return {

@@ -662,7 +662,10 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_replace(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        # replace(old, new): replace all occurrences
+        # replace(old, new[, count])
+        # count < 0 or omitted means replace all occurrences.
+        # count == 0 means replace nothing.
+        # count > 0 means replace at most that many occurrences.
         if len(args) < 2 {
             return None;
         }
@@ -677,6 +680,10 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
         old_str = args[0];
         new_str = args[1];
+        # count_val: use the third arg if provided, else -1 (unlimited sentinel).
+        # The loop checks remaining == 0 to stop; -1 decrements to -2, -3, ...
+        # and never reaches 0, so unlimited behaviour is preserved.
+        count_val: ir.Value = ir.Constant(i64, -1) if len(args) < 3 else args[2];
         target_len = b.call(strlen_fn, [target], name="repl.tgt.len");
         old_len = b.call(strlen_fn, [old_str], name="repl.old.len");
         new_len = b.call(strlen_fn, [new_str], name="repl.new.len");
@@ -696,11 +703,18 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(loop_bb);
         src = b.phi(i8p, name="repl.src");
         dst_off = b.phi(i64, name="repl.dst.off");
+        remaining = b.phi(i64, name="repl.remaining");
         src.add_incoming(target, entry_bb);
         dst_off.add_incoming(ir.Constant(i64, 0), entry_bb);
+        remaining.add_incoming(count_val, entry_bb);
+        # Stop replacing when count is exhausted (remaining == 0).
+        count_exhausted = b.icmp_signed(
+            "==", remaining, ir.Constant(i64, 0), name="repl.exhausted"
+        );
         found = b.call(strstr_fn, [src, old_str], name="repl.found.ptr");
         is_null = b.icmp_unsigned("==", found, null_ptr, name="repl.null");
-        b.cbranch(is_null, notfound_bb, found_bb);
+        no_replace = b.or_(count_exhausted, is_null, name="repl.no.repl");
+        b.cbranch(no_replace, notfound_bb, found_bb);
         b.position_at_start(found_bb);
         src_int = b.ptrtoint(src, i64, name="repl.src.int");
         found_int = b.ptrtoint(found, i64, name="repl.fnd.int");
@@ -713,8 +727,11 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         dst_off3 = b.add(dst_off2, new_len, name="repl.off3");
         next_src_int = b.add(found_int, old_len, name="repl.next.int");
         next_src = b.inttoptr(next_src_int, i8p, name="repl.next.src");
+        # Decrement remaining; -1 wraps to -2, -3, ... (never hits 0 → unlimited).
+        next_remaining = b.sub(remaining, ir.Constant(i64, 1), name="repl.next.rem");
         src.add_incoming(next_src, found_bb);
         dst_off.add_incoming(dst_off3, found_bb);
+        remaining.add_incoming(next_remaining, found_bb);
         b.branch(loop_bb);
         b.position_at_start(notfound_bb);
         remain_len = b.call(strlen_fn, [src], name="repl.remain.len");

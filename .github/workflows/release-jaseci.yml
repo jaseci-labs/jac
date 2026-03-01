@@ -84,5 +84,13 @@ jobs:
               --generate-notes \
               --latest
             echo "Created release v$VERSION"
-            echo "Standalone binary build will be triggered automatically."
           fi
+
+  build-standalone-binaries:
+    needs: [release-jaseci, create-github-release]
+    uses: ./.github/workflows/build-standalone.yml
+    with:
+      jaseci_version: ${{ needs.release-jaseci.outputs.version }}
+      release_tag: v${{ needs.release-jaseci.outputs.version }}
+    permissions:
+      contents: write

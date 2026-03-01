@@ -1,6 +1,8 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.2 (Unreleased)
+## jac-mcp 0.1.3 (Unreleased)
+
+## jac-mcp 0.1.2 (Latest Release)
 
 - **Compiler-validated MCP content**: Cross-validated all code snippets in pitfalls.md and patterns.md against the Jac compiler, fixing critical issues where the server was teaching syntax the compiler rejects
 - **Fixed `can` vs `def` guidance**: `can` is only for event-driven abilities (`can X with Y entry`); `def` is correct for regular methods. Updated pitfalls, patterns, and SERVER_INSTRUCTIONS accordingly
@@ -13,7 +15,7 @@
 - **System/user role separation**: All 9 prompt templates now use proper role separation
 - **QA test suite**: Added 149-test `qa_server.jac` covering resources, tools, prompts, server instructions, and compiler validation
 
-## jac-mcp 0.1.1 (Latest Release)
+## jac-mcp 0.1.1
 
 - **Expanded documentation resources**: DOC_MAPPINGS now covers all 42 mkdocs pages (up from 12), including tutorials, developer workflow, and quick-start guides
 - **Auto-generated doc bundling**: New `scripts/bundle_docs.jac` script replaces hardcoded CI copy commands, using DOC_MAPPINGS as the single source of truth for PyPI release bundling

@@ -4,7 +4,7 @@ Demonstrates byLLM character generation, conversation, and transaction systems
 """
 
 import from byllm.lib { Model }
-import from os { get_terminal_size }
+import from shutil { get_terminal_size }
 
 glob llm = Model(model_name="gpt-4o"),
      person_record: dict = {};
