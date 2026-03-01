@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.11.4 (Unreleased)
 
 - 2 small refactors/changes.
+- **Type System Improvement**: Fixed type narrowing not working correctly inside while loops, for loops with break/continue, and loop else blocks.
 
 ## jaclang 0.11.3 (Latest Release)
 

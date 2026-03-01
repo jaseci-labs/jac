@@ -90,13 +90,13 @@ impl CoalesceBBPass.printgraph_cfg -> str {
 """Enter BasicBlockStmt nodes."""
 impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
     if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
-        tail = nd.get_tail();
-        bb = self.get_bb(nd);
         for bbs in self.basic_blocks.values() {
-            if (bbs['bb_stmts'] == bb) {
+            if (nd in bbs['bb_stmts']) {
                 return;
             }
         }
+        tail = nd.get_tail();
+        bb = self.get_bb(nd);
         self.basic_blocks[self.bb_counter] = {'bb_stmts': bb, 'bb_out': tail.bb_out};
         self.bb_counter += 1;
     }
@@ -156,25 +156,40 @@ impl CFGBuildPass.after_pass -> None {
 impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
     if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
         self.first_exit = True;
-        if (not nd.bb_out and not isinstance(nd, (uni.ReturnStmt, uni.ArchHas))) {
+        if (
+            not nd.bb_out
+            and not isinstance(nd, (uni.ReturnStmt, uni.ArchHas, uni.CtrlStmt))
+        ) {
             self.to_connect.append(nd);
         }
         if (isinstance(nd, (uni.InForStmt, uni.IterForStmt)) and self.for_loop_stack) {
             for from_node in self.for_loop_stack[-1][1:] {
-                self.link_bbs(from_node, nd);
-
                 if (from_node in self.to_connect) {
+                    self.link_bbs(from_node, nd);
                     self.to_connect.remove(from_node);
+                }
+            }
+            for from_node in self.for_loop_stack[-1][1:] {
+                if self._is_break_stmt(from_node) {
+                    self.to_connect.append(from_node);
+                } elif self._is_continue_stmt(from_node) {
+                    self.link_bbs(from_node, nd);
                 }
             }
             self.pop_loop_stack(nd);
             self.to_connect.append(nd);
         } elif (isinstance(nd, uni.WhileStmt) and self.while_loop_stack) {
             for from_node in self.while_loop_stack[-1][1:] {
-                self.link_bbs(from_node, nd);
-
                 if (from_node in self.to_connect) {
+                    self.link_bbs(from_node, nd);
                     self.to_connect.remove(from_node);
+                }
+            }
+            for from_node in self.while_loop_stack[-1][1:] {
+                if self._is_break_stmt(from_node) {
+                    self.to_connect.append(from_node);
+                } elif self._is_continue_stmt(from_node) {
+                    self.link_bbs(from_node, nd);
                 }
             }
             self.pop_loop_stack(nd);
@@ -267,10 +282,12 @@ impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
         if isinstance(nd, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
             self.push_loop_stack(nd);
         } else {
-            if self.for_loop_stack {
+            if self.for_loop_stack
+            and not self._is_in_loop_else(nd, self.for_loop_stack[-1][0]) {
                 self.for_loop_stack[-1].append(nd);
             }
-            if self.while_loop_stack {
+            if self.while_loop_stack
+            and not self._is_in_loop_else(nd, self.while_loop_stack[-1][0]) {
                 self.while_loop_stack[-1].append(nd);
             }
         }
@@ -306,6 +323,9 @@ impl CFGBuildPass.get_code_block_sequence(
 """Link basic blocks."""
 impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None {
     if (source and target) {
+        if target in (source.bb_out or []) {
+            return;
+        }
         if source.bb_out {
             source.bb_out.append(target);
         } else {
@@ -442,4 +462,26 @@ impl CFGBuildPass._collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
         }
     }
     return symbols;
+}
+
+"""Check if a node is a break statement."""
+impl CFGBuildPass._is_break_stmt(nd: uni.UniNode) -> bool {
+    return isinstance(nd, uni.CtrlStmt) and nd.ctrl.value == "break";
+}
+
+"""Check if a node is a continue statement."""
+impl CFGBuildPass._is_continue_stmt(nd: uni.UniNode) -> bool {
+    return isinstance(nd, uni.CtrlStmt) and nd.ctrl.value == "continue";
+}
+
+"""Check if a node is inside the else block of a loop statement."""
+impl CFGBuildPass._is_in_loop_else(nd: uni.UniNode, loop_stmt: uni.UniCFGNode) -> bool {
+    cur = nd;
+    while (cur and cur != loop_stmt) {
+        if isinstance(cur, uni.ElseStmt) {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
 }

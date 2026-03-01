@@ -162,7 +162,7 @@ impl AstTool.ir(args: list[str]) -> str {
 
 """List python ast nodes."""
 impl AstTool.py_uni_nodes -> str {
-    import from jaclang.compiler.passes.main { PyastBuildPass }
+    import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
     visit_methods = [
         method
         for method in dir(py_ast._Unparser)
