@@ -263,6 +263,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
+    def _ensure_emitters -> None;
     def _try_primitive_op(
         expr_node: uni.UniNode,
         emit_method: str,

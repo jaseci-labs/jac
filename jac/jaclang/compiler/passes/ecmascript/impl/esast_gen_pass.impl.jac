@@ -1030,30 +1030,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         } except Exception {
             _obj_type = None;
         }
-        # Lazily initialize primitive type names and emitter singletons on first use
-        if self._primitive_type_names is None {
-            import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-            self._primitive_type_names = JAC_TYPE_REGISTRY.get_primitive_names();
-            self._emitter_builtins = JAC_TYPE_REGISTRY.get_builtin_function_names();
-        }
+        self._ensure_emitters();
         if (
             isinstance(_obj_type, jtypes.ClassType)
             and _obj_type.shared
             and _obj_type.shared.class_name in self._primitive_type_names
         ) {
-            if self._primitive_emitters is None {
-                import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-                import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
-                self._primitives_es_mod = _pes;
-                self._primitive_emitters = {};
-                for _tn in JAC_TYPE_REGISTRY.get_type_names_with_emitters() {
-                    _suffix = JAC_TYPE_REGISTRY.get_emitter_class_suffix(_tn);
-                    _ecls = getattr(_pes, "ES" + _suffix, None);
-                    if _ecls is not None {
-                        self._primitive_emitters[_tn] = _ecls();
-                    }
-                }
-            }
             _type_name = _obj_type.shared.class_name;
             _emitter = self._primitive_emitters.get(_type_name);
             _method_name = callee.property.name;
@@ -1091,24 +1073,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Primitive emitter dispatch for builtin function calls ---
-    if self._emitter_builtins is None {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        self._primitive_type_names = JAC_TYPE_REGISTRY.get_primitive_names();
-        self._emitter_builtins = JAC_TYPE_REGISTRY.get_builtin_function_names();
-    }
+    self._ensure_emitters();
     if (
         isinstance(nd.target, uni.Name)
         and nd.target.sym_name in self._emitter_builtins
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        # Lazily initialize builtin emitter singleton on first use
-        if self._builtin_emitter is None {
-            if not hasattr(self, '_primitives_es_mod') {
-                import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
-                self._primitives_es_mod = _pes;
-            }
-            self._builtin_emitter = self._primitives_es_mod.ESBuiltinEmitter();
-        }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
         _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
@@ -1446,6 +1416,26 @@ impl EsastGenPass._convert_assignment_target(
     return (left, reference, None);
 }
 
+"""Lazily initialize primitive and builtin emitter singletons on first use."""
+impl EsastGenPass._ensure_emitters -> None {
+    if self._primitive_emitters is not None {
+        return;
+    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
+    self._primitives_es_mod = _pes;
+    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
+    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
+    self._primitive_emitters = {};
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pes, "ES" + _suffix, None);
+        if _ecls is not None {
+            self._primitive_emitters[_tn] = _ecls();
+        }
+    }
+    self._builtin_emitter = _pes.ESBuiltinEmitter();
+}
+
 """Try to dispatch an operator through the primitive emitter system.
 
 Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
@@ -1469,32 +1459,13 @@ impl EsastGenPass._try_primitive_op(
     } except Exception {
         _obj_type = None;
     }
-    # Lazily initialize primitive type names on first use
-    if self._primitive_type_names is None {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        self._primitive_type_names = JAC_TYPE_REGISTRY.get_primitive_names();
-        self._emitter_builtins = JAC_TYPE_REGISTRY.get_builtin_function_names();
-    }
+    self._ensure_emitters();
     if not (
         isinstance(_obj_type, jtypes.ClassType)
         and _obj_type.shared
         and _obj_type.shared.class_name in self._primitive_type_names
     ) {
         return None;
-    }
-    # Lazily initialize emitter singletons on first use
-    if self._primitive_emitters is None {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
-        self._primitives_es_mod = _pes;
-        self._primitive_emitters = {};
-        for _tn in JAC_TYPE_REGISTRY.get_type_names_with_emitters() {
-            _suffix = JAC_TYPE_REGISTRY.get_emitter_class_suffix(_tn);
-            _ecls = getattr(_pes, "ES" + _suffix, None);
-            if _ecls is not None {
-                self._primitive_emitters[_tn] = _ecls();
-            }
-        }
     }
     _type_name = _obj_type.shared.class_name;
     _emitter = self._primitive_emitters.get(_type_name);

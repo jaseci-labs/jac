@@ -9,17 +9,24 @@ impl NaIRGenPass.init(
     self.local_vars: dict[(str, ir.AllocaInstr)] = {};
     self.has_native_code = False;
     # Build type_map from the centralized type registry
+    _spec_map: dict[str, ir.Type] = {
+        "i64": ir.IntType(64),
+        "f64": ir.DoubleType(),
+        "i1": ir.IntType(1),
+        "i8*": ir.IntType(8).as_pointer()
+    };
+    self.type_map: dict[(str, ir.Type)] = {};
     try {
         import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        self.type_map: dict[(str, ir.Type)] = JAC_TYPE_REGISTRY.build_na_type_map(ir);
+        for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
+            self.type_map[_name] = _spec_map[_spec];
+        }
     } except ImportError {
-        # Fallback during first-run bootstrap when type_registry is being compiled
-        self.type_map: dict[(str, ir.Type)] = {
-            "int": ir.IntType(64),
-            "float": ir.DoubleType(),
-            "bool": ir.IntType(1),
-            "str": ir.IntType(8).as_pointer()
-        };
+        # Bootstrap: type_registry not yet compiled; use inline defaults
+        self.type_map["int"] = _spec_map["i64"];
+        self.type_map["float"] = _spec_map["f64"];
+        self.type_map["bool"] = _spec_map["i1"];
+        self.type_map["str"] = _spec_map["i8*"];
     }
     # Fixed-width C-compatible types (NA-specific, not Jac primitives)
     self.type_map["i8"] = ir.IntType(8);
@@ -327,11 +334,10 @@ impl NaIRGenPass._ensure_emitters -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.native.primitives_native as _pn;
     self._native_emitters = {};
-    for type_name in JAC_TYPE_REGISTRY.get_type_names_with_emitters() {
-        suffix = JAC_TYPE_REGISTRY.get_emitter_class_suffix(type_name);
-        emitter_cls = getattr(_pn, "Native" + suffix, None);
-        if emitter_cls is not None {
-            self._native_emitters[type_name] = emitter_cls();
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pn, "Native" + _suffix, None);
+        if _ecls is not None {
+            self._native_emitters[_tn] = _ecls();
         }
     }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
