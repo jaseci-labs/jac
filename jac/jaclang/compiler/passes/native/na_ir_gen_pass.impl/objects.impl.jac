@@ -476,7 +476,41 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             val = self._codegen_expr(param.value);
             if val is None {
-                continue;
+                # Empty dict/list literal returns None from _codegen_dict_val /
+                # _codegen_list_val.  Fall back to calling helpers["new"] for
+                # the field's concrete dict or list type.
+                ftype_probe = field_types.get(key_name);
+                if ftype_probe is not None and isinstance(ftype_probe, ir.PointerType) {
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if ftype_probe == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                val = self.builder.call(
+                                    helpers["new"], [], name=f"dict.ctor.{key_name}"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                    if val is None {
+                        for (elem_key, ltype) in self.list_types.items() {
+                            if ftype_probe == ltype.as_pointer() {
+                                helpers = self.list_helpers.get(elem_key);
+                                if helpers is not None {
+                                    val = self.builder.call(
+                                        helpers["new"],
+                                        [],
+                                        name=f"list.ctor.{key_name}"
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if val is None {
+                    continue;
+                }
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
@@ -498,6 +532,37 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
             val = self._codegen_expr(default_expr);
+            # Empty dict/list default returns None — fall back to helpers["new"].
+            if val is None {
+                ftype_probe = field_types.get(fname);
+                if ftype_probe is not None
+                and isinstance(ftype_probe, ir.PointerType) {
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if ftype_probe == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                val = self.builder.call(
+                                    helpers["new"], [], name=f"dict.dflt.{fname}"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                    if val is None {
+                        for (elem_key, ltype) in self.list_types.items() {
+                            if ftype_probe == ltype.as_pointer() {
+                                helpers = self.list_helpers.get(elem_key);
+                                if helpers is not None {
+                                    val = self.builder.call(
+                                        helpers["new"], [], name=f"list.dflt.{fname}"
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             if val is not None {
                 idx = field_indices[fname];
                 ftype = field_types[fname];

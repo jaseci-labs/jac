@@ -205,6 +205,42 @@ def empty_glob_dict_len_after_insert() -> int {
 # ===================== Entry Point =====================
 glob _init_done: int = 0;
 
+# for k in dict (parameter): iterate and sum values
+def dict_param_iter_sum(d: dict[int, int]) -> int {
+    total: int = 0;
+    for k in d {
+        total = total + d[k];
+    }
+    return total;
+}
+
+# wrapper so the test can call without building a dict from Python
+def dict_param_iter_sum_fixture() -> int {
+    d: dict[int, int] = {};
+    d[1] = 10;
+    d[2] = 20;
+    d[3] = 30;
+    return dict_param_iter_sum(d);
+}
+
+# ── for k in field_access dict (struct field) ──
+obj DictContainer {
+    has props: dict[int, int];
+}
+
+# for k in c.props: iterate dict stored in a struct field
+def dict_field_iter_sum_fixture() -> int {
+    c: DictContainer = DictContainer(props={0: 0});
+    c.props[1] = 10;
+    c.props[2] = 20;
+    c.props[3] = 30;
+    total: int = 0;
+    for k in c.props {
+        total = total + c.props[k];
+    }
+    return total;
+}
+
 # dict .items() iteration: sum all values
 def dict_items_iter_sum() -> int {
     d: dict[int, int] = {};
