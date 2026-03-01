@@ -600,6 +600,26 @@ test "test_hover_types" {
                 assert should_not_contain not in hover.contents.value , f"Line {line}: should NOT contain '{should_not_contain}', got: {hover.contents.value}";
             }
         }
+
+        # Match-case narrowing: expr should be AtomTrailer, not JsxElement | AtomTrailer
+        match_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_match_case_narrowing.jac")
+        );
+        lsp.type_check_file(match_file);
+        hover = lsp.get_hover_info(match_file, lspt.Position(27, 19));
+        assert hover is not None , "Match-case hover should exist";
+        assert "AtomTrailer" in hover.contents.value , f"Match-case: expected AtomTrailer, got: {hover.contents.value}";
+        assert "JsxElement" not in hover.contents.value , f"Match-case: should NOT contain JsxElement, got: {hover.contents.value}";
+
+        # Walrus narrowing: greeting should be str, not str | None
+        walrus_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_walrus_narrowing.jac")
+        );
+        lsp.type_check_file(walrus_file);
+        hover = lsp.get_hover_info(walrus_file, lspt.Position(13, 15));
+        assert hover is not None , "Walrus hover should exist";
+        assert "str" in hover.contents.value , f"Walrus: expected str, got: {hover.contents.value}";
+        assert "None" not in hover.contents.value , f"Walrus: should NOT contain None (narrowed!), got: {hover.contents.value}";
     } finally {
         teardown_test();
     }

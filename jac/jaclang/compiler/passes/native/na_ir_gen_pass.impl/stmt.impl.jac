@@ -916,11 +916,27 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if coll_name is not None and coll_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[coll_name];
     }
+    # Fallback: for field access (e.g. c.props) where coll_name is None or not
+    # tracked, evaluate the expression and infer the dict type from its LLVM type.
+    _ford_coll_val: (ir.Value | None) = None;
+    if dict_type_key is None {
+        _ford_coll_val = self._codegen_expr(nd.collection);
+        if _ford_coll_val is not None {
+            dict_info = self._infer_dict_type(_ford_coll_val);
+            if dict_info is not None {
+                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+            }
+        }
+    }
     if dict_type_key is not None {
         # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
         if helpers is not None {
-            collection_val = self._codegen_expr(nd.collection);
+            collection_val = (
+                _ford_coll_val
+                    if _ford_coll_val is not None
+                    else self._codegen_expr(nd.collection)
+            );
             if collection_val is not None {
                 i64 = ir.IntType(64);
                 key_type = helpers["key_type"];

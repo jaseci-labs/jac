@@ -205,6 +205,20 @@ impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
             self.to_connect.append(nd);
         }
     }
+    # MatchCase: Clear to_connect of nodes from sibling cases.
+    # Match-case doesn't have fall-through, so case bodies shouldn't link to each other.
+    # MatchCase.parent is directly the MatchStmt.
+    if isinstance(nd, uni.MatchCase) and isinstance(nd.parent, uni.MatchStmt) {
+        parent_match = nd.parent;
+        nodes_to_remove = [
+            n
+            for n in self.to_connect
+            if n.find_parent_of_type(uni.MatchCase)?.parent is parent_match
+        ];
+        for n in nodes_to_remove {
+            self.to_connect.remove(n);
+        }
+    }
 }
 
 """Enter BasicBlockStmt nodes."""
@@ -434,6 +448,15 @@ impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     # Pattern: x (truthiness check like `if val:`) - collect 'x'
     elif isinstance(condition, uni.Name) {
         symbols.add(condition.value);
+    }
+    # Pattern: (x := expr) walrus operator - collect 'x'
+    elif (
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == "WALRUS_EQ"
+        and isinstance(condition.left, uni.Name)
+    ) {
+        symbols.add(condition.left.value);
     }
     return symbols;
 }

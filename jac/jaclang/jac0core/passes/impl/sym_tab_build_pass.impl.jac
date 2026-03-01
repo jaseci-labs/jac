@@ -124,7 +124,11 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
     }
 }
 
-"""Handle walrus operator (:=) assignments."""
+"""Handle walrus operator (:=) assignments.
+
+Walrus variables are scoped to the enclosing function, not the local block.
+This matches Python semantics where `if (x := expr):` defines x in the function scope.
+"""
 impl SymTabBuildPass.exit_binary_expr(
     self: SymTabBuildPass, nd: uni.BinaryExpr
 ) -> None {
@@ -133,8 +137,14 @@ impl SymTabBuildPass.exit_binary_expr(
         return;
     }
     if isinstance(nd.left, uni.Name) {
-        if ((sym := nd.left.sym_tab.lookup(nd.left.sym_name, deep=False)) is None) {
-            nd.left.sym_tab.def_insert(nd.left, single_decl='walrus var');
+        # Find enclosing function scope for walrus variable
+        # (walrus vars scope to function, not local block)
+        target_scope = nd.left.sym_tab;
+        if func := nd.find_parent_of_type(uni.Ability) {
+            target_scope = func.sym_tab;
+        }
+        if ((sym := target_scope.lookup(nd.left.sym_name, deep=False)) is None) {
+            target_scope.def_insert(nd.left, single_decl='walrus var');
         } else {
             sym.add_use(nd.left.name_spec);
         }
