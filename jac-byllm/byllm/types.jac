@@ -5,9 +5,12 @@ tools, and tool calls. It provides a structured way to represent messages,
 tool calls, and tools that can be used in LLM requests and responses.
 """
 import base64;
+import logging;
 import mimetypes;
 import os;
 import from contextlib { suppress }
+
+glob logger: logging.Logger = logging.getLogger(__name__);
 import from enum { StrEnum }
 import from io { BytesIO }
 import from typing { Callable, TypeAlias, get_type_hints }

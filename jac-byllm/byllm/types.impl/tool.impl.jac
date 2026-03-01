@@ -24,10 +24,8 @@ impl Tool.__call__(*args: list, **kwargs: dict) -> object {
         return self.func(*args, **kwargs);
     } except Exception as e {
         # For the LLM if the tool failed, it'll see the error message
-        logger.exception(
-            "Tool execution failed"
-        );  # To prevent sensitive info leakage(generic message)
-        return "Tool error";
+        logger.exception("Tool execution failed");
+        return f"Tool error: {e}";
     }
 }
 
