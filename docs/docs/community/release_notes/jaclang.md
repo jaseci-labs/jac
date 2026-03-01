@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
+- 2 small refactors/changes.
+
 ## jaclang 0.11.3 (Latest Release)
 
 - **Static Analysis Pass: Unused Variables, Undefined Names, Unreachable Code**: Added a new `StaticAnalysisPass` to the type-check pipeline that detects three classes of issues: (1) variables defined but never referenced, (2) name references that fail to resolve, and (3) code following `return`/`raise`/`break`/`continue` statements. All diagnostics surface as warnings in both `jac check` output and LSP (IDE squiggles). The pass runs after `TypeCheckPass` and respects conventional skip patterns (`_`-prefixed names, `has` fields, imported symbols, abstract ability parameters, archetype/ability definitions).
