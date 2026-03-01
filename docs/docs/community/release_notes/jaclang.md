@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - 3 small refactors/changes.
 - **Type System Improvement**: Fixed type narrowing not working correctly inside while loops, for loops with break/continue, and loop else blocks.
+- **Fix: Match-Case & Walrus Type Narrowing**: Variables inside `match`/`case` blocks now correctly narrow to the matched type. Walrus operator (`if (x := get_optional())`) now narrows `x` to exclude `None` in the true branch.
 - **Native Primitives: Set Algebra & Dict `setdefault`**: Implemented 6 new native LLVM emitters -- `set.symmetric_difference`, `set.update`, `set.intersection_update`, `set.difference_update`, `set.symmetric_difference_update`, and `dict.setdefault`. Native primitive coverage rises from 47% → 49% implemented (147/299) and 45% → 47% tested (140/299), with SetEmitter at 61% and DictEmitter at 81%.
 
 ## jaclang 0.11.3 (Latest Release)
