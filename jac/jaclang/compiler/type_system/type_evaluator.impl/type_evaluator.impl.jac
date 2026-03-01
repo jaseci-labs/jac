@@ -2034,6 +2034,28 @@ impl TypeEvaluator._find_predicate_for(
             }
         }
     }
+    # Pattern 8: Walrus operator truthiness narrowing - if (x := expr):
+    # The walrus assigns a value and uses it as a condition.
+    # When truthy, we exclude None from the assigned type.
+    if (
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == "WALRUS_EQ"
+        and isinstance(condition.left, uni.Name)
+        and condition.left.value == sym_name
+    ) {
+        if self.prefetch and self.prefetch.none_type_class {
+            # Get the type of the right side (the value being assigned)
+            walrus_type = self.get_type_of_expression(condition.right);
+            # Only narrow if the type contains None
+            if self._union_contains_none(walrus_type) {
+                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                return NarrowingPredicate(
+                    sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                );
+            }
+        }
+    }
     return None;
 }
 
