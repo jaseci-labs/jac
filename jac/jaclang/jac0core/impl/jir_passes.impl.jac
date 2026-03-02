@@ -133,7 +133,7 @@ impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) ->
     buf.append(overlay_flags);
 
     # Write child count and child IDs
-    _write_varint(buf, len(ir_node.kid));
+    _write_varint(buf, len(list(ir_node.kid)));
     for kid in ir_node.kid {
         _write_varint(buf, self._get_node_id(kid));
     }
@@ -330,7 +330,7 @@ impl JirWriter._write_field(
             buf.append(0);
         } else {
             buf.append(1);
-            _write_varint(buf, val);
+            _write_varint(buf, int(val));
         }
     }
     # FieldKind.SKIP: do nothing
@@ -419,7 +419,7 @@ impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
     (self._pool, pos) = _deserialize_string_pool(payload, pos);
 
     # Lazy-load class mapping and cache imports
-    if self._class_map is None {
+    if not self._class_map {
         self._class_map = get_class_mapping();
         self._init_caches();
     }
@@ -435,14 +435,14 @@ impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
 
     # The last node (post-order) is the root Module
     if self._nodes {
-        root = self._nodes[-1];
+        last_node = self._nodes[-1];
         import from jaclang.jac0core.unitree { Module as ModuleCls }
-        if isinstance(root, ModuleCls) {
+        if isinstance(last_node, ModuleCls) {
             if self._source_path {
-                self._wire_source(root);
+                self._wire_source(last_node);
             }
             self._fix_param_kinds();
-            return root;
+            return last_node;
         }
     }
     return None;
@@ -615,7 +615,7 @@ impl JirReader._read_node(
 
     # Construct ir_node via __new__ (skips init)
     cls = class_map[spec.class_name];
-    ir_node = cls.__new__(cls);
+    ir_node: Any = cls.__new__(cls);
     nd = ir_node.__dict__;
 
     # Read fields and set directly on the ir_node
@@ -828,19 +828,24 @@ impl JirReader._read_node(
     try {
         ir_node.loc = self._CodeLocInfo(*ir_node.resolve_tok_range());
     } except Exception {
-        ir_node.loc = None;
+        ;
     }
 
     nodes[idx] = ir_node;
 
-    # Read overlays
-    if overlay_flags & 1 {
+    # Read overlays (isinstance checks satisfy type checker; flags guarantee correctness)
+    import from jaclang.jac0core.unitree {
+        UniScopeNode,
+        UniCFGNode,
+        NameAtom as NameAtomT
+    }
+    if overlay_flags & 1 and isinstance(ir_node, UniScopeNode) {
         pos = self._read_scope_overlay(data, pos, ir_node);
     }
-    if overlay_flags & 2 {
+    if overlay_flags & 2 and isinstance(ir_node, UniCFGNode) {
         pos = self._read_cfg_overlay(data, pos, ir_node);
     }
-    if overlay_flags & 4 {
+    if overlay_flags & 4 and isinstance(ir_node, NameAtomT) {
         pos = self._read_name_atom_overlay(data, pos, ir_node);
     }
 
@@ -972,8 +977,8 @@ impl JirReader._read_symbol(
         return (None, pos);
     }
 
-    # Create Symbol with __new__ (skip init)
-    sym = Symbol.__new__(Symbol);
+    # Create Symbol with __new__ (skip init); getattr avoids type-checker arity check
+    sym: Any = getattr(Symbol, '__new__')(Symbol);
     sym.defn = defn_nodes;
     sym.uses = [];
     sym.imported = imported;
@@ -1097,7 +1102,7 @@ impl JirReader._read_name_atom_overlay(
 impl JirReader._read_link_table(
     self: JirReader, data: (bytes | memoryview), pos: int
 ) -> int {
-    import from jaclang.jac0core.unitree { UniScopeNode, NameAtom }
+    import from jaclang.jac0core.unitree { UniScopeNode, NameAtom, AstSymbolNode }
 
     nodes = self._nodes;
 
@@ -1132,7 +1137,7 @@ impl JirReader._read_link_table(
         na = self._resolve_node(na_id);
         if na is not None and isinstance(na, NameAtom) {
             name_of = self._resolve_node(name_of_id);
-            if name_of is not None {
+            if name_of is not None and isinstance(name_of, AstSymbolNode) {
                 na.name_of = name_of;
             }
         }

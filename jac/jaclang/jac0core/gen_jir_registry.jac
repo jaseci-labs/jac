@@ -10,15 +10,15 @@ import from pathlib { Path }
 # Serialize token fields directly from the SpecialVarRef node itself (IS-A Name).
 glob MANUAL_FIELDS: dict[str, list] = {
          "SpecialVarRef": [
-             'FieldDesc("name", 0)',
-             'FieldDesc("is_enum_stmt", 2)',
-             'FieldDesc("line", 1)',
-             'FieldDesc("end_line", 1)',
-             'FieldDesc("col_start", 1)',
-             'FieldDesc("col_end", 1)',
-             'FieldDesc("pos_start", 1)',
-             'FieldDesc("pos_end", 1)',
-             'FieldDesc("is_kwesc", 2)',
+             'FieldDesc(name="name", kind=0)',
+             'FieldDesc(name="is_enum_stmt", kind=2)',
+             'FieldDesc(name="line", kind=1)',
+             'FieldDesc(name="end_line", kind=1)',
+             'FieldDesc(name="col_start", kind=1)',
+             'FieldDesc(name="col_end", kind=1)',
+             'FieldDesc(name="pos_start", kind=1)',
+             'FieldDesc(name="pos_end", kind=1)',
+             'FieldDesc(name="is_kwesc", kind=2)',
 
          ],
 
@@ -131,7 +131,6 @@ def generate -> str {
     lines.append('DO NOT EDIT MANUALLY - regenerate with `jac gen-jir-registry`');
     lines.append('"""');
     lines.append('import from enum { IntEnum }');
-    lines.append('import from typing { NamedTuple }');
     lines.append('');
     lines.append('');
     lines.append('"""Field serialization kinds."""');
@@ -145,14 +144,14 @@ def generate -> str {
     lines.append('');
     lines.append('');
     lines.append('"""Descriptor for a single serializable field."""');
-    lines.append('class FieldDesc(NamedTuple) {');
+    lines.append('obj FieldDesc {');
     lines.append('    has name: str,');
-    lines.append('        kind: FieldKind;');
+    lines.append('        kind: int;');
     lines.append('}');
     lines.append('');
     lines.append('');
     lines.append('"""Specification for a node type."""');
-    lines.append('class NodeSpec(NamedTuple) {');
+    lines.append('obj NodeSpec {');
     lines.append('    has type_idx: int,');
     lines.append('        class_name: str,');
     lines.append('        is_scope: bool,');
@@ -188,7 +187,7 @@ def generate -> str {
                 ann_str = ann_str.replace(prefix, "");
             }
             kind_val = classify_type(ann_str);
-            field_parts.append(f'FieldDesc("{pname}", {kind_val})');
+            field_parts.append(f'FieldDesc(name="{pname}", kind={kind_val})');
         }
 
         # Include inherited fields from ContextAwareNode (set by init, not postinit)
@@ -213,7 +212,9 @@ def generate -> str {
                             ann_str = ann_str.replace(prefix, "");
                         }
                         kind_val = classify_type(ann_str);
-                        field_parts.append(f'FieldDesc("{pname}", {kind_val})');
+                        field_parts.append(
+                            f'FieldDesc(name="{pname}", kind={kind_val})'
+                        );
                     }
                 } except Exception {
                     ;
@@ -234,8 +235,8 @@ def generate -> str {
             fields_str += ",";
         }
         lines.append(
-            f'    NodeSpec({idx}, "{name}", {is_scope}, {is_cfg}, {is_name_atom},'
-            f' ({fields_str})),'
+            f'    NodeSpec(type_idx={idx}, class_name="{name}", is_scope={is_scope},'
+            f' is_cfg={is_cfg}, is_name_atom={is_name_atom}, fields=({fields_str})),'
         );
     }
 

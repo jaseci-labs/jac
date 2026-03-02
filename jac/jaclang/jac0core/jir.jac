@@ -22,7 +22,7 @@ import from typing { Any }
 
 # --- Constants ---
 """JIR file magic bytes."""
-glob MAGIC: bytes = b"JIR\x00";
+glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
 glob FORMAT_VERSION: int = 7;
@@ -101,7 +101,7 @@ def deserialize_string_pool(
 # --- Header ---
 """JIR file header (32 bytes fixed size)."""
 obj JirHeader {
-    has magic: bytes = b"JIR\x00",
+    has magic: Any = b"JIR\x00",
         format_version: int = FORMAT_VERSION,
         python_version: int = 0,
         jaclang_version_hash: int = 0,
@@ -199,7 +199,11 @@ def compute_content_crc32(file_path: str) -> int {
 def compute_content_sha256(file_path: str) -> str {
     h = hashlib.sha256();
     with open(file_path, 'rb') as f {
-        for chunk in iter(lambda : f.read(8192), b'') {
+        while True {
+            chunk = f.read(8192);
+            if not chunk {
+                break;
+            }
             h.update(chunk);
         }
     }
