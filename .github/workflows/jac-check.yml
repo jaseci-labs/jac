@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify jir_registry.jac is up to date
         run: |
-          jac tool gen-jir-registry --verify
+          jac gen-jir-registry --verify
 
       - name: Run jac check (using .jacignore)
         run: |
