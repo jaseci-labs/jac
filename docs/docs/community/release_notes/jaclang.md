@@ -4,7 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
-- 4 small refactors/changes.
+- 5 small refactors/changes.
+- **JIR TypeCheck Cache: Binary Module Caching for Faster Re-checks**: Introduced a binary serialization format (JIR - Jac IR) that caches fully type-checked modules to `~/.cache/jac/typecheck/`. On subsequent `jac check` runs, imported `.jac` modules are deserialized from the binary cache instead of being re-parsed, symbol-table-built, and type-inferred. Measured speedup is **1.8-2.5x on real compiler files**. Cache entries are invalidated automatically via mtime comparison against source, impl, and variant files. The generator that produces the node-type registry (`jac gen-jir-registry`) is now a first-class Jac module with a `--verify` mode for CI enforcement.
 - **AST Declarative Field Conversion**: Converted all 143 AST node classes in `unitree.jac` from manual `def init` constructors to declarative `has` field declarations, enabling proper dataclass field inheritance across the node hierarchy. Token hierarchy classes retain manual init with direct field setup to avoid `__post_init__` MRO dispatch issues. Bootstrap transpiler (`jac0.py`) updated with `by postinit` parsing support, `postinit` to `__post_init__` mapping, and conditional `kw_only=True` for subclassed nodes.
 - **Type System Improvement**: Fixed type narrowing not working correctly inside while loops, for loops with break/continue, and loop else blocks.
 - **Fix: Match-Case & Walrus Type Narrowing**: Variables inside `match`/`case` blocks now correctly narrow to the matched type. Walrus operator (`if (x := get_optional())`) now narrows `x` to exclude `None` in the true branch.

@@ -1,0 +1,263 @@
+"""Jac IR (.jir) binary serialization for the unified intermediate representation.
+
+Provides fast, compact serialization of the unitree (AST + symbol table + CFG)
+for caching type-checked modules. Each node is serialized as a single record
+encoding all its overlay data (AST core, scope, CFG, symbol references).
+
+File format:
+  Header (32 bytes) -> String Pool -> Unified Node Stream -> Link Table -> Metadata
+
+Cache locations (platform-aware):
+  Linux:   ~/.cache/jac/typecheck/
+  macOS:   ~/Library/Caches/jac/typecheck/
+  Windows: %LOCALAPPDATA%/jac/cache/typecheck/
+"""
+import hashlib;
+import os;
+import struct;
+import sys;
+import zlib;
+import from pathlib { Path }
+import from typing { Any }
+
+# --- Constants ---
+"""JIR file magic bytes."""
+glob MAGIC: bytes = b"JIR\x00";
+
+"""Current format version. Increment on breaking changes."""
+glob FORMAT_VERSION: int = 7;
+
+"""Header size in bytes."""
+glob HEADER_SIZE: int = 32;
+
+"""Header struct format (little-endian)."""
+glob HEADER_FMT: str = "<4sHHIIIIII";
+
+"""Sentinel node ID for external references (e.g. builtins parent_scope)."""
+glob EXTERNAL_REF: int = 0xFFFFFF;
+
+# --- Varint (LEB128) ---
+"""Encode an unsigned integer as LEB128 varint, appending to buf."""
+def write_varint(buf: bytearray, value: int) -> None {
+    while value >= 0x80 {
+        buf.append((value & 0x7F) | 0x80);
+        value >>= 7;
+    }
+    buf.append(value & 0x7F);
+}
+
+"""Decode an unsigned LEB128 varint from data at pos. Returns (value, new_pos)."""
+def read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
+    result = 0;
+    shift = 0;
+    byte = data[pos];
+    while (byte & 0x80) != 0 {
+        result |= (byte & 0x7F) << shift;
+        shift += 7;
+        pos += 1;
+        byte = data[pos];
+    }
+    result |= (byte & 0x7F) << shift;
+    pos += 1;
+    return (result, pos);
+}
+
+# --- String Pool ---
+"""Deduplicated string table for identifiers, paths, and token values.
+
+Strings are assigned sequential indices. The pool is serialized as:
+  count: varint, then for each string: [length: varint, UTF-8 bytes].
+"""
+class StringPool {
+    def init(self: StringPool) -> None;
+    """Intern a string and return its pool index."""
+    def intern(self: StringPool, s: str) -> int;
+
+    """Get string by pool index."""
+    def get(self: StringPool, idx: int) -> str;
+
+    """Number of strings in pool."""
+    def __len__(self: StringPool) -> int;
+
+    """Serialize the pool to bytes."""
+    def serialize(self: StringPool) -> bytes;
+}
+
+"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
+def deserialize_string_pool(
+    data: (bytes | memoryview), pos: int
+) -> tuple[StringPool, int] {
+    pool = StringPool();
+    (count, pos) = read_varint(data, pos);
+    for _ in range(count) {
+        (length, pos) = read_varint(data, pos);
+        s = bytes(data[pos:pos + length]).decode('utf-8');
+        pool.intern(s);
+        pos += length;
+    }
+    return (pool, pos);
+}
+
+# --- Header ---
+"""JIR file header (32 bytes fixed size)."""
+obj JirHeader {
+    has magic: bytes = b"JIR\x00",
+        format_version: int = FORMAT_VERSION,
+        python_version: int = 0,
+        jaclang_version_hash: int = 0,
+        source_content_hash: int = 0,
+        node_count: int = 0,
+        symbol_count: int = 0,
+        string_pool_size: int = 0,
+        flags: int = 0;
+
+    """Serialize to 32 bytes."""
+    def to_bytes(self: JirHeader) -> bytes;
+
+    """Quick validation: check magic, version, python version."""
+    def is_compatible(self: JirHeader) -> bool;
+}
+
+"""Create a JirHeader for the current environment."""
+def create_header(
+    source_hash: int,
+    node_count: int,
+    symbol_count: int,
+    string_pool_size: int,
+    flags: int = 0
+) -> JirHeader {
+    import from importlib.metadata { version as pkg_version }
+    try {
+        jac_ver = pkg_version('jaclang');
+    } except Exception {
+        jac_ver = "0.0.0";
+    }
+    return JirHeader(
+        magic=MAGIC,
+        format_version=FORMAT_VERSION,
+        python_version=(sys.version_info.major << 8) | sys.version_info.minor,
+        jaclang_version_hash=zlib.crc32(jac_ver.encode()) & 0xFFFFFFFF,
+        source_content_hash=source_hash & 0xFFFFFFFF,
+        node_count=node_count,
+        symbol_count=symbol_count,
+        string_pool_size=string_pool_size,
+        flags=flags
+    );
+}
+
+"""Deserialize a JirHeader from bytes. Returns None if magic/version mismatch."""
+def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
+    if len(data) < HEADER_SIZE {
+        return None;
+    }
+    try {
+        (magic, fmt_ver, py_ver, jac_hash, src_hash, n_nodes, n_syms, sp_size, flags) = struct.unpack(
+            HEADER_FMT, data[:HEADER_SIZE]
+        );
+    } except struct.error {
+        return None;
+    }
+    if magic != MAGIC or fmt_ver != FORMAT_VERSION {
+        return None;
+    }
+    return JirHeader(
+        magic=magic,
+        format_version=fmt_ver,
+        python_version=py_ver,
+        jaclang_version_hash=jac_hash,
+        source_content_hash=src_hash,
+        node_count=n_nodes,
+        symbol_count=n_syms,
+        string_pool_size=sp_size,
+        flags=flags
+    );
+}
+
+# --- Cache Directory ---
+"""Get the platform-appropriate global cache directory for JIR files."""
+def get_jir_cache_dir -> Path {
+    if sys.platform == 'win32' {
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'));
+        return base / 'jac' / 'cache' / 'typecheck';
+    } elif sys.platform == 'darwin' {
+        return Path.home() / 'Library' / 'Caches' / 'jac' / 'typecheck';
+    } else {
+        xdg_cache = os.environ.get('XDG_CACHE_HOME');
+        base = Path(xdg_cache) if xdg_cache else (Path.home() / '.cache');
+        return base / 'jac' / 'typecheck';
+    }
+}
+
+"""Compute CRC32 of file content for fast-reject validation."""
+def compute_content_crc32(file_path: str) -> int {
+    with open(file_path, 'rb') as f {
+        return zlib.crc32(f.read()) & 0xFFFFFFFF;
+    }
+}
+
+"""Compute SHA-256 hex digest of file content."""
+def compute_content_sha256(file_path: str) -> str {
+    h = hashlib.sha256();
+    with open(file_path, 'rb') as f {
+        for chunk in iter(lambda : f.read(8192), b'') {
+            h.update(chunk);
+        }
+    }
+    return h.hexdigest();
+}
+
+"""Get the cache path for a stub file."""
+def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
+    cache_dir = get_jir_cache_dir() / 'stubs';
+    name = Path(stub_path).stem;
+    (major, minor) = (sys.version_info.major, sys.version_info.minor);
+    return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
+}
+
+"""Get the cache path for a user module."""
+def get_module_cache_path(source_path: str) -> Path {
+    cache_dir = get_jir_cache_dir() / 'modules';
+    source = Path(source_path).resolve();
+    path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
+    (major, minor) = (sys.version_info.major, sys.version_info.minor);
+    return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
+}
+
+"""Check whether a module's JIR cache is still valid via mtime comparison.
+
+The cache is valid if it exists and is newer than the source file and
+all its annex files (impl, test) and variant files (sv, cl, na).
+"""
+def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
+    import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
+    if not cache_path.exists() {
+        return False;
+    }
+    try {
+        cache_mtime = os.path.getmtime(cache_path);
+        if cache_mtime <= os.path.getmtime(source_path) {
+            return False;
+        }
+        for annex in discover_annex_files(source_path) {
+            try {
+                if cache_mtime <= os.path.getmtime(annex) {
+                    return False;
+                }
+            } except OSError {
+                return False;
+            }
+        }
+        for variant in discover_variant_files(source_path) {
+            try {
+                if cache_mtime <= os.path.getmtime(variant) {
+                    return False;
+                }
+            } except OSError {
+                return False;
+            }
+        }
+        return True;
+    } except OSError {
+        return False;
+    }
+}

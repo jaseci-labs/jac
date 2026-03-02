@@ -256,3 +256,37 @@ def _install_completion(shell: str, code: str) -> int {
         return 1;
     }
 }
+
+"""Regenerate (or verify) jir_registry.jac from the current unitree node classes."""
+impl gen_jir_registry(verify: bool = False) -> int {
+    import from jaclang.jac0core.gen_jir_registry { generate }
+    import from pathlib { Path }
+    import jaclang;
+
+    registry_path = Path(jaclang.__file__).parent / "jac0core" / "jir_registry.jac";
+
+    try {
+        content = generate();
+    } except Exception as e {
+        console.error(f"Failed to generate registry: {e}");
+        return 1;
+    }
+
+    if verify {
+        current = registry_path.read_text() if registry_path.exists() else "";
+        if current == content {
+            console.print("jir_registry.jac is up to date.");
+            return 0;
+        } else {
+            console.error(
+                "jir_registry.jac is OUT OF DATE. "
+                "Run `jac gen-jir-registry` to update."
+            );
+            return 1;
+        }
+    }
+
+    registry_path.write_text(content);
+    console.print(f"Generated {registry_path} ({len(content)} bytes)");
+    return 0;
+}
