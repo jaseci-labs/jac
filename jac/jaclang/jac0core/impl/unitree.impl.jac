@@ -621,7 +621,7 @@ impl UniScopeNode.sym_printgraph(self: UniScopeNode) -> str {
 
 """Repr."""
 impl UniScopeNode.__repr__(self: UniScopeNode) -> str {
-    out = f"{self.scope_name} {super.__repr__()}:\n";
+    out = f"{self.scope_name} {super().__repr__()}:\n";
     for (k, v) in self.names_in_scope.items() {
         out += f"    {k}: {v}\n";
     }

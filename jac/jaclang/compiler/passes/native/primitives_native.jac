@@ -2985,6 +2985,115 @@ class NativeDictEmitter(DictEmitter[(ir.Value, NativeEmitCtx)]) {
         return result;
     }
 
+    def emit_remove(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        # d.remove(key) / del d[key]: remove key, raise KeyError if missing.
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        helpers = p.dict_helpers.get(ctx.type_key);
+        if helpers is None {
+            return None;
+        }
+        b = p.builder;
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        i8p = ir.IntType(8).as_pointer();
+        key = args[0];
+        key_type = helpers["key_type"];
+        func = b.basic_block.function;
+        found_bb = func.append_basic_block(name="drem.found");
+        nokey_bb = func.append_basic_block(name="drem.nokey");
+        search_bb = func.append_basic_block(name="drem.search");
+        search_body = func.append_basic_block(name="drem.search.body");
+        sfound_bb = func.append_basic_block(name="drem.sfound");
+        shift_bb = func.append_basic_block(name="drem.shift");
+        shift_body = func.append_basic_block(name="drem.shift.body");
+        store_bb = func.append_basic_block(name="drem.store");
+        done_bb = func.append_basic_block(name="drem.done");
+        # Contains check → branch to found or not-found
+        found_i1 = b.call(helpers["contains"], [target, key], name="drem.has");
+        b.cbranch(found_i1, found_bb, nokey_bb);
+        # Not found → KeyError, then fall to done
+        b.position_at_start(nokey_bb);
+        p._emit_runtime_raise(
+            ir.Constant(ir.IntType(1), 1), "KeyError", "key not found"
+        );
+        b.branch(done_bb);
+        # Found: load struct fields
+        b.position_at_start(found_bb);
+        len_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="drem.len.p"
+        );
+        keys_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="drem.keys.p"
+        );
+        vals_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="drem.vals.p"
+        );
+        dict_len = b.load(len_ptr, name="drem.len");
+        keys_arr = b.load(keys_ptr, name="drem.keys");
+        vals_arr = b.load(vals_ptr, name="drem.vals");
+        new_len = b.sub(dict_len, ir.Constant(i64, 1), name="drem.newlen");
+        b.branch(search_bb);
+        # Linear search for the index of key
+        b.position_at_start(search_bb);
+        si = b.phi(i64, name="drem.si");
+        si.add_incoming(ir.Constant(i64, 0), found_bb);
+        si_end = b.icmp_unsigned(">=", si, dict_len, name="drem.si.end");
+        b.cbranch(si_end, sfound_bb, search_body);
+        b.position_at_start(search_body);
+        kp = b.gep(keys_arr, [si], name="drem.kp");
+        kv = b.load(kp, name="drem.kv");
+        if isinstance(key_type, ir.IntType) {
+            keq = b.icmp_signed("==", kv, key, name="drem.keq");
+        } elif key_type == i8p {
+            strcmp_fn = p._get_or_declare_extern("strcmp", ir.IntType(32), [i8p, i8p]);
+            cmp_result = b.call(strcmp_fn, [kv, key], name="drem.strcmp");
+            keq = b.icmp_signed(
+                "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="drem.keq"
+            );
+        } else {
+            keq = b.icmp_unsigned("==", kv, key, name="drem.keq");
+        }
+        next_si = b.add(si, ir.Constant(i64, 1), name="drem.nsi");
+        si.add_incoming(next_si, search_body);
+        b.cbranch(keq, sfound_bb, search_bb);
+        # Have found index: set up shift loop
+        b.position_at_start(sfound_bb);
+        found_idx = b.phi(i64, name="drem.fidx");
+        found_idx.add_incoming(si, search_body);
+        found_idx.add_incoming(dict_len, search_bb);
+        b.branch(shift_bb);
+        b.position_at_start(shift_bb);
+        ji = b.phi(i64, name="drem.ji");
+        ji.add_incoming(found_idx, sfound_bb);
+        ji_end = b.icmp_unsigned(">=", ji, new_len, name="drem.ji.end");
+        b.cbranch(ji_end, store_bb, shift_body);
+        b.position_at_start(shift_body);
+        next_ji = b.add(ji, ir.Constant(i64, 1), name="drem.nji");
+        b.store(
+            b.load(b.gep(keys_arr, [next_ji], name="drem.src.kp"), name="drem.skv"),
+            b.gep(keys_arr, [ji], name="drem.dst.kp")
+        );
+        b.store(
+            b.load(b.gep(vals_arr, [next_ji], name="drem.src.vp"), name="drem.svv"),
+            b.gep(vals_arr, [ji], name="drem.dst.vp")
+        );
+        ji.add_incoming(next_ji, shift_body);
+        b.branch(shift_bb);
+        # Store the new length (only reachable from the found path, so
+        # new_len and len_ptr are in scope / dominate this block).
+        b.position_at_start(store_bb);
+        b.store(new_len, len_ptr);
+        b.branch(done_bb);
+        # Done: builder left positioned here for subsequent statements.
+        b.position_at_start(done_bb);
+        return None;
+    }
+
     def emit_popitem(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {

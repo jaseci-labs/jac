@@ -43,6 +43,47 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             is_false = self.builder.not_(cond_bool, name="assert.fail");
             self._emit_runtime_raise(is_false, "AssertionError", "assertion failed");
         }
+    } elif isinstance(nd, uni.DeleteStmt) {
+        # del d[k]  →  d.remove(k)
+        target_expr = nd.target;
+        if (
+            isinstance(target_expr, uni.AtomTrailer)
+            and not target_expr.is_attr
+            and target_expr.right?.slices
+        ) {
+            slices = target_expr.right.slices or [];
+            if slices {
+                idx_target_name = self._get_name(target_expr.target);
+                # Only handle known dict variables
+                dict_type_key: (str | None) = None;
+                if idx_target_name is not None
+                and idx_target_name in self.var_dict_type {
+                    dict_type_key = self.var_dict_type[idx_target_name];
+                }
+                if dict_type_key is None {
+                    dict_val_tmp = self._codegen_expr(target_expr.target);
+                    if dict_val_tmp is not None {
+                        dict_info = self._infer_dict_type(dict_val_tmp);
+                        if dict_info is not None {
+                            dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                        }
+                    }
+                }
+                if dict_type_key is not None {
+                    dict_val = self._codegen_expr(target_expr.target);
+                    idx_node = slices[0];
+                    idx_val = self._codegen_expr(idx_node);
+                    if idx_val is None and idx_node?.start {
+                        idx_val = self._codegen_expr(idx_node.start);
+                    }
+                    if dict_val is not None and idx_val is not None {
+                        self._dispatch_primitive_method(
+                            "dict", "remove", dict_val, [idx_val], dict_type_key
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 

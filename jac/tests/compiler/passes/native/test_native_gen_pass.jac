@@ -1444,6 +1444,46 @@ test "multi module full multi module chain" {
     assert output == "35";
 }
 
+# --- TestCrossModuleStructTypes ---
+test "cross module struct compile" {
+    # Importing a struct type from another .na.jac module compiles without errors.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module struct function call" {
+    # Imported function returning a struct and function accepting a struct work correctly.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    # make_point and get_x should be linked
+    make_point_addr = eng.get_function_address("make_point");
+    assert make_point_addr != 0 , "make_point not linked into engine";
+    get_x_addr = eng.get_function_address("get_x");
+    assert get_x_addr != 0 , "get_x not linked into engine";
+}
+
+test "cross module struct execution" {
+    # Call use_imported_point via ctypes to verify cross-module struct passing works.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    use_imported_point = get_func(
+        eng, "use_imported_point", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    result = use_imported_point(3, 4);
+    assert result == 3 , f"Expected 3, got {result}";
+    result2 = use_imported_point(7, 9);
+    assert result2 == 7 , f"Expected 7, got {result2}";
+}
+
 # --- TestNativeCacheMarker ---
 test "cache marker non native file caches empty llvmir" {
     # Compiling a file without na blocks stores '' for llvm_ir in cache.
@@ -1673,6 +1713,19 @@ test "dicts empty glob dict set and get" {
     entry_fn();
     f = get_func(eng, "empty_glob_dict_set_get", ctypes.c_int64);
     assert f() == 7;
+}
+
+# --- TestNativeDictDeleteRemove (regression: dict-delete-silently-dropped) ---
+test "dicts dict remove method" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_remove_method", ctypes.c_int64);
+    assert f() == 1;  # key must be absent after .remove()
+}
+
+test "dicts dict delete keyword" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_delete_keyword", ctypes.c_int64);
+    assert f() == 1;  # key must be absent after del d[k]
 }
 
 test "dicts for-in-dict param iteration" {

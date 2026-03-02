@@ -196,7 +196,7 @@ def empty_glob_dict_set_get() -> int {
     return EMPTY_COUNTS["a"];
 }
 
-def empty_glob_dict_len_after_insert() -> int {
+def empty_glob_dict_len_after_insert() -> int {0: 0
     EMPTY_COUNTS["x"] = 1;
     EMPTY_COUNTS["y"] = 2;
     return len(EMPTY_COUNTS);
@@ -252,6 +252,30 @@ def dict_items_iter_sum() -> int {
         total = total + v;
     }
     return total;
+}
+
+# dict .remove(k): remove by method call, returns 1 if key absent after removal
+def dict_remove_method() -> int {
+    d: dict[int, int] = {};
+    d[1] = 10;
+    d[2] = 20;
+    d.remove(1);
+    if 1 not in d {
+        return 1;
+    }
+    return 0;
+}
+
+# del d[k]: remove by delete keyword, returns 1 if key absent after deletion
+def dict_delete_keyword() -> int {
+    d: dict[int, int] = {};
+    d[1] = 10;
+    d[2] = 20;
+    del d[1];
+    if 1 not in d {
+        return 1;
+    }
+    return 0;
 }
 
 with entry {
