@@ -135,6 +135,8 @@ class SymTabBuildPass(UniPass) {
     def exit_gen_compr(self: SymTabBuildPass, nd: uni.GenCompr) -> None;
     def enter_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -> None;
     def exit_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -> None;
+    def enter_inner_compr(self: SymTabBuildPass, nd: uni.InnerCompr) -> None;
+    def exit_inner_compr(self: SymTabBuildPass, nd: uni.InnerCompr) -> None;
     def enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
     def exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
 }
