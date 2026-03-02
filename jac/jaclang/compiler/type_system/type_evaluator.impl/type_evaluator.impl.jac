@@ -736,8 +736,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 return self.get_type_of_expression(node_.parent.right);
             }
 
-            # ---- Handle member assignment: for <name> in <expr> ----
-            if isinstance(node_.parent, uni.InForStmt) {
+            # ---- Handle iteration variable: for <name> in <expr> ----
+            # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
+            if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
@@ -748,7 +749,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         # If element type is already concrete (e.g. Iterator[int]
                         # from range.__iter__), use it directly.
                         if isinstance(elem_type, types.ClassType) {
-                            return elem_type.clone_as_instance();
+                            result_type = elem_type.clone_as_instance();
+                            node_.type = result_type;
+                            return result_type;
                         }
                         # Element type is a TypeVar — specialize using the
                         # collection's type args (e.g. list[int] -> [int]).
@@ -760,7 +763,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                             if len(specialized.private.type_args) == 1 {
                                 iterable_type = specialized.private.type_args[0];
                                 if isinstance(iterable_type, types.ClassType) {
-                                    return iterable_type.clone_as_instance();
+                                    result_type = iterable_type.clone_as_instance();
+                                    node_.type = result_type;
+                                    return result_type;
                                 }
                             }
                         }
