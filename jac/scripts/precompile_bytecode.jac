@@ -24,7 +24,10 @@ import types;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_annex_files }
-import from jaclang.jac0core.precompiled { SENTINEL, _patch_code_filenames }
+import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
+
+# Sentinel string embedded in co_filename at build time.
+glob SENTINEL = "__PKG_ROOT__";
 
 """Discover the Python package directory inside a source tree.
 
@@ -156,9 +159,18 @@ def compile_and_extract(jac_path: str) -> bytes | None {
 
 """Patch bytecode filenames: replace actual package root with sentinel."""
 def patch_to_sentinel(bytecode: bytes, package_root: str) -> bytes {
+    import types as _types;
     code = marshal.loads(bytecode);
-    patched = _patch_code_filenames(code, package_root, SENTINEL);
-    return marshal.dumps(patched);
+
+    def _patch(c: _types.CodeType) -> _types.CodeType {
+        new_filename = c.co_filename.replace(package_root, SENTINEL);
+        new_consts = tuple(
+            _patch(x) if isinstance(x, _types.CodeType) else x for x in c.co_consts
+        );
+        return c.replace(co_filename=new_filename, co_consts=new_consts);
+    }
+
+    return marshal.dumps(_patch(code));
 }
 
 """Run the precompilation pipeline."""
@@ -207,8 +219,8 @@ def main {
 
     for jac_path in jac_files {
         rel = Path(jac_path).relative_to(pkg_path);
-        jbc_rel = rel.with_suffix(".jbc");
-        jbc_path = out_dir / jbc_rel;
+        jir_rel = rel.with_suffix(".jir");
+        jir_path = out_dir / jir_rel;
 
         try {
             bytecode = compile_and_extract(jac_path);
@@ -218,12 +230,13 @@ def main {
                 continue;
             }
 
-            # Patch filenames to use sentinel
+            # Patch filenames to use sentinel and wrap in JIR with FLAG_PRECOMPILED
             patched = patch_to_sentinel(bytecode, package_dir);
+            jir_bytes = write_precompiled_jir(patched, 0, FLAG_PRECOMPILED);
 
-            # Write .jbc file
-            jbc_path.parent.mkdir(parents=True, exist_ok=True);
-            jbc_path.write_bytes(patched);
+            # Write .jir file
+            jir_path.parent.mkdir(parents=True, exist_ok=True);
+            jir_path.write_bytes(jir_bytes);
             compiled += 1;
         } except Exception as e {
             console.error(f"FAIL: {rel} - {e}");

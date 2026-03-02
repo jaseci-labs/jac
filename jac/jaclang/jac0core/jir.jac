@@ -25,7 +25,7 @@ import from typing { Any }
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 7;
+glob FORMAT_VERSION: int = 8;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
@@ -35,6 +35,31 @@ glob HEADER_FMT: str = "<4sHHIIIIII";
 
 """Sentinel node ID for external references (e.g. builtins parent_scope)."""
 glob EXTERNAL_REF: int = 0xFFFFFF;
+
+# --- Section constants (extended JIR format) ---
+"""Magic bytes marking the start of optional TLV sections after the AST payload."""
+glob SECTIONS_MAGIC: Any = b"JIRX";
+
+"""Section type: raw marshal.dumps(code_object) bytes."""
+glob SEC_BYTECODE: int = 0x02;
+
+"""Section type: pickle.dumps(mtir_map, HIGHEST_PROTOCOL) bytes."""
+glob SEC_MTIR: int = 0x03;
+
+"""Section type: zlib.compress(llvm_ir_str.encode()) bytes."""
+glob SEC_LLVM_IR: int = 0x04;
+
+"""Section type: json.dumps(interop_dict).encode() bytes."""
+glob SEC_INTEROP: int = 0x05;
+
+"""Section terminator byte."""
+glob SEC_TERMINATOR: int = 0xFF;
+
+"""Header flag: JIR was shipped as a precompiled bundle (no live AST required)."""
+glob FLAG_PRECOMPILED: int = 0x02;
+
+"""Header flag: JIR is a bootstrap-only artifact (no AST payload, bytecode only)."""
+glob FLAG_BOOTSTRAP: int = 0x04;
 
 # --- Varint (LEB128) ---
 """Encode an unsigned integer as LEB128 varint, appending to buf."""
@@ -178,13 +203,13 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
 def get_jir_cache_dir -> Path {
     if sys.platform == 'win32' {
         base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'));
-        return base / 'jac' / 'cache' / 'typecheck';
+        return base / 'jac' / 'cache' / 'jir';
     } elif sys.platform == 'darwin' {
-        return Path.home() / 'Library' / 'Caches' / 'jac' / 'typecheck';
+        return Path.home() / 'Library' / 'Caches' / 'jac' / 'jir';
     } else {
         xdg_cache = os.environ.get('XDG_CACHE_HOME');
         base = Path(xdg_cache) if xdg_cache else (Path.home() / '.cache');
-        return base / 'jac' / 'typecheck';
+        return base / 'jac' / 'jir';
     }
 }
 
@@ -225,6 +250,108 @@ def get_module_cache_path(source_path: str) -> Path {
     path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
+}
+
+"""Serialize a dict of section_type -> bytes into a TLV blob.
+
+Returns bytes: SECTIONS_MAGIC + for each section [type(1) + len(4LE) + data]
++ SEC_TERMINATOR + 0x00000000.
+"""
+def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
+    if not sections {
+        return bytes();
+    }
+    magic: Any = SECTIONS_MAGIC;
+    buf = bytearray(magic);
+    for (sec_type, data) in sections.items() {
+        buf.append(sec_type);
+        buf.extend(struct.pack('<I', len(data)));
+        buf.extend(data);
+    }
+    buf.append(SEC_TERMINATOR);
+    buf.extend(bytes(4));
+    return bytes(buf);
+}
+
+"""Parse TLV sections from data starting at start_pos.
+
+start_pos should point to the byte immediately after SECTIONS_MAGIC.
+Returns dict mapping section_type -> bytes. Returns {} on any error.
+"""
+def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
+    result: dict[int, bytes] = {};
+    pos = start_pos;
+    try {
+        while pos < len(data) {
+            sec_type = data[pos];
+            pos += 1;
+            if sec_type == SEC_TERMINATOR {
+                break;
+            }
+            if pos + 4 > len(data) {
+                break;
+            }
+            (sec_len, ) = struct.unpack_from('<I', data, pos);
+            pos += 4;
+            if pos + sec_len > len(data) {
+                break;
+            }
+            result[sec_type] = bytes(data[pos:pos + sec_len]);
+            pos += sec_len;
+        }
+    } except Exception {
+        ;
+    }
+    return result;
+}
+
+"""Fast path: find and return raw bytecode section bytes without deserializing AST.
+
+Scans for SECTIONS_MAGIC after the header, then reads only SEC_BYTECODE.
+Returns None if no bytecode section is present.
+"""
+def read_bytecode_only(data: bytes) -> (bytes | None) {
+    try {
+        magic_bytes: Any = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        if pos < 0 {
+            return None;
+        }
+        sections = read_sections(data, pos + len(magic_bytes));
+        return sections.get(SEC_BYTECODE);
+    } except Exception {
+        return None;
+    }
+}
+
+"""Build a minimal JIR file containing only a bytecode section (no AST).
+
+Used for bootstrap JIRs (FLAG_BOOTSTRAP) and precompiled bundles
+(FLAG_PRECOMPILED). The AST payload is an empty zlib-compressed single byte
+(varint 0x00 = empty string pool).
+"""
+def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> bytes {
+    import from importlib.metadata { version as pkg_version }
+    try {
+        jac_hash = zlib.crc32(pkg_version('jaclang').encode()) & 0xFFFFFFFF;
+    } except Exception {
+        jac_hash = 0;
+    }
+    header = struct.pack(
+        HEADER_FMT,
+        MAGIC,
+        FORMAT_VERSION,
+        (sys.version_info.major << 8) | sys.version_info.minor,
+        jac_hash,
+        source_hash & 0xFFFFFFFF,
+        0,
+        0,
+        0,
+        flags
+    );
+    empty_payload = zlib.compress(bytes(1), 1);
+    section_bytes = write_sections({SEC_BYTECODE: bytecode});
+    return header + empty_payload + section_bytes;
 }
 
 """Check whether a module's JIR cache is still valid via mtime comparison.

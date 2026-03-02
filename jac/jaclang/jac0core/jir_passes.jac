@@ -130,8 +130,14 @@ class JirWriter {
     """Initialize the writer with empty state."""
     def init(self: JirWriter) -> None;
 
-    """Serialize a Module to JIR bytes."""
-    def write_module(self: JirWriter, module: Module) -> bytes;
+    """Serialize a Module to JIR bytes.
+
+    If sections is provided, TLV section data is appended after the compressed
+    AST payload (bytecode, MTIR, LLVM IR, interop).
+    """
+    def write_module(
+        self: JirWriter, module: Module, sections: (dict[int, bytes] | None) = None
+    ) -> bytes;
 
     """Post-order walk, assigning sequential IDs to nodes."""
     def _assign_ids(self: JirWriter, ir_node: UniNode) -> int;
@@ -165,8 +171,17 @@ class JirReader {
     """Initialize the reader."""
     def init(self: JirReader, skip_loc: bool = True, source_path: str = "") -> None;
 
+    """Sections decoded from the trailing TLV block (populated by read_module)."""
+    has bytecode_section: (bytes | None) = None,
+        mtir_section: (bytes | None) = None,
+        llvm_ir_section: (bytes | None) = None,
+        interop_section: (bytes | None) = None;
+
     """Deserialize bytes into a Module tree. Returns None on failure."""
     def read_module(self: JirReader, data: bytes) -> (Module | None);
+
+    """Scan data for trailing TLV sections after the compressed payload."""
+    def _read_trailing_sections(self: JirReader, data: bytes) -> dict[int, bytes];
 
     """Create a Source node and set orig_src on all Token nodes."""
     def _wire_source(self: JirReader, module: Module) -> None;

@@ -1485,13 +1485,18 @@ test "cross module struct execution" {
 }
 
 # --- TestNativeCacheMarker ---
-test "cache marker non native file caches empty llvmir" {
-    # Compiling a file without na blocks stores '' for llvm_ir in cache.
+test "cache marker non native file has no llvmir section in jir" {
+    # Compiling a file without na blocks should NOT write SEC_LLVM_IR into the JIR cache.
     import tempfile;
     import time;
     import shutil;
-    import from jaclang.jac0core.bccache { CacheKey, DiskBytecodeCache }
-    import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        read_sections,
+        SECTIONS_MAGIC,
+        HEADER_SIZE,
+        SEC_LLVM_IR
+    }
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False);
     tmp.write("glob x = 1;\n");
@@ -1504,22 +1509,28 @@ test "cache marker non native file caches empty llvmir" {
     os.utime(jac_file, (past, past));
 
     try {
-        cache = DiskBytecodeCache();
-        cache._cache_dir = Path(tempfile.mkdtemp());
-        jac_compiler = JacCompiler(bytecode_cache=cache);
-        jac_compiler.get_bytecode(jac_file, JacProgram());
+        import from jaclang.jac0core.compiler { JacCompiler }
+        prog = JacProgram();
+        JacCompiler().get_bytecode(jac_file, prog);
 
-        key = CacheKey.for_source(jac_file);
-        cached_ir = cache.get_llvmir(key);
-        assert cached_ir == "" , (
-            f"Non-native file should cache empty llvm_ir, got {cached_ir!r}"
+        cache_path = get_module_cache_path(jac_file);
+        assert cache_path.exists() , f"JIR cache file not created at {cache_path}";
+
+        data = cache_path.read_bytes();
+        magic_bytes = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        secs: dict = {};
+        if pos >= 0 {
+            secs = read_sections(data, pos + len(magic_bytes));
+        }
+        assert SEC_LLVM_IR not in secs , (
+            f"Non-native file should not have SEC_LLVM_IR in JIR cache"
         );
     } except Exception as e {
         os.unlink(jac_file);
         raise ;
     }
     os.unlink(jac_file);
-    shutil.rmtree(str(cache._cache_dir), ignore_errors=True);
 }
 
 # --- TestNativeLLVMIR ---

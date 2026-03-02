@@ -147,12 +147,20 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             # Write JIR module cache for .jac files (best-effort).
             if resolved_path.endswith('.jac') {
                 try {
-                    import from jaclang.jac0core.jir { get_module_cache_path }
+                    import from jaclang.jac0core.jir {
+                        get_module_cache_path,
+                        SEC_BYTECODE
+                    }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
                     cache_path.parent.mkdir(parents=True, exist_ok=True);
                     writer = JirWriter();
-                    jir_bytes = writer.write_module(mod);
+                    sections: (dict[int, bytes] | None) = None;
+                    bc = getattr(mod.gen, 'py_bytecode', None);
+                    if bc is not None {
+                        sections = {SEC_BYTECODE: bc};
+                    }
+                    jir_bytes = writer.write_module(mod, sections=sections);
                     tmp_path = cache_path.with_suffix('.tmp');
                     tmp_path.write_bytes(jir_bytes);
                     tmp_path.rename(cache_path);

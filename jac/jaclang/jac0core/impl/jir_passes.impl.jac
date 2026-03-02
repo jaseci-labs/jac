@@ -2,6 +2,7 @@
 import struct;
 import sys;
 import zlib;
+import from typing { Any }
 
 # =============================================================================
 # JirWriter implementation
@@ -17,7 +18,9 @@ impl JirWriter.init(self: JirWriter) -> None {
     self._inherited_scope_entries: list[tuple[int, int, bool, list[str]]] = [];
 }
 
-impl JirWriter.write_module(self: JirWriter, module: Module) -> bytes {
+impl JirWriter.write_module(
+    self: JirWriter, module: Module, sections: (dict[int, bytes] | None) = None
+) -> bytes {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
     import from importlib.metadata { version as pkg_version }
 
@@ -74,10 +77,12 @@ impl JirWriter.write_module(self: JirWriter, module: Module) -> bytes {
         flags
     );
 
-    # Assemble: header (uncompressed) + zlib(pool + nodes + links)
+    # Assemble: header (uncompressed) + zlib(pool + nodes + links) + optional sections
+    import from jaclang.jac0core.jir { write_sections }
     payload = pool_bytes + bytes(ir_buf) + bytes(link_buf);
-    compressed = zlib.compress(payload, level=6);
-    return header + compressed;
+    compressed = zlib.compress(payload, 6);
+    section_bytes = write_sections(sections);
+    return header + compressed + section_bytes;
 }
 
 impl JirWriter._assign_ids(self: JirWriter, ir_node: UniNode) -> int {
@@ -376,6 +381,10 @@ impl JirReader.init(
     self._source_path = source_path;
     self._uni_types: (tuple[type, ...] | None) = None;
     self._enum_cache: (dict[str, dict[str, object]] | None) = None;
+    self.bytecode_section: (bytes | None) = None;
+    self.mtir_section: (bytes | None) = None;
+    self.llvm_ir_section: (bytes | None) = None;
+    self.interop_section: (bytes | None) = None;
 }
 
 impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
@@ -442,10 +451,38 @@ impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
                 self._wire_source(last_node);
             }
             self._fix_param_kinds();
+            # Decode trailing TLV sections (bytecode, MTIR, LLVM IR, interop)
+            import from jaclang.jac0core.jir {
+                SEC_BYTECODE,
+                SEC_MTIR,
+                SEC_LLVM_IR,
+                SEC_INTEROP
+            }
+            secs = self._read_trailing_sections(data);
+            self.bytecode_section = secs.get(SEC_BYTECODE);
+            self.mtir_section = secs.get(SEC_MTIR);
+            self.llvm_ir_section = secs.get(SEC_LLVM_IR);
+            self.interop_section = secs.get(SEC_INTEROP);
             return last_node;
         }
     }
     return None;
+}
+
+impl JirReader._read_trailing_sections(
+    self: JirReader, data: bytes
+) -> dict[int, bytes] {
+    import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
+    try {
+        magic_bytes: Any = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        if pos < 0 {
+            return {};
+        }
+        return read_sections(data, pos + len(magic_bytes));
+    } except Exception {
+        return {};
+    }
 }
 
 impl JirReader._wire_source(self: JirReader, module: Module) -> None {
