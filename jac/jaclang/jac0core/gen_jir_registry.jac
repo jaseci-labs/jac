@@ -136,9 +136,11 @@ def generate -> str {
     lines.append('');
     lines.append('"""Field serialization kinds."""');
     lines.append('class FieldKind(IntEnum) {');
+    lines.append('    with entry {');
     for (kind_name, val) in FIELD_KINDS.items() {
-        lines.append(f'    {kind_name} = {val};');
+        lines.append(f'        {kind_name} = {val};');
     }
+    lines.append('    }');
     lines.append('}');
     lines.append('');
     lines.append('');
@@ -160,8 +162,7 @@ def generate -> str {
     lines.append('}');
     lines.append('');
     lines.append('');
-    lines.append('# --- Registry Data ---');
-    lines.append('');
+    lines.append('"""Registry data: node specs, name/index lookup tables."""');
     lines.append('glob NODE_SPECS: tuple = (');
 
     for (idx, entry) in enumerate(all_classes) {
@@ -238,22 +239,15 @@ def generate -> str {
         );
     }
 
-    lines.append(');');
-    lines.append('');
-    lines.append('');
-    lines.append('# Fast lookup: class_name -> type_idx');
-    lines.append('glob NAME_TO_IDX: dict[str, int] = {');
+    lines.append('),');
+    lines.append('     NAME_TO_IDX: dict[str, int] = {');
     for (idx, entry) in enumerate(all_classes) {
         (name, _) = entry;
         lines.append(f'    "{name}": {idx},');
     }
-    lines.append('};');
-    lines.append('');
-    lines.append('');
-    lines.append('# Fast lookup: type_idx -> NodeSpec');
+    lines.append('     },');
     lines.append(
-        'glob IDX_TO_SPEC: dict[int, NodeSpec] = '
-        '{spec.type_idx: spec for spec in NODE_SPECS};'
+        '     IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};'
     );
     lines.append('');
     lines.append('');

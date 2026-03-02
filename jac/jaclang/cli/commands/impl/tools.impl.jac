@@ -261,6 +261,9 @@ def _install_completion(shell: str, code: str) -> int {
 impl gen_jir_registry(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_jir_registry { generate }
     import from pathlib { Path }
+    import tempfile;
+    import subprocess;
+    import sys;
     import jaclang;
 
     registry_path = Path(jaclang.__file__).parent / "jac0core" / "jir_registry.jac";
@@ -270,6 +273,22 @@ impl gen_jir_registry(verify: bool = False) -> int {
     } except Exception as e {
         console.error(f"Failed to generate registry: {e}");
         return 1;
+    }
+
+    # Run jac format to get canonical output (formatter may expand long lines)
+    try {
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as tmp {
+            tmp.write(content);
+            tmp_path = tmp.name;
+        }
+        subprocess.run(
+            [sys.executable, '-m', 'jaclang', 'format', '--lintfix', tmp_path],
+            capture_output=True
+        );
+        content = Path(tmp_path).read_text();
+        Path(tmp_path).unlink(missing_ok=True);
+    } except Exception {
+        ;
     }
 
     if verify {

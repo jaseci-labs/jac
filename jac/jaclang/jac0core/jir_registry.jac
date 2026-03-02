@@ -11,17 +11,19 @@ import from typing { NamedTuple }
 
 """Field serialization kinds."""
 class FieldKind(IntEnum) {
-    STRING = 0;
-    INT = 1;
-    BOOL = 2;
-    ENUM = 3;
-    NODE_REF = 4;
-    NODE_LIST = 5;
-    OPT_NODE_REF = 6;
-    OPT_STRING = 7;
-    OPT_BOOL = 8;
-    OPT_INT = 9;
-    SKIP = 10;
+    with entry {
+        STRING = 0;
+        INT = 1;
+        BOOL = 2;
+        ENUM = 3;
+        NODE_REF = 4;
+        NODE_LIST = 5;
+        OPT_NODE_REF = 6;
+        OPT_STRING = 7;
+        OPT_BOOL = 8;
+        OPT_INT = 9;
+        SKIP = 10;
+    }
 }
 
 
@@ -43,301 +45,1242 @@ class NodeSpec(NamedTuple) {
 }
 
 
-# --- Registry Data ---
-
+"""Registry data: node specs, name/index lookup tables."""
 glob NODE_SPECS: tuple = (
-    NodeSpec(0, "Ability", True, True, False, (FieldDesc("body", 6), FieldDesc("is_async", 2), FieldDesc("doc", 6), FieldDesc("access", 6), FieldDesc("name_ref", 6), FieldDesc("is_override", 2), FieldDesc("is_static", 2), FieldDesc("is_abstract", 2), FieldDesc("signature", 6), FieldDesc("decorators", 5))),
-    NodeSpec(1, "ArchBlockStmt", False, False, False, ()),
-    NodeSpec(2, "ArchHas", False, True, False, (FieldDesc("doc", 6), FieldDesc("access", 6), FieldDesc("is_static", 2), FieldDesc("vars", 5), FieldDesc("is_frozen", 2))),
-    NodeSpec(3, "ArchSpec", False, True, False, (FieldDesc("doc", 6), FieldDesc("is_async", 2), FieldDesc("decorators", 5))),
-    NodeSpec(4, "Archetype", True, True, False, (FieldDesc("doc", 6), FieldDesc("is_async", 2), FieldDesc("body", 6), FieldDesc("access", 6), FieldDesc("decorators", 5), FieldDesc("name", 4), FieldDesc("arch_type", 4), FieldDesc("base_classes", 5), FieldDesc("type_params", 5))),
-    NodeSpec(5, "AssertStmt", False, True, False, (FieldDesc("condition", 4), FieldDesc("error_msg", 6))),
-    NodeSpec(6, "AssignCompr", False, False, False, (FieldDesc("assigns", 5),)),
-    NodeSpec(7, "Assignment", False, True, False, (FieldDesc("is_enum_stmt", 2), FieldDesc("type_tag", 6), FieldDesc("target", 5), FieldDesc("value", 6), FieldDesc("mutable", 2), FieldDesc("aug_op", 6))),
-    NodeSpec(8, "AstAccessNode", False, False, False, (FieldDesc("access", 6),)),
-    NodeSpec(9, "AstAsyncNode", False, False, False, (FieldDesc("is_async", 2),)),
-    NodeSpec(10, "AstDocNode", False, False, False, (FieldDesc("doc", 6),)),
-    NodeSpec(11, "AstElseBodyNode", False, False, False, (FieldDesc("else_body", 6),)),
-    NodeSpec(12, "AstImplNeedingNode", False, False, False, (FieldDesc("body", 6),)),
-    NodeSpec(13, "AstSymbolNode", False, False, False, ()),
-    NodeSpec(14, "AstSymbolStubNode", False, False, False, ()),
-    NodeSpec(15, "AstTypedVarNode", False, False, False, (FieldDesc("type_tag", 6),)),
-    NodeSpec(16, "AtomExpr", False, False, False, ()),
-    NodeSpec(17, "AtomTrailer", False, False, False, (FieldDesc("target", 4), FieldDesc("right", 4), FieldDesc("is_attr", 2), FieldDesc("is_null_ok", 2), FieldDesc("is_genai", 2))),
-    NodeSpec(18, "AtomUnit", False, False, False, (FieldDesc("value", 4),)),
-    NodeSpec(19, "AwaitExpr", False, False, False, (FieldDesc("target", 4),)),
-    NodeSpec(20, "BinaryExpr", False, False, False, (FieldDesc("left", 4), FieldDesc("right", 4), FieldDesc("op", 4))),
-    NodeSpec(21, "Bool", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(22, "BoolExpr", False, False, False, (FieldDesc("op", 4), FieldDesc("values", 5))),
-    NodeSpec(23, "BuiltinType", False, False, True, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1), FieldDesc("is_enum_stmt", 2), FieldDesc("is_kwesc", 2))),
-    NodeSpec(24, "ClientBlock", False, False, False, (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))),
-    NodeSpec(25, "CodeBlockStmt", False, True, False, ()),
-    NodeSpec(26, "CommentToken", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1), FieldDesc("is_inline", 2))),
-    NodeSpec(27, "CompareExpr", False, False, False, (FieldDesc("left", 4), FieldDesc("rights", 5), FieldDesc("ops", 5))),
-    NodeSpec(28, "ConcurrentExpr", False, False, False, (FieldDesc("tok", 6), FieldDesc("target", 4))),
-    NodeSpec(29, "ConnectOp", False, False, False, (FieldDesc("conn_type", 6), FieldDesc("conn_assign", 6), FieldDesc("edge_dir", 3))),
-    NodeSpec(30, "ContextAwareNode", False, False, False, ()),
-    NodeSpec(31, "CtrlStmt", False, True, False, (FieldDesc("ctrl", 4),)),
-    NodeSpec(32, "DeleteStmt", False, True, False, (FieldDesc("target", 4),)),
-    NodeSpec(33, "DictCompr", True, False, False, (FieldDesc("kv_pair", 4), FieldDesc("compr", 5))),
-    NodeSpec(34, "DictVal", False, False, False, (FieldDesc("kv_pairs", 5),)),
-    NodeSpec(35, "DisconnectOp", False, False, False, (FieldDesc("edge_spec", 4),)),
-    NodeSpec(36, "DisengageStmt", False, True, False, ()),
-    NodeSpec(37, "EdgeOpRef", False, False, False, (FieldDesc("filter_cond", 6), FieldDesc("edge_dir", 3))),
-    NodeSpec(38, "EdgeRefTrailer", False, False, False, (FieldDesc("chain", 5), FieldDesc("edges_only", 2), FieldDesc("is_async", 2))),
-    NodeSpec(39, "ElementStmt", False, False, False, (FieldDesc("doc", 6),)),
-    NodeSpec(40, "Ellipsis", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(41, "ElseIf", True, True, False, (FieldDesc("else_body", 6), FieldDesc("condition", 4), FieldDesc("body", 5))),
-    NodeSpec(42, "ElseStmt", True, False, False, (FieldDesc("body", 5),)),
-    NodeSpec(43, "EmptyToken", False, False, False, (FieldDesc("orig_src", 6),)),
-    NodeSpec(44, "Enum", True, True, False, (FieldDesc("doc", 6), FieldDesc("is_async", 2), FieldDesc("body", 6), FieldDesc("access", 6), FieldDesc("decorators", 5), FieldDesc("name", 4), FieldDesc("base_classes", 5))),
-    NodeSpec(45, "EnumBlockStmt", False, False, False, (FieldDesc("is_enum_stmt", 2),)),
-    NodeSpec(46, "EventSignature", False, False, False, (FieldDesc("event", 4), FieldDesc("arch_tag_info", 6))),
-    NodeSpec(47, "Except", True, True, False, (FieldDesc("ex_type", 4), FieldDesc("name", 6), FieldDesc("body", 5))),
-    NodeSpec(48, "Expr", False, False, False, ()),
-    NodeSpec(49, "ExprAsItem", False, False, False, (FieldDesc("expr", 4), FieldDesc("alias", 6))),
-    NodeSpec(50, "ExprStmt", False, True, False, (FieldDesc("expr", 4), FieldDesc("in_fstring", 2))),
-    NodeSpec(51, "FString", False, False, False, (FieldDesc("start", 6), FieldDesc("parts", 5), FieldDesc("end", 6))),
-    NodeSpec(52, "FilterCompr", False, False, False, (FieldDesc("f_type", 6), FieldDesc("compares", 5))),
-    NodeSpec(53, "FinallyStmt", True, True, False, (FieldDesc("body", 5),)),
-    NodeSpec(54, "Float", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(55, "FormattedValue", False, False, False, (FieldDesc("format_part", 4), FieldDesc("conversion", 1), FieldDesc("format_spec", 6))),
-    NodeSpec(56, "FuncCall", False, False, False, (FieldDesc("target", 4), FieldDesc("params", 5), FieldDesc("genai_call", 6))),
-    NodeSpec(57, "FuncSignature", False, False, False, (FieldDesc("posonly_params", 5), FieldDesc("params", 5), FieldDesc("varargs", 6), FieldDesc("kwonlyargs", 5), FieldDesc("kwargs", 6), FieldDesc("return_type", 6))),
-    NodeSpec(58, "GenCompr", True, False, False, (FieldDesc("out_expr", 4), FieldDesc("compr", 5))),
-    NodeSpec(59, "GlobalStmt", False, True, False, (FieldDesc("target", 5),)),
-    NodeSpec(60, "GlobalVars", False, False, False, (FieldDesc("access", 6), FieldDesc("doc", 6), FieldDesc("assignments", 5), FieldDesc("is_frozen", 2))),
-    NodeSpec(61, "HasVar", False, False, False, (FieldDesc("type_tag", 6), FieldDesc("name", 4), FieldDesc("value", 6), FieldDesc("defer", 2))),
-    NodeSpec(62, "IfElseExpr", False, False, False, (FieldDesc("condition", 4), FieldDesc("value", 4), FieldDesc("else_value", 4))),
-    NodeSpec(63, "IfStmt", True, True, False, (FieldDesc("else_body", 6), FieldDesc("condition", 4), FieldDesc("body", 5))),
-    NodeSpec(64, "ImplDef", True, True, False, (FieldDesc("doc", 6), FieldDesc("decorators", 5), FieldDesc("target", 5), FieldDesc("spec", 5), FieldDesc("body", 5), FieldDesc("decl_link", 6))),
-    NodeSpec(65, "Import", False, True, False, (FieldDesc("doc", 6), FieldDesc("from_loc", 6), FieldDesc("items", 5), FieldDesc("is_absorb", 2), FieldDesc("clib_decls", 5))),
-    NodeSpec(66, "InForStmt", True, True, False, (FieldDesc("else_body", 6), FieldDesc("is_async", 2), FieldDesc("target", 4), FieldDesc("collection", 4), FieldDesc("body", 5))),
-    NodeSpec(67, "IndexSlice", False, False, False, (FieldDesc("slices", 5), FieldDesc("is_range", 2))),
-    NodeSpec(68, "InnerCompr", True, False, False, (FieldDesc("is_async", 2), FieldDesc("target", 4), FieldDesc("collection", 4), FieldDesc("conditional", 5))),
-    NodeSpec(69, "Int", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(70, "IterForStmt", True, True, False, (FieldDesc("else_body", 6), FieldDesc("is_async", 2), FieldDesc("iter", 4), FieldDesc("condition", 4), FieldDesc("count_by", 4), FieldDesc("body", 5))),
-    NodeSpec(71, "JsxAttribute", False, False, False, ()),
-    NodeSpec(72, "JsxChild", False, False, False, ()),
-    NodeSpec(73, "JsxElement", False, False, False, (FieldDesc("name", 6), FieldDesc("attributes", 5), FieldDesc("children", 5), FieldDesc("is_self_closing", 2), FieldDesc("is_fragment", 2))),
-    NodeSpec(74, "JsxElementName", False, False, False, (FieldDesc("parts", 5),)),
-    NodeSpec(75, "JsxExpression", False, False, False, (FieldDesc("expr", 4),)),
-    NodeSpec(76, "JsxNormalAttribute", False, False, False, (FieldDesc("name", 4), FieldDesc("value", 6))),
-    NodeSpec(77, "JsxSpreadAttribute", False, False, False, (FieldDesc("expr", 4),)),
-    NodeSpec(78, "JsxText", False, False, False, (FieldDesc("value", 4),)),
-    NodeSpec(79, "KVPair", False, False, False, (FieldDesc("key", 6), FieldDesc("value", 4))),
-    NodeSpec(80, "KWPair", False, False, False, (FieldDesc("key", 6), FieldDesc("value", 4))),
-    NodeSpec(81, "LambdaExpr", True, False, False, (FieldDesc("body", 4), FieldDesc("signature", 6))),
-    NodeSpec(82, "ListCompr", True, False, False, (FieldDesc("out_expr", 4), FieldDesc("compr", 5))),
-    NodeSpec(83, "ListVal", False, False, False, (FieldDesc("values", 5),)),
-    NodeSpec(84, "Literal", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(85, "MatchArch", False, False, False, (FieldDesc("name", 4), FieldDesc("arg_patterns", 5), FieldDesc("kw_patterns", 5))),
-    NodeSpec(86, "MatchAs", False, False, False, (FieldDesc("name", 4), FieldDesc("pattern", 6))),
-    NodeSpec(87, "MatchCase", True, False, False, (FieldDesc("pattern", 4), FieldDesc("guard", 6), FieldDesc("body", 5))),
-    NodeSpec(88, "MatchKVPair", False, False, False, (FieldDesc("key", 4), FieldDesc("value", 4))),
-    NodeSpec(89, "MatchMapping", False, False, False, (FieldDesc("values", 5),)),
-    NodeSpec(90, "MatchOr", False, False, False, (FieldDesc("patterns", 5),)),
-    NodeSpec(91, "MatchPattern", False, False, False, ()),
-    NodeSpec(92, "MatchSequence", False, False, False, (FieldDesc("values", 5),)),
-    NodeSpec(93, "MatchSingleton", False, False, False, (FieldDesc("value", 4),)),
-    NodeSpec(94, "MatchStar", False, False, False, (FieldDesc("name", 4), FieldDesc("is_list", 2))),
-    NodeSpec(95, "MatchStmt", False, True, False, (FieldDesc("target", 4), FieldDesc("cases", 5))),
-    NodeSpec(96, "MatchValue", False, False, False, (FieldDesc("value", 4),)),
-    NodeSpec(97, "MatchWild", False, False, False, ()),
-    NodeSpec(98, "Module", True, False, False, (FieldDesc("doc", 6), FieldDesc("name", 0), FieldDesc("source", 4), FieldDesc("body", 5), FieldDesc("terminals", 5), FieldDesc("stub_only", 2))),
-    NodeSpec(99, "ModuleCode", False, False, False, (FieldDesc("is_enum_stmt", 2), FieldDesc("doc", 6), FieldDesc("name", 6), FieldDesc("body", 5))),
-    NodeSpec(100, "ModuleItem", False, False, False, (FieldDesc("name", 4), FieldDesc("alias", 6))),
-    NodeSpec(101, "ModulePath", False, False, False, (FieldDesc("path", 5), FieldDesc("level", 1), FieldDesc("alias", 6))),
-    NodeSpec(102, "MultiString", False, False, False, (FieldDesc("strings", 5),)),
-    NodeSpec(103, "Name", False, False, True, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1), FieldDesc("is_enum_stmt", 2), FieldDesc("is_kwesc", 2))),
-    NodeSpec(104, "NameAtom", False, False, True, (FieldDesc("is_enum_stmt", 2),)),
-    NodeSpec(105, "NativeBlock", False, False, False, (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))),
-    NodeSpec(106, "NonLocalStmt", False, True, False, (FieldDesc("target", 5),)),
-    NodeSpec(107, "Null", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(108, "ParamVar", False, False, False, (FieldDesc("type_tag", 6), FieldDesc("name", 4), FieldDesc("unpack", 6), FieldDesc("value", 6))),
-    NodeSpec(109, "ProgramModule", False, False, False, (FieldDesc("main_mod", 6),)),
-    NodeSpec(110, "PyInlineCode", False, True, False, (FieldDesc("is_enum_stmt", 2), FieldDesc("doc", 6), FieldDesc("code", 4))),
-    NodeSpec(111, "PythonModuleAst", False, False, False, (FieldDesc("ast", 10), FieldDesc("orig_src", 4))),
-    NodeSpec(112, "RaiseStmt", False, True, False, (FieldDesc("cause", 6), FieldDesc("from_target", 6))),
-    NodeSpec(113, "ReportStmt", False, True, False, (FieldDesc("expr", 4),)),
-    NodeSpec(114, "ReturnStmt", False, True, False, (FieldDesc("expr", 6),)),
-    NodeSpec(115, "SemDef", True, False, False, (FieldDesc("doc", 6), FieldDesc("target", 5), FieldDesc("value", 4))),
-    NodeSpec(116, "Semi", False, True, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(117, "ServerBlock", False, False, False, (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))),
-    NodeSpec(118, "SetCompr", True, False, False, (FieldDesc("out_expr", 4), FieldDesc("compr", 5))),
-    NodeSpec(119, "SetVal", False, False, False, (FieldDesc("values", 5),)),
-    NodeSpec(120, "Source", False, False, False, (FieldDesc("source", 0), FieldDesc("mod_path", 0))),
-    NodeSpec(121, "SpecialVarRef", False, False, True, (FieldDesc("name", 0), FieldDesc("is_enum_stmt", 2), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1), FieldDesc("is_kwesc", 2))),
-    NodeSpec(122, "String", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(123, "SubTag", False, False, False, (FieldDesc("tag", 4),)),
-    NodeSpec(124, "SwitchCase", True, False, False, (FieldDesc("pattern", 6), FieldDesc("body", 5))),
-    NodeSpec(125, "SwitchStmt", False, True, False, (FieldDesc("target", 4), FieldDesc("cases", 5))),
-    NodeSpec(126, "Test", True, False, False, (FieldDesc("doc", 6), FieldDesc("name", 4), FieldDesc("body", 5), FieldDesc("description", 6))),
-    NodeSpec(127, "Token", False, False, False, (FieldDesc("orig_src", 4), FieldDesc("name", 0), FieldDesc("value", 0), FieldDesc("line", 1), FieldDesc("end_line", 1), FieldDesc("col_start", 1), FieldDesc("col_end", 1), FieldDesc("pos_start", 1), FieldDesc("pos_end", 1))),
-    NodeSpec(128, "TryStmt", True, True, False, (FieldDesc("else_body", 6), FieldDesc("body", 5), FieldDesc("excepts", 5), FieldDesc("finally_body", 6))),
-    NodeSpec(129, "TupleVal", False, False, False, (FieldDesc("values", 5),)),
-    NodeSpec(130, "TypeAlias", True, False, False, (FieldDesc("doc", 6), FieldDesc("access", 6), FieldDesc("name", 4), FieldDesc("type_params", 5), FieldDesc("value", 4))),
-    NodeSpec(131, "TypeParam", False, False, False, (FieldDesc("name", 4), FieldDesc("bound", 6), FieldDesc("default_val", 6))),
-    NodeSpec(132, "TypedCtxBlock", True, True, False, (FieldDesc("type_ctx", 4), FieldDesc("body", 5))),
-    NodeSpec(133, "UnaryExpr", False, False, False, (FieldDesc("operand", 4), FieldDesc("op", 4))),
-    NodeSpec(134, "UniCFGNode", False, True, False, ()),
-    NodeSpec(135, "UniScopeNode", True, False, False, ()),
-    NodeSpec(136, "VisitStmt", False, True, False, (FieldDesc("else_body", 6), FieldDesc("insert_loc", 6), FieldDesc("target", 4))),
-    NodeSpec(137, "WalkerStmtOnlyNode", False, False, False, ()),
-    NodeSpec(138, "WhileStmt", True, True, False, (FieldDesc("else_body", 6), FieldDesc("condition", 4), FieldDesc("body", 5))),
-    NodeSpec(139, "WithStmt", True, True, False, (FieldDesc("is_async", 2), FieldDesc("exprs", 5), FieldDesc("body", 5))),
-    NodeSpec(140, "YieldExpr", False, False, False, (FieldDesc("expr", 6), FieldDesc("with_from", 2))),
-);
+         NodeSpec(
+             0,
+             "Ability",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("body", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("doc", 6),
+                 FieldDesc("access", 6),
+                 FieldDesc("name_ref", 6),
+                 FieldDesc("is_override", 2),
+                 FieldDesc("is_static", 2),
+                 FieldDesc("is_abstract", 2),
+                 FieldDesc("signature", 6),
+                 FieldDesc("decorators", 5)
+             )
+         ),
+         NodeSpec(1, "ArchBlockStmt", False, False, False, ()),
+         NodeSpec(
+             2,
+             "ArchHas",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("access", 6),
+                 FieldDesc("is_static", 2),
+                 FieldDesc("vars", 5),
+                 FieldDesc("is_frozen", 2)
+             )
+         ),
+         NodeSpec(
+             3,
+             "ArchSpec",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("decorators", 5)
+             )
+         ),
+         NodeSpec(
+             4,
+             "Archetype",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("body", 6),
+                 FieldDesc("access", 6),
+                 FieldDesc("decorators", 5),
+                 FieldDesc("name", 4),
+                 FieldDesc("arch_type", 4),
+                 FieldDesc("base_classes", 5),
+                 FieldDesc("type_params", 5)
+             )
+         ),
+         NodeSpec(
+             5,
+             "AssertStmt",
+             False,
+             True,
+             False,
+             (FieldDesc("condition", 4), FieldDesc("error_msg", 6))
+         ),
+         NodeSpec(6, "AssignCompr", False, False, False, (FieldDesc("assigns", 5), )),
+         NodeSpec(
+             7,
+             "Assignment",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("is_enum_stmt", 2),
+                 FieldDesc("type_tag", 6),
+                 FieldDesc("target", 5),
+                 FieldDesc("value", 6),
+                 FieldDesc("mutable", 2),
+                 FieldDesc("aug_op", 6)
+             )
+         ),
+         NodeSpec(8, "AstAccessNode", False, False, False, (FieldDesc("access", 6), )),
+         NodeSpec(9, "AstAsyncNode", False, False, False, (FieldDesc("is_async", 2), )),
+         NodeSpec(10, "AstDocNode", False, False, False, (FieldDesc("doc", 6), )),
+         NodeSpec(
+             11, "AstElseBodyNode", False, False, False, (FieldDesc("else_body", 6), )
+         ),
+         NodeSpec(
+             12, "AstImplNeedingNode", False, False, False, (FieldDesc("body", 6), )
+         ),
+         NodeSpec(13, "AstSymbolNode", False, False, False, ()),
+         NodeSpec(14, "AstSymbolStubNode", False, False, False, ()),
+         NodeSpec(
+             15, "AstTypedVarNode", False, False, False, (FieldDesc("type_tag", 6), )
+         ),
+         NodeSpec(16, "AtomExpr", False, False, False, ()),
+         NodeSpec(
+             17,
+             "AtomTrailer",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("target", 4),
+                 FieldDesc("right", 4),
+                 FieldDesc("is_attr", 2),
+                 FieldDesc("is_null_ok", 2),
+                 FieldDesc("is_genai", 2)
+             )
+         ),
+         NodeSpec(18, "AtomUnit", False, False, False, (FieldDesc("value", 4), )),
+         NodeSpec(19, "AwaitExpr", False, False, False, (FieldDesc("target", 4), )),
+         NodeSpec(
+             20,
+             "BinaryExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("left", 4), FieldDesc("right", 4), FieldDesc("op", 4))
+         ),
+         NodeSpec(
+             21,
+             "Bool",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             22,
+             "BoolExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("op", 4), FieldDesc("values", 5))
+         ),
+         NodeSpec(
+             23,
+             "BuiltinType",
+             False,
+             False,
+             True,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1),
+                 FieldDesc("is_enum_stmt", 2),
+                 FieldDesc("is_kwesc", 2)
+             )
+         ),
+         NodeSpec(
+             24,
+             "ClientBlock",
+             False,
+             False,
+             False,
+             (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))
+         ),
+         NodeSpec(25, "CodeBlockStmt", False, True, False, ()),
+         NodeSpec(
+             26,
+             "CommentToken",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1),
+                 FieldDesc("is_inline", 2)
+             )
+         ),
+         NodeSpec(
+             27,
+             "CompareExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("left", 4), FieldDesc("rights", 5), FieldDesc("ops", 5))
+         ),
+         NodeSpec(
+             28,
+             "ConcurrentExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("tok", 6), FieldDesc("target", 4))
+         ),
+         NodeSpec(
+             29,
+             "ConnectOp",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("conn_type", 6),
+                 FieldDesc("conn_assign", 6),
+                 FieldDesc("edge_dir", 3)
+             )
+         ),
+         NodeSpec(30, "ContextAwareNode", False, False, False, ()),
+         NodeSpec(31, "CtrlStmt", False, True, False, (FieldDesc("ctrl", 4), )),
+         NodeSpec(32, "DeleteStmt", False, True, False, (FieldDesc("target", 4), )),
+         NodeSpec(
+             33,
+             "DictCompr",
+             True,
+             False,
+             False,
+             (FieldDesc("kv_pair", 4), FieldDesc("compr", 5))
+         ),
+         NodeSpec(34, "DictVal", False, False, False, (FieldDesc("kv_pairs", 5), )),
+         NodeSpec(
+             35, "DisconnectOp", False, False, False, (FieldDesc("edge_spec", 4), )
+         ),
+         NodeSpec(36, "DisengageStmt", False, True, False, ()),
+         NodeSpec(
+             37,
+             "EdgeOpRef",
+             False,
+             False,
+             False,
+             (FieldDesc("filter_cond", 6), FieldDesc("edge_dir", 3))
+         ),
+         NodeSpec(
+             38,
+             "EdgeRefTrailer",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("chain", 5),
+                 FieldDesc("edges_only", 2),
+                 FieldDesc("is_async", 2)
+             )
+         ),
+         NodeSpec(39, "ElementStmt", False, False, False, (FieldDesc("doc", 6), )),
+         NodeSpec(
+             40,
+             "Ellipsis",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             41,
+             "ElseIf",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("condition", 4),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(42, "ElseStmt", True, False, False, (FieldDesc("body", 5), )),
+         NodeSpec(43, "EmptyToken", False, False, False, (FieldDesc("orig_src", 6), )),
+         NodeSpec(
+             44,
+             "Enum",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("body", 6),
+                 FieldDesc("access", 6),
+                 FieldDesc("decorators", 5),
+                 FieldDesc("name", 4),
+                 FieldDesc("base_classes", 5)
+             )
+         ),
+         NodeSpec(
+             45, "EnumBlockStmt", False, False, False, (FieldDesc("is_enum_stmt", 2), )
+         ),
+         NodeSpec(
+             46,
+             "EventSignature",
+             False,
+             False,
+             False,
+             (FieldDesc("event", 4), FieldDesc("arch_tag_info", 6))
+         ),
+         NodeSpec(
+             47,
+             "Except",
+             True,
+             True,
+             False,
+             (FieldDesc("ex_type", 4), FieldDesc("name", 6), FieldDesc("body", 5))
+         ),
+         NodeSpec(48, "Expr", False, False, False, ()),
+         NodeSpec(
+             49,
+             "ExprAsItem",
+             False,
+             False,
+             False,
+             (FieldDesc("expr", 4), FieldDesc("alias", 6))
+         ),
+         NodeSpec(
+             50,
+             "ExprStmt",
+             False,
+             True,
+             False,
+             (FieldDesc("expr", 4), FieldDesc("in_fstring", 2))
+         ),
+         NodeSpec(
+             51,
+             "FString",
+             False,
+             False,
+             False,
+             (FieldDesc("start", 6), FieldDesc("parts", 5), FieldDesc("end", 6))
+         ),
+         NodeSpec(
+             52,
+             "FilterCompr",
+             False,
+             False,
+             False,
+             (FieldDesc("f_type", 6), FieldDesc("compares", 5))
+         ),
+         NodeSpec(53, "FinallyStmt", True, True, False, (FieldDesc("body", 5), )),
+         NodeSpec(
+             54,
+             "Float",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             55,
+             "FormattedValue",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("format_part", 4),
+                 FieldDesc("conversion", 1),
+                 FieldDesc("format_spec", 6)
+             )
+         ),
+         NodeSpec(
+             56,
+             "FuncCall",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("target", 4),
+                 FieldDesc("params", 5),
+                 FieldDesc("genai_call", 6)
+             )
+         ),
+         NodeSpec(
+             57,
+             "FuncSignature",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("posonly_params", 5),
+                 FieldDesc("params", 5),
+                 FieldDesc("varargs", 6),
+                 FieldDesc("kwonlyargs", 5),
+                 FieldDesc("kwargs", 6),
+                 FieldDesc("return_type", 6)
+             )
+         ),
+         NodeSpec(
+             58,
+             "GenCompr",
+             True,
+             False,
+             False,
+             (FieldDesc("out_expr", 4), FieldDesc("compr", 5))
+         ),
+         NodeSpec(59, "GlobalStmt", False, True, False, (FieldDesc("target", 5), )),
+         NodeSpec(
+             60,
+             "GlobalVars",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("access", 6),
+                 FieldDesc("doc", 6),
+                 FieldDesc("assignments", 5),
+                 FieldDesc("is_frozen", 2)
+             )
+         ),
+         NodeSpec(
+             61,
+             "HasVar",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("type_tag", 6),
+                 FieldDesc("name", 4),
+                 FieldDesc("value", 6),
+                 FieldDesc("defer", 2)
+             )
+         ),
+         NodeSpec(
+             62,
+             "IfElseExpr",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("condition", 4),
+                 FieldDesc("value", 4),
+                 FieldDesc("else_value", 4)
+             )
+         ),
+         NodeSpec(
+             63,
+             "IfStmt",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("condition", 4),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(
+             64,
+             "ImplDef",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("decorators", 5),
+                 FieldDesc("target", 5),
+                 FieldDesc("spec", 5),
+                 FieldDesc("body", 5),
+                 FieldDesc("decl_link", 6)
+             )
+         ),
+         NodeSpec(
+             65,
+             "Import",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("from_loc", 6),
+                 FieldDesc("items", 5),
+                 FieldDesc("is_absorb", 2),
+                 FieldDesc("clib_decls", 5)
+             )
+         ),
+         NodeSpec(
+             66,
+             "InForStmt",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("target", 4),
+                 FieldDesc("collection", 4),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(
+             67,
+             "IndexSlice",
+             False,
+             False,
+             False,
+             (FieldDesc("slices", 5), FieldDesc("is_range", 2))
+         ),
+         NodeSpec(
+             68,
+             "InnerCompr",
+             True,
+             False,
+             False,
+             (
+                 FieldDesc("is_async", 2),
+                 FieldDesc("target", 4),
+                 FieldDesc("collection", 4),
+                 FieldDesc("conditional", 5)
+             )
+         ),
+         NodeSpec(
+             69,
+             "Int",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             70,
+             "IterForStmt",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("is_async", 2),
+                 FieldDesc("iter", 4),
+                 FieldDesc("condition", 4),
+                 FieldDesc("count_by", 4),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(71, "JsxAttribute", False, False, False, ()),
+         NodeSpec(72, "JsxChild", False, False, False, ()),
+         NodeSpec(
+             73,
+             "JsxElement",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("name", 6),
+                 FieldDesc("attributes", 5),
+                 FieldDesc("children", 5),
+                 FieldDesc("is_self_closing", 2),
+                 FieldDesc("is_fragment", 2)
+             )
+         ),
+         NodeSpec(74, "JsxElementName", False, False, False, (FieldDesc("parts", 5), )),
+         NodeSpec(75, "JsxExpression", False, False, False, (FieldDesc("expr", 4), )),
+         NodeSpec(
+             76,
+             "JsxNormalAttribute",
+             False,
+             False,
+             False,
+             (FieldDesc("name", 4), FieldDesc("value", 6))
+         ),
+         NodeSpec(
+             77, "JsxSpreadAttribute", False, False, False, (FieldDesc("expr", 4), )
+         ),
+         NodeSpec(78, "JsxText", False, False, False, (FieldDesc("value", 4), )),
+         NodeSpec(
+             79,
+             "KVPair",
+             False,
+             False,
+             False,
+             (FieldDesc("key", 6), FieldDesc("value", 4))
+         ),
+         NodeSpec(
+             80,
+             "KWPair",
+             False,
+             False,
+             False,
+             (FieldDesc("key", 6), FieldDesc("value", 4))
+         ),
+         NodeSpec(
+             81,
+             "LambdaExpr",
+             True,
+             False,
+             False,
+             (FieldDesc("body", 4), FieldDesc("signature", 6))
+         ),
+         NodeSpec(
+             82,
+             "ListCompr",
+             True,
+             False,
+             False,
+             (FieldDesc("out_expr", 4), FieldDesc("compr", 5))
+         ),
+         NodeSpec(83, "ListVal", False, False, False, (FieldDesc("values", 5), )),
+         NodeSpec(
+             84,
+             "Literal",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             85,
+             "MatchArch",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("name", 4),
+                 FieldDesc("arg_patterns", 5),
+                 FieldDesc("kw_patterns", 5)
+             )
+         ),
+         NodeSpec(
+             86,
+             "MatchAs",
+             False,
+             False,
+             False,
+             (FieldDesc("name", 4), FieldDesc("pattern", 6))
+         ),
+         NodeSpec(
+             87,
+             "MatchCase",
+             True,
+             False,
+             False,
+             (FieldDesc("pattern", 4), FieldDesc("guard", 6), FieldDesc("body", 5))
+         ),
+         NodeSpec(
+             88,
+             "MatchKVPair",
+             False,
+             False,
+             False,
+             (FieldDesc("key", 4), FieldDesc("value", 4))
+         ),
+         NodeSpec(89, "MatchMapping", False, False, False, (FieldDesc("values", 5), )),
+         NodeSpec(90, "MatchOr", False, False, False, (FieldDesc("patterns", 5), )),
+         NodeSpec(91, "MatchPattern", False, False, False, ()),
+         NodeSpec(92, "MatchSequence", False, False, False, (FieldDesc("values", 5), )),
+         NodeSpec(93, "MatchSingleton", False, False, False, (FieldDesc("value", 4), )),
+         NodeSpec(
+             94,
+             "MatchStar",
+             False,
+             False,
+             False,
+             (FieldDesc("name", 4), FieldDesc("is_list", 2))
+         ),
+         NodeSpec(
+             95,
+             "MatchStmt",
+             False,
+             True,
+             False,
+             (FieldDesc("target", 4), FieldDesc("cases", 5))
+         ),
+         NodeSpec(96, "MatchValue", False, False, False, (FieldDesc("value", 4), )),
+         NodeSpec(97, "MatchWild", False, False, False, ()),
+         NodeSpec(
+             98,
+             "Module",
+             True,
+             False,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("name", 0),
+                 FieldDesc("source", 4),
+                 FieldDesc("body", 5),
+                 FieldDesc("terminals", 5),
+                 FieldDesc("stub_only", 2)
+             )
+         ),
+         NodeSpec(
+             99,
+             "ModuleCode",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("is_enum_stmt", 2),
+                 FieldDesc("doc", 6),
+                 FieldDesc("name", 6),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(
+             100,
+             "ModuleItem",
+             False,
+             False,
+             False,
+             (FieldDesc("name", 4), FieldDesc("alias", 6))
+         ),
+         NodeSpec(
+             101,
+             "ModulePath",
+             False,
+             False,
+             False,
+             (FieldDesc("path", 5), FieldDesc("level", 1), FieldDesc("alias", 6))
+         ),
+         NodeSpec(102, "MultiString", False, False, False, (FieldDesc("strings", 5), )),
+         NodeSpec(
+             103,
+             "Name",
+             False,
+             False,
+             True,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1),
+                 FieldDesc("is_enum_stmt", 2),
+                 FieldDesc("is_kwesc", 2)
+             )
+         ),
+         NodeSpec(
+             104, "NameAtom", False, False, True, (FieldDesc("is_enum_stmt", 2), )
+         ),
+         NodeSpec(
+             105,
+             "NativeBlock",
+             False,
+             False,
+             False,
+             (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))
+         ),
+         NodeSpec(106, "NonLocalStmt", False, True, False, (FieldDesc("target", 5), )),
+         NodeSpec(
+             107,
+             "Null",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             108,
+             "ParamVar",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("type_tag", 6),
+                 FieldDesc("name", 4),
+                 FieldDesc("unpack", 6),
+                 FieldDesc("value", 6)
+             )
+         ),
+         NodeSpec(
+             109, "ProgramModule", False, False, False, (FieldDesc("main_mod", 6), )
+         ),
+         NodeSpec(
+             110,
+             "PyInlineCode",
+             False,
+             True,
+             False,
+             (FieldDesc("is_enum_stmt", 2), FieldDesc("doc", 6), FieldDesc("code", 4))
+         ),
+         NodeSpec(
+             111,
+             "PythonModuleAst",
+             False,
+             False,
+             False,
+             (FieldDesc("ast", 10), FieldDesc("orig_src", 4))
+         ),
+         NodeSpec(
+             112,
+             "RaiseStmt",
+             False,
+             True,
+             False,
+             (FieldDesc("cause", 6), FieldDesc("from_target", 6))
+         ),
+         NodeSpec(113, "ReportStmt", False, True, False, (FieldDesc("expr", 4), )),
+         NodeSpec(114, "ReturnStmt", False, True, False, (FieldDesc("expr", 6), )),
+         NodeSpec(
+             115,
+             "SemDef",
+             True,
+             False,
+             False,
+             (FieldDesc("doc", 6), FieldDesc("target", 5), FieldDesc("value", 4))
+         ),
+         NodeSpec(
+             116,
+             "Semi",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             117,
+             "ServerBlock",
+             False,
+             False,
+             False,
+             (FieldDesc("doc", 6), FieldDesc("body", 5), FieldDesc("implicit", 2))
+         ),
+         NodeSpec(
+             118,
+             "SetCompr",
+             True,
+             False,
+             False,
+             (FieldDesc("out_expr", 4), FieldDesc("compr", 5))
+         ),
+         NodeSpec(119, "SetVal", False, False, False, (FieldDesc("values", 5), )),
+         NodeSpec(
+             120,
+             "Source",
+             False,
+             False,
+             False,
+             (FieldDesc("source", 0), FieldDesc("mod_path", 0))
+         ),
+         NodeSpec(
+             121,
+             "SpecialVarRef",
+             False,
+             False,
+             True,
+             (
+                 FieldDesc("name", 0),
+                 FieldDesc("is_enum_stmt", 2),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1),
+                 FieldDesc("is_kwesc", 2)
+             )
+         ),
+         NodeSpec(
+             122,
+             "String",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(123, "SubTag", False, False, False, (FieldDesc("tag", 4), )),
+         NodeSpec(
+             124,
+             "SwitchCase",
+             True,
+             False,
+             False,
+             (FieldDesc("pattern", 6), FieldDesc("body", 5))
+         ),
+         NodeSpec(
+             125,
+             "SwitchStmt",
+             False,
+             True,
+             False,
+             (FieldDesc("target", 4), FieldDesc("cases", 5))
+         ),
+         NodeSpec(
+             126,
+             "Test",
+             True,
+             False,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("name", 4),
+                 FieldDesc("body", 5),
+                 FieldDesc("description", 6)
+             )
+         ),
+         NodeSpec(
+             127,
+             "Token",
+             False,
+             False,
+             False,
+             (
+                 FieldDesc("orig_src", 4),
+                 FieldDesc("name", 0),
+                 FieldDesc("value", 0),
+                 FieldDesc("line", 1),
+                 FieldDesc("end_line", 1),
+                 FieldDesc("col_start", 1),
+                 FieldDesc("col_end", 1),
+                 FieldDesc("pos_start", 1),
+                 FieldDesc("pos_end", 1)
+             )
+         ),
+         NodeSpec(
+             128,
+             "TryStmt",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("body", 5),
+                 FieldDesc("excepts", 5),
+                 FieldDesc("finally_body", 6)
+             )
+         ),
+         NodeSpec(129, "TupleVal", False, False, False, (FieldDesc("values", 5), )),
+         NodeSpec(
+             130,
+             "TypeAlias",
+             True,
+             False,
+             False,
+             (
+                 FieldDesc("doc", 6),
+                 FieldDesc("access", 6),
+                 FieldDesc("name", 4),
+                 FieldDesc("type_params", 5),
+                 FieldDesc("value", 4)
+             )
+         ),
+         NodeSpec(
+             131,
+             "TypeParam",
+             False,
+             False,
+             False,
+             (FieldDesc("name", 4), FieldDesc("bound", 6), FieldDesc("default_val", 6))
+         ),
+         NodeSpec(
+             132,
+             "TypedCtxBlock",
+             True,
+             True,
+             False,
+             (FieldDesc("type_ctx", 4), FieldDesc("body", 5))
+         ),
+         NodeSpec(
+             133,
+             "UnaryExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("operand", 4), FieldDesc("op", 4))
+         ),
+         NodeSpec(134, "UniCFGNode", False, True, False, ()),
+         NodeSpec(135, "UniScopeNode", True, False, False, ()),
+         NodeSpec(
+             136,
+             "VisitStmt",
+             False,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("insert_loc", 6),
+                 FieldDesc("target", 4)
+             )
+         ),
+         NodeSpec(137, "WalkerStmtOnlyNode", False, False, False, ()),
+         NodeSpec(
+             138,
+             "WhileStmt",
+             True,
+             True,
+             False,
+             (
+                 FieldDesc("else_body", 6),
+                 FieldDesc("condition", 4),
+                 FieldDesc("body", 5)
+             )
+         ),
+         NodeSpec(
+             139,
+             "WithStmt",
+             True,
+             True,
+             False,
+             (FieldDesc("is_async", 2), FieldDesc("exprs", 5), FieldDesc("body", 5))
+         ),
+         NodeSpec(
+             140,
+             "YieldExpr",
+             False,
+             False,
+             False,
+             (FieldDesc("expr", 6), FieldDesc("with_from", 2))
+         ),
 
+     ),
+     NAME_TO_IDX: dict[str, int] = {
+         "Ability": 0,
+         "ArchBlockStmt": 1,
+         "ArchHas": 2,
+         "ArchSpec": 3,
+         "Archetype": 4,
+         "AssertStmt": 5,
+         "AssignCompr": 6,
+         "Assignment": 7,
+         "AstAccessNode": 8,
+         "AstAsyncNode": 9,
+         "AstDocNode": 10,
+         "AstElseBodyNode": 11,
+         "AstImplNeedingNode": 12,
+         "AstSymbolNode": 13,
+         "AstSymbolStubNode": 14,
+         "AstTypedVarNode": 15,
+         "AtomExpr": 16,
+         "AtomTrailer": 17,
+         "AtomUnit": 18,
+         "AwaitExpr": 19,
+         "BinaryExpr": 20,
+         "Bool": 21,
+         "BoolExpr": 22,
+         "BuiltinType": 23,
+         "ClientBlock": 24,
+         "CodeBlockStmt": 25,
+         "CommentToken": 26,
+         "CompareExpr": 27,
+         "ConcurrentExpr": 28,
+         "ConnectOp": 29,
+         "ContextAwareNode": 30,
+         "CtrlStmt": 31,
+         "DeleteStmt": 32,
+         "DictCompr": 33,
+         "DictVal": 34,
+         "DisconnectOp": 35,
+         "DisengageStmt": 36,
+         "EdgeOpRef": 37,
+         "EdgeRefTrailer": 38,
+         "ElementStmt": 39,
+         "Ellipsis": 40,
+         "ElseIf": 41,
+         "ElseStmt": 42,
+         "EmptyToken": 43,
+         "Enum": 44,
+         "EnumBlockStmt": 45,
+         "EventSignature": 46,
+         "Except": 47,
+         "Expr": 48,
+         "ExprAsItem": 49,
+         "ExprStmt": 50,
+         "FString": 51,
+         "FilterCompr": 52,
+         "FinallyStmt": 53,
+         "Float": 54,
+         "FormattedValue": 55,
+         "FuncCall": 56,
+         "FuncSignature": 57,
+         "GenCompr": 58,
+         "GlobalStmt": 59,
+         "GlobalVars": 60,
+         "HasVar": 61,
+         "IfElseExpr": 62,
+         "IfStmt": 63,
+         "ImplDef": 64,
+         "Import": 65,
+         "InForStmt": 66,
+         "IndexSlice": 67,
+         "InnerCompr": 68,
+         "Int": 69,
+         "IterForStmt": 70,
+         "JsxAttribute": 71,
+         "JsxChild": 72,
+         "JsxElement": 73,
+         "JsxElementName": 74,
+         "JsxExpression": 75,
+         "JsxNormalAttribute": 76,
+         "JsxSpreadAttribute": 77,
+         "JsxText": 78,
+         "KVPair": 79,
+         "KWPair": 80,
+         "LambdaExpr": 81,
+         "ListCompr": 82,
+         "ListVal": 83,
+         "Literal": 84,
+         "MatchArch": 85,
+         "MatchAs": 86,
+         "MatchCase": 87,
+         "MatchKVPair": 88,
+         "MatchMapping": 89,
+         "MatchOr": 90,
+         "MatchPattern": 91,
+         "MatchSequence": 92,
+         "MatchSingleton": 93,
+         "MatchStar": 94,
+         "MatchStmt": 95,
+         "MatchValue": 96,
+         "MatchWild": 97,
+         "Module": 98,
+         "ModuleCode": 99,
+         "ModuleItem": 100,
+         "ModulePath": 101,
+         "MultiString": 102,
+         "Name": 103,
+         "NameAtom": 104,
+         "NativeBlock": 105,
+         "NonLocalStmt": 106,
+         "Null": 107,
+         "ParamVar": 108,
+         "ProgramModule": 109,
+         "PyInlineCode": 110,
+         "PythonModuleAst": 111,
+         "RaiseStmt": 112,
+         "ReportStmt": 113,
+         "ReturnStmt": 114,
+         "SemDef": 115,
+         "Semi": 116,
+         "ServerBlock": 117,
+         "SetCompr": 118,
+         "SetVal": 119,
+         "Source": 120,
+         "SpecialVarRef": 121,
+         "String": 122,
+         "SubTag": 123,
+         "SwitchCase": 124,
+         "SwitchStmt": 125,
+         "Test": 126,
+         "Token": 127,
+         "TryStmt": 128,
+         "TupleVal": 129,
+         "TypeAlias": 130,
+         "TypeParam": 131,
+         "TypedCtxBlock": 132,
+         "UnaryExpr": 133,
+         "UniCFGNode": 134,
+         "UniScopeNode": 135,
+         "VisitStmt": 136,
+         "WalkerStmtOnlyNode": 137,
+         "WhileStmt": 138,
+         "WithStmt": 139,
+         "YieldExpr": 140,
 
-# Fast lookup: class_name -> type_idx
-glob NAME_TO_IDX: dict[str, int] = {
-    "Ability": 0,
-    "ArchBlockStmt": 1,
-    "ArchHas": 2,
-    "ArchSpec": 3,
-    "Archetype": 4,
-    "AssertStmt": 5,
-    "AssignCompr": 6,
-    "Assignment": 7,
-    "AstAccessNode": 8,
-    "AstAsyncNode": 9,
-    "AstDocNode": 10,
-    "AstElseBodyNode": 11,
-    "AstImplNeedingNode": 12,
-    "AstSymbolNode": 13,
-    "AstSymbolStubNode": 14,
-    "AstTypedVarNode": 15,
-    "AtomExpr": 16,
-    "AtomTrailer": 17,
-    "AtomUnit": 18,
-    "AwaitExpr": 19,
-    "BinaryExpr": 20,
-    "Bool": 21,
-    "BoolExpr": 22,
-    "BuiltinType": 23,
-    "ClientBlock": 24,
-    "CodeBlockStmt": 25,
-    "CommentToken": 26,
-    "CompareExpr": 27,
-    "ConcurrentExpr": 28,
-    "ConnectOp": 29,
-    "ContextAwareNode": 30,
-    "CtrlStmt": 31,
-    "DeleteStmt": 32,
-    "DictCompr": 33,
-    "DictVal": 34,
-    "DisconnectOp": 35,
-    "DisengageStmt": 36,
-    "EdgeOpRef": 37,
-    "EdgeRefTrailer": 38,
-    "ElementStmt": 39,
-    "Ellipsis": 40,
-    "ElseIf": 41,
-    "ElseStmt": 42,
-    "EmptyToken": 43,
-    "Enum": 44,
-    "EnumBlockStmt": 45,
-    "EventSignature": 46,
-    "Except": 47,
-    "Expr": 48,
-    "ExprAsItem": 49,
-    "ExprStmt": 50,
-    "FString": 51,
-    "FilterCompr": 52,
-    "FinallyStmt": 53,
-    "Float": 54,
-    "FormattedValue": 55,
-    "FuncCall": 56,
-    "FuncSignature": 57,
-    "GenCompr": 58,
-    "GlobalStmt": 59,
-    "GlobalVars": 60,
-    "HasVar": 61,
-    "IfElseExpr": 62,
-    "IfStmt": 63,
-    "ImplDef": 64,
-    "Import": 65,
-    "InForStmt": 66,
-    "IndexSlice": 67,
-    "InnerCompr": 68,
-    "Int": 69,
-    "IterForStmt": 70,
-    "JsxAttribute": 71,
-    "JsxChild": 72,
-    "JsxElement": 73,
-    "JsxElementName": 74,
-    "JsxExpression": 75,
-    "JsxNormalAttribute": 76,
-    "JsxSpreadAttribute": 77,
-    "JsxText": 78,
-    "KVPair": 79,
-    "KWPair": 80,
-    "LambdaExpr": 81,
-    "ListCompr": 82,
-    "ListVal": 83,
-    "Literal": 84,
-    "MatchArch": 85,
-    "MatchAs": 86,
-    "MatchCase": 87,
-    "MatchKVPair": 88,
-    "MatchMapping": 89,
-    "MatchOr": 90,
-    "MatchPattern": 91,
-    "MatchSequence": 92,
-    "MatchSingleton": 93,
-    "MatchStar": 94,
-    "MatchStmt": 95,
-    "MatchValue": 96,
-    "MatchWild": 97,
-    "Module": 98,
-    "ModuleCode": 99,
-    "ModuleItem": 100,
-    "ModulePath": 101,
-    "MultiString": 102,
-    "Name": 103,
-    "NameAtom": 104,
-    "NativeBlock": 105,
-    "NonLocalStmt": 106,
-    "Null": 107,
-    "ParamVar": 108,
-    "ProgramModule": 109,
-    "PyInlineCode": 110,
-    "PythonModuleAst": 111,
-    "RaiseStmt": 112,
-    "ReportStmt": 113,
-    "ReturnStmt": 114,
-    "SemDef": 115,
-    "Semi": 116,
-    "ServerBlock": 117,
-    "SetCompr": 118,
-    "SetVal": 119,
-    "Source": 120,
-    "SpecialVarRef": 121,
-    "String": 122,
-    "SubTag": 123,
-    "SwitchCase": 124,
-    "SwitchStmt": 125,
-    "Test": 126,
-    "Token": 127,
-    "TryStmt": 128,
-    "TupleVal": 129,
-    "TypeAlias": 130,
-    "TypeParam": 131,
-    "TypedCtxBlock": 132,
-    "UnaryExpr": 133,
-    "UniCFGNode": 134,
-    "UniScopeNode": 135,
-    "VisitStmt": 136,
-    "WalkerStmtOnlyNode": 137,
-    "WhileStmt": 138,
-    "WithStmt": 139,
-    "YieldExpr": 140,
-};
-
-
-# Fast lookup: type_idx -> NodeSpec
-glob IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};
+     },
+     IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};
 
 
 """Lazy import of all unitree classes for deserialization."""
