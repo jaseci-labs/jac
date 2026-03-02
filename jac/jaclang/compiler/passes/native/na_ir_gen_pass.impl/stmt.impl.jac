@@ -453,6 +453,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.sub(
                             current, coerced, name=f"{var_name}.sub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     } else {
                         value = self.builder.fsub(
                             current, coerced, name=f"{var_name}.fsub"
@@ -525,11 +544,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "&=" {
-                    # Bitwise AND assignment
+                    # Bitwise AND assignment / set intersection_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.and_(
                             current, coerced, name=f"{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     # Bitwise OR assignment / set union
@@ -628,11 +666,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         }
                     }
                 } elif aug_op_val == "^=" {
-                    # Bitwise XOR assignment
+                    # Bitwise XOR assignment / set symmetric_difference_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.xor(
                             current, coerced, name=f"{var_name}.xor"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "<<=" {
                     # Left shift assignment
@@ -696,6 +753,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.fsub(
                             current, coerced, name=f"glob.{var_name}.fsub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "*=" {
                     if isinstance(current.type, ir.IntType) {
@@ -718,12 +793,70 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.and_(
                             current, coerced, name=f"glob.{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.or_(
                             current, coerced, name=f"glob.{var_name}.or"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set union (update)
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_update(_ctx, current, [coerced]);
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
+                    }
+                } elif aug_op_val == "^=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.xor(
+                            current, coerced, name=f"glob.{var_name}.xor"
+                        );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 }
             }

@@ -10,7 +10,11 @@ impl NaIRGenPass.init(
     self.has_native_code = False;
     # Build type_map from the centralized type registry
     _spec_map: dict[str, ir.Type] = {
+        "i8": ir.IntType(8),
+        "i16": ir.IntType(16),
+        "i32": ir.IntType(32),
         "i64": ir.IntType(64),
+        "f32": ir.FloatType(),
         "f64": ir.DoubleType(),
         "i1": ir.IntType(1),
         "i8*": ir.IntType(8).as_pointer()
@@ -28,18 +32,6 @@ impl NaIRGenPass.init(
         self.type_map["bool"] = _spec_map["i1"];
         self.type_map["str"] = _spec_map["i8*"];
     }
-    # Fixed-width C-compatible types (NA-specific, not Jac primitives)
-    self.type_map["i8"] = ir.IntType(8);
-    self.type_map["u8"] = ir.IntType(8);
-    self.type_map["i16"] = ir.IntType(16);
-    self.type_map["u16"] = ir.IntType(16);
-    self.type_map["i32"] = ir.IntType(32);
-    self.type_map["u32"] = ir.IntType(32);
-    self.type_map["i64"] = ir.IntType(64);
-    self.type_map["u64"] = ir.IntType(64);
-    self.type_map["f32"] = ir.FloatType();
-    self.type_map["f64"] = ir.DoubleType();
-    self.type_map["c_void"] = ir.IntType(8).as_pointer();
     self._fmt_strings: dict[(str, ir.GlobalVariable)] = {};
     # External function cache (Phase 0)
     self.extern_funcs: dict[(str, ir.Function)] = {};

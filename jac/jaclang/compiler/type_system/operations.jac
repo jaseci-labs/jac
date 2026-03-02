@@ -37,7 +37,18 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.GT: ('__gt__', '__lt__'),
          Tok.GTE: ('__ge__', '__le__')
      },
-     ARITHMETIC_OPERATORS: set[str] = {Tok.PLUS,Tok.MINUS,Tok.STAR_MUL,Tok.DIV,Tok.FLOOR_DIV,Tok.MOD,Tok.STAR_POW};
+     ARITHMETIC_OPERATORS: set[str] = {Tok.PLUS,Tok.MINUS,Tok.STAR_MUL,Tok.DIV,Tok.FLOOR_DIV,Tok.MOD,Tok.STAR_POW},
+     INT_LIKE_WIDTHS: dict[str, int] = {
+         "i8": 8,
+         "u8": 8,
+         "i16": 16,
+         "u16": 16,
+         "i32": 32,
+         "u32": 32,
+         "i64": 64,
+         "u64": 64
+     },
+     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"};
 
 """
 Apply numeric type promotion for arithmetic operations.
@@ -47,24 +58,38 @@ Rules:
 - int op float -> float
 - float op int -> float
 - float op float -> float
+- Fixed-width int op fixed-width int -> wider of the two
+- Fixed-width int op int -> int (int is the widest)
+- Any int-like op any float-like -> float
+- f32 op f64 -> float (f64 / float)
+- Division with any numeric -> float
 
 Returns the promoted result type, or None if types are not numeric.
 """
+def _is_int_like(t: jtypes.ClassType) -> bool {
+    return t.is_builtin("int")
+    or (t.is_builtin() and t.shared.class_name in INT_LIKE_WIDTHS);
+}
+
+def _is_float_like(t: jtypes.ClassType) -> bool {
+    return t.is_builtin("float")
+    or (t.is_builtin() and t.shared.class_name in FLOAT_LIKE_NAMES);
+}
+
 def get_numeric_promotion_type(
     evaluator: 'TypeEvaluator',
     left_type: jtypes.TypeBase,
     right_type: jtypes.TypeBase,
     op: str
 ) -> jtypes.TypeBase | None {
-    # Check if both types are numeric (int or float)
     if not isinstance(left_type, jtypes.ClassType)
     or not isinstance(right_type, jtypes.ClassType) {
         return None;
     }
-    left_is_int = left_type.is_builtin("int");
-    left_is_float = left_type.is_builtin("float");
-    right_is_int = right_type.is_builtin("int");
-    right_is_float = right_type.is_builtin("float");
+    left_is_int = _is_int_like(left_type);
+    left_is_float = _is_float_like(left_type);
+    right_is_int = _is_int_like(right_type);
+    right_is_float = _is_float_like(right_type);
 
     # Both must be numeric
     if not ((left_is_int or left_is_float) and (right_is_int or right_is_float)) {
@@ -76,13 +101,27 @@ def get_numeric_promotion_type(
         return evaluator._convert_to_instance(evaluator.prefetch.float_class);
     }
 
-    # If either operand is float, result is float (int promoted to float)
+    # If either operand is float-like, result is float
     if left_is_float or right_is_float {
         return evaluator._convert_to_instance(evaluator.prefetch.float_class);
     }
 
-    # Both are int, result is int
-    return evaluator._convert_to_instance(evaluator.prefetch.int_class);
+    # Both are int-like: promote to the wider type
+    left_name = left_type.shared.class_name;
+    right_name = right_type.shared.class_name;
+    left_fw = left_name in INT_LIKE_WIDTHS;
+    right_fw = right_name in INT_LIKE_WIDTHS;
+
+    # If either is plain int, result is int (int is the widest integer)
+    if not left_fw or not right_fw {
+        return evaluator._convert_to_instance(evaluator.prefetch.int_class);
+    }
+
+    # Both are fixed-width: pick the wider one
+    if INT_LIKE_WIDTHS[left_name] >= INT_LIKE_WIDTHS[right_name] {
+        return evaluator._convert_to_instance(left_type);
+    }
+    return evaluator._convert_to_instance(right_type);
 }
 
 """Return the binary operator's jtype."""
@@ -284,3 +323,5 @@ def get_type_of_binary_operation(
     return jtypes.UnknownType();
 }
 # Arithmetic operators that support numeric type promotion (int -> float)
+
+# Fixed-width integer type names and their bit widths for promotion

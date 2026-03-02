@@ -455,3 +455,52 @@ test "dict setdefault matches across backends" {
     na_result = run_native_function(eng, "dict_setdefault_na");
     compare_results(py_result, na_result, "dict_setdefault");
 }
+
+test "set operators match across backends" {
+    py_result = run_py_fixture("prim_set_operators", "set_operators_py");
+    (eng, _) = compile_native("prim_set_operators.jac");
+    na_result = run_native_function(eng, "set_operators_na");
+    compare_results(py_result, na_result, "set_operators");
+}
+
+test "set augmented assignments match across backends" {
+    py_result = run_py_fixture("prim_set_aug_assign", "set_aug_assign_py");
+    (eng, _) = compile_native("prim_set_aug_assign.jac");
+    na_result = run_native_function(eng, "set_aug_assign_na");
+    compare_results(py_result, na_result, "set_aug_assign");
+}
+
+test "extra builtins 2 match across backends" {
+    py_result = run_py_fixture("prim_builtins_extra2", "builtins_extra2_py");
+    (eng, _) = compile_native("prim_builtins_extra2.jac");
+    na_result = run_native_function(eng, "builtins_extra2_na");
+    compare_results(py_result, na_result, "builtins_extra2");
+}
+
+test "list multiplication matches across backends" {
+    py_result = run_py_fixture("prim_list_mul", "list_mul_py");
+    (eng, _) = compile_native("prim_list_mul.jac");
+    na_result = run_native_function(eng, "list_mul_na");
+    compare_results(py_result, na_result, "list_mul");
+}
+
+test "list comparison matches across backends" {
+    py_result = run_py_fixture("prim_list_cmp", "list_cmp_py");
+    (eng, _) = compile_native("prim_list_cmp.jac");
+    na_result = run_native_function(eng, "list_cmp_na");
+    compare_results(py_result, na_result, "list_cmp");
+}
+
+test "frozenset matches across backends" {
+    py_result = run_py_fixture("prim_frozenset", "frozenset_py");
+    (eng, _) = compile_native("prim_frozenset.jac");
+    na_result = run_native_function(eng, "frozenset_na");
+    compare_results(py_result, na_result, "frozenset");
+}
+
+test "sorted and reversed match across backends" {
+    py_result = run_py_fixture("prim_builtin_sort", "builtin_sort_py");
+    (eng, _) = compile_native("prim_builtin_sort.jac");
+    na_result = run_native_function(eng, "builtin_sort_na");
+    compare_results(py_result, na_result, "builtin_sort");
+}

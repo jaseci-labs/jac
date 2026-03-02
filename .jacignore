@@ -12,6 +12,9 @@ CategoryTabs.cl.jac
 cfg_build_pass.jac
 chandra_bugs.jac
 circle_pure_err.impl.jac
+clib_import.na.jac
+clib_import_na_block.jac
+clib_struct_coerce.na.jac
 client_app.jac
 client_bundle.jac
 client.jac
@@ -118,6 +121,7 @@ nested_impls.jac
 NonGPT.jac
 normalize_pass.jac
 one.jac
+operations.jac
 other_root_access.jac
 parser.impl.jac
 parser.jac
@@ -222,3 +226,5 @@ web_target.jac
 with_context.jac
 with_llm_method.jac
 yield_in_assignment.jac
+prim_builtins_extra2.jac
+prim_builtin_sort.jac

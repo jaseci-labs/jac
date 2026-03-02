@@ -4414,19 +4414,122 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     }
 
     def emit_sum(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
-        return None;
+        # sum(list) -> int: iterate list elements and accumulate
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        list_val = args[0];
+        # Find matching list helpers
+        helpers: (dict | None) = None;
+        elem_key: (str | None) = None;
+        for (lk, lt) in p.list_types.items() {
+            if list_val.type == lt.as_pointer() {
+                helpers = p.list_helpers.get(lk);
+                elem_key = lk;
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        list_len = b.call(helpers["len"], [list_val], name="sum.len");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="sum.loop");
+        body_bb = func.append_basic_block(name="sum.body");
+        done_bb = func.append_basic_block(name="sum.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="sum.idx");
+        acc = b.phi(i64, name="sum.acc");
+        idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+        acc.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, list_len, name="sum.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        elem = b.call(helpers["get"], [list_val, idx], name="sum.elem");
+        new_acc = b.add(acc, elem, name="sum.add");
+        next_idx = b.add(idx, ir.Constant(i64, 1), name="sum.next");
+        idx.add_incoming(next_idx, body_bb);
+        acc.add_incoming(new_acc, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return acc;
     }
 
     def emit_sorted(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # sorted(list) -> new sorted copy
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        list_val = args[0];
+        # Find matching list helpers from the argument type
+        helpers: (dict | None) = None;
+        elem_key: (str | None) = None;
+        for (lk, lt) in p.list_types.items() {
+            if list_val.type == lt.as_pointer() {
+                helpers = p.list_helpers.get(lk);
+                elem_key = lk;
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        _le = p._native_emitters.get("list") if p?._native_emitters else None;
+        if _le is None {
+            return None;
+        }
+        _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
+        # Copy the list then sort the copy
+        sorted_copy = _le.emit_copy(_ctx2, list_val, []);
+        if sorted_copy is None {
+            return None;
+        }
+        _le.emit_sort(_ctx2, sorted_copy, []);
+        return sorted_copy;
     }
 
     def emit_reversed(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # reversed(list) -> new reversed copy
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        list_val = args[0];
+        # Find matching list helpers from the argument type
+        helpers: (dict | None) = None;
+        elem_key: (str | None) = None;
+        for (lk, lt) in p.list_types.items() {
+            if list_val.type == lt.as_pointer() {
+                helpers = p.list_helpers.get(lk);
+                elem_key = lk;
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        _le = p._native_emitters.get("list") if p?._native_emitters else None;
+        if _le is None {
+            return None;
+        }
+        _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
+        # Copy the list then reverse the copy
+        rev_copy = _le.emit_copy(_ctx2, list_val, []);
+        if rev_copy is None {
+            return None;
+        }
+        _le.emit_reverse(_ctx2, rev_copy, []);
+        return rev_copy;
     }
 
     def emit_enumerate(
@@ -4450,11 +4553,97 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     }
 
     def emit_any(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
-        return None;
+        # any(list) -> int: return 1 if any element is truthy
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        list_val = args[0];
+        helpers: (dict | None) = None;
+        for (lk, lt) in p.list_types.items() {
+            if list_val.type == lt.as_pointer() {
+                helpers = p.list_helpers.get(lk);
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        list_len = b.call(helpers["len"], [list_val], name="any.len");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="any.loop");
+        body_bb = func.append_basic_block(name="any.body");
+        found_bb = func.append_basic_block(name="any.found");
+        done_bb = func.append_basic_block(name="any.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="any.idx");
+        idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, list_len, name="any.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        elem = b.call(helpers["get"], [list_val, idx], name="any.elem");
+        is_true = b.icmp_signed("!=", elem, ir.Constant(i64, 0), name="any.true");
+        next_idx = b.add(idx, ir.Constant(i64, 1), name="any.next");
+        idx.add_incoming(next_idx, body_bb);
+        b.cbranch(is_true, found_bb, loop_bb);
+        b.position_at_start(found_bb);
+        b.branch(done_bb);
+        b.position_at_start(done_bb);
+        result = b.phi(i64, name="any.result");
+        result.add_incoming(ir.Constant(i64, 0), loop_bb);
+        result.add_incoming(ir.Constant(i64, 1), found_bb);
+        return result;
     }
 
     def emit_all(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
-        return None;
+        # all(list) -> int: return 1 if all elements are truthy (or list is empty)
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        list_val = args[0];
+        helpers: (dict | None) = None;
+        for (lk, lt) in p.list_types.items() {
+            if list_val.type == lt.as_pointer() {
+                helpers = p.list_helpers.get(lk);
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        list_len = b.call(helpers["len"], [list_val], name="all.len");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="all.loop");
+        body_bb = func.append_basic_block(name="all.body");
+        false_bb = func.append_basic_block(name="all.false");
+        done_bb = func.append_basic_block(name="all.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="all.idx");
+        idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, list_len, name="all.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        elem = b.call(helpers["get"], [list_val, idx], name="all.elem");
+        is_false = b.icmp_signed("==", elem, ir.Constant(i64, 0), name="all.false");
+        next_idx = b.add(idx, ir.Constant(i64, 1), name="all.next");
+        idx.add_incoming(next_idx, body_bb);
+        b.cbranch(is_false, false_bb, loop_bb);
+        b.position_at_start(false_bb);
+        b.branch(done_bb);
+        b.position_at_start(done_bb);
+        result = b.phi(i64, name="all.result");
+        result.add_incoming(ir.Constant(i64, 1), loop_bb);
+        result.add_incoming(ir.Constant(i64, 0), false_bb);
+        return result;
     }
 
     def emit_isinstance(
@@ -4702,6 +4891,53 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_divmod(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None) {
+        # divmod(a, b) -> tuple of (a // b, a % b)
+        if len(args) < 2 {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        a = args[0];
+        v = args[1];
+        if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
+            # ZeroDivisionError check
+            izero = ir.Constant(i64, 0);
+            is_zero = b.icmp_signed("==", v, izero, name="divmod.zero.chk");
+            p._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "integer division or modulo by zero"
+            );
+            quot = b.sdiv(a, v, name="divmod.quot");
+            rem = b.srem(a, v, name="divmod.rem");
+            # Build a 2-element tuple (struct {i64, i64})
+            tuple_type = ir.LiteralStructType([i64, i64]);
+            null_ptr = ir.Constant(tuple_type.as_pointer(), None);
+            size_gep = b.gep(
+                null_ptr, [ir.Constant(ir.IntType(32), 1)], name="divmod.sizeof.gep"
+            );
+            size = b.ptrtoint(size_gep, i64, name="divmod.sizeof");
+            raw_ptr = b.call(p.rc_alloc_fn, [size], name="divmod.alloc");
+            tuple_ptr = b.bitcast(raw_ptr, tuple_type.as_pointer(), name="divmod.ptr");
+            # Store quotient and remainder
+            q_ptr = b.gep(
+                tuple_ptr,
+                [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                name="divmod.q.ptr"
+            );
+            r_ptr = b.gep(
+                tuple_ptr,
+                [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
+                name="divmod.r.ptr"
+            );
+            b.store(quot, q_ptr);
+            b.store(rem, r_ptr);
+            # Register the tuple type
+            tkey = f"Tuple.2.i64.i64";
+            if tkey not in p.tuple_types {
+                p.tuple_types[tkey] = tuple_type;
+            }
+            return tuple_ptr;
+        }
         return None;
     }
 
