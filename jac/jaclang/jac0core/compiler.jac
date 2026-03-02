@@ -155,19 +155,18 @@ def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [JacAutoLintPass];
 }
 
-"""Patch co_filename sentinel in marshal bytes and return patched bytes.
+"""Recursively replace a string in all co_filename fields of marshal bytes.
 
-Used to fix file paths in precompiled bundles: replaces the build-time sentinel
-with the actual install root before unmarshaling (avoids creating a code object
-just to call code.replace()).
+Used for precompiled bundles: call with (bc, sentinel, real_root) to expand
+sentinel paths at load time, or with (bc, real_root, sentinel) to embed
+sentinel paths at build time.  Returns raw_bc unchanged on any error.
 """
-def _patch_co_filenames_bytes(raw_bc: bytes, sentinel: str, real_root: str) -> bytes {
-    # Fast path: decode, patch filenames recursively, re-encode
+def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
     try {
         import types as _types;
         code = marshal.loads(raw_bc);
         def _patch(c: _types.CodeType) -> _types.CodeType {
-            new_filename = c.co_filename.replace(sentinel, real_root);
+            new_filename = c.co_filename.replace(find, replace);
             new_consts = tuple(
                 _patch(x) if isinstance(x, _types.CodeType) else x for x in c.co_consts
             );
@@ -704,7 +703,7 @@ class JacCompiler {
                             if flags_val & FLAG_PRECOMPILED {
                                 bc = read_bytecode_only(jir_data);
                                 if bc is not None {
-                                    return _patch_co_filenames_bytes(bc, sentinel, d);
+                                    return patch_co_filenames_bytes(bc, sentinel, d);
                                 }
                             }
                         }
@@ -713,7 +712,7 @@ class JacCompiler {
                     jbc_rel = os.path.splitext(rel_path)[0] + '.jbc';
                     jbc_path = os.path.join(d, '_precompiled', pyver, jbc_rel);
                     if os.path.isfile(jbc_path) {
-                        return _patch_co_filenames_bytes(
+                        return patch_co_filenames_bytes(
                             _Path(jbc_path).read_bytes(), sentinel, d
                         );
                     }

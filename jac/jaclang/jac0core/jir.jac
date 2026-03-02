@@ -8,9 +8,9 @@ File format:
   Header (32 bytes) -> String Pool -> Unified Node Stream -> Link Table -> Metadata
 
 Cache locations (platform-aware):
-  Linux:   ~/.cache/jac/typecheck/
-  macOS:   ~/Library/Caches/jac/typecheck/
-  Windows: %LOCALAPPDATA%/jac/cache/typecheck/
+  Linux:   ~/.cache/jac/jir/
+  macOS:   ~/Library/Caches/jac/jir/
+  Windows: %LOCALAPPDATA%/jac/cache/jir/
 """
 import hashlib;
 import os;

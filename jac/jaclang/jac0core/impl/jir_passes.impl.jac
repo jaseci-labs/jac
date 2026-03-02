@@ -389,6 +389,14 @@ impl JirReader.init(
 
 impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
+    try {
+        from
+        importlib.metadata
+        import version as _pkg_version;
+        _current_jac_hash = zlib.crc32(_pkg_version('jaclang').encode()) & 0xFFFFFFFF;
+    } except Exception {
+        _current_jac_hash = 0;
+    }
 
     if len(data) < HEADER_SIZE {
         return None;
@@ -412,6 +420,11 @@ impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
     }
 
     if magic != MAGIC or fmt_ver != FORMAT_VERSION {
+        return None;
+    }
+
+    # Reject JIR files built with a different jaclang version (node layout may differ)
+    if _current_jac_hash != 0 and jac_hash != _current_jac_hash {
         return None;
     }
 

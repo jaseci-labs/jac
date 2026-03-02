@@ -1,6 +1,6 @@
 """Precompile bytecode for a Jac package.
 
-Generates _precompiled/ directory with .jbc files for the current
+Generates _precompiled/ directory with .jir files for the current
 Python version.  Run once per Python version during CI/release.
 
 Usage:
@@ -24,6 +24,7 @@ import types;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_annex_files }
+import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
 import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
 
 # Sentinel string embedded in co_filename at build time.
@@ -157,22 +158,6 @@ def compile_and_extract(jac_path: str) -> bytes | None {
     return marshal.dumps(code);
 }
 
-"""Patch bytecode filenames: replace actual package root with sentinel."""
-def patch_to_sentinel(bytecode: bytes, package_root: str) -> bytes {
-    import types as _types;
-    code = marshal.loads(bytecode);
-
-    def _patch(c: _types.CodeType) -> _types.CodeType {
-        new_filename = c.co_filename.replace(package_root, SENTINEL);
-        new_consts = tuple(
-            _patch(x) if isinstance(x, _types.CodeType) else x for x in c.co_consts
-        );
-        return c.replace(co_filename=new_filename, co_consts=new_consts);
-    }
-
-    return marshal.dumps(_patch(code));
-}
-
 """Run the precompilation pipeline."""
 def main {
     args = sys.argv[1:];
@@ -231,7 +216,7 @@ def main {
             }
 
             # Patch filenames to use sentinel and wrap in JIR with FLAG_PRECOMPILED
-            patched = patch_to_sentinel(bytecode, package_dir);
+            patched = patch_co_filenames_bytes(bytecode, package_dir, SENTINEL);
             jir_bytes = write_precompiled_jir(patched, 0, FLAG_PRECOMPILED);
 
             # Write .jir file
