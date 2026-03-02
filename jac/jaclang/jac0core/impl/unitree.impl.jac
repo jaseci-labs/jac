@@ -368,7 +368,6 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
-    self.inherited_scope: list[InheritedSymbolTable] = [];
 }
 
 
