@@ -16,6 +16,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native `for k in dict[K,V]` Loop Body Elided**: Fixed `for k in d` over a dict function parameter emitting no loop IR - the dict/set parameter type was never registered in `var_dict_type`, causing `_codegen_for` to silently skip the body.
 - **Native Codegen: `del d[k]` and `d.remove(key)` for Dicts**: `del d[key]` and `d.remove(key)` now correctly remove entries from native dicts. Previously both operations were silently dropped, leaving the dict unchanged. Works for both `dict[int, int]` and object-value dicts (`dict[int, T]`).
 - **Fix: Native Cross-Module Struct Type Resolution**: Importing a user-defined `obj` from another `.na.jac` module and using it as a function parameter type no longer crashes the compiler. The importing module now walks the imported module's AST to fully register imported archetypes (struct layout, field types, field indices), and interop binding type strings resolve against both primitive types and struct types.
+- **Fix: IDE Hover Types for Comprehension Variables**: Iteration variables in comprehensions (`p` in `[x for p in pool]`, `any(... for p in pool)`) now display their inferred type on hover.
 
 ## jaclang 0.11.3 (Latest Release)
 
