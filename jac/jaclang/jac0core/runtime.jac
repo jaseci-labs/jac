@@ -1,6 +1,5 @@
 """Jac Language Features."""
 import fnmatch;
-import importlib;
 import html;
 import inspect;
 import json;
@@ -79,63 +78,6 @@ glob plugin_manager = plugin.PluginManager('jac'),
          (str, 'JsonValue')
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
-
-# Type resolution cache for arch_cls inheritance checking
-_arch_type_cache: dict[str, type] = {};
-
-"""Resolve a type from its module.qualname string.
-   Returns None if the type cannot be resolved."""
-def resolve_arch_type(arch_cls_str: str) -> type | None {
-    # Check cache first
-    if arch_cls_str in _arch_type_cache {
-        return _arch_type_cache[arch_cls_str];
-    }
-    
-    # Parse module and class name
-    parts = arch_cls_str.rsplit('.', 1);
-    if len(parts) != 2 {
-        raise ValueError(f"Invalid arch_cls format: {arch_cls_str}");
-    }
-    
-    module_name, class_name = parts;
-    
-    # Import module and get class
-    module = importlib.import_module(module_name);
-    cls = getattr(module, class_name, None);
-    
-    if cls is None {
-        raise AttributeError(f"Class {class_name} not found in module {module_name}");
-    }
-    
-    # Cache the resolved type
-    _arch_type_cache[arch_cls_str] = cls;
-    
-    # Also cache all parent classes for faster future checks
-    for base in cls.__mro__[1:] {
-        base_key = f"{base.__module__}.{base.__qualname__}";
-        if base_key not in _arch_type_cache {
-            _arch_type_cache[base_key] = base;
-        }
-    }
-    
-    return cls;
-}
-
-"""Check if arch_cls is compatible with target (handles inheritance)."""
-def is_arch_cls_compatible(arch_cls_str: str, target_cls_str: str) -> bool {
-    # Fast path: exact match
-    if arch_cls_str == target_cls_str {
-        return True;
-    }
-    
-    # Resolve types and check inheritance
-    arch_type = resolve_arch_type(arch_cls_str);
-    target_type = resolve_arch_type(target_cls_str);
-    
-    # Let exceptions propagate for now (as requested)
-    return issubclass(arch_type, target_type);
-}
-
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -306,24 +248,9 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[EdgeArchetype] {
         edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
-        _edge_type = destination.edge_type;
-        _node_type = destination.node_type;
-        _edge_type_key = f"{_edge_type.__module__}.{_edge_type.__qualname__}"
-        if _edge_type
-        else None;
-        _node_type_key = f"{_node_type.__module__}.{_node_type.__qualname__}"
-        if _node_type
-        else None;
         for nd in origin {
             nanch = nd.__jac__;
             for anchor in nanch.edges {
-                if (
-                    _edge_type_key
-                    and (ecls := anchor.__dict__.get('arch_cls'))
-                    and not is_arch_cls_compatible(ecls, _edge_type_key)
-                ) {
-                    continue;
-                }
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
@@ -334,11 +261,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
                         and (nanch == source)
-                        and (
-                            not _node_type_key
-                            or not (ncls := target.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(target.archetype)
                         and JacRuntimeInterface.check_read_access(target)
                     ) {
@@ -347,11 +269,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
                         and (nanch == target)
-                        and (
-                            not _node_type_key
-                            or not (ncls := source.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(source.archetype)
                         and JacRuntimeInterface.check_read_access(source)
                     ) {
@@ -370,24 +287,9 @@ class JacNode {
         from_visit: bool = False
     ) -> list[(EdgeArchetype | NodeArchetype)] {
         loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
-        _edge_type = destination.edge_type;
-        _node_type = destination.node_type;
-        _edge_type_key = f"{_edge_type.__module__}.{_edge_type.__qualname__}"
-        if _edge_type
-        else None;
-        _node_type_key = f"{_node_type.__module__}.{_node_type.__qualname__}"
-        if _node_type
-        else None;
         for nd in origin {
             nanch = nd.__jac__;
             for anchor in nanch.edges {
-                if (
-                    _edge_type_key
-                    and (ecls := anchor.__dict__.get('arch_cls'))
-                    and not is_arch_cls_compatible(ecls, _edge_type_key)
-                ) {
-                    continue;
-                }
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
@@ -398,11 +300,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
                         and (nanch == source)
-                        and (
-                            not _node_type_key
-                            or not (ncls := target.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(target.archetype)
                         and JacRuntimeInterface.check_read_access(target)
                     ) {
@@ -412,11 +309,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
                         and (nanch == target)
-                        and (
-                            not _node_type_key
-                            or not (ncls := source.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(source.archetype)
                         and JacRuntimeInterface.check_read_access(source)
                     ) {
@@ -434,24 +326,9 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
-        _edge_type = destination.edge_type;
-        _node_type = destination.node_type;
-        _edge_type_key = f"{_edge_type.__module__}.{_edge_type.__qualname__}"
-        if _edge_type
-        else None;
-        _node_type_key = f"{_node_type.__module__}.{_node_type.__qualname__}"
-        if _node_type
-        else None;
         for nd in origin {
             nanch = nd.__jac__;
             for anchor in nanch.edges {
-                if (
-                    _edge_type_key
-                    and (ecls := anchor.__dict__.get('arch_cls'))
-                    and not is_arch_cls_compatible(ecls, _edge_type_key)
-                ) {
-                    continue;
-                }
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
@@ -462,11 +339,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
                         and (nanch == source)
-                        and (
-                            not _node_type_key
-                            or not (ncls := target.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(target.archetype)
                         and JacRuntimeInterface.check_read_access(target)
                     ) {
@@ -475,11 +347,6 @@ class JacNode {
                     if (
                         (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
                         and (nanch == target)
-                        and (
-                            not _node_type_key
-                            or not (ncls := source.__dict__.get('arch_cls'))
-                            or not is_arch_cls_compatible(ncls, _node_type_key)
-                        )
                         and destination.node_filter(source.archetype)
                         and JacRuntimeInterface.check_read_access(source)
                     ) {
@@ -518,9 +385,9 @@ class JacWalker {
         `walker: WalkerArchetype,
         expr:
             (
-                list[
-                    (NodeArchetype | EdgeArchetype)
-                ] | list[NodeArchetype] | list[EdgeArchetype] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+                list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
+                    EdgeArchetype
+                ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
             ),
         insert_loc: int = -1
     ) -> bool {
@@ -534,8 +401,8 @@ class JacWalker {
             before_len = len(wanch.next);
             next = [];
             for anchor in (i.__jac__ for i in expr)
-                if isinstance(expr, `list)
-                else [expr.__jac__] {
+            if isinstance(expr, `list)
+            else [expr.__jac__] {
                 if (anchor not in wanch.ignores) {
                     if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
                         next.append(anchor);
@@ -988,8 +855,8 @@ class JacWalker {
             for i in items {
                 a = i.__jac__;
                 `walker.next.append(a)
-                    if isinstance(a, (NodeAnchor, EdgeAnchor))
-                    else None;
+                if isinstance(a, (NodeAnchor, EdgeAnchor))
+                else None;
                 if (isinstance(a, EdgeAnchor) and a.target) {
                     `walker.next.append(a.target);
                 }
@@ -1127,8 +994,8 @@ class JacBuiltin {
             edge_label = html.escape(str(`edge.__jac__.archetype));
             dot_content += (
                 f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} " + f' [label="{edge_label
-                    if "GenericEdge" not in edge_label
-                    else ""}"];\n'
+                if "GenericEdge" not in edge_label
+                else ""}"];\n'
             );
             if (('GenericEdge' in edge_label) or not edge_label.strip()) {
                 mermaid_content += (
@@ -1144,8 +1011,8 @@ class JacBuiltin {
         }
         for node_ in visited_nodes {
             color = colors[node_depths[node_]]
-                if (node_depths[node_] < 25)
-                else colors[24];
+            if (node_depths[node_] < 25)
+            else colors[24];
             label = html.escape(str(node_.__jac__.archetype));
             dot_content += (
                 f'{visited_nodes.index(node_)} [label="{label}"fillcolor="{color}"];\n'
@@ -1360,8 +1227,8 @@ system,
         _ = JacRuntime.get_program();
         if target.startswith('.') {
             caller_dir = base_path
-                if os.path.isdir(base_path)
-                else os.path.dirname(base_path);
+            if os.path.isdir(base_path)
+            else os.path.dirname(base_path);
             chomp_target = target;
             while chomp_target.startswith('.') {
                 if ((len(chomp_target) > 1) and (chomp_target[1] == '.')) {
@@ -1377,8 +1244,8 @@ system,
             module_name = target;
         }
         caller_dir = base_path
-            if os.path.isdir(base_path)
-            else os.path.dirname(base_path);
+        if os.path.isdir(base_path)
+        else os.path.dirname(base_path);
         original_path = None;
         if (caller_dir and (caller_dir not in sys.path)) {
             original_path = sys.path.copy();
@@ -1401,8 +1268,8 @@ system,
                     file_path = os.path.join(caller_dir, f"{module_name}.py");
                     if os.path.isfile(file_path) {
                         spec_name = '__main__'
-                            if (override_name == '__main__')
-                            else module_name;
+                        if (override_name == '__main__')
+                        else module_name;
                         spec = importlib.util.spec_from_file_location(
                             spec_name, file_path
                         );
@@ -1543,8 +1410,8 @@ system,
                     for file in files
                     if fnmatch.fnmatch(file, filter)
                 ]
-                    if filter
-                    else files;
+                if filter
+                else files;
                 files = [
                     file
                     for file in files
@@ -1711,8 +1578,8 @@ system,
                         and JacRuntimeInterface.check_connect_access(target)
                     ) {
                         JacRuntimeInterface.destroy([anchor])
-                            if anchor.persistent
-                            else JacRuntimeInterface.detach(anchor);
+                        if anchor.persistent
+                        else JacRuntimeInterface.detach(anchor);
                         disconnect_occurred = True;
                     }
                     if (
@@ -1722,8 +1589,8 @@ system,
                         and JacRuntimeInterface.check_connect_access(source)
                     ) {
                         JacRuntimeInterface.destroy([anchor])
-                            if anchor.persistent
-                            else JacRuntimeInterface.detach(anchor);
+                        if anchor.persistent
+                        else JacRuntimeInterface.detach(anchor);
                         disconnect_occurred = True;
                     }
                 }
@@ -1934,9 +1801,7 @@ class JacAPIServer {
     }
 
     """Create the API server instance."""
-    static def create_server(
-        jac_server: JacServer, host: str, port: int
-    ) -> HTTPServer {
+    static def create_server(jac_server: JacServer, host: str, port: int) -> HTTPServer {
         handler_class = jac_server.create_handler();
         return HTTPServer((host, port), handler_class);
     }
@@ -1948,7 +1813,7 @@ class JacAPIServer {
         args: dict[(str, Any)],
         username: str
     ) -> dict[(str, Any)] {
-        import from jaclang.runtimelib.serializer { Serializer }
+        import from jaclang.runtimelib.server { JacSerializer }
         introspector.load();
         available_exports = (
             `set(introspector._client_manifest.get('exports', []))
@@ -1962,17 +1827,16 @@ class JacAPIServer {
             introspector._client_manifest.get('params', {}).get(function_name, [])
         );
         globals_payload = {
-            name: Serializer.serialize(value, api_mode=True)
+            name: JacSerializer.serialize(value)
             for (name, value) in introspector._collect_client_globals().items()
         };
         initial_state = {
             'module': introspector._module.__name__
-                if introspector._module
-                else introspector.module_name,
+            if introspector._module
+            else introspector.module_name,
             'function': function_name,
             'args': {
-                key: Serializer.serialize(value, api_mode=True)
-                for (key, value) in args.items()
+                key: JacSerializer.serialize(value) for (key, value) in args.items()
             },
             'globals': globals_payload,
             'argOrder': arg_order,
@@ -2736,8 +2600,8 @@ class JacRuntime(JacRuntimeInterface) {
             JacRuntime.base_path_dir = None;
         } else {
             JacRuntime.base_path_dir = base_path
-                if os.path.isdir(base_path)
-                else os.path.dirname(base_path);
+            if os.path.isdir(base_path)
+            else os.path.dirname(base_path);
         }
     }
 

@@ -585,9 +585,7 @@ test "dynamic archetype creation" {
 }
 
 test "dynamic archetype creation rel import" {
-    lines = run_jac(
-        os.path.join(FIXTURES, "arch_rel_import_creation.jac")
-    ).strip().splitlines();
+    lines = run_jac(os.path.join(FIXTURES, "arch_rel_import_creation.jac")).strip().splitlines();
     for val in ["DynamicWalker Started", "UtilityNode Data: 42"] {
         assert val in lines;
     }
@@ -679,67 +677,4 @@ test "type aliases and modern generics" {
 test "operator precedence matches python" {
     output = run_jac(os.path.join(FIXTURES, "operator_precedence.jac"));
     assert "PASS" in output , f"Operator precedence test failed:\n{output}";
-}
-
-<<<<<<< HEAD
-# ── Tests for edge/node type filter short-circuit optimization ────────────────
-test "type filtered traversal correctness" {
-    output = run_jac(os.path.join(FIXTURES, "populate_shortcircuit.jac"));
-    assert "FUNCTIONAL_TESTS_PASSED" in output , f"Functional traversal tests failed:\n{output}";
-    assert "ALL_COUNT 4" in output;
-    assert "FOLLOW_COUNT 2" in output;
-    assert "FOLLOW_PROFILE_COUNT 2" in output;
-    assert "AUTHORED_COUNT 1" in output;
-    assert "POST_COUNT 1" in output;
-    assert "COMMENT_COUNT 1" in output;
-    assert "CHAINED_COUNT 1" in output;
-}
-
-test "populate short-circuit skips non-matching stubs" {
-    output = run_jac(os.path.join(FIXTURES, "populate_shortcircuit_mock.jac"));
-    assert "SHORTCIRCUIT_TESTS_PASSED" in output , f"Populate short-circuit tests failed:\n{output}";
-    # Verify non-matching stubs were NOT populated (exact 0)
-    assert "OWNS_POP_AFTER_LIKES 0" in output;
-    assert "LIKES_POP_AFTER_OWNS 0" in output;
-    # Verify matching stubs were populated exactly once
-    assert "LIKES_POP 1" in output;
-    assert "OWNS_POP2 1" in output;
-}
-
-test "inheritance respects subclass in type-filtered traversal on stubs" {
-    output = run_jac(os.path.join(FIXTURES, "inheritance_traversal.jac"));
-    assert "INHERITANCE_STUB_TESTS_PASSED" in output , f"Inheritance stub traversal tests failed:\n{output}";
-    # Edge inheritance: Follow filter must match CloseFriend (subclass of Follow) on stubs
-    assert "FOLLOW_EDGE_STUB_COUNT 2" in output;
-    # Node inheritance: Person filter must match VIPPerson (subclass of Person) on stubs
-    assert "PERSON_NODE_STUB_COUNT 2" in output;
-    # Derived filters should still work correctly on stubs
-    assert "CLOSEFRIEND_EDGE_STUB_COUNT 1" in output;
-    assert "VIP_NODE_STUB_COUNT 1" in output;
-=======
-"""Test that escape sequences like \\x1b, \\033, \\n, \\t are properly handled."""
-test "escape sequences in strings and fstrings" {
-    output = run_jac(os.path.join(FIXTURES, "escape_sequences.jac"));
-
-    # Test 1: hex \x1b in regular string → ESC (ord 27), 5 chars
-    assert "hex_escape_len:5" in output , f"Expected hex escape len 5, got: {output}";
-    assert "hex_escape_first_ord:27" in output , f"Expected ESC char (27), got: {output}";
-
-    # Test 2: octal \033 distinct parsing path → same ESC result
-    assert "octal_escape_len:5" in output , f"Expected octal escape len 5, got: {output}";
-    assert "octal_escape_first_ord:27" in output , f"Expected ESC char (27), got: {output}";
-
-    # Test 3: \x1b in f-string (JoinedStr AST node - different code path)
-    assert "fstring_hex_first_ord:27" in output , f"F-string hex escape failed: {output}";
-
-    # Test 5: standard escapes \n=10, \t=9, \r=13
-    assert "newline_ord:10" in output , f"Newline escape failed: {output}";
-    assert "tab_ord:9" in output , f"Tab escape failed: {output}";
-    assert "carriage_ord:13" in output , f"Carriage return escape failed: {output}";
-
-    # Test 7: escaped backslash \\x1b → literal \ (ord 92), NOT ESC
-    assert "escaped_backslash_first_ord:92" in output , f"Escaped backslash failed: {output}";
-
-    # Test 9: unicode \u001b → ESC (third distinct escape syntax)
-    assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
 }

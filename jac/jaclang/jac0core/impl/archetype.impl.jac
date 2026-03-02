@@ -54,18 +54,10 @@ impl ObjectSpatialPath.append(
     self: ObjectSpatialPath,
     direction: EdgeDir,
     `edge: ObjectSpatialFilter,
-    nd: ObjectSpatialFilter,
-    edge_type: (`type | None) = None,
-    node_type: (`type | None) = None
+    nd: ObjectSpatialFilter
 ) -> ObjectSpatialPath {
     self.destinations.append(
-        ObjectSpatialDestination(
-            direction,
-            self.convert(`edge),
-            self.convert(nd),
-            edge_type=edge_type,
-            node_type=node_type
-        )
+        ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd))
     );
     return self;
 }
@@ -74,37 +66,27 @@ impl ObjectSpatialPath.append(
 impl ObjectSpatialPath.edge_out(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    edge_type: (`type | None) = None,
-    node_type: (`type | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(
-        EdgeDir.OUT, `edge, nd, edge_type=edge_type, node_type=node_type
-    );
+    return self.append(EdgeDir.OUT, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_in(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    edge_type: (`type | None) = None,
-    node_type: (`type | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(EdgeDir.IN, `edge, nd, edge_type=edge_type, node_type=node_type);
+    return self.append(EdgeDir.IN, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_any(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    edge_type: (`type | None) = None,
-    node_type: (`type | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(
-        EdgeDir.ANY, `edge, nd, edge_type=edge_type, node_type=node_type
-    );
+    return self.append(EdgeDir.ANY, `edge, nd);
 }
 
 """Set edge only."""
@@ -149,8 +131,6 @@ impl Anchor.make_stub(self: Anchor) -> TANCH {
     if self.is_populated() {
         unloaded = object.__new__(self.__class__);
         unloaded.id = self.id;
-        cls = type(self.archetype);
-        unloaded.__dict__['arch_cls'] = f"{cls.__module__}.{cls.__qualname__}";
         return unloaded;
     }
     return self;
@@ -182,49 +162,28 @@ impl Anchor.__getattr__(self: Anchor, name: str) -> object {
     ) ;
 }
 
-"""Serialize Anchor.
-
-arch_cls is stored as a string (module.qualname) instead of a raw type
-to avoid cross-process pickle failures with classes defined in __main__.
-"""
+"""Serialize Anchor."""
 impl Anchor.__getstate__(self: Anchor) -> dict[(str, Any)] {
     if self.is_populated() {
         unlinked = object.__new__(self.archetype.__class__);
         unlinked.__dict__.update(self.archetype.__dict__);
         unlinked.__dict__.pop('__jac__', None);
-        cls = type(self.archetype);
         return {
             'id': self.id,
             'archetype': unlinked,
-            'arch_cls': f"{cls.__module__}.{cls.__qualname__}",
             'root': self.root,
             'access': self.access,
             'persistent': self.persistent
         };
     } else {
-        state: dict[(str, Any)] = {'id': self.id};
-        if ('arch_cls' in self.__dict__) {
-            state['arch_cls'] = self.__dict__['arch_cls'];
-        }
-        return state;
+        return {'id': self.id};
     }
 }
 
-"""Deserialize Anchor.
-
-Reconstructs arch_cls as a string key from the archetype if not already
-present (for backward compat with data pickled before this change).
-"""
+"""Deserialize Anchor."""
 impl Anchor.__setstate__(self: Anchor, state: dict[(str, Any)]) -> None {
     self.__dict__.update(state);
     if (self.is_populated() and self.archetype) {
-        if (
-            'arch_cls' not in self.__dict__
-            or not isinstance(self.__dict__.get('arch_cls'), str)
-        ) {
-            cls = type(self.archetype);
-            self.__dict__['arch_cls'] = f"{cls.__module__}.{cls.__qualname__}";
-        }
         self.archetype.__jac__ = self;
         self.hash = hash(dumps(self));
     }
@@ -251,10 +210,8 @@ impl Anchor.`report(self: Anchor) -> AnchorReport {
     return AnchorReport(
         id=self.id.hex,
         context=asdict(self.archetype)
-            if (
-                is_dataclass(self.archetype) and not isinstance(self.archetype, `type)
-            )
-            else {}
+        if (is_dataclass(self.archetype) and not isinstance(self.archetype, `type))
+        else {}
     );
 }
 
@@ -269,18 +226,6 @@ impl Anchor.__eq__(self: Anchor, other: object) -> bool {
         return ((self.__class__ is other.__class__) and (self.id == other.id));
     }
     return False;
-}
-
-"""Check if node anchor is fully populated (has edges)."""
-impl NodeAnchor.is_populated(self: NodeAnchor) -> bool {
-    d = self.__dict__;
-    return 'edges' in d and 'archetype' in d;
-}
-
-"""Check if edge anchor is fully populated (has source/target)."""
-impl EdgeAnchor.is_populated(self: EdgeAnchor) -> bool {
-    d = self.__dict__;
-    return 'source' in d and 'target' in d and 'archetype' in d;
 }
 
 """Serialize Node Anchor."""
@@ -319,9 +264,6 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
     if not cls.__dict__.get('__jac_base__', False) {
         import from jaclang { JacRuntimeInterface as _ }
         _.make_archetype(cls);
-        for hook in Archetype._subclass_hooks {
-            hook(cls);
-        }
     }
 }
 
