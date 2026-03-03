@@ -736,3 +736,112 @@ class BuiltinEmitter[V, C] {
     def emit_slice(self, ctx: C, args: list[V]) -> (V | None) abs;
     def emit_bytearray(self, ctx: C, args: list[V]) -> (V | None) abs;
 }
+
+# =============================================================================
+#  Exception Types
+# =============================================================================
+#
+# Canonical exception hierarchy. All backends must implement hierarchy-aware
+# type matching so that `except ArithmeticError` catches ZeroDivisionError,
+# OverflowError, and FloatingPointError.
+#
+#   BaseException
+#   ├── Exception
+#   │   ├── ArithmeticError
+#   │   │   ├── ZeroDivisionError
+#   │   │   ├── OverflowError
+#   │   │   └── FloatingPointError
+#   │   ├── LookupError
+#   │   │   ├── IndexError
+#   │   │   └── KeyError
+#   │   ├── ValueError
+#   │   │   └── UnicodeError
+#   │   │       ├── UnicodeDecodeError
+#   │   │       ├── UnicodeEncodeError
+#   │   │       └── UnicodeTranslateError
+#   │   ├── TypeError
+#   │   ├── AttributeError
+#   │   ├── RuntimeError
+#   │   │   ├── NotImplementedError
+#   │   │   └── RecursionError
+#   │   ├── OSError
+#   │   │   ├── FileNotFoundError
+#   │   │   ├── FileExistsError
+#   │   │   ├── PermissionError
+#   │   │   ├── TimeoutError
+#   │   │   ├── IsADirectoryError
+#   │   │   └── NotADirectoryError
+#   │   ├── AssertionError
+#   │   ├── ImportError
+#   │   │   └── ModuleNotFoundError
+#   │   ├── NameError
+#   │   │   └── UnboundLocalError
+#   │   ├── StopIteration
+#   │   ├── StopAsyncIteration
+#   │   ├── EOFError
+#   │   ├── MemoryError
+#   │   └── ReferenceError
+#   ├── KeyboardInterrupt
+#   ├── SystemExit
+#   └── GeneratorExit
+#
+# Each exception instance carries:
+#   - args: tuple          — constructor arguments
+#   - __cause__: Exc|None  — explicit chain (raise X from Y)
+#   - __context__: Exc|None — implicit chain (exception during handling)
+#   - __traceback__: object|None — backend-specific traceback
+#
+# Backend implementation notes:
+#   - NA (Native/LLVM): Extend the flat type-ID registry with a parent-ID
+#     table. emit_match walks up the parent chain instead of a single ==.
+#   - CL (Client/ES): Generate JS class hierarchy (class ValueError extends
+#     Error {}). Multi-handler dispatch becomes instanceof chains inside a
+#     single catch block.
+#   - SV (Server/Python): Maps directly to Python's built-in exception
+#     hierarchy. No additional work needed.
+#
+# =============================================================================
+class ExceptionEmitter[V, C] {
+    # --- Instance creation ---
+    # Create an exception instance of the given type. type_name identifies
+    # the exception class (e.g. "ValueError"). args holds constructor
+    # arguments (typically a single message string). Backends must map
+    # type_name to their internal representation (Python class, LLVM type
+    # ID, JS Error subclass).
+    def emit_create(self, ctx: C, type_name: str, args: list[V]) -> (V | None) abs;
+    # --- Hierarchy-aware type matching ---
+    # Test whether exc_obj is an instance of the exception type identified
+    # by type_name, respecting the hierarchy above. For example, matching
+    # against "LookupError" must return true for KeyError and IndexError
+    # instances. Returns a boolean-typed V.
+    def emit_match(self, ctx: C, exc_obj: V, type_name: str) -> (V | None) abs;
+    # --- Raise / reraise ---
+    # Raise exc_obj as the current exception. Control transfers to the
+    # nearest enclosing handler.
+    def emit_raise(self, ctx: C, exc_obj: V) -> (V | None) abs;
+    # Reraise the currently active exception (bare `raise` with no
+    # argument). Must be called only inside an except block.
+    def emit_reraise(self, ctx: C) -> (V | None) abs;
+    # Raise with explicit chaining: `raise X from Y`. Sets
+    # exc_obj.__cause__ to cause_obj before raising.
+    def emit_raise_from(self, ctx: C, exc_obj: V, cause_obj: V) -> (V | None) abs;
+    # --- Field access ---
+    # Get the exception message string (first element of args, or str(exc)).
+    def emit_get_message(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # Get the args tuple passed to the exception constructor.
+    def emit_get_args(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # Get __cause__ (explicit chaining via `raise ... from ...`).
+    def emit_get_cause(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # Get __context__ (implicit chaining — exception raised while handling
+    # another exception).
+    def emit_get_context(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # Get __traceback__ object (backend-specific representation).
+    def emit_get_traceback(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # --- Named methods ---
+    # Attach a traceback object: exc.with_traceback(tb).
+    def emit_with_traceback(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # String representation of the exception.
+    def emit_str(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+    # Repr representation (includes type name, e.g. "ValueError('msg')").
+    def emit_repr(self, ctx: C, target: V, args: list[V]) -> (V | None) abs;
+}

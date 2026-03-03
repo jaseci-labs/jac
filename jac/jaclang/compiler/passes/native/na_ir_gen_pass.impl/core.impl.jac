@@ -8,26 +8,30 @@ impl NaIRGenPass.init(
     self.func_symtab: dict[(str, ir.Function)] = {};
     self.local_vars: dict[(str, ir.AllocaInstr)] = {};
     self.has_native_code = False;
-    self.type_map: dict[(str, ir.Type)] = {
-        "int": ir.IntType(64),
-        "float": ir.DoubleType(),
-        "bool": ir.IntType(1),
-        "str": ir.IntType(8).as_pointer(),
-        # Fixed-width C-compatible integer types
+    # Build type_map from the centralized type registry
+    _spec_map: dict[str, ir.Type] = {
         "i8": ir.IntType(8),
-        "u8": ir.IntType(8),
         "i16": ir.IntType(16),
-        "u16": ir.IntType(16),
         "i32": ir.IntType(32),
-        "u32": ir.IntType(32),
         "i64": ir.IntType(64),
-        "u64": ir.IntType(64),
-        # Fixed-width C-compatible float types
         "f32": ir.FloatType(),
         "f64": ir.DoubleType(),
-        # C void pointer (opaque handle)
-        "c_void": ir.IntType(8).as_pointer()
+        "i1": ir.IntType(1),
+        "i8*": ir.IntType(8).as_pointer()
     };
+    self.type_map: dict[(str, ir.Type)] = {};
+    try {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+        for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
+            self.type_map[_name] = _spec_map[_spec];
+        }
+    } except ImportError {
+        # Bootstrap: type_registry not yet compiled; use inline defaults
+        self.type_map["int"] = _spec_map["i64"];
+        self.type_map["float"] = _spec_map["f64"];
+        self.type_map["bool"] = _spec_map["i1"];
+        self.type_map["str"] = _spec_map["i8*"];
+    }
     self._fmt_strings: dict[(str, ir.GlobalVariable)] = {};
     # External function cache (Phase 0)
     self.extern_funcs: dict[(str, ir.Function)] = {};
@@ -50,6 +54,7 @@ impl NaIRGenPass.init(
     self.struct_field_types: dict[(str, dict)] = {};
     self.struct_field_defaults: dict[(str, object)] = {};
     self.method_funcs: dict[(str, ir.Function)] = {};
+    self.method_ast_sigs: dict[(str, object)] = {};  # "Arch.method" → FuncSignature AST node
     self.type_var_map: dict[(str, str)] = {};
     # List support (Phase 4)
     self.list_types: dict[(str, object)] = {};  # elem_type_name → list struct type
@@ -120,6 +125,10 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self._process_clib_imports(self.ir_in);
     # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
     self._register_enums(self.ir_in);
+    # Pre-register archetype names as opaque struct types so globals can reference them
+    self._forward_declare_archetype_names(self.ir_in);
+    # Register struct types from imported .na.jac modules (must be after local forward-declares)
+    self._register_imported_struct_types();
     self._register_globals(self.ir_in);
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
@@ -175,6 +184,86 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     return self.ir_in;
 }
 
+# ─── Imported Struct Type Registration ────────────────────────
+"""Register struct types from imported .na.jac modules.
+
+Walks the current module's import statements, resolves each imported
+.na.jac module via the module hub, and registers any archetypes found
+in the imported module. This enables the importing module to use
+imported struct types in function signatures, instantiate them,
+and access their fields.
+"""
+impl NaIRGenPass._register_imported_struct_types -> None {
+    # Collect imports from top-level and inside na {} blocks
+    imports: list = [];
+    for stmt in self.ir_in.body {
+        if isinstance(stmt, uni.Import) {
+            imports.append(stmt);
+        } elif isinstance(stmt, uni.NativeBlock) {
+            for inner in stmt.body {
+                if isinstance(inner, uni.Import) {
+                    imports.append(inner);
+                }
+            }
+        }
+    }
+    # Track already-processed modules to avoid duplicates
+    processed_modules: set[str] = set();
+    for imp in imports {
+        if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+            continue;
+        }
+        # Skip clib imports (from "libname")
+        if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
+            continue;
+        }
+        try {
+            resolved_path = imp.from_loc.resolve_relative_path();
+        } except Exception {
+            continue;
+        }
+        if resolved_path in processed_modules {
+            continue;
+        }
+        processed_modules.add(resolved_path);
+        # Look up the imported module in the hub
+        if not (resolved_path in self.prog.mod.hub) {
+            continue;
+        }
+        imported_mod = self.prog.mod.hub[resolved_path];
+        # Walk the imported module for archetype definitions
+        for imp_stmt in imported_mod.body {
+            if isinstance(imp_stmt, uni.NativeBlock) {
+                for inner in imp_stmt.body {
+                    if isinstance(inner, uni.Archetype) {
+                        self._register_imported_archetype(inner);
+                    }
+                }
+            } elif isinstance(imp_stmt, uni.Archetype) {
+                if (
+                    isinstance(imp_stmt, uni.ContextAwareNode)
+                    and imp_stmt.code_context == CodeContext.NATIVE
+                ) {
+                    self._register_imported_archetype(imp_stmt);
+                }
+            }
+        }
+    }
+}
+
+"""Register a single imported archetype: create struct type and define field layout."""
+impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
+    aname = arch.name.value if arch.name else None;
+    if aname is None or aname in self.struct_types {
+        return;
+    }
+    # Create identified struct type
+    struct_type = self.llvm_module.context.get_identified_type(aname);
+    self.struct_types[aname] = struct_type;
+    # Define struct body with full field layout
+    self._codegen_archetype(arch);
+}
+
 # ─── C Library Import Processing ──────────────────────────────
 """Process import from "libname" { def ...; } statements.
 
@@ -196,7 +285,28 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         }
     }
     for stmt in imports {
+        # Recognize `import sys;` for native sys module support
         if not stmt.clib_decls {
+            if stmt.items {
+                for item in stmt.items {
+                    mod_name = None;
+                    if isinstance(item, uni.ModulePath) and item.path {
+                        parts = [];
+                        for p in item.path {
+                            parts.append(
+                                p.value if isinstance(p, uni.Name) else str(p)
+                            );
+                        }
+                        mod_name = ".".join(parts);
+                    }
+                    if mod_name == "sys" {
+                        if not self?._native_stdlib_modules {
+                            self._native_stdlib_modules: set[str] = set();
+                        }
+                        self._native_stdlib_modules.add("sys");
+                    }
+                }
+            }
             continue;
         }
         # Extract library path from from_loc
@@ -295,23 +405,15 @@ impl NaIRGenPass._ensure_emitters -> None {
     if self._native_emitters is not None {
         return;
     }
-    _pn = __import__(
-        "jaclang.compiler.passes.native.primitives_native",
-        fromlist=["NativeListEmitter"]
-    );
-    self._native_emitters = {
-        "int": _pn.NativeIntEmitter(),
-        "float": _pn.NativeFloatEmitter(),
-        "complex": _pn.NativeComplexEmitter(),
-        "str": _pn.NativeStrEmitter(),
-        "bytes": _pn.NativeBytesEmitter(),
-        "list": _pn.NativeListEmitter(),
-        "dict": _pn.NativeDictEmitter(),
-        "set": _pn.NativeSetEmitter(),
-        "frozenset": _pn.NativeFrozensetEmitter(),
-        "tuple": _pn.NativeTupleEmitter(),
-        "range": _pn.NativeRangeEmitter()
-    };
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import jaclang.compiler.passes.native.primitives_native as _pn;
+    self._native_emitters = {};
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pn, "Native" + _suffix, None);
+        if _ecls is not None {
+            self._native_emitters[_tn] = _ecls();
+        }
+    }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
     self._native_emit_ctx_class = _pn.NativeEmitCtx;
 }

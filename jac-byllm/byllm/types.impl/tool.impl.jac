@@ -24,10 +24,8 @@ impl Tool.__call__(*args: list, **kwargs: dict) -> object {
         return self.func(*args, **kwargs);
     } except Exception as e {
         # For the LLM if the tool failed, it'll see the error message
-        logger.exception(
-            "Tool execution failed"
-        );  # To prevent sensitive info leakage(generic message)
-        return "Tool error";
+        logger.exception("Tool execution failed");
+        return f"Tool error: {e}";
     }
 }
 
@@ -48,7 +46,13 @@ impl Tool.get_func_description(func: Callable) -> str {
 """Create a finish tool that validates and returns the final output."""
 impl Tool.make_finish_tool(resp_type: type) -> Tool {
     def finish_tool(final_output: object) -> object {
-        return TypeAdapter(resp_type).validate_python(final_output);
+        try {
+            return TypeAdapter(resp_type).validate_python(final_output);
+        } except Exception as e {
+            raise FinishToolError(
+                f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
+            ) ;
+        }
     }
     finish_tool.__annotations__["return"] = resp_type;
     finish_tool.__annotations__["final_output"] = resp_type;

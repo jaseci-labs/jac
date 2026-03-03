@@ -4,7 +4,7 @@ import asyncio;
 import os;
 import tempfile;
 
-import from lsprotocol.types {
+import from jaclang.lsp.types {
     DidChangeTextDocumentParams,
     DidOpenTextDocumentParams,
     DidSaveTextDocumentParams,
@@ -19,8 +19,8 @@ import from lsprotocol.types {
 
 import from jaclang.langserve.engine { JacLangServer }
 import from jaclang.langserve.server { formatting }
-import from jaclang.vendor.pygls.uris { from_fs_path }
-import from jaclang.vendor.pygls.workspace { Workspace }
+import from jaclang.lsp.uris { from_fs_path }
+import from jaclang.lsp.server { Workspace }
 
 # --- Utility functions inlined from utils.py ---
 """Create a temporary Jac file with optional initial content and return its path."""
@@ -45,7 +45,7 @@ def load_jac_template(template_file: str, code: str = "") -> str {
 def create_ls_with_workspace(file_path: str) -> tuple[str | None, JacLangServer] {
     ls = JacLangServer();
     uri = from_fs_path(file_path);
-    ls.lsp._workspace = Workspace(os.path.dirname(file_path), ls);
+    ls.lsp._workspace = Workspace(root_uri=from_fs_path(os.path.dirname(file_path)));
     return (uri, ls);
 }
 

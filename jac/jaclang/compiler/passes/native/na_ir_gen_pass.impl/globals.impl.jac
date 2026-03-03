@@ -34,6 +34,12 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             var_type: ir.Type = ir.IntType(64);  # Default to i64
             if assign.type_tag and assign.type_tag.tag {
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
+            } elif assign.value is not None {
+                # Infer type from initializer (e.g., glob game = Game())
+                inferred = self._infer_global_init_type(assign.value);
+                if inferred is not None {
+                    var_type = inferred;
+                }
             }
             # Create LLVM global variable
             global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
@@ -61,6 +67,35 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
         }
     }
+}
+
+"""Infer the LLVM type from an initializer AST node (e.g., Game() → Game*)."""
+impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None) {
+    # FuncCall whose target is a known archetype name → constructor
+    if isinstance(value_node, uni.FuncCall) {
+        call_name = self._get_name(value_node.target);
+        if call_name is not None and call_name in self.struct_types {
+            return self.struct_types[call_name].as_pointer();
+        }
+    }
+    # AtomTrailer that wraps a function call (e.g., Module.Type())
+    if isinstance(value_node, uni.AtomTrailer) {
+        target_name = self._get_name(value_node.target);
+        if target_name is not None and target_name in self.struct_types {
+            return self.struct_types[target_name].as_pointer();
+        }
+        # sys.argv → list[str] (list of pointer-sized elements)
+        right_name = self._get_name(value_node.right);
+        if target_name == "sys" and right_name == "argv" {
+            i8p = ir.IntType(8).as_pointer();
+            self._emit_list_helpers("ptr", i8p);
+            list_type = self.list_types.get("ptr");
+            if list_type is not None {
+                return list_type.as_pointer();
+            }
+        }
+    }
+    return None;
 }
 
 """Evaluate a constant expression for global variable initialization."""

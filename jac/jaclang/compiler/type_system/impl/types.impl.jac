@@ -211,13 +211,12 @@ impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list | None = None
 ) -> (Symbol | None) {
     for cls in self.shared.mro {
-        members = cls.shared.symbol_table.names_in_scope;
-        overloads = cls.shared.symbol_table.names_in_scope_overload;
-        if (member in members) {
-            if r_overloaded is not None and (member in overloads) {
-                r_overloaded.extend(overloads[member]);
+        all_syms = cls.shared.symbol_table.lookup_all(member, deep=False);
+        if all_syms {
+            if r_overloaded is not None and len(all_syms) > 1 {
+                r_overloaded.extend(all_syms[1:]);
             }
-            return members[member];
+            return all_syms[0];
         }
     }
     return None;

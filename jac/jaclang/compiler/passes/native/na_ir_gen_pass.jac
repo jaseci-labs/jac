@@ -54,6 +54,7 @@ obj NaIRGenPass(Transform) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
@@ -81,14 +82,22 @@ obj NaIRGenPass(Transform) {
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
+    def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _register_imported_struct_types -> None;
+    def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
+    def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_field_aug_assign(
+        target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
@@ -115,6 +124,7 @@ obj NaIRGenPass(Transform) {
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
     def _peel_list_type(type_node: (object | None)) -> tuple;
     def _get_list_elem_from_type_node(type_node: (object | None)) -> (str | None);
+    def _infer_compr_elem_struct(compr: object) -> (str | None);
     def _resolve_for_loop_elem_type(
         coll_name: (str | None), coll_node: (object | None)
     ) -> (ir.Type | None);
@@ -127,6 +137,9 @@ obj NaIRGenPass(Transform) {
 
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    # Native stdlib: sys module
+    def _emit_sys_argv -> (ir.Value | None);
+    def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples
@@ -202,6 +215,7 @@ obj NaIRGenPass(Transform) {
     # Phase 11: Global Variables
     def _register_globals(module: uni.Module) -> None;
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
+    def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
     def _codegen_const_expr(
         nd: uni.UniNode, target_type: ir.Type
     ) -> (ir.Constant | None);
@@ -250,6 +264,7 @@ obj NaIRGenPass(Transform) {
     def _emit_exc_raise_helper -> None;
     def _emit_runtime_raise(is_error: ir.Value, exc_type_name: str, msg: str) -> None;
     def _get_or_register_exc_type(exc_name: str) -> int;
+    def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _codegen_try(nd: uni.TryStmt) -> None;
     # Phase 15: File I/O

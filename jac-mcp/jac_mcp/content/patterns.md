@@ -7,7 +7,7 @@ Complete, working code examples showing correct Jac patterns.
 ```jac
 """A simple greeting module."""
 
-can greet(name: str) -> str {
+def greet(name: str) -> str {
     return f"Hello, {name}!";
 }
 
@@ -27,11 +27,11 @@ obj Person {
         age: int,
         email: str = "";
 
-    can greet -> str {
+    def greet() -> str {
         return f"Hi, I'm {self.name}, age {self.age}";
     }
 
-    can is_adult -> bool {
+    def is_adult() -> bool {
         return self.age >= 18;
     }
 }
@@ -53,11 +53,11 @@ Declaration file (`calculator.jac`):
 obj Calculator {
     has result: float = 0.0;
 
-    can add(x: float) -> float;
-    can subtract(x: float) -> float;
-    can multiply(x: float) -> float;
-    can reset -> None;
-    can get_result -> float;
+    def add(x: float) -> float;
+    def subtract(x: float) -> float;
+    def multiply(x: float) -> float;
+    def reset() -> None;
+    def get_result() -> float;
 }
 ```
 
@@ -81,11 +81,11 @@ impl Calculator.multiply(x: float) -> float {
     return self.result;
 }
 
-impl Calculator.reset -> None {
+impl Calculator.reset() -> None {
     self.result = 0.0;
 }
 
-impl Calculator.get_result -> float {
+impl Calculator.get_result() -> float {
     return self.result;
 }
 ```
@@ -166,7 +166,7 @@ import from byllm.llm { Model }
 glob model = Model(model_name="openai/gpt-4o-mini");
 
 """Summarize text using LLM."""
-can summarize(text: str) -> str by model(
+def summarize(text: str) -> str by model(
     reason="Summarize the given text in 2-3 sentences"
 );
 
@@ -177,7 +177,7 @@ enum Sentiment {
     NEUTRAL
 }
 
-can classify_sentiment(text: str) -> Sentiment by model(
+def classify_sentiment(text: str) -> Sentiment by model(
     reason="Classify the sentiment of the text"
 );
 
@@ -255,7 +255,7 @@ enum Direction {
     WEST
 }
 
-can describe_color(c: Color) -> str {
+def describe_color(c: Color) -> str {
     return f"The color is {c.value}";
 }
 
@@ -269,20 +269,16 @@ with entry {
 ```jac
 """Pattern matching in Jac."""
 
-can describe_value(x: object) -> str {
+def describe_value(x: object) -> str {
     match x {
-        case int() {
+        case int():
             return f"Integer: {x}";
-        }
-        case str() {
+        case str():
             return f"String: {x}";
-        }
-        case list() {
+        case list():
             return f"List with {len(x)} items";
-        }
-        case _ {
+        case _:
             return "Unknown type";
-        }
     }
 }
 
@@ -315,7 +311,7 @@ class MyPlugin {
 """Async operations in Jac."""
 import asyncio;
 
-async can fetch_data(url: str) -> str {
+async def fetch_data(url: str) -> str {
     # Simulate async fetch
     await asyncio.sleep(0.1);
     return f"Data from {url}";

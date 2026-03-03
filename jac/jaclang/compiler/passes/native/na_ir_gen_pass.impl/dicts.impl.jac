@@ -453,6 +453,27 @@ impl NaIRGenPass._emit_dict_helpers(
     key_elem_ptr = b.gep(keys_arr_gk, [idx_arg_gk], name="key.elem.ptr");
     key_result = b.load(key_elem_ptr, name="key.result");
     b.ret(key_result);
+    # --- __dict_get_val: return val at index i (for .items() iteration) ---
+    get_val_fnty = ir.FunctionType(val_type, [dict_ptr_type, i64]);
+    get_val_fn = ir.Function(
+        self.llvm_module,
+        get_val_fnty,
+        name=f"__dict_get_val_{key_type_name}_{val_type_name}"
+    );
+    get_val_fn.linkage = "private";
+    get_val_fn.args[0].name = "dict";
+    get_val_fn.args[1].name = "idx";
+    bb_gv = get_val_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb_gv);
+    d_arg_gv = get_val_fn.args[0];
+    idx_arg_gv = get_val_fn.args[1];
+    vals_ptr_gv = b.gep(
+        d_arg_gv, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="vals.ptr"
+    );
+    vals_arr_gv = b.load(vals_ptr_gv, name="vals");
+    val_elem_ptr = b.gep(vals_arr_gv, [idx_arg_gv], name="val.elem.ptr");
+    val_result = b.load(val_elem_ptr, name="val.result");
+    b.ret(val_result);
     # --- __rc_release_dict_K_V: type-specific destructor ---
     release_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
     release_fn = ir.Function(
@@ -583,15 +604,20 @@ impl NaIRGenPass._emit_dict_helpers(
         "len": len_fn,
         "contains": contains_fn,
         "get_key": get_key_fn,
+        "get_val": get_val_fn,
         "key_type": key_type,
         "val_type": val_type
     };
 }
 
-"""Box any value (int, float, str) into a JacVal tagged union {i8 tag, i64 payload}.
+"""Box any value into a JacVal tagged union {i8 tag, i64 payload}.
 
-Tag 0 = int (i64 stored directly), Tag 1 = float (f64 bitcast to i64),
-Tag 2 = str/ptr (pointer ptrtoint to i64).
+Tag 0 = int (i64 stored directly)
+Tag 1 = float (f64 bitcast to i64)
+Tag 2 = str (i8* ptrtoint to i64)
+Tag 3 = list pointer (any List.T* ptrtoint to i64)
+Tag 4 = dict pointer (any Dict.K:V* ptrtoint to i64)
+Tag 5 = set pointer  (any Set.T* ptrtoint to i64)
 """
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     b = self.builder;
@@ -605,24 +631,54 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     payload_ptr = b.gep(
         jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
     );
-    if isinstance(value.type, ir.IntType) and value.type.width == 64 {
+    if isinstance(value.type, ir.IntType) and value.type.width == 1 {
+        # bool (i1) → box as int (tag 0) via zero-extension
         b.store(ir.Constant(i8, 0), tag_ptr);
-        b.store(value, payload_ptr);
+        ext = b.zext(value, i64, name="jv.bext");
+        b.store(ext, payload_ptr);
+    } elif isinstance(value.type, ir.IntType) {
+        # Any integer width → zero/sign-extend to i64, tag 0
+        b.store(ir.Constant(i8, 0), tag_ptr);
+        if value.type.width == 64 {
+            b.store(value, payload_ptr);
+        } else {
+            b.store(b.zext(value, i64, name="jv.iext"), payload_ptr);
+        }
     } elif isinstance(value.type, ir.DoubleType) {
+        # float → bitcast f64 to i64, tag 1
         b.store(ir.Constant(i8, 1), tag_ptr);
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        b.store(ir.Constant(i8, 2), tag_ptr);
+        # Determine whether this is a list, dict, set, or plain string pointer.
+        ptr_tag = 2;  # default: str (tag 2)
+        for (_, ltype) in self.list_types.items() {
+            if value.type == ltype.as_pointer() {
+                ptr_tag = 3;
+                break;
+            }
+        }
+        if ptr_tag == 2 {
+            for (_, dtype) in self.dict_types.items() {
+                if value.type == dtype.as_pointer() {
+                    ptr_tag = 4;
+                    break;
+                }
+            }
+        }
+        if ptr_tag == 2 {
+            for (_, stype) in self.set_types.items() {
+                if value.type == stype.as_pointer() {
+                    ptr_tag = 5;
+                    break;
+                }
+            }
+        }
+        b.store(ir.Constant(i8, ptr_tag), tag_ptr);
         payload = b.ptrtoint(value, i64, name="jv.p2i");
         b.store(payload, payload_ptr);
-    } elif isinstance(value.type, ir.IntType) and value.type.width == 1 {
-        # bool → box as int (tag 0)
-        b.store(ir.Constant(i8, 0), tag_ptr);
-        ext = b.zext(value, i64, name="jv.bext");
-        b.store(ext, payload_ptr);
     } else {
-        # Fallback: try storing as i64
+        # Unknown type: store zero int
         b.store(ir.Constant(i8, 0), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     }

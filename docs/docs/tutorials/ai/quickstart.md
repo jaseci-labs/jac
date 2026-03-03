@@ -56,7 +56,7 @@ with entry {
 Run it:
 
 ```bash
-jac hello_ai.jac
+jac run hello_ai.jac
 ```
 
 **Output:**
@@ -312,6 +312,9 @@ test "translate" {
     assert result == "Mocked response 1";
 }
 ```
+
+!!! tip "Running Tests"
+    Run with: `jac test <filename>.jac`
 
 ---
 

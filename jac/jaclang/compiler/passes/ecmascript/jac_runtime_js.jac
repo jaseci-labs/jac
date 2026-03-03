@@ -40,7 +40,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 
   float: {
     as_integer_ratio(f) {
-      if (!isFinite(f)) throw new Error("cannot convert " + f + " to integer ratio");
+      if (!isFinite(f)) throw new _jac.exc.ValueError("cannot convert " + f + " to integer ratio");
       if (f === 0) return [0, 1];
       let num = f, den = 1;
       while (num !== Math.floor(num)) { num *= 2; den *= 2; }
@@ -120,12 +120,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     },
     index(s, sub, start, end) {
       const idx = _jac.str.find(s, sub, start, end);
-      if (idx === -1) throw new Error("substring not found");
+      if (idx === -1) throw new _jac.exc.ValueError("substring not found");
       return idx;
     },
     rindex(s, sub, start, end) {
       const idx = _jac.str.rfind(s, sub, start, end);
-      if (idx === -1) throw new Error("substring not found");
+      if (idx === -1) throw new _jac.exc.ValueError("substring not found");
       return idx;
     },
     startswith(s, prefix, start, end) {
@@ -293,7 +293,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   list: {
     remove(arr, val) {
       const i = arr.indexOf(val);
-      if (i === -1) throw new Error("list.remove(x): x not in list");
+      if (i === -1) throw new _jac.exc.ValueError("list.remove(x): x not in list");
       arr.splice(i, 1);
     },
     index(arr, val, start, end) {
@@ -302,7 +302,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       for (let i = s; i < e; i++) {
         if (arr[i] === val) return i;
       }
-      throw new Error(val + " is not in list");
+      throw new _jac.exc.ValueError(val + " is not in list");
     },
     count(arr, val) {
       let c = 0;
@@ -347,11 +347,11 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     pop(d, key, default_) {
       if (key in d) { const v = d[key]; delete d[key]; return v; }
       if (default_ !== undefined) return default_;
-      throw new Error("KeyError: " + key);
+      throw new _jac.exc.KeyError("KeyError: " + key);
     },
     popitem(d) {
       const keys = Object.keys(d);
-      if (keys.length === 0) throw new Error("dictionary is empty");
+      if (keys.length === 0) throw new _jac.exc.KeyError("dictionary is empty");
       const key = keys[keys.length - 1];
       const val = d[key];
       delete d[key];
@@ -388,11 +388,11 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 
   set: {
     remove(s, val) {
-      if (!s.has(val)) throw new Error("KeyError: " + val);
+      if (!s.has(val)) throw new _jac.exc.KeyError("KeyError: " + val);
       s.delete(val);
     },
     pop(s) {
-      if (s.size === 0) throw new Error("pop from an empty set");
+      if (s.size === 0) throw new _jac.exc.KeyError("pop from an empty set");
       const val = s.values().next().value;
       s.delete(val);
       return val;
@@ -500,12 +500,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     rfind(b, sub, start, end) { return _jac.bytes._lastIndexOf(b, sub, start, end); },
     index(b, sub, start, end) {
       const idx = _jac.bytes._indexOf(b, sub, start, end);
-      if (idx === -1) throw new Error("substring not found");
+      if (idx === -1) throw new _jac.exc.ValueError("substring not found");
       return idx;
     },
     rindex(b, sub, start, end) {
       const idx = _jac.bytes._lastIndexOf(b, sub, start, end);
-      if (idx === -1) throw new Error("substring not found");
+      if (idx === -1) throw new _jac.exc.ValueError("substring not found");
       return idx;
     },
     startswith(b, prefix, start, end) {
@@ -833,7 +833,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     index(r, val) {
       let i = 0;
       for (const v of r) { if (v === val) return i; i++; }
-      throw new Error(val + " is not in range");
+      throw new _jac.exc.ValueError(val + " is not in range");
     },
     eq(a, b) {
       if (a.length !== b.length) return false;
@@ -928,7 +928,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       const result = iter.next();
       if (result.done) {
         if (default_ !== undefined) return default_;
-        throw new Error("StopIteration");
+        throw new _jac.exc.StopIteration("StopIteration");
       }
       return result.value;
     },
@@ -944,7 +944,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (o === undefined) return [];
       return Object.getOwnPropertyNames(o).sort();
     },
-    open() { throw new Error("open() is not supported in client-side JavaScript"); },
+    open() { throw new _jac.exc.OSError("open() is not supported in client-side JavaScript"); },
     format(value, format_spec) {
       if (!format_spec) return String(value);
       return String(value);
@@ -977,7 +977,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (args.length === 1) { start = 0; stop = args[0]; step = 1; }
       else if (args.length === 2) { start = args[0]; stop = args[1]; step = 1; }
       else { start = args[0]; stop = args[1]; step = args[2]; }
-      if (step === 0) throw new Error("range() arg 3 must not be zero");
+      if (step === 0) throw new _jac.exc.ValueError("range() arg 3 must not be zero");
       const result = [];
       if (step > 0) { for (let i = start; i < stop; i += step) result.push(i); }
       else { for (let i = start; i > stop; i += step) result.push(i); }
@@ -1029,5 +1029,57 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       }
       return s;
     }
-  }
+  },
+
+  exc: (() => {
+    class BaseException extends Error { constructor(m) { super(m); this.name = 'BaseException'; } }
+    class Exception extends BaseException { constructor(m) { super(m); this.name = 'Exception'; } }
+    class ArithmeticError extends Exception { constructor(m) { super(m); this.name = 'ArithmeticError'; } }
+    class ZeroDivisionError extends ArithmeticError { constructor(m) { super(m); this.name = 'ZeroDivisionError'; } }
+    class OverflowError extends ArithmeticError { constructor(m) { super(m); this.name = 'OverflowError'; } }
+    class FloatingPointError extends ArithmeticError { constructor(m) { super(m); this.name = 'FloatingPointError'; } }
+    class LookupError extends Exception { constructor(m) { super(m); this.name = 'LookupError'; } }
+    class IndexError extends LookupError { constructor(m) { super(m); this.name = 'IndexError'; } }
+    class KeyError extends LookupError { constructor(m) { super(m); this.name = 'KeyError'; } }
+    class ValueError extends Exception { constructor(m) { super(m); this.name = 'ValueError'; } }
+    class TypeError_ extends Exception { constructor(m) { super(m); this.name = 'TypeError'; } }
+    class AttributeError extends Exception { constructor(m) { super(m); this.name = 'AttributeError'; } }
+    class RuntimeError extends Exception { constructor(m) { super(m); this.name = 'RuntimeError'; } }
+    class NotImplementedError extends RuntimeError { constructor(m) { super(m); this.name = 'NotImplementedError'; } }
+    class RecursionError extends RuntimeError { constructor(m) { super(m); this.name = 'RecursionError'; } }
+    class OSError extends Exception { constructor(m) { super(m); this.name = 'OSError'; } }
+    class FileNotFoundError extends OSError { constructor(m) { super(m); this.name = 'FileNotFoundError'; } }
+    class FileExistsError extends OSError { constructor(m) { super(m); this.name = 'FileExistsError'; } }
+    class PermissionError extends OSError { constructor(m) { super(m); this.name = 'PermissionError'; } }
+    class TimeoutError extends OSError { constructor(m) { super(m); this.name = 'TimeoutError'; } }
+    class IsADirectoryError extends OSError { constructor(m) { super(m); this.name = 'IsADirectoryError'; } }
+    class NotADirectoryError extends OSError { constructor(m) { super(m); this.name = 'NotADirectoryError'; } }
+    class AssertionError extends Exception { constructor(m) { super(m); this.name = 'AssertionError'; } }
+    class ImportError extends Exception { constructor(m) { super(m); this.name = 'ImportError'; } }
+    class ModuleNotFoundError extends ImportError { constructor(m) { super(m); this.name = 'ModuleNotFoundError'; } }
+    class NameError extends Exception { constructor(m) { super(m); this.name = 'NameError'; } }
+    class UnboundLocalError extends NameError { constructor(m) { super(m); this.name = 'UnboundLocalError'; } }
+    class StopIteration extends Exception { constructor(m) { super(m); this.name = 'StopIteration'; } }
+    class StopAsyncIteration extends Exception { constructor(m) { super(m); this.name = 'StopAsyncIteration'; } }
+    class EOFError extends Exception { constructor(m) { super(m); this.name = 'EOFError'; } }
+    class MemoryError extends Exception { constructor(m) { super(m); this.name = 'MemoryError'; } }
+    class ReferenceError_ extends Exception { constructor(m) { super(m); this.name = 'ReferenceError'; } }
+    class KeyboardInterrupt extends BaseException { constructor(m) { super(m); this.name = 'KeyboardInterrupt'; } }
+    class SystemExit extends BaseException { constructor(m) { super(m); this.name = 'SystemExit'; } }
+    class GeneratorExit extends BaseException { constructor(m) { super(m); this.name = 'GeneratorExit'; } }
+    return {
+      BaseException, Exception,
+      ArithmeticError, ZeroDivisionError, OverflowError, FloatingPointError,
+      LookupError, IndexError, KeyError,
+      ValueError, TypeError: TypeError_, AttributeError,
+      RuntimeError, NotImplementedError, RecursionError,
+      OSError, FileNotFoundError, FileExistsError, PermissionError,
+      TimeoutError, IsADirectoryError, NotADirectoryError,
+      AssertionError, ImportError, ModuleNotFoundError,
+      NameError, UnboundLocalError,
+      StopIteration, StopAsyncIteration, EOFError, MemoryError,
+      ReferenceError: ReferenceError_,
+      KeyboardInterrupt, SystemExit, GeneratorExit
+    };
+  })()
 }""";

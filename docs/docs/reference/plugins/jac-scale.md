@@ -49,7 +49,7 @@ jac start app.jac --port 3000
 jac start app.jac --dev
 
 # API only -- skip client bundling
-jac start app.jac --dev --no-client
+jac start app.jac --dev --no_client
 
 # Preview generated API endpoints without starting
 jac start app.jac --faux

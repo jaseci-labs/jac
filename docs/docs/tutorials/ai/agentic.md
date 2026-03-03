@@ -245,7 +245,12 @@ def search_documents(query: str, docs: list) -> list {
     }
     return results;
 }
+```
 
+!!! warning "Graph Persistence"
+    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
+
+```jac
 walker DocumentAgent {
     has query: str;
 

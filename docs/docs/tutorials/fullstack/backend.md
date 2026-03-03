@@ -244,7 +244,7 @@ cl {
                 <input
                     value={new_title}
                     onChange={lambda e: any -> None { new_title = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onKeyDown={lambda e: any -> None {
                         if e.key == "Enter" { handle_add(); }
                     }}
                     placeholder="New task..."
@@ -502,7 +502,7 @@ cl {
                 <input
                     value={input_text}
                     onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onKeyDown={lambda e: any -> None {
                         if e.key == "Enter" { add(); }
                     }}
                     placeholder="Add a task..."
