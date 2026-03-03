@@ -179,7 +179,6 @@ Defaults for `jac check`:
 ```toml
 [check]
 print_errs = true   # Print errors to console
-warnonly = false     # Treat errors as warnings
 ```
 
 #### [check.lint]
@@ -493,10 +492,10 @@ Most settings can be overridden via CLI flags:
 
 ```bash
 # Override run settings
-jac run --no-cache --session my_session main.jac
+jac run --no-cache main.jac
 
 # Override test settings
-jac test --verbose --fail-fast
+jac test --verbose -x
 
 # Override serve settings
 jac start --port 3000

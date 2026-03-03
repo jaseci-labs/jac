@@ -23,6 +23,13 @@ glob registry = get_registry();
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
         Arg.create(
+            "autonative",
+            typ=bool,
+            default=False,
+            help="Auto-promote compatible modules to native execution (experimental)",
+            short="N"
+        ),
+        Arg.create(
             "profile",
             default="",
             short="",
@@ -36,13 +43,20 @@ glob registry = get_registry();
     examples=[
         ("jac run hello.jac", "Run a simple program"),
         ("jac run --no-cache app.jac", "Run without caching"),
+        ("jac run --autonative app.jac", "Run with native auto-promotion"),
         ("jac run --profile prod app.jac", "Run with production profile"),
         ("jac run script.jac arg1 arg2", "Run with script arguments"),
 
     ],
     group="execution"
 )
-def run(filename: str, main: bool = True, cache: bool = True, args: list = []) -> int;
+def run(
+    filename: str,
+    main: bool = True,
+    cache: bool = True,
+    autonative: bool = False,
+    args: list = []
+) -> int;
 
 """Run the specified entrypoint function in the given .jac file."""
 @registry.command(

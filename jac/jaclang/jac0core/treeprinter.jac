@@ -206,7 +206,8 @@ def print_ast_tree(
             if (isinstance(nd, AstSymbolNode) and nd.type_sym_tab)
             else 'SymbolTable: None' if isinstance(nd, AstSymbolNode) else '';
         if (isinstance(nd, Token) and isinstance(nd, AstSymbolNode)) {
-            out = f"{nd.__class__.__name__} - {nd.value} - Type: {nd.expr_type}, {access} {sym_table_link}";
+            type_str = str(nd.type) if (isinstance(nd, uni.Expr) and nd.type) else '';
+            out = f"{nd.__class__.__name__} - {nd.value} - Type: {type_str}, {access} {sym_table_link}";
             return out;
         } elif isinstance(nd, Token) {
             return f"{nd.__class__.__name__} - {nd.value}, {access}";
@@ -226,10 +227,18 @@ def print_ast_tree(
             )} - abs_path: {nd.abs_path}";
             return out;
         } elif isinstance(nd, AstSymbolNode) {
-            out = f"{nd.__class__.__name__} - {nd.sym_name} - Type: {nd.expr_type}, {access} {sym_table_link}";
+            type_str = str(nd.name_spec.type)
+                if (
+                    nd?.name_spec
+                    and isinstance(nd.name_spec, uni.Expr)
+                    and nd.name_spec.type
+                )
+                else '';
+            out = f"{nd.__class__.__name__} - {nd.sym_name} - Type: {type_str}, {access} {sym_table_link}";
             return out;
         } elif isinstance(nd, uni.Expr) {
-            return f"{nd.__class__.__name__} - Type: {nd.expr_type}";
+            type_str = str(nd.type) if nd.type else '';
+            return f"{nd.__class__.__name__} - Type: {type_str}";
         } else {
             return f"{nd.__class__.__name__}, {access}";
         }

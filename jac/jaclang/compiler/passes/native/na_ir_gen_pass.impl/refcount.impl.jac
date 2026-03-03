@@ -165,8 +165,14 @@ impl NaIRGenPass._emit_rc_release_simple(ptr: ir.Value) -> None {
 
 Dispatches to per-type destructors for containers and structs,
 falls back to rc_release_simple for strings and unknown pointer types.
+
+NOTE: Currently disabled (early return). Without full retain-on-store
+semantics, releasing locals/containers at scope exit causes use-after-free
+when pointers are shared (e.g. Move.from_pos = Piece.pos). All allocations
+leak until proper retain/release balancing is implemented.
 """
 impl NaIRGenPass._emit_rc_release_typed(val: ir.Value) -> None {
+    return;
     if not isinstance(val.type, ir.PointerType) {
         return;
     }
@@ -312,10 +318,6 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
                     name=f"field.{fname}.ptr"
                 );
                 field_val = b.load(field_ptr, name=f"field.{fname}.val");
-                # Use rc_release_simple for all child pointers
-                # (type-specific child release would require the child destructors
-                # to be emitted first, which creates ordering issues; simple release
-                # handles the common case of strings and flat objects)
                 b.call(
                     self.rc_release_simple_fn,
                     [b.bitcast(field_val, i8_ptr, name=f"field.{fname}.cast")]

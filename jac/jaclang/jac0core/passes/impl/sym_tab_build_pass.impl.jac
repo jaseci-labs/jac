@@ -81,9 +81,11 @@ impl SymTabBuildPass.enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) 
 impl SymTabBuildPass.exit_global_vars(
     self: SymTabBuildPass, nd: uni.GlobalVars
 ) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.assignments {
         for j in i.target {
             if isinstance(j, uni.AstSymbolNode) {
+                j.name_spec._sym_category = SymbolType.MOD_VAR;
                 j.sym_tab.def_insert(j, access_spec=nd, single_decl='global var');
             } else {
                 self.ice('Expected name type for global vars');
@@ -93,6 +95,7 @@ impl SymTabBuildPass.exit_global_vars(
 }
 
 impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
@@ -111,13 +114,21 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
             ) {
                 outer.add_use(i.name_spec);
             } else {
+                # Tag enum members with the correct sym_category
+                if isinstance(i.sym_tab, uni.Enum) {
+                    i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
+                }
                 i.sym_tab.def_insert(i, single_decl='local var');
             }
         }
     }
 }
 
-"""Handle walrus operator (:=) assignments."""
+"""Handle walrus operator (:=) assignments.
+
+Walrus variables are scoped to the enclosing function, not the local block.
+This matches Python semantics where `if (x := expr):` defines x in the function scope.
+"""
 impl SymTabBuildPass.exit_binary_expr(
     self: SymTabBuildPass, nd: uni.BinaryExpr
 ) -> None {
@@ -126,8 +137,14 @@ impl SymTabBuildPass.exit_binary_expr(
         return;
     }
     if isinstance(nd.left, uni.Name) {
-        if ((sym := nd.left.sym_tab.lookup(nd.left.sym_name, deep=False)) is None) {
-            nd.left.sym_tab.def_insert(nd.left, single_decl='walrus var');
+        # Find enclosing function scope for walrus variable
+        # (walrus vars scope to function, not local block)
+        target_scope = nd.left.sym_tab;
+        if func := nd.find_parent_of_type(uni.Ability) {
+            target_scope = func.sym_tab;
+        }
+        if ((sym := target_scope.lookup(nd.left.sym_name, deep=False)) is None) {
+            target_scope.def_insert(nd.left, single_decl='walrus var');
         } else {
             sym.add_use(nd.left.name_spec);
         }
@@ -142,7 +159,9 @@ impl SymTabBuildPass.enter_test(self: SymTabBuildPass, nd: uni.Test) -> None {
         for j in dir(unittest.TestCase())
         if j.startswith('assert')
     ] {
-        nd.sym_tab.def_insert(uni.Name.gen_stub_from_node(nd, i, set_name_of=nd));
+        nd.sym_tab.def_insert(
+            uni.Name.gen_stub_from_node(nd, i, set_name_of=nd), imported=True
+        );
     }
 }
 
@@ -542,6 +561,18 @@ impl SymTabBuildPass.enter_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) 
 }
 
 impl SymTabBuildPass.exit_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -> None {
+    self.pop_scope();
+}
+
+impl SymTabBuildPass.enter_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
     self.pop_scope();
 }
 

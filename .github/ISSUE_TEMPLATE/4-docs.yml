@@ -1,0 +1,81 @@
+name: "Documentation"
+description: "Report missing, incorrect, or unclear documentation."
+title: "[Docs]: "
+labels: ["Type: Documentation"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Thank you for helping us improve the Jaseci documentation!
+        Please describe the issue clearly so we can address it quickly.
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: dropdown
+    id: doc-issue-type
+    attributes:
+      label: "Issue Type"
+      options:
+        - "Missing — topic not covered"
+        - "Incorrect or outdated — content is wrong"
+        - "Unclear or confusing — hard to understand"
+        - "Code example needed or broken"
+        - "New feature needs docs"
+        - "Tutorial / Guide request"
+        - "API reference improvement"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doc-section
+    attributes:
+      label: "Affected Section"
+      description: "Which part of the Jaseci docs is this about?"
+      options:
+        - "Quick Guide — Getting Started"
+        - "Quick Guide — Core Features"
+        - "Tutorials"
+        - "Reference — jaclang"
+        - "Reference — jac-byllm / LLM integration"
+        - "Reference — jac-client / Frontend"
+        - "Reference — jac-scale / Deployment"
+        - "Reference — CLI commands"
+        - "Community — Contributing"
+        - "README / Install Instructions"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: "Link to Page / File"
+      placeholder: "e.g. https://www.jac-lang.org/docs/... or docs/docs/reference/language/foundation.md"
+
+  - type: markdown
+    attributes:
+      value: "---"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: "What is missing, incorrect, or needs improvement?"
+      placeholder: "e.g. The edge filtering section is missing an explanation for `[->:Friend:->]` syntax."
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: "Suggested Change"
+      description: "How should it be improved? (optional)"
+      placeholder: "e.g. Add an example for `[->:Friend:->]` in the edge filtering section."

@@ -85,6 +85,15 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             module.gen.llvm_ir = mod;
         }
 
+        # Debug: dump IR before JIT compilation
+        import os as _os;
+        _dump_path = _os.environ.get("JAC_DUMP_IR", "");
+        if _dump_path {
+            with open(_dump_path, "w") as _f {
+                _f.write(str(mod));
+            }
+        }
+
         engine = llvm.create_mcjit_compiler(mod, target_machine);
         module.gen.native_engine = engine;
     } except Exception as e {

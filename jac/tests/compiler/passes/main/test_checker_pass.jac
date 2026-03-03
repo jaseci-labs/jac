@@ -3,7 +3,7 @@
 import os;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.passes.main { TypeCheckPass }
+import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),

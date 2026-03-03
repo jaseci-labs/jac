@@ -14,6 +14,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac check` | Type check code |
 | `jac test` | Run tests |
 | `jac format` | Format code |
+| `jac lint` | Lint code (use `--fix` to auto-fix) |
 | `jac clean` | Clean project build artifacts |
 | `jac purge` | Purge global bytecode cache (works even if corrupted) |
 | `jac enter` | Run specific entrypoint |
@@ -52,15 +53,14 @@ Displays the Jac version, Python version, platform, and all detected plugins wit
  _
 (_) __ _  ___     Jac Language
 | |/ _` |/ __|
-| | (_| | (__     Version:  0.10.2
+| | (_| | (__     Version:  0.11.1
 _/ |\__,_|\___|    Python 3.12.3
 |__/                Platform: Linux x86_64
 
 🔌 Plugins Detected:
-   byllm==0.4.17
-   jac-client==0.2.13
-   jac-scale==0.1.4
-   jac-super==0.1.0
+   byllm==0.4.15
+   jac-client==0.2.11
+   jac-scale==0.2.1
 ```
 
 ---
@@ -147,7 +147,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa}] [--scale] [--no-scale] [-b] [--no-build] [filename]
 ```
 
 | Option | Description | Default |
@@ -159,6 +159,8 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `-d, --dev` | Enable HMR (Hot Module Replacement) mode | `False` |
 | `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
 | `--no_client` | Skip client bundling/serving (API only) | `False` |
+| `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
+| `--client` | Client build target (`web`, `desktop`, `pwa`) | None |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -175,7 +177,7 @@ jac start -p 3000
 jac start --dev
 
 # HMR mode without client bundling (API only)
-jac start --dev --no-client
+jac start --dev --no_client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
@@ -243,15 +245,14 @@ jac create
 Type check Jac code for errors.
 
 ```bash
-jac check [-h] [-e] [-w] [--ignore PATTERNS] [-p] [--nowarn] paths [paths ...]
+jac check [-h] [-e] [-i [IGNORE ...]] [-p] [--nowarn] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to check | Required |
 | `-e, --print_errs` | Print detailed error messages | `True` |
-| `-w, --warnonly` | Treat errors as warnings | `False` |
-| `--ignore` | Comma-separated list of files/folders to ignore | None |
+| `-i, --ignore` | Space-separated list of files/folders to ignore | None |
 | `-p, --parse_only` | Only check syntax (skip type checking) | `False` |
 | `--nowarn` | Suppress warning output | `False` |
 
@@ -263,9 +264,6 @@ jac check main.jac
 
 # Check a directory
 jac check src/
-
-# Warnings only mode
-jac check main.jac -w
 
 # Check directory excluding specific folders/files
 jac check myproject/ --ignore fixtures tests

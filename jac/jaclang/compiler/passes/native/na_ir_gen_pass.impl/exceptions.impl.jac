@@ -223,6 +223,46 @@ impl NaIRGenPass._emit_runtime_raise(
 }
 
 # ─── Exception Type Registry ────────────────────────────────
+
+# Canonical exception hierarchy: child → direct parent.
+# Used by _get_exc_descendants to enable hierarchy-aware matching.
+glob _EXC_PARENT: dict[str, str] = {
+         "Exception": "BaseException",
+         "ArithmeticError": "Exception",
+         "ZeroDivisionError": "ArithmeticError",
+         "OverflowError": "ArithmeticError",
+         "FloatingPointError": "ArithmeticError",
+         "LookupError": "Exception",
+         "IndexError": "LookupError",
+         "KeyError": "LookupError",
+         "ValueError": "Exception",
+         "TypeError": "Exception",
+         "AttributeError": "Exception",
+         "RuntimeError": "Exception",
+         "NotImplementedError": "RuntimeError",
+         "RecursionError": "RuntimeError",
+         "OSError": "Exception",
+         "FileNotFoundError": "OSError",
+         "FileExistsError": "OSError",
+         "PermissionError": "OSError",
+         "TimeoutError": "OSError",
+         "IsADirectoryError": "OSError",
+         "NotADirectoryError": "OSError",
+         "AssertionError": "Exception",
+         "ImportError": "Exception",
+         "ModuleNotFoundError": "ImportError",
+         "NameError": "Exception",
+         "UnboundLocalError": "NameError",
+         "StopIteration": "Exception",
+         "StopAsyncIteration": "Exception",
+         "EOFError": "Exception",
+         "MemoryError": "Exception",
+         "ReferenceError": "Exception",
+         "KeyboardInterrupt": "BaseException",
+         "SystemExit": "BaseException",
+         "GeneratorExit": "BaseException"
+     };
+
 """Get or register an exception type ID for type-based matching."""
 impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
@@ -237,6 +277,29 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
         self._exc_type_registry["Exception"] = 0;
     }
     return type_id;
+}
+
+"""Get all descendant type names for a given exception type.
+
+Walks _EXC_PARENT to find all types whose ancestor chain includes type_name.
+Registers each descendant via _get_or_register_exc_type to ensure IDs exist.
+Returns the list of descendant names (NOT including type_name itself).
+"""
+impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
+    descendants: list[str] = [];
+    for (child, parent) in _EXC_PARENT.items() {
+        # Walk the ancestor chain of child to see if type_name is an ancestor.
+        cur = child;
+        while cur in _EXC_PARENT {
+            if _EXC_PARENT[cur] == type_name {
+                descendants.append(child);
+                self._get_or_register_exc_type(child);
+                break;
+            }
+            cur = _EXC_PARENT[cur];
+        }
+    }
+    return descendants;
 }
 
 # ─── Raise Statement Codegen ────────────────────────────────
@@ -403,12 +466,28 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
                 # Catch-all: always matches
                 self.builder.branch(handler_bb);
             } else {
+                # Hierarchy-aware matching: check the caught type AND all
+                # its descendants. E.g. "except ArithmeticError" also catches
+                # ZeroDivisionError, OverflowError, FloatingPointError.
+                descendants = self._get_exc_descendants(caught_type_name);
                 does_match = self.builder.icmp_signed(
                     "==",
                     exc_type_val,
                     ir.Constant(i32, caught_type_id),
                     name=f"exc.match.{i}"
                 );
+                for desc_name in descendants {
+                    desc_id = self._get_or_register_exc_type(desc_name);
+                    desc_match = self.builder.icmp_signed(
+                        "==",
+                        exc_type_val,
+                        ir.Constant(i32, desc_id),
+                        name=f"exc.match.{i}.{desc_name}"
+                    );
+                    does_match = self.builder.or_(
+                        does_match, desc_match, name=f"exc.or.{i}.{desc_name}"
+                    );
+                }
                 if next_dispatch_bb is not None {
                     self.builder.cbranch(does_match, handler_bb, next_dispatch_bb);
                 } else {
