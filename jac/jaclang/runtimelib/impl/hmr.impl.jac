@@ -252,9 +252,7 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     } except SyntaxError as e {
         # Syntax error - provide detailed location info
         line_info = f" at line {e.lineno}" if e?.lineno and e.lineno else "";
-        console.error(
-            f"Syntax error in {file_path}{line_info}: {e?.msg or str(e)}"
-        );
+        console.error(f"Syntax error in {file_path}{line_info}: {e?.msg or str(e)}");
         # Still try to reload - the error will be shown again during actual reload
         has_server = True;
     } except Exception as e {
