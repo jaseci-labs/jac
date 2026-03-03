@@ -389,12 +389,18 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         return None;
     }
-    # Helper to get AST for a module path
+    # Cache for AST lookups to avoid repeated compilations
+    ast_cache: dict[str, (uni.Module | None)] = {};
+    # Helper to get AST for a module path (with caching)
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
+        if mod_path in ast_cache {
+            return ast_cache[mod_path];
+        }
         ast = Jac.program.mod.hub.get(mod_path);
         if not ast {
             ast = Jac.program.compile(mod_path);
         }
+        ast_cache[mod_path] = ast;
         return ast;
     }
     # Get main module AST
