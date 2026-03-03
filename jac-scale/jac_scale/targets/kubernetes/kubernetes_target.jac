@@ -453,13 +453,14 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    """Deploy all enabled databases."""
+    """Deploy all enabled databases and their optional dashboards."""
     def _deploy_databases(
         self: KubernetesTarget,
         app_name: str,
         namespace: str,
         apps_v1: Any,
-        core_v1: Any
+        core_v1: Any,
+        cluster_env: str
     ) -> None {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
@@ -495,6 +496,51 @@ class KubernetesTarget(DeploymentTarget) {
                     );
                 } else {
                     raise ;
+                }
+            }
+            if self.k8s_config.mongodb_dashboard {
+                express_result = mongo_provider.deploy_dashboard(
+                    cluster_env=cluster_env,
+                    node_port=self.k8s_config.mongo_express_node_port,
+                    username=self.k8s_config.mongo_express_username,
+                    password=self.k8s_config.mongo_express_password
+                );
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=express_result['deployment_name'], namespace=namespace
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        apps_v1.create_namespaced_deployment(
+                            namespace=namespace, body=express_result['deployment']
+                        );
+                    } else {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=express_result['service_name'], namespace=namespace
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        core_v1.create_namespaced_service(
+                            namespace=namespace, body=express_result['service']
+                        );
+                    } else {
+                        raise ;
+                    }
+                }
+                if self.logger {
+                    if cluster_env == 'aws' {
+                        self.logger.info(
+                            f"mongo-express dashboard deployed for '{app_name}' (LoadBalancer)"
+                        );
+                    } else {
+                        self.logger.info(
+                            f"mongo-express dashboard deployed for '{app_name}' at localhost:{self.k8s_config.mongo_express_node_port}"
+                        );
+                    }
                 }
             }
         }
@@ -533,6 +579,82 @@ class KubernetesTarget(DeploymentTarget) {
                     );
                 } else {
                     raise ;
+                }
+            }
+            if self.k8s_config.redis_dashboard {
+                insight_result = redis_provider.deploy_dashboard(
+                    cluster_env=cluster_env,
+                    node_port=self.k8s_config.redis_insight_node_port,
+                    username=self.k8s_config.redis_insight_username,
+                    password=self.k8s_config.redis_insight_password
+                );
+                if 'auth_configmap' in insight_result {
+                    try {
+                        core_v1.read_namespaced_config_map(
+                            name=insight_result['auth_configmap']['metadata']['name'],
+                            namespace=namespace
+                        );
+                    } except ApiException as e {
+                        if e.status == 404 {
+                            core_v1.create_namespaced_config_map(
+                                namespace=namespace,
+                                body=insight_result['auth_configmap']
+                            );
+                        } else {
+                            raise ;
+                        }
+                    }
+                    try {
+                        core_v1.read_namespaced_secret(
+                            name=insight_result['auth_secret']['metadata']['name'],
+                            namespace=namespace
+                        );
+                    } except ApiException as e {
+                        if e.status == 404 {
+                            core_v1.create_namespaced_secret(
+                                namespace=namespace, body=insight_result['auth_secret']
+                            );
+                        } else {
+                            raise ;
+                        }
+                    }
+                }
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=insight_result['deployment_name'], namespace=namespace
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        apps_v1.create_namespaced_deployment(
+                            namespace=namespace, body=insight_result['deployment']
+                        );
+                    } else {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=insight_result['service_name'], namespace=namespace
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        core_v1.create_namespaced_service(
+                            namespace=namespace, body=insight_result['service']
+                        );
+                    } else {
+                        raise ;
+                    }
+                }
+                if self.logger {
+                    if cluster_env == 'aws' {
+                        self.logger.info(
+                            f"RedisInsight dashboard deployed for '{app_name}' (LoadBalancer)"
+                        );
+                    } else {
+                        self.logger.info(
+                            f"RedisInsight dashboard deployed for '{app_name}' at localhost:{self.k8s_config.redis_insight_node_port}"
+                        );
+                    }
                 }
             }
         }
@@ -706,7 +828,23 @@ class KubernetesTarget(DeploymentTarget) {
                             if self.k8s_config.monitoring_enabled
                             else None
                     ),
-                    current_namespace=namespace
+                    current_namespace=namespace,
+                    redis_insight_node_port=(
+                        self.k8s_config.redis_insight_node_port
+                            if (
+                                self.k8s_config.redis_enabled
+                                and self.k8s_config.redis_dashboard
+                            )
+                            else None
+                    ),
+                    mongo_express_node_port=(
+                        self.k8s_config.mongo_express_node_port
+                            if (
+                                self.k8s_config.mongodb_enabled
+                                and self.k8s_config.mongodb_dashboard
+                            )
+                            else None
+                    )
                 );
             }
 
@@ -795,7 +933,7 @@ class KubernetesTarget(DeploymentTarget) {
             time.sleep(self.k8s_config.resource_deletion_wait);
 
             # 13. Deploy databases
-            self._deploy_databases(app_name, namespace, apps_v1, core_v1);
+            self._deploy_databases(app_name, namespace, apps_v1, core_v1, cluster_env);
             details["deploy_databases"] = "Successful";
             # 14. Deploy main application
             if self.logger {
@@ -1057,7 +1195,7 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    """Destroy all enabled databases."""
+    """Destroy all enabled databases and their dashboards."""
     def _destroy_databases(
         self: KubernetesTarget,
         app_name: str,
@@ -1079,6 +1217,19 @@ class KubernetesTarget(DeploymentTarget) {
                 namespace,
                 'Service'
             );
+            express_name = f"{app_name}-mongo-express";
+            delete_if_exists(
+                apps_v1.delete_namespaced_deployment,
+                express_name,
+                namespace,
+                'Deployment'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service,
+                f"{express_name}-service",
+                namespace,
+                'Service'
+            );
         }
 
         if self.k8s_config.redis_enabled {
@@ -1094,6 +1245,31 @@ class KubernetesTarget(DeploymentTarget) {
                 f"{redis_name}-service",
                 namespace,
                 'Service'
+            );
+            insight_name = f"{app_name}-redis-insight";
+            delete_if_exists(
+                apps_v1.delete_namespaced_deployment,
+                insight_name,
+                namespace,
+                'Deployment'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service,
+                f"{insight_name}-service",
+                namespace,
+                'Service'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_config_map,
+                f"{insight_name}-nginx-config",
+                namespace,
+                'ConfigMap'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_secret,
+                f"{insight_name}-auth",
+                namespace,
+                'Secret'
             );
         }
     }
@@ -1422,10 +1598,22 @@ class KubernetesTarget(DeploymentTarget) {
                 'is_sts': False
             },
             {'k8s_name': f"{app_name}-grafana", 'display': 'Grafana', 'is_sts': False},
+            {
+                'k8s_name': f"{app_name}-redis-insight",
+                'display': 'RedisInsight',
+                'is_sts': False
+            },
+            {
+                'k8s_name': f"{app_name}-mongo-express",
+                'display': 'Mongo Express',
+                'is_sts': False
+            },
 
         ];
 
         grafana_running = False;
+        redis_insight_running = False;
+        mongo_express_running = False;
         for cdef in component_defs {
             k8s_name = cdef['k8s_name'];
             display_name = cdef['display'];
@@ -1458,6 +1646,10 @@ class KubernetesTarget(DeploymentTarget) {
                 );
                 if display_name == 'Grafana' {
                     grafana_running = True;
+                } elif display_name == 'RedisInsight' {
+                    redis_insight_running = True;
+                } elif display_name == 'Mongo Express' {
+                    mongo_express_running = True;
                 }
             } else {
                 components.append(
@@ -1503,6 +1695,42 @@ class KubernetesTarget(DeploymentTarget) {
                 } except Exception { }
             } else {
                 urls['grafana'] = f"http://localhost:{self.k8s_config.grafana_node_port}";
+            }
+        }
+
+        # RedisInsight URL
+        if redis_insight_running {
+            if is_aws {
+                try {
+                    svc = core_v1.read_namespaced_service(
+                        name=f"{app_name}-redis-insight-service", namespace=namespace
+                    );
+                    ingress = svc.status.load_balancer.ingress;
+                    if ingress and len(ingress) > 0 {
+                        endpoint = ingress[0].hostname or ingress[0].ip;
+                        urls['redis_insight'] = f"http://{endpoint}";
+                    }
+                } except Exception { }
+            } else {
+                urls['redis_insight'] = f"http://localhost:{self.k8s_config.redis_insight_node_port}";
+            }
+        }
+
+        # Mongo Express URL
+        if mongo_express_running {
+            if is_aws {
+                try {
+                    svc = core_v1.read_namespaced_service(
+                        name=f"{app_name}-mongo-express-service", namespace=namespace
+                    );
+                    ingress = svc.status.load_balancer.ingress;
+                    if ingress and len(ingress) > 0 {
+                        endpoint = ingress[0].hostname or ingress[0].ip;
+                        urls['mongo_express'] = f"http://{endpoint}";
+                    }
+                } except Exception { }
+            } else {
+                urls['mongo_express'] = f"http://localhost:{self.k8s_config.mongo_express_node_port}";
             }
         }
 
