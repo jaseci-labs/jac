@@ -817,7 +817,11 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "rindex",
         "center",
         "expandtabs",
-        "join"
+        "join",
+        "rsplit",
+        "splitlines",
+        "partition",
+        "rpartition"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {

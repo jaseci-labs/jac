@@ -866,8 +866,56 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             # New variable — allocate and store
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
-                var_type = self._resolve_jac_type(nd.type_tag.tag);
-                value = self._coerce_type(value, var_type);
+                tag_node = nd.type_tag.tag;
+                # Bare unparameterized collection annotations (list/dict/set/frozenset):
+                # infer the variable type from the RHS value rather than defaulting,
+                # so `a: list = [1, 2]`, `d: dict = {"k": v}`, `s: set = {1, 2}` all work
+                # regardless of element types.
+                bare_name: (str | None) = None;
+                if isinstance(tag_node, uni.Name) {
+                    bare_name = tag_node.value;
+                } elif uni?.BuiltinType and isinstance(tag_node, uni.BuiltinType) {
+                    bare_name = tag_node.value;
+                }
+                infer_from_val = (
+                    bare_name in {"list","dict","set","frozenset"}
+                    and isinstance(value.type, ir.PointerType)
+                );
+                if infer_from_val {
+                    # Verify value is actually a known collection pointer
+                    is_coll = False;
+                    for (_, _ltype) in self.list_types.items() {
+                        if value.type == _ltype.as_pointer() {
+                            is_coll = True;
+                            break;
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _dtype) in self.dict_types.items() {
+                            if value.type == _dtype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _stype) in self.set_types.items() {
+                            if value.type == _stype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        infer_from_val = False;
+                    }
+                }
+                if infer_from_val {
+                    var_type = value.type;  # element type inferred from RHS literal
+                } else {
+                    var_type = self._resolve_jac_type(tag_node);
+                    value = self._coerce_type(value, var_type);
+                }
             }
             alloca = self._entry_alloca(var_type, var_name);
             self.builder.store(value, alloca);

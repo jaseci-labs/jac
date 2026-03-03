@@ -14,7 +14,7 @@ import from jaclang.jac0core.constant {
 
 import from .engine { JacLangServer }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 def debug(msg: str) -> None;
 

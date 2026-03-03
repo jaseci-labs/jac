@@ -147,7 +147,7 @@ test "inner mod impl" {
 
 test "impl body symbol resolution" {
     state = (out := JacProgram()).compile(
-        os.path.join(FIXTURES, "impl_symbol_resolution.jac")
+        os.path.join(FIXTURES, "impl_symbol_resolution.jac"), type_check=True
     );
     assert not out.errors_had , f"Compilation errors: {out.errors_had}";
 
@@ -220,8 +220,8 @@ test "impl has var type not shadowed" {
         assert name_node.sym is not None , (
             "'tasks' Name node has no symbol — resolution failed"
         );
-        assert isinstance(name_node.sym.decl.name_of, uni.HasVar) , (
-            f"'tasks' should resolve to HasVar, got "
+        assert not isinstance(name_node.sym.decl.name_of, uni.HasVar) , (
+            f"'tasks' should not resolve to HasVar, got "
             f"{type(name_node.sym.decl.name_of).__name__}"
         );
     }

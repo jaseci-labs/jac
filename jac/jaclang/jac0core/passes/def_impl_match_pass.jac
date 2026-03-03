@@ -61,18 +61,6 @@ links
         self: DeclImplMatchPass, impl_def: uni.ImplDef
     ) -> None;
 
-    """Fix local vars in impl that shadow typed variables from the declaration's
-    parent scope. During SymTabBuildPass, impl bodies create local var symbols for
-    assignments like `tasks = tasks + [task]` because the impl scope chain doesn't
-    yet reach the declaration's parent scope (where `has tasks: list` lives). After
-    symbol table synchronization, this method replaces those untyped local vars with
-    the properly-typed symbols from the parent scope chain."""
-    def _fix_shadowed_parent_symbols(
-        self: DeclImplMatchPass,
-        impl_def: uni.ImplDef,
-        valid_decl: uni.AstImplNeedingNode
-    ) -> None;
-
     """Populate self-member symbols from impl body to archetype's symbol table.
 
     When an impl file contains `self.x = value` assignments in a method, these

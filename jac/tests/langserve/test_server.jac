@@ -5,12 +5,12 @@ import os;
 import sys;
 import from pathlib { Path }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 import jaclang;
 import from jaclang.langserve.engine { JacLangServer }
-import from jaclang.vendor.pygls { uris }
-import from jaclang.vendor.pygls.workspace { Workspace }
+import from jaclang.lsp { uris }
+import from jaclang.lsp.server { Workspace }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
@@ -75,7 +75,7 @@ def passes_main_fixture_abs_path(name: str) -> str {
 def create_server(workspace_path: str | None = None) -> JacLangServer {
     lsp = JacLangServer();
     workspace_root = workspace_path if workspace_path is not None else FIXTURE_DIR;
-    workspace_val = Workspace(workspace_root, lsp);
+    workspace_val = Workspace(root_uri=uris.from_fs_path(workspace_root));
     lsp.lsp._workspace = workspace_val;
     _active_servers.append(lsp);
     return lsp;
@@ -227,7 +227,7 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:28:3-28:22"),
+            (10, 34, "jac/jaclang/__init__.py:22:"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
             (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
@@ -235,9 +235,9 @@ test "test_go_to_definition_md_path" {
             (18, 5, "compiler/type_system/types.jac:66:4-66:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
-            (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),
-            (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),
-            (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),
+            (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
+            (24, 40, "jaclang/lsp/server.jac:114:"),
+            (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];
 

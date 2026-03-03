@@ -1,7 +1,7 @@
 """Test Semantic Tokens Update."""
 
 import copy;
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 import from jaclang.langserve.sem_manager { SemTokManager }
 
 def get_initial_sem_tokens -> list[int] {
