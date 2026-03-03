@@ -1991,8 +1991,8 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryE
         and isinstance(op, uni.Token)
         and isinstance(right, uni.Expr)
     ) {
+        # Flatten same-operator chains (e.g. (a+b)+c → a+b+c) but wrap in AtomUnit to preserve parens for mixed operators.
         unwrapped_left = left;
-        is_same_op_chain = False;
         if (
             isinstance(left, uni.AtomUnit)
             and isinstance(left.value, uni.BinaryExpr)
@@ -2000,14 +2000,10 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryE
             and (left.value.op.value == op.value)
         ) {
             unwrapped_left = left.value;
-            is_same_op_chain = True;
         }
         value = uni.BinaryExpr(
             left=unwrapped_left, op=op, right=right, kid=[unwrapped_left, op, right]
         );
-        if is_same_op_chain {
-            return value;
-        }
         return uni.AtomUnit(
             value=value,
             kid=[self.operator(Tok.RPAREN, '('), value, self.operator(Tok.LPAREN, ')')]

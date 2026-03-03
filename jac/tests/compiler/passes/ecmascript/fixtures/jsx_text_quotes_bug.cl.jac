@@ -6,7 +6,7 @@ and Rollup reject with "Expected ',', got 'ident'".
 """
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> Any {
         return (
             <div>
                 <h1>Results</h1>
