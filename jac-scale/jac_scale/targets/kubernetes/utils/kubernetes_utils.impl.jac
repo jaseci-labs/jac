@@ -342,7 +342,9 @@ impl check_node_ports_available(
     node_port: int,
     prometheus_node_port: int | None,
     grafana_node_port: int | None,
-    current_namespace: str
+    current_namespace: str,
+    redis_insight_node_port: int | None = None,
+    mongo_express_node_port: int | None = None
 ) -> None {
     """Check that the requested NodePorts are not already bound by services
     in other namespaces.
@@ -375,6 +377,12 @@ impl check_node_ports_available(
     if grafana_node_port is not None {
         requested['grafana_node_port'] = grafana_node_port;
     }
+    if redis_insight_node_port is not None {
+        requested['redis_insight_node_port'] = redis_insight_node_port;
+    }
+    if mongo_express_node_port is not None {
+        requested['mongo_express_node_port'] = mongo_express_node_port;
+    }
     conflicts: list[str] = [];
     for (param_name, port_val) in requested.items() {
         if port_val in used_ports {
@@ -391,7 +399,8 @@ impl check_node_ports_available(
             f"NodePort conflict detected on local cluster.\n"
             f"The following requested ports are already bound:\n{conflict_lines}\n"
             f"Please choose different port values in your KubernetesConfig "
-            f"(node_port, prometheus_node_port, grafana_node_port) and try again."
+            f"(node_port, prometheus_node_port, grafana_node_port, "
+            f"redis_insight_node_port, mongo_express_node_port) and try again."
         ) ;
     }
 }

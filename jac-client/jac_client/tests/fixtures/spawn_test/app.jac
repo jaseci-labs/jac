@@ -34,13 +34,13 @@ walker positional_walker {
 # Client-side code testing both spawn orderings
 cl {
     def app() -> JsxElement {
-        has standardResult: any = None;
-        has standardComputed: any = None;
-        has reverseResult: any = None;
-        has uuidResult: any = None;
-        has reverseUuidResult: any = None;
-        has positionalResult: any = None;
-        has spreadResult: any = None;
+        has standardResult: Any = None;
+        has standardComputed: Any = None;
+        has reverseResult: Any = None;
+        has uuidResult: Any = None;
+        has reverseUuidResult: Any = None;
+        has positionalResult: Any = None;
+        has spreadResult: Any = None;
 
         async can with entry {
             # Test standard spawn order: node spawn walker()

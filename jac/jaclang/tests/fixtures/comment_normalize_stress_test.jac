@@ -91,9 +91,9 @@ enum Color {
 # Test hasattr conversion with comments
 obj NullSafeTest {
     has data: dict | None;
-    has obj: any | None;
+    has obj: Any | None;
 
-    def check_attr -> any {
+    def check_attr -> Any {
         # Comment before hasattr usage
         if hasattr(self.obj, "value") {  # Inline on if hasattr
 
@@ -106,7 +106,7 @@ obj NullSafeTest {
 
     }
 
-    def check_with_default -> any {
+    def check_with_default -> Any {
         # Comment before ternary with hasattr
         result = self.obj.attr if hasattr(self.obj, "attr") else "default";  # Inline on ternary
         # Comment after assignment

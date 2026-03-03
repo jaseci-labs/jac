@@ -687,6 +687,83 @@ impl NaIRGenPass._emit_binary_op(
             break;
         }
     }
+    # Complex arithmetic (JacComplex* op JacComplex*)
+    ctype_ptr = self.complex_struct_type.as_pointer();
+    if left.type == ctype_ptr and right.type == ctype_ptr {
+        f64 = ir.DoubleType();
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        z0 = ir.Constant(i32, 0);
+        z1 = ir.Constant(i32, 1);
+        ar = self.builder.load(
+            self.builder.gep(left, [z0, z0], name="c.ar.p"), name="c.ar"
+        );
+        ai = self.builder.load(
+            self.builder.gep(left, [z0, z1], name="c.ai.p"), name="c.ai"
+        );
+        br = self.builder.load(
+            self.builder.gep(right, [z0, z0], name="c.br.p"), name="c.br"
+        );
+        bi = self.builder.load(
+            self.builder.gep(right, [z0, z1], name="c.bi.p"), name="c.bi"
+        );
+        rr: (ir.Value | None) = None;
+        ri: (ir.Value | None) = None;
+        if op == Tok.PLUS {
+            rr = self.builder.fadd(ar, br, name="c.add.r");
+            ri = self.builder.fadd(ai, bi, name="c.add.i");
+        } elif op == Tok.MINUS {
+            rr = self.builder.fsub(ar, br, name="c.sub.r");
+            ri = self.builder.fsub(ai, bi, name="c.sub.i");
+        } elif op == Tok.STAR_MUL {
+            # (ar*br - ai*bi, ar*bi + ai*br)
+            rr = self.builder.fsub(
+                self.builder.fmul(ar, br, name="c.m1"),
+                self.builder.fmul(ai, bi, name="c.m2"),
+                name="c.mul.r"
+            );
+            ri = self.builder.fadd(
+                self.builder.fmul(ar, bi, name="c.m3"),
+                self.builder.fmul(ai, br, name="c.m4"),
+                name="c.mul.i"
+            );
+        } elif op == Tok.DIV {
+            # (ar*br + ai*bi)/(br*br + bi*bi), (ai*br - ar*bi)/(br*br + bi*bi)
+            denom = self.builder.fadd(
+                self.builder.fmul(br, br, name="c.d1"),
+                self.builder.fmul(bi, bi, name="c.d2"),
+                name="c.denom"
+            );
+            rr = self.builder.fdiv(
+                self.builder.fadd(
+                    self.builder.fmul(ar, br, name="c.d3"),
+                    self.builder.fmul(ai, bi, name="c.d4"),
+                    name="c.div.rn"
+                ),
+                denom,
+                name="c.div.r"
+            );
+            ri = self.builder.fdiv(
+                self.builder.fsub(
+                    self.builder.fmul(ai, br, name="c.d5"),
+                    self.builder.fmul(ar, bi, name="c.d6"),
+                    name="c.div.in"
+                ),
+                denom,
+                name="c.div.i"
+            );
+        }
+        if rr is not None and ri is not None {
+            # Allocate result complex struct
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 16)], name="c.res.raw"
+            );
+            ptr = self.builder.bitcast(raw, ctype_ptr, name="c.res.ptr");
+            self.builder.store(rr, self.builder.gep(ptr, [z0, z0], name="c.res.rp"));
+            self.builder.store(ri, self.builder.gep(ptr, [z0, z1], name="c.res.ip"));
+            return ptr;
+        }
+    }
     is_float = isinstance(left.type, ir.DoubleType)
     or isinstance(right.type, ir.DoubleType);
     if is_float {
@@ -1180,6 +1257,223 @@ impl NaIRGenPass._emit_comparison(
                     }
                 }
                 break;
+            }
+        }
+        # Range comparison: JacRange* == / != JacRange*
+        rtype_ptr = self.range_struct_type.as_pointer();
+        if left.type == rtype_ptr
+        and right.type == rtype_ptr
+        and (op == Tok.EE or op == Tok.NE) {
+            i1_t = ir.IntType(1);
+            i32 = ir.IntType(32);
+            z0 = ir.Constant(i32, 0);
+            # Compare start, stop, step
+            as_ = self.builder.load(
+                self.builder.gep(left, [z0, ir.Constant(i32, 0)], name="rcmp.as.p"),
+                name="rcmp.as"
+            );
+            bs_ = self.builder.load(
+                self.builder.gep(right, [z0, ir.Constant(i32, 0)], name="rcmp.bs.p"),
+                name="rcmp.bs"
+            );
+            ae = self.builder.load(
+                self.builder.gep(left, [z0, ir.Constant(i32, 1)], name="rcmp.ae.p"),
+                name="rcmp.ae"
+            );
+            be = self.builder.load(
+                self.builder.gep(right, [z0, ir.Constant(i32, 1)], name="rcmp.be.p"),
+                name="rcmp.be"
+            );
+            at = self.builder.load(
+                self.builder.gep(left, [z0, ir.Constant(i32, 2)], name="rcmp.at.p"),
+                name="rcmp.at"
+            );
+            bt = self.builder.load(
+                self.builder.gep(right, [z0, ir.Constant(i32, 2)], name="rcmp.bt.p"),
+                name="rcmp.bt"
+            );
+            seq = self.builder.icmp_signed("==", as_, bs_, name="rcmp.seq");
+            eeq = self.builder.icmp_signed("==", ae, be, name="rcmp.eeq");
+            teq = self.builder.icmp_signed("==", at, bt, name="rcmp.teq");
+            result = self.builder.and_(
+                seq, self.builder.and_(eeq, teq, name="rcmp.et"), name="rcmp.all"
+            );
+            if op == Tok.NE {
+                return self.builder.not_(result, name="rcmp.ne");
+            }
+            return result;
+        }
+        # Complex comparison: JacComplex* == / != JacComplex*
+        ctype_ptr = self.complex_struct_type.as_pointer();
+        if left.type == ctype_ptr and right.type == ctype_ptr {
+            i1_t = ir.IntType(1);
+            i32 = ir.IntType(32);
+            z0 = ir.Constant(i32, 0);
+            z1 = ir.Constant(i32, 1);
+            ar = self.builder.load(
+                self.builder.gep(left, [z0, z0], name="ceq.ar.p"), name="ceq.ar"
+            );
+            ai = self.builder.load(
+                self.builder.gep(left, [z0, z1], name="ceq.ai.p"), name="ceq.ai"
+            );
+            br = self.builder.load(
+                self.builder.gep(right, [z0, z0], name="ceq.br.p"), name="ceq.br"
+            );
+            bi = self.builder.load(
+                self.builder.gep(right, [z0, z1], name="ceq.bi.p"), name="ceq.bi"
+            );
+            req = self.builder.fcmp_ordered("==", ar, br, name="ceq.r");
+            ieq = self.builder.fcmp_ordered("==", ai, bi, name="ceq.i");
+            result = self.builder.and_(req, ieq, name="ceq.both");
+            if op == Tok.EE {
+                return result;
+            } elif op == Tok.NE {
+                return self.builder.not_(result, name="ceq.ne");
+            }
+        }
+        # Tuple comparison: pointer to LiteralStructType with same pointee
+        if isinstance(left.type.pointee, ir.LiteralStructType)
+        and isinstance(right.type.pointee, ir.LiteralStructType)
+        and str(left.type.pointee) == str(right.type.pointee) {
+            struct_type = left.type.pointee;
+            n = len(struct_type.elements);
+            i1_t = ir.IntType(1);
+            if op == Tok.EE or op == Tok.NE {
+                # Element-wise equality: all elements must match
+                result = ir.Constant(i1_t, 1);
+                for i in range(n) {
+                    ea_ptr = self.builder.gep(
+                        left,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), i)
+                        ],
+                        name=f"tcmp.a.{i}"
+                    );
+                    eb_ptr = self.builder.gep(
+                        right,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), i)
+                        ],
+                        name=f"tcmp.b.{i}"
+                    );
+                    ea = self.builder.load(ea_ptr, name=f"tcmp.ea.{i}");
+                    eb = self.builder.load(eb_ptr, name=f"tcmp.eb.{i}");
+                    if isinstance(ea.type, ir.IntType) {
+                        eq_i = self.builder.icmp_signed(
+                            "==", ea, eb, name=f"tcmp.eq.{i}"
+                        );
+                    } elif isinstance(ea.type, ir.DoubleType) {
+                        eq_i = self.builder.fcmp_ordered(
+                            "==", ea, eb, name=f"tcmp.eq.{i}"
+                        );
+                    } else {
+                        tcmp_strcmp = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        tcmp_sc = self.builder.call(
+                            tcmp_strcmp, [ea, eb], name=f"tcmp.sc.{i}"
+                        );
+                        eq_i = self.builder.icmp_signed(
+                            "==",
+                            tcmp_sc,
+                            ir.Constant(ir.IntType(32), 0),
+                            name=f"tcmp.eq.{i}"
+                        );
+                    }
+                    result = self.builder.and_(result, eq_i, name=f"tcmp.all.{i}");
+                }
+                if op == Tok.NE {
+                    return self.builder.not_(result, name="tcmp.ne");
+                }
+                return result;
+            }
+            # Lexicographic: <, >, <=, >=
+            if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) and n > 0 {
+                # Cascade: check each element pair, return on first difference
+                func = self.builder.basic_block.function;
+                tcmp_true_bb = func.append_basic_block(name="tcmp.lex.true");
+                tcmp_false_bb = func.append_basic_block(name="tcmp.lex.false");
+                tcmp_done_bb = func.append_basic_block(name="tcmp.lex.done");
+                for i in range(n) {
+                    ea_ptr = self.builder.gep(
+                        left,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), i)
+                        ],
+                        name=f"tcmp.lex.a.{i}"
+                    );
+                    eb_ptr = self.builder.gep(
+                        right,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), i)
+                        ],
+                        name=f"tcmp.lex.b.{i}"
+                    );
+                    ea = self.builder.load(ea_ptr, name=f"tcmp.lex.ea.{i}");
+                    eb = self.builder.load(eb_ptr, name=f"tcmp.lex.eb.{i}");
+                    if isinstance(ea.type, ir.IntType) {
+                        lt_i = self.builder.icmp_signed(
+                            "<", ea, eb, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.icmp_signed(
+                            ">", ea, eb, name=f"tcmp.gt.{i}"
+                        );
+                    } elif isinstance(ea.type, ir.DoubleType) {
+                        lt_i = self.builder.fcmp_ordered(
+                            "<", ea, eb, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.fcmp_ordered(
+                            ">", ea, eb, name=f"tcmp.gt.{i}"
+                        );
+                    } else {
+                        tcmp_strcmp2 = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        tcmp_sc2 = self.builder.call(
+                            tcmp_strcmp2, [ea, eb], name=f"tcmp.lex.sc.{i}"
+                        );
+                        tcmp_z32 = ir.Constant(ir.IntType(32), 0);
+                        lt_i = self.builder.icmp_signed(
+                            "<", tcmp_sc2, tcmp_z32, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.icmp_signed(
+                            ">", tcmp_sc2, tcmp_z32, name=f"tcmp.gt.{i}"
+                        );
+                    }
+                    next_bb = func.append_basic_block(name=f"tcmp.lex.next.{i}");
+                    if op == Tok.LT or op == Tok.LTE {
+                        self.builder.cbranch(lt_i, tcmp_true_bb, next_bb);
+                        self.builder.position_at_start(next_bb);
+                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
+                        self.builder.cbranch(gt_i, tcmp_false_bb, next2_bb);
+                        self.builder.position_at_start(next2_bb);
+                    } else {
+                        self.builder.cbranch(gt_i, tcmp_true_bb, next_bb);
+                        self.builder.position_at_start(next_bb);
+                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
+                        self.builder.cbranch(lt_i, tcmp_false_bb, next2_bb);
+                        self.builder.position_at_start(next2_bb);
+                    }
+                }
+                # All elements equal: <= and >= are true, < and > are false
+                if op == Tok.LTE or op == Tok.GTE {
+                    self.builder.branch(tcmp_true_bb);
+                } else {
+                    self.builder.branch(tcmp_false_bb);
+                }
+                self.builder.position_at_start(tcmp_true_bb);
+                self.builder.branch(tcmp_done_bb);
+                self.builder.position_at_start(tcmp_false_bb);
+                self.builder.branch(tcmp_done_bb);
+                self.builder.position_at_start(tcmp_done_bb);
+                tcmp_res = self.builder.phi(i1_t, name="tcmp.lex.res");
+                tcmp_res.add_incoming(ir.Constant(i1_t, 1), tcmp_true_bb);
+                tcmp_res.add_incoming(ir.Constant(i1_t, 0), tcmp_false_bb);
+                return tcmp_res;
             }
         }
         # For other pointer types (structs, tuples), use pointer comparison

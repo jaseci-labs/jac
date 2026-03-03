@@ -46,7 +46,7 @@ cl {
         useEffect(
             lambda -> None { workerRef.current = Reflect.construct(
                 Worker, ["/workers/worker.js"]
-            );workerRef.current.onmessage = lambda event: any  -> None { print(
+            );workerRef.current.onmessage = lambda event: Any  -> None { print(
                 "Message received from worker:", event.data
             );message = event.data;};return (
                 lambda -> None { workerRef.current.terminate();}
@@ -159,7 +159,7 @@ cl {
                         times.
                     </p>
                     <button
-                        onClick={lambda e: any  -> None { count = count + 1;}}
+                        onClick={lambda e: Any  -> None { count = count + 1;}}
                         style={{
                             "padding": "0.6rem 1.4rem",
                             "fontSize": "1rem",
@@ -192,7 +192,7 @@ cl {
                         </code>
                     </p>
                     <button
-                        onClick={lambda e: any  -> None { handlePing();}}
+                        onClick={lambda e: Any  -> None { handlePing();}}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "marginRight": "0.75rem",
@@ -206,7 +206,7 @@ cl {
                         Ping Backend
                     </button>
                     <button
-                        onClick={lambda e: any  -> None { handleCreateSampleTodo();}}
+                        onClick={lambda e: Any  -> None { handleCreateSampleTodo();}}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "backgroundColor": "#10b981",

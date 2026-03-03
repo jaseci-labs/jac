@@ -259,7 +259,7 @@ cl def TweetCard(tweet: ClientTweet) -> JsxElement {
 
 # Handle liking a tweet - calls server walker directly
 # The compiler automatically transforms this to __jacCallFunction at compile time!
-cl async def like_tweet_action(tweet_id: str) -> any {
+cl async def like_tweet_action(tweet_id: str) -> Any {
     try {
         result = await like_tweet(tweet_id);
         print("Tweet liked:", result);
@@ -371,7 +371,7 @@ cl def LoginForm -> JsxElement {
 }
 
 # Handle login form submission
-cl async def handle_login(event: any) -> None {
+cl async def handle_login(event: Any) -> None {
     event.preventDefault();
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
@@ -472,7 +472,7 @@ cl def SignupForm -> JsxElement {
 # Navigation helper functions removed - using Link component and navigate() directly
 
 # Handle signup form submission
-cl async def handle_signup(event: any) -> None {
+cl async def handle_signup(event: Any) -> None {
     event.preventDefault();
     username = document.getElementById("signup-username").value;
     password = document.getElementById("signup-password").value;
@@ -511,22 +511,22 @@ cl def:pub App -> JsxElement {
     # Create routes array manually (workaround for JS compiler bug with named args)
     login_route = {
         "path": "/login",
-        "component": lambda -> any { return LoginForm(); },
+        "component": lambda -> Any { return LoginForm(); },
         "guard": None
     };
     signup_route = {
         "path": "/signup",
-        "component": lambda -> any { return SignupForm(); },
+        "component": lambda -> Any { return SignupForm(); },
         "guard": None
     };
     home_route = {
         "path": "/home",
-        "component": lambda -> any { return HomeView(); },
+        "component": lambda -> Any { return HomeView(); },
         "guard": jacIsLoggedIn
     };
     profile_route = {
         "path": "/profile",
-        "component": lambda -> any { return ProfileView(); },
+        "component": lambda -> Any { return ProfileView(); },
         "guard": jacIsLoggedIn
     };
 
