@@ -254,23 +254,6 @@ def _get_entry_path -> (Path | None) {
     return None;
 }
 
-# Ad-hoc directory patterns (check parent directories only, not filename)
-glob ADHOC_DIRS = frozenset(
-         {'test','tests','fixture','fixtures','example','examples','tmp','temp','build'}
-     );
-
-"""Check if the entry file is ad-hoc (test/fixture/example/temp)."""
-impl is_adhoc_file(file_path: (Path | None) = None) -> bool {
-    if file_path is None {
-        file_path = _get_entry_path();
-    }
-    if not file_path {
-        return False;
-    }
-    # Check if any parent directory name matches adhoc patterns
-    return any(parent.name.lower() in ADHOC_DIRS for parent in file_path.parents);
-}
-
 """Get project name from jac.toml if exists, None otherwise."""
 impl get_name(file_path: (Path | None) = None) -> str | None {
     import from jaclang.project.config { JacConfig }
@@ -299,7 +282,6 @@ impl get_name(file_path: (Path | None) = None) -> str | None {
 
 """Get database path:
 - Projects (jac.toml in same dir) → .jac/data/project-name.db
-- Ad-hoc/test/play files → None (volatile memory only, no persistence)
 - Real standalone apps → .jac/data/filename.db
 """
 impl get_db_path(base_path: str) -> (str | None) {
@@ -307,15 +289,10 @@ impl get_db_path(base_path: str) -> (str | None) {
     file_path = _get_entry_path();
     base = Path(base_path);
     data_dir = base / ".jac" / "data";
-    # 1. Check if ad-hoc/test file → NO PERSISTENCE (volatile memory only)
-    # Tests should be isolated and repeatable, not share persistent state
-    if is_adhoc_file(file_path) {
-        return None;
-    }
-    # 2. Check for project (jac.toml in same directory)
+    # Check for project (jac.toml in same directory) or standalone file
     if (project_name := get_name(file_path)) {
         return str(data_dir / f"{project_name}.db");
     }
-    # 4. Ultimate fallback
+    # Ultimate fallback
     return str(data_dir / "main.db");
 }

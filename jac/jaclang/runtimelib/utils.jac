@@ -72,14 +72,8 @@ def to_uuid(id: (UUID | str)) -> UUID {
     return UUID(str(id));
 }
 
-"""Check if file is in an adhoc directory (test/fixture/example/temp/play) by directory name, not filename."""
-def is_adhoc_file(file_path: (Path | None) = None) -> bool;
-
 """Get project name from jac.toml if exists in same directory, None otherwise."""
 def get_name(file_path: (Path | None) = None) -> (str | None);
-
-"""Get entry file stem (filename without extension) from __main__ module."""
-def get_entry_file_stem(file_path: (Path | None) = None) -> (str | None);
 
 """Get database path using hybrid approach:
 - Projects (jac.toml in same dir) → .jac/data/project-name.db

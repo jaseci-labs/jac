@@ -482,12 +482,7 @@ impl TieredMemory.postinit -> None {
     if self.base_path {
         # Use project.db for projects, filename.db for apps, None for tests
         db_path = get_db_path(self.base_path);
-        if db_path {
-            self.l3 = SqliteMemory(path=db_path);
-        } else {
-            # No persistence (adhoc/test files use volatile memory only)
-            self.l3 = None;
-        }
+        self.l3 = SqliteMemory(path=db_path);
     } else {
         self.l3 = None;
     }
