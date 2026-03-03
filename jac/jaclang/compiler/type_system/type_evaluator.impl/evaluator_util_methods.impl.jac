@@ -52,26 +52,16 @@ impl TypeEvaluator._lookup_class_member(
     base_type: types.ClassType, member: str
 ) -> type_utils.ClassMember | None {
     overloaded_syms: list[uni.Symbol] = [];
-    # lookup_member_symbol already handles MRO traversal internally.
-    if sym := base_type.lookup_member_symbol(member, overloaded_syms) {
-        decl_node = sym.decl;
-        # Case 1: Symbol is declared inside an impl block (e.g. impl Foo { def f(){} }).
-        # The impl block's decl_link points to the actual owning class or enum.
-        if impl_ := decl_node.find_parent_of_type(uni.ImplDef) {
-            if isinstance(impl_.decl_link, uni.Archetype) {
-                return type_utils.ClassMember(sym, self.get_type_of_class(impl_.decl_link), overloaded_syms);
+    # Walk MRO: the declaring class is the first one that owns the member.
+    for cls in base_type.shared.mro {
+        # Look only in this class's own scope (deep=False avoids re-traversing parents).
+        all_syms = cls.shared.symbol_table.lookup_all(member, deep=False);
+        if all_syms {
+            # Gather extra same-name symbols as overloads; used in AtomTrailer to build OverloadedType.
+            if len(all_syms) > 1 {
+                overloaded_syms.extend(all_syms[1:]);
             }
-            if isinstance(impl_.decl_link, uni.Enum) {
-                return type_utils.ClassMember(sym, self.get_type_of_enum(impl_.decl_link), overloaded_syms);
-            }
-        }
-        # Case 2: Symbol is declared directly inside a class body (e.g. obj Foo { def f(){} }).
-        if declaring_class := decl_node.find_parent_of_type(uni.Archetype) {
-            return type_utils.ClassMember(sym, self.get_type_of_class(declaring_class), overloaded_syms);
-        }
-        # Case 3: Symbol is declared directly inside an enum body (e.g. enum Color { RED = 1 }).
-        if declaring_enum := decl_node.find_parent_of_type(uni.Enum) {
-            return type_utils.ClassMember(sym, self.get_type_of_enum(declaring_enum), overloaded_syms);
+            return type_utils.ClassMember(all_syms[0], cls, overloaded_syms);
         }
     }
     return None;
