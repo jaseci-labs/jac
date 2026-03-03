@@ -160,6 +160,7 @@ class KubernetesTarget(DeploymentTarget) {
         if cluster_env == 'aws' {
             service_metadata['annotations'] = {
                 'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing',
                 'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
             };
         }
@@ -548,6 +549,7 @@ class KubernetesTarget(DeploymentTarget) {
         if self.k8s_config.redis_enabled {
             redis_name = f"{app_name}-redis";
             redis_service_name = f"{redis_name}-service";
+            redis_config_name = f"{redis_name}-config";
             redis_provider = DatabaseProviderFactory.create(
                 'kubernetes_redis', self, {'app_name': app_name}
             );
@@ -555,19 +557,113 @@ class KubernetesTarget(DeploymentTarget) {
             self.env_list.append(
                 {'name': 'REDIS_URL', 'value': redis_result['connection_string']}
             );
+            config_updated = False;
             try {
-                apps_v1.read_namespaced_deployment(
-                    name=redis_name, namespace=namespace
+                existing_cm = core_v1.read_namespaced_config_map(
+                    name=redis_config_name, namespace=namespace
                 );
+                existing_content = existing_cm.data.get('redis.conf', '');
+                new_content = redis_result['configmap']['data']['redis.conf'];
+
+                if existing_content != new_content {
+                    if self.logger {
+                        self.logger.info(
+                            f"Redis configuration changed (hash: {redis_result[
+                                'config_hash'
+                            ]}). "
+                            "Updating ConfigMap..."
+                        );
+                    }
+                    core_v1.replace_namespaced_config_map(
+                        name=redis_config_name,
+                        namespace=namespace,
+                        body=redis_result['configmap']
+                    );
+                    config_updated = True;
+                    if self.logger {
+                        self.logger.info("Redis ConfigMap updated successfully");
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.debug(
+                            "Redis configuration unchanged, skipping ConfigMap update"
+                        );
+                    }
+                }
             } except ApiException as e {
                 if (e.status == 404) {
-                    apps_v1.create_namespaced_deployment(
-                        namespace=namespace, body=redis_result['deployment']
+                    if self.logger {
+                        self.logger.info("Creating new Redis ConfigMap");
+                    }
+                    core_v1.create_namespaced_config_map(
+                        namespace=namespace, body=redis_result['configmap']
                     );
+                    if self.logger {
+                        self.logger.info("Redis ConfigMap created successfully");
+                    }
                 } else {
+                    if self.logger {
+                        self.logger.error(f"Failed to manage Redis ConfigMap: {e}");
+                    }
                     raise ;
                 }
             }
+            # Deploy Deployment (or update if config changed)
+            try {
+                existing_deploy = apps_v1.read_namespaced_deployment(
+                    name=redis_name, namespace=namespace
+                );
+
+                # Check if deployment needs update (config hash changed)
+                existing_hash = existing_deploy.spec.template.metadata.annotations.get(
+                    'redis-config-hash', ''
+                );
+                new_hash = redis_result['config_hash'];
+
+                if existing_hash != new_hash or config_updated {
+                    if self.logger {
+                        self.logger.info(
+                            f"Redis deployment needs update. "
+                            f"Old hash: {existing_hash}, New hash: {new_hash}"
+                        );
+                    }
+                    # Update deployment to trigger pod restart with new config
+                    apps_v1.replace_namespaced_deployment(
+                        name=redis_name,
+                        namespace=namespace,
+                        body=redis_result['deployment']
+                    );
+                    if self.logger {
+                        self.logger.info(
+                            "Redis deployment updated. Pods will restart with new configuration."
+                        );
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.debug(
+                            "Redis deployment unchanged, skipping update"
+                        );
+                    }
+                }
+            } except ApiException as e {
+                if (e.status == 404) {
+                    if self.logger {
+                        self.logger.info("Creating new Redis deployment");
+                    }
+                    apps_v1.create_namespaced_deployment(
+                        namespace=namespace, body=redis_result['deployment']
+                    );
+                    if self.logger {
+                        self.logger.info("Redis deployment created successfully");
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.error(f"Failed to manage Redis deployment: {e}");
+                    }
+                    raise ;
+                }
+            }
+            # Deploy Service
             try {
                 core_v1.read_namespaced_service(
                     name=redis_service_name, namespace=namespace
