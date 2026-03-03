@@ -75,6 +75,38 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              ),
              "tuple": JacTypeEntry(name="tuple", emitter_suffix="TupleEmitter"),
              "range": JacTypeEntry(name="range", emitter_suffix="RangeEmitter"),
+             # Fixed-width integer types
+             "i8": JacTypeEntry(
+                 name="i8", emitter_suffix="IntEmitter", na_type_spec="i8"
+             ),
+             "u8": JacTypeEntry(
+                 name="u8", emitter_suffix="IntEmitter", na_type_spec="i8"
+             ),
+             "i16": JacTypeEntry(
+                 name="i16", emitter_suffix="IntEmitter", na_type_spec="i16"
+             ),
+             "u16": JacTypeEntry(
+                 name="u16", emitter_suffix="IntEmitter", na_type_spec="i16"
+             ),
+             "i32": JacTypeEntry(
+                 name="i32", emitter_suffix="IntEmitter", na_type_spec="i32"
+             ),
+             "u32": JacTypeEntry(
+                 name="u32", emitter_suffix="IntEmitter", na_type_spec="i32"
+             ),
+             "i64": JacTypeEntry(
+                 name="i64", emitter_suffix="IntEmitter", na_type_spec="i64"
+             ),
+             "u64": JacTypeEntry(
+                 name="u64", emitter_suffix="IntEmitter", na_type_spec="i64"
+             ),
+             # Fixed-width float types
+             "f32": JacTypeEntry(
+                 name="f32", emitter_suffix="FloatEmitter", na_type_spec="f32"
+             ),
+             "f64": JacTypeEntry(
+                 name="f64", emitter_suffix="FloatEmitter", na_type_spec="f64"
+             ),
 
          },
          _builtin_names=frozenset(

@@ -162,3 +162,18 @@ def test_init_side_effects() -> int {
     }
     return 0;
 }
+
+# ── empty dict {} passed as struct constructor keyword arg ──
+obj DictFieldHolder {
+    has entries: dict[int, int];
+}
+
+"""empty dict {} in struct ctor — field must be a live dict, not a null pointer."""
+def test_empty_dict_ctor_field() -> int {
+    # This used to segfault: entries was zero-initialised to null instead of
+    # calling __dict_new_i64_i64().
+    c: DictFieldHolder = DictFieldHolder(entries={});
+    c.entries[1] = 10;
+    c.entries[2] = 20;
+    return c.entries[1] + c.entries[2];
+}

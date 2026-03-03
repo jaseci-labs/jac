@@ -7,9 +7,7 @@
         bytecode_cache: Optional custom bytecode cache. If None, uses default.
     """
 impl JacProgram.init(
-    self: JacProgram,
-    main_mod: (uni.ProgramModule | None) = None,
-    bytecode_cache: (BytecodeCache | None) = None
+    self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
     self.mod: uni.ProgramModule = main_mod or uni.ProgramModule();
     self.py_raise_map: dict[(str, str)] = {};
@@ -17,18 +15,17 @@ impl JacProgram.init(
     self.errors_had: list[Alert] = [];
     self.warnings_had: list[Alert] = [];
     self.type_evaluator: (TypeEvaluator | None) = None;
-    self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache();
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
 }
 
-"""Get a JacCompiler instance configured with this program's cache."""
+"""Get a JacCompiler instance for this program."""
 impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     if self._compiler {
         return self._compiler;
     }
     import from jaclang.jac0core.compiler { JacCompiler }
-    self._compiler = JacCompiler(bytecode_cache=self._bytecode_cache);
+    self._compiler = JacCompiler();
     return self._compiler;
 }
 

@@ -1,4 +1,20 @@
 """Function call codegen including builtins and method calls."""
+
+"""Resolve a type name string to an LLVM type.
+
+Checks type_map (primitives), then struct_types (user-defined objs),
+falling back to i64 for unknown types.
+"""
+impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
+    if type_name in self.type_map {
+        return self.type_map[type_name];
+    }
+    if type_name in self.struct_types {
+        return self.struct_types[type_name].as_pointer();
+    }
+    return ir.IntType(64);
+}
+
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Handle method calls: obj.method(args)
@@ -86,7 +102,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Handle multi-arg builtins via emitter dispatch
-    if func_name in ("abs", "min", "max", "pow") {
+    if func_name in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all") {
         params_l = nd.params or [];
         arg_vals: list[ir.Value] = [];
         for param in params_l {
@@ -102,7 +118,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord, int, chr, str, hex, oct, bin, round, float builtins via emitter dispatch
+    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
     if func_name in (
         "ord",
         "int",
@@ -113,7 +129,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "bin",
         "round",
         "float",
-        "bool"
+        "bool",
+        "sorted",
+        "reversed",
+        "list",
+        "set"
     ) {
         params_l = nd.params or [];
         if params_l {
@@ -273,9 +293,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 # Declare extern function for this Python function (sv↔na)
                 param_ir_types: list = [];
                 for pt in binding.param_types {
-                    param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                    param_ir_types.append(self._resolve_type_str(pt));
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );
@@ -286,7 +306,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 param_ir_types: list = [];
                 if binding.param_types {
                     for pt in binding.param_types {
-                        param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                        param_ir_types.append(self._resolve_type_str(pt));
                     }
                 } else {
                     # Infer parameter types from call arguments
@@ -295,7 +315,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         param_ir_types.append(ir.IntType(64));  # Default to i64
                     }
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );

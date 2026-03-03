@@ -36,21 +36,21 @@ glob CENTER_MASK: int = 0b00111100;
 
 # Piece display symbols per side
 glob WHITE_SYMBOLS: dict[PieceKind, str] = {
-         PieceKind.PAWN: "P",
-         PieceKind.KNIGHT: "N",
-         PieceKind.BISHOP: "B",
-         PieceKind.ROOK: "R",
-         PieceKind.QUEEN: "Q",
-         PieceKind.KING: "K"
+         PieceKind.PAWN: "♙",
+         PieceKind.KNIGHT: "♘",
+         PieceKind.BISHOP: "♗",
+         PieceKind.ROOK: "♖",
+         PieceKind.QUEEN: "♕",
+         PieceKind.KING: "♔"
      };
 
 glob BLACK_SYMBOLS: dict[PieceKind, str] = {
-         PieceKind.PAWN: "p",
-         PieceKind.KNIGHT: "n",
-         PieceKind.BISHOP: "b",
-         PieceKind.ROOK: "r",
-         PieceKind.QUEEN: "q",
-         PieceKind.KING: "k"
+         PieceKind.PAWN: "♟",
+         PieceKind.KNIGHT: "♞",
+         PieceKind.BISHOP: "♝",
+         PieceKind.ROOK: "♜",
+         PieceKind.QUEEN: "♛",
+         PieceKind.KING: "♚"
      };
 
 glob COL_NAMES: str = "abcdefgh";

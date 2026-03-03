@@ -119,6 +119,20 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
                     break;
                 }
             }
+            # Track dict type for dict parameters
+            for (dkey, dtype) in self.dict_types.items() {
+                if arg_val.type == dtype.as_pointer() {
+                    self.var_dict_type[param_name] = dkey;
+                    break;
+                }
+            }
+            # Track set element type for set parameters
+            for (ename, stype) in self.set_types.items() {
+                if arg_val.type == stype.as_pointer() {
+                    self.var_set_elem_type[param_name] = ename;
+                    break;
+                }
+            }
             # Track struct types (including union T | None)
             tag_name = self._get_name(p.type_tag.tag);
             tag_node = p.type_tag.tag;

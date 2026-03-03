@@ -3,9 +3,9 @@
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, JacTypeEntry }
 
 # ── Primitive type names ──────────────────────────────────────
-test "registry contains all 12 expected primitive types" {
+test "registry contains all 22 expected primitive types" {
     names = JAC_TYPE_REGISTRY.primitive_names();
-    expected = {"int","float","bool","complex","str","bytes","list","dict","set","frozenset","tuple","range"};
+    expected = {"int","float","bool","complex","str","bytes","list","dict","set","frozenset","tuple","range","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64"};
     assert names == expected;
 }
 
@@ -41,15 +41,41 @@ test "emitter suffixes follow naming convention" {
     assert entry_bool.emitter_suffix == "BoolEmitter";
 }
 
+test "fixed-width types reuse IntEmitter and FloatEmitter" {
+    for name in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"] {
+        entry = JAC_TYPE_REGISTRY.get(name);
+        assert entry is not None;
+        assert entry.emitter_suffix == "IntEmitter";
+    }
+    for name in ["f32", "f64"] {
+        entry = JAC_TYPE_REGISTRY.get(name);
+        assert entry is not None;
+        assert entry.emitter_suffix == "FloatEmitter";
+    }
+}
+
 # ── NA type specs ────────────────────────────────────────────
 test "na_type_entries returns only types with LLVM representations" {
     entries = JAC_TYPE_REGISTRY.na_type_entries();
-    assert len(entries) == 4;
+    assert len(entries) == 14;
     entry_map = {e[0]: e[1] for e in entries};
+    # Standard types
     assert entry_map["int"] == "i64";
     assert entry_map["float"] == "f64";
     assert entry_map["bool"] == "i1";
     assert entry_map["str"] == "i8*";
+    # Fixed-width integer types
+    assert entry_map["i8"] == "i8";
+    assert entry_map["u8"] == "i8";
+    assert entry_map["i16"] == "i16";
+    assert entry_map["u16"] == "i16";
+    assert entry_map["i32"] == "i32";
+    assert entry_map["u32"] == "i32";
+    assert entry_map["i64"] == "i64";
+    assert entry_map["u64"] == "i64";
+    # Fixed-width float types
+    assert entry_map["f32"] == "f32";
+    assert entry_map["f64"] == "f64";
 }
 
 test "types without LLVM representation are excluded from na_type_entries" {
