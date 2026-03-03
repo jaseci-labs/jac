@@ -33,7 +33,11 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         }
         file_name = Path(file_path).name;
         # Check multiple locations for files
-        # 1. .jac/client/dist/ (Jac-client build output)
+        # 1. .jac/client/dist/ — jac-client's Vite build output directory.
+        #    Checked first because font packages (e.g. @fontsource-variable/outfit) installed
+        #    via jac-client emit .woff2/.ttf files here, and CSS @font-face rules reference
+        #    them with root-relative URLs (e.g. /assets/outfit.woff2). Without this candidate
+        #    those requests return 404 even though the file exists on disk.
         client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
         client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
         # 2. dist/ (jac core build output)
@@ -292,6 +296,7 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     }
     file_name = Path(file_path).name;
     candidates = [
+        # Project-level folders take priority to avoid shadowing user files
         base_path / 'dist' / file_path,
         base_path / 'dist' / file_name,
         base_path / 'assets' / file_path,
@@ -300,6 +305,10 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path / 'src' / file_path,
         base_path / 'src' / file_name,
         (base_path / file_path),
+        # .jac/client/dist/ — jac-client's Vite build output.
+        # Font packages (e.g. @fontsource-variable/outfit) emit .woff2/.ttf files here.
+        # CSS @font-face rules reference them with root-relative URLs (e.g. /assets/outfit.woff2),
+        # so serve_root_asset must include this path or those requests return 404.
         base_path / '.jac' / 'client' / 'dist' / file_path,
         base_path / '.jac' / 'client' / 'dist' / file_name
     ];
