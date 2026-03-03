@@ -1,24 +1,15 @@
 """Console utilities for terminal output.
 
-This module provides utilities for terminal output using pure Python.
+This module provides utilities for terminal output using jacpretty.
 It includes:
-- Basic console instance with simple print methods
-- Helper functions for common output patterns
+- JacConsole class with rich-styled print methods
+- A module-level `console` instance ready to use
 - Support for NO_COLOR and NO_EMOJI environment variables
-
-Plugins (like jac-super) can override this to provide Rich-enhanced output.
 """
-import os;
-import sys;
 import from contextlib { contextmanager }
 import from typing { Any }
 
-"""Console utility class for terminal output in Jac CLI.
-
-This is the base implementation using pure Python print().
-Plugins can inherit from this and override methods to provide
-enhanced output (e.g., Rich-based formatting).
-"""
+"""Console utility class for terminal output in Jac CLI."""
 obj JacConsole {
     has use_emoji: bool = True,
         use_color: bool = True;
@@ -48,18 +39,5 @@ obj JacConsole {
     def print_watching(pattern: str, count: int) -> None;
 }
 
-# Lazy initialization to avoid circular imports
-glob _console_instance: JacConsole | None = None;
-
-def _get_console -> JacConsole;
-
-# Basic proxy class that lazily initializes the console on first access
-# This allows plugins to override via the hook system while avoiding circular imports
-class _ConsoleProxy {
-    def __getattr__(self: _ConsoleProxy, name: str) -> Any {
-        return getattr(_get_console(), name);
-    }
-}
-
-# Export the proxy as console - provides clean attribute access with lazy initialization
-glob console = _ConsoleProxy();
+# Module-level console instance
+glob console: JacConsole = JacConsole();

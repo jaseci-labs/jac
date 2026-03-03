@@ -78,7 +78,6 @@ nav:
           - byLLM: "community/release_notes/byllm.md"
           - jac-client: "community/release_notes/jac-client.md"
           - jac-scale: "community/release_notes/jac-scale.md"
-          - jac-super: "community/release_notes/jac-super.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
       - Internals:
           - Import Patterns: "community/internals/jac_import_patterns.md"

@@ -11,7 +11,6 @@ Examples:
     jac run scripts/precompile_bytecode.jac./jac-scale
     jac run scripts/precompile_bytecode.jac./jac-client
     jac run scripts/precompile_bytecode.jac./jac-byllm
-    jac run scripts/precompile_bytecode.jac./jac-super
 """
 
 import hashlib;

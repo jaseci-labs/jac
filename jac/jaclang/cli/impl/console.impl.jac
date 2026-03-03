@@ -1,18 +1,10 @@
-"""Implementation of console utilities for terminal output (jacpretty-powered)."""
+"""JacConsole implementation powered by jacpretty."""
 import os, sys;
 import from contextlib { contextmanager }
 import from typing { Any }
 import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 
-# ===============================================================================
-# Internal jacpretty Console Factories
-# ===============================================================================
-# NOTE: These are intentionally NOT singletons. A singleton would cache
-# sys.stdout/sys.stderr at creation time, causing test stdout/stderr redirects
-# (sys.stdout = io.StringIO()) to be bypassed — output would go to the original
-# stream, making captured_output.getvalue() return ''. Creating fresh instances
-# per call ensures Console.__init__ always picks up the *current* sys.stdout
-# or sys.stderr, exactly like Python's built-in print() does.
+# Fresh instances per call so tests can redirect sys.stdout/sys.stderr freely.
 def _get_pretty_stdout -> _PrettyConsole {
     return _PrettyConsole();
 }
@@ -21,20 +13,11 @@ def _get_pretty_stderr -> _PrettyConsole {
     return _PrettyConsole(file=sys.stderr);
 }
 
-# ===============================================================================
-# JacConsole Implementation
-# ===============================================================================
-"""Initialize the console."""
 impl JacConsole.init -> None {
     self.use_emoji = JacConsole._should_use_emoji();
     self.use_color = JacConsole._should_use_color();
 }
 
-"""Check if emoji should be used based on environment.
-
-Returns:
-    True if emoji should be used, False otherwise
-"""
 impl JacConsole._should_use_emoji -> bool {
     if os.environ.get('NO_EMOJI') or os.environ.get('TERM') == 'dumb' {
         return False;
@@ -45,34 +28,17 @@ impl JacConsole._should_use_emoji -> bool {
     return True;
 }
 
-"""Check if color should be used based on environment.
-
-Returns:
-    True if color should be used, False otherwise
-"""
 impl JacConsole._should_use_color -> bool {
-    if os.environ.get('NO_COLOR') {
-        return False;
-    }
-    if os.environ.get('TERM') == 'dumb' {
+    if os.environ.get('NO_COLOR') or os.environ.get('TERM') == 'dumb' {
         return False;
     }
     return True;
 }
 
-"""Print to stdout using jacpretty's Console.
-
-Supports markup tags like [bold], [red], [bold red on blue], etc.
-When markup=False is passed, text is printed as-is with no markup parsing.
-"""
 impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
-    # Extract markup flag (default True)
     markup = kwargs.pop('markup', True);
-    # Extract style (default empty)
     style = kwargs.pop('style', '');
-    # Remove unsupported kwargs
     kwargs.pop('highlight', None);
-    # Forward to jacpretty console
     _get_pretty_stdout().print(
         *args,
         sep=kwargs.pop('sep', ' '),
@@ -80,13 +46,10 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
         style=style,
         markup=markup
     );
-    # Flush explicitly: jacpretty's Console.print() only flushes when is_terminal
-    # is True, but subprocess/PIPE stdout is fully buffered (not line-buffered).
-    # Without this, server output never reaches the PIPE reader.
+    # Flush so output reaches PIPE readers in subprocess contexts.
     sys.stdout.flush();
 }
 
-"""Context manager for status during long operations (basic implementation)."""
 impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
     if args {
         _get_pretty_stdout().print(
@@ -100,19 +63,11 @@ impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
     return _noop_status();
 }
 
-"""Print a success message with a green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
     _get_pretty_stdout().print(f"[bold green]{prefix}[/] {message}");
 }
 
-"""Print an error message in red with optional hint.
-
-Args:
-    message: The error message
-    hint: Optional hint or suggestion
-    emoji: Whether to use emoji (✖) or text ([ERROR])
-"""
 impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
@@ -124,24 +79,16 @@ impl JacConsole.error(
     }
 }
 
-"""Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
     _get_pretty_stdout().print(f"[bold yellow]{prefix}[/] {message}");
 }
 
-"""Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
     _get_pretty_stdout().print(f"[bold cyan]{prefix}[/] {message}");
 }
 
-"""Print a header with optional version.
-
-Args:
-    title: Header title
-    version: Optional version string
-"""
 impl JacConsole.print_header(title: str, version: str | None = None) -> None {
     pc = _get_pretty_stdout();
     pc.rule();
@@ -153,12 +100,6 @@ impl JacConsole.print_header(title: str, version: str | None = None) -> None {
     pc.rule();
 }
 
-"""Print a list of labeled URLs.
-
-Args:
-    urls: Dict or list of tuples mapping labels to URLs
-    symbol: Symbol to use before each line (default: ➜)
-"""
 impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
     pc = _get_pretty_stdout();
     items = urls.items() if isinstance(urls, dict) else urls;
@@ -170,12 +111,6 @@ impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
     }
 }
 
-"""Print a bordered box with next steps.
-
-Args:
-    steps: List of step strings
-    title: Box title (default: "Next Steps")
-"""
 impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') -> None {
     pc = _get_pretty_stdout();
     pc.print(f"\n[bold bright_white]{title}:[/]");
@@ -185,13 +120,6 @@ impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') ->
     pc.print();
 }
 
-"""Print a list of items with colored symbols.
-
-Args:
-    items: List of items to print
-    style: Style key ('success', 'warning', 'error', 'info')
-    symbol: Symbol to prefix each item
-"""
 impl JacConsole.print_list(
     items: list[str], style: str = 'success', symbol: str = '✔'
 ) -> None {
@@ -208,13 +136,6 @@ impl JacConsole.print_list(
     }
 }
 
-"""Print a formatted table with colored headers.
-
-Args:
-    headers: Column headers
-    rows: List of rows (each row is a list of strings)
-    title: Optional table title
-"""
 impl JacConsole.print_table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
@@ -222,7 +143,6 @@ impl JacConsole.print_table(
     if title {
         pc.print(f"\n[bold bright_white]{title}:[/]");
     }
-    # Calculate column widths
     col_widths: list[int] = [len(h) for h in headers];
     for row in rows {
         for (i, cell) in enumerate(row) {
@@ -231,14 +151,12 @@ impl JacConsole.print_table(
             }
         }
     }
-    # Print header row
     header_parts = [
         f"[bold bright_white]{h.ljust(w)}[/]" for (h, w) in zip(headers, col_widths)
     ];
     pc.print(' [dim]|[/] '.join(header_parts));
     separator = '-' * (sum(col_widths) + (len(col_widths) - 1) * 3);
     pc.print(f"[dim]{separator}[/]");
-    # Print data rows
     for row in rows {
         row_parts = [
             str(cell).ljust(col_widths[i]) if i < len(col_widths) else str(cell)
@@ -249,13 +167,6 @@ impl JacConsole.print_table(
     pc.print();
 }
 
-"""Context manager for spinner during long operations.
-
-Usage:
-    with console.spinner("Loading..."):
-        # do work
-        pass
-"""
 @ contextmanager
 impl JacConsole.spinner(text: str) -> object {
     _get_pretty_stdout().print(f"[dim]{text}...[/]", end='');
@@ -267,11 +178,6 @@ impl JacConsole.spinner(text: str) -> object {
     }
 }
 
-"""Print elapsed time in a human-friendly format.
-
-Args:
-    seconds: Time in seconds
-"""
 impl JacConsole.print_elapsed_time(seconds: float) -> None {
     pc = _get_pretty_stdout();
     if seconds < 1 {
@@ -282,12 +188,6 @@ impl JacConsole.print_elapsed_time(seconds: float) -> None {
     }
 }
 
-"""Print file change notification with timestamp.
-
-Args:
-    filepath: Path to the file
-    action: Action performed (changed, created, deleted)
-"""
 impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> None {
     import from datetime { datetime }
     pc = _get_pretty_stdout();
@@ -301,12 +201,6 @@ impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> Non
     );
 }
 
-"""Print file watching status.
-
-Args:
-    pattern: File pattern being watched
-    count: Number of files
-"""
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
     pc = _get_pretty_stdout();
     watch_emoji = '👀 ' if self.use_emoji else '';
@@ -314,18 +208,4 @@ impl JacConsole.print_watching(pattern: str, count: int) -> None {
     pc.print(
         f"   [dim]Monitoring:[/] [bright_white]{pattern}[/] [dim]({count} files)[/]"
     );
-}
-
-# ===============================================================================
-# Module-level function implementations
-# ===============================================================================
-"""Get the console instance using the hook system, allowing plugins to override."""
-impl _get_console -> JacConsole {
-    global _console_instance;
-    if _console_instance is None {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        _console_instance = Jac.get_console();
-        _console_instance.init();
-    }
-    return _console_instance;
 }
