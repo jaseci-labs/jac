@@ -4,18 +4,6 @@ title: "[Docs]: "
 labels: ["Type: Documentation"]
 assignees: []
 body:
-  - type: markdown
-    attributes:
-      value: "---"
-
-  - type: markdown
-    attributes:
-      value: "### Thank you for helping us improve the Jaseci documentation!"
-
-  - type: markdown
-    attributes:
-      value: "---"
-
   - type: dropdown
     id: doc-issue-type
     attributes:
@@ -36,7 +24,6 @@ body:
     id: doc-section
     attributes:
       label: "Affected Section"
-      description: "Which part of the Jaseci docs is this about?"
       options:
         - "Quick Guide — Getting Started"
         - "Quick Guide — Core Features"
@@ -58,15 +45,10 @@ body:
       label: "Link to Page / File"
       placeholder: "e.g. https://www.jac-lang.org/docs/... or docs/docs/reference/language/foundation.md"
 
-  - type: markdown
-    attributes:
-      value: "---"
-
   - type: textarea
     id: description
     attributes:
       label: "Description"
-      description: "What is missing, incorrect, or needs improvement?"
       placeholder: "e.g. The edge filtering section is missing an explanation for `[->:Friend:->]` syntax."
     validations:
       required: true
