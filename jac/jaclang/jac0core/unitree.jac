@@ -205,8 +205,7 @@ obj UniScopeNode(UniNode) {
         parent_scope: (UniScopeNode | None) by postinit,
         kid_scope: list[UniScopeNode] by postinit,
         names_in_scope: dict[(str, Symbol)] by postinit,
-        names_in_scope_overload: dict[(str, list[Symbol])] by postinit,
-        inherited_scope: list[InheritedSymbolTable] by postinit;
+        names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
 
     def _init_scope(
         self: UniScopeNode, name: str, parent_scope: (UniScopeNode | None) = None

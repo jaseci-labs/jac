@@ -20,6 +20,21 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_name == "any" {
             return self.jacval_type;
         }
+        # Bare unparameterized collection types → default to i64-element variants.
+        # This handles annotations like `a: list = [1, 2]` where no element type
+        # is specified. The default is List[int] / Dict[int, int] / Set[int].
+        if type_name == "list" {
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self.list_types["i64"].as_pointer();
+        }
+        if type_name in {"dict"} {
+            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
+            return self.dict_types["i64:i64"].as_pointer();
+        }
+        if type_name in {"set","frozenset"} {
+            self._emit_set_helpers("i64", ir.IntType(64), 0);
+            return self.set_types["i64"].as_pointer();
+        }
     }
     # Handle BuiltinType nodes
     if uni?.BuiltinType and isinstance(type_expr, uni.BuiltinType) {
@@ -42,6 +57,19 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
         if type_name == "any" {
             return self.jacval_type;
+        }
+        # Bare unparameterized collection names (e.g. from Token nodes)
+        if type_name == "list" {
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self.list_types["i64"].as_pointer();
+        }
+        if type_name == "dict" {
+            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
+            return self.dict_types["i64:i64"].as_pointer();
+        }
+        if type_name in {"set","frozenset"} {
+            self._emit_set_helpers("i64", ir.IntType(64), 0);
+            return self.set_types["i64"].as_pointer();
         }
     }
     # Handle union types: T | None → resolve T (BinaryExpr with BW_OR op)

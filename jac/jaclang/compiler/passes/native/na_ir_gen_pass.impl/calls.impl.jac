@@ -118,7 +118,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord, int, chr, str, hex, oct, bin, round, float builtins via emitter dispatch
+    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
     if func_name in (
         "ord",
         "int",
@@ -131,7 +131,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "float",
         "bool",
         "sorted",
-        "reversed"
+        "reversed",
+        "list",
+        "set"
     ) {
         params_l = nd.params or [];
         if params_l {

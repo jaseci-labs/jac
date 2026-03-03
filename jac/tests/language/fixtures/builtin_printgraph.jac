@@ -1,5 +1,5 @@
 node a {
-    has val: int;
+    has val: float;
 }
 
 edge Edge1 {

@@ -620,6 +620,16 @@ test "test_hover_types" {
         assert hover is not None , "Walrus hover should exist";
         assert "str" in hover.contents.value , f"Walrus: expected str, got: {hover.contents.value}";
         assert "None" not in hover.contents.value , f"Walrus: should NOT contain None (narrowed!), got: {hover.contents.value}";
+
+        # Comprehension types: iteration variables should have inferred types
+        compr_file = uris.from_fs_path(fixture_path("hover_comprehension.jac"));
+        lsp.type_check_file(compr_file);
+        compr_cases = [(4, 41, "int"), (5, 27, "int"), (6, 22, "int"), (7, 30, "int"), ];
+        for (line, col, expected) in compr_cases {
+            hover = lsp.get_hover_info(compr_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Compr hover should exist at line {line}, col {col}";
+            assert expected in hover.contents.value , f"Compr line {line}: expected '{expected}', got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }

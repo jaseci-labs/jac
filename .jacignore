@@ -131,10 +131,14 @@ precompile_bytecode.jac
 precompiled.jac
 prim_builtins_extra.jac
 prim_builtins.jac
+prim_builtins_introspection.jac
+prim_dict.jac
 prim_dict_extra.jac
 prim_dict_methods.jac
+prim_float.jac
 prim_float_cmp.jac
 prim_runtime_errors.jac
+prim_str.jac
 prim_str_extra.jac
 program.jac
 project.impl.jac
@@ -228,3 +232,6 @@ with_llm_method.jac
 yield_in_assignment.jac
 prim_builtins_extra2.jac
 prim_builtin_sort.jac
+vite_client_bundle.impl.jac
+test_variant_modules.jac
+async_compr.jac

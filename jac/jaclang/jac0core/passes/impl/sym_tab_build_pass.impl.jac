@@ -564,6 +564,18 @@ impl SymTabBuildPass.exit_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
+    self.pop_scope();
+}
+
 impl SymTabBuildPass.enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None {
     self.push_scope_and_link(nd);
 }
