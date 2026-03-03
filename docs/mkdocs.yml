@@ -31,6 +31,10 @@ nav:
               - New to Programming?: "tutorials/language/coding_primer.md"
               - Jac Fundamentals: "tutorials/language/basics.md"
               - Graphs & Walkers: "tutorials/language/osp.md"
+      - Native Compilation:
+          - Reference: "reference/language/native-pathway.md"
+          - Learn by Doing:
+              - Build a Chess Engine: "tutorials/native/chess.md"
       - AI Integration:
           - byLLM Reference: "reference/plugins/byllm.md"
           - Learn by Doing:

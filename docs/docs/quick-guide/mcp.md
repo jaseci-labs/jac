@@ -4,20 +4,12 @@ The `jac-mcp` plugin provides a [Model Context Protocol](https://modelcontextpro
 
 ## Installation
 
+If you installed Jaseci via PyPI or the install script, `jac-mcp` is likely already included. Run `jac --version` to check -- it prints all installed plugins. If `jac-mcp` appears in the list, you're good to go.
+
+Otherwise, install it separately:
+
 ```bash
 pip install jac-mcp
-```
-
-Or for development (from the repo root):
-
-```bash
-pip install -e ./jac-mcp
-```
-
-For SSE or HTTP transports, also install:
-
-```bash
-pip install uvicorn starlette
 ```
 
 ## Quick Start
@@ -225,8 +217,8 @@ project_root = "."           # Root directory for project-aware tools
 | Transport | Flag | Use Case | Requirements |
 |---|---|---|---|
 | **stdio** | `--transport stdio` | IDE integration (Claude Desktop, Cursor, Claude Code). Default. | None |
-| **SSE** | `--transport sse` | Browser-based clients, remote access | `uvicorn`, `starlette` |
-| **Streamable HTTP** | `--transport streamable-http` | Advanced HTTP clients, load-balanced deployments | `uvicorn`, `starlette` |
+| **SSE** | `--transport sse` | Browser-based clients, remote access | None |
+| **Streamable HTTP** | `--transport streamable-http` | Advanced HTTP clients, load-balanced deployments | None |
 
 **Endpoint details for HTTP transports:**
 
@@ -603,16 +595,6 @@ Find the path with `which jac` or `python -m site --user-base`.
 ### Server connects but shows no tools
 
 Run `jac mcp --inspect` to verify the server is working. If it shows tools but your AI client doesn't, restart the AI client --most clients only load MCP servers at startup.
-
-### SSE/HTTP transport fails to start
-
-Install the required dependencies:
-
-```bash
-pip install uvicorn starlette
-```
-
-The server will print `SSE transport requires uvicorn and starlette` and exit if they're missing.
 
 ### Tools return timeout errors
 

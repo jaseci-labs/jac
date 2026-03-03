@@ -43,6 +43,47 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             is_false = self.builder.not_(cond_bool, name="assert.fail");
             self._emit_runtime_raise(is_false, "AssertionError", "assertion failed");
         }
+    } elif isinstance(nd, uni.DeleteStmt) {
+        # del d[k]  →  d.remove(k)
+        target_expr = nd.target;
+        if (
+            isinstance(target_expr, uni.AtomTrailer)
+            and not target_expr.is_attr
+            and target_expr.right?.slices
+        ) {
+            slices = target_expr.right.slices or [];
+            if slices {
+                idx_target_name = self._get_name(target_expr.target);
+                # Only handle known dict variables
+                dict_type_key: (str | None) = None;
+                if idx_target_name is not None
+                and idx_target_name in self.var_dict_type {
+                    dict_type_key = self.var_dict_type[idx_target_name];
+                }
+                if dict_type_key is None {
+                    dict_val_tmp = self._codegen_expr(target_expr.target);
+                    if dict_val_tmp is not None {
+                        dict_info = self._infer_dict_type(dict_val_tmp);
+                        if dict_info is not None {
+                            dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                        }
+                    }
+                }
+                if dict_type_key is not None {
+                    dict_val = self._codegen_expr(target_expr.target);
+                    idx_node = slices[0];
+                    idx_val = self._codegen_expr(idx_node);
+                    if idx_val is None and idx_node?.start {
+                        idx_val = self._codegen_expr(idx_node.start);
+                    }
+                    if dict_val is not None and idx_val is not None {
+                        self._dispatch_primitive_method(
+                            "dict", "remove", dict_val, [idx_val], dict_type_key
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -412,6 +453,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.sub(
                             current, coerced, name=f"{var_name}.sub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     } else {
                         value = self.builder.fsub(
                             current, coerced, name=f"{var_name}.fsub"
@@ -484,11 +544,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "&=" {
-                    # Bitwise AND assignment
+                    # Bitwise AND assignment / set intersection_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.and_(
                             current, coerced, name=f"{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     # Bitwise OR assignment / set union
@@ -587,11 +666,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         }
                     }
                 } elif aug_op_val == "^=" {
-                    # Bitwise XOR assignment
+                    # Bitwise XOR assignment / set symmetric_difference_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.xor(
                             current, coerced, name=f"{var_name}.xor"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "<<=" {
                     # Left shift assignment
@@ -655,6 +753,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.fsub(
                             current, coerced, name=f"glob.{var_name}.fsub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "*=" {
                     if isinstance(current.type, ir.IntType) {
@@ -677,12 +793,70 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.and_(
                             current, coerced, name=f"glob.{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.or_(
                             current, coerced, name=f"glob.{var_name}.or"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set union (update)
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_update(_ctx, current, [coerced]);
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
+                    }
+                } elif aug_op_val == "^=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.xor(
+                            current, coerced, name=f"glob.{var_name}.xor"
+                        );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -692,8 +866,56 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             # New variable — allocate and store
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
-                var_type = self._resolve_jac_type(nd.type_tag.tag);
-                value = self._coerce_type(value, var_type);
+                tag_node = nd.type_tag.tag;
+                # Bare unparameterized collection annotations (list/dict/set/frozenset):
+                # infer the variable type from the RHS value rather than defaulting,
+                # so `a: list = [1, 2]`, `d: dict = {"k": v}`, `s: set = {1, 2}` all work
+                # regardless of element types.
+                bare_name: (str | None) = None;
+                if isinstance(tag_node, uni.Name) {
+                    bare_name = tag_node.value;
+                } elif uni?.BuiltinType and isinstance(tag_node, uni.BuiltinType) {
+                    bare_name = tag_node.value;
+                }
+                infer_from_val = (
+                    bare_name in {"list","dict","set","frozenset"}
+                    and isinstance(value.type, ir.PointerType)
+                );
+                if infer_from_val {
+                    # Verify value is actually a known collection pointer
+                    is_coll = False;
+                    for (_, _ltype) in self.list_types.items() {
+                        if value.type == _ltype.as_pointer() {
+                            is_coll = True;
+                            break;
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _dtype) in self.dict_types.items() {
+                            if value.type == _dtype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _stype) in self.set_types.items() {
+                            if value.type == _stype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        infer_from_val = False;
+                    }
+                }
+                if infer_from_val {
+                    var_type = value.type;  # element type inferred from RHS literal
+                } else {
+                    var_type = self._resolve_jac_type(tag_node);
+                    value = self._coerce_type(value, var_type);
+                }
             }
             alloca = self._entry_alloca(var_type, var_name);
             self.builder.store(value, alloca);
@@ -825,6 +1047,89 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         self.builder.position_at_end(end_bb);
         return;
     }
+    # ── Dict .items() iteration: for (k, v) in d.items() ──
+    if isinstance(nd.target, uni.TupleVal) and isinstance(nd.collection, uni.FuncCall) {
+        coll_call = nd.collection;
+        if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
+            items_method = self._get_name(coll_call.target.right);
+            items_base = self._get_name(coll_call.target.target);
+            if (
+                items_method == "items"
+                and items_base is not None
+                and items_base in self.var_dict_type
+            ) {
+                dict_type_key = self.var_dict_type[items_base];
+                helpers = self.dict_helpers.get(dict_type_key);
+                unpack_targets = nd.target.values or [];
+                if helpers is not None and len(unpack_targets) == 2 {
+                    key_var_name = self._get_name(unpack_targets[0]);
+                    val_var_name = self._get_name(unpack_targets[1]);
+                    if key_var_name is not None and val_var_name is not None {
+                        collection_val = self._codegen_expr(coll_call.target.target);
+                        if collection_val is not None {
+                            i64 = ir.IntType(64);
+                            key_type = helpers["key_type"];
+                            val_type = helpers["val_type"];
+                            len_val = self.builder.call(
+                                helpers["len"], [collection_val], name="fori.len"
+                            );
+                            idx_alloca = self._entry_alloca(i64, "fori.idx");
+                            self.builder.store(ir.Constant(i64, 0), idx_alloca);
+                            key_alloca = self._entry_alloca(key_type, key_var_name);
+                            val_alloca = self._entry_alloca(val_type, val_var_name);
+                            self.local_vars[key_var_name] = key_alloca;
+                            self.local_vars[val_var_name] = val_alloca;
+                            func = self.builder.function;
+                            cond_bb = func.append_basic_block(name="fori.cond");
+                            body_bb = func.append_basic_block(name="fori.body");
+                            incr_bb = func.append_basic_block(name="fori.incr");
+                            end_bb = func.append_basic_block(name="fori.end");
+                            self.builder.branch(cond_bb);
+                            self.builder.position_at_end(cond_bb);
+                            cur_idx = self.builder.load(idx_alloca, name="fori.cur.idx");
+                            cmp = self.builder.icmp_signed(
+                                "<", cur_idx, len_val, name="fori.cmp"
+                            );
+                            self.builder.cbranch(cmp, body_bb, end_bb);
+                            self.loop_stack.append((incr_bb, end_bb));
+                            self.builder.position_at_end(body_bb);
+                            body_idx = self.builder.load(
+                                idx_alloca, name="fori.body.idx"
+                            );
+                            key_val = self.builder.call(
+                                helpers["get_key"],
+                                [collection_val, body_idx],
+                                name="fori.key"
+                            );
+                            val_val = self.builder.call(
+                                helpers["get_val"],
+                                [collection_val, body_idx],
+                                name="fori.val"
+                            );
+                            self.builder.store(key_val, key_alloca);
+                            self.builder.store(val_val, val_alloca);
+                            if isinstance(nd.body, (list, tuple)) {
+                                self._codegen_body(nd.body);
+                            }
+                            if not self.builder.block.is_terminated {
+                                self.builder.branch(incr_bb);
+                            }
+                            self.loop_stack.pop();
+                            self.builder.position_at_end(incr_bb);
+                            inc_idx = self.builder.load(idx_alloca, name="fori.inc.idx");
+                            next_idx = self.builder.add(
+                                inc_idx, ir.Constant(i64, 1), name="fori.next.idx"
+                            );
+                            self.builder.store(next_idx, idx_alloca);
+                            self.builder.branch(cond_bb);
+                            self.builder.position_at_end(end_bb);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
     # ── Dict iteration: for k in dict ──
     # Only use dict iteration if the collection variable is explicitly tracked as a dict
     # (This avoids premature code generation from type inference)
@@ -833,11 +1138,27 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if coll_name is not None and coll_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[coll_name];
     }
+    # Fallback: for field access (e.g. c.props) where coll_name is None or not
+    # tracked, evaluate the expression and infer the dict type from its LLVM type.
+    _ford_coll_val: (ir.Value | None) = None;
+    if dict_type_key is None {
+        _ford_coll_val = self._codegen_expr(nd.collection);
+        if _ford_coll_val is not None {
+            dict_info = self._infer_dict_type(_ford_coll_val);
+            if dict_info is not None {
+                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+            }
+        }
+    }
     if dict_type_key is not None {
         # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
         if helpers is not None {
-            collection_val = self._codegen_expr(nd.collection);
+            collection_val = (
+                _ford_coll_val
+                    if _ford_coll_val is not None
+                    else self._codegen_expr(nd.collection)
+            );
             if collection_val is not None {
                 i64 = ir.IntType(64);
                 key_type = helpers["key_type"];
@@ -889,6 +1210,61 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 self.builder.position_at_end(end_bb);
                 return;
             }
+        }
+    }
+    # ── String iteration: for c in str ──
+    # Must be checked before the list path: a raw `i8*` string would otherwise
+    # be misclassified as a `list[ptr]` and hit a type-mismatch when calling
+    # the List.ptr helpers.
+    coll_name_str = self._get_name(nd.collection);
+    is_list_coll = (
+        coll_name_str is not None and coll_name_str in self.var_list_elem_type
+    );
+    is_dict_coll = coll_name_str is not None and coll_name_str in self.var_dict_type;
+    if not is_list_coll and not is_dict_coll {
+        str_coll_val = self._codegen_expr(nd.collection);
+        i8p_s = ir.IntType(8).as_pointer();
+        if str_coll_val is not None and str_coll_val.type == i8p_s {
+            i64 = ir.IntType(64);
+            strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p_s]);
+            str_len = self.builder.call(strlen_fn, [str_coll_val], name="fors.len");
+            idx_alloca = self._entry_alloca(i64, "fors.idx");
+            self.builder.store(ir.Constant(i64, 0), idx_alloca);
+            loop_alloca = self._entry_alloca(i8p_s, loop_var_name);
+            self.local_vars[loop_var_name] = loop_alloca;
+            func = self.builder.function;
+            cond_bb = func.append_basic_block(name="fors.cond");
+            body_bb = func.append_basic_block(name="fors.body");
+            incr_bb = func.append_basic_block(name="fors.incr");
+            end_bb = func.append_basic_block(name="fors.end");
+            self.builder.branch(cond_bb);
+            self.builder.position_at_end(cond_bb);
+            cur_idx = self.builder.load(idx_alloca, name="fors.cur.idx");
+            cmp = self.builder.icmp_signed("<", cur_idx, str_len, name="fors.cmp");
+            self.builder.cbranch(cmp, body_bb, end_bb);
+            self.loop_stack.append((incr_bb, end_bb));
+            self.builder.position_at_end(body_bb);
+            body_idx = self.builder.load(idx_alloca, name="fors.body.idx");
+            char_str = self._codegen_string_index(str_coll_val, body_idx);
+            if char_str is not None {
+                self.builder.store(char_str, loop_alloca);
+            }
+            if isinstance(nd.body, (list, tuple)) {
+                self._codegen_body(nd.body);
+            }
+            if not self.builder.block.is_terminated {
+                self.builder.branch(incr_bb);
+            }
+            self.loop_stack.pop();
+            self.builder.position_at_end(incr_bb);
+            inc_idx = self.builder.load(idx_alloca, name="fors.inc.idx");
+            next_idx = self.builder.add(
+                inc_idx, ir.Constant(i64, 1), name="fors.next.idx"
+            );
+            self.builder.store(next_idx, idx_alloca);
+            self.builder.branch(cond_bb);
+            self.builder.position_at_end(end_bb);
+            return;
         }
     }
     # ── List iteration: for x in items ──

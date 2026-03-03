@@ -84,6 +84,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }
+        # sys.argv → list[str] (list of pointer-sized elements)
+        right_name = self._get_name(value_node.right);
+        if target_name == "sys" and right_name == "argv" {
+            i8p = ir.IntType(8).as_pointer();
+            self._emit_list_helpers("ptr", i8p);
+            list_type = self.list_types.get("ptr");
+            if list_type is not None {
+                return list_type.as_pointer();
+            }
+        }
     }
     return None;
 }

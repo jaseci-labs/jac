@@ -476,7 +476,41 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             val = self._codegen_expr(param.value);
             if val is None {
-                continue;
+                # Empty dict/list literal returns None from _codegen_dict_val /
+                # _codegen_list_val.  Fall back to calling helpers["new"] for
+                # the field's concrete dict or list type.
+                ftype_probe = field_types.get(key_name);
+                if ftype_probe is not None and isinstance(ftype_probe, ir.PointerType) {
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if ftype_probe == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                val = self.builder.call(
+                                    helpers["new"], [], name=f"dict.ctor.{key_name}"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                    if val is None {
+                        for (elem_key, ltype) in self.list_types.items() {
+                            if ftype_probe == ltype.as_pointer() {
+                                helpers = self.list_helpers.get(elem_key);
+                                if helpers is not None {
+                                    val = self.builder.call(
+                                        helpers["new"],
+                                        [],
+                                        name=f"list.ctor.{key_name}"
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if val is None {
+                    continue;
+                }
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
@@ -498,6 +532,37 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
             val = self._codegen_expr(default_expr);
+            # Empty dict/list default returns None — fall back to helpers["new"].
+            if val is None {
+                ftype_probe = field_types.get(fname);
+                if ftype_probe is not None
+                and isinstance(ftype_probe, ir.PointerType) {
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if ftype_probe == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                val = self.builder.call(
+                                    helpers["new"], [], name=f"dict.dflt.{fname}"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                    if val is None {
+                        for (elem_key, ltype) in self.list_types.items() {
+                            if ftype_probe == ltype.as_pointer() {
+                                helpers = self.list_helpers.get(elem_key);
+                                if helpers is not None {
+                                    val = self.builder.call(
+                                        helpers["new"], [], name=f"list.dflt.{fname}"
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             if val is not None {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
@@ -533,6 +598,36 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             self.builder.store(zero_val, field_ptr);
         }
     }
+    # Call init if it exists (try both Jac name and Python dunder name)
+    init_fn: (ir.Function | None) = None;
+    for candidate in [f"{type_name}.init", f"{type_name}.__init__"] {
+        if candidate in self.method_funcs {
+            init_fn = self.method_funcs[candidate];
+            break;
+        }
+    }
+    if init_fn is not None {
+        # Collect non-keyword (positional) arguments
+        init_args: list[ir.Value] = [obj_ptr];  # self pointer
+        for param in params {
+            if not isinstance(param, uni.KWPair) {
+                val = self._codegen_expr(param);
+                if val is not None {
+                    init_args.append(val);
+                }
+            }
+        }
+        # Coerce arguments to match function signature
+        coerced_args: list[ir.Value] = [];
+        for (i, arg) in enumerate(init_args) {
+            if i < len(init_fn.args) {
+                coerced_args.append(self._coerce_type(arg, init_fn.args[i].type));
+            } else {
+                coerced_args.append(arg);
+            }
+        }
+        self.builder.call(init_fn, coerced_args, name="call.init");
+    }
     # Call postinit if it exists (Jac renames postinit → __post_init__)
     for pname in [f"{type_name}.__post_init__", f"{type_name}.postinit"] {
         if pname in self.method_funcs {
@@ -559,6 +654,24 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;
+    }
+    # --- Native stdlib module method calls: sys.exit() ---
+    if (
+        target_name == "sys"
+        and self?._native_stdlib_modules
+        and "sys" in self._native_stdlib_modules
+    ) {
+        if method_name == "exit" {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
+                }
+            }
+            return self._emit_sys_exit(arg_vals);
+        }
     }
     # --- Primitive emitter dispatch (list, set, str methods) ---
     # Evaluate target and args, dispatch through emitter layer.
@@ -704,7 +817,11 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "rindex",
         "center",
         "expandtabs",
-        "join"
+        "join",
+        "rsplit",
+        "splitlines",
+        "partition",
+        "rpartition"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
@@ -805,6 +922,29 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         val = self._codegen_expr(param);
         if val is not None {
             args.append(val);
+        }
+    }
+    # Fill in missing optional parameters with their AST default values
+    if full_name in self.method_ast_sigs and len(args) < len(func.args) {
+        sig_params = self.method_ast_sigs[full_name].get_parameters();
+        provided_count = len(args) - 1;  # exclude self
+        for pix in range(provided_count, len(sig_params)) {
+            p = sig_params[pix];
+            if pix < len(sig_params) {
+                expected_type = func.args[len(args)].type
+                    if len(args) < len(func.args)
+                    else ir.IntType(64);
+                if p.value is not None {
+                    dval = self._codegen_expr(p.value);
+                    if dval is not None {
+                        args.append(self._coerce_type(dval, expected_type));
+                    } else {
+                        args.append(ir.Constant(expected_type, 0));
+                    }
+                } else {
+                    args.append(ir.Constant(expected_type, 0));
+                }
+            }
         }
     }
     # Virtual dispatch if type has vtable

@@ -54,6 +54,7 @@ obj NaIRGenPass(Transform) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
@@ -82,6 +83,8 @@ obj NaIRGenPass(Transform) {
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _register_imported_struct_types -> None;
+    def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
@@ -134,6 +137,9 @@ obj NaIRGenPass(Transform) {
 
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    # Native stdlib: sys module
+    def _emit_sys_argv -> (ir.Value | None);
+    def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples

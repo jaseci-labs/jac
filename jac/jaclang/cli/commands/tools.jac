@@ -128,3 +128,26 @@ def lsp -> int;
     group="tools"
 )
 def completions(shell: str = "bash", install: bool = False) -> int;
+
+"""Regenerate jir_registry.jac from the current unitree node classes."""
+@registry.command(
+    name="gen-jir-registry",
+    help="Regenerate jir_registry.jac from unitree node classes",
+    args=[
+        Arg.create(
+            "verify",
+            typ=bool,
+            default=False,
+            help="Check that jir_registry.jac is up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-jir-registry", "Regenerate jir_registry.jac"),
+        ("jac gen-jir-registry --verify", "Check registry is up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_jir_registry(verify: bool = False) -> int;

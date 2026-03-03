@@ -1030,33 +1030,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         } except Exception {
             _obj_type = None;
         }
+        self._ensure_emitters();
         if (
             isinstance(_obj_type, jtypes.ClassType)
             and _obj_type.shared
             and _obj_type.shared.class_name in self._primitive_type_names
         ) {
-            # Lazily initialize emitter singletons on first use
-            if self._primitive_emitters is None {
-                self._primitives_es_mod = __import__(
-                    "jaclang.compiler.passes.ecmascript.primitives_es",
-                    fromlist=["ESIntEmitter"]
-                );
-                _pes = self._primitives_es_mod;
-                self._primitive_emitters = {
-                    "int": _pes.ESIntEmitter(),
-                    "float": _pes.ESFloatEmitter(),
-                    "complex": _pes.ESComplexEmitter(),
-                    "str": _pes.ESStrEmitter(),
-                    "bytes": _pes.ESBytesEmitter(),
-                    "list": _pes.ESListEmitter(),
-                    "dict": _pes.ESDictEmitter(),
-                    "set": _pes.ESSetEmitter(),
-                    "frozenset": _pes.ESFrozensetEmitter(),
-                    "tuple": _pes.ESTupleEmitter(),
-                    "range": _pes.ESRangeEmitter(),
-                    "bool": _pes.ESBoolEmitter()
-                };
-            }
             _type_name = _obj_type.shared.class_name;
             _emitter = self._primitive_emitters.get(_type_name);
             _method_name = callee.property.name;
@@ -1094,21 +1073,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Primitive emitter dispatch for builtin function calls ---
+    self._ensure_emitters();
     if (
         isinstance(nd.target, uni.Name)
         and nd.target.sym_name in self._emitter_builtins
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        # Lazily initialize builtin emitter singleton on first use
-        if self._builtin_emitter is None {
-            if not hasattr(self, '_primitives_es_mod') {
-                self._primitives_es_mod = __import__(
-                    "jaclang.compiler.passes.ecmascript.primitives_es",
-                    fromlist=["ESBuiltinEmitter"]
-                );
-            }
-            self._builtin_emitter = self._primitives_es_mod.ESBuiltinEmitter();
-        }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
         _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
@@ -1446,6 +1416,26 @@ impl EsastGenPass._convert_assignment_target(
     return (left, reference, None);
 }
 
+"""Lazily initialize primitive and builtin emitter singletons on first use."""
+impl EsastGenPass._ensure_emitters -> None {
+    if self._primitive_emitters is not None {
+        return;
+    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
+    self._primitives_es_mod = _pes;
+    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
+    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
+    self._primitive_emitters = {};
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pes, "ES" + _suffix, None);
+        if _ecls is not None {
+            self._primitive_emitters[_tn] = _ecls();
+        }
+    }
+    self._builtin_emitter = _pes.ESBuiltinEmitter();
+}
+
 """Try to dispatch an operator through the primitive emitter system.
 
 Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
@@ -1469,34 +1459,13 @@ impl EsastGenPass._try_primitive_op(
     } except Exception {
         _obj_type = None;
     }
+    self._ensure_emitters();
     if not (
         isinstance(_obj_type, jtypes.ClassType)
         and _obj_type.shared
         and _obj_type.shared.class_name in self._primitive_type_names
     ) {
         return None;
-    }
-    # Lazily initialize emitter singletons on first use
-    if self._primitive_emitters is None {
-        self._primitives_es_mod = __import__(
-            "jaclang.compiler.passes.ecmascript.primitives_es",
-            fromlist=["ESIntEmitter"]
-        );
-        _pes = self._primitives_es_mod;
-        self._primitive_emitters = {
-            "int": _pes.ESIntEmitter(),
-            "float": _pes.ESFloatEmitter(),
-            "complex": _pes.ESComplexEmitter(),
-            "str": _pes.ESStrEmitter(),
-            "bytes": _pes.ESBytesEmitter(),
-            "list": _pes.ESListEmitter(),
-            "dict": _pes.ESDictEmitter(),
-            "set": _pes.ESSetEmitter(),
-            "frozenset": _pes.ESFrozensetEmitter(),
-            "tuple": _pes.ESTupleEmitter(),
-            "range": _pes.ESRangeEmitter(),
-            "bool": _pes.ESBoolEmitter()
-        };
     }
     _type_name = _obj_type.shared.class_name;
     _emitter = self._primitive_emitters.get(_type_name);
@@ -3200,15 +3169,14 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     }
     # Inject _jac runtime object if any primitive emitter produced _jac.* calls
     if self.needs_jac_runtime {
-        _jac_rt_mod = __import__(
-            "jaclang.compiler.passes.ecmascript.jac_runtime_js",
-            fromlist=["JAC_RUNTIME_JS_OBJECT"]
-        );
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            JAC_RUNTIME_JS_OBJECT
+        }
         jac_rt_decl = es.VariableDeclaration(
             declarations=[
                 es.VariableDeclarator(
                     id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=_jac_rt_mod.JAC_RUNTIME_JS_OBJECT)
+                    init=es.Identifier(name=JAC_RUNTIME_JS_OBJECT)
                 )
             ],
             kind='const'
@@ -3843,6 +3811,6 @@ impl EsastGenPass.before_pass -> None {
     # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
     self._primitive_emitters: dict[str, object] | None = None;
     self._builtin_emitter: object | None = None;
-    self._primitive_type_names: set[str] = {"int","float","complex","str","bytes","list","dict","set","frozenset","tuple","range","bool"};
-    self._emitter_builtins: set[str] = {"print","input","len","abs","round","min","max","sum","sorted","reversed","enumerate","zip","map","filter","any","all","isinstance","issubclass","type","id","hash","repr","chr","ord","hex","oct","bin","pow","divmod","iter","next","callable","getattr","setattr","hasattr","delattr","vars","dir","open","format","ascii","str","int","float","bool","list","dict","set","tuple","frozenset","bytes","complex","range","slice","bytearray"};
+    self._primitive_type_names: set[str] | None = None;
+    self._emitter_builtins: set[str] | None = None;
 }

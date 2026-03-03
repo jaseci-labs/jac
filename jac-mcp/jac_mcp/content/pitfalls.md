@@ -39,11 +39,18 @@ if x > 5 {
 
 ### 3. Import syntax is different
 
-WRONG:
+WRONG (Python style):
 
 ```
 from os import path
 from typing import Any
+```
+
+WRONG (deprecated Jac v1 syntax -- do NOT use):
+
+```
+import:py from os { path }
+import:py typing;
 ```
 
 RIGHT:
@@ -52,6 +59,8 @@ RIGHT:
 import from os { path }
 import from typing { Any }
 ```
+
+The `import:py` prefix is **removed** from modern Jac. All imports use plain `import` -- Python modules are imported the same way as Jac modules. Never generate `import:py`, `include:jac`, or any colon-tagged import variant.
 
 ### 4. Prefer `obj` over Python-style `class`
 
