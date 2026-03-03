@@ -126,11 +126,6 @@ impl DeclImplMatchPass.connect_impls(
             valid_decl.sym_tab.names_in_scope
         );
         valid_decl.sym_tab.names_in_scope = sym.decl.name_of.sym_tab.names_in_scope;
-        # Fix local vars in impl that shadow typed variables from the
-        # declaration's parent scope chain. During SymTabBuildPass, impl
-        # blocks aren't yet linked to their declarations, so assignments
-        # like `tasks = tasks + [task]` create untyped local var symbols
-        # that shadow `has tasks: list` from the parent scope.
         self._resolve_impl_body_symbols(sym.decl.name_of);
         # Populate self-member symbols from impl to archetype for method impls
         # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
