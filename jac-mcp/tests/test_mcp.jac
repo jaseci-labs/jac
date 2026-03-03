@@ -294,8 +294,9 @@ test "write module returns messages" {
     );
     assert "messages" in result;
     assert len(result["messages"]) > 0;
-    assert result["messages"][0]["role"] == "user";
-    assert "my_module" in result["messages"][0]["content"];
+    assert result["messages"][0]["role"] == "system";
+    assert result["messages"][1]["role"] == "user";
+    assert "my_module" in result["messages"][1]["content"];
 }
 
 test "write module with impl" {
@@ -304,7 +305,7 @@ test "write module with impl" {
         "write_module",
         {"name": "calc", "purpose": "basic calculations", "has_impl": "true"}
     );
-    content = result["messages"][0]["content"];
+    content = result["messages"][1]["content"];
     assert "impl" in content.lower();
 }
 
@@ -319,7 +320,7 @@ test "write walker returns messages" {
         }
     );
     assert "messages" in result;
-    assert "data_collector" in result["messages"][0]["content"];
+    assert "data_collector" in result["messages"][1]["content"];
 }
 
 test "debug error includes context" {
@@ -327,7 +328,7 @@ test "debug error includes context" {
     result = pp.get_prompt(
         "debug_error", {"error_output": "unexpected token", "code": "class Foo:"}
     );
-    content = result["messages"][0]["content"];
+    content = result["messages"][1]["content"];
     assert "Jac" in content;
 }
 
@@ -338,7 +339,7 @@ test "migrate python returns messages" {
         {"python_code": "class Foo:\n    def __init__(self):\n        self.x = 5"}
     );
     assert "messages" in result;
-    content = result["messages"][0]["content"];
+    content = result["messages"][1]["content"];
     assert "class Foo" in content;
 }
 

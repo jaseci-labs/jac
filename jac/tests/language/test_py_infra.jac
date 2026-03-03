@@ -20,9 +20,9 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution, transform }
-import from jaclang.jac0core.bccache { get_global_cache_dir }
+import from jaclang.jac0core.jir { get_jir_cache_dir }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.compiler.passes.main { PyastBuildPass }
+import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -58,7 +58,7 @@ test "pyfunc 1" {
     }
     assert "def greet2(**kwargs: Any) -> None {" in output;
     assert output.count("with entry {") == 14;
-    assert "assert (x == 5) , 'x should be equal to 5';" in output;
+    assert 'assert (x == 5) , "x should be equal to 5";' in output;
     assert "if not (x == y) {" in output;
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output;
     assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello() -> object {' in output;
@@ -277,8 +277,8 @@ test "deep imports interp mode" {
             del sys.modules[mod_name];
         }
     }
-    # Delete bytecode cache files to force recompilation (from global cache dir)
-    cache_dir = get_global_cache_dir();
+    # Delete JIR cache files to force recompilation
+    cache_dir = get_jir_cache_dir() / "modules";
     if cache_dir.exists() {
         for cache_file in cache_dir.glob("*deep_import*") {
             cache_file.unlink();

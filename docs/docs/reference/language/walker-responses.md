@@ -14,6 +14,9 @@ This reference explains how walker responses work and the common patterns for ha
 
 Every time a walker executes a `report` statement, the value is appended to a `.reports` array. When you spawn a walker, you receive this array in the response.
 
+!!! note
+    The `report` statement also prints each reported value to stdout as a side effect. This means you will see the reported values printed to the console in addition to them being collected in `.reports`.
+
 ```jac
 walker:priv MyWalker {
     can do_work with Root entry {

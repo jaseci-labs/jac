@@ -1030,33 +1030,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         } except Exception {
             _obj_type = None;
         }
+        self._ensure_emitters();
         if (
             isinstance(_obj_type, jtypes.ClassType)
             and _obj_type.shared
             and _obj_type.shared.class_name in self._primitive_type_names
         ) {
-            # Lazily initialize emitter singletons on first use
-            if self._primitive_emitters is None {
-                self._primitives_es_mod = __import__(
-                    "jaclang.compiler.passes.ecmascript.primitives_es",
-                    fromlist=["ESIntEmitter"]
-                );
-                _pes = self._primitives_es_mod;
-                self._primitive_emitters = {
-                    "int": _pes.ESIntEmitter(),
-                    "float": _pes.ESFloatEmitter(),
-                    "complex": _pes.ESComplexEmitter(),
-                    "str": _pes.ESStrEmitter(),
-                    "bytes": _pes.ESBytesEmitter(),
-                    "list": _pes.ESListEmitter(),
-                    "dict": _pes.ESDictEmitter(),
-                    "set": _pes.ESSetEmitter(),
-                    "frozenset": _pes.ESFrozensetEmitter(),
-                    "tuple": _pes.ESTupleEmitter(),
-                    "range": _pes.ESRangeEmitter(),
-                    "bool": _pes.ESBoolEmitter()
-                };
-            }
             _type_name = _obj_type.shared.class_name;
             _emitter = self._primitive_emitters.get(_type_name);
             _method_name = callee.property.name;
@@ -1094,21 +1073,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     # --- Primitive emitter dispatch for builtin function calls ---
+    self._ensure_emitters();
     if (
         isinstance(nd.target, uni.Name)
         and nd.target.sym_name in self._emitter_builtins
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        # Lazily initialize builtin emitter singleton on first use
-        if self._builtin_emitter is None {
-            if not hasattr(self, '_primitives_es_mod') {
-                self._primitives_es_mod = __import__(
-                    "jaclang.compiler.passes.ecmascript.primitives_es",
-                    fromlist=["ESBuiltinEmitter"]
-                );
-            }
-            self._builtin_emitter = self._primitives_es_mod.ESBuiltinEmitter();
-        }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
         _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
@@ -1446,6 +1416,26 @@ impl EsastGenPass._convert_assignment_target(
     return (left, reference, None);
 }
 
+"""Lazily initialize primitive and builtin emitter singletons on first use."""
+impl EsastGenPass._ensure_emitters -> None {
+    if self._primitive_emitters is not None {
+        return;
+    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
+    self._primitives_es_mod = _pes;
+    self._primitive_type_names = JAC_TYPE_REGISTRY.primitive_names();
+    self._emitter_builtins = JAC_TYPE_REGISTRY.builtin_names();
+    self._primitive_emitters = {};
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
+        _ecls = getattr(_pes, "ES" + _suffix, None);
+        if _ecls is not None {
+            self._primitive_emitters[_tn] = _ecls();
+        }
+    }
+    self._builtin_emitter = _pes.ESBuiltinEmitter();
+}
+
 """Try to dispatch an operator through the primitive emitter system.
 
 Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
@@ -1469,34 +1459,13 @@ impl EsastGenPass._try_primitive_op(
     } except Exception {
         _obj_type = None;
     }
+    self._ensure_emitters();
     if not (
         isinstance(_obj_type, jtypes.ClassType)
         and _obj_type.shared
         and _obj_type.shared.class_name in self._primitive_type_names
     ) {
         return None;
-    }
-    # Lazily initialize emitter singletons on first use
-    if self._primitive_emitters is None {
-        self._primitives_es_mod = __import__(
-            "jaclang.compiler.passes.ecmascript.primitives_es",
-            fromlist=["ESIntEmitter"]
-        );
-        _pes = self._primitives_es_mod;
-        self._primitive_emitters = {
-            "int": _pes.ESIntEmitter(),
-            "float": _pes.ESFloatEmitter(),
-            "complex": _pes.ESComplexEmitter(),
-            "str": _pes.ESStrEmitter(),
-            "bytes": _pes.ESBytesEmitter(),
-            "list": _pes.ESListEmitter(),
-            "dict": _pes.ESDictEmitter(),
-            "set": _pes.ESSetEmitter(),
-            "frozenset": _pes.ESFrozensetEmitter(),
-            "tuple": _pes.ESTupleEmitter(),
-            "range": _pes.ESRangeEmitter(),
-            "bool": _pes.ESBoolEmitter()
-        };
     }
     _type_name = _obj_type.shared.class_name;
     _emitter = self._primitive_emitters.get(_type_name);
@@ -1871,25 +1840,64 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
-"""Process raise statement."""
+# Known exception types that map to _jac.exc.X in generated JS.
+glob _KNOWN_EXCEPTIONS: set[str] = {'BaseException','Exception','ArithmeticError','ZeroDivisionError','OverflowError','FloatingPointError','LookupError','IndexError','KeyError','ValueError','TypeError','AttributeError','RuntimeError','NotImplementedError','RecursionError','OSError','FileNotFoundError','FileExistsError','PermissionError','TimeoutError','IsADirectoryError','NotADirectoryError','AssertionError','ImportError','ModuleNotFoundError','NameError','UnboundLocalError','StopIteration','StopAsyncIteration','EOFError','MemoryError','ReferenceError','KeyboardInterrupt','SystemExit','GeneratorExit'};
+
+"""Process raise statement.
+
+Maps known exception types to _jac.exc.X for hierarchy-aware matching.
+raise ValueError("msg") → throw new _jac.exc.ValueError("msg")
+"""
 impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     argument: es.Expression = cast(es.Expression, nd.cause.gen.es_ast)
         if (nd.cause and nd.cause.gen.es_ast)
         else self.sync_loc(es.Identifier(name='Error'), jac_node=nd);
+    # Handle both CallExpression and NewExpression (exit_func_call may have
+    # already converted class calls like ValueError("msg") to NewExpression).
+    callee: (es.Expression | None) = None;
+    call_args: (list | None) = None;
     if isinstance(argument, es.CallExpression) {
         callee = argument.callee;
-        if (
-            isinstance(callee, es.Identifier)
-            and (callee.name in {'Exception','Error'})
-        ) {
-            new_expr = self.sync_loc(
-                es.NewExpression(
-                    callee=self.sync_loc(es.Identifier(name='Error'), jac_node=nd),
-                    arguments=argument.arguments
+        call_args = argument.arguments;
+    } elif isinstance(argument, es.NewExpression) {
+        callee = argument.callee;
+        call_args = argument.arguments;
+    }
+    if callee is not None and isinstance(callee, es.Identifier) {
+        if callee.name in _KNOWN_EXCEPTIONS {
+            # Map to _jac.exc.X for hierarchy support
+            self.needs_jac_runtime = True;
+            exc_ref = self.sync_loc(
+                es.MemberExpression(
+                    object=self.sync_loc(
+                        es.MemberExpression(
+                            object=self.sync_loc(
+                                es.Identifier(name='_jac'), jac_node=nd
+                            ),
+                            property=self.sync_loc(
+                                es.Identifier(name='exc'), jac_node=nd
+                            )
+                        ),
+                        jac_node=nd
+                    ),
+                    property=self.sync_loc(
+                        es.Identifier(name=callee.name), jac_node=nd
+                    )
                 ),
                 jac_node=nd
             );
-            argument = new_expr;
+            argument = self.sync_loc(
+                es.NewExpression(callee=exc_ref, arguments=call_args or []),
+                jac_node=nd
+            );
+        } elif callee.name in {'Error'} {
+            argument = self.sync_loc(
+                es.NewExpression(
+                    callee=self.sync_loc(es.Identifier(name='Error'), jac_node=nd),
+                    arguments=call_args or []
+                ),
+                jac_node=nd
+            );
         }
     }
     throw_stmt = self.sync_loc(es.ThrowStatement(argument=argument), jac_node=nd);
@@ -1901,26 +1909,191 @@ impl EsastGenPass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
     nd.gen.es_ast = self._build_block_statement(nd, nd.body);
 }
 
-"""Process except clause."""
+"""Process except clause — builds handler body as BlockStatement for exit_try_stmt."""
 impl EsastGenPass.exit_except(nd: uni.Except) -> None {
-    param: (es.Pattern | None) = None;
-    if nd.name {
-        param = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
-    }
+    # Build the handler body as a BlockStatement.
+    # exit_try_stmt will consume this to build the multi-handler dispatch.
     body = self._build_block_statement(nd, nd.body);
-    catch_clause = self.sync_loc(es.CatchClause(param=param, body=body), jac_node=nd);
-    nd.gen.es_ast = catch_clause;
+    nd.gen.es_ast = body;
 }
 
-"""Process try statement."""
+"""Process try statement with multi-handler instanceof dispatch.
+
+Generates:
+  try { ... }
+  catch(__jac_e) {
+    if (__jac_e instanceof _jac.exc.TypeError) { ... }
+    else if (__jac_e instanceof _jac.exc.LookupError) { ... }
+    else { throw __jac_e; }
+  }
+  finally { ... }
+"""
 impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
     block = self._build_block_statement(nd, nd.body);
     handler: (es.CatchClause | None) = None;
-    if nd.excepts {
-        except_node = nd.excepts[0];
-        if except_node.gen.es_ast {
-            handler = cast(es.CatchClause, except_node.gen.es_ast);
+    if nd.excepts and len(nd.excepts) > 0 {
+        # Use a synthetic catch param name to avoid collisions
+        catch_param_name = "__jac_e";
+        catch_param = self.sync_loc(es.Identifier(name=catch_param_name), jac_node=nd);
+        # Build the if/else-if chain for multi-handler dispatch
+        catch_body_stmts: list[es.Statement] = [];
+        # Build from last to first (innermost else to outermost if)
+        if_chain: (es.IfStatement | None) = None;
+        for i in range(len(nd.excepts) - 1, -1, -1) {
+            except_node = nd.excepts[i];
+            # Get the handler body (built by exit_except as BlockStatement)
+            handler_body: (es.BlockStatement | None) = None;
+            if except_node.gen.es_ast
+            and isinstance(except_node.gen.es_ast, es.BlockStatement) {
+                handler_body = except_node.gen.es_ast;
+            } else {
+                handler_body = self.sync_loc(
+                    es.BlockStatement(body=[]), jac_node=except_node
+                );
+            }
+            # If handler has "as e", prepend a let binding: let e = __jac_e;
+            if except_node.name {
+                var_name = except_node.name?.sym_name or str(except_node.name);
+                binding = self.sync_loc(
+                    es.VariableDeclaration(
+                        declarations=[
+                            self.sync_loc(
+                                es.VariableDeclarator(
+                                    id=self.sync_loc(
+                                        es.Identifier(name=var_name),
+                                        jac_node=except_node.name
+                                    ),
+                                    init=self.sync_loc(
+                                        es.Identifier(name=catch_param_name),
+                                        jac_node=except_node
+                                    )
+                                ),
+                                jac_node=except_node
+                            )
+                        ],
+                        kind='let'
+                    ),
+                    jac_node=except_node
+                );
+                handler_body = self.sync_loc(
+                    es.BlockStatement(body=[binding] + (handler_body.body or [])),
+                    jac_node=except_node
+                );
+            }
+            # Get the exception type name for instanceof check
+            exc_type_name: (str | None) = None;
+            if except_node.ex_type {
+                if hasattr(except_node.ex_type, 'sym_name') {
+                    exc_type_name = except_node.ex_type.sym_name;
+                } elif hasattr(except_node.ex_type, 'value') {
+                    exc_type_name = except_node.ex_type.value;
+                }
+            }
+            if exc_type_name and exc_type_name in _KNOWN_EXCEPTIONS {
+                self.needs_jac_runtime = True;
+                # Build: __jac_e instanceof _jac.exc.X
+                test_expr = self.sync_loc(
+                    es.BinaryExpression(
+                        operator='instanceof',
+                        left=self.sync_loc(
+                            es.Identifier(name=catch_param_name), jac_node=except_node
+                        ),
+                        right=self.sync_loc(
+                            es.MemberExpression(
+                                object=self.sync_loc(
+                                    es.MemberExpression(
+                                        object=self.sync_loc(
+                                            es.Identifier(name='_jac'),
+                                            jac_node=except_node
+                                        ),
+                                        property=self.sync_loc(
+                                            es.Identifier(name='exc'),
+                                            jac_node=except_node
+                                        )
+                                    ),
+                                    jac_node=except_node
+                                ),
+                                property=self.sync_loc(
+                                    es.Identifier(name=exc_type_name),
+                                    jac_node=except_node
+                                )
+                            ),
+                            jac_node=except_node
+                        )
+                    ),
+                    jac_node=except_node
+                );
+                if_chain = self.sync_loc(
+                    es.IfStatement(
+                        test=test_expr, consequent=handler_body, alternate=if_chain
+                    ),
+                    jac_node=except_node
+                );
+            } else {
+                # No type or unknown type = catch-all (bare "except:" or "except Exception:")
+                if if_chain is None {
+                    # This is the only/last handler — use its body directly
+                    if_chain = self.sync_loc(
+                        es.IfStatement(
+                            test=self.sync_loc(
+                                es.Literal(value=True, raw='true'),
+                                jac_node=except_node
+                            ),
+                            consequent=handler_body,
+                            alternate=None
+                        ),
+                        jac_node=except_node
+                    );
+                } else {
+                    # Catch-all wraps the existing chain as its else
+                    if_chain = self.sync_loc(
+                        es.IfStatement(
+                            test=self.sync_loc(
+                                es.Literal(value=True, raw='true'),
+                                jac_node=except_node
+                            ),
+                            consequent=handler_body,
+                            alternate=None
+                        ),
+                        jac_node=except_node
+                    );
+                }
+            }
         }
+        # If no catch-all handler was found, add a re-throw as the final else
+        if if_chain is not None {
+            # Walk to the deepest else to check if we need a re-throw
+            tail = if_chain;
+            while isinstance(tail.alternate, es.IfStatement) {
+                tail = tail.alternate;
+            }
+            if tail.alternate is None {
+                # No catch-all at the end — add re-throw
+                tail.alternate = self.sync_loc(
+                    es.BlockStatement(
+                        body=[
+                            self.sync_loc(
+                                es.ThrowStatement(
+                                    argument=self.sync_loc(
+                                        es.Identifier(name=catch_param_name),
+                                        jac_node=nd
+                                    )
+                                ),
+                                jac_node=nd
+                            )
+                        ]
+                    ),
+                    jac_node=nd
+                );
+            }
+            catch_body_stmts.append(if_chain);
+        }
+        catch_body = self.sync_loc(
+            es.BlockStatement(body=catch_body_stmts), jac_node=nd
+        );
+        handler = self.sync_loc(
+            es.CatchClause(param=catch_param, body=catch_body), jac_node=nd
+        );
     }
     finalizer: (es.BlockStatement | None) = None;
     if (
@@ -2996,15 +3169,14 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     }
     # Inject _jac runtime object if any primitive emitter produced _jac.* calls
     if self.needs_jac_runtime {
-        _jac_rt_mod = __import__(
-            "jaclang.compiler.passes.ecmascript.jac_runtime_js",
-            fromlist=["JAC_RUNTIME_JS_OBJECT"]
-        );
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            JAC_RUNTIME_JS_OBJECT
+        }
         jac_rt_decl = es.VariableDeclaration(
             declarations=[
                 es.VariableDeclarator(
                     id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=_jac_rt_mod.JAC_RUNTIME_JS_OBJECT)
+                    init=es.Identifier(name=JAC_RUNTIME_JS_OBJECT)
                 )
             ],
             kind='const'
@@ -3639,6 +3811,6 @@ impl EsastGenPass.before_pass -> None {
     # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
     self._primitive_emitters: dict[str, object] | None = None;
     self._builtin_emitter: object | None = None;
-    self._primitive_type_names: set[str] = {"int","float","complex","str","bytes","list","dict","set","frozenset","tuple","range","bool"};
-    self._emitter_builtins: set[str] = {"print","input","len","abs","round","min","max","sum","sorted","reversed","enumerate","zip","map","filter","any","all","isinstance","issubclass","type","id","hash","repr","chr","ord","hex","oct","bin","pow","divmod","iter","next","callable","getattr","setattr","hasattr","delattr","vars","dir","open","format","ascii","str","int","float","bool","list","dict","set","tuple","frozenset","bytes","complex","range","slice","bytearray"};
+    self._primitive_type_names: set[str] | None = None;
+    self._emitter_builtins: set[str] | None = None;
 }

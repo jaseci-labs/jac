@@ -15,6 +15,7 @@ nav:
       - Build to Learn - AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+      - MCP Server: "quick-guide/mcp.md"
       - FAQ: "quick-guide/faq.md"
 
   - Full Reference:
@@ -30,6 +31,10 @@ nav:
               - New to Programming?: "tutorials/language/coding_primer.md"
               - Jac Fundamentals: "tutorials/language/basics.md"
               - Graphs & Walkers: "tutorials/language/osp.md"
+      - Native Compilation:
+          - Reference: "reference/language/native-pathway.md"
+          - Learn by Doing:
+              - Build a Chess Engine: "tutorials/native/chess.md"
       - AI Integration:
           - byLLM Reference: "reference/plugins/byllm.md"
           - Learn by Doing:
@@ -55,7 +60,6 @@ nav:
           - CLI Commands: "reference/cli/index.md"
           - Configuration: "reference/config/index.md"
           - Code Organization: "reference/code-organization.md"
-          - MCP Server: "reference/tools/mcp.md"
           - Testing: "reference/testing.md"
           - Debugging: "tutorials/language/debugging.md"
       - Python Integration:
@@ -238,10 +242,6 @@ plugins:
         communityhub/release_notes/byllm.md: community/release_notes/byllm.md
         communityhub/release_notes/jac-client.md: community/release_notes/jac-client.md
         communityhub/release_notes/jac-scale.md: community/release_notes/jac-scale.md
-        communityhub/release_notes/jac-cloud.md: community/release_notes/jac-cloud.md
-
-        # Examples redirects
-        learn/examples/index.md: tutorials/examples/index.md
 
         # Legacy content redirects
         learn/library_mode.md: reference/language/library-mode.md
@@ -267,6 +267,7 @@ plugins:
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md
+        reference/tools/mcp.md: quick-guide/mcp.md
 
         # Nav reorganization - merged pages redirects
         reference/language/ai-integration.md: reference/plugins/byllm.md

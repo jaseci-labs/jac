@@ -72,7 +72,38 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 }
             }
         } else {
-            break;
+            # LLM returned plain text without calling any tool.
+            # If finish_tool is available, the model skipped the expected tool workflow.
+            # Recover: redirect it once more to wrap its answer in finish_tool.
+            finish_tool_obj = mt_run.get_tool("finish_tool");
+            # Only recover when a structured (non-str, non-None) return type was expected.
+            # A plain string output on a str-typed function IS the correct final answer.
+            if not finish_tool_obj
+            or mt_run.resp_type is None
+            or mt_run.resp_type is str {
+                break;
+            }
+            recovery_msg = Message(
+                role=MessageRole.USER,
+                content="You must use finish_tool to return your response. Call finish_tool now.",
+            );
+            mt_run.add_message(recovery_msg);
+            original_tools = mt_run.tools;
+            mt_run.tools = [finish_tool_obj];
+            try {
+                recovery_resp = self.dispatch_no_streaming(mt_run);
+                if recovery_resp.tool_calls {
+                    for tool_call in recovery_resp.tool_calls {
+                        if tool_call.is_finish_call() {
+                            mt_run.add_message(tool_call());
+                            return tool_call.get_output();
+                        }
+                    }
+                }
+                return recovery_resp.output;
+            } finally {
+                mt_run.tools = original_tools;
+            }
         }
     }
     return resp.output;
@@ -179,16 +210,21 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
-    output_value = mt_run.parse_response(output_content);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
+    # Only parse the content as the final output when there are no tool calls.
+    # gpt-4o may return non-JSON content alongside tool calls (e.g. "I'll handle that."),
+    # which would cause json.loads to fail if we parsed it as the typed response.
+    output_value = mt_run.parse_response(output_content)
+        if not tool_calls_list
+        else output_content;
     for tool_call in tool_calls_list {
         if tool := mt_run.get_tool(tool_call.function.name) {
             args_json = json.loads(tool_call.function.arguments);
             args = tool.parse_arguments(args_json);
             tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
         } else {
-            raise RuntimeError(
+            raise UnknownToolError(
                 f"Attempted to call tool: '{tool_call.function.name}' which was not present."
             ) ;
         }

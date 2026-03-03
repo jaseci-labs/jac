@@ -118,6 +118,17 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "tutorial-osp.md",
              "Graphs & Walkers - OSP tutorial"
          ),
+         # --- Native Compilation ---
+         "jac://docs/native-pathway": (
+             "reference/language/native-pathway.md",
+             "native-pathway.md",
+             "Native Compilation - Native pathway reference"
+         ),
+         "jac://docs/tutorial-native-chess": (
+             "tutorials/native/chess.md",
+             "native-chess.md",
+             "Build a Chess Engine - Native compilation tutorial"
+         ),
          # --- AI Integration ---
          "jac://docs/byllm": (
              "reference/plugins/byllm.md",
@@ -213,7 +224,7 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "Code Organization - Project structure guide"
          ),
          "jac://docs/mcp": (
-             "reference/tools/mcp.md",
+             "quick-guide/mcp.md",
              "mcp.md",
              "MCP Server - Model Context Protocol reference"
          ),

@@ -4,7 +4,7 @@ Takes raw object code bytes from llvmlite's emit_object() and produces
 a runnable ELF executable using only Python's struct module. No external
 linker (ld, cc) required.
 
-Supports ELF64 with dynamic linking against libc/libgc.
+Supports ELF64 with dynamic linking against libc.
 Architecture support: x86_64, aarch64.
 """
 

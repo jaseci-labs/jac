@@ -1,114 +1,205 @@
-"""Tests for compound AND narrowing in the type checker.
+"""Tests for compound AND narrowing in the type checker."""
 
-When multiple isinstance checks on the SAME variable are combined with AND,
-the type should be narrowed to the most specific (intersection) type.
-"""
-
-obj BaseNode {
-    has name: str = "base";
+obj Animal {
+    has name: str = "animal";
 }
 
-obj CFGNode(BaseNode) {
-    has bb_out: list[CFGNode] | None = None;
+obj Mammal(Animal) {
+    has offspring: list[Mammal] | None = None;
 }
 
-obj SemiNode(CFGNode) {
-    has is_semi: bool = True;
+obj Primate(Mammal) {
+    has is_primate: bool = True;
 }
 
-# 1. Multiple isinstance checks - most specific wins
-def test_and_most_specific(x: BaseNode) -> None {
-    if isinstance(x, BaseNode) and isinstance(x, CFGNode) {
-        # x should be CFGNode here (most specific)
-        x.bb_out;  # <-- Ok after narrowing (CFGNode has bb_out)
+def test_and_most_specific(x: Animal) -> None {
+    if isinstance(x, Animal) and isinstance(x, Mammal) {
+        x.offspring;  # Ok
     }
 }
 
-# 2. Order doesn't matter - most specific wins
-def test_and_order_independent(x: BaseNode) -> None {
-    if isinstance(x, CFGNode) and isinstance(x, BaseNode) {
-        # x should be CFGNode here (most specific)
-        x.bb_out;  # <-- Ok after narrowing
+def test_and_with_not_isinstance(x: Animal) -> None {
+    if isinstance(x, Mammal) and not isinstance(x, Primate) {
+        x.offspring;  # Ok
     }
 }
 
-# 3. With negative isinstance - positive wins for narrowing
-def test_and_with_not_isinstance(x: BaseNode) -> None {
-    if isinstance(x, CFGNode) and not isinstance(x, SemiNode) {
-        # x should be CFGNode here (SemiNode excluded but CFGNode is the narrowed type)
-        x.bb_out;  # <-- Ok after narrowing
+def test_and_three_types(x: Animal) -> None {
+    if isinstance(x, Animal) and isinstance(x, Mammal) and isinstance(x, Primate) {
+        x.is_primate;  # Ok
     }
 }
 
-# 4. Three-way inheritance narrowing
-def test_and_three_types(x: BaseNode) -> None {
-    if isinstance(x, BaseNode) and isinstance(x, CFGNode) and isinstance(x, SemiNode) {
-        # x should be SemiNode here (most specific)
-        x.is_semi;  # <-- Ok after narrowing (SemiNode has is_semi)
+def test_and_with_flag(x: Animal, flag: bool) -> None {
+    if isinstance(x, Mammal) and flag {
+        x.offspring;  # Ok
     }
 }
 
-# 5. Mixed with other conditions
-def test_and_with_flag(x: BaseNode, flag: bool) -> None {
-    if isinstance(x, CFGNode) and flag {
-        # x should be CFGNode here
-        x.bb_out;  # <-- Ok after narrowing
-    }
-}
-
-# 6. Progressive narrowing - method call AFTER isinstance in same AND
-def test_progressive_narrowing_method(x: BaseNode) -> None {
-    if isinstance(x, CFGNode) and x.bb_out {
-        # x.bb_out sees x as CFGNode due to preceding isinstance
+def test_progressive_narrowing_method(x: Animal) -> None {
+    if isinstance(x, Mammal) and x.offspring {
         return;  # Ok
 
     }
 }
 
-# 7. Progressive narrowing - multiple isinstance then method
-def test_progressive_narrowing_multi(x: BaseNode) -> None {
-    if isinstance(x, BaseNode)
-    and isinstance(x, CFGNode)
-    and isinstance(x, SemiNode)
-    and x.is_semi {
-        # x.is_semi sees x as SemiNode (most specific)
+def test_progressive_narrowing_multi(x: Animal) -> None {
+    if isinstance(x, Animal)
+    and isinstance(x, Mammal)
+    and isinstance(x, Primate)
+    and x.is_primate {
         return;  # Ok
 
     }
 }
 
-# 8. Progressive narrowing with member access
 obj Container {
-    has field: BaseNode;
+    has field: Animal;
 }
 
 def test_progressive_narrowing_member_access(c: Container) -> None {
-    if isinstance(c.field, CFGNode) and c.field.bb_out {
-        # c.field is narrowed to CFGNode due to preceding isinstance
+    if isinstance(c.field, Mammal) and c.field.offspring {
         return;  # Ok
 
     }
 }
 
-# 9. Progressive narrowing with chained member access
-obj NestedContainer {
-    has inner: Container;
+obj Dog(Animal) {
+    has bark_count: int = 0;
 }
 
-def test_progressive_narrowing_chained_member(nc: NestedContainer) -> None {
-    if isinstance(nc.inner.field, CFGNode) and nc.inner.field.bb_out {
-        # nc.inner.field is narrowed to CFGNode
-        return;  # Ok
+obj Cat(Animal) {
+    has meow_count: int = 0;
+}
 
+def use_dog_or_cat(x: Dog | Cat) -> str {
+    return x.name;
+}
+
+def test_tuple_isinstance_in_and(x: Animal, flag: bool) -> str {
+    if isinstance(x, (Dog, Cat)) and flag {
+        return use_dog_or_cat(x);  # Ok
+
+    }
+    return "";
+}
+
+def use_mammal(m: Mammal) -> str {
+    return m.name;
+}
+
+def test_is_not_none_in_and(x: Mammal | None, flag: bool) -> str {
+    if x is not None and flag {
+        return use_mammal(x);  # Ok
+
+    }
+    return "";
+}
+
+obj MaybeContainer {
+    has field: Mammal | None = None;
+}
+
+def test_member_is_not_none_in_and(c: MaybeContainer, flag: bool) -> str {
+    if c.field is not None and flag {
+        return use_mammal(c.field);  # Ok
+
+    }
+    return "";
+}
+
+def test_parenthesized_isinstance_in_and(x: Animal, flag: bool) -> None {
+    if (isinstance(x, Mammal)) and flag {
+        x.offspring;  # Ok
     }
 }
 
-# E1. After AND block, type reverts
-def test_error_after_and_block(x: BaseNode) -> list[CFGNode] | None {
-    if isinstance(x, CFGNode) {
-        return x.bb_out;  # Ok inside
+def use_none(n: None) -> str {
+    return "none";
+}
+
+def test_is_none_narrowing(x: Mammal | None) -> str {
+    if x is None {
+        return use_none(x);  # Ok
 
     }
-    return x.bb_out;  # <-- Error: BaseNode has no attribute bb_out
+    return x.name;  # Ok
+
+}
+
+def test_is_none_in_and(x: Mammal | None, flag: bool) -> str {
+    if x is None and flag {
+        return use_none(x);  # Ok
+
+    }
+    return "";
+}
+
+obj NamedNode {
+    has value: str = "";
+}
+
+obj ExprNode {
+    has left: NamedNode | None = None;
+}
+
+def test_isinstance_then_member_access(expr: NamedNode | ExprNode) -> str {
+    if isinstance(expr, NamedNode) and expr.value {
+        return expr.value;  # Ok
+
+    }
+    return "";
+}
+
+obj Wrapper {
+    has inner: Animal | None = None;
+}
+
+def test_nested_isinstance_member_narrowing(w: Wrapper) -> str {
+    if isinstance(w.inner, Mammal) {
+        if w.inner.offspring and len(w.inner.offspring) > 0 {
+            return w.inner.name;  # Ok
+
+        }
+    }
+    return "";
+}
+
+obj DeepWrapper {
+    has data: Wrapper | None = None;
+}
+
+def test_deep_nested_narrowing(dw: DeepWrapper) -> str {
+    if dw.data is not None {
+        if isinstance(dw.data.inner, Mammal) and dw.data.inner.offspring {
+            return dw.data.inner.name;  # Ok
+
+        }
+    }
+    return "";
+}
+
+obj DualWrapper {
+    has left: Animal | None = None,
+        right: Animal | None = None;
+}
+
+def test_and_chain_multiple_members(dw: DualWrapper) -> str {
+    if isinstance(dw.left, Mammal)
+    and isinstance(dw.right, Primate)
+    and dw.left.offspring
+    and dw.right.is_primate {
+        return dw.left.name + dw.right.name;  # Ok
+
+    }
+    return "";
+}
+
+def test_error_after_and_block(x: Animal) -> list[Mammal] | None {
+    if isinstance(x, Mammal) {
+        return x.offspring;  # Ok
+
+    }
+    return x.offspring;  # Error: Animal has no attribute offspring
 
 }

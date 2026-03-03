@@ -17,9 +17,15 @@ impl load_resource_content(uri: str) -> str {
 """Build system prompt with pitfalls and optional extra resources."""
 impl build_system_prompt(extra_uris: list[str] = []) -> str {
     parts: list[str] = [
-        "You are an expert Jac programmer. Follow Jac syntax rules exactly.",
+        "You are an expert Jac programmer. You MUST follow the syntax rules and patterns provided below EXACTLY.",
         "",
-        "## Key Jac Pitfalls",
+        "CRITICAL: Jac is its own language — it is NOT Python. It evolves rapidly and your training data is almost certainly out of date.",
+        "The reference material below is the ONLY source of truth you should use. If it contradicts your prior knowledge, the reference material is correct and your prior knowledge is wrong.",
+        "Do NOT guess syntax. Do NOT interpolate from Python. Use ONLY what the reference material shows.",
+        "",
+        "After generating Jac code, you MUST validate it using the `validate_jac` tool. Do NOT present code to the user until it passes validation.",
+        "",
+        "## Common Mistakes AI Models Make with Jac (READ CAREFULLY — THIS MEANS YOU)",
         load_resource_content("jac://guide/pitfalls"),
 
     ];
@@ -207,6 +213,17 @@ impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str
     }
 }
 
+"""Helper to build a prompt result with proper system/user role separation."""
+def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, Any] {
+    return {
+        "description": description,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_msg}
+        ]
+    };
+}
+
 def _prompt_write_module(args: dict[str, str]) -> dict[str, Any] {
     mod_name = args.get("name", "module");
     purpose = args.get("purpose", "");
@@ -219,11 +236,9 @@ def _prompt_write_module(args: dict[str, str]) -> dict[str, Any] {
         user_msg += "\nIn the .jac file, method signatures should end with ';'.";
         user_msg += "\nIn the .impl.jac file, use 'impl ClassName.method(...) { body }' syntax.";
     }
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": f"Generate Jac module: {mod_name}",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt(f"Generate Jac module: {mod_name}", system, user_msg);
 }
 
 def _prompt_write_impl(args: dict[str, str]) -> dict[str, Any] {
@@ -231,11 +246,9 @@ def _prompt_write_impl(args: dict[str, str]) -> dict[str, Any] {
     system = build_system_prompt(["jac://guide/patterns"]);
     user_msg = f"Generate the .impl.jac file for these declarations:\n\n```jac\n{declarations}\n```";
     user_msg += "\n\nUse 'impl ClassName.method(...) {{ body }}' syntax for each method.";
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": "Generate .impl.jac implementation",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt("Generate .impl.jac implementation", system, user_msg);
 }
 
 def _prompt_write_walker(args: dict[str, str]) -> dict[str, Any] {
@@ -246,11 +259,9 @@ def _prompt_write_walker(args: dict[str, str]) -> dict[str, Any] {
     system = build_system_prompt(["jac://docs/osp", "jac://guide/patterns"]);
     user_msg = f"Generate a walker named '{name}' that {purpose}, traversing node types: {node_types}.";
     user_msg += "\nUse 'visit [-->]' for traversal and proper Jac walker syntax.";
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": f"Generate walker: {name}",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt(f"Generate walker: {name}", system, user_msg);
 }
 
 def _prompt_write_node(args: dict[str, str]) -> dict[str, Any] {
@@ -260,11 +271,9 @@ def _prompt_write_node(args: dict[str, str]) -> dict[str, Any] {
     system = build_system_prompt(["jac://docs/osp"]);
     user_msg = f"Generate a node archetype named '{name}' with fields: {fields}.";
     user_msg += "\nUse 'has' declarations with type annotations.";
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": f"Generate node: {name}",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt(f"Generate node: {name}", system, user_msg);
 }
 
 def _prompt_write_test(args: dict[str, str]) -> dict[str, Any] {
@@ -274,11 +283,9 @@ def _prompt_write_test(args: dict[str, str]) -> dict[str, Any] {
     system = build_system_prompt(["jac://guide/patterns"]);
     user_msg = f"Generate test blocks for module '{module_name}' covering: {functions_to_test}.";
     user_msg += '\nUse Jac test block syntax: test "description" {{ assertions; }}';
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": f"Generate tests for: {module_name}",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt(f"Generate tests for: {module_name}", system, user_msg);
 }
 
 def _prompt_write_ability(args: dict[str, str]) -> dict[str, Any] {
@@ -288,11 +295,9 @@ def _prompt_write_ability(args: dict[str, str]) -> dict[str, Any] {
 
     system = build_system_prompt(["jac://docs/functions-objects"]);
     user_msg = f"Generate an ability named '{name}' with signature '{signature}' that {purpose}.";
+    user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
-    return {
-        "description": f"Generate ability: {name}",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt(f"Generate ability: {name}", system, user_msg);
 }
 
 def _prompt_debug_error(args: dict[str, str]) -> dict[str, Any] {
@@ -303,11 +308,9 @@ def _prompt_debug_error(args: dict[str, str]) -> dict[str, Any] {
     user_msg = f"Debug this Jac compilation error:\n\n```\n{error_output}\n```";
     user_msg += f"\n\nIn this code:\n\n```jac\n{code}\n```";
     user_msg += "\n\nExplain the error, identify the root cause, and provide the corrected code.";
+    user_msg += "\nValidate the corrected code using the validate_jac tool before presenting it.";
 
-    return {
-        "description": "Debug compilation error",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt("Debug compilation error", system, user_msg);
 }
 
 def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, Any] {
@@ -318,11 +321,9 @@ def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, Any] {
     user_msg = f"Fix this type error:\n\n```\n{error_output}\n```";
     user_msg += f"\n\nIn this code:\n\n```jac\n{code}\n```";
     user_msg += "\n\nExplain the type mismatch and provide corrected code.";
+    user_msg += "\nValidate the corrected code using the validate_jac tool before presenting it.";
 
-    return {
-        "description": "Fix type error",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt("Fix type error", system, user_msg);
 }
 
 def _prompt_migrate_python(args: dict[str, str]) -> dict[str, Any] {
@@ -333,9 +334,7 @@ def _prompt_migrate_python(args: dict[str, str]) -> dict[str, Any] {
     );
     user_msg = f"Convert this Python code to idiomatic Jac:\n\n```python\n{python_code}\n```";
     user_msg += "\n\nUse obj instead of class, has instead of self.x, can for methods, semicolons, braces, and Jac import syntax.";
+    user_msg += "\nAfter converting, validate the code using the validate_jac tool.";
 
-    return {
-        "description": "Migrate Python to Jac",
-        "messages": [{"role": "user", "content": f"{system}\n\n{user_msg}"}]
-    };
+    return _make_prompt("Migrate Python to Jac", system, user_msg);
 }

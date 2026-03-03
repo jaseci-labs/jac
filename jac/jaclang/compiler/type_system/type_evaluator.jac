@@ -113,6 +113,7 @@ obj TypeEvaluator {
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
+    def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
@@ -221,20 +222,30 @@ obj TypeEvaluator {
 
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
     # -------------------------------------------------------------------------
-    # Type narrowing support (CFG-based, flow-sensitive)
+    # Type narrowing support
+    #
+    # Two narrowing systems work together:
+    # 1. Scope-based narrowing: Tracks narrowings within if/AND blocks using a
+    #    stack of scope dictionaries. Used during forward AST traversal.
+    # 2. CFG-based narrowing: Walks backward through the control flow graph to
+    #    find narrowing conditions. Used for flow-sensitive analysis.
     # -------------------------------------------------------------------------
+
+    # --- Scope-based narrowing (forward traversal) ---
+    def push_narrowing_scope -> None;
+    def pop_narrowing_scope -> None;
+    def add_scope_narrowing(key: str, narrowed_type: types.TypeBase) -> None;
+    def get_scope_narrowing(key: str) -> types.TypeBase | None;
+    def get_narrowing_key(expr: uni.Expr) -> str | None;
+    def process_condition(condition: uni.Expr) -> None;
+    # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(
         symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
-    # Progressive narrowing context for AND expressions
-    def _push_and_narrowing_scope -> None;
-    def _pop_and_narrowing_scope -> None;
-    def _add_and_narrowing(sym_name: str, narrowed_type: types.TypeBase) -> None;
-    def _get_and_narrowing(sym_name: str) -> types.TypeBase | None;
-    def _get_narrowing_key(expr: uni.Expr) -> str | None;
+    # --- Shared narrowing utilities ---
     def _find_predicate_for(
         symbol: uni.Symbol, condition: uni.Expr
     ) -> NarrowingPredicate | None;
@@ -254,4 +265,6 @@ obj TypeEvaluator {
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
+    def _union_contains_none(union_type: TypeBase) -> bool;
+    def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
 }

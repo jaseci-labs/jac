@@ -382,8 +382,8 @@ myproject/
 │   ├── models.jac
 │   └── walkers.jac
 └── tests/
-    ├── test_models.jac
-    └── test_walkers.jac
+    ├── models_test.jac
+    └── walkers_test.jac
 ```
 
 ```bash
@@ -391,7 +391,7 @@ myproject/
 jac test -d tests/
 
 # Run specific file
-jac test tests/test_models.jac
+jac test tests/models_test.jac
 ```
 
 ### Tests in Same File

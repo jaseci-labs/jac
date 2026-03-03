@@ -242,34 +242,41 @@ test "python lib mode fixture" {
 # =============================================================================
 # MTIR Caching Tests
 # =============================================================================
-test "cache key for mtir" {
-    import from jaclang.jac0core.bccache { CacheKey }
+test "jir cache path for source" {
+    import from jaclang.jac0core.jir { get_module_cache_path }
 
-    key = CacheKey.for_source("/path/to/test.jac");
-    assert key is not None;
-    assert key.source_path == "/path/to/test.jac";
+    cache_path = get_module_cache_path("/path/to/test.jac");
+    assert cache_path is not None;
+    assert str(cache_path).endswith(".jir");
 }
 
-test "disk cache mtir methods exist" {
-    import from jaclang.jac0core.bccache { DiskBytecodeCache }
+test "jir cache has sec mtir constant" {
+    import from jaclang.jac0core.jir { SEC_MTIR, SEC_BYTECODE, SECTIONS_MAGIC }
 
-    cache = DiskBytecodeCache();
-    assert hasattr(cache, "get_mtir");
-    assert hasattr(cache, "put_mtir");
+    assert SEC_MTIR == 0x03;
+    assert SEC_BYTECODE == 0x02;
+    assert len(SECTIONS_MAGIC) == 4;
 }
 
-test "mtir cache roundtrip" {
-    import from jaclang.jac0core.bccache { CacheKey, DiskBytecodeCache }
+test "mtir roundtrip via jir cache" {
+    import pickle;
+    import shutil;
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        write_sections,
+        read_sections,
+        SECTIONS_MAGIC,
+        HEADER_SIZE,
+        SEC_MTIR
+    }
+    import from jaclang.jac0core.jir_passes { JirWriter }
+    import from jaclang.jac0core.unitree { Module }
 
     tmp_path = Path(tempfile.mkdtemp());
     test_file = tmp_path / "test.jac";
-    test_file.write_text("# test content");
+    test_file.write_text("glob x = 1;\n");
 
-    cache = DiskBytecodeCache();
-
-    key = CacheKey.for_source(str(test_file));
-
-    test_mtir_map = {
+    test_mtir_map: dict = {
         "test.func1": FunctionInfo(
             name="func1",
             semstr="Test function one.",
@@ -279,15 +286,23 @@ test "mtir cache roundtrip" {
 
     };
 
-    cache.put_mtir(key, test_mtir_map);
+    # Write a minimal JIR with SEC_MTIR section
+    mtir_bytes = pickle.dumps(test_mtir_map);
+    secs: dict[int, bytes] = {SEC_MTIR: mtir_bytes};
+    section_blob = write_sections(secs);
 
-    retrieved = cache.get_mtir(key);
+    # Read back the sections from the blob (skip the SECTIONS_MAGIC header)
+    magic: object = SECTIONS_MAGIC;
+    start = len(magic);
+    recovered = read_sections(section_blob, start);
 
-    if retrieved is not None {
-        assert "test.func1" in retrieved;
-        assert retrieved["test.func1"].name == "func1";
-        assert retrieved["test.func1"].semstr == "Test function one.";
-    }
+    assert SEC_MTIR in recovered , "SEC_MTIR should be present";
+    retrieved = pickle.loads(recovered[SEC_MTIR]);
+    assert "test.func1" in retrieved;
+    assert retrieved["test.func1"].name == "func1";
+    assert retrieved["test.func1"].semstr == "Test function one.";
+
+    shutil.rmtree(str(tmp_path), ignore_errors=True);
 }
 
 # =============================================================================

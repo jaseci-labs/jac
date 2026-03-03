@@ -46,6 +46,8 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    # Store AST signature for return type propagation in for-loops
+    self.method_ast_sigs[name] = sig;
     self.has_native_code = True;
 }
 
@@ -117,6 +119,20 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
                     break;
                 }
             }
+            # Track dict type for dict parameters
+            for (dkey, dtype) in self.dict_types.items() {
+                if arg_val.type == dtype.as_pointer() {
+                    self.var_dict_type[param_name] = dkey;
+                    break;
+                }
+            }
+            # Track set element type for set parameters
+            for (ename, stype) in self.set_types.items() {
+                if arg_val.type == stype.as_pointer() {
+                    self.var_set_elem_type[param_name] = ename;
+                    break;
+                }
+            }
             # Track struct types (including union T | None)
             tag_name = self._get_name(p.type_tag.tag);
             tag_node = p.type_tag.tag;
@@ -131,9 +147,12 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             }
         }
     }
-    # Generate body via manual tree-walking
-    if isinstance((nd).body, (list, tuple)) {
-        self._codegen_body((nd).body);
+    # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
+    body = (nd).body;
+    if isinstance(body, (list, tuple)) {
+        self._codegen_body(body);
+    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
+        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
@@ -165,35 +184,47 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     # Initialize global variables that have complex initializers (dicts, lists, etc.)
-    # After init, register pointer globals as GC roots so Boehm GC doesn't collect them.
-    # MCJIT global variables live outside the GC's scanned memory regions.
-    i8_ptr = ir.IntType(8).as_pointer();
-    gc_add_roots = self._get_or_declare_extern(
-        "GC_add_roots", ir.VoidType(), [i8_ptr, i8_ptr]
-    );
     if self?._global_init_nodes and self._global_init_nodes {
         for init_tuple in self._global_init_nodes {
             var_name = init_tuple[0];
             init_node = init_tuple[1];
             var_type = init_tuple[2];
             init_val = self._codegen_expr(init_node);
+            # For empty dict literals ({}) _codegen_dict_val returns None.
+            # Fall back to calling helpers["new"] for the matching dict type.
+            if init_val is None and isinstance(var_type, ir.PointerType) {
+                for (dict_key, dtype) in self.dict_types.items() {
+                    if var_type == dtype.as_pointer() {
+                        helpers = self.dict_helpers.get(dict_key);
+                        if helpers is not None {
+                            init_val = self.builder.call(
+                                helpers["new"], [], name=f"dict.init.{var_name}"
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            # For empty list literals ([]) _codegen_list_val may return None.
+            # Fall back to calling helpers["new"] for the matching list elem type.
+            if init_val is None and isinstance(var_type, ir.PointerType) {
+                for (elem_key, ltype) in self.list_types.items() {
+                    if var_type == ltype.as_pointer() {
+                        helpers = self.list_helpers.get(elem_key);
+                        if helpers is not None {
+                            init_val = self.builder.call(
+                                helpers["new"], [], name=f"list.init.{var_name}"
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
             if init_val is not None {
                 global_var = self.global_vars.get(var_name);
                 if global_var is not None {
                     coerced = self._coerce_type(init_val, var_type);
                     self.builder.store(coerced, global_var);
-                    # Register pointer globals as GC roots
-                    if isinstance(var_type, ir.PointerType) {
-                        root_lo = self.builder.bitcast(global_var, i8_ptr, name="gc.lo");
-                        # high = low + sizeof(pointer)
-                        one_past = self.builder.gep(
-                            global_var,
-                            [ir.Constant(ir.IntType(32), 1)],
-                            name="gc.hi.gep"
-                        );
-                        root_hi = self.builder.bitcast(one_past, i8_ptr, name="gc.hi");
-                        self.builder.call(gc_add_roots, [root_lo, root_hi]);
-                    }
                 }
             }
         }
@@ -202,8 +233,13 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     if (nd).body {
         self._codegen_body((nd).body);
     }
-    # Ensure function has a terminator
+    # Flush all stdio buffers before returning to caller
     if not self.builder.block.is_terminated {
+        i32 = ir.IntType(32);
+        i8p = ir.IntType(8).as_pointer();
+        fflush_fn = self._get_or_declare_extern("fflush", i32, [i8p]);
+        null_ptr = ir.Constant(i8p, None);
+        self.builder.call(fflush_fn, [null_ptr]);
         self.builder.ret_void();
     }
     self.has_native_code = True;

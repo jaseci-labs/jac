@@ -18,6 +18,9 @@ The `async/await` syntax works like Python's -- `async` marks a function as a co
 
 ### 1 Async Functions
 
+!!! note "Conceptual Examples"
+    The examples below use `http_get` as a placeholder for an async HTTP client. In practice, import an async library (e.g., `import from aiohttp { ClientSession }`) or define your own async helper.
+
 ```jac
 async def fetch_data(url: str) -> dict {
     response = await http_get(url);
