@@ -131,8 +131,8 @@ impl DeclImplMatchPass.connect_impls(
         # blocks aren't yet linked to their declarations, so assignments
         # like `tasks = tasks + [task]` create untyped local var symbols
         # that shadow `has tasks: list` from the parent scope.
-        self._fix_shadowed_parent_symbols(sym.decl.name_of, valid_decl);
-        self._resolve_impl_body_symbols(sym.decl.name_of);
+        # self._fix_shadowed_parent_symbols(sym.decl.name_of, valid_decl);
+        # self._resolve_impl_body_symbols(sym.decl.name_of);
         # Populate self-member symbols from impl to archetype for method impls
         # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
         if (
