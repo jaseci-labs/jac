@@ -22,6 +22,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Cross-Module Struct Type Resolution**: Importing a user-defined `obj` from another `.na.jac` module and using it as a function parameter type no longer crashes the compiler. The importing module now walks the imported module's AST to fully register imported archetypes (struct layout, field types, field indices), and interop binding type strings resolve against both primitive types and struct types.
 - **Replace Vendored LSP Stack with Custom `jaclang/lsp/` Package**: Removed ~32,700 lines of vendored Python code (pygls, lsprotocol, cattrs, attrs) and replaced them with a lightweight ~1,400-line Jac-native `jaclang/lsp/` package providing LSP 3.17.0 types, JSON-RPC transport, UTF-16 position encoding, and workspace/document management.
 - **Fix: IDE Hover Types for Comprehension Variables**: Iteration variables in comprehensions (`p` in `[x for p in pool]`, `any(... for p in pool)`) now display their inferred type on hover.
+- **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 
 ## jaclang 0.11.3 (Latest Release)
 

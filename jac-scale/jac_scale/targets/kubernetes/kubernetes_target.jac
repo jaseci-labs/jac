@@ -160,6 +160,7 @@ class KubernetesTarget(DeploymentTarget) {
         if cluster_env == 'aws' {
             service_metadata['annotations'] = {
                 'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing',
                 'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
             };
         }
