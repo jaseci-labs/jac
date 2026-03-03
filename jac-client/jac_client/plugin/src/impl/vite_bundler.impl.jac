@@ -968,7 +968,6 @@ def _forward_vite_output(
             }
             if ready_event.is_set() {
                 # After ready, forward output to console (skip Vite URL banner lines,
-                # but always allow [HMR] lines through)
                 if '[HMR]' in line or not _is_vite_url_line(line) {
                     sys_module.stdout.write(line);
                     sys_module.stdout.flush();
