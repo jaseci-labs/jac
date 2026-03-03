@@ -210,7 +210,16 @@ def builtins_py() -> dict {
         "abs_neg_float": abs(-3.14),
         "abs_pos_float": abs(3.14),
         "min_float": min(3.5, 1.2),
-        "max_float": max(3.5, 1.2)
+        "max_float": max(3.5, 1.2),
+        # NA builtin extras
+        "fmt_int": format(42, "d"),
+        "fmt_hex": format(255, "x"),
+        "fmt_oct": format(255, "o"),
+        "hash_int": hash(42),
+        "repr_int": repr(42),
+        "repr_neg": repr(-17),
+        "fs_na_len": len(frozenset([1, 2, 3])),
+        "ba_len": len(bytearray([68, 69]))
     };
 }
 
@@ -475,6 +484,25 @@ na {
         t_neg: int = 1 if bool(-1) else 0;
         t_float: int = 1 if bool(3.14) else 0;
 
+        fmt_int: str = format(42, "d");
+        fmt_hex: str = format(255, "x");
+        fmt_oct: str = format(255, "o");
+
+        hash_int: int = hash(42);
+        hash_str: int = hash("hello");
+        repr_int: str = repr(42);
+        repr_neg: str = repr(-17);
+
+        fs_src: list[int] = [1, 2, 3];
+        fs: set[int] = frozenset(fs_src);
+
+        byte_src: list[int] = [72, 101, 108, 108, 111];
+        bs: str = bytes(byte_src);
+
+        ba_src: list[int] = [68, 69];
+        ba: str = bytearray(ba_src);
+
+
         return {
             "abs_pos": abs(5),
             "abs_neg": abs(-7),
@@ -549,7 +577,13 @@ na {
             "f_empty_list": f_empty_list, "f_empty_dict": f_empty_dict,
             "t_one": t_one, "t_str": t_str,
             "t_list": t_list, "t_dict": t_dict, "t_neg": t_neg,
-            "t_float": t_float
+            "t_float": t_float,
+            "fmt_int": fmt_int, "fmt_hex": fmt_hex, "fmt_oct": fmt_oct,
+            "hash_int": hash_int,
+            "repr_int": repr_int, "repr_neg": repr_neg,
+            "fs_na_len": len(fs),
+            "bs_len": len(bs),
+            "ba_len": len(ba)
         };
     }
 }

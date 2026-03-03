@@ -101,8 +101,100 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Handle complex() constructor: complex(real, imag) -> JacComplex*
+    if func_name == "complex" {
+        params_l = nd.params or [];
+        if len(params_l) >= 2 {
+            real_val = self._codegen_expr(params_l[0]);
+            imag_val = self._codegen_expr(params_l[1]);
+            if real_val is not None and imag_val is not None {
+                f64 = ir.DoubleType();
+                i64 = ir.IntType(64);
+                real_f = self._coerce_type(real_val, f64)
+                    if not isinstance(real_val.type, ir.DoubleType)
+                    else real_val;
+                imag_f = self._coerce_type(imag_val, f64)
+                    if not isinstance(imag_val.type, ir.DoubleType)
+                    else imag_val;
+                ctype = self.complex_struct_type;
+                raw = self.builder.call(
+                    self.rc_alloc_fn, [ir.Constant(i64, 16)], name="complex.raw"
+                );
+                ptr = self.builder.bitcast(raw, ctype.as_pointer(), name="complex.ptr");
+                rp = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                    name="complex.re.ptr"
+                );
+                ip = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
+                    name="complex.im.ptr"
+                );
+                self.builder.store(real_f, rp);
+                self.builder.store(imag_f, ip);
+                return ptr;
+            }
+        }
+    }
+    # Handle range() constructor: range(stop), range(start,stop), range(start,stop,step)
+    if func_name == "range" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            rtype = self.range_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="range.raw"
+            );
+            ptr = self.builder.bitcast(raw, rtype.as_pointer(), name="range.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="range.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="range.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="range.tp")
+            );
+            return ptr;
+        }
+    }
     # Handle multi-arg builtins via emitter dispatch
-    if func_name in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all") {
+    if func_name in (
+        "abs",
+        "min",
+        "max",
+        "pow",
+        "divmod",
+        "sum",
+        "any",
+        "all",
+        "format"
+    ) {
         params_l = nd.params or [];
         arg_vals: list[ir.Value] = [];
         for param in params_l {
@@ -133,7 +225,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "sorted",
         "reversed",
         "list",
-        "set"
+        "set",
+        "frozenset",
+        "dict",
+        "bytes",
+        "bytearray",
+        "id",
+        "hash",
+        "repr",
+        "ascii"
     ) {
         params_l = nd.params or [];
         if params_l {
