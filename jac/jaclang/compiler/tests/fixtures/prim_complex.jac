@@ -78,4 +78,35 @@ cl def complex_ops_cl() -> dict {
     };
 }
 
-na { def complex_ops_na() -> dict[str, any] { return {}; } }
+na {
+    def complex_ops_na() -> dict[str, any] {
+        c1 = complex(3, 4);
+        c2 = complex(1, 2);
+
+        add_ok: int = (c1 + c2) == complex(4, 6);
+        sub_ok: int = (c1 - c2) == complex(2, 2);
+        mul_ok: int = (c1 * c2) == complex(-5, 10);
+        div_ok: int = (complex(6, 8) / complex(2, 0)) == complex(3, 4);
+
+        conj_ok: int = c1.conjugate() == complex(3, -4);
+
+        eq_same: int = c1 == complex(3, 4);
+        eq_diff: int = c1 == c2;
+        ne_diff: int = c1 != c2;
+        ne_same: int = c1 != complex(3, 4);
+
+        neg_ok: int = (-c1) == complex(-3, -4);
+
+        pos_ok: int = (+c1) == complex(3, 4);
+
+        return {
+            "add_ok": add_ok, "sub_ok": sub_ok,
+            "mul_ok": mul_ok, "div_ok": div_ok,
+            "conj_ok": conj_ok,
+            "eq_same": eq_same, "eq_diff": eq_diff,
+            "ne_diff": ne_diff, "ne_same": ne_same,
+            "neg_ok": neg_ok,
+            "pos_ok": pos_ok
+        };
+    }
+}

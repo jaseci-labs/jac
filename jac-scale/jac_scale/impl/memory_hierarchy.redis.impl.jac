@@ -67,7 +67,18 @@ impl RedisBackend.put(anchor: Anchor) -> None {
     try {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
-        self.redis_client.set(key, json.dumps(data));
+
+        # Get TTL from config
+        db_config = _get_db_config();
+        ttl = db_config.get('redis_default_ttl', 0);
+
+        # Apply TTL if configured (ttl > 0)
+        if ttl > 0 {
+            self.redis_client.setex(key, ttl, json.dumps(data));
+            logger.debug(f"Stored anchor {anchor.id} in Redis with TTL={ttl}s");
+        } else {
+            self.redis_client.set(key, json.dumps(data));
+        }
     } except Exception as e {
         logger.debug(f"Redis put failed: {e}");
     }

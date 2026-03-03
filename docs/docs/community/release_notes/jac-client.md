@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.4 (Unreleased)
 
+- Internal: updated jac.toml of all-in-one example to use redis dashboard and mongodb dashboard
+- 1 Minor refactor/change.
+
 ## jac-client 0.3.3 (Latest Release)
 
 ## jac-client 0.3.2

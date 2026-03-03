@@ -137,6 +137,13 @@ obj NaIRGenPass(Transform) {
 
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    def _codegen_list_slice(
+        target_val: ir.Value, slice_node: object, elem_type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_string_slice(
+        target_val: ir.Value, slice_node: object
+    ) -> (ir.Value | None);
     # Native stdlib: sys module
     def _emit_sys_argv -> (ir.Value | None);
     def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);

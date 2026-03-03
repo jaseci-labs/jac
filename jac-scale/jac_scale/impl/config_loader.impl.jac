@@ -31,7 +31,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
         'database': {
             'mongodb_uri': None,
             'redis_url': None,
-            'shelf_db_path': '.jac/data/anchor_store.db'
+            'shelf_db_path': '.jac/data/anchor_store.db',
+            'redis_max_memory': '200mb',
+            'redis_eviction_policy': 'allkeys-lru',
+            'redis_eviction_samples': 5,
+            'redis_default_ttl': 0,
+            'redis_enable_keyspace_notifications': False
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -43,11 +48,19 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'node_port': 30001,
             'mongodb_enabled': True,
             'redis_enabled': True,
+            'redis_dashboard': False,
+            'mongodb_dashboard': False,
+            'redis_insight_node_port': 30032,
+            'mongo_express_node_port': 30033,
+            'mongo_express_username': 'admin',
+            'mongo_express_password': 'admin',
+            'redis_insight_username': 'admin',
+            'redis_insight_password': 'admin',
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,
             'memory_request': None,
-            'memory_limit': '12Gi',
+            'memory_limit': None,
             # Probe timings
             'readiness_initial_delay': 10,
             'readiness_period': 20,
@@ -132,7 +145,14 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
     return {
         'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
         'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
-        'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db')
+        'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db'),
+        'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
+        'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),
+        'redis_eviction_samples': int(db_config.get('redis_eviction_samples', 5)),
+        'redis_default_ttl': int(db_config.get('redis_default_ttl', 0)),
+        'redis_enable_keyspace_notifications': db_config.get(
+            'redis_enable_keyspace_notifications', False
+        )
     };
 }
 

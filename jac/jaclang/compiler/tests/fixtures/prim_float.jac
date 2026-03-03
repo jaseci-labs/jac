@@ -92,10 +92,16 @@ def float_py() -> dict {
         "abs_pos_float": abs(3.14),
         "min_float": min(3.5, 1.2),
         "max_float": max(3.5, 1.2),
-        # as_integer_ratio (emit_as_integer_ratio) — SV/Python only
+        # as_integer_ratio (emit_as_integer_ratio)
         "air_3": list((3.0).as_integer_ratio()),
         "air_half": list((0.5).as_integer_ratio()),
         "air_neg": list((-2.0).as_integer_ratio()),
+        "air_3_0": list((3.0).as_integer_ratio())[0],
+        "air_3_1": list((3.0).as_integer_ratio())[1],
+        "air_half_0": list((0.5).as_integer_ratio())[0],
+        "air_half_1": list((0.5).as_integer_ratio())[1],
+        "air_neg_0": list((-2.0).as_integer_ratio())[0],
+        "air_neg_1": list((-2.0).as_integer_ratio())[1],
         # hex/fromhex (emit_hex / emit_fromhex) — SV/Python only
         "hex_1_5": (1.5).hex(),
         "hex_3_5": (3.5).hex(),
@@ -260,7 +266,16 @@ na {
             "abs_neg_float": abs(-3.14),
             "abs_pos_float": abs(3.14),
             "min_float": min(3.5, 1.2),
-            "max_float": max(3.5, 1.2)
+            "max_float": max(3.5, 1.2),
+            "air_3_0": (3.0).as_integer_ratio()[0],
+            "air_3_1": (3.0).as_integer_ratio()[1],
+            "air_half_0": (0.5).as_integer_ratio()[0],
+            "air_half_1": (0.5).as_integer_ratio()[1],
+            "air_neg_0": (-2.0).as_integer_ratio()[0],
+            "air_neg_1": (-2.0).as_integer_ratio()[1],
+            # fromhex (static method)
+            "fromhex_1_5": float.fromhex("0x1.8p+0"),
+            "fromhex_1_0": float.fromhex("0x1.0p+0")
         };
     }
 }
