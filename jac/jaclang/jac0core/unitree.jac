@@ -38,10 +38,16 @@ import from jaclang.jac0core.treeprinter {
 }
 
 """Abstract syntax tree node for Jac."""
-class UniNode {
+obj UniNode {
     """Initialize ast."""
-    def init(self: UniNode, kid: Sequence[UniNode]) -> None;
+    has kid: Sequence[UniNode] = [],
+        parent: (UniNode | None) by postinit,
+        __sub_node_tab: (dict[(type, list[UniNode])] | None) by postinit,
+        _in_mod_nodes: list[UniNode] by postinit,
+        _gen: (CodeGenTarget | None) by postinit,
+        loc: CodeLocInfo by postinit;
 
+    def postinit(self: UniNode) -> None;
     """Lazy initialization of CodeGenTarget."""
     @property
     def gen(self: UniNode) -> CodeGenTarget {
@@ -142,7 +148,7 @@ class UniNode {
 }
 
 """Symbol."""
-class Symbol {
+obj Symbol {
     """Initialize."""
     def init(
         self: Symbol,
@@ -193,9 +199,15 @@ class InheritedSymbolTable {
 }
 
 """Symbol Table."""
-class UniScopeNode(UniNode) {
+obj UniScopeNode(UniNode) {
     """Initialize."""
-    def init(
+    has scope_name: str by postinit,
+        parent_scope: (UniScopeNode | None) by postinit,
+        kid_scope: list[UniScopeNode] by postinit,
+        names_in_scope: dict[(str, Symbol)] by postinit,
+        names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
+
+    def _init_scope(
         self: UniScopeNode, name: str, parent_scope: (UniScopeNode | None) = None
     ) -> None;
 
@@ -281,8 +293,11 @@ otherwise.
 }
 
 """Nodes that have link to a symbol in symbol table."""
-class AstSymbolNode(UniNode) {
-    def init(
+obj AstSymbolNode(UniNode) {
+    has name_spec: NameAtom by postinit,
+        semstr: str by postinit;
+
+    def _init_symbol(
         self: AstSymbolNode,
         sym_name: str,
         name_spec: NameAtom,
@@ -307,13 +322,14 @@ class AstSymbolNode(UniNode) {
 }
 
 """Nodes that have link to a symbol in symbol table."""
-class AstSymbolStubNode(AstSymbolNode) {
-    def init(self: AstSymbolStubNode, sym_type: SymbolType) -> None;
+obj AstSymbolStubNode(AstSymbolNode) {
+    def _init_stub(self: AstSymbolStubNode, sym_type: SymbolType) -> None;
 }
 
 """Nodes that have access."""
-class AstAccessNode(UniNode) {
-    def init(self: AstAccessNode, access: (SubTag[Token] | None)) -> None;
+obj AstAccessNode(UniNode) {
+    has access: (SubTag[Token] | None) = None;
+
     @property
     def access_type(self: AstAccessNode) -> SymbolAccess;
 
@@ -323,51 +339,55 @@ class AstAccessNode(UniNode) {
 
 """Base class for nodes that can be marked with execution context
 (client/server)."""
-class ContextAwareNode(UniNode) {
+obj ContextAwareNode(UniNode) {
     """Initialize with code context.
 
         Args:
             code_context: Code execution context (SERVER or CLIENT), defaults to
 SERVER
         """
-    def init(
-        self: ContextAwareNode, code_context: CodeContext = CodeContext.SERVER
-    ) -> None;
+    has code_context: CodeContext by postinit;
 
+    def postinit(self: ContextAwareNode) -> None;
     """Return the original context token (cl or sv) if present on this node."""
     def _source_context_token(self: ContextAwareNode) -> (Token | None);
 }
 
 """Nodes that have access."""
-class AstDocNode(UniNode) {
-    def init(self: AstDocNode, doc: (String | None)) -> None;
+obj AstDocNode(UniNode) {
+    has doc: (String | None) = None;
 }
 
 """Nodes that have access."""
-class AstAsyncNode(UniNode) {
-    def init(self: AstAsyncNode, is_async: bool) -> None;
+obj AstAsyncNode(UniNode) {
+    has is_async: bool = False;
 }
 
 """Nodes that have access."""
-class AstElseBodyNode(UniNode) {
-    def init(self: AstElseBodyNode, else_body: ElseStmt | ElseIf | None) -> None;
+obj AstElseBodyNode(UniNode) {
+    has else_body: (ElseStmt | ElseIf | None) = None;
 }
 
 """Nodes that have access."""
-class AstTypedVarNode(UniNode) {
-    def init(self: AstTypedVarNode, type_tag: (SubTag[Expr] | None)) -> None;
+obj AstTypedVarNode(UniNode) {
+    has type_tag: (SubTag[Expr] | None) = None;
 }
 
 """WalkerStmtOnlyNode node type for Jac Ast."""
-class WalkerStmtOnlyNode(UniNode) {
-    def init(self: WalkerStmtOnlyNode) -> None;
+obj WalkerStmtOnlyNode(UniNode) {
+    has from_walker: bool by postinit;
+
+    def postinit(self: WalkerStmtOnlyNode) -> None;
 }
 
 """BasicBlockStmt node type for Jac Uniir."""
-class UniCFGNode(UniNode) {
+obj UniCFGNode(UniNode) {
     """Initialize basic block statement node."""
-    def init(self: UniCFGNode) -> None;
+    has bb_in: list[UniCFGNode] by postinit,
+        bb_out: list[UniCFGNode] by postinit,
+        affected_symbols: set[str] by postinit;
 
+    def postinit(self: UniCFGNode) -> None;
     """Get head by walking up the CFG iteratively."""
     def get_head(self: UniCFGNode) -> UniCFGNode;
 
@@ -404,8 +424,12 @@ are evaluated to produce a value.
         <expr>[<expr>]        # subscript.
         <expr> if <expr> else <expr>  # ternary.
     """
-class Expr(UniNode) {
-    def init(self: Expr) -> None;
+obj Expr(UniNode) {
+    has _type_sym_tab: (UniScopeNode | None) by postinit,
+        type: (TypeBase | None) by postinit,
+        attached_tokens: (list[Token] | None) by postinit;
+
+    def postinit(self: Expr) -> None;
     """Get type symbol table."""
     @property
     def type_sym_tab(self: Expr) -> (UniScopeNode | None) {
@@ -420,35 +444,42 @@ class Expr(UniNode) {
 }
 
 """AtomExpr node type for Jac Ast."""
-class AtomExpr(Expr, AstSymbolStubNode) {}
+obj AtomExpr(Expr, AstSymbolStubNode) {}
 
 """ElementStmt node type for Jac Ast."""
-class ElementStmt(AstDocNode) {}
+obj ElementStmt(AstDocNode) {}
 
 """ArchBlockStmt node type for Jac Ast."""
-class ArchBlockStmt(UniNode) {}
+obj ArchBlockStmt(UniNode) {}
 
 """EnumBlockStmt node type for Jac Ast."""
-class EnumBlockStmt(UniNode) {
-    def init(self: EnumBlockStmt, is_enum_stmt: bool) -> None;
+obj EnumBlockStmt(UniNode) {
+    has is_enum_stmt: bool = False;
 }
 
 """CodeBlockStmt node type for Jac Ast."""
-class CodeBlockStmt(UniCFGNode) {
+obj CodeBlockStmt(UniCFGNode) {
     """Initialize code block statement node."""
-    def init(self: CodeBlockStmt) -> None;
+    def postinit(self: CodeBlockStmt) -> None;
 }
 
 """AstImplNeedingNode node type for Jac Ast."""
-class AstImplNeedingNode[T](AstSymbolNode) {
-    def init(self: AstImplNeedingNode, body: (T | None)) -> None;
+obj AstImplNeedingNode[T](AstSymbolNode) {
+    has body: (T | None);
+
     @property
     def needs_impl(self: AstImplNeedingNode) -> bool;
 }
 
 """NameAtom node type for Jac Ast."""
-class NameAtom(AtomExpr, EnumBlockStmt) {
-    def init(self: NameAtom, is_enum_stmt: bool) -> None;
+obj NameAtom(AtomExpr, EnumBlockStmt) {
+    has name_of: AstSymbolNode by postinit,
+        _sym: (Symbol | None) by postinit,
+        _sym_name: str by postinit,
+        _sym_category: SymbolType by postinit,
+        _py_ctx_func: type[ast3.expr_context] by postinit;
+
+    def postinit(self: NameAtom) -> None;
     @property
     def sym(self: NameAtom) -> (Symbol | None) {
         return self._sym;
@@ -494,33 +525,31 @@ class NameAtom(AtomExpr, EnumBlockStmt) {
 }
 
 """ArchSpec node type for Jac Ast."""
-class ArchSpec(ElementStmt, CodeBlockStmt, AstSymbolNode, AstAsyncNode, AstDocNode) {
-    def init(
-        self: ArchSpec, decorators: (Sequence[Expr] | None), is_async: bool = False
-    ) -> None;
+obj ArchSpec(ElementStmt, CodeBlockStmt, AstSymbolNode, AstAsyncNode, AstDocNode) {
+    has decorators: (Sequence[Expr] | None);
+
+    def postinit(self: ArchSpec) -> None;
 }
 
 """MatchPattern node type for Jac Ast."""
-class MatchPattern(UniNode) {}
+obj MatchPattern(UniNode) {}
 
 """SubTag node type for Jac Ast."""
-class SubTag[T](UniNode) {
-    def init(self: SubTag, tag: T, kid: Sequence[UniNode]) -> None;
+obj SubTag[T](UniNode) {
+    has tag: T;
+
+    def postinit(self: SubTag) -> None;
 }
 
 """Whole Program node type for Jac Ast."""
-class Module(AstDocNode, UniScopeNode) {
-    def init(
-        self: Module,
-        name: str,
+obj Module(AstDocNode, UniScopeNode) {
+    has name: str,
         source: Source,
-        doc: (String | None),
         body: Sequence[ElementStmt | String | EmptyToken],
         terminals: list[Token],
-        kid: Sequence[UniNode],
-        stub_only: bool = False
-    ) -> None;
+        stub_only: bool = False;
 
+    def postinit(self: Module) -> None;
     """Get the base module path that this annex file belongs to.
 
         Uses discover_base_file to find the base .jac file for annex files
@@ -570,128 +599,99 @@ class Module(AstDocNode, UniScopeNode) {
 }
 
 """Whole Program node type for Jac Ast."""
-class ProgramModule(UniNode) {
+obj ProgramModule(UniNode) {
     """Initialize whole program node."""
-    def init(self: ProgramModule, main_mod: (Module | None) = None) -> None;
+    has main_mod: (Module | None) = None;
+
+    def postinit(self: ProgramModule) -> None;
 }
 
 """TypeParam node type for Jac Ast: T, T: Bound, T = Default."""
-class TypeParam(AstSymbolNode, UniNode) {
-    def init(
-        self: TypeParam,
-        name: Name,
+obj TypeParam(AstSymbolNode, UniNode) {
+    has name: Name,
         bound: (Expr | None),
-        default_val: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        default_val: (Expr | None);
+
+    def postinit(self: TypeParam) -> None;
 }
 
 """TypeAlias node type for Jac Ast: type Name[T, E = X] = TypeExpr;"""
-class TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode) {
-    def init(
-        self: TypeAlias,
-        name: Name,
+obj TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode) {
+    has name: Name,
         type_params: (Sequence[TypeParam] | None),
-        value: Expr,
-        access: (SubTag[Token] | None),
-        kid: Sequence[UniNode],
-        doc: (String | None) = None
-    ) -> None;
+        value: Expr;
+
+    def postinit(self: TypeAlias) -> None;
 }
 
 """GlobalVars node type for Jac Ast."""
-class GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
-    def init(
-        self: GlobalVars,
-        access: (SubTag[Token] | None),
-        assignments: Sequence[Assignment],
-        is_frozen: bool,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None
-    ) -> None;
+obj GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
+    has assignments: Sequence[Assignment],
+        is_frozen: bool;
+
+    def postinit(self: GlobalVars) -> None;
 }
 
 """Test node type for Jac Ast."""
-class Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
+obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
     with entry {
         TEST_COUNT = 0;
     }
 
-    def init(
-        self: Test,
-        name: (Name | Token),
+    has name: (Name | Token),
         body: Sequence[CodeBlockStmt],
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        description: (String | None) = None
-    ) -> None;
+        description: (String | None) = None;
+
+    def postinit(self: Test) -> None;
 }
 
 """ModuleCode node type for Jac Ast."""
-class ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
-    def init(
-        self: ModuleCode,
-        name: (Name | None),
-        body: Sequence[CodeBlockStmt],
-        kid: Sequence[UniNode],
-        is_enum_stmt: bool = False,
-        doc: (String | None) = None
-    ) -> None;
+obj ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
+    has name: (Name | None),
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: ModuleCode) -> None;
 }
 
 """ClientBlock node type for cl { ... } blocks in Jac Ast."""
-class ClientBlock(ElementStmt) {
-    def init(
-        self: ClientBlock,
-        body: Sequence[ElementStmt],
-        kid: Sequence[UniNode],
-        implicit: bool = False
-    ) -> None;
+obj ClientBlock(ElementStmt) {
+    has body: Sequence[ElementStmt],
+        implicit: bool = False;
+
+    def postinit(self: ClientBlock) -> None;
 }
 
 """ServerBlock node type for sv { ... } blocks in Jac Ast."""
-class ServerBlock(ElementStmt) {
-    def init(
-        self: ServerBlock,
-        body: Sequence[ElementStmt],
-        kid: Sequence[UniNode],
-        implicit: bool = False
-    ) -> None;
+obj ServerBlock(ElementStmt) {
+    has body: Sequence[ElementStmt],
+        implicit: bool = False;
+
+    def postinit(self: ServerBlock) -> None;
 }
 
 """NativeBlock node type for na { ... } blocks in Jac Ast."""
-class NativeBlock(ElementStmt) {
-    def init(
-        self: NativeBlock,
-        body: Sequence[ElementStmt],
-        kid: Sequence[UniNode],
-        implicit: bool = False
-    ) -> None;
+obj NativeBlock(ElementStmt) {
+    has body: Sequence[ElementStmt],
+        implicit: bool = False;
+
+    def postinit(self: NativeBlock) -> None;
 }
 
 """PyInlineCode node type for Jac Ast."""
-class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
-    def init(
-        self: PyInlineCode,
-        code: Token,
-        kid: Sequence[UniNode],
-        is_enum_stmt: bool = False,
-        doc: (String | None) = None
-    ) -> None;
+obj PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
+    has code: Token;
+
+    def postinit(self: PyInlineCode) -> None;
 }
 
 """Import node type for Jac Ast."""
-class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
-    def init(
-        self: Import,
-        from_loc: (ModulePath | None),
+obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
+    has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        clib_decls: (Sequence[UniNode] | None) = None
-    ) -> None;
+        clib_decls: (Sequence[UniNode] | None) = None;
 
+    def postinit(self: Import) -> None;
     """Check if import is python."""
     @property
     def is_py(self: Import) -> bool;
@@ -706,15 +706,12 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 }
 
 """ModulePath node type for Jac Ast."""
-class ModulePath(UniNode) {
-    def init(
-        self: ModulePath,
-        path: (Sequence[(Name | String)] | None),
+obj ModulePath(UniNode) {
+    has path: (Sequence[(Name | String)] | None),
         level: int,
-        alias: (Name | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        alias: (Name | None);
 
+    def postinit(self: ModulePath) -> None;
     """Check if this modulepath is from import."""
     @property
     def is_import_from(self: ModulePath) -> bool;
@@ -739,14 +736,11 @@ class ModulePath(UniNode) {
     - Token (KW_DEFAULT): for default imports (Category 2)
     - Token (STAR_MUL): for namespace imports (Category 4)
     """
-class ModuleItem(UniNode) {
-    def init(
-        self: ModuleItem,
-        name: (Name | Token),
-        alias: (Name | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj ModuleItem(UniNode) {
+    has name: (Name | Token),
+        alias: (Name | None);
 
+    def postinit(self: ModuleItem) -> None;
     """Get import parent."""
     @property
     def from_parent(self: ModuleItem) -> Import;
@@ -757,20 +751,13 @@ class ModuleItem(UniNode) {
 }
 
 """ObjectArch node type for Jac Ast."""
-class Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
-    def init(
-        self: Archetype,
-        name: Name,
+obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
+    has name: Name,
         arch_type: Token,
-        access: (SubTag[Token] | None),
         base_classes: (Sequence[Expr] | None),
-        body: Sequence[ArchBlockStmt] | ImplDef | None,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        decorators: (Sequence[Expr] | None) = None,
-        type_params: (Sequence[TypeParam] | None) = None
-    ) -> None;
+        type_params: (Sequence[TypeParam] | None) = None;
 
+    def postinit(self: Archetype) -> None;
     def _get_impl_resolved_body(self: Archetype) -> list;
     @property
     def is_abstract(self: Archetype) -> bool;
@@ -780,61 +767,44 @@ class Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImp
 }
 
 """AstImplOnlyNode node type for Jac Ast."""
-class ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
-    def init(
-        self: ImplDef,
-        decorators: (Sequence[Expr] | None),
+obj ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
+    has decorators: (Sequence[Expr] | None),
         target: Sequence[NameAtom],
         spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
         body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        decl_link: (UniNode | None) = None
-    ) -> None;
+        decl_link: (UniNode | None) = None;
 
+    def postinit(self: ImplDef) -> None;
     def create_impl_name_node(self: ImplDef) -> Name;
 }
 
 """SemDef node type for Jac Ast."""
-class SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
-    def init(
-        self: SemDef, target: Sequence[NameAtom], value: String, kid: Sequence[UniNode]
-    ) -> None;
+obj SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
+    has target: Sequence[NameAtom],
+        value: String;
 
+    def postinit(self: SemDef) -> None;
     def create_sem_name_node(self: SemDef) -> Name;
 }
 
 """Enum node type for Jac Ast."""
-class Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
-    def init(
-        self: Enum,
-        name: Name,
-        access: (SubTag[Token] | None),
-        base_classes: (Sequence[Expr] | None),
-        body: Sequence[EnumBlockStmt] | ImplDef | None,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        decorators: (Sequence[Expr] | None) = None
-    ) -> None;
+obj Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
+    has name: Name,
+        base_classes: (Sequence[Expr] | None);
+
+    def postinit(self: Enum) -> None;
 }
 
 """Ability node type for Jac Ast."""
-class Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
-    def init(
-        self: Ability,
-        name_ref: (NameAtom | None),
-        is_async: bool,
+obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
+    has name_ref: (NameAtom | None),
         is_override: bool,
         is_static: bool,
         is_abstract: bool,
-        access: (SubTag[Token] | None),
         signature: FuncSignature | EventSignature | None,
-        body: (Sequence[CodeBlockStmt] | ImplDef | Expr | None),
-        kid: Sequence[UniNode],
-        doc: (String | None) = None,
-        decorators: (Sequence[Expr] | None) = None
-    ) -> None;
+        decorators: (Sequence[Expr] | None) = None;
 
+    def postinit(self: Ability) -> None;
     @property
     def is_method(self: Ability) -> bool;
 
@@ -862,18 +832,15 @@ parameter (e.g., *args).
 }
 
 """FuncSignature node type for Jac Ast."""
-class FuncSignature(UniNode) {
-    def init(
-        self: FuncSignature,
-        posonly_params: Sequence[ParamVar],
+obj FuncSignature(UniNode) {
+    has posonly_params: Sequence[ParamVar],
         params: (Sequence[ParamVar] | None),
         varargs: (ParamVar | None),
         kwonlyargs: Sequence[ParamVar],
         kwargs: (ParamVar | None),
-        return_type: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        return_type: (Expr | None);
 
+    def postinit(self: FuncSignature) -> None;
     """Return all parameters in the declared order."""
     def get_parameters(self: FuncSignature) -> list[ParamVar];
 
@@ -885,13 +852,11 @@ class FuncSignature(UniNode) {
 }
 
 """EventSignature node type for Jac Ast."""
-class EventSignature(WalkerStmtOnlyNode) {
-    def init(
-        self: EventSignature,
-        event: Token,
-        arch_tag_info: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj EventSignature(WalkerStmtOnlyNode) {
+    has event: Token,
+        arch_tag_info: (Expr | None);
+
+    def postinit(self: EventSignature) -> None;
 }
 
 """Parameter kinds."""
@@ -906,16 +871,12 @@ class ParamKind(IntEnum) {
 }
 
 """ParamVar node type for Jac Ast."""
-class ParamVar(AstSymbolNode, AstTypedVarNode) {
-    def init(
-        self: ParamVar,
-        name: Name,
+obj ParamVar(AstSymbolNode, AstTypedVarNode) {
+    has name: Name,
         unpack: (Token | None),
-        type_tag: SubTag[Expr],
-        value: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        value: (Expr | None);
 
+    def postinit(self: ParamVar) -> None;
     @property
     def is_vararg(self: ParamVar) -> bool;
 
@@ -924,459 +885,411 @@ class ParamVar(AstSymbolNode, AstTypedVarNode) {
 }
 
 """ArchHas node type for Jac Ast."""
-class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
-    def init(
-        self: ArchHas,
-        is_static: bool,
-        access: (SubTag[Token] | None),
+obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
+    has is_static: bool,
         vars: Sequence[HasVar],
-        is_frozen: bool,
-        kid: Sequence[UniNode],
-        doc: (String | None) = None
-    ) -> None;
+        is_frozen: bool;
+
+    def postinit(self: ArchHas) -> None;
 }
 
 """HasVar node type for Jac Ast."""
-class HasVar(AstSymbolNode, AstTypedVarNode) {
-    def init(
-        self: HasVar,
-        name: Name,
-        type_tag: SubTag[Expr],
+obj HasVar(AstSymbolNode, AstTypedVarNode) {
+    has name: Name,
         value: (Expr | None),
-        defer: bool,
-        kid: Sequence[UniNode]
-    ) -> None;
+        defer: bool;
+
+    def postinit(self: HasVar) -> None;
 }
 
 """TypedCtxBlock node type for Jac Ast."""
-class TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
-    def init(
-        self: TypedCtxBlock,
-        type_ctx: Expr,
-        body: Sequence[CodeBlockStmt],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
+    has type_ctx: Expr,
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: TypedCtxBlock) -> None;
 }
 
 """IfStmt node type for Jac Ast."""
-class IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
-    def init(
-        self: IfStmt,
-        condition: Expr,
-        body: Sequence[CodeBlockStmt],
-        else_body: ElseStmt | ElseIf | None,
-        kid: Sequence[UniNode]
-    ) -> None;
+obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
+    has condition: Expr,
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: IfStmt) -> None;
 }
 
 """ElseIf node type for Jac Ast."""
-class ElseIf(IfStmt) {}
+obj ElseIf(IfStmt) {}
 
 """ElseStmt node type for Jac Ast."""
-class ElseStmt(UniScopeNode) {
-    def init(
-        self: ElseStmt, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode]
-    ) -> None;
+obj ElseStmt(UniScopeNode) {
+    has body: Sequence[CodeBlockStmt];
+
+    def postinit(self: ElseStmt) -> None;
 }
 
 """ExprStmt node type for Jac Ast."""
-class ExprStmt(CodeBlockStmt) {
-    def init(
-        self: ExprStmt, expr: Expr, in_fstring: bool, kid: Sequence[UniNode]
-    ) -> None;
+obj ExprStmt(CodeBlockStmt) {
+    has expr: Expr,
+        in_fstring: bool;
+
+    def postinit(self: ExprStmt) -> None;
 }
 
 """TryStmt node type for Jac Ast."""
-class TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: TryStmt,
-        body: Sequence[CodeBlockStmt],
+obj TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    has body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
-        else_body: (ElseStmt | None),
-        finally_body: (FinallyStmt | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        finally_body: (FinallyStmt | None);
+
+    def postinit(self: TryStmt) -> None;
 }
 
 """Except node type for Jac Ast."""
-class Except(CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: Except,
-        ex_type: Expr,
+obj Except(CodeBlockStmt, UniScopeNode) {
+    has ex_type: Expr,
         name: (Name | None),
-        body: Sequence[CodeBlockStmt],
-        kid: Sequence[UniNode]
-    ) -> None;
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: Except) -> None;
 }
 
 """FinallyStmt node type for Jac Ast."""
-class FinallyStmt(CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: FinallyStmt, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode]
-    ) -> None;
+obj FinallyStmt(CodeBlockStmt, UniScopeNode) {
+    has body: Sequence[CodeBlockStmt];
+
+    def postinit(self: FinallyStmt) -> None;
 }
 
 """IterForStmt node type for Jac Ast."""
-class IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: IterForStmt,
-        iter: Assignment,
-        is_async: bool,
+obj IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    has iter: Assignment,
         condition: Expr,
         count_by: Assignment,
-        body: Sequence[CodeBlockStmt],
-        else_body: (ElseStmt | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: IterForStmt) -> None;
 }
 
 """InForStmt node type for Jac Ast."""
-class InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: InForStmt,
-        target: Expr,
-        is_async: bool,
+obj InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    has target: Expr,
         collection: Expr,
-        body: Sequence[CodeBlockStmt],
-        else_body: (ElseStmt | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: InForStmt) -> None;
 }
 
 """WhileStmt node type for Jac Ast."""
-class WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: WhileStmt,
-        condition: Expr,
-        body: Sequence[CodeBlockStmt],
-        else_body: (ElseStmt | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    has condition: Expr,
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: WhileStmt) -> None;
 }
 
 """WithStmt node type for Jac Ast."""
-class WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
-    def init(
-        self: WithStmt,
-        is_async: bool,
-        exprs: Sequence[ExprAsItem],
-        body: Sequence[CodeBlockStmt],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
+    has exprs: Sequence[ExprAsItem],
+        body: Sequence[CodeBlockStmt];
+
+    def postinit(self: WithStmt) -> None;
 }
 
 """ExprAsItem node type for Jac Ast."""
-class ExprAsItem(UniNode) {
-    def init(
-        self: ExprAsItem, expr: Expr, alias: (Expr | None), kid: Sequence[UniNode]
-    ) -> None;
+obj ExprAsItem(UniNode) {
+    has expr: Expr,
+        alias: (Expr | None);
+
+    def postinit(self: ExprAsItem) -> None;
 }
 
 """RaiseStmt node type for Jac Ast."""
-class RaiseStmt(CodeBlockStmt) {
-    def init(
-        self: RaiseStmt,
-        cause: (Expr | None),
-        from_target: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj RaiseStmt(CodeBlockStmt) {
+    has cause: (Expr | None),
+        from_target: (Expr | None);
+
+    def postinit(self: RaiseStmt) -> None;
 }
 
 """AssertStmt node type for Jac Ast."""
-class AssertStmt(CodeBlockStmt) {
-    def init(
-        self: AssertStmt,
-        condition: Expr,
-        error_msg: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj AssertStmt(CodeBlockStmt) {
+    has condition: Expr,
+        error_msg: (Expr | None);
+
+    def postinit(self: AssertStmt) -> None;
 }
 
 """CtrlStmt node type for Jac Ast."""
-class CtrlStmt(CodeBlockStmt) {
-    def init(self: CtrlStmt, ctrl: Token, kid: Sequence[UniNode]) -> None;
+obj CtrlStmt(CodeBlockStmt) {
+    has ctrl: Token;
+
+    def postinit(self: CtrlStmt) -> None;
 }
 
 """DeleteStmt node type for Jac Ast."""
-class DeleteStmt(CodeBlockStmt) {
-    def init(self: DeleteStmt, target: Expr, kid: Sequence[UniNode]) -> None;
+obj DeleteStmt(CodeBlockStmt) {
+    has target: Expr;
+
+    def postinit(self: DeleteStmt) -> None;
     """Get Python AST targets (without setting ctx)."""
     @property
     def py_ast_targets(self: DeleteStmt) -> list[ast3.AST];
 }
 
 """ReportStmt node type for Jac Ast."""
-class ReportStmt(CodeBlockStmt) {
-    def init(self: ReportStmt, expr: Expr, kid: Sequence[UniNode]) -> None;
+obj ReportStmt(CodeBlockStmt) {
+    has expr: Expr;
+
+    def postinit(self: ReportStmt) -> None;
 }
 
 """ReturnStmt node type for Jac Ast."""
-class ReturnStmt(CodeBlockStmt) {
-    def init(self: ReturnStmt, expr: (Expr | None), kid: Sequence[UniNode]) -> None;
+obj ReturnStmt(CodeBlockStmt) {
+    has expr: (Expr | None);
+
+    def postinit(self: ReturnStmt) -> None;
 }
 
 """VisitStmt node type for Jac Ast."""
-class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
-    def init(
-        self: VisitStmt,
-        insert_loc: (Expr | None),
-        target: Expr,
-        else_body: (ElseStmt | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
+    has insert_loc: (Expr | None),
+        target: Expr;
+
+    def postinit(self: VisitStmt) -> None;
 }
 
 """DisengageStmt node type for Jac Ast."""
-class DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
+obj DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
     """Initialize disengage statement node."""
-    def init(self: DisengageStmt, kid: Sequence[UniNode]) -> None;
+    def postinit(self: DisengageStmt) -> None;
 }
 
 """AwaitExpr node type for Jac Ast."""
-class AwaitExpr(Expr) {
-    def init(self: AwaitExpr, target: Expr, kid: Sequence[UniNode]) -> None;
+obj AwaitExpr(Expr) {
+    has target: Expr;
+
+    def postinit(self: AwaitExpr) -> None;
 }
 
 """GlobalStmt node type for Jac Ast."""
-class GlobalStmt(CodeBlockStmt) {
-    def init(
-        self: GlobalStmt, target: Sequence[NameAtom], kid: Sequence[UniNode]
-    ) -> None;
+obj GlobalStmt(CodeBlockStmt) {
+    has target: Sequence[NameAtom];
+
+    def postinit(self: GlobalStmt) -> None;
 }
 
 """NonLocalStmt node type for Jac Ast."""
-class NonLocalStmt(GlobalStmt) {}
+obj NonLocalStmt(GlobalStmt) {}
 
 """Assignment node type for Jac Ast."""
-class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
-    def init(
-        self: Assignment,
-        target: Sequence[Expr],
+obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
+    has target: Sequence[Expr],
         value: Expr | YieldExpr | None,
-        type_tag: (SubTag[Expr] | None),
-        kid: Sequence[UniNode],
         mutable: bool = True,
-        aug_op: (Token | None) = None,
-        is_enum_stmt: bool = False
-    ) -> None;
+        aug_op: (Token | None) = None;
+
+    def postinit(self: Assignment) -> None;
 }
 
 """ConcurrentExpr node type for Jac Ast."""
-class ConcurrentExpr(Expr) {
-    def init(
-        self: ConcurrentExpr, tok: (Token | None), target: Expr, kid: Sequence[UniNode]
-    ) -> None;
+obj ConcurrentExpr(Expr) {
+    has tok: (Token | None),
+        target: Expr;
+
+    def postinit(self: ConcurrentExpr) -> None;
 }
 
 """BinaryExpr node type for Jac Ast."""
-class BinaryExpr(Expr) {
-    def init(
-        self: BinaryExpr,
-        left: Expr,
+obj BinaryExpr(Expr) {
+    has left: Expr,
         right: Expr,
-        op: Token | DisconnectOp | ConnectOp,
-        kid: Sequence[UniNode]
-    ) -> None;
+        op: Token | DisconnectOp | ConnectOp;
+
+    def postinit(self: BinaryExpr) -> None;
 }
 
 """CompareExpr node type for Jac Ast."""
-class CompareExpr(Expr) {
-    def init(
-        self: CompareExpr,
-        left: Expr,
+obj CompareExpr(Expr) {
+    has left: Expr,
         rights: list[Expr],
-        ops: list[Token],
-        kid: Sequence[UniNode]
-    ) -> None;
+        ops: list[Token];
+
+    def postinit(self: CompareExpr) -> None;
 }
 
 """BoolExpr node type for Jac Ast."""
-class BoolExpr(Expr) {
-    def init(
-        self: BoolExpr, op: Token, values: list[Expr], kid: Sequence[UniNode]
-    ) -> None;
+obj BoolExpr(Expr) {
+    has op: Token,
+        values: list[Expr];
+
+    def postinit(self: BoolExpr) -> None;
 }
 
 """LambdaExpr node type for Jac Ast."""
-class LambdaExpr(Expr, UniScopeNode) {
-    def init(
-        self: LambdaExpr,
-        body: (Expr | Sequence[CodeBlockStmt]),
-        kid: Sequence[UniNode],
-        signature: (FuncSignature | None) = None
-    ) -> None;
+obj LambdaExpr(Expr, UniScopeNode) {
+    has body: (Expr | Sequence[CodeBlockStmt]),
+        signature: (FuncSignature | None) = None;
+
+    def postinit(self: LambdaExpr) -> None;
 }
 
 """UnaryExpr node type for Jac Ast."""
-class UnaryExpr(Expr) {
-    def init(
-        self: UnaryExpr, operand: Expr, op: Token, kid: Sequence[UniNode]
-    ) -> None;
+obj UnaryExpr(Expr) {
+    has operand: Expr,
+        op: Token;
+
+    def postinit(self: UnaryExpr) -> None;
 }
 
 """IfElseExpr node type for Jac Ast."""
-class IfElseExpr(Expr) {
-    def init(
-        self: IfElseExpr,
-        condition: Expr,
+obj IfElseExpr(Expr) {
+    has condition: Expr,
         value: Expr,
-        else_value: Expr,
-        kid: Sequence[UniNode]
-    ) -> None;
+        else_value: Expr;
+
+    def postinit(self: IfElseExpr) -> None;
 }
 
 """MultiString node type for Jac Ast."""
-class MultiString(AtomExpr) {
-    def init(
-        self: MultiString,
-        strings: Sequence[(String | FString)],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj MultiString(AtomExpr) {
+    has strings: Sequence[(String | FString)];
+
+    def postinit(self: MultiString) -> None;
 }
 
 """FString node type for Jac Ast."""
-class FString(AtomExpr) {
-    def init(
-        self: FString,
-        start: (Token | None),
+obj FString(AtomExpr) {
+    has start: (Token | None),
         parts: Sequence[(String | FormattedValue)],
-        end: (Token | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        end: (Token | None);
+
+    def postinit(self: FString) -> None;
 }
 
 """FormattedValue node type for Jac Ast."""
-class FormattedValue(Expr) {
-    def init(
-        self: FormattedValue,
-        format_part: Expr,
+obj FormattedValue(Expr) {
+    has format_part: Expr,
         conversion: int,
-        format_spec: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        format_spec: (Expr | None);
+
+    def postinit(self: FormattedValue) -> None;
 }
 
 """ListVal node type for Jac Ast."""
-class ListVal(AtomExpr) {
-    def init(self: ListVal, values: Sequence[Expr], kid: Sequence[UniNode]) -> None;
+obj ListVal(AtomExpr) {
+    has values: Sequence[Expr];
+
+    def postinit(self: ListVal) -> None;
 }
 
 """SetVal node type for Jac Ast."""
-class SetVal(AtomExpr) {
-    def init(
-        self: SetVal, values: (Sequence[Expr] | None), kid: Sequence[UniNode]
-    ) -> None;
+obj SetVal(AtomExpr) {
+    has values: (Sequence[Expr] | None);
+
+    def postinit(self: SetVal) -> None;
 }
 
 """TupleVal node type for Jac Ast."""
-class TupleVal(AtomExpr) {
-    def init(
-        self: TupleVal, values: Sequence[(Expr | KWPair)], kid: Sequence[UniNode]
-    ) -> None;
+obj TupleVal(AtomExpr) {
+    has values: Sequence[(Expr | KWPair)];
+
+    def postinit(self: TupleVal) -> None;
 }
 
 """DictVal node type for Jac Ast."""
-class DictVal(AtomExpr) {
-    def init(
-        self: DictVal, kv_pairs: Sequence[KVPair], kid: Sequence[UniNode]
-    ) -> None;
+obj DictVal(AtomExpr) {
+    has kv_pairs: Sequence[KVPair];
+
+    def postinit(self: DictVal) -> None;
 }
 
 """KVPair node type for Jac Ast."""
-class KVPair(UniNode) {
-    def init(
-        self: KVPair, key: (Expr | None), value: Expr, kid: Sequence[UniNode]
-    ) -> None;
+obj KVPair(UniNode) {
+    has key: (Expr | None),
+        value: Expr;
+
+    def postinit(self: KVPair) -> None;
 }
 
 """KWPair node type for Jac Ast."""
-class KWPair(UniNode) {
-    def init(
-        self: KWPair, key: (NameAtom | None), value: Expr, kid: Sequence[UniNode]
-    ) -> None;
+obj KWPair(UniNode) {
+    has key: (NameAtom | None),
+        value: Expr;
+
+    def postinit(self: KWPair) -> None;
 }
 
 """InnerCompr node type for Jac Ast."""
-class InnerCompr(AstAsyncNode, UniScopeNode) {
-    def init(
-        self: InnerCompr,
-        is_async: bool,
-        target: Expr,
+obj InnerCompr(AstAsyncNode, UniScopeNode) {
+    has target: Expr,
         collection: Expr,
-        conditional: (list[Expr] | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        conditional: (list[Expr] | None);
+
+    def postinit(self: InnerCompr) -> None;
 }
 
 """ListCompr node type for Jac Ast."""
-class ListCompr(AtomExpr, UniScopeNode) {
-    def init(
-        self: ListCompr,
-        out_expr: Expr,
-        compr: list[InnerCompr],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj ListCompr(AtomExpr, UniScopeNode) {
+    has out_expr: Expr,
+        compr: list[InnerCompr];
+
+    def postinit(self: ListCompr) -> None;
 }
 
 """GenCompr node type for Jac Ast."""
-class GenCompr(ListCompr) {}
+obj GenCompr(ListCompr) {}
 
 """SetCompr node type for Jac Ast."""
-class SetCompr(ListCompr) {}
+obj SetCompr(ListCompr) {}
 
 """DictCompr node type for Jac Ast."""
-class DictCompr(AtomExpr, UniScopeNode) {
-    def init(
-        self: DictCompr,
-        kv_pair: KVPair,
-        compr: list[InnerCompr],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj DictCompr(AtomExpr, UniScopeNode) {
+    has kv_pair: KVPair,
+        compr: list[InnerCompr];
+
+    def postinit(self: DictCompr) -> None;
 }
 
 """AtomTrailer node type for Jac Ast."""
-class AtomTrailer(Expr) {
-    def init(
-        self: AtomTrailer,
-        target: Expr,
+obj AtomTrailer(Expr) {
+    has target: Expr,
         right: (AtomExpr | Expr),
         is_attr: bool,
         is_null_ok: bool,
-        kid: Sequence[UniNode],
-        is_genai: bool = False
-    ) -> None;
+        is_genai: bool = False;
 
+    def postinit(self: AtomTrailer) -> None;
     @property
     def as_attr_list(self: AtomTrailer) -> list[AstSymbolNode];
 }
 
 """AtomUnit node type for Jac Ast."""
-class AtomUnit(Expr) {
-    def init(
-        self: AtomUnit, value: Expr | YieldExpr | Ability, kid: Sequence[UniNode]
-    ) -> None;
+obj AtomUnit(Expr) {
+    has value: Expr | YieldExpr | Ability;
+
+    def postinit(self: AtomUnit) -> None;
 }
 
 """YieldExpr node type for Jac Ast."""
-class YieldExpr(Expr) {
-    def init(
-        self: YieldExpr, expr: (Expr | None), with_from: bool, kid: Sequence[UniNode]
-    ) -> None;
+obj YieldExpr(Expr) {
+    has expr: (Expr | None),
+        with_from: bool;
+
+    def postinit(self: YieldExpr) -> None;
 }
 
 """FuncCall node type for Jac Ast."""
-class FuncCall(Expr) {
-    def init(
-        self: FuncCall,
-        target: Expr,
+obj FuncCall(Expr) {
+    has target: Expr,
         params: (Sequence[(Expr | KWPair)] | None),
-        genai_call: (Expr | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        genai_call: (Expr | None);
+
+    def postinit(self: FuncCall) -> None;
 }
 
 """IndexSlice node type for Jac Ast."""
-class IndexSlice(AtomExpr) {
+obj IndexSlice(AtomExpr) {
     """Slice node type for Jac Ast."""
     @dataclass
     class Slice {
@@ -1387,77 +1300,69 @@ class IndexSlice(AtomExpr) {
         }
     }
 
-    def init(
-        self: IndexSlice, slices: list[Slice], is_range: bool, kid: Sequence[UniNode]
-    ) -> None;
+    has slices: list[Slice],
+        is_range: bool;
+
+    def postinit(self: IndexSlice) -> None;
 }
 
 """EdgeRefTrailer node type for Jac Ast."""
-class EdgeRefTrailer(Expr) {
-    def init(
-        self: EdgeRefTrailer,
-        chain: list[(Expr | FilterCompr)],
+obj EdgeRefTrailer(Expr) {
+    has chain: list[(Expr | FilterCompr)],
         edges_only: bool,
-        is_async: bool,
-        kid: Sequence[UniNode]
-    ) -> None;
+        is_async: bool;
+
+    def postinit(self: EdgeRefTrailer) -> None;
 }
 
 """EdgeOpRef node type for Jac Ast."""
-class EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
-    def init(
-        self: EdgeOpRef,
-        filter_cond: (FilterCompr | None),
-        edge_dir: EdgeDir,
-        kid: Sequence[UniNode]
-    ) -> None;
+obj EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
+    has filter_cond: (FilterCompr | None),
+        edge_dir: EdgeDir;
+
+    def postinit(self: EdgeOpRef) -> None;
 }
 
 """DisconnectOp node type for Jac Ast."""
-class DisconnectOp(WalkerStmtOnlyNode) {
-    def init(self: DisconnectOp, edge_spec: EdgeOpRef, kid: Sequence[UniNode]) -> None;
+obj DisconnectOp(WalkerStmtOnlyNode) {
+    has edge_spec: EdgeOpRef;
+
+    def postinit(self: DisconnectOp) -> None;
 }
 
 """ConnectOpRef node type for Jac Ast."""
-class ConnectOp(UniNode) {
-    def init(
-        self: ConnectOp,
-        conn_type: (Expr | None),
+obj ConnectOp(UniNode) {
+    has conn_type: (Expr | None),
         conn_assign: (AssignCompr | None),
-        edge_dir: EdgeDir,
-        kid: Sequence[UniNode]
-    ) -> None;
+        edge_dir: EdgeDir;
+
+    def postinit(self: ConnectOp) -> None;
 }
 
 """FilterCompr node type for Jac Ast."""
-class FilterCompr(AtomExpr) {
-    def init(
-        self: FilterCompr,
-        f_type: (Expr | None),
-        compares: Sequence[CompareExpr],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj FilterCompr(AtomExpr) {
+    has f_type: (Expr | None),
+        compares: Sequence[CompareExpr];
+
+    def postinit(self: FilterCompr) -> None;
 }
 
 """AssignCompr node type for Jac Ast."""
-class AssignCompr(AtomExpr) {
-    def init(
-        self: AssignCompr, assigns: Sequence[KWPair], kid: Sequence[UniNode]
-    ) -> None;
+obj AssignCompr(AtomExpr) {
+    has assigns: Sequence[KWPair];
+
+    def postinit(self: AssignCompr) -> None;
 }
 
 """JsxElement node type for Jac Ast."""
-class JsxElement(AtomExpr) {
-    def init(
-        self: JsxElement,
-        name: (JsxElementName | None),
+obj JsxElement(AtomExpr) {
+    has name: (JsxElementName | None),
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
         is_self_closing: bool,
-        is_fragment: bool,
-        kid: Sequence[UniNode]
-    ) -> None;
+        is_fragment: bool;
 
+    def postinit(self: JsxElement) -> None;
     """Get the source line after the opening tag's '>' token (body start)."""
     def get_body_start_line(self: JsxElement) -> (int | None);
 
@@ -1466,40 +1371,42 @@ class JsxElement(AtomExpr) {
 }
 
 """JsxElementName node type for Jac Ast."""
-class JsxElementName(UniNode) {
-    def init(
-        self: JsxElementName, parts: Sequence[(Name | Token)], kid: Sequence[UniNode]
-    ) -> None;
+obj JsxElementName(UniNode) {
+    has parts: Sequence[(Name | Token)];
+
+    def postinit(self: JsxElementName) -> None;
 }
 
 """JsxAttribute node type for Jac Ast (base class)."""
-class JsxAttribute(UniNode) {
-    def init(self: JsxAttribute, kid: Sequence[UniNode]) -> None;
+obj JsxAttribute(UniNode) {
+    def postinit(self: JsxAttribute) -> None;
 }
 
 """JsxSpreadAttribute node type for Jac Ast."""
-class JsxSpreadAttribute(JsxAttribute) {
-    def init(self: JsxSpreadAttribute, expr: Expr, kid: Sequence[UniNode]) -> None;
+obj JsxSpreadAttribute(JsxAttribute) {
+    has expr: Expr;
+
+    def postinit(self: JsxSpreadAttribute) -> None;
 }
 
 """JsxNormalAttribute node type for Jac Ast."""
-class JsxNormalAttribute(JsxAttribute) {
-    def init(
-        self: JsxNormalAttribute,
-        name: (Name | Token),
-        value: String | Expr | None,
-        kid: Sequence[UniNode]
-    ) -> None;
+obj JsxNormalAttribute(JsxAttribute) {
+    has name: (Name | Token),
+        value: String | Expr | None;
+
+    def postinit(self: JsxNormalAttribute) -> None;
 }
 
 """JsxChild node type for Jac Ast (base class)."""
-class JsxChild(UniNode) {
-    def init(self: JsxChild, kid: Sequence[UniNode]) -> None;
+obj JsxChild(UniNode) {
+    def postinit(self: JsxChild) -> None;
 }
 
 """JsxText node type for Jac Ast."""
-class JsxText(JsxChild) {
-    def init(self: JsxText, value: (str | Token), kid: Sequence[UniNode]) -> None;
+obj JsxText(JsxChild) {
+    has value: (str | Token);
+
+    def postinit(self: JsxText) -> None;
     """Normalize JSX text whitespace (single source of truth).
 
     HTML-like rules: strip leading/trailing newline+whitespace,
@@ -1509,123 +1416,118 @@ class JsxText(JsxChild) {
 }
 
 """JsxExpression node type for Jac Ast."""
-class JsxExpression(JsxChild) {
-    def init(self: JsxExpression, expr: Expr, kid: Sequence[UniNode]) -> None;
+obj JsxExpression(JsxChild) {
+    has expr: Expr;
+
+    def postinit(self: JsxExpression) -> None;
 }
 
 """MatchStmt node type for Jac Ast."""
-class MatchStmt(CodeBlockStmt) {
-    def init(
-        self: MatchStmt, target: Expr, cases: list[MatchCase], kid: Sequence[UniNode]
-    ) -> None;
+obj MatchStmt(CodeBlockStmt) {
+    has target: Expr,
+        cases: list[MatchCase];
+
+    def postinit(self: MatchStmt) -> None;
 }
 
 """MatchCase node type for Jac Ast."""
-class MatchCase(UniScopeNode) {
-    def init(
-        self: MatchCase,
-        pattern: MatchPattern,
+obj MatchCase(UniScopeNode) {
+    has pattern: MatchPattern,
         guard: (Expr | None),
-        body: list[CodeBlockStmt],
-        kid: Sequence[UniNode]
-    ) -> None;
+        body: list[CodeBlockStmt];
+
+    def postinit(self: MatchCase) -> None;
 }
 
 """SwitchStmt node type for Jac Ast."""
-class SwitchStmt(CodeBlockStmt) {
-    def init(
-        self: SwitchStmt, target: Expr, cases: list[SwitchCase], kid: Sequence[UniNode]
-    ) -> None;
+obj SwitchStmt(CodeBlockStmt) {
+    has target: Expr,
+        cases: list[SwitchCase];
+
+    def postinit(self: SwitchStmt) -> None;
 }
 
 """SwitchCase node type for Jac Ast."""
-class SwitchCase(UniScopeNode) {
-    def init(
-        self: SwitchCase,
-        pattern: (MatchPattern | None),
-        body: list[CodeBlockStmt],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj SwitchCase(UniScopeNode) {
+    has pattern: (MatchPattern | None),
+        body: list[CodeBlockStmt];
+
+    def postinit(self: SwitchCase) -> None;
 }
 
 """MatchOr node type for Jac Ast."""
-class MatchOr(MatchPattern) {
-    def init(
-        self: MatchOr, patterns: list[MatchPattern], kid: Sequence[UniNode]
-    ) -> None;
+obj MatchOr(MatchPattern) {
+    has patterns: list[MatchPattern];
+
+    def postinit(self: MatchOr) -> None;
 }
 
 """MatchAs node type for Jac Ast."""
-class MatchAs(MatchPattern) {
-    def init(
-        self: MatchAs,
-        name: NameAtom,
-        pattern: (MatchPattern | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+obj MatchAs(MatchPattern) {
+    has name: NameAtom,
+        pattern: (MatchPattern | None);
+
+    def postinit(self: MatchAs) -> None;
 }
 
 """MatchWild node type for Jac Ast."""
-class MatchWild(MatchPattern) {}
+obj MatchWild(MatchPattern) {}
 
 """MatchValue node type for Jac Ast."""
-class MatchValue(MatchPattern) {
-    def init(self: MatchValue, value: Expr, kid: Sequence[UniNode]) -> None;
+obj MatchValue(MatchPattern) {
+    has value: Expr;
+
+    def postinit(self: MatchValue) -> None;
 }
 
 """MatchSingleton node type for Jac Ast."""
-class MatchSingleton(MatchPattern) {
-    def init(
-        self: MatchSingleton, value: (Bool | Null), kid: Sequence[UniNode]
-    ) -> None;
+obj MatchSingleton(MatchPattern) {
+    has value: (Bool | Null);
+
+    def postinit(self: MatchSingleton) -> None;
 }
 
 """MatchSequence node type for Jac Ast."""
-class MatchSequence(MatchPattern) {
-    def init(
-        self: MatchSequence, values: list[MatchPattern], kid: Sequence[UniNode]
-    ) -> None;
+obj MatchSequence(MatchPattern) {
+    has values: list[MatchPattern];
+
+    def postinit(self: MatchSequence) -> None;
 }
 
 """MatchMapping node type for Jac Ast."""
-class MatchMapping(MatchPattern) {
-    def init(
-        self: MatchMapping,
-        values: list[(MatchKVPair | MatchStar)],
-        kid: Sequence[UniNode]
-    ) -> None;
+obj MatchMapping(MatchPattern) {
+    has values: list[(MatchKVPair | MatchStar)];
+
+    def postinit(self: MatchMapping) -> None;
 }
 
 """MatchKVPair node type for Jac Ast."""
-class MatchKVPair(MatchPattern) {
-    def init(
-        self: MatchKVPair,
-        key: MatchPattern | NameAtom | AtomExpr,
-        value: MatchPattern,
-        kid: Sequence[UniNode]
-    ) -> None;
+obj MatchKVPair(MatchPattern) {
+    has key: MatchPattern | NameAtom | AtomExpr,
+        value: MatchPattern;
+
+    def postinit(self: MatchKVPair) -> None;
 }
 
 """MatchStar node type for Jac Ast."""
-class MatchStar(MatchPattern) {
-    def init(
-        self: MatchStar, name: NameAtom, is_list: bool, kid: Sequence[UniNode]
-    ) -> None;
+obj MatchStar(MatchPattern) {
+    has name: NameAtom,
+        is_list: bool;
+
+    def postinit(self: MatchStar) -> None;
 }
 
 """MatchArch node type for Jac Ast."""
-class MatchArch(MatchPattern) {
-    def init(
-        self: MatchArch,
-        name: (AtomTrailer | NameAtom),
+obj MatchArch(MatchPattern) {
+    has name: (AtomTrailer | NameAtom),
         arg_patterns: (Sequence[MatchPattern] | None),
-        kw_patterns: (Sequence[MatchKVPair] | None),
-        kid: Sequence[UniNode]
-    ) -> None;
+        kw_patterns: (Sequence[MatchKVPair] | None);
+
+    def postinit(self: MatchArch) -> None;
 }
 
 """Token node type for Jac Ast."""
-class Token(UniNode) {
+obj Token(UniNode) {
     def init(
         self: Token,
         orig_src: Source,
@@ -1644,7 +1546,7 @@ class Token(UniNode) {
 }
 
 """Name node type for Jac Ast."""
-class Name(Token, NameAtom) {
+obj Name(Token, NameAtom) {
     def init(
         self: Name,
         orig_src: Source,
@@ -1682,13 +1584,13 @@ class Name(Token, NameAtom) {
 }
 
 """SpecialVarRef node type for Jac Ast."""
-class SpecialVarRef(Name) {
+obj SpecialVarRef(Name) {
     def init(self: SpecialVarRef, var: Name, is_enum_stmt: bool = False) -> None;
     def py_resolve_name(self: SpecialVarRef) -> str;
 }
 
 """Literal node type for Jac Ast."""
-class Literal(Token, AtomExpr) {
+obj Literal(Token, AtomExpr) {
     with entry {
         SYMBOL_TYPE = SymbolType.VAR;
         type_map = {
@@ -1726,7 +1628,7 @@ class Literal(Token, AtomExpr) {
 }
 
 """BuiltinType node type for Jac Ast."""
-class BuiltinType(Name, Literal) {
+obj BuiltinType(Name, Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.VAR;
     }
@@ -1737,7 +1639,7 @@ class BuiltinType(Name, Literal) {
 }
 
 """Float node type for Jac Ast."""
-class Float(Literal) {
+obj Float(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
@@ -1747,7 +1649,7 @@ class Float(Literal) {
 }
 
 """Int node type for Jac Ast."""
-class Int(Literal) {
+obj Int(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
@@ -1757,7 +1659,7 @@ class Int(Literal) {
 }
 
 """String node type for Jac Ast."""
-class String(Literal) {
+obj String(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.STRING;
     }
@@ -1767,7 +1669,7 @@ class String(Literal) {
 }
 
 """Bool node type for Jac Ast."""
-class Bool(Literal) {
+obj Bool(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.BOOL;
     }
@@ -1777,7 +1679,7 @@ class Bool(Literal) {
 }
 
 """Null node type for Jac Ast."""
-class Null(Literal) {
+obj Null(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.NULL;
     }
@@ -1787,7 +1689,7 @@ class Null(Literal) {
 }
 
 """Ellipsis node type for Jac Ast."""
-class Ellipsis(Literal) {
+obj Ellipsis(Literal) {
     with entry {
         SYMBOL_TYPE = SymbolType.NULL;
     }
@@ -1797,12 +1699,12 @@ class Ellipsis(Literal) {
 }
 
 """EmptyToken node type for Jac Ast."""
-class EmptyToken(Token) {
+obj EmptyToken(Token) {
     def init(self: EmptyToken, orig_src: (Source | None) = None) -> None;
 }
 
 """Semicolon node type for Jac Ast."""
-class Semi(Token, CodeBlockStmt) {
+obj Semi(Token, CodeBlockStmt) {
     """Initialize token."""
     def init(
         self: Semi,
@@ -1819,7 +1721,7 @@ class Semi(Token, CodeBlockStmt) {
 }
 
 """CommentToken node type for Jac Ast."""
-class CommentToken(Token) {
+obj CommentToken(Token) {
     def init(
         self: CommentToken,
         orig_src: Source,
@@ -1843,7 +1745,7 @@ class CommentToken(Token) {
 }
 
 """SourceString node type for Jac Ast."""
-class Source(EmptyToken) {
+obj Source(EmptyToken) {
     def init(self: Source, source: str, mod_path: str) -> None;
     """Return the source code as string."""
     @property
@@ -1851,6 +1753,6 @@ class Source(EmptyToken) {
 }
 
 """SourceString node type for Jac Ast."""
-class PythonModuleAst(EmptyToken) {
+obj PythonModuleAst(EmptyToken) {
     def init(self: PythonModuleAst, ast: ast3.Module, orig_src: Source) -> None;
 }

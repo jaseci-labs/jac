@@ -63,6 +63,32 @@ def _discover_config_from_file(filename: str) -> None {
     }
 }
 
+"""Populate __jac_argc/__jac_argv globals in the JIT engine from Python argv.
+
+When running via `jac run` (JIT pathway), there is no C main() to set these.
+We write them from Python using ctypes so that `sys.argv` works in native code.
+"""
+def _populate_native_argv(engine: object, argv: list[str]) -> None {
+    import ctypes;
+    # Use get_global_value_address for global variables (not get_function_address)
+    argc_addr = engine.get_global_value_address("__jac_argc");
+    argv_addr = engine.get_global_value_address("__jac_argv");
+    if argc_addr == 0 or argv_addr == 0 {
+        return;
+    }
+    # Build C-style argv: array of char* pointers
+    argc = len(argv);
+    c_strings = [ctypes.c_char_p(arg.encode("utf-8")) for arg in argv];
+    c_argv = (ctypes.c_char_p * argc)(*c_strings);
+    # Write argc (i32) and argv (char**) into the JIT globals
+    argc_ptr = ctypes.cast(argc_addr, ctypes.POINTER(ctypes.c_int32));
+    argc_ptr[0] = argc;
+    argv_ptr = ctypes.cast(argv_addr, ctypes.POINTER(ctypes.c_void_p));
+    argv_ptr[0] = ctypes.cast(c_argv, ctypes.c_void_p).value;
+    # Keep references alive so the GC doesn't collect them
+    engine._jac_argv_refs = (c_strings, c_argv);
+}
+
 """Create JacRuntime and return the base path, module name, and runtime state.
 
 This is the canonical function for setting up CLI execution context.
@@ -119,6 +145,7 @@ impl run(
             ir_mod = program.compile(file_path=full_path);
             if ir_mod and ir_mod.gen.native_engine {
                 engine = ir_mod.gen.native_engine;
+                _populate_native_argv(engine, sys.argv);
                 if main {
                     addr = engine.get_function_address("jac_entry");
                     if addr != 0 {
@@ -150,6 +177,7 @@ impl run(
                         # Auto-promoted native module: execute via JIT
                         import ctypes;
                         engine = ir_mod.gen.native_engine;
+                        _populate_native_argv(engine, sys.argv);
                         if main {
                             addr = engine.get_function_address("jac_entry");
                             if addr != 0 {

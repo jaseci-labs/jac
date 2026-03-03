@@ -108,24 +108,21 @@ obj InteropManifest {
 }
 
 """Code generation target."""
-class CodeGenTarget {
-    """Initialize code generation target."""
-    def init(self: CodeGenTarget) -> None {
-        self.py: str = '';
-        self.jac: str = '';
-        self._doc_ir: (Doc | None) = None;
-        self.js: str = '';
-        self.client_manifest: ClientManifest = ClientManifest();
-        self.py_ast: list = [];
-        self.py_bytecode: (bytes | None) = None;
-        self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None;
-        self.llvm_ir: Any = None;
-        self.native_engine: Any = None;
-        self.interop_manifest: InteropManifest = InteropManifest();
-        self.interop_py_funcs: dict[(str, Any)] = {};
-        self._interop_callbacks: list[Any] = [];
-        self._auto_promoted_native: bool = False;
-    }
+obj CodeGenTarget {
+    has py: str = '',
+        jac: str = '',
+        _doc_ir: (Doc | None) = None,
+        js: str = '',
+        client_manifest: ClientManifest = field(default_factory=ClientManifest),
+        py_ast: list = field(default_factory=`list),
+        py_bytecode: (bytes | None) = None,
+        es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
+        llvm_ir: Any = None,
+        native_engine: Any = None,
+        interop_manifest: InteropManifest = field(default_factory=InteropManifest),
+        interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
+        _interop_callbacks: list[Any] = field(default_factory=`list),
+        _auto_promoted_native: bool = False;
 
     """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""
     @property
@@ -145,12 +142,9 @@ class CodeGenTarget {
 }
 
 """Code location info."""
-class CodeLocInfo {
-    """Initialize code location info."""
-    def init(self: CodeLocInfo, first_tok: Token, last_tok: Token) -> None {
-        self.first_tok = first_tok;
-        self.last_tok = last_tok;
-    }
+obj CodeLocInfo {
+    has first_tok: Token,
+        last_tok: Token;
 
     """Get file source."""
     @property

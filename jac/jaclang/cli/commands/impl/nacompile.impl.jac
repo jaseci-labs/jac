@@ -15,17 +15,25 @@ import from jaclang.cli.console { console }
 
 """Inject main() and _start into the LLVM IR for ELF (Linux).
 
-main() calls jac_entry() and returns 0.
-_start is the ELF entry point, written in pure LLVM IR — no inline
-assembly. It calls main(0, null) then exit(). LLVM handles all
-architecture-specific code generation via emit_object().
-
-alignstack(16) is needed because _start is jumped to by the kernel
-(not called), so there's no return address on the stack and LLVM's
-default stack alignment assumption is wrong.
+main() stores argc/argv into globals, calls jac_entry(), and returns 0.
+_start is the ELF entry point. It uses the naked attribute with
+@llvm.stacksave() to read the raw stack pointer without a prologue,
+then loads argc and argv from the kernel-placed stack layout:
+[sp]=argc, [sp+8..]=argv array. No inline assembly needed.
 """
-def _inject_entry_elf(llvm_ir_str: str) -> str {
-    ir = '\n; --- injected entry point ---\n' + 'declare void @exit(i32) noreturn\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() noreturn alignstack(16) {\n' + 'entry:\n' + '    %ret = call i32 @main(i32 0, ptr null)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n';
+def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
+    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    # Only declare exit() if sys.exit() didn't already declare it
+    # llvmlite quotes the name as @"exit", so check both forms
+    has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
+    exit_decl = "" if has_exit else 'declare void @exit(i32) noreturn\n\n';
+    ir = (
+        '\n; --- injected entry point ---\n' + globals_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
+    );
     return llvm_ir_str + ir;
 }
 
@@ -37,7 +45,12 @@ system CRT manages _start. No exit() declaration needed since
 returning from main() is handled by dyld.
 """
 def _inject_entry_macho(llvm_ir_str: str) -> str {
-    ir = '\n; --- injected entry point ---\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n';
+    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    ir = '\n; --- injected entry point ---\n' + globals_ir + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n';
     return llvm_ir_str + ir;
 }
 
@@ -154,7 +167,7 @@ impl nacompile(filename: str, output: str = "") -> int {
     if is_macos {
         llvm_ir_str = _inject_entry_macho(llvm_ir_str);
     } else {
-        llvm_ir_str = _inject_entry_elf(llvm_ir_str);
+        llvm_ir_str = _inject_entry_elf(llvm_ir_str, triple);
     }
 
     # Step 5: Determine needed libraries

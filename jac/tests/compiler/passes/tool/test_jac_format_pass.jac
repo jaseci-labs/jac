@@ -240,6 +240,52 @@ test "unicode encoding write roundtrip" {
     }
 }
 
+test "native block comments stay in place" {
+    path = os.path.join(FIXTURES, "native_block_comment.jac");
+    prog = JacProgram.jac_file_formatter(path);
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+
+    # Comments must appear between "na {" and its closing "}", not at end of file
+    na_start = next(
+        (
+            i
+            for (i, ln) in enumerate(lines)
+            if ln.strip().startswith("na {")
+        ),
+        None
+    );
+    assert na_start is not None , "na { not found in formatted output";
+    # Find the matching closing brace at the same or lesser indentation
+    na_indent = len(lines[na_start]) - len(lines[na_start].lstrip());
+    na_end: int | None = None;
+    for i in range(len(lines) - 1, na_start, -1) {
+        if lines[i].strip() == "}"
+        and (len(lines[i]) - len(lines[i].lstrip())) <= na_indent {
+            na_end = i;
+            break;
+        }
+    }
+    assert na_end is not None , "closing } for na block not found in formatted output";
+    comment_lines = [
+        i
+        for (i, ln) in enumerate(lines)
+        if "# Comment inside native block" in ln or "# Another comment" in ln
+    ];
+    assert len(comment_lines) == 2 , f"Expected 2 comments, found {len(comment_lines)}";
+    for cl in comment_lines {
+        assert na_start < cl < na_end , (
+            f"Comment at line {cl + 1} is outside the na block "
+            f"(na: {na_start + 1}-{na_end + 1}):\n" + formatted
+        );
+    }
+
+    # Idempotency
+    prog2 = JacProgram.jac_file_formatter(path);
+    formatted2 = prog2.mod.main.gen.jac;
+    assert formatted == formatted2 , "Formatting of na {} block is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

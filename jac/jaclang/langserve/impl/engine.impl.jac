@@ -9,7 +9,11 @@ impl Task.postinit -> None {
 
 """Initialize JacLangServer."""
 impl JacLangServer.postinit -> None {
-    LanguageServer.init(self, 'jac-lsp', 'v0.1');
+    # Set LanguageServer fields directly to avoid recursion
+    # (LanguageServer.init triggers postinit → JacLangServer.postinit → infinite loop)
+    self.name = 'jac-lsp';
+    self.version = 'v0.1';
+    self._write_lock = threading.Lock();
     JacProgram.init(self);
     self._state_lock = ReadWriteLock();
     self.module_manager = ModuleManager(self, self.sem_managers);

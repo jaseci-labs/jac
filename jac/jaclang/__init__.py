@@ -1,12 +1,6 @@
 """The Jac Programming Language."""
 
-import os
 import sys
-
-# Add vendor dir to sys.path early for lsprotocol/pygls imports.
-_vendor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
-if _vendor_dir not in sys.path:
-    sys.path.insert(0, _vendor_dir)
 
 from jaclang.meta_importer import JacMetaImporter  # noqa: E402
 

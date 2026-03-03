@@ -36,21 +36,21 @@ glob CENTER_MASK: int = 0b00111100;
 
 # Piece display symbols per side
 glob WHITE_SYMBOLS: dict[PieceKind, str] = {
-         PieceKind.PAWN: "P",
-         PieceKind.KNIGHT: "N",
-         PieceKind.BISHOP: "B",
-         PieceKind.ROOK: "R",
-         PieceKind.QUEEN: "Q",
-         PieceKind.KING: "K"
+         PieceKind.PAWN: "♙",
+         PieceKind.KNIGHT: "♘",
+         PieceKind.BISHOP: "♗",
+         PieceKind.ROOK: "♖",
+         PieceKind.QUEEN: "♕",
+         PieceKind.KING: "♔"
      };
 
 glob BLACK_SYMBOLS: dict[PieceKind, str] = {
-         PieceKind.PAWN: "p",
-         PieceKind.KNIGHT: "n",
-         PieceKind.BISHOP: "b",
-         PieceKind.ROOK: "r",
-         PieceKind.QUEEN: "q",
-         PieceKind.KING: "k"
+         PieceKind.PAWN: "♟",
+         PieceKind.KNIGHT: "♞",
+         PieceKind.BISHOP: "♝",
+         PieceKind.ROOK: "♜",
+         PieceKind.QUEEN: "♛",
+         PieceKind.KING: "♚"
      };
 
 glob COL_NAMES: str = "abcdefgh";
@@ -202,11 +202,21 @@ obj Game {
 }
 
 # ────────────────────── Entry ──────────────────────
-# Set _benchmark_mode > 0 to run that many automated games.
-glob _benchmark_mode: int = 0,
-     game = Game();
+import sys;
+
+glob game = Game(),
+     _benchmark_mode: int = 0,
+     _args = sys.argv;
 
 with entry {
+    for i in range(1, len(_args)) {
+        arg = _args[i];
+        if arg == "--benchmark" or arg == "-b" {
+            _benchmark_mode = 10;
+        } elif arg == "--benchmark" {
+            _benchmark_mode = 10;
+        }
+    }
     if _benchmark_mode > 0 {
         game.benchmark(_benchmark_mode);
     } else {

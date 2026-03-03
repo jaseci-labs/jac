@@ -736,8 +736,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 return self.get_type_of_expression(node_.parent.right);
             }
 
-            # ---- Handle member assignment: for <name> in <expr> ----
-            if isinstance(node_.parent, uni.InForStmt) {
+            # ---- Handle iteration variable: for <name> in <expr> ----
+            # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
+            if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
@@ -748,7 +749,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         # If element type is already concrete (e.g. Iterator[int]
                         # from range.__iter__), use it directly.
                         if isinstance(elem_type, types.ClassType) {
-                            return elem_type.clone_as_instance();
+                            result_type = elem_type.clone_as_instance();
+                            node_.type = result_type;
+                            return result_type;
                         }
                         # Element type is a TypeVar — specialize using the
                         # collection's type args (e.g. list[int] -> [int]).
@@ -760,7 +763,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                             if len(specialized.private.type_args) == 1 {
                                 iterable_type = specialized.private.type_args[0];
                                 if isinstance(iterable_type, types.ClassType) {
-                                    return iterable_type.clone_as_instance();
+                                    result_type = iterable_type.clone_as_instance();
+                                    node_.type = result_type;
+                                    return result_type;
                                 }
                             }
                         }
@@ -894,10 +899,14 @@ impl TypeEvaluator._assign_class(
     # TODO: We can actually check if the Final type is modified and
     # prevent that, but for now just unwrap it.
     if dest_type.shared == self.prefetch.final_class.shared {
-        dest_type = dest_type.private.type_args[0];
+        if len(dest_type.private.type_args) > 0 {
+            dest_type = dest_type.private.type_args[0];
+        }
     }
     if src_type.shared == self.prefetch.final_class.shared {
-        src_type = src_type.private.type_args[0];
+        if len(src_type.private.type_args) > 0 {
+            src_type = src_type.private.type_args[0];
+        }
     }
     if src_type.shared == dest_type.shared {
         return True;
@@ -2023,6 +2032,28 @@ impl TypeEvaluator._find_predicate_for(
             sym_type = self.get_type_of_symbol(condition.sym);
             # Use unified helper to check if union contains None
             if self._union_contains_none(sym_type) {
+                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                return NarrowingPredicate(
+                    sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                );
+            }
+        }
+    }
+    # Pattern 8: Walrus operator truthiness narrowing - if (x := expr):
+    # The walrus assigns a value and uses it as a condition.
+    # When truthy, we exclude None from the assigned type.
+    if (
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == "WALRUS_EQ"
+        and isinstance(condition.left, uni.Name)
+        and condition.left.value == sym_name
+    ) {
+        if self.prefetch and self.prefetch.none_type_class {
+            # Get the type of the right side (the value being assigned)
+            walrus_type = self.get_type_of_expression(condition.right);
+            # Only narrow if the type contains None
+            if self._union_contains_none(walrus_type) {
                 none_inst = self._convert_to_instance(self.prefetch.none_type_class);
                 return NarrowingPredicate(
                     sym_name=sym_name, narrow_type=none_inst, is_inverted=True
