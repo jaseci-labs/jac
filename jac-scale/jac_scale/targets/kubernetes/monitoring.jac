@@ -481,8 +481,7 @@ class MonitoringDeployer {
                                 'image': 'prom/node-exporter:v1.10.2',
                                 'args': [
                                     '--path.procfs=/host/proc',
-                                    '--path.sysfs=/host/sys',
-                                    '--path.rootfs=/host/root'
+                                    '--path.sysfs=/host/sys'
                                 ],
                                 'ports': [{'containerPort': 9100, 'name': 'metrics'}],
                                 'volumeMounts': [
@@ -495,20 +494,13 @@ class MonitoringDeployer {
                                         'name': 'sys',
                                         'mountPath': '/host/sys',
                                         'readOnly': True
-                                    },
-                                    {
-                                        'name': 'root',
-                                        'mountPath': '/host/root',
-                                        'readOnly': True,
-                                        'mountPropagation': 'HostToContainer'
                                     }
                                 ]
                             }
                         ],
                         'volumes': [
                             {'name': 'proc', 'hostPath': {'path': '/proc'}},
-                            {'name': 'sys', 'hostPath': {'path': '/sys'}},
-                            {'name': 'root', 'hostPath': {'path': '/'}}
+                            {'name': 'sys', 'hostPath': {'path': '/sys'}}
                         ]
                     }
                 }
@@ -1078,7 +1070,8 @@ class MonitoringDeployer {
                     'namespace': namespace,
                     'labels': {'app': grafana_name, 'managed': 'jac-scale'},
                     'annotations': {
-                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb'
+                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
                     }
                 },
                 'spec': {
