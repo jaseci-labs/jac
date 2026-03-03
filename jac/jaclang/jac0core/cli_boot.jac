@@ -28,18 +28,22 @@ def _get_cache_dir -> Path {
 def _handle_purge -> None {
     if "-h" in sys.argv or "--help" in sys.argv {
         print("usage: jac purge [-h]\n");
-        print("Remove all cached bytecode files from the Jac cache directory.\n");
+        print(
+            "Remove all cached Jac files (JIR, bytecode, bootstrap) from the cache directories.\n"
+        );
         print("Useful when switching branches or when cache becomes corrupted.");
         sys.exit(0);
     }
 
     cache_dir = _get_cache_dir();
     bootstrap_dir = cache_dir.parent / "bootstrap";
+    # New unified JIR cache (replaces the old bytecode/ and bootstrap/ dirs)
+    jir_dir = cache_dir.parent / "jir";
 
     total_files = 0;
     total_size = 0;
     removed_dirs: list[str] = [];
-    for d in [cache_dir, bootstrap_dir] {
+    for d in [cache_dir, bootstrap_dir, jir_dir] {
         if d.exists() {
             total_files += sum(
                 1
@@ -61,7 +65,7 @@ def _handle_purge -> None {
     }
 
     if not removed_dirs {
-        print(f"Cache directory does not exist: {cache_dir}");
+        print("No cache directories found.");
         sys.exit(0);
     }
 

@@ -44,7 +44,7 @@ include = ["jaclang*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.lark", "*.pyi", "py.typed"]
-jaclang = ["sitecustomize.py", "_precompiled/**/*.jbc", "_precompiled/manifest.json"]
+jaclang = ["sitecustomize.py", "_precompiled/**/*.jir", "_precompiled/manifest.json"]
 
 [tool.setuptools]
 include-package-data = true

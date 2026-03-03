@@ -14,8 +14,15 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
 import from jaclang.cli.commands { execution }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.jac0core.bccache { CacheKey, DiskBytecodeCache }
 import from jaclang.jac0core.compiler { JacCompiler }
+import from jaclang.jac0core.jir {
+    get_module_cache_path,
+    read_bytecode_only,
+    SEC_LLVM_IR,
+    SECTIONS_MAGIC,
+    HEADER_SIZE,
+    read_sections
+}
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
@@ -225,7 +232,7 @@ test "compiler separates internal from user modules" {
     }
 }
 
-test "get bytecode returns cache when llvmir missing" {
+test "get bytecode uses JIR cache on second call" {
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
         tmp.write("glob x = 1;\n");
         tmp.flush();
@@ -236,25 +243,28 @@ test "get bytecode returns cache when llvmir missing" {
     os.utime(jac_file, (past, past));
 
     try {
-        cache = DiskBytecodeCache();
-        cache._cache_dir = Path(tempfile.mkdtemp());
-        compiler = JacCompiler(bytecode_cache=cache);
-
-        code1 = compiler.get_bytecode(jac_file, JacProgram());
+        compiler = JacCompiler();
+        prog1 = JacProgram();
+        code1 = compiler.get_bytecode(jac_file, prog1);
         assert code1 is not None , "First compilation should succeed";
 
-        key = CacheKey.for_source(jac_file);
-        assert cache.get(key) is not None , "Bytecode should be cached";
-        assert cache.get_llvmir(key) == "" , "LLVM IR should be cached as empty string";
+        # JIR cache should exist and contain bytecode section
+        cache_path = get_module_cache_path(jac_file);
+        assert cache_path.exists() , "JIR cache file should exist after first compile";
+        jir_data = cache_path.read_bytes();
+        bc = read_bytecode_only(jir_data);
+        assert bc is not None , "JIR cache should contain bytecode section";
 
-        cache._get_llvmir_cache_path(key).unlink();
-        assert cache.get_llvmir(key) is None , "LLVM IR cache should be gone";
-
-        code2 = compiler.get_bytecode(jac_file, JacProgram());
-        assert code2 is not None , "Should return cached bytecode";
+        # Second call should return identical bytecode from cache
+        prog2 = JacProgram();
+        code2 = compiler.get_bytecode(jac_file, prog2);
+        assert code2 is not None , "Second call should return cached bytecode";
         assert marshal.dumps(code1) == marshal.dumps(code2);
     } finally {
         os.unlink(jac_file);
-        shutil.rmtree(str(cache._cache_dir), ignore_errors=True);
+        cache_path2 = get_module_cache_path(jac_file);
+        if cache_path2.exists() {
+            cache_path2.unlink();
+        }
     }
 }
