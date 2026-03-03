@@ -256,6 +256,8 @@ def str_py() -> dict {
         "tr1": tr1,
         "mod1": mod1, "mod2": mod2,
         "enc1": enc1, "enc2": enc2,
+        "encode_len": len("hello".encode()),
+        "encode_empty_len": len("".encode()),
         # partition
         "p1_0": p1[0], "p1_1": p1[1], "p1_2": p1[2],
         "p2_0": p2[0], "p2_2": p2[2],
@@ -714,7 +716,9 @@ na {
             "joined": joined,
             "comma_joined": comma_joined,
             "empty_sep": empty_sep_j,
-            "single_joined": single_joined
+            "single_joined": single_joined,
+            "encode_len": len("hello".encode()),
+            "encode_empty_len": len("".encode())
         };
     }
 }

@@ -73,6 +73,21 @@ impl NaIRGenPass.init(
     self.vtable_globals: dict[(str, ir.GlobalVariable)] = {};
     # Tuple support (Phase 9)
     self.tuple_types: dict[(str, object)] = {};  # type_key → LiteralStructType
+    self.var_tuple_type: dict[(str, str)] = {};  # var_name → tuple_key
+    # Complex number support
+    self.complex_struct_type = self.llvm_module.context.get_identified_type(
+        "JacComplex"
+    );
+    self.complex_struct_type.set_body(
+        ir.DoubleType(), ir.DoubleType()
+    );  # {f64 real, f64 imag}
+    self.var_complex: set[str] = set();  # variable names known to be complex
+    # Range object support
+    self.range_struct_type = self.llvm_module.context.get_identified_type("JacRange");
+    self.range_struct_type.set_body(
+        ir.IntType(64), ir.IntType(64), ir.IntType(64)
+    );  # {i64 start, i64 stop, i64 step}
+    self.var_range: set[str] = set();  # variable names known to be range
     # Global variable support (Phase 11)
     self.global_vars: dict[(str, ir.GlobalVariable)] = {};  # name → global variable
     self.global_var_types: dict[(str, ir.Type)] = {};  # name → LLVM type

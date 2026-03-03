@@ -122,6 +122,7 @@ def int_py() -> dict {
         "and_val": and_val, "or_val": or_val, "xor_val": xor_val,
         # int extra
         "ratio": ratio_list,
+        "ratio_0": ratio_list[0], "ratio_1": ratio_list[1],
         "conj": conj,
         "tb_big": tb_big, "tb_little": tb_little,
         "tb_zero": tb_zero, "tb_255": tb_255,
@@ -306,7 +307,9 @@ na {
             "and_tf": and_tf, "and_tt": and_tt, "and_ff": and_ff,
             "or_tf": or_tf, "or_tt": or_tt, "or_ff": or_ff,
             "xor_tf": xor_tf, "xor_tt": xor_tt, "xor_ff": xor_ff,
-            "and_val": and_val, "or_val": or_val, "xor_val": xor_val
+            "and_val": and_val, "or_val": or_val, "xor_val": xor_val,
+            "ratio_0": (42).as_integer_ratio()[0],
+            "ratio_1": (42).as_integer_ratio()[1]
         };
     }
 }
