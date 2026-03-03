@@ -2,7 +2,7 @@
 
 import os
 
-from jaclang.vendor.pygls import uris
+from jaclang.lsp import uris  # type: ignore[attr-defined]
 
 project_root = str(os.path.join(os.path.dirname(__file__), "fixtures"))
 

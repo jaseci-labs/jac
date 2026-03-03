@@ -8,13 +8,13 @@ import contextlib;
 
 import from pathlib { Path }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 import jaclang;
 import from jaclang.langserve.rwlock { ReadWriteLock }
 import from jaclang.langserve.engine { JacLangServer }
-import from jaclang.vendor.pygls { uris }
-import from jaclang.vendor.pygls.workspace { Workspace }
+import from jaclang.lsp { uris }
+import from jaclang.lsp.server { Workspace }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
@@ -51,7 +51,7 @@ def teardown_test {
 def create_server(workspace_path: str | None = None) -> JacLangServer {
     lsp = JacLangServer();
     workspace_root = workspace_path if workspace_path is not None else FIXTURE_DIR;
-    workspace_val = Workspace(workspace_root, lsp);
+    workspace_val = Workspace(root_uri=uris.from_fs_path(workspace_root));
     lsp.lsp._workspace = workspace_val;
     _active_servers.append(lsp);
     return lsp;

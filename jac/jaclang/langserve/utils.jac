@@ -11,9 +11,9 @@ import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
-import from jaclang.vendor.pygls { uris }
+import from jaclang.lsp { uris }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 glob P = ParamSpec('P'),
      T = TypeVar('T', bound=Callable[(P, Coroutine[(Any, Any, Any)])]),

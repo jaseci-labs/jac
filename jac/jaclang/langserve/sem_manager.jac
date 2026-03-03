@@ -9,7 +9,7 @@ import from jaclang.langserve.utils {
     get_token_start,
     get_line_of_code
 }
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 # Semantic token flat array field offsets.
 # Each token occupies TOK_STRIDE (5) consecutive ints:
