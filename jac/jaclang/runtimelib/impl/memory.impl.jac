@@ -480,7 +480,7 @@ impl TieredMemory.postinit -> None {
     }
     # Initialize L3 persistence if base_path provided
     if self.base_path {
-        # Use project.db for projects, filename.db for apps, None for tests
+        # Use project.db for projects, filename.db for standalone apps
         db_path = get_db_path(self.base_path);
         self.l3 = SqliteMemory(path=db_path);
     } else {

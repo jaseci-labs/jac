@@ -237,62 +237,46 @@ impl sys_path_context(path: str) -> Iterator[None] {
     }
 }
 
-"""Get entry file path using JacRuntime tracked state only.
-"""
-def _get_entry_path -> (Path | None) {
+"""Get project name from jac.toml if exists, None otherwise."""
+impl get_name -> str | None {
     import from pathlib { Path }
+    import from jaclang.project.config { get_config }
     import from jaclang.jac0core.runtime { JacRuntime }
 
-    try {
-        # This is set early, before TieredMemory initialization
-        if JacRuntime.entry_file_path {
-            return Path(JacRuntime.entry_file_path);
-        }
-    } except Exception {
-        ;
+    if not JacRuntime.full_target_path {
+        return None;
     }
-    return None;
-}
+    file_path = Path(JacRuntime.full_target_path);
 
-"""Get project name from jac.toml if exists, None otherwise."""
-impl get_name(file_path: (Path | None) = None) -> str | None {
-    import from jaclang.project.config { JacConfig }
-    if file_path is None {
-        file_path = _get_entry_path();
-    }
-    # Only check the same directory as the entry file, NOT parent directories
-    # This prevents test fixtures from accidentally using the repo's root jac.toml
     try {
-        toml_path = file_path.parent / "jac.toml";
-        if toml_path.exists() and toml_path.is_file() {
-            config = JacConfig.load(toml_path);
-            if config.project.name {
-                return config.project.name;
+        # Check ONLY the same directory as the entry file (not parent directories)
+        cfg = get_config(start_path=file_path.parent, force_discover=False);
+        if cfg and cfg.toml_path and cfg.project.name {
+            # Verify the config is from the SAME directory, not a parent
+            if cfg.toml_path.parent == file_path.parent {
+                return cfg.project.name;
             }
-        } else {
-            return file_path.stem
-                if file_path.stem not in ['jac', '__main__']
-                else None;
         }
     } except Exception {
-        ;  # No project found or error reading config
+        ;  # No config found or error
     }
-    return None;
+    # No project found → use filename stem for standalone files
+    stem = file_path.stem;
+    return stem if stem not in ['jac', '__main__'] else None;
 }
 
 """Get database path:
 - Projects (jac.toml in same dir) → .jac/data/project-name.db
-- Real standalone apps → .jac/data/filename.db
+- Standalone files (no jac.toml) → .jac/data/filename.db
 """
 impl get_db_path(base_path: str) -> (str | None) {
     import from pathlib { Path }
-    file_path = _get_entry_path();
-    base = Path(base_path);
-    data_dir = base / ".jac" / "data";
-    # Check for project (jac.toml in same directory) or standalone file
-    if (project_name := get_name(file_path)) {
+    data_dir = Path(base_path) / ".jac" / "data";
+    # Get project name (either from jac.toml in same dir, or filename stem)
+    if (project_name := get_name()) {
         return str(data_dir / f"{project_name}.db");
     }
-    # Ultimate fallback
+
+    # Fallback for files like __main__.jac
     return str(data_dir / "main.db");
 }

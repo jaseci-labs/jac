@@ -37,7 +37,7 @@ def _discover_config_from_file(filename: str) -> None {
 
     file_path = Path(filename).resolve();
     # Store entry file path for runtime utilities (called before _proc_file)
-    Jac.entry_file_path = str(file_path);
+    Jac.full_target_path = str(file_path);
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that

@@ -73,11 +73,10 @@ def to_uuid(id: (UUID | str)) -> UUID {
 }
 
 """Get project name from jac.toml if exists in same directory, None otherwise."""
-def get_name(file_path: (Path | None) = None) -> (str | None);
+def get_name -> (str | None);
 
-"""Get database path using hybrid approach:
+"""Get database path:
 - Projects (jac.toml in same dir) → .jac/data/project-name.db
-- Ad-hoc/test/play files → None (volatile memory only, no persistence)
-- Real standalone apps → .jac/data/filename.db
+- Standalone files (no jac.toml) → .jac/data/filename.db
 """
 def get_db_path(base_path: str) -> (str | None);
