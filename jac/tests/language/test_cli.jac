@@ -1559,3 +1559,26 @@ test "bare lt in jsx content is treated as text" {
 
     assert result == 0 , f"should compile successfully, got errors: {stderr}";
 }
+
+test "jir_registry is up to date" {
+    """Verify jir_registry.jac matches what gen_jir_registry.jac would generate.
+
+    Fails with a descriptive message if the registry is out of date, e.g. because
+    unitree node classes were added or changed without re-running `jac gen-jir-registry`.
+    """
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+
+    result: int;
+    try {
+        result = tools.gen_jir_registry(verify=True);
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    assert result == 0 , (
+        "jir_registry.jac is out of date. "
+        "Run `jac gen-jir-registry` to regenerate it."
+    );
+}

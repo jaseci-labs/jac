@@ -453,6 +453,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.sub(
                             current, coerced, name=f"{var_name}.sub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     } else {
                         value = self.builder.fsub(
                             current, coerced, name=f"{var_name}.fsub"
@@ -525,11 +544,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                     }
                 } elif aug_op_val == "&=" {
-                    # Bitwise AND assignment
+                    # Bitwise AND assignment / set intersection_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.and_(
                             current, coerced, name=f"{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     # Bitwise OR assignment / set union
@@ -628,11 +666,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         }
                     }
                 } elif aug_op_val == "^=" {
-                    # Bitwise XOR assignment
+                    # Bitwise XOR assignment / set symmetric_difference_update
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.xor(
                             current, coerced, name=f"{var_name}.xor"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update via emitter
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                is_inplace_set_op = True;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "<<=" {
                     # Left shift assignment
@@ -696,6 +753,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.fsub(
                             current, coerced, name=f"glob.{var_name}.fsub"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "*=" {
                     if isinstance(current.type, ir.IntType) {
@@ -718,12 +793,70 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.and_(
                             current, coerced, name=f"glob.{var_name}.and"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set intersection_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_intersection_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 } elif aug_op_val == "|=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.or_(
                             current, coerced, name=f"glob.{var_name}.or"
                         );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set union (update)
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_update(_ctx, current, [coerced]);
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
+                    }
+                } elif aug_op_val == "^=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.xor(
+                            current, coerced, name=f"glob.{var_name}.xor"
+                        );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # Set symmetric_difference_update
+                        self._ensure_emitters();
+                        _se = self._native_emitters.get("set");
+                        for (sname, stype) in self.set_types.items() {
+                            if current.type == stype.as_pointer() {
+                                _ctx = self._native_emit_ctx_class(
+                                    pass_ref=self, type_key=sname
+                                );
+                                if _se is not None {
+                                    _se.emit_symmetric_difference_update(
+                                        _ctx, current, [coerced]
+                                    );
+                                }
+                                value = current;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -733,8 +866,56 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             # New variable — allocate and store
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
-                var_type = self._resolve_jac_type(nd.type_tag.tag);
-                value = self._coerce_type(value, var_type);
+                tag_node = nd.type_tag.tag;
+                # Bare unparameterized collection annotations (list/dict/set/frozenset):
+                # infer the variable type from the RHS value rather than defaulting,
+                # so `a: list = [1, 2]`, `d: dict = {"k": v}`, `s: set = {1, 2}` all work
+                # regardless of element types.
+                bare_name: (str | None) = None;
+                if isinstance(tag_node, uni.Name) {
+                    bare_name = tag_node.value;
+                } elif uni?.BuiltinType and isinstance(tag_node, uni.BuiltinType) {
+                    bare_name = tag_node.value;
+                }
+                infer_from_val = (
+                    bare_name in {"list","dict","set","frozenset"}
+                    and isinstance(value.type, ir.PointerType)
+                );
+                if infer_from_val {
+                    # Verify value is actually a known collection pointer
+                    is_coll = False;
+                    for (_, _ltype) in self.list_types.items() {
+                        if value.type == _ltype.as_pointer() {
+                            is_coll = True;
+                            break;
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _dtype) in self.dict_types.items() {
+                            if value.type == _dtype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        for (_, _stype) in self.set_types.items() {
+                            if value.type == _stype.as_pointer() {
+                                is_coll = True;
+                                break;
+                            }
+                        }
+                    }
+                    if not is_coll {
+                        infer_from_val = False;
+                    }
+                }
+                if infer_from_val {
+                    var_type = value.type;  # element type inferred from RHS literal
+                } else {
+                    var_type = self._resolve_jac_type(tag_node);
+                    value = self._coerce_type(value, var_type);
+                }
             }
             alloca = self._entry_alloca(var_type, var_name);
             self.builder.store(value, alloca);

@@ -925,11 +925,17 @@ class Parser:
 
     # ── Expression Collection ─────────────────────────────────────────────
 
-    def _collect_until(self, *stop: TT, stop_values: set | None = None) -> str:
+    def _collect_until(
+        self,
+        *stop: TT,
+        stop_values: set | None = None,
+        stop_names: set | None = None,
+    ) -> str:
         """Collect tokens until a stop token at depth 0, return as Python str."""
         toks: list[Token] = []
         depth = 0
         sv = stop_values or set()
+        sn = stop_names or set()
         while True:
             tok = self._peek()
             if tok.type == TT.EOF:
@@ -938,6 +944,8 @@ class Parser:
                 if tok.type in stop:
                     break
                 if tok.type == TT.OP and tok.value in sv:
+                    break
+                if sn and tok.type == TT.NAME and tok.value in sn:
                     break
             if tok.type in (TT.LPAREN, TT.LBRACKET, TT.LBRACE):
                 depth += 1
@@ -948,10 +956,17 @@ class Parser:
             toks.append(self._advance())
         return tokens_to_str(toks)
 
-    def _collect_type(self, *extra_stop: TT, stop_vals: set | None = None) -> str:
+    def _collect_type(
+        self,
+        *extra_stop: TT,
+        stop_vals: set | None = None,
+        stop_names: set | None = None,
+    ) -> str:
         """Collect type annotation tokens."""
         stops = {TT.LBRACE, TT.SEMI, TT.COMMA, *extra_stop}
-        return self._collect_until(*stops, stop_values=stop_vals or {"="})
+        return self._collect_until(
+            *stops, stop_values=stop_vals or {"="}, stop_names=stop_names
+        )
 
     def _collect_dotted(self) -> str:
         # Handle leading dots for relative imports (e.g., .tokens, ..utils)
@@ -1344,7 +1359,7 @@ class Parser:
         while True:
             name = self._expect(TT.NAME).value
             self._expect(TT.COLON)
-            type_ann = self._collect_type(stop_vals={"="})
+            type_ann = self._collect_type(stop_vals={"="}, stop_names={"by"})
             default = ""
             by_postinit = False
             if self._match_op("="):
@@ -1784,7 +1799,30 @@ class CodeGen:
         if node.is_dataclass:
             has_dc = any("dataclass" in d for d in node.decorators)
             if not has_dc:
-                self._line("@dataclass")
+                # Check if the class has 'has' fields
+                has_fields = any(isinstance(n, HasDecl) for n in node.body)
+                # Check if the class has a manual __init__ (def init)
+                impls = self.impl_registry.get(node.name, [])
+                has_init = any(
+                    isinstance(n, FuncDef) and n.name in ("init", "__init__")
+                    for n in node.body
+                ) or any(
+                    i.target.endswith(".init") or i.target.endswith(".__init__")
+                    for i in impls
+                )
+                if has_fields and not has_init:
+                    # Class uses has fields with dataclass-generated __init__
+                    # Use kw_only=True when class has parents to avoid
+                    # field ordering issues (child required fields after
+                    # parent defaulted fields)
+                    if node.bases:
+                        self._line("@dataclass(eq=False, repr=False, kw_only=True)")
+                    else:
+                        self._line("@dataclass(eq=False, repr=False)")
+                else:
+                    # Suppress dataclass __init__ to preserve manual
+                    # or inherited __init__
+                    self._line("@dataclass(eq=False, repr=False, init=False)")
         tp_str = f"[{node.type_params}]" if node.type_params else ""
         base_str = f"({node.bases})" if node.bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
@@ -1832,7 +1870,8 @@ class CodeGen:
             self._line(f"@{dec}")
         if node.is_static:
             self._line("@staticmethod")
-        name = "__init__" if node.name == "init" else node.name
+        _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
+        name = _dunder_names.get(node.name, node.name)
         func_params = list(node.params)
         # Auto-add self for instance methods inside a class
         if (
@@ -1907,8 +1946,8 @@ class CodeGen:
     def _emit_impl_as_method(self, impl: ImplDef) -> None:
         parts = impl.target.split(".")
         method_name = parts[-1] if len(parts) > 1 else parts[0]
-        if method_name == "init":
-            method_name = "__init__"
+        _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
+        method_name = _dunder_names.get(method_name, method_name)
         for dec in impl.decorators:
             self._line(f"@{dec}")
         if impl.is_static:

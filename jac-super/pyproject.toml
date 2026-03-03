@@ -33,7 +33,7 @@ include = ["jac_super*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac"]
-jac_super = ["_precompiled/**/*.jbc", "_precompiled/manifest.json"]
+jac_super = ["_precompiled/**/*.jir", "_precompiled/manifest.json"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

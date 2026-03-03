@@ -98,3 +98,16 @@ test "assignment patterns" {
         assert var in scope_vars;
     }
 }
+
+"""Test that InnerCompr scopes are properly linked and can lookup outer symbols."""
+test "inner compr scope linking" {
+    file_path = os.path.join(FIXTURES, "inner_compr_scope.jac");
+    mod = JacProgram().compile(file_path);
+
+    gen_compr = mod.sym_tab.kid_scope[0];
+    inner_compr = gen_compr.kid_scope[0];
+
+    assert "p" in gen_compr.names_in_scope;
+    assert inner_compr.parent_scope is not None;
+    assert inner_compr.lookup("pool", True) is not None;
+}

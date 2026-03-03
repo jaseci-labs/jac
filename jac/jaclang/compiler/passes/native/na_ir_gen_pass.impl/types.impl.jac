@@ -20,6 +20,21 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_name == "any" {
             return self.jacval_type;
         }
+        # Bare unparameterized collection types → default to i64-element variants.
+        # This handles annotations like `a: list = [1, 2]` where no element type
+        # is specified. The default is List[int] / Dict[int, int] / Set[int].
+        if type_name == "list" {
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self.list_types["i64"].as_pointer();
+        }
+        if type_name in {"dict"} {
+            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
+            return self.dict_types["i64:i64"].as_pointer();
+        }
+        if type_name in {"set","frozenset"} {
+            self._emit_set_helpers("i64", ir.IntType(64), 0);
+            return self.set_types["i64"].as_pointer();
+        }
     }
     # Handle BuiltinType nodes
     if uni?.BuiltinType and isinstance(type_expr, uni.BuiltinType) {
@@ -42,6 +57,19 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
         if type_name == "any" {
             return self.jacval_type;
+        }
+        # Bare unparameterized collection names (e.g. from Token nodes)
+        if type_name == "list" {
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self.list_types["i64"].as_pointer();
+        }
+        if type_name == "dict" {
+            self._emit_dict_helpers("i64", "i64", ir.IntType(64), ir.IntType(64), 0);
+            return self.dict_types["i64:i64"].as_pointer();
+        }
+        if type_name in {"set","frozenset"} {
+            self._emit_set_helpers("i64", ir.IntType(64), 0);
+            return self.set_types["i64"].as_pointer();
         }
     }
     # Handle union types: T | None → resolve T (BinaryExpr with BW_OR op)
@@ -159,6 +187,33 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                     } elif isinstance(elem_type, ir.PointerType) {
                         elem_type_name = "ptr";
                         # Check if this is a tuple (pointer to LiteralStructType)
+                        if isinstance(elem_type.pointee, ir.LiteralStructType) {
+                            elem_size = self._get_struct_size(elem_type.pointee);
+                            elem_type_name = f"tuple{elem_size}";
+                        }
+                    }
+                    self._emit_set_helpers(elem_type_name, elem_type, elem_size);
+                    return self.set_types[elem_type_name].as_pointer();
+                }
+            }
+        }
+        # Handle frozenset[T] type annotations -- same underlying type as set[T]
+        if target_name == "frozenset" {
+            if type_expr?.right and type_expr.right?.slices {
+                slices = type_expr.right.slices or [];
+                if slices {
+                    elem_node = slices[0];
+                    if elem_node?.start and elem_node.start is not None {
+                        elem_type = self._resolve_jac_type(elem_node.start);
+                    } else {
+                        elem_type = self._resolve_jac_type(elem_node);
+                    }
+                    elem_type_name = "i64";
+                    elem_size = 0;
+                    if isinstance(elem_type, ir.DoubleType) {
+                        elem_type_name = "f64";
+                    } elif isinstance(elem_type, ir.PointerType) {
+                        elem_type_name = "ptr";
                         if isinstance(elem_type.pointee, ir.LiteralStructType) {
                             elem_size = self._get_struct_size(elem_type.pointee);
                             elem_type_name = f"tuple{elem_size}";
@@ -490,6 +545,74 @@ impl NaIRGenPass._emit_binary_op(
             return buf;
         }
     }
+    # List multiplication (list * int or int * list): repeat list n times
+    if op == Tok.STAR_MUL {
+        for (lmul_key, lmul_helpers) in self.list_helpers.items() {
+            lmul_type = self.list_types.get(lmul_key);
+            if lmul_type is None {
+                continue;
+            }
+            lmul_list: (ir.Value | None) = None;
+            lmul_int: (ir.Value | None) = None;
+            if left.type == lmul_type.as_pointer()
+            and isinstance(right.type, ir.IntType) {
+                lmul_list = left;
+                lmul_int = right;
+            } elif right.type == lmul_type.as_pointer()
+            and isinstance(left.type, ir.IntType) {
+                lmul_list = right;
+                lmul_int = left;
+            }
+            if lmul_list is not None and lmul_int is not None {
+                i64 = ir.IntType(64);
+                lmul_new = self.builder.call(lmul_helpers["new"], [], name="lmul.new");
+                lmul_len = self.builder.call(
+                    lmul_helpers["len"], [lmul_list], name="lmul.len"
+                );
+                func = self.builder.basic_block.function;
+                lmul_entry_bb = self.builder.basic_block;
+                lmul_outer_bb = func.append_basic_block(name="lmul.outer");
+                lmul_iinit_bb = func.append_basic_block(name="lmul.iinit");
+                lmul_inner_bb = func.append_basic_block(name="lmul.inner");
+                lmul_ibody_bb = func.append_basic_block(name="lmul.ibody");
+                lmul_onext_bb = func.append_basic_block(name="lmul.onext");
+                lmul_done_bb = func.append_basic_block(name="lmul.done");
+                self.builder.branch(lmul_outer_bb);
+                self.builder.position_at_start(lmul_outer_bb);
+                lmul_rep = self.builder.phi(i64, name="lmul.rep");
+                lmul_rep.add_incoming(ir.Constant(i64, 0), lmul_entry_bb);
+                lmul_rend = self.builder.icmp_signed(
+                    ">=", lmul_rep, lmul_int, name="lmul.rend"
+                );
+                self.builder.cbranch(lmul_rend, lmul_done_bb, lmul_iinit_bb);
+                self.builder.position_at_start(lmul_iinit_bb);
+                self.builder.branch(lmul_inner_bb);
+                self.builder.position_at_start(lmul_inner_bb);
+                lmul_ei = self.builder.phi(i64, name="lmul.ei");
+                lmul_ei.add_incoming(ir.Constant(i64, 0), lmul_iinit_bb);
+                lmul_eend = self.builder.icmp_unsigned(
+                    ">=", lmul_ei, lmul_len, name="lmul.eend"
+                );
+                self.builder.cbranch(lmul_eend, lmul_onext_bb, lmul_ibody_bb);
+                self.builder.position_at_start(lmul_ibody_bb);
+                lmul_elem = self.builder.call(
+                    lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
+                );
+                self.builder.call(lmul_helpers["append"], [lmul_new, lmul_elem]);
+                lmul_ne = self.builder.add(lmul_ei, ir.Constant(i64, 1), name="lmul.ne");
+                lmul_ei.add_incoming(lmul_ne, lmul_ibody_bb);
+                self.builder.branch(lmul_inner_bb);
+                self.builder.position_at_start(lmul_onext_bb);
+                lmul_nr = self.builder.add(
+                    lmul_rep, ir.Constant(i64, 1), name="lmul.nr"
+                );
+                lmul_rep.add_incoming(lmul_nr, lmul_onext_bb);
+                self.builder.branch(lmul_outer_bb);
+                self.builder.position_at_start(lmul_done_bb);
+                return lmul_new;
+            }
+        }
+    }
     # List concatenation (list_ptr + list_ptr): create new list, append all
     if op == Tok.PLUS {
         for (list_key, helpers) in self.list_helpers.items() {
@@ -539,6 +662,29 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.position_at_start(done_bb);
                 return new_list;
             }
+        }
+    }
+    # Set operators (set_ptr op set_ptr): |, &, -, ^
+    for (sk, st) in self.set_types.items() {
+        if left.type == st.as_pointer() and right.type == st.as_pointer() {
+            self._ensure_emitters();
+            _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=sk);
+            _se = self._native_emitters.get("set");
+            if _se is not None {
+                if op == Tok.BW_OR {
+                    return _se.emit_union(_ctx, left, [right]);
+                }
+                if op == Tok.BW_AND {
+                    return _se.emit_intersection(_ctx, left, [right]);
+                }
+                if op == Tok.MINUS {
+                    return _se.emit_difference(_ctx, left, [right]);
+                }
+                if op == Tok.BW_XOR {
+                    return _se.emit_symmetric_difference(_ctx, left, [right]);
+                }
+            }
+            break;
         }
     }
     is_float = isinstance(left.type, ir.DoubleType)
@@ -719,6 +865,322 @@ impl NaIRGenPass._emit_comparison(
                 return self.builder.icmp_signed(">=", cmp_result, zero, name="strge");
             }
             return None;
+        }
+        # List comparison: detect list pointer types
+        for (lcmp_key, lcmp_type) in self.list_types.items() {
+            if left.type == lcmp_type.as_pointer()
+            and right.type == lcmp_type.as_pointer() {
+                lcmp_h = self.list_helpers.get(lcmp_key);
+                if lcmp_h is None {
+                    break;
+                }
+                i64 = ir.IntType(64);
+                i1_t = ir.IntType(1);
+                lcmp_la = self.builder.call(lcmp_h["len"], [left], name="lcmp.la");
+                lcmp_lb = self.builder.call(lcmp_h["len"], [right], name="lcmp.lb");
+                func = self.builder.basic_block.function;
+                lcmp_entry_bb = self.builder.basic_block;
+                lcmp_et = lcmp_h["elem_type"];
+                if op == Tok.EE or op == Tok.NE {
+                    # == : lengths equal AND all elements equal
+                    lcmp_len_eq = self.builder.icmp_unsigned(
+                        "==", lcmp_la, lcmp_lb, name="lcmp.leq"
+                    );
+                    lcmp_chk_bb = func.append_basic_block(name="lcmp.eq.chk");
+                    lcmp_false_bb = func.append_basic_block(name="lcmp.eq.false");
+                    lcmp_loop_bb = func.append_basic_block(name="lcmp.eq.loop");
+                    lcmp_body_bb = func.append_basic_block(name="lcmp.eq.body");
+                    lcmp_ne_bb = func.append_basic_block(name="lcmp.eq.ne");
+                    lcmp_next_bb = func.append_basic_block(name="lcmp.eq.next");
+                    lcmp_done_bb = func.append_basic_block(name="lcmp.eq.done");
+                    self.builder.cbranch(lcmp_len_eq, lcmp_chk_bb, lcmp_false_bb);
+                    self.builder.position_at_start(lcmp_chk_bb);
+                    self.builder.branch(lcmp_loop_bb);
+                    self.builder.position_at_start(lcmp_loop_bb);
+                    lcmp_i = self.builder.phi(i64, name="lcmp.eq.i");
+                    lcmp_i.add_incoming(ir.Constant(i64, 0), lcmp_chk_bb);
+                    lcmp_iend = self.builder.icmp_unsigned(
+                        ">=", lcmp_i, lcmp_la, name="lcmp.eq.iend"
+                    );
+                    self.builder.cbranch(lcmp_iend, lcmp_done_bb, lcmp_body_bb);
+                    self.builder.position_at_start(lcmp_body_bb);
+                    lcmp_ea = self.builder.call(
+                        lcmp_h["get"], [left, lcmp_i], name="lcmp.ea"
+                    );
+                    lcmp_eb = self.builder.call(
+                        lcmp_h["get"], [right, lcmp_i], name="lcmp.eb"
+                    );
+                    if isinstance(lcmp_et, ir.IntType) {
+                        lcmp_elem_ne = self.builder.icmp_signed(
+                            "!=", lcmp_ea, lcmp_eb, name="lcmp.ene"
+                        );
+                    } elif isinstance(lcmp_et, ir.DoubleType) {
+                        lcmp_elem_ne = self.builder.fcmp_ordered(
+                            "!=", lcmp_ea, lcmp_eb, name="lcmp.ene"
+                        );
+                    } else {
+                        lcmp_strcmp = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        lcmp_scmp = self.builder.call(
+                            lcmp_strcmp, [lcmp_ea, lcmp_eb], name="lcmp.scmp"
+                        );
+                        lcmp_elem_ne = self.builder.icmp_signed(
+                            "!=",
+                            lcmp_scmp,
+                            ir.Constant(ir.IntType(32), 0),
+                            name="lcmp.ene"
+                        );
+                    }
+                    self.builder.cbranch(lcmp_elem_ne, lcmp_ne_bb, lcmp_next_bb);
+                    self.builder.position_at_start(lcmp_ne_bb);
+                    self.builder.branch(lcmp_false_bb);
+                    self.builder.position_at_start(lcmp_next_bb);
+                    lcmp_ni = self.builder.add(
+                        lcmp_i, ir.Constant(i64, 1), name="lcmp.ni"
+                    );
+                    lcmp_i.add_incoming(lcmp_ni, lcmp_next_bb);
+                    self.builder.branch(lcmp_loop_bb);
+                    self.builder.position_at_start(lcmp_false_bb);
+                    self.builder.branch(lcmp_done_bb);
+                    self.builder.position_at_start(lcmp_done_bb);
+                    lcmp_result = self.builder.phi(i1_t, name="lcmp.eq.result");
+                    lcmp_result.add_incoming(ir.Constant(i1_t, 1), lcmp_loop_bb);
+                    lcmp_result.add_incoming(ir.Constant(i1_t, 0), lcmp_false_bb);
+                    if op == Tok.NE {
+                        return self.builder.not_(lcmp_result, name="lcmp.ne");
+                    }
+                    return lcmp_result;
+                }
+                # Lexicographic: <, >, <=, >=
+                if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+                    # min_len = min(la, lb)
+                    lcmp_lt_len = self.builder.icmp_unsigned(
+                        "<", lcmp_la, lcmp_lb, name="lcmp.lex.ltl"
+                    );
+                    lcmp_min = self.builder.select(
+                        lcmp_lt_len, lcmp_la, lcmp_lb, name="lcmp.min"
+                    );
+                    lcmp_lex_loop = func.append_basic_block(name="lcmp.lex.loop");
+                    lcmp_lex_body = func.append_basic_block(name="lcmp.lex.body");
+                    lcmp_lex_lbody = func.append_basic_block(name="lcmp.lex.lbody");
+                    lcmp_lex_next = func.append_basic_block(name="lcmp.lex.next");
+                    lcmp_lex_after = func.append_basic_block(name="lcmp.lex.after");
+                    lcmp_lex_true = func.append_basic_block(name="lcmp.lex.true");
+                    lcmp_lex_false = func.append_basic_block(name="lcmp.lex.false");
+                    lcmp_lex_done = func.append_basic_block(name="lcmp.lex.done");
+                    self.builder.branch(lcmp_lex_loop);
+                    self.builder.position_at_start(lcmp_lex_loop);
+                    lcmp_li = self.builder.phi(i64, name="lcmp.lex.i");
+                    lcmp_li.add_incoming(ir.Constant(i64, 0), lcmp_entry_bb);
+                    lcmp_lend = self.builder.icmp_unsigned(
+                        ">=", lcmp_li, lcmp_min, name="lcmp.lex.lend"
+                    );
+                    self.builder.cbranch(lcmp_lend, lcmp_lex_after, lcmp_lex_body);
+                    self.builder.position_at_start(lcmp_lex_body);
+                    lcmp_lea = self.builder.call(
+                        lcmp_h["get"], [left, lcmp_li], name="lcmp.lex.ea"
+                    );
+                    lcmp_leb = self.builder.call(
+                        lcmp_h["get"], [right, lcmp_li], name="lcmp.lex.eb"
+                    );
+                    if isinstance(lcmp_et, ir.IntType) {
+                        lcmp_lex_lt = self.builder.icmp_signed(
+                            "<", lcmp_lea, lcmp_leb, name="lcmp.lex.lt"
+                        );
+                        lcmp_lex_gt = self.builder.icmp_signed(
+                            ">", lcmp_lea, lcmp_leb, name="lcmp.lex.gt"
+                        );
+                    } elif isinstance(lcmp_et, ir.DoubleType) {
+                        lcmp_lex_lt = self.builder.fcmp_ordered(
+                            "<", lcmp_lea, lcmp_leb, name="lcmp.lex.lt"
+                        );
+                        lcmp_lex_gt = self.builder.fcmp_ordered(
+                            ">", lcmp_lea, lcmp_leb, name="lcmp.lex.gt"
+                        );
+                    } else {
+                        lcmp_strcmp2 = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        lcmp_scmp2 = self.builder.call(
+                            lcmp_strcmp2, [lcmp_lea, lcmp_leb], name="lcmp.lex.sc"
+                        );
+                        lcmp_zero32 = ir.Constant(ir.IntType(32), 0);
+                        lcmp_lex_lt = self.builder.icmp_signed(
+                            "<", lcmp_scmp2, lcmp_zero32, name="lcmp.lex.lt"
+                        );
+                        lcmp_lex_gt = self.builder.icmp_signed(
+                            ">", lcmp_scmp2, lcmp_zero32, name="lcmp.lex.gt"
+                        );
+                    }
+                    # For < and <=: ea < eb → True, ea > eb → False
+                    # For > and >=: ea > eb → True, ea < eb → False
+                    if op == Tok.LT or op == Tok.LTE {
+                        self.builder.cbranch(lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.position_at_start(lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_gt, lcmp_lex_false, lcmp_lex_next
+                        );
+                    } else {
+                        self.builder.cbranch(lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.position_at_start(lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_lt, lcmp_lex_false, lcmp_lex_next
+                        );
+                    }
+                    self.builder.position_at_start(lcmp_lex_next);
+                    lcmp_lni = self.builder.add(
+                        lcmp_li, ir.Constant(i64, 1), name="lcmp.lni"
+                    );
+                    lcmp_li.add_incoming(lcmp_lni, lcmp_lex_next);
+                    self.builder.branch(lcmp_lex_loop);
+                    self.builder.position_at_start(lcmp_lex_after);
+                    # All common elements equal: compare lengths
+                    if op == Tok.LT {
+                        lcmp_len_res = self.builder.icmp_unsigned(
+                            "<", lcmp_la, lcmp_lb, name="lcmp.llen"
+                        );
+                    } elif op == Tok.GT {
+                        lcmp_len_res = self.builder.icmp_unsigned(
+                            ">", lcmp_la, lcmp_lb, name="lcmp.llen"
+                        );
+                    } elif op == Tok.LTE {
+                        lcmp_len_res = self.builder.icmp_unsigned(
+                            "<=", lcmp_la, lcmp_lb, name="lcmp.llen"
+                        );
+                    } else {
+                        lcmp_len_res = self.builder.icmp_unsigned(
+                            ">=", lcmp_la, lcmp_lb, name="lcmp.llen"
+                        );
+                    }
+                    self.builder.cbranch(lcmp_len_res, lcmp_lex_true, lcmp_lex_false);
+                    self.builder.position_at_start(lcmp_lex_true);
+                    self.builder.branch(lcmp_lex_done);
+                    self.builder.position_at_start(lcmp_lex_false);
+                    self.builder.branch(lcmp_lex_done);
+                    self.builder.position_at_start(lcmp_lex_done);
+                    lcmp_lex_res = self.builder.phi(i1_t, name="lcmp.lex.res");
+                    lcmp_lex_res.add_incoming(ir.Constant(i1_t, 1), lcmp_lex_true);
+                    lcmp_lex_res.add_incoming(ir.Constant(i1_t, 0), lcmp_lex_false);
+                    return lcmp_lex_res;
+                }
+                break;
+            }
+        }
+        # Set comparison: detect set pointer types
+        for (sk, st) in self.set_types.items() {
+            if left.type == st.as_pointer() and right.type == st.as_pointer() {
+                shelpers = self.set_helpers.get(sk);
+                if shelpers is not None {
+                    self._ensure_emitters();
+                    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=sk);
+                    _se = self._native_emitters.get("set");
+                    if _se is not None {
+                        i64 = ir.IntType(64);
+                        i1_t = ir.IntType(1);
+                        if op == Tok.LTE {
+                            # a <= b: issubset(a, b)
+                            sub_val = _se.emit_issubset(_ctx, left, [right]);
+                            return self.builder.icmp_unsigned(
+                                "!=", sub_val, ir.Constant(i64, 0), name="sle"
+                            );
+                        }
+                        if op == Tok.GTE {
+                            # a >= b: issubset(b, a)
+                            sub_val = _se.emit_issubset(_ctx, right, [left]);
+                            return self.builder.icmp_unsigned(
+                                "!=", sub_val, ir.Constant(i64, 0), name="sge"
+                            );
+                        }
+                        # ==, !=, <, > need length check + issubset
+                        len_a = self.builder.call(
+                            shelpers["len"], [left], name="scmp.la"
+                        );
+                        len_b = self.builder.call(
+                            shelpers["len"], [right], name="scmp.lb"
+                        );
+                        if op == Tok.EE or op == Tok.NE {
+                            # == : len(a)==len(b) and issubset(a,b)
+                            len_eq = self.builder.icmp_unsigned(
+                                "==", len_a, len_b, name="scmp.leq"
+                            );
+                            func = self.builder.basic_block.function;
+                            check_bb = func.append_basic_block(name="scmp.check");
+                            false_bb = func.append_basic_block(name="scmp.false");
+                            done_bb = func.append_basic_block(name="scmp.done");
+                            self.builder.cbranch(len_eq, check_bb, false_bb);
+                            self.builder.position_at_start(check_bb);
+                            sub_val = _se.emit_issubset(_ctx, left, [right]);
+                            after_bb = self.builder.basic_block;
+                            is_sub = self.builder.icmp_unsigned(
+                                "!=", sub_val, ir.Constant(i64, 0), name="scmp.issub"
+                            );
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(false_bb);
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(done_bb);
+                            result = self.builder.phi(i1_t, name="scmp.result");
+                            result.add_incoming(is_sub, after_bb);
+                            result.add_incoming(ir.Constant(i1_t, 0), false_bb);
+                            if op == Tok.NE {
+                                return self.builder.not_(result, name="scmp.ne");
+                            }
+                            return result;
+                        }
+                        if op == Tok.LT {
+                            # a < b: len(a) < len(b) and issubset(a, b)
+                            len_lt = self.builder.icmp_unsigned(
+                                "<", len_a, len_b, name="slt.lcmp"
+                            );
+                            func = self.builder.basic_block.function;
+                            check_bb = func.append_basic_block(name="slt.check");
+                            false_bb = func.append_basic_block(name="slt.false");
+                            done_bb = func.append_basic_block(name="slt.done");
+                            self.builder.cbranch(len_lt, check_bb, false_bb);
+                            self.builder.position_at_start(check_bb);
+                            sub_val = _se.emit_issubset(_ctx, left, [right]);
+                            after_bb = self.builder.basic_block;
+                            is_sub = self.builder.icmp_unsigned(
+                                "!=", sub_val, ir.Constant(i64, 0), name="slt.issub"
+                            );
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(false_bb);
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(done_bb);
+                            result = self.builder.phi(i1_t, name="slt.result");
+                            result.add_incoming(is_sub, after_bb);
+                            result.add_incoming(ir.Constant(i1_t, 0), false_bb);
+                            return result;
+                        }
+                        if op == Tok.GT {
+                            # a > b: len(b) < len(a) and issubset(b, a)
+                            len_gt = self.builder.icmp_unsigned(
+                                "<", len_b, len_a, name="sgt.lcmp"
+                            );
+                            func = self.builder.basic_block.function;
+                            check_bb = func.append_basic_block(name="sgt.check");
+                            false_bb = func.append_basic_block(name="sgt.false");
+                            done_bb = func.append_basic_block(name="sgt.done");
+                            self.builder.cbranch(len_gt, check_bb, false_bb);
+                            self.builder.position_at_start(check_bb);
+                            sub_val = _se.emit_issubset(_ctx, right, [left]);
+                            after_bb = self.builder.basic_block;
+                            is_sub = self.builder.icmp_unsigned(
+                                "!=", sub_val, ir.Constant(i64, 0), name="sgt.issub"
+                            );
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(false_bb);
+                            self.builder.branch(done_bb);
+                            self.builder.position_at_start(done_bb);
+                            result = self.builder.phi(i1_t, name="sgt.result");
+                            result.add_incoming(is_sub, after_bb);
+                            result.add_incoming(ir.Constant(i1_t, 0), false_bb);
+                            return result;
+                        }
+                    }
+                }
+                break;
+            }
         }
         # For other pointer types (structs, tuples), use pointer comparison
         if op == Tok.EE {

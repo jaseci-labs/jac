@@ -196,7 +196,7 @@ def empty_glob_dict_set_get() -> int {
     return EMPTY_COUNTS["a"];
 }
 
-def empty_glob_dict_len_after_insert() -> int {0: 0
+def empty_glob_dict_len_after_insert() -> int {
     EMPTY_COUNTS["x"] = 1;
     EMPTY_COUNTS["y"] = 2;
     return len(EMPTY_COUNTS);

@@ -102,7 +102,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Handle multi-arg builtins via emitter dispatch
-    if func_name in ("abs", "min", "max", "pow") {
+    if func_name in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all") {
         params_l = nd.params or [];
         arg_vals: list[ir.Value] = [];
         for param in params_l {
@@ -118,7 +118,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord, int, chr, str, hex, oct, bin, round, float builtins via emitter dispatch
+    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
     if func_name in (
         "ord",
         "int",
@@ -129,7 +129,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "bin",
         "round",
         "float",
-        "bool"
+        "bool",
+        "sorted",
+        "reversed",
+        "list",
+        "set"
     ) {
         params_l = nd.params or [];
         if params_l {

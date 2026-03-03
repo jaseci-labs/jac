@@ -32,6 +32,10 @@ jobs:
         run: |
           find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
 
+      - name: Verify jir_registry.jac is up to date
+        run: |
+          jac gen-jir-registry --verify
+
       - name: Run jac check (using .jacignore)
         run: |
           jac check . --ignore checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn
