@@ -54,7 +54,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: any) -> None {
+        def handleLogout(e: Any) -> None {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -136,7 +136,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: Any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -151,11 +151,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: any) -> None {
+        def handleUsernameChange(e: Any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: any) -> None {
+        def handlePasswordChange(e: Any) -> None {
             password = e.target.value;
         }
 
@@ -260,7 +260,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleSignup(e: any) -> None {
+        async def handleSignup(e: Any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -275,11 +275,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: any) -> None {
+        def handleUsernameChange(e: Any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: any) -> None {
+        def handlePasswordChange(e: Any) -> None {
             password = e.target.value;
         }
 
@@ -377,7 +377,7 @@ cl {
     }
 
     # TodoInput Component
-    def TodoInput(props: any) -> JsxElement {
+    def TodoInput(props: Any) -> JsxElement {
         input = props.input;
         setInput = props.setInput;
         addTodo = props.addTodo;
@@ -387,8 +387,8 @@ cl {
                 <input
                     type="text"
                     value={input}
-                    onChange={lambda e: any  -> None { setInput(e.target.value);}}
-                    onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                    onChange={lambda e: Any  -> None { setInput(e.target.value);}}
+                    onKeyPress={lambda e: Any  -> None { if e.key == "Enter" {
                         addTodo();
                     }}}
                     placeholder="What needs to be done?"
@@ -417,7 +417,7 @@ cl {
     }
 
     # TodoFilters Component
-    def TodoFilters(props: any) -> JsxElement {
+    def TodoFilters(props: Any) -> JsxElement {
         filter = props.filter;
         setFilter = props.setFilter;
 
@@ -471,7 +471,7 @@ cl {
     }
 
     # TodoItem Component
-    def TodoItem(props: any) -> JsxElement {
+    def TodoItem(props: Any) -> JsxElement {
         todo = props.todo;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -520,7 +520,7 @@ cl {
     }
 
     # TodoList Component
-    def TodoList(props: any) -> JsxElement {
+    def TodoList(props: Any) -> JsxElement {
         filteredTodos = props.filteredTodos;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -579,7 +579,7 @@ cl {
         }
 
         # Toggle todo
-        async def toggleTodo(id: any) -> None {
+        async def toggleTodo(id: Any) -> None {
             id spawn toggle_todo();
             setTodos(
                 [
@@ -595,7 +595,7 @@ cl {
         }
 
         # Delete todo
-        async def deleteTodo(id: any) -> None {
+        async def deleteTodo(id: Any) -> None {
             #id spawn delete_todo();
             setTodos(
                 [

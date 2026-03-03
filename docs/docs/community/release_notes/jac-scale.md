@@ -7,6 +7,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.3 (Latest Release)
 
 - Set default maximum memory limit of k8s pods from unlimited to 12Gb
+- 1 Minor refactor/change.
 
 ## jac-scale 0.2.2
 
