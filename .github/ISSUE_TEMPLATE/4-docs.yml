@@ -10,9 +10,7 @@ body:
 
   - type: markdown
     attributes:
-      value: |
-        ### Thank you for helping us improve the Jaseci documentation!
-        Please describe the issue clearly so we can address it quickly.
+      value: "### Thank you for helping us improve the Jaseci documentation!"
 
   - type: markdown
     attributes:
@@ -73,9 +71,3 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: suggested-change
-    attributes:
-      label: "Suggested Change"
-      description: "How should it be improved? (optional)"
-      placeholder: "e.g. Add an example for `[->:Friend:->]` in the edge filtering section."
