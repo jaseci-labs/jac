@@ -70,4 +70,3 @@ body:
       placeholder: "e.g. The edge filtering section is missing an explanation for `[->:Friend:->]` syntax."
     validations:
       required: true
-
