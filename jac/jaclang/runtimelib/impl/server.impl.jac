@@ -377,6 +377,18 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         return None;
     }
+    # Helper to find function access level from a module AST
+    def find_function_access_in_ast(
+        mod_ast: uni.Module, func_name: str
+    ) -> (bool | None) {
+        for item in mod_ast.body {
+            if isinstance(item, uni.Ability) and item.name_ref is not None and item.name_ref.sym_name == func_name {
+                is_explicitly_public = item.access is not None and item.access.tag.name == Tok.KW_PUB;
+                return not is_explicitly_public;  # True = auth required, False = public
+            }
+        }
+        return None;
+    }
     # Helper to get AST for a module path
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
         ast = Jac.program.mod.hub.get(mod_path);
@@ -439,6 +451,48 @@ impl ModuleIntrospector._extract_access_levels -> None {
             } else {
                 # Can't get AST, default to requiring auth (secure by default)
                 self._walker_access[name] = True;
+            }
+        }
+    }
+    # Process imported functions - look up their source module's AST
+    for (name, func) in inspect.getmembers(self._module) {
+        if (
+            inspect.isfunction(func)
+            and not name.startswith('_')
+            and name not in self._function_access  # Not already processed as direct definition
+        ) {
+            # Get the source file where this function is defined
+            try {
+                source_file = inspect.getfile(func);
+            } except (TypeError, OSError) {
+                # Can't determine source file, default to requiring auth
+                self._function_access[name] = True;
+                continue;
+            }
+            # Only process .jac files
+            if not source_file.endswith('.jac') {
+                self._function_access[name] = True;
+                continue;
+            }
+            # Try to get the AST from the source module
+            try {
+                source_ast = get_module_ast(source_file);
+            } except Exception {
+                # Can't get AST, default to requiring auth (secure by default)
+                self._function_access[name] = True;
+                continue;
+            }
+            if source_ast {
+                access_level = find_function_access_in_ast(source_ast, name);
+                if access_level is not None {
+                    self._function_access[name] = access_level;
+                } else {
+                    # Function not found in AST, default to requiring auth (secure by default)
+                    self._function_access[name] = True;
+                }
+            } else {
+                # Can't get AST, default to requiring auth (secure by default)
+                self._function_access[name] = True;
             }
         }
     }

@@ -1129,6 +1129,112 @@ test "serve mixed local and imported access" {
 }
 
 # =============================================================================
+# TestImportedFunctionAccessLevels (7 tests)
+# =============================================================================
+test "serve imported public function without auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        response = iac.post("/function/publicImportedFunc", json={});
+        assert response.ok , f"Expected success but got: {response.data}";
+        data = response.data;
+        assert "result" in data;
+        assert data["result"]["auth_required"] is False;
+        iac.close();
+    }
+}
+
+test "serve imported protected function requires auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        response = iac.post("/function/protectedImportedFunc", json={});
+        assert not response.ok;
+        data = response.data;
+        assert "error" in data;
+        assert "Unauthorized" in data["error"];
+        iac.close();
+    }
+}
+
+test "serve imported protected function with auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        iac.register_user("importfuncuser", "pass123");
+        response = iac.post("/function/protectedImportedFunc", json={});
+        assert response.ok;
+        data = response.data;
+        assert "result" in data;
+        assert data["result"]["auth_required"] is True;
+        iac.close();
+    }
+}
+
+test "serve imported default function requires auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        response = iac.post("/function/defaultImportedFunc", json={});
+        assert not response.ok;
+        data = response.data;
+        assert "error" in data;
+        assert "Unauthorized" in data["error"];
+        iac.close();
+    }
+}
+
+test "serve local public function without auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        response = iac.post("/function/localPublicFunc", json={});
+        assert response.ok;
+        data = response.data;
+        assert "result" in data;
+        iac.close();
+    }
+}
+
+test "serve local default function requires auth" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        response = iac.post("/function/localDefaultFunc", json={});
+        assert not response.ok;
+        data = response.data;
+        assert "error" in data;
+        assert "Unauthorized" in data["error"];
+        iac.close();
+    }
+}
+
+test "serve mixed local and imported function access" {
+    with TemporaryDirectory() as tmpdir {
+        iac = make_imported_access_client(tmpdir);
+        iac.register_user("mixedfuncuser", "mixedpass");
+        assert iac._auth_token is not None;
+        token = str(iac._auth_token);
+        # Imported public function without auth - should work
+        iac.clear_auth();
+        result1 = iac.post("/function/publicImportedFunc", json={});
+        assert result1.ok , f"Imported public function should work without auth: {result1.data}";
+        # Local public function without auth - should work
+        result2 = iac.post("/function/localPublicFunc", json={});
+        assert result2.ok , f"Local public function should work without auth: {result2.data}";
+        # Imported protected function without auth - should fail
+        result3 = iac.post("/function/protectedImportedFunc", json={});
+        assert not result3.ok , "Imported protected function should require auth";
+        # Local default function without auth - should fail
+        result4 = iac.post("/function/localDefaultFunc", json={});
+        assert not result4.ok , "Local default function should require auth";
+        # With auth, all functions should work
+        iac.set_auth_token(token);
+        result5 = iac.post("/function/protectedImportedFunc", json={});
+        assert result5.ok , f"Imported protected function should work with auth: {result5.data}";
+        result6 = iac.post("/function/defaultImportedFunc", json={});
+        assert result6.ok , f"Imported default function should work with auth: {result6.data}";
+        result7 = iac.post("/function/localDefaultFunc", json={});
+        assert result7.ok , f"Local default function should work with auth: {result7.data}";
+        iac.close();
+    }
+}
+
+# =============================================================================
 # TestSPACatchAll (7 tests)
 # =============================================================================
 test "serve spa catchall serves html for clean urls" {
