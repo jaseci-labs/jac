@@ -36,6 +36,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **IDE Hover Types**: Function parameters and `has` vars now display types on hover.
 - **Fix: Bug Fix**: Stop appending lint warnings to `py2jac` converted files.
 - **Structured GitHub Issue Forms**: Replaced blank markdown issue templates with guided YAML forms, making it easier to submit well-structured bug reports, feature requests, and docs issues.
+- 1 Minor refactor/change.
 - **Native Codegen: Split-File Chess Engine & Major IR Gen Fixes**: Enabled complex multi-file native applications (declaration `.na.jac` + implementation `.impl.jac`) by fixing 10+ IR generation bugs.
 - **Native Auto-Promotion (`--autonative`)**: Regular `.jac` modules can now be automatically promoted to native (LLVM JIT) execution without requiring the `.na.jac` extension.
 - **Native Compiler: Constructor `init` Method Auto-Invocation**: Fixed a bug where object constructors with positional parameters were not automatically calling the `init` method. Now, `init` is properly invoked with constructor arguments during object instantiation, enabling proper initialization of objects with parameterized constructors.

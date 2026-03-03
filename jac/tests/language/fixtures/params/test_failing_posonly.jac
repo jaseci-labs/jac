@@ -8,7 +8,7 @@ def mixed_posonly(x: int, /, y: str, z: float = 1.0) -> str {
 }
 
 def complex_posonly(
-    a: int, b: str = "def", /, c: float, *args: int, kw: bool, **kwargs: any
+    a: int, b: str = "def", /, c: float, *args: int, kw: bool, **kwargs: Any
 ) -> dict {
     return {"a": a, "b": b, "c": c, "args": list(args), "kw": kw, "kwargs": kwargs};
 }

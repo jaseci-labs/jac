@@ -172,7 +172,7 @@ cl {
     }
 
     # Handle login form submission
-    async def handle_login(event: any) -> None {
+    async def handle_login(event: Any) -> None {
         event.preventDefault();
         username = document.getElementById("username").value;
         password = document.getElementById("password").value;
@@ -271,7 +271,7 @@ cl {
     }
 
     # Handle signup form submission
-    async def handle_signup(event: any) -> None {
+    async def handle_signup(event: Any) -> None {
         event.preventDefault();
         username = document.getElementById("signup-username").value;
         password = document.getElementById("signup-password").value;
