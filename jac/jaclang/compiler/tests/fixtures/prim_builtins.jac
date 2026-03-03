@@ -218,6 +218,7 @@ def builtins_py() -> dict {
         "hash_int": hash(42),
         "repr_int": repr(42),
         "repr_neg": repr(-17),
+        "ascii_str": ascii("hello"),
         "fs_na_len": len(frozenset([1, 2, 3])),
         "ba_len": len(bytearray([68, 69]))
     };
@@ -581,6 +582,7 @@ na {
             "fmt_int": fmt_int, "fmt_hex": fmt_hex, "fmt_oct": fmt_oct,
             "hash_int": hash_int,
             "repr_int": repr_int, "repr_neg": repr_neg,
+            "ascii_str": ascii("hello"),
             "fs_na_len": len(fs),
             "bs_len": len(bs),
             "ba_len": len(ba)

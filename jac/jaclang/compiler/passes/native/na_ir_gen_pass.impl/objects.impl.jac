@@ -679,6 +679,49 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_sys_exit(arg_vals);
         }
     }
+    # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
+    if target_name == "int" and method_name == "from_bytes" {
+        params = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            self._ensure_emitters();
+            _emitter = self._native_emitters.get("int");
+            if _emitter is not None {
+                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+                result = _emitter.emit_from_bytes(_ctx, arg_vals);
+                if result is not None {
+                    return result;
+                }
+            }
+        }
+    }
+    if target_name == "float" and method_name == "fromhex" {
+        params = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            self._ensure_emitters();
+            _emitter = self._native_emitters.get("float");
+            if _emitter is not None {
+                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+                result = _emitter.emit_fromhex(_ctx, arg_vals);
+                if result is not None {
+                    return result;
+                }
+            }
+        }
+    }
     # --- Primitive emitter dispatch (list, set, str methods) ---
     # Evaluate target and args, dispatch through emitter layer.
     # List methods (simple name target)
@@ -766,7 +809,13 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Int methods (on any target expression whose type is i64)
-    if method_name in ("conjugate", "bit_length", "bit_count", "as_integer_ratio") {
+    if method_name in (
+        "conjugate",
+        "bit_length",
+        "bit_count",
+        "as_integer_ratio",
+        "to_bytes"
+    ) {
         int_val = self._codegen_expr(trailer.target);
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             params = nd.params or [];
@@ -884,7 +933,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "splitlines",
         "partition",
         "rpartition",
-        "encode"
+        "encode",
+        "format"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {

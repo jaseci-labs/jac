@@ -272,7 +272,10 @@ na {
             "air_half_0": (0.5).as_integer_ratio()[0],
             "air_half_1": (0.5).as_integer_ratio()[1],
             "air_neg_0": (-2.0).as_integer_ratio()[0],
-            "air_neg_1": (-2.0).as_integer_ratio()[1]
+            "air_neg_1": (-2.0).as_integer_ratio()[1],
+            # fromhex (static method)
+            "fromhex_1_5": float.fromhex("0x1.8p+0"),
+            "fromhex_1_0": float.fromhex("0x1.0p+0")
         };
     }
 }

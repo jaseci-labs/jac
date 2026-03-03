@@ -59,7 +59,61 @@ class NativeIntEmitter(IntEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_to_bytes(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # to_bytes(length, byteorder): convert int to bytes
+        if len(args) < 2 {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8 = ir.IntType(8);
+        i8p = i8.as_pointer();
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        zero64 = ir.Constant(i64, 0);
+        one64 = ir.Constant(i64, 1);
+        eight64 = ir.Constant(i64, 8);
+        mask_ff = ir.Constant(i64, 0xFF);
+        length = args[0];  # i64
+        byteorder = args[1];  # i8* "big" or "little"
+        # Allocate length+1 bytes (null-terminated)
+        alloc_sz = b.add(length, one64, name="tb.alloc.sz");
+        buf = b.call(p.rc_alloc_fn, [alloc_sz], name="tb.buf");
+        # Null-terminate
+        end_ptr = b.gep(buf, [length], name="tb.end");
+        b.store(ir.Constant(i8, 0), end_ptr);
+        # Determine if big-endian: strcmp(byteorder, "big") == 0
+        big_str = p._make_global_string("big");
+        strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+        cmp_res = b.call(strcmp_fn, [byteorder, big_str], name="tb.cmp");
+        is_big = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="tb.isbig");
+        # Loop: for i in range(length)
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="tb.loop");
+        body_bb = func.append_basic_block(name="tb.body");
+        done_bb = func.append_basic_block(name="tb.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="tb.idx");
+        idx.add_incoming(zero64, entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, length, name="tb.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        # Extract byte: (target >> (i * 8)) & 0xFF
+        shift_amt = b.mul(idx, eight64, name="tb.shift");
+        shifted = b.lshr(target, shift_amt, name="tb.shifted");
+        byte_val = b.and_(shifted, mask_ff, name="tb.byte");
+        byte_i8 = b.trunc(byte_val, i8, name="tb.i8");
+        # Store position: big-endian = length-1-i, little-endian = i
+        big_pos = b.sub(b.sub(length, one64, name="tb.lm1"), idx, name="tb.bigpos");
+        store_pos = b.select(is_big, big_pos, idx, name="tb.pos");
+        byte_ptr = b.gep(buf, [store_pos], name="tb.ptr");
+        b.store(byte_i8, byte_ptr);
+        next_idx = b.add(idx, one64, name="tb.next");
+        idx.add_incoming(next_idx, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return buf;
     }
 
     def emit_as_integer_ratio(
@@ -176,7 +230,61 @@ class NativeIntEmitter(IntEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_from_bytes(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # int.from_bytes(bytes_str, byteorder): reconstruct int from bytes (i8*)
+        if len(args) < 2 {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8 = ir.IntType(8);
+        i8p = i8.as_pointer();
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        zero64 = ir.Constant(i64, 0);
+        one64 = ir.Constant(i64, 1);
+        eight64 = ir.Constant(i64, 8);
+        bytes_ptr = args[0];  # i8*
+        byteorder = args[1];  # i8* "big" or "little"
+        # Get length of bytes string
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        length = b.call(strlen_fn, [bytes_ptr], name="fb.len");
+        # Determine if big-endian
+        big_str = p._make_global_string("big");
+        strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+        cmp_res = b.call(strcmp_fn, [byteorder, big_str], name="fb.cmp");
+        is_big = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="fb.isbig");
+        # Loop: accumulate bytes into result i64
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="fb.loop");
+        body_bb = func.append_basic_block(name="fb.body");
+        done_bb = func.append_basic_block(name="fb.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="fb.idx");
+        result = b.phi(i64, name="fb.result");
+        idx.add_incoming(zero64, entry_bb);
+        result.add_incoming(zero64, entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, length, name="fb.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        # Load byte at idx
+        byte_ptr = b.gep(bytes_ptr, [idx], name="fb.bptr");
+        byte_val = b.load(byte_ptr, name="fb.byte");
+        byte_i64 = b.zext(byte_val, i64, name="fb.ext");
+        # For big-endian: shift_amt = (length - 1 - i) * 8
+        # For little-endian: shift_amt = i * 8
+        big_shift_idx = b.sub(b.sub(length, one64, name="fb.lm1"), idx, name="fb.bidx");
+        shift_idx = b.select(is_big, big_shift_idx, idx, name="fb.sidx");
+        shift_amt = b.mul(shift_idx, eight64, name="fb.shift");
+        shifted = b.shl(byte_i64, shift_amt, name="fb.shifted");
+        new_result = b.or_(result, shifted, name="fb.accum");
+        next_idx = b.add(idx, one64, name="fb.next");
+        idx.add_incoming(next_idx, body_bb);
+        result.add_incoming(new_result, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return result;
     }
 }
 
@@ -283,7 +391,59 @@ class NativeFloatEmitter(FloatEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_fromhex(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # float.fromhex(s): parse hex float string (C strtod supports hex)
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        f64 = ir.DoubleType();
+        i8p = ir.IntType(8).as_pointer();
+        strtod_fn = p._get_or_declare_extern("strtod", f64, [i8p, i8p.as_pointer()]);
+        null_ptr = ir.Constant(i8p.as_pointer(), None);
+        result = b.call(strtod_fn, [args[0], null_ptr], name="fhex.result");
+        return result;
+    }
+}
+
+class NativeBoolEmitter(NativeIntEmitter) {
+    """Bool-specific emitter.
+
+    Inherits all int operations but overrides bitwise operators so that
+    True & False yields False (bool i1) rather than 0 (i64), matching
+    Python semantics where bool & bool -> bool.
+    """
+    def emit_op_and(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        p = ctx.pass_ref;
+        b = p.builder;
+        i1 = ir.IntType(1);
+        lhs = p._coerce_type(target, i1) if target.type != i1 else target;
+        rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
+        return b.and_(lhs, rhs, name="bool.and");
+    }
+
+    def emit_op_or(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        p = ctx.pass_ref;
+        b = p.builder;
+        i1 = ir.IntType(1);
+        lhs = p._coerce_type(target, i1) if target.type != i1 else target;
+        rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
+        return b.or_(lhs, rhs, name="bool.or");
+    }
+
+    def emit_op_xor(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        p = ctx.pass_ref;
+        b = p.builder;
+        i1 = ir.IntType(1);
+        lhs = p._coerce_type(target, i1) if target.type != i1 else target;
+        rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
+        return b.xor(lhs, rhs, name="bool.xor");
     }
 }
 
@@ -1492,12 +1652,106 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_format(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # str.format(*args): replace {} placeholders with string args
+        # Implements by chaining single-replace operations for each arg
+        if not args {
+            return target;  # No args, return template unchanged
+
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8 = ir.IntType(8);
+        i8p = i8.as_pointer();
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
+        memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+        snprintf_fn = p._get_or_declare_extern(
+            "snprintf", i32, [i8p, i64, i8p], var_arg=True
+        );
+        rc_alloc_fn = p.rc_alloc_fn;
+        placeholder = p._make_global_string("{}");
+        ph_len = ir.Constant(i64, 2);  # strlen("{}")
+        null_ptr = ir.Constant(i8p, None);
+        # Convert each arg to i8* string
+        str_args: list[ir.Value] = [];
+        for arg in args {
+            if isinstance(arg.type, ir.IntType) and arg.type.width > 1 {
+                # Integer: snprintf("%ld", val)
+                buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="fmt.ibuf");
+                fmt_s = p._make_global_string("%ld");
+                b.call(snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg]);
+                str_args.append(buf);
+            } elif isinstance(arg.type, ir.DoubleType) {
+                # Float: snprintf("%g", val)
+                buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="fmt.fbuf");
+                fmt_s = p._make_global_string("%g");
+                b.call(snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg]);
+                str_args.append(buf);
+            } else {
+                # Already i8* (string or pointer)
+                str_args.append(arg);
+            }
+        }
+        # Chain single-replace operations: for each arg, replace first {} with arg_str
+        current = target;
+        for i in range(len(str_args)) {
+            arg_str = str_args[i];
+            arg_len = b.call(strlen_fn, [arg_str], name=f"fmt.a{i}.len");
+            cur_len = b.call(strlen_fn, [current], name=f"fmt.c{i}.len");
+            # Generous allocation: cur_len - 2 + arg_len + 1
+            alloc_sz = b.add(
+                b.sub(cur_len, ph_len, name=f"fmt.sub{i}"),
+                b.add(arg_len, ir.Constant(i64, 1), name=f"fmt.aln{i}"),
+                name=f"fmt.alloc{i}"
+            );
+            result = b.call(rc_alloc_fn, [alloc_sz], name=f"fmt.res{i}");
+            # Find first {} in current
+            found = b.call(strstr_fn, [current, placeholder], name=f"fmt.fnd{i}");
+            is_null = b.icmp_unsigned("==", found, null_ptr, name=f"fmt.null{i}");
+            func = b.basic_block.function;
+            replace_bb = func.append_basic_block(name=f"fmt.repl{i}");
+            skip_bb = func.append_basic_block(name=f"fmt.skip{i}");
+            merge_bb = func.append_basic_block(name=f"fmt.merge{i}");
+            b.cbranch(is_null, skip_bb, replace_bb);
+            # Replace path: copy prefix + arg_str + suffix
+            b.position_at_start(replace_bb);
+            cur_int = b.ptrtoint(current, i64, name=f"fmt.ci{i}");
+            fnd_int = b.ptrtoint(found, i64, name=f"fmt.fi{i}");
+            pfx_len = b.sub(fnd_int, cur_int, name=f"fmt.pfx{i}");
+            b.call(memcpy_fn, [result, current, pfx_len]);
+            dst2 = b.gep(result, [pfx_len], name=f"fmt.d2.{i}");
+            b.call(memcpy_fn, [dst2, arg_str, arg_len]);
+            dst3_off = b.add(pfx_len, arg_len, name=f"fmt.d3o{i}");
+            dst3 = b.gep(result, [dst3_off], name=f"fmt.d3.{i}");
+            sfx_start_int = b.add(fnd_int, ph_len, name=f"fmt.sfxi{i}");
+            sfx_start = b.inttoptr(sfx_start_int, i8p, name=f"fmt.sfx{i}");
+            sfx_len = b.call(strlen_fn, [sfx_start], name=f"fmt.slen{i}");
+            b.call(memcpy_fn, [dst3, sfx_start, sfx_len]);
+            total_len = b.add(dst3_off, sfx_len, name=f"fmt.tlen{i}");
+            null_term = b.gep(result, [total_len], name=f"fmt.nt{i}");
+            b.store(ir.Constant(i8, 0), null_term);
+            b.branch(merge_bb);
+            # Skip path: no {} found, return current unchanged
+            b.position_at_start(skip_bb);
+            # Copy current string to result
+            b.call(memcpy_fn, [result, current, cur_len]);
+            null_term2 = b.gep(result, [cur_len], name=f"fmt.nt2.{i}");
+            b.store(ir.Constant(i8, 0), null_term2);
+            b.branch(merge_bb);
+            b.position_at_start(merge_bb);
+            current = result;
+        }
+        return current;
     }
 
     def emit_format_map(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
+        # format_map(mapping): replace {key} placeholders with dict values
+        # Complex: requires runtime dict lookup for each placeholder key
+        # Deferring for now - returns None to fall through
         return None;
     }
 
@@ -3233,7 +3487,82 @@ class NativeDictEmitter(DictEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_items(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None) {
-        return None;
+        # items(): return list of (key, value) 2-tuples
+        p = ctx.pass_ref;
+        helpers = p.dict_helpers.get(ctx.type_key);
+        if helpers is None {
+            return None;
+        }
+        b = p.builder;
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        i8p = ir.IntType(8).as_pointer();
+        key_type = helpers["key_type"];
+        val_type = helpers["val_type"];
+        # Build 2-tuple struct type
+        tuple_type = ir.LiteralStructType([key_type, val_type]);
+        # Register tuple type
+        kt_str = "i8p"
+            if isinstance(key_type, ir.PointerType)
+            else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
+        vt_str = "i8p"
+            if isinstance(val_type, ir.PointerType)
+            else ("f64" if isinstance(val_type, ir.DoubleType) else "i64");
+        tkey = f"{kt_str}.{vt_str}";
+        if tkey not in p.tuple_types {
+            p.tuple_types[tkey] = tuple_type;
+        }
+        # Create result list of pointers (each element is a tuple pointer)
+        p._emit_list_helpers("ptr", i8p);
+        lhelpers = p.list_helpers.get("ptr");
+        if lhelpers is None {
+            return None;
+        }
+        new_list = b.call(lhelpers["new"], [], name="ditems.list");
+        # Get dict length
+        len_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.len.ptr"
+        );
+        dict_len = b.load(len_ptr, name="ditems.len");
+        # Compute tuple size once
+        null_ptr = ir.Constant(tuple_type.as_pointer(), None);
+        size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="ditems.sizeof.gep");
+        tup_size = b.ptrtoint(size_gep, i64, name="ditems.sizeof");
+        # Loop over dict entries
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="ditems.loop");
+        body_bb = func.append_basic_block(name="ditems.body");
+        done_bb = func.append_basic_block(name="ditems.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        idx = b.phi(i64, name="ditems.idx");
+        idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = b.icmp_unsigned(">=", idx, dict_len, name="ditems.atend");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        # Get key and value at this index
+        key = b.call(helpers["get_key"], [target, idx], name="ditems.key");
+        val = b.call(helpers["get"], [target, key], name="ditems.val");
+        # Allocate 2-tuple
+        raw = b.call(p.rc_alloc_fn, [tup_size], name="ditems.alloc");
+        tup_ptr = b.bitcast(raw, tuple_type.as_pointer(), name="ditems.tup");
+        k_ptr = b.gep(
+            tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.k.ptr"
+        );
+        v_ptr = b.gep(
+            tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="ditems.v.ptr"
+        );
+        b.store(key, k_ptr);
+        b.store(val, v_ptr);
+        # Append tuple pointer (as i8*) to list
+        tup_i8p = b.bitcast(tup_ptr, i8p, name="ditems.i8p");
+        b.call(lhelpers["append"], [new_list, tup_i8p]);
+        next_idx = b.add(idx, ir.Constant(i64, 1), name="ditems.next");
+        idx.add_incoming(next_idx, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return new_list;
     }
 
     def emit_pop(
