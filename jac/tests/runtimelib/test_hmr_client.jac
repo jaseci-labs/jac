@@ -751,3 +751,51 @@ test "client impl file reloads base cl.jac file" {
         assert "Click Me" not in content2 , "Old label should not be in updated JS";
     }
 }
+
+
+"""Compile error shows overlay, successful compile recovers it."""
+test "error overlay lifecycle" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled";
+        compiled_dir.mkdir(parents=True, exist_ok=True);
+        app_file = unique_dir / "app.jac";
+        entry_file = compiled_dir / "_entry.js";
+        watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
+        reloader = HotReloader(
+            base_path=str(unique_dir), module_name="app", watcher=watcher
+        );
+        # Valid code compiles successfully
+        app_file.write_text(
+            "cl {\n"
+            "    def app() {\n"
+            "        return <div>Hello</div>;\n"
+            "    }\n"
+            "}\n"
+        );
+        reloader._recompile_client_code(str(app_file));
+        assert (compiled_dir / "app.js").exists() , "Valid code should compile to JS";
+        assert reloader._overlay_entry is False;
+        # Broken code triggers error overlay
+        app_file.write_text("cl " + "{" + "\n    def app() " + "{" + "\n");
+        with suppress(Exception) {
+            reloader._recompile_client_code(str(app_file));
+        }
+        assert reloader._overlay_entry is True , "Compile error should trigger overlay";
+        assert "errorOverlay" in entry_file.read_text() , "Entry should show error overlay";
+        # Fixed code clears overlay
+        app_file.write_text(
+            "cl {\n"
+            "    def app() {\n"
+            "        return <div>Fixed</div>;\n"
+            "    }\n"
+            "}\n"
+        );
+        reloader._recompile_client_code(str(app_file));
+        content = entry_file.read_text();
+        assert "errorOverlay" not in content , "Overlay should be cleared after fix";
+        assert "JacClientErrorBoundary" in content , "Normal entry should be restored";
+        assert reloader._overlay_entry is False;
+    }
+}
