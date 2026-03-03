@@ -298,12 +298,14 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_list_elem = dict(self.var_list_elem_type);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
+    saved_tuple_type = dict(self.var_tuple_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    self.var_tuple_type = {};
     # Store self pointer
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -377,6 +379,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_list_elem_type = saved_list_elem;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
+    self.var_tuple_type = saved_tuple_type;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""
@@ -396,12 +399,14 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_list_elem = dict(self.var_list_elem_type);
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
+    saved_tuple_type = dict(self.var_tuple_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    self.var_tuple_type = {};
     # Store self pointer (only parameter)
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -427,6 +432,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_list_elem_type = saved_list_elem;
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
+    self.var_tuple_type = saved_tuple_type;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""
@@ -717,6 +723,27 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Tuple methods (simple name target)
+    if target_name is not None and target_name in self.var_tuple_type {
+        tuple_type_key = self.var_tuple_type[target_name];
+        tuple_val = self._codegen_expr(trailer.target);
+        if tuple_val is not None {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
+                }
+            }
+            result = self._dispatch_primitive_method(
+                "tuple", method_name, tuple_val, arg_vals, tuple_type_key
+            );
+            if result is not None {
+                return result;
+            }
+        }
+    }
     # Dict methods (simple name target)
     if target_name is not None and target_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[target_name];
@@ -739,7 +766,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Int methods (on any target expression whose type is i64)
-    if method_name in ("conjugate", "bit_length", "bit_count") {
+    if method_name in ("conjugate", "bit_length", "bit_count", "as_integer_ratio") {
         int_val = self._codegen_expr(trailer.target);
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             params = nd.params or [];
@@ -759,7 +786,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Float methods (on any target expression whose type is double)
-    if method_name in ("is_integer", "conjugate") {
+    if method_name in ("is_integer", "conjugate", "as_integer_ratio", "hex") {
         float_val = self._codegen_expr(trailer.target);
         if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
             params = nd.params or [];
@@ -775,6 +802,41 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             );
             if result is not None {
                 return result;
+            }
+        }
+    }
+    # Complex methods (conjugate)
+    if method_name == "conjugate" {
+        cval = self._codegen_expr(trailer.target);
+        if cval is not None and cval.type == self.complex_struct_type.as_pointer() {
+            result = self._dispatch_primitive_method(
+                "complex", method_name, cval, [], ""
+            );
+            if result is not None {
+                return result;
+            }
+        }
+    }
+    # Range methods (count, index)
+    if method_name in ("count", "index") {
+        rng_target_name = self._get_name(trailer.target);
+        if rng_target_name is not None and rng_target_name in self.var_range {
+            rng_val = self._codegen_expr(trailer.target);
+            if rng_val is not None {
+                params = nd.params or [];
+                arg_vals: list[ir.Value] = [];
+                for param in params {
+                    v = self._codegen_expr(param);
+                    if v is not None {
+                        arg_vals.append(v);
+                    }
+                }
+                result = self._dispatch_primitive_method(
+                    "range", method_name, rng_val, arg_vals, ""
+                );
+                if result is not None {
+                    return result;
+                }
             }
         }
     }
@@ -821,7 +883,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "rsplit",
         "splitlines",
         "partition",
-        "rpartition"
+        "rpartition",
+        "encode"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {

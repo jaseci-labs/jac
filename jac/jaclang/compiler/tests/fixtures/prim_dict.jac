@@ -123,6 +123,9 @@ def dict_py() -> dict {
         "dict_in": dict_in,
         "dict_nin": dict_nin,
         "dict_ior": d_ior,
+        "ior_len": len(d_ior),
+        "ior_b": d_ior["b"],
+        "ior_c": d_ior["c"],
         # popitem
         "pi_key": pi_key,
         "pi_val": pi_val,
@@ -284,6 +287,20 @@ na {
         dict_in: int = 1 if "x" in d_in1 else 0;
         dict_nin: int = 1 if "z" not in d_in1 else 0;
 
+        # dict |= (ior)
+        d_ior: dict[str, int] = {"a": 1, "b": 2};
+        d_ior |= {"b": 99, "c": 3};
+        ior_len: int = len(d_ior);
+        ior_b: int = d_ior["b"];
+        ior_c: int = d_ior["c"];
+
+        # popitem (single-key dict for deterministic result)
+        dp: dict[str, int] = {"pi_only": 77};
+        pi = dp.popitem();
+        pi_val: int = pi[1];
+        pi_after_len: int = len(dp);
+
+
         return {
             "len": len(d),
             "get_a_d4": d["a"],
@@ -315,7 +332,12 @@ na {
             "sd_multi_a": sd_multi_a,
             "sd_multi_b": sd_multi_b,
             "dict_in": dict_in,
-            "dict_nin": dict_nin
+            "dict_nin": dict_nin,
+            "ior_len": ior_len,
+            "ior_b": ior_b,
+            "ior_c": ior_c,
+            "pi_val": pi_val,
+            "pi_after_len": pi_after_len
         };
     }
 }

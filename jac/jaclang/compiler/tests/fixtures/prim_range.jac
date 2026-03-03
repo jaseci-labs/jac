@@ -191,6 +191,24 @@ na {
             }
         }
 
+        r_obj = range(0, 10, 2);
+        count_hit: int = r_obj.count(4);
+        count_miss: int = r_obj.count(3);
+        idx_first: int = r_obj.index(0);
+        idx_mid: int = r_obj.index(6);
+        idx_last: int = r_obj.index(8);
+
+        eq_same: int = range(0, 5, 1) == range(0, 5, 1);
+        eq_diff_step: int = range(0, 6, 2) == range(0, 6, 2);
+        ne_diff: int = range(0, 5, 1) != range(0, 6, 1);
+
+        contains_yes: int = 4 in r_obj;
+        contains_no: int = 3 in r_obj;
+        contains_start: int = 0 in r_obj;
+        contains_end: int = 8 in r_obj;
+        contains_past: int = 10 in r_obj;
+
+
         return {
             "r_stop_len": r1_len,
             "r_stop_first": r1_first,
@@ -214,7 +232,20 @@ na {
             "countdown_first": countdown_first,
             "countdown_count": countdown_count,
             "nested_sum": nested_sum,
-            "nested_count": nested_count
+            "nested_count": nested_count,
+            "count_hit": count_hit,
+            "count_miss": count_miss,
+            "idx_first": idx_first,
+            "idx_mid": idx_mid,
+            "idx_last": idx_last,
+            "eq_same": eq_same,
+            "eq_diff_step": eq_diff_step,
+            "ne_diff": ne_diff,
+            "contains_yes": contains_yes,
+            "contains_no": contains_no,
+            "contains_start": contains_start,
+            "contains_end": contains_end,
+            "contains_past": contains_past
         };
     }
 }

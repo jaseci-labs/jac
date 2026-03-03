@@ -74,7 +74,11 @@ def frozenset_py() -> dict {
         "i_len": len(i), "i_has_3": 1 if 3 in i else 0, "i_has_1": 1 if 1 in i else 0,
         "d_len": len(d), "d_has_1": 1 if 1 in d else 0, "d_has_3": 1 if 3 in d else 0,
         "sd_len": len(sd), "sd_has_1": 1 if 1 in sd else 0, "sd_has_5": 1 if 5 in sd else 0,
-        "u2_len": len(u2), "i2_len": len(i2), "d2_len": len(d2), "cp_len": len(cp),
+        "u2_len": len(u2), "i2_len": len(i2), "d2_len": len(d2),
+        "sd2_len": len(a.symmetric_difference(b)),
+        "sd2_has_1": 1 if 1 in a.symmetric_difference(b) else 0,
+        "sd2_has_5": 1 if 5 in a.symmetric_difference(b) else 0,
+        "cp_len": len(cp),
         "eq_same": 1 if c1 == c2 else 0,
         "eq_diff": 1 if c1 == c3 else 0,
         "ne_same": 1 if c1 != c2 else 0,
@@ -163,6 +167,7 @@ na {
         u2: frozenset[int] = a.union(b);
         i2: frozenset[int] = a.intersection(b);
         d2: frozenset[int] = a.difference(b);
+        sd2: frozenset[int] = a.symmetric_difference(b);
         cp: frozenset[int] = a.copy();
 
         c1: frozenset[int] = {1, 2, 3};
@@ -174,7 +179,9 @@ na {
             "i_len": len(i), "i_has_3": 1 if 3 in i else 0, "i_has_1": 1 if 1 in i else 0,
             "d_len": len(d), "d_has_1": 1 if 1 in d else 0, "d_has_3": 1 if 3 in d else 0,
             "sd_len": len(sd), "sd_has_1": 1 if 1 in sd else 0, "sd_has_5": 1 if 5 in sd else 0,
-            "u2_len": len(u2), "i2_len": len(i2), "d2_len": len(d2), "cp_len": len(cp),
+            "u2_len": len(u2), "i2_len": len(i2), "d2_len": len(d2),
+            "sd2_len": len(sd2), "sd2_has_1": 1 if 1 in sd2 else 0, "sd2_has_5": 1 if 5 in sd2 else 0,
+            "cp_len": len(cp),
             "eq_same": 1 if c1 == c2 else 0,
             "eq_diff": 1 if c1 == c3 else 0,
             "ne_same": 1 if c1 != c2 else 0,
