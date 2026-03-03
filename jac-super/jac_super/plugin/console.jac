@@ -1,6 +1,6 @@
-"""Jac Super Console Plugin - Rich-enhanced console.
+"""Jac Super Console Plugin - jacpretty-enhanced console.
 
-This plugin provides Rich-enhanced console output for Jac CLI.
+This plugin provides jacpretty-enhanced console output for Jac CLI.
 It overrides the base console implementation to provide elegant,
 colorful terminal output with themes, panels, tables, and spinners.
 """
@@ -9,7 +9,7 @@ import from jaclang.cli.console { JacConsole as BaseJacConsole }
 
 """Jac Super Plugin for console enhancement."""
 class JacSuperPlugin {
-    """Get the Rich-enhanced console instance."""
+    """Get the jacpretty-enhanced console instance."""
     @hookimpl
     static def get_console -> BaseJacConsole {
         return JacSuperConsole();

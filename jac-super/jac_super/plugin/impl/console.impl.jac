@@ -1,19 +1,16 @@
-"""Rich-enhanced console implementation for jac-super.
+"""jacpretty-enhanced console implementation for jac-super.
 
-This module provides a Rich-based implementation of JacConsole that
-inherits from the base console and overrides methods to use Rich
+This module provides a jacpretty-based implementation of JacConsole that
+inherits from the base console and overrides methods to use jacpretty
 for elegant terminal output.
 """
 import os;
 import sys;
 import from contextlib { contextmanager }
-import from rich.console { Console as RichConsole }
-import from rich.panel { Panel }
-import from rich.table { Table }
-import from rich.theme { Theme }
+import from jaclang.cli.jacpretty { Console, Panel, Table, Theme }
 import from jaclang.cli.console { JacConsole as BaseJacConsole }
 
-"""Rich-enhanced console that extends base JacConsole."""
+"""jacpretty-enhanced console that extends base JacConsole."""
 class JacSuperConsole(BaseJacConsole) {
     with entry {
         JAC_THEME = Theme(
@@ -30,16 +27,16 @@ class JacSuperConsole(BaseJacConsole) {
         );
     }
 
-    """Initialize the Rich console with Jac theme."""
+    """Initialize the jacpretty console with Jac theme."""
     def init(self: JacSuperConsole) -> None {
         # Call parent init first
         BaseJacConsole.init(self);
-        # Initialize Rich consoles
-        self._console = RichConsole(theme=self.JAC_THEME);
-        self._console_stderr = RichConsole(theme=self.JAC_THEME, file=sys.stderr);
+        # Initialize jacpretty consoles
+        self._console = Console(theme=self.JAC_THEME);
+        self._console_stderr = Console(theme=self.JAC_THEME, stderr=True);
     }
 
-    """Override print to use Rich console."""
+    """Override print to use jacpretty console."""
     def print(self: JacSuperConsole, *args: Any, **kwargs: Any) -> None {
         # Extract style if provided, otherwise use default
         style = kwargs.pop('style', None);
@@ -53,18 +50,18 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override status to use Rich console status."""
+    """Override status to use jacpretty console status."""
     def status(self: JacSuperConsole, *args: Any, **kwargs: Any) -> object {
         return self._console.status(*args, **kwargs);
     }
 
-    """Override success to use Rich styling."""
+    """Override success to use jacpretty styling."""
     def success(self: JacSuperConsole, message: str, emoji: bool = True) -> None {
         prefix = '✔' if (emoji and self.use_emoji) else '[SUCCESS]';
         self._console.print(f"{prefix} {message}", style='success');
     }
 
-    """Override error to use Rich styling with stderr."""
+    """Override error to use jacpretty styling with stderr."""
     def error(
         self: JacSuperConsole,
         message: str,
@@ -79,19 +76,19 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override warning to use Rich styling."""
+    """Override warning to use jacpretty styling."""
     def warning(self: JacSuperConsole, message: str, emoji: bool = True) -> None {
         prefix = '⚠' if (emoji and self.use_emoji) else '[WARNING]';
         self._console.print(f"{prefix} {message}", style='warning');
     }
 
-    """Override info to use Rich styling."""
+    """Override info to use jacpretty styling."""
     def info(self: JacSuperConsole, message: str, emoji: bool = True) -> None {
         prefix = 'ℹ' if (emoji and self.use_emoji) else '[INFO]';
         self._console.print(f"{prefix} {message}", style='info');
     }
 
-    """Override print_header to use Rich styling."""
+    """Override print_header to use jacpretty styling."""
     def print_header(
         self: JacSuperConsole, title: str, version: (str | None) = None
     ) -> None {
@@ -102,7 +99,7 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override print_urls to use Rich URL styling."""
+    """Override print_urls to use jacpretty URL styling."""
     def print_urls(self: JacSuperConsole, urls: Any, symbol: str = '➜') -> None {
         items = urls.items() if isinstance(urls, dict) else urls;
         for (label, url) in items {
@@ -111,16 +108,16 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override print_next_steps to use Rich Panel."""
+    """Override print_next_steps to use jacpretty Panel."""
     def print_next_steps(
         self: JacSuperConsole, steps: list[str], title: str = 'Next Steps'
     ) -> None {
         content = '\n'.join(f"  {i}  {step}" for (i, step) in enumerate(steps, 1));
         panel = Panel(content, title=title, border_style='cyan', padding=(0, 1));
-        self._console.print(panel);
+        self._console.print(panel.render(self._console.width), markup=True);
     }
 
-    """Override print_list to use Rich styling."""
+    """Override print_list to use jacpretty styling."""
     def print_list(
         self: JacSuperConsole,
         items: list[str],
@@ -132,7 +129,7 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override print_table to use Rich Table."""
+    """Override print_table to use jacpretty Table."""
     def print_table(
         self: JacSuperConsole,
         headers: list[str],
@@ -146,10 +143,10 @@ class JacSuperConsole(BaseJacConsole) {
         for row in rows {
             table.add_row(*row);
         }
-        self._console.print(table);
+        self._console.print(table.render(self._console.width), markup=True);
     }
 
-    """Override spinner to use Rich status."""
+    """Override spinner to use jacpretty status."""
     @contextmanager
     def spinner(self: JacSuperConsole, text: str) -> object {
         with self._console.status(f"[cyan]{text}[/cyan]", spinner='dots') as status {
@@ -157,7 +154,7 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override print_elapsed_time to use Rich styling."""
+    """Override print_elapsed_time to use jacpretty styling."""
     def print_elapsed_time(self: JacSuperConsole, seconds: float) -> None {
         if (seconds < 1) {
             ms = seconds * 1000;
@@ -167,7 +164,7 @@ class JacSuperConsole(BaseJacConsole) {
         }
     }
 
-    """Override print_file_change to use Rich styling."""
+    """Override print_file_change to use jacpretty styling."""
     def print_file_change(
         self: JacSuperConsole, filepath: str, action: str = 'changed'
     ) -> None {
@@ -180,7 +177,7 @@ class JacSuperConsole(BaseJacConsole) {
         );
     }
 
-    """Override print_watching to use Rich styling."""
+    """Override print_watching to use jacpretty styling."""
     def print_watching(self: JacSuperConsole, pattern: str, count: int) -> None {
         watch_emoji = '👀' if self.use_emoji else '[WATCHING]';
         self._console.print(f"{watch_emoji} Watching for changes...", style='info');

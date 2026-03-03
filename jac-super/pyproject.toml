@@ -1,7 +1,7 @@
 [project]
 name = "jac-super"
-version = "0.1.5"
-description = "Enhanced console output for Jac CLI with Rich formatting"
+version = "0.1.6"
+description = "Enhanced console output for Jac CLI with jacpretty formatting"
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 license = "MIT"
@@ -11,13 +11,12 @@ keywords = [
     "jaclang",
     "jaseci",
     "console",
-    "rich",
+    "jacpretty",
     "cli",
 ]
 requires-python = ">=3.12"
 dependencies = [
     "jaclang>=0.11.3",
-    "rich>=13.0.0",
 ]
 
 [project.urls]
