@@ -800,7 +800,7 @@ test "inherit_method_lookup" {
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inherit_method_lookup.jac")
     );
-    TypeCheckPass(ir_in=mod, prog=program);
+    checker = TypeCheckPass(ir_in=mod, prog=program);
     user_errors = [
         e
         for e in program.errors_had
@@ -809,6 +809,10 @@ test "inherit_method_lookup" {
         and "/Lib/python" not in e.loc.mod_path
     ];
     assert len(user_errors) == 0;
+
+    bar_type = mod.sym_tab.lookup("Bar").decl.type;
+    member = checker.evaluator._lookup_class_member(bar_type, "compile");
+    assert member.class_type.shared.class_name == "Foo";
 }
 
 test "inherit_init_params" {

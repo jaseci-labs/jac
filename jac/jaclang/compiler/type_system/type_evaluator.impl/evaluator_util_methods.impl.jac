@@ -51,15 +51,14 @@ impl TypeEvaluator._lookup_object_member(
 impl TypeEvaluator._lookup_class_member(
     base_type: types.ClassType, member: str
 ) -> type_utils.ClassMember | None {
-    # FIXME: Pyright's way: Implement class member iterator (based on mro and the multiple inheritance)
-    # return the first found member from the iterator.
-
-    # NOTE: This is a simple implementation to make it work and more robust implementation will
-    # be done in a future PR.
-    for cls in base_type.shared.mro {
-        overloaded_syms: list[uni.Symbol] = [];
-        if sym := cls.lookup_member_symbol(member, overloaded_syms) {
-            return type_utils.ClassMember(sym, cls, overloaded_syms);
+    overloaded_syms: list[uni.Symbol] = [];
+    # lookup_member_symbol already handles MRO traversal internally.
+    if sym := base_type.lookup_member_symbol(member, overloaded_syms) {
+        # Walk up the AST from the decl node to find which class actually declared the symbol.
+        # e.g. class B(A): if 'foo' is declared in A, return ClassType(A) not ClassType(B).
+        if declaring_class := sym.decl.find_parent_of_type(uni.Archetype) {
+            declaring_class_type = self.get_type_of_class(declaring_class);
+            return type_utils.ClassMember(sym, declaring_class_type, overloaded_syms);
         }
     }
     return None;
