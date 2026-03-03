@@ -45,8 +45,8 @@ cl {
                 </h2>
                 <input
                     value={input}
-                    onChange={lambda e: any  -> None { input = e.target.value;}}
-                    onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                    onChange={lambda e: Any  -> None { input = e.target.value;}}
+                    onKeyPress={lambda e: Any  -> None { if e.key == "Enter" {
                         addTodo();
                     }}}
                 />

@@ -1,3 +1,4 @@
+access_mod_check.jac
 actions.jac
 advanced_language_features.jac
 app.jac
@@ -8,7 +9,6 @@ banners.jac
 bccache.jac
 bun_installer.impl.jac
 bun_installer.jac
-CategoryTabs.cl.jac
 cfg_build_pass.jac
 chandra_bugs.jac
 circle_pure_err.impl.jac
@@ -20,7 +20,6 @@ client_bundle.jac
 client.jac
 client_jsx.jac
 client_runtime.cl.jac
-client_runtime.impl.jac
 codeinfo.jac
 comment_injection_pass.impl.jac
 comment_injection_pass.jac
@@ -33,7 +32,6 @@ constant.jac
 context.impl.jac
 context.jac
 corelib_fmt.jac
-CreateUserModal.cl.jac
 custom_access_validation.jac
 data_spatial_types.jac
 decorator_stack.jac
@@ -48,7 +46,6 @@ diagnostics.impl.jac
 doc_ir_gen_pass.jac
 dockerhub.jac
 dynamic_archetype.jac
-EditUserModal.cl.jac
 elf_linker.impl.jac
 elf_linker.jac
 engine.jac
@@ -89,8 +86,6 @@ jac_auto_lint_pass.jac
 jac_formatter_pass.jac
 jaclib.jac
 jfast_api.jac
-jsx_lt_comparison_bug.cl.jac
-jsx_text_quotes_bug.cl.jac
 jsx_unterminated_hang.jac
 kubernetes_utils.impl.jac
 kubernetes_utils.jac
@@ -111,7 +106,6 @@ mtest.jac
 mtir_gen_pass.impl.jac
 mtir_gen_pass.jac
 mtp.jac
-multistatement_lambda_client.jac
 nacompile.impl.jac
 nacompile.jac
 na_compile_pass.jac

@@ -2,7 +2,7 @@
 
 cl {
     def:pub Select(
-        value: str, onChange: any, options: list, label: str = "", className: str = ""
+        value: str, onChange: Any, options: list, label: str = "", className: str = ""
     ) -> JsxElement {
         selectClass = "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded text-white text-sm focus:outline-none focus:border-orange-500 transition";
 
@@ -24,7 +24,7 @@ cl {
             </div>;
     }
 
-    def:pub SmallSelect(value: str, onChange: any, options: list) -> JsxElement {
+    def:pub SmallSelect(value: str, onChange: Any, options: list) -> JsxElement {
         return
             <select
                 value={value}

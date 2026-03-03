@@ -137,4 +137,124 @@ class KubernetesMongoProvider(DatabaseProvider) {
             ]
         };
     }
+
+    """Return mongo-express dashboard resource specs.
+
+    Returns deployment and service specs for the caller to apply via the K8s API.
+    Follows the same pattern as deploy(): pure spec construction, no API calls.
+    """
+    def deploy_dashboard(
+        self: KubernetesMongoProvider,
+        cluster_env: str,
+        node_port: int,
+        username: str = 'admin',
+        password: str = 'admin'
+    ) -> dict[str, Any] {
+        mongodb_service_name = f"{self.app_name}-mongodb-service";
+        express_name = f"{self.app_name}-mongo-express";
+
+        express_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': express_name,
+                'labels': {'app': express_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': express_name}},
+                'template': {
+                    'metadata': {'labels': {'app': express_name}},
+                    'spec': {
+                        'containers': [
+                            {
+                                'name': 'mongo-express',
+                                'image': 'mongo-express:1.0.2-20',
+                                'ports': [{'containerPort': 8081}],
+                                'env': [
+                                    {
+                                        'name': 'ME_CONFIG_MONGODB_SERVER',
+                                        'value': mongodb_service_name
+                                    },
+                                    {
+                                        'name': 'ME_CONFIG_MONGODB_PORT',
+                                        'value': '27017'
+                                    },
+                                    {
+                                        'name': 'ME_CONFIG_MONGODB_ADMINUSERNAME',
+                                        'value': 'admin'
+                                    },
+                                    {
+                                        'name': 'ME_CONFIG_MONGODB_ADMINPASSWORD',
+                                        'value': 'password'
+                                    },
+                                    {'name': 'ME_CONFIG_BASICAUTH', 'value': 'true'},
+                                    {
+                                        'name': 'ME_CONFIG_BASICAUTH_USERNAME',
+                                        'value': username
+                                    },
+                                    {
+                                        'name': 'ME_CONFIG_BASICAUTH_PASSWORD',
+                                        'value': password
+                                    }
+                                ],
+                                'resources': {
+                                    'requests': {'cpu': '100m', 'memory': '128Mi'},
+                                    'limits': {'cpu': '500m', 'memory': '256Mi'}
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        };
+
+        if cluster_env == 'aws' {
+            express_service = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': {
+                    'name': f"{express_name}-service",
+                    'labels': {'app': express_name, 'managed': 'jac-scale'},
+                    'annotations': {
+                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
+                    }
+                },
+                'spec': {
+                    'type': 'LoadBalancer',
+                    'selector': {'app': express_name},
+                    'ports': [{'protocol': 'TCP', 'port': 80, 'targetPort': 8081}]
+                }
+            };
+        } else {
+            express_service = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': {
+                    'name': f"{express_name}-service",
+                    'labels': {'app': express_name, 'managed': 'jac-scale'}
+                },
+                'spec': {
+                    'type': 'NodePort',
+                    'selector': {'app': express_name},
+                    'ports': [
+                        {
+                            'protocol': 'TCP',
+                            'port': 8081,
+                            'targetPort': 8081,
+                            'nodePort': node_port
+                        }
+                    ]
+                }
+            };
+        }
+
+        return {
+            'deployment': express_deployment,
+            'service': express_service,
+            'deployment_name': express_name,
+            'service_name': f"{express_name}-service"
+        };
+    }
 }
