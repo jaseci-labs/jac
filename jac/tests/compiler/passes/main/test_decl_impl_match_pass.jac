@@ -147,8 +147,7 @@ test "inner mod impl" {
 
 test "impl body symbol resolution" {
     state = (out := JacProgram()).compile(
-        os.path.join(FIXTURES, "impl_symbol_resolution.jac"),
-        type_check=True
+        os.path.join(FIXTURES, "impl_symbol_resolution.jac"), type_check=True
     );
     assert not out.errors_had , f"Compilation errors: {out.errors_had}";
 
