@@ -1991,9 +1991,7 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryE
         and isinstance(op, uni.Token)
         and isinstance(right, uni.Expr)
     ) {
-        # Flatten same-operator left-associative chains: e.g. (a+b)+c → a+b+c
-        # but ALWAYS return AtomUnit so that a parent with a different operator
-        # (e.g. //) will correctly see the whole group and preserve the parens.
+        # Flatten same-operator chains (e.g. (a+b)+c → a+b+c) but wrap in AtomUnit to preserve parens for mixed operators.
         unwrapped_left = left;
         if (
             isinstance(left, uni.AtomUnit)
