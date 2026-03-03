@@ -295,6 +295,7 @@ Walks the words of the definition string left to right with a manual index `i`
 (not a for-loop) so it can consume two words at once for `on <color>` pairs.
 
 **Priority order per word:**
+
 1. If the word is `on` and the next word is a valid color → background, advance by 2
 2. If the word (after alias resolution) is a style name → append style code, advance by 1
 3. Otherwise try it as a foreground color → extend with color codes, advance by 1
@@ -337,6 +338,7 @@ glob RE_MARKUP = re.compile('\\[(/)?([^\\[\\]]*)\\]');
 
 The compiled regex. It matches any `[...]` bracketed expression. The two capture
 groups are:
+
 - Group 1 `(/)?` — present (as `/`) only for closing tags `[/]`, `[/bold]`, etc.
 - Group 2 `([^\[\]]*)` — the tag content: everything inside the brackets except
   nested brackets
@@ -618,6 +620,7 @@ impl JacConsole._should_use_emoji -> bool {
 ```
 
 Emoji is disabled when:
+
 - `NO_EMOJI` env var is set (any value)
 - `TERM=dumb` (a terminal that supports no capabilities)
 - Running on Windows **without** Windows Terminal (`WT_SESSION` is set by Windows
@@ -635,6 +638,7 @@ impl JacConsole._should_use_color -> bool {
 ```
 
 Color is disabled when:
+
 - `NO_COLOR` env var is set — this is the [no-color.org](https://no-color.org)
   standard honored by most modern CLI tools
 - `TERM=dumb` — a terminal with no SGR support
@@ -691,6 +695,7 @@ impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
 ```
 
 `status` is meant to be used as a context manager:
+
 ```jac
 with console.status("Loading modules...") { ... }
 ```
@@ -721,11 +726,12 @@ Simulates a spinner with a simple before/after pattern:
    the cursor stays on the same line
 2. `sys.stdout.flush()` forces the partial line to appear immediately
 3. The `yield` hands control to the `with` block body
-4. When the body completes (or raises), `finally` prints ` done` in bold green on
+4. When the body completes (or raises), `finally` prints `done` in bold green on
    the **same line**, then adds the default newline
 
 Both `print` calls create separate `_PrettyConsole` instances, but both write to
 `sys.stdout`, so the output is contiguous. The result in the terminal is:
+
 ```
 Resolving types... done
 ```
@@ -774,6 +780,7 @@ The optional `hint` provides a secondary line for suggestions, printed in dim st
 to visually subordinate it to the main error.
 
 Output example:
+
 ```
 ✖ Error: Compilation failed: unexpected token ';'
 💡 Did you mean 'main.jac'?
@@ -824,6 +831,7 @@ impl JacConsole.print_header(title: str, version: str | None = None) -> None {
 `pc.rule()` (no args) draws a full-width dim horizontal line using the default `─`
 character. The title is bold bright white for maximum visibility. The version string
 is dim to not compete with the title. Output:
+
 ```
 ────────────────────────────────────────────────────────────────────────────────
 JacPretty Demo  v1.0.0
@@ -958,6 +966,7 @@ impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> Non
 ```
 
 Each action has its own semantic color:
+
 - `changed` → yellow (caution, something shifted)
 - `created` → green (positive, new file)
 - `deleted` → red (destructive action)
@@ -1099,10 +1108,12 @@ From the perspective of application code calling `console.error("Disk full")`:
 | `WT_SESSION` | Enables emoji on Windows (set by Windows Terminal) | `_should_use_emoji` |
 
 When color is disabled by `NO_COLOR`:
+
 - On TTY: `Console.print` skips markup rendering and strips tags
 - On non-TTY: tags are already stripped by the `elif markup` branch
 
 When emoji is disabled:
+
 - `success()` shows `[OK]` instead of `✔`
 - `error()` shows `[ERROR]` instead of `✖`
 - `warning()` shows `[WARNING]` instead of `⚠`
@@ -1157,34 +1168,43 @@ All markup is in the form `[style definition]text[/]`. The style definition is t
 same syntax as `Style(definition)`.
 
 ### Named colors (foreground)
+
 `[black]` `[red]` `[green]` `[yellow]` `[blue]` `[magenta]` `[cyan]` `[white]`
 `[bright_black]` `[bright_red]` `[bright_green]` `[bright_yellow]`
 `[bright_blue]` `[bright_magenta]` `[bright_cyan]` `[bright_white]`
 
 ### Background colors
-`[on red]` `[on bright_blue]` etc. — same names, prefixed with `on `
+
+`[on red]` `[on bright_blue]` etc. — same names, prefixed with `on`
 
 ### Styles
+
 `[bold]` `[dim]` `[italic]` `[underline]` `[blink]` `[reverse]` `[conceal]` `[strike]`
 
 ### Aliases
+
 `[b]` `[d]` `[i]` `[u]` `[r]` `[s]` `[c]`
 
 ### Combined
+
 `[bold red]` `[bold red on blue]` `[italic bright_yellow on bright_black]`
 
 ### Extended colors
+
 `[#ff6b6b]` — hex RGB foreground
 `[rgb(255,0,128)]` — RGB foreground
 `[color(196)]` — 256-palette foreground
 `[white on #6c5ce7]` — combining name foreground with hex background
 
 ### Closing
+
 `[/]` — closes the innermost open tag (tag name in closing tags is ignored)
 
 ### Nesting
+
 ```
 [bold]outer [red]inner[/] back to bold[/]
 ```
+
 Inside `[red]`: active stack is `['bold', 'red']`, rendered as `Style('bold red')`.
 After `[/]`: stack is `['bold']`, rendered as `Style('bold')`.
