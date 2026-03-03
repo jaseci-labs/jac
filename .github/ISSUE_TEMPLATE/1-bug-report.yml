@@ -19,7 +19,7 @@ body:
     attributes:
       value: "---"
 
-  - type: textarea
+  - type: input
     id: summary
     attributes:
       label: "Bug Summary"
@@ -36,61 +36,34 @@ body:
     attributes:
       value: "## Environment"
 
-  - type: input
+  - type: dropdown
     id: os
     attributes:
       label: "Operating System"
-      placeholder: "e.g. macOS Sequoia 15.2, Windows 11 64-bit, Ubuntu 22.04"
+      options:
+        - "macOS"
+        - "Windows"
+        - "Ubuntu"
+        - "Debian"
+        - "Fedora"
+        - "Other Linux"
+        - "Other"
     validations:
       required: true
 
   - type: input
-    id: jac-version
+    id: versions
     attributes:
-      label: "Jac Version"
-      placeholder: "Run `jac -V` — e.g. 0.11.0"
+      label: "Jac & Python Version"
+      placeholder: "Jac 0.11.0 | Python 3.12.2"
     validations:
       required: true
 
   - type: input
-    id: python-version
+    id: other-versions
     attributes:
-      label: "Python Version"
-      placeholder: "Run `python --version` — e.g. 3.12.2"
-    validations:
-      required: true
-
-  - type: markdown
-    attributes:
-      value: "---"
-
-  - type: markdown
-    attributes:
-      value: "**Other Jaseci Stack Versions** *(leave blank if not installed)*"
-
-  - type: input
-    id: byllm-version
-    attributes:
-      label: "jac-byllm Version"
-      placeholder: "e.g. 0.5.0"
-
-  - type: input
-    id: client-version
-    attributes:
-      label: "jac-client Version"
-      placeholder: "e.g. 0.2.19"
-
-  - type: input
-    id: scale-version
-    attributes:
-      label: "jac-scale Version"
-      placeholder: "e.g. 0.1.10"
-
-  - type: input
-    id: super-version
-    attributes:
-      label: "jac-super Version"
-      placeholder: "e.g. 0.1.4"
+      label: "Other Jaseci Stack Versions (leave blank if not installed)"
+      placeholder: "jac-scale = 0.1.10 | jac-byllm = 0.5.0 | jac-client = 0.2.19"
 
   - type: markdown
     attributes:
