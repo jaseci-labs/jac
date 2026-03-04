@@ -8,18 +8,16 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 # ===============================================================================
 # Internal jacpretty Console Factories
 # ===============================================================================
+
 def _stdout -> _PrettyConsole {
-    """Get stdout console for using methods like rule()."""
     return _PrettyConsole();
 }
 
 def _stderr -> _PrettyConsole {
-    """Get stderr console for error output."""
     return _PrettyConsole(file=sys.stderr);
 }
 
 def _print(*args: Any, **kwargs: Any) -> None {
-    """Print directly to stdout using jacpretty."""
     _PrettyConsole().print(*args, **kwargs);
 }
 
