@@ -1181,6 +1181,16 @@ test "vite config generation" {
             assert "/walker" in dev_config_content;  # Walker endpoint proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
+            assert "jacErrorReporter()" in dev_config_content;  # Client error reporter plugin
+            assert "jac:client-error" in dev_config_content;  # WebSocket event listener
+
+            # Dev index.html should wire up browser error forwarding
+            build_dir = Path(temp_dir) / ".jac" / "client";
+            bundler._ensure_dev_index_html(build_dir);
+            index_content = (build_dir / "index.html").read_text();
+            assert "jac:client-error" in index_content;  # Sends errors to Vite
+            assert 'window.addEventListener("error"' in index_content;  # Runtime errors
+            assert "unhandledrejection" in index_content;  # Promise rejections
 
             # Verify configs are different (dev vs build)
             assert build_config_content != dev_config_content;
