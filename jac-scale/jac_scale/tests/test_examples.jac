@@ -28,34 +28,26 @@ def get_free_port -> int {
     return port;
 }
 
-class JacScaleTestRunner {
+obj JacScaleTestRunner {
     """Helper class to run jac-scale examples and test their APIs."""
     has example_file: Path,
-        port: int = 0,
-        base_url: str = "",
-        session_file: Path = Path("."),
+        session_name: str = "test",
+        setup_npm: bool = True,
+        port: int by postinit,
+        base_url: str by postinit,
+        session_file: Path by postinit,
         server_process: subprocess.Popen | None = None,
         token: str | None = None,
-        root_id: str | None = None,
-        setup_npm: bool = True,
-        session_name: str = "test";
+        root_id: str | None = None;
 
-    def init(
-        self, example_file: Path, session_name: str = "test", setup_npm: bool = True
-    ) -> None {
-        self.example_file = example_file;
-        self.session_name = session_name;
-        self.setup_npm = setup_npm;
+    def postinit -> None {
         self.port = get_free_port();
         self.base_url = f"http://localhost:{self.port}";
-        self.session_file = example_file.parent / f"{session_name}_{self.port}.session";
-        self.server_process = None;
-        self.token = None;
-        self.root_id = None;
+        self.session_file = self.example_file.parent / f"{self.session_name}_{self.port}.session";
     }
 
     """Start the jac-scale server."""
-    def start_server(self, timeout: int = 30) -> None {
+    def start_server(timeout: int = 30) -> None {
         project_root_result = find_project_root(self.example_file.parent);
         if project_root_result {
             (example_dir, _) = project_root_result;
@@ -136,7 +128,7 @@ class JacScaleTestRunner {
     }
 
     """Stop the jac-scale server and clean up session files."""
-    def stop_server(self) -> None {
+    def stop_server -> None {
         if self.server_process {
             self.server_process.terminate();
             try {
@@ -189,7 +181,7 @@ class JacScaleTestRunner {
     }
 
     """Create a new user and store the token."""
-    def create_user(self, username: str, password: str) -> dict[str, Any] {
+    def create_user(username: str, password: str) -> dict[str, Any] {
         result = self.request(
             "POST", "/user/create", data={"username": username, "password": password}
         );
@@ -199,7 +191,7 @@ class JacScaleTestRunner {
     }
 
     """Login as an existing user and store the token."""
-    def login(self, username: str, password: str) -> dict[str, Any] {
+    def login(username: str, password: str) -> dict[str, Any] {
         result = self.request(
             "POST", "/user/login", data={"username": username, "password": password}
         );
@@ -210,7 +202,6 @@ class JacScaleTestRunner {
 
     """Make an HTTP request to the server."""
     def request(
-        self,
         method: str,
         path: str,
         data: dict[str, Any] | None = None,
@@ -277,7 +268,6 @@ class JacScaleTestRunner {
 
     """Make a raw HTTP request to the server."""
     def request_raw(
-        self,
         method: str,
         path: str,
         data: dict[str, Any] | None = None,
@@ -325,7 +315,7 @@ class JacScaleTestRunner {
     }
 
     """Spawn a walker with the given parameters."""
-    def spawn_walker(self, walker_name: str, **kwargs: object) -> dict[str, Any] {
+    def spawn_walker(walker_name: str, **kwargs: object) -> dict[str, Any] {
         return self.request(
             "POST", f"/walker/{walker_name}", data=kwargs, use_token=True
         );
@@ -333,7 +323,6 @@ class JacScaleTestRunner {
 
     """Upload a file to a walker endpoint using multipart/form-data."""
     def upload_file(
-        self,
         walker_name: str,
         file_field: str,
         filename: str,
@@ -388,7 +377,7 @@ class JacScaleTestRunner {
     }
 
     """Call a function with the given parameters."""
-    def call_function(self, function_name: str, **kwargs: object) -> dict[str, Any] {
+    def call_function(function_name: str, **kwargs: object) -> dict[str, Any] {
         query_params = "&".join(f"{k}={v}" for (k, v) in kwargs.items());
         path = f"/function/{function_name}";
         if query_params {
@@ -399,17 +388,14 @@ class JacScaleTestRunner {
     }
 
     """Context manager entry."""
-    def __enter__(self) -> JacScaleTestRunner {
+    def __enter__ -> JacScaleTestRunner {
         self.start_server();
         return self;
     }
 
     """Context manager exit."""
     def __exit__(
-        self,
-        exc_type: type | None,
-        exc_val: BaseException | None,
-        exc_tb: object | None
+        exc_type: type | None, exc_val: BaseException | None, exc_tb: object | None
     ) -> None {
         self.stop_server();
     }

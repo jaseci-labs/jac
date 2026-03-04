@@ -179,15 +179,17 @@ def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
 }
 
 """Tracks and displays progress during first-run compilation of internal modules."""
-class _SetupProgress {
-    def init(self: _SetupProgress) -> None {
-        self._banner_shown = False;
-        self._compile_count = 0;
-        self._seen_files: set[str] = `set();
-        self._jaclang_root: (str | None) = None;
+obj _SetupProgress {
+    has _banner_shown: bool = False,
+        _compile_count: int = 0,
+        _seen_files: set[str] by postinit,
+        _jaclang_root: (str | None) = None;
+
+    def postinit -> None {
+        self._seen_files = `set();
     }
 
-    def _get_jaclang_root(self: _SetupProgress) -> str {
+    def _get_jaclang_root -> str {
         if (self._jaclang_root is None) {
             self._jaclang_root = os.path.dirname(os.path.dirname(__file__));
         }
@@ -195,7 +197,7 @@ class _SetupProgress {
     }
 
     """Print the completion summary when the process exits."""
-    def _atexit_handler(self: _SetupProgress) -> None {
+    def _atexit_handler -> None {
         if (self._banner_shown and (self._compile_count > 0)) {
             sys.stderr.write(
                 f"Jac setup complete! ({self._compile_count} modules compiled and cached)\n"
@@ -205,7 +207,7 @@ class _SetupProgress {
     }
 
     """Called when an internal jaclang module needs compilation (cache miss)."""
-    def on_internal_compile(self: _SetupProgress, file_path: str) -> None {
+    def on_internal_compile(file_path: str) -> None {
         normalized = os.path.normpath(file_path);
         if (normalized in self._seen_files) {
             return;
@@ -231,7 +233,7 @@ class _SetupProgress {
 
     """Whether we're currently in a first-run setup."""
     @property
-    def is_active(self: _SetupProgress) -> bool {
+    def is_active -> bool {
         return self._banner_shown;
     }
 }
@@ -366,19 +368,16 @@ def _coerce_native_module(module: uni.Module) -> None {
     Maintains separate module hub for jaclang.* modules (internal_program)
     vs user modules (target_program passed to methods).
     """
-class JacCompiler {
+obj JacCompiler {
     with entry {
         _jaclang_root: (str | None) = None;
     }
 
-    """Initialize the compiler."""
-    def init(self: JacCompiler) -> None {
-        self._internal_program: (JacProgram | None) = None;
-    }
+    has _internal_program: (JacProgram | None) = None;
 
     """Module hub for jaclang.* modules (lazily initialized)."""
     @property
-    def internal_program(self: JacCompiler) -> JacProgram {
+    def internal_program -> JacProgram {
         if (self._internal_program is None) {
             import from jaclang.jac0core.program { JacProgram }
             self._internal_program = JacProgram();
@@ -396,9 +395,7 @@ class JacCompiler {
     }
 
     """Route jaclang.* files to internal_program, others to target_program."""
-    def _resolve_program(
-        self: JacCompiler, file_path: str, target_program: JacProgram
-    ) -> JacProgram {
+    def _resolve_program(file_path: str, target_program: JacProgram) -> JacProgram {
         normalized_path = os.path.normpath(file_path);
         jaclang_root = self._get_jaclang_root();
         if normalized_path.startswith((jaclang_root + os.sep)) {
@@ -416,16 +413,13 @@ class JacCompiler {
             (caller should not inject into module dict in this case).
         """
     def get_native_interop_setup(
-        self: JacCompiler, full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))] {
         actual_program = self._resolve_program(full_target, target_program);
         if (full_target in actual_program.mod.hub) {
             mod = actual_program.mod.hub[full_target];
-            native_engine = getattr(mod.gen, 'native_engine', None);
-            interop_py_funcs = getattr(mod.gen, 'interop_py_funcs', None);
-            if (interop_py_funcs is None) {
-                interop_py_funcs = {};
-            }
+            native_engine = mod.gen.native_engine;
+            interop_py_funcs = mod.gen.interop_py_funcs;
             return (native_engine, interop_py_funcs);
         }
         return (None, None);
@@ -439,7 +433,7 @@ class JacCompiler {
         Tier 3: full compile + atomic JIR write.
         """
     def get_bytecode(
-        self: JacCompiler, full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None) {
         actual_program = self._resolve_program(full_target, target_program);
 
@@ -512,7 +506,7 @@ class JacCompiler {
                         actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
                     );
                 }
-                llvm_ir = getattr(result.gen, 'llvm_ir', None);
+                llvm_ir = result.gen.llvm_ir;
                 if llvm_ir is not None {
                     sections[SEC_LLVM_IR] = zlib.compress(
                         str(llvm_ir).encode('utf-8'), 6
@@ -543,7 +537,6 @@ class JacCompiler {
         we skip the JacâASTâLLVM IR pipeline.
         """
     def _load_native_from_cache(
-        self: JacCompiler,
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
@@ -574,10 +567,8 @@ class JacCompiler {
             engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
             import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
             """Minimal stub to hold native compilation artifacts.""";
-            class _NativeModuleStub {
-                def init(self: _NativeModuleStub) -> None {
-                    self.gen = CodeGenTarget();
-                }
+            obj _NativeModuleStub {
+                has gen: CodeGenTarget = CodeGenTarget();
             }
             stub_mod = _NativeModuleStub();
             stub_mod.gen.native_engine = engine;
@@ -617,10 +608,7 @@ class JacCompiler {
 
     """Restore side-effects (MTIR, native) from decoded JIR sections."""
     def _restore_sections(
-        self: JacCompiler,
-        full_target: str,
-        actual_program: JacProgram,
-        secs: dict[int, bytes]
+        full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
     ) -> None {
         import pickle;
         mtir_bytes = secs.get(SEC_MTIR);
@@ -653,9 +641,7 @@ class JacCompiler {
     }
 
     """Walk up from a .jac file looking for a _precompiled/ JIR bundle."""
-    def _get_precompiled_jir_bytecode(
-        self: JacCompiler, full_target: str
-    ) -> (bytes | None) {
+    def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
         import hashlib;
         import json;
         from
@@ -731,8 +717,8 @@ class JacCompiler {
     }
 
     """Build a JSON-serializable interop dict from a compiled module."""
-    def _build_interop_dict(self: JacCompiler, result: uni.Module) -> dict {
-        manifest = getattr(result.gen, 'interop_manifest', None);
+    def _build_interop_dict(result: uni.Module) -> dict {
+        manifest = result.gen.interop_manifest;
         if manifest is None {
             return {};
         }
@@ -752,7 +738,6 @@ class JacCompiler {
 
     """Parse source string into AST module."""
     def parse_str(
-        self: JacCompiler,
         source_str: str,
         file_path: str,
         target_program: JacProgram,
@@ -806,7 +791,6 @@ class JacCompiler {
             options: CompileOptions controlling compilation behavior.
         """
     def compile(
-        self: JacCompiler,
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
@@ -859,7 +843,6 @@ class JacCompiler {
 
     """Build a Jac file with import dependency resolution."""
     def build(
-        self: JacCompiler,
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
@@ -874,7 +857,6 @@ class JacCompiler {
 
     """Run a list of passes on a module."""
     def run_schedule(
-        self: JacCompiler,
         mod: uni.Module,
         target_program: JacProgram,
         passes: list[type[Transform[uni.Module, uni.Module]]],

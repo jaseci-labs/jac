@@ -184,7 +184,7 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
             return None;
         }
         data = cache_path.read_bytes();
-        reader = JirReader(source_path=resolved_path);
+        reader = JirReader(_source_path=resolved_path);
         mod = reader.read_module(data);
         return mod;
     } except Exception {

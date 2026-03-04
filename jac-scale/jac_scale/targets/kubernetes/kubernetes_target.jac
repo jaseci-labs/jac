@@ -37,28 +37,19 @@ import from kubernetes { client, config as k8s_cluster_config }
 import from kubernetes.client.exceptions { ApiException }
 
 """Kubernetes deployment target implementation."""
-class KubernetesTarget(DeploymentTarget) {
-    has k8s_config: KubernetesConfig,
+obj KubernetesTarget(DeploymentTarget) {
+    has config: KubernetesConfig,
+        logger: (Logger | None) = None,
+        k8s_config: KubernetesConfig by postinit,
+        env_list: list = [],
         secrets: dict[str, str] = {};
 
-    def init(
-        self: KubernetesTarget,
-        config: KubernetesConfig,
-        logger: (Logger | None) = None
-    ) -> None {
-        self.config = config;
-        self.k8s_config = config;
-        self.env_list = [];
-        self.secrets = {};
-        if logger {
-            self.logger = logger;
-        }
+    def postinit {
+        self.k8s_config = self.config;
     }
 
     """Get init containers from all enabled database providers."""
-    def _get_database_init_containers(
-        self: KubernetesTarget, app_name: str
-    ) -> list[dict[(str, Any)]] {
+    def _get_database_init_containers(app_name: str) -> list[dict[(str, Any)]] {
         init_containers = [];
         wait_image = self.k8s_config.wait_image;
 
@@ -86,7 +77,7 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Build resource requests and limits configuration."""
-    def _build_resource_config(self: KubernetesTarget) -> dict[(str, Any)] {
+    def _build_resource_config -> dict[(str, Any)] {
         resource_requests: dict[(str, str)] = {};
         if self.k8s_config.cpu_request {
             resource_requests['cpu'] = self.k8s_config.cpu_request;
@@ -115,9 +106,7 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Build readiness and liveness probe configurations."""
-    def _build_probe_config(
-        self: KubernetesTarget, health_check_path: str
-    ) -> dict[(str, Any)] {
+    def _build_probe_config(health_check_path: str) -> dict[(str, Any)] {
         probe_config = {
             'httpGet': {
                 'path': health_check_path,
@@ -138,7 +127,7 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Build Kubernetes service configuration."""
     def _build_service_config(
-        self: KubernetesTarget, app_name: str, cluster_env: str, health_check_path: str
+        app_name: str, cluster_env: str, health_check_path: str
     ) -> dict[(str, Any)] {
         service_type = 'LoadBalancer' if cluster_env == 'aws' else 'NodePort';
         service_port = 80 if cluster_env == 'aws' else self.k8s_config.container_port;
@@ -160,6 +149,7 @@ class KubernetesTarget(DeploymentTarget) {
         if cluster_env == 'aws' {
             service_metadata['annotations'] = {
                 'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing',
                 'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
             };
         }
@@ -179,9 +169,7 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Build the bash command for setting up Jaseci runtime environment."""
-    def _build_runtime_setup_command(
-        self: KubernetesTarget, app_config: AppConfig
-    ) -> list[str] {
+    def _build_runtime_setup_command(app_config: AppConfig) -> list[str] {
         config = self.k8s_config;
         commands = [];
 
@@ -263,7 +251,6 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Build container configuration."""
     def _build_container_config(
-        self: KubernetesTarget,
         app_name: str,
         image: str,
         probe_configs: dict[(str, Any)],
@@ -303,7 +290,6 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        self: KubernetesTarget,
         app_name: str,
         app_config: AppConfig,
         namespace: str,
@@ -348,11 +334,7 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
     def _deploy_code_server(
-        self: KubernetesTarget,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
     ) -> None {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
@@ -455,12 +437,7 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Deploy all enabled databases and their optional dashboards."""
     def _deploy_databases(
-        self: KubernetesTarget,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        cluster_env: str
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
     ) -> None {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
@@ -548,6 +525,7 @@ class KubernetesTarget(DeploymentTarget) {
         if self.k8s_config.redis_enabled {
             redis_name = f"{app_name}-redis";
             redis_service_name = f"{redis_name}-service";
+            redis_config_name = f"{redis_name}-config";
             redis_provider = DatabaseProviderFactory.create(
                 'kubernetes_redis', self, {'app_name': app_name}
             );
@@ -555,19 +533,113 @@ class KubernetesTarget(DeploymentTarget) {
             self.env_list.append(
                 {'name': 'REDIS_URL', 'value': redis_result['connection_string']}
             );
+            config_updated = False;
             try {
-                apps_v1.read_namespaced_deployment(
-                    name=redis_name, namespace=namespace
+                existing_cm = core_v1.read_namespaced_config_map(
+                    name=redis_config_name, namespace=namespace
                 );
+                existing_content = existing_cm.data.get('redis.conf', '');
+                new_content = redis_result['configmap']['data']['redis.conf'];
+
+                if existing_content != new_content {
+                    if self.logger {
+                        self.logger.info(
+                            f"Redis configuration changed (hash: {redis_result[
+                                'config_hash'
+                            ]}). "
+                            "Updating ConfigMap..."
+                        );
+                    }
+                    core_v1.replace_namespaced_config_map(
+                        name=redis_config_name,
+                        namespace=namespace,
+                        body=redis_result['configmap']
+                    );
+                    config_updated = True;
+                    if self.logger {
+                        self.logger.info("Redis ConfigMap updated successfully");
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.debug(
+                            "Redis configuration unchanged, skipping ConfigMap update"
+                        );
+                    }
+                }
             } except ApiException as e {
                 if (e.status == 404) {
-                    apps_v1.create_namespaced_deployment(
-                        namespace=namespace, body=redis_result['deployment']
+                    if self.logger {
+                        self.logger.info("Creating new Redis ConfigMap");
+                    }
+                    core_v1.create_namespaced_config_map(
+                        namespace=namespace, body=redis_result['configmap']
                     );
+                    if self.logger {
+                        self.logger.info("Redis ConfigMap created successfully");
+                    }
                 } else {
+                    if self.logger {
+                        self.logger.error(f"Failed to manage Redis ConfigMap: {e}");
+                    }
                     raise ;
                 }
             }
+            # Deploy Deployment (or update if config changed)
+            try {
+                existing_deploy = apps_v1.read_namespaced_deployment(
+                    name=redis_name, namespace=namespace
+                );
+
+                # Check if deployment needs update (config hash changed)
+                existing_hash = existing_deploy.spec.template.metadata.annotations.get(
+                    'redis-config-hash', ''
+                );
+                new_hash = redis_result['config_hash'];
+
+                if existing_hash != new_hash or config_updated {
+                    if self.logger {
+                        self.logger.info(
+                            f"Redis deployment needs update. "
+                            f"Old hash: {existing_hash}, New hash: {new_hash}"
+                        );
+                    }
+                    # Update deployment to trigger pod restart with new config
+                    apps_v1.replace_namespaced_deployment(
+                        name=redis_name,
+                        namespace=namespace,
+                        body=redis_result['deployment']
+                    );
+                    if self.logger {
+                        self.logger.info(
+                            "Redis deployment updated. Pods will restart with new configuration."
+                        );
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.debug(
+                            "Redis deployment unchanged, skipping update"
+                        );
+                    }
+                }
+            } except ApiException as e {
+                if (e.status == 404) {
+                    if self.logger {
+                        self.logger.info("Creating new Redis deployment");
+                    }
+                    apps_v1.create_namespaced_deployment(
+                        namespace=namespace, body=redis_result['deployment']
+                    );
+                    if self.logger {
+                        self.logger.info("Redis deployment created successfully");
+                    }
+                } else {
+                    if self.logger {
+                        self.logger.error(f"Failed to manage Redis deployment: {e}");
+                    }
+                    raise ;
+                }
+            }
+            # Deploy Service
             try {
                 core_v1.read_namespaced_service(
                     name=redis_service_name, namespace=namespace
@@ -662,11 +734,7 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Wait for deployment to be ready and check status."""
     def _wait_for_deployment(
-        self: KubernetesTarget,
-        app_name: str,
-        namespace: str,
-        health_check_path: str,
-        cluster_env: str
+        app_name: str, namespace: str, health_check_path: str, cluster_env: str
     ) -> str {
         path = health_check_path;
         deployment_details = "";
@@ -725,9 +793,7 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Handle image registry if build is requested."""
-    def _handle_image_registry(
-        self: KubernetesTarget, app_name: str, app_config: AppConfig
-    ) -> str {
+    def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
         image_name = self.k8s_config.docker_image_name or f"{app_name}:latest";
         repository_name: str;
         if app_config.build and self.image_registry {
@@ -755,7 +821,7 @@ class KubernetesTarget(DeploymentTarget) {
         return repository_name;
     }
 
-    def deploy(self: KubernetesTarget, app_config: AppConfig) -> DeploymentResult {
+    def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
         namespace = os.getenv('K8s_NAMESPACE') or self.k8s_config.namespace;
@@ -997,7 +1063,6 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Wait for resources to be completely deleted."""
     def _wait_for_deletion(
-        self: KubernetesTarget,
         app_name: str,
         namespace: str,
         apps_v1: Any,
@@ -1197,11 +1262,7 @@ class KubernetesTarget(DeploymentTarget) {
 
     """Destroy all enabled databases and their dashboards."""
     def _destroy_databases(
-        self: KubernetesTarget,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
     ) -> None {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
@@ -1274,7 +1335,7 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def destroy(self: KubernetesTarget, app_name: str) -> None {
+    def destroy(app_name: str) -> None {
         if self.logger {
             self.logger.info(f"Destroying application '{app_name}' from Kubernetes");
         }
@@ -1409,7 +1470,7 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def get_status(self: KubernetesTarget, app_name: str) -> ResourceStatusInfo {
+    def get_status(app_name: str) -> ResourceStatusInfo {
         try {
             try {
                 k8s_cluster_config.load_kube_config();
@@ -1446,7 +1507,7 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def scale(self: KubernetesTarget, app_name: str, replicas: int) -> None {
+    def scale(app_name: str, replicas: int) -> None {
         if self.logger {
             self.logger.info(
                 f"Scaling application '{app_name}' to {replicas} replicas"
@@ -1484,7 +1545,7 @@ class KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def get_service_url(self: KubernetesTarget, app_name: str) -> (str | None) {
+    def get_service_url(app_name: str) -> (str | None) {
         try {
             try {
                 k8s_cluster_config.load_kube_config();
@@ -1529,7 +1590,7 @@ class KubernetesTarget(DeploymentTarget) {
       3. list_namespaced_pod  (to detect crash-looping pods)
       4. read_namespaced_service  (app URL)
     """
-    def get_full_status(self: KubernetesTarget, app_name: str) -> dict {
+    def get_full_status(app_name: str) -> dict {
         try {
             try {
                 k8s_cluster_config.load_kube_config();

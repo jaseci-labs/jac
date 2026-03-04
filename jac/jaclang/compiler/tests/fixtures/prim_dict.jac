@@ -127,6 +127,7 @@ def dict_py() -> dict {
         "ior_b": d_ior["b"],
         "ior_c": d_ior["c"],
         # popitem
+        "items_len": len(items),
         "pi_key": pi_key,
         "pi_val": pi_val,
         "pi_after_len": pi_after_len
@@ -294,6 +295,10 @@ na {
         ior_b: int = d_ior["b"];
         ior_c: int = d_ior["c"];
 
+        # items
+        di_items: dict[str, int] = {"a": 1, "b": 2, "c": 3};
+        items_len: int = len(di_items.items());
+
         # popitem (single-key dict for deterministic result)
         dp: dict[str, int] = {"pi_only": 77};
         pi = dp.popitem();
@@ -336,6 +341,7 @@ na {
             "ior_len": ior_len,
             "ior_b": ior_b,
             "ior_c": ior_c,
+            "items_len": items_len,
             "pi_val": pi_val,
             "pi_after_len": pi_after_len
         };

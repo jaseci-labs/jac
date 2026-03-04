@@ -931,7 +931,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     # Check for server function call from client context - transform to __jacCallFunction
     if (nd.in_client_context() and isinstance(nd.target, uni.Name)) {
         # Symbol may not be linked yet, so look it up directly from the symbol table
-        target_sym = getattr(nd.target, 'sym', None);
+        target_sym = nd.target.sym;
         if not target_sym and nd.target.sym_tab {
             target_sym = nd.target.sym_tab.lookup(nd.target.sym_name, deep=True);
         }
@@ -1327,7 +1327,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
 
 """Determine whether a name node corresponds to the first definition in its scope."""
 impl EsastGenPass._is_name_first_definition(name_node: uni.Name) -> bool {
-    sym = getattr(name_node, 'sym', None);
+    sym = name_node.sym;
     if (sym and (name_node.name_spec in sym.defn)) {
         return (sym.defn.index(name_node.name_spec) == 0);
     }
@@ -3260,7 +3260,7 @@ Return an existing ESTree node or synthesize a fallback.
 impl EsastGenPass._get_ast_or_default(
     nd: (uni.UniNode | None), default_factory: Callable[([(uni.UniNode | None)], _T)]
 ) -> _T {
-    if (nd and getattr(nd.gen, 'es_ast', None)) {
+    if (nd and nd.gen.es_ast) {
         generated = nd.gen.es_ast;
         if isinstance(generated, es.Node) {
             return cast(_T, generated);
@@ -3283,7 +3283,7 @@ impl EsastGenPass._collect_stmt_body(
         if isinstance(stmt, uni.Semi) {
             continue;
         }
-        generated = getattr(stmt.gen, 'es_ast', None);
+        generated = stmt.gen.es_ast;
         if isinstance(generated, list) {
             statements.extend(
                 item

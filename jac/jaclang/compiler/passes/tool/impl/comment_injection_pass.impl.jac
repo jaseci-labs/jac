@@ -842,7 +842,7 @@ impl CommentInjectionPass._doc_line_span(
     tokens = [
         t
         for t in self._get_tokens(nd)
-        if getattr(t, 'loc', None) and t.loc.first_line > 0
+        if t.loc and t.loc.first_line > 0
     ];
     if not tokens {
         return (None, None);
