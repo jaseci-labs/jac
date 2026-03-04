@@ -1827,13 +1827,13 @@ class JacAPIServer {
                 if e.errno in (98, 10048) or "Address already in use" in str(e) {
                     current_port += 1;
                 } else {
-                    raise;
+                    raise ;
                 }
             }
         }
         raise OSError(
             f"Could not find an available port after trying {port}-{current_port}"
-        );
+        ) ;
     }
 
     """Render HTML page for client function."""

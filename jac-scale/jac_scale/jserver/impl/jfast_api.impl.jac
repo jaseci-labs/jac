@@ -70,7 +70,10 @@ class ConsoleLogHandler(logging.Handler) {
 If the specified port is in use, tries subsequent ports up to max_retries times.
 """
 impl JFastApiServer.run_server(
-    self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000, max_retries: int = 10
+    self: JFastApiServer,
+    host: str = '0.0.0.0',
+    port: int = 8000,
+    max_retries: int = 10
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
@@ -125,22 +128,23 @@ impl JFastApiServer.run_server(
         } except SystemExit as e {
             # uvicorn raises SystemExit when port is in use
             # errno 98 = EADDRINUSE (Linux), errno 10048 = WSAEADDRINUSE (Windows)
-            if "Address already in use" in str(e) or "address already in use" in str(e) {
+            if "Address already in use" in str(e)
+            or "address already in use" in str(e) {
                 current_port += 1;
             } else {
-                raise;
+                raise ;
             }
         } except OSError as e {
             if e.errno in (98, 10048) or "Address already in use" in str(e) {
                 current_port += 1;
             } else {
-                raise;
+                raise ;
             }
         }
     }
     raise OSError(
         f"Could not find an available port after trying {port}-{current_port}"
-    );
+    ) ;
 }
 
 """Get the underlying FastAPI application instance."""

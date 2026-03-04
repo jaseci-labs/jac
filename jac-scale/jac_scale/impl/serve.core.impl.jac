@@ -16,16 +16,16 @@ impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) 
             return current_port;
         } except OSError as e {
             if e.errno in (ERRNO_ADDR_IN_USE_LINUX, ERRNO_ADDR_IN_USE_WINDOWS)
-               or "Address already in use" in str(e) {
+            or "Address already in use" in str(e) {
                 current_port += 1;
             } else {
-                raise;
+                raise ;
             }
         }
     }
     raise OSError(
         f"Could not find an available port after trying {start_port}-{current_port}"
-    );
+    ) ;
 }
 
 """Get local network IP addresses (non-localhost)."""
@@ -43,7 +43,7 @@ impl _get_network_ips -> list[str] {
             }
         }
     } except Exception {
-        # Silently ignore network interface errors
+    # Silently ignore network interface errors
     }
     return ips;
 }

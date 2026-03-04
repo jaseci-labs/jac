@@ -46,7 +46,6 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__),
-     # Port binding constants
      PORT_RETRY_LIMIT: int = 10,
      ERRNO_ADDR_IN_USE_LINUX: int = 98,
      ERRNO_ADDR_IN_USE_WINDOWS: int = 10048;
@@ -185,3 +184,4 @@ class UpdatePasswordRequest(BaseModel) {
         current_password: str = Field(..., description='Current password'),
         new_password: str = Field(..., description='New password');
 }
+

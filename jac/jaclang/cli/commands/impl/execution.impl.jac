@@ -415,8 +415,16 @@ impl start(
         server.start(
             dev=dev,
             no_client=no_client,
-            on_ready=lambda actual_port:
-                _print_startup_message(dev, no_client, vite_port if (dev and not no_client) else actual_port, actual_port, base)
+            on_ready=lambda actual_port :
+                _print_startup_message(
+                    dev,
+                    no_client,
+                    vite_port
+                        if (dev and not no_client)
+                        else actual_port,
+                    actual_port,
+                    base
+                )
         );
         return 0;
     } except KeyboardInterrupt {

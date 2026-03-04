@@ -1809,7 +1809,6 @@ test "port fallback - finds next available port when port in use" {
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
         s.bind(('0.0.0.0', blocked_port));
         s.listen(1);
-
         # Request the blocked port - should get next available
         result = _find_available_port(blocked_port);
         assert result > blocked_port , f"Expected port > {blocked_port}, got {result}";
@@ -1920,7 +1919,9 @@ test "server startup - port fallback integration" {
 
     try {
         # Start first server
-        sp1 = _start_server(sv_fixtures_dir, sv_test_file, port1, f"http://localhost:{port1}");
+        sp1 = _start_server(
+            sv_fixtures_dir, sv_test_file, port1, f"http://localhost:{port1}"
+        );
 
         # Verify first server is running
         response = requests.get(f"http://localhost:{port1}/docs", timeout=5);
@@ -1928,13 +1929,7 @@ test "server startup - port fallback integration" {
 
         # Try to start second server on same port - should fallback to next port
         jac_executable = Path(sys.executable).parent / "jac";
-        cmd = [
-            str(jac_executable),
-            "start",
-            sv_test_file.name,
-            "--port",
-            str(port1)
-        ];
+        cmd = [str(jac_executable), "start", sv_test_file.name, "--port", str(port1)];
 
         sp2 = subprocess.Popen(
             cmd,
@@ -1970,7 +1965,7 @@ test "server startup - port fallback integration" {
                         break;
                     }
                 } except Exception {
-                    # Connection not ready yet
+                # Connection not ready yet
                 }
             }
             if actual_port > port1 {
@@ -1980,7 +1975,6 @@ test "server startup - port fallback integration" {
 
         # Verify the fallback happened
         assert actual_port > port1 , f"Second server should use port > {port1}, got {actual_port}";
-
     } finally {
         if sp2 {
             sp2.terminate();
