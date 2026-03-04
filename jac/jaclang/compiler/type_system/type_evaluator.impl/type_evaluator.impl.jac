@@ -1120,6 +1120,15 @@ impl TypeEvaluator._assign_class(
             if type_utils.class_implements_protocol(src_type, dest_type) {
                 return True;
             }
+            # For synthetic types like LiteralString that share symbol_table with
+            # their base class, also check if any MRO class implements the protocol.
+            for mro_cls in src_type.shared.mro {
+                if mro_cls.shared != src_type.shared {
+                    if type_utils.class_implements_protocol(mro_cls, dest_type) {
+                        return True;
+                    }
+                }
+            }
             # TODO: The dest_class can have other base classes as well, do this
             # Recursively.
             break;
@@ -1268,20 +1277,34 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
 
-        # Case 3: Literal["x"] == Literal["x"] (same value)
+        # Case 3: Literal["x"] -> Literal["y"] (same base type)
+        # Allow any literal to be assigned to another literal of the same base type.
+        # This effectively widens both to the base type (e.g., str).
         if src_type.is_literal_type() and dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
-                # Same base type, check literal values
-                return src_type.get_literal_value() == dest_type.get_literal_value();
+                return True;
             }
         }
 
-        # Case 4: LiteralString -> str (existing rule)
+        # Case 3b: str -> Literal["x"] (base type to literal)
+        # Allow base type to be assigned to a literal variable.
+        # This handles cases like: part = ""; part = part + ":" where
+        # the result type (str) needs to be assigned back to a Literal variable.
+        if not src_type.is_literal_type() and dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;
+            }
+        }
+
+        # Case 4: LiteralString -> any type that str is assignable to
+        # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
         if self.prefetch.literal_string_class and self.prefetch.str_class {
             if isinstance(self.prefetch.str_class, types.ClassType)
             and isinstance(self.prefetch.literal_string_class, types.ClassType) {
-                if dest_type.shared == self.prefetch.str_class.shared {
-                    if src_type.shared == self.prefetch.literal_string_class.shared {
+                if src_type.shared == self.prefetch.literal_string_class.shared {
+                    # Delegate to str for assignability check
+                    str_instance = self._convert_to_instance(self.prefetch.str_class);
+                    if self.assign_type(str_instance, dest_type) {
                         return True;
                     }
                 }
