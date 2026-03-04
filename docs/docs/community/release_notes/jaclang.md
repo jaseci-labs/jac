@@ -38,6 +38,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
 - 1 small refactors/changes.
+- **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
 ## jaclang 0.11.3 (Latest Release)
 
