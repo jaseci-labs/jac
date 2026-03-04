@@ -6,7 +6,7 @@ cl {
     glob ALERT_DISMISS_MS = 3000;
     glob:pub AlertContext = createContext(None);
 
-    def:pub AlertProvider(children: any) -> JsxElement {
+    def:pub AlertProvider(children: Any) -> JsxElement {
         has message: str = "",
             alertType: str = "success";
 

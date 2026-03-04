@@ -1035,14 +1035,64 @@ with entry {
 
 ## Database Configuration
 
-### Environment Variables
+### Configuration via `jac.toml`
+
+Database and Kubernetes deployment settings are configured in your project's `jac.toml` file.
+
+```toml
+# jac.toml
+
+[plugins.scale.kubernetes]
+redis_dashboard  = true   # Deploy RedisInsight UI (default: false)
+mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
+```
+
+#### Connection URIs
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection URI | None |
-| `REDIS_URL` | Redis connection URL | None |
-| `K8s_MONGODB` | Enable MongoDB deployment | `false` |
-| `K8s_REDIS` | Enable Redis deployment | `false` |
+| `MONGODB_URI` | MongoDB connection URI (env override) | None |
+| `REDIS_URL` | Redis connection URL (env override) | None |
+
+#### Kubernetes Deployment Flags
+
+By default, jac-scale automatically deploys both MongoDB and Redis when running in Kubernetes mode. Dashboards are **off by default** and must be explicitly enabled.
+
+| `jac.toml` key | Description | Default |
+|----------------|-------------|---------|
+| `mongodb_enabled` | Deploy MongoDB in-cluster | `true` |
+| `redis_enabled` | Deploy Redis in-cluster | `true` |
+| `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
+| `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
+
+#### Dashboard Credentials and Ports
+
+When dashboards are enabled, you can configure their access credentials and node ports:
+
+| `jac.toml` key | Description | Default |
+|----------------|-------------|---------|
+| `redis_insight_node_port` | NodePort for RedisInsight UI | `30032` |
+| `redis_insight_username` | RedisInsight login username | `admin` |
+| `redis_insight_password` | RedisInsight login password | `admin` |
+| `mongo_express_node_port` | NodePort for Mongo Express UI | `30033` |
+| `mongo_express_username` | Mongo Express login username | `admin` |
+| `mongo_express_password` | Mongo Express login password | `admin` |
+
+**Enable dashboards with custom credentials** (RedisInsight + Mongo Express):
+
+```toml
+# jac.toml
+[plugins.scale.kubernetes]
+redis_dashboard          = true
+redis_insight_node_port  = 30032
+redis_insight_username   = "admin"
+redis_insight_password   = "strongpassword"
+
+mongodb_dashboard        = true
+mongo_express_node_port  = 30033
+mongo_express_username   = "admin"
+mongo_express_password   = "strongpassword"
+```
 
 ### Memory Hierarchy
 
@@ -1071,7 +1121,7 @@ Control how much memory Kubernetes allows for your application container.
 
 | Parameter | TOML Key | Default | Description |
 |-----------|----------|---------|-------------|
-| `K8s_MEMORY_LIMIT` | `memory_limit` | `12Gi` | Maximum memory the container may use before being OOM-killed |
+| `K8s_MEMORY_LIMIT` | `memory_limit` | None | Maximum memory the container may use before being OOM-killed |
 
 Override the default in your `jac.toml`:
 

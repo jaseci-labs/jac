@@ -149,10 +149,16 @@ def _print_deployment_status(status_data: dict) -> None {
         console.print("  [bold]Service URLs[/bold]");
         console.print(f"  [dim]{'─' * 48}[/dim]");
         if 'app' in urls {
-            console.print(f"  [bold]Application:[/bold]  {urls['app']}");
+            console.print(f"  [bold]Application:[/bold]   {urls['app']}");
         }
         if 'grafana' in urls {
-            console.print(f"  [bold]Grafana:[/bold]      {urls['grafana']}");
+            console.print(f"  [bold]Grafana:[/bold]       {urls['grafana']}");
+        }
+        if 'redis_insight' in urls {
+            console.print(f"  [bold]RedisInsight:[/bold]  {urls['redis_insight']}");
+        }
+        if 'mongo_express' in urls {
+            console.print(f"  [bold]Mongo Express:[/bold] {urls['mongo_express']}");
         }
         console.print();
     }
