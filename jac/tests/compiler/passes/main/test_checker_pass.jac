@@ -1579,6 +1579,21 @@ test "unbound_method_call" {
     );
 }
 
+"""Test that passing args to a parameterless init produces errors."""
+test "parameterless_init_with_args" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_parameterless_init.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 2;
+    assert_error_pretty_found(
+        """Named argument 'name' does not match any parameter""",
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """Too many positional arguments""", program.errors_had[1].pretty_print()
+    );
+}
+
 """Test bare `type` parameter accepts classes but rejects instances."""
 test "type_param_assignment" {
     program = JacProgram();

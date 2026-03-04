@@ -32,10 +32,17 @@ obj RunConfig {
         autonative: bool = False;
 }
 
+"""Native compilation settings from [build.native] section."""
+obj NativeBuildConfig {
+    has opt_level: int = 2,  # LLVM optimization level (0-3)
+        dump_ir: str = "";  # Path to dump optimized IR (empty = disabled)
+}
+
 """Build command defaults and artifact directories from [build] section."""
 obj BuildConfig {
     has typecheck: bool = False,
-        dir: str = ".jac";  # Base directory for all build artifacts
+        dir: str = ".jac",  # Base directory for all build artifacts
+        native: NativeBuildConfig = NativeBuildConfig();
 }
 
 """Test command defaults from [test] section."""

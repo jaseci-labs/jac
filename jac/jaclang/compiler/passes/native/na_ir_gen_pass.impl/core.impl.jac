@@ -4,6 +4,16 @@ impl NaIRGenPass.init(
     ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
 ) -> None {
     self.llvm_module = ir.Module(name="jac_native", context=ir.Context());
+    # Set data layout to match native target so optimizer and MCJIT agree
+    # on struct sizes. Without this, the optimizer uses default layout
+    # (4-byte i64 alignment, sizeof({i8,i64})=12) while MCJIT uses native
+    # x86-64 layout (8-byte alignment, sizeof=16), causing buffer overflows.
+    import llvmlite.binding as _llvm_bind;
+    _llvm_bind.initialize_native_target();
+    _target = _llvm_bind.Target.from_default_triple();
+    _tm = _target.create_target_machine();
+    self.llvm_module.data_layout = str(_tm.target_data);
+    self.llvm_module.triple = _tm.triple;
     self.builder: (ir.IRBuilder | None) = None;
     self.func_symtab: dict[(str, ir.Function)] = {};
     self.local_vars: dict[(str, ir.AllocaInstr)] = {};
@@ -75,6 +85,7 @@ impl NaIRGenPass.init(
     self.vtable_layouts: dict[(str, list[str])] = {};
     self.vtable_method_indices: dict[(str, dict)] = {};
     self.vtable_globals: dict[(str, ir.GlobalVariable)] = {};
+    self._non_overridden_methods: dict[str, set[str]] = {};  # class → methods never overridden by children
     # Tuple support (Phase 9)
     self.tuple_types: dict[(str, object)] = {};  # type_key → LiteralStructType
     self.var_tuple_type: dict[(str, str)] = {};  # var_name → tuple_key

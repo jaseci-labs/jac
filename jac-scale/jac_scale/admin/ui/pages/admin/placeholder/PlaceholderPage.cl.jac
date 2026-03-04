@@ -88,17 +88,6 @@ cl {
             />;
     }
 
-    def:pub MetricsPage -> JsxElement {
-        return
-            <PlaceholderCard
-                title="Metrics"
-                message="Real-time metrics from /metrics endpoint coming soon"
-                action={<Button variant="secondary">
-                    Refresh
-                </Button>}
-            />;
-    }
-
     def:pub LogsPage -> JsxElement {
         return
             <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;

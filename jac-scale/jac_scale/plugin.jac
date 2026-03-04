@@ -257,9 +257,8 @@ class JacCmd {
                 target_config = scale_config.get_kubernetes_config();  # Default for now
             }
 
-            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
-            namespace = os.getenv('K8s_NAMESPACE')
-            or target_config.get('namespace', 'default');
+            app_name = target_config.get('app_name', 'jaseci');
+            namespace = target_config.get('namespace', 'default');
 
             # Warn user and require confirmation before proceeding
             console.print(
@@ -330,7 +329,7 @@ class JacCmd {
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
-            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
+            app_name = target_config.get('app_name', 'jaseci');
 
             # Get and display status
             status_data = deployment_target.get_full_status(app_name);

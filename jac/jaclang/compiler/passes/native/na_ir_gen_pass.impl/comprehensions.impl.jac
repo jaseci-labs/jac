@@ -104,10 +104,12 @@ impl NaIRGenPass._codegen_compr_loops(
             helpers = self.list_helpers.get(elem_type_name);
             if helpers is not None {
                 # Bitcast pointer types to i8* for ptr lists
+                val = self._box_value_tuple(val);
                 if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                     i8p = ir.IntType(8).as_pointer();
                     val = self.builder.bitcast(val, i8p, name="compr.cast");
                 }
+                val = self._coerce_type(val, helpers["elem_type"]);
                 self.builder.call(helpers["append"], [list_val, val]);
             }
         }
@@ -344,16 +346,10 @@ impl NaIRGenPass._codegen_dict_compr_loops(
                 # Coerce to match helper's expected types
                 expected_key_type = helpers["key_type"];
                 expected_val_type = helpers["val_type"];
-                if key_val.type != expected_key_type {
-                    key_val = self.builder.bitcast(
-                        key_val, expected_key_type, name="dcompr.kcast"
-                    );
-                }
-                if value_val.type != expected_val_type {
-                    value_val = self.builder.bitcast(
-                        value_val, expected_val_type, name="dcompr.vcast"
-                    );
-                }
+                key_val = self._box_value_tuple(key_val);
+                key_val = self._coerce_type(key_val, expected_key_type);
+                value_val = self._box_value_tuple(value_val);
+                value_val = self._coerce_type(value_val, expected_val_type);
                 self.builder.call(helpers["set"], [dict_val, key_val, value_val]);
             }
         }

@@ -200,13 +200,6 @@ test "deploy all in one" {
     cluster_role_name = f"{namespace}-{ksm_name}";
 
     test_secret_value = "test-secret-value-12345";
-    os.environ.update(
-        {
-            "APP_NAME": app_name,
-            "K8s_NAMESPACE": namespace,
-            "TEST_SECRET_KEY": test_secret_value
-        }
-    );
 
     test_dir = os.path.dirname(os.path.abspath(__file__));
     todo_app_path = os.path.join(
@@ -238,7 +231,7 @@ test "deploy all in one" {
         "kubernetes", target_config, logger
     );
 
-    deployment_target.secrets = app_scale_config.get_secrets_config();
+    deployment_target.secrets = {"TEST_SECRET_KEY": test_secret_value};
 
     app_config = AppConfig(
         code_folder=todo_app_path, file_name="main.jac", build=False, experimental=True
@@ -585,10 +578,6 @@ test "deploy all in one" {
     duplicate_namespace = "all-in-one-duplicate";
     duplicate_app_name = duplicate_namespace;
 
-    os.environ.update(
-        {"APP_NAME": duplicate_app_name, "K8s_NAMESPACE": duplicate_namespace}
-    );
-
     duplicate_target_config = app_scale_config.get_kubernetes_config();
     duplicate_target_config["app_name"] = duplicate_app_name;
     duplicate_target_config["namespace"] = duplicate_namespace;
@@ -606,7 +595,6 @@ test "deploy all in one" {
     duplicate_target = DeploymentTargetFactory.create(
         "kubernetes", duplicate_target_config, logger
     );
-    duplicate_target.secrets = app_scale_config.get_secrets_config();
 
     conflict_result = duplicate_target.deploy(app_config);
     assert conflict_result.success is False , (
@@ -616,9 +604,6 @@ test "deploy all in one" {
         f"Expected NodePort conflict error, got: {conflict_result.message}"
     );
     print(f"Port conflict correctly detected: {conflict_result.message}");
-
-    # Restore env vars to point back at the original namespace for cleanup
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
 
     # Cleanup using new architecture
     deployment_target.destroy(app_name);
@@ -900,8 +885,6 @@ test "early exit" {
     namespace = "early-exit";
     app_name = namespace;
 
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
-
     test_dir = os.path.dirname(os.path.abspath(__file__));
     todo_app_path = os.path.join(test_dir, "../../examples/early-exit");
 
@@ -938,8 +921,6 @@ test "deployment target methods" {
 
     namespace = "test-methods";
     app_name = "test-methods-app";
-
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
 
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
