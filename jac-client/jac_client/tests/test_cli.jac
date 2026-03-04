@@ -1182,7 +1182,7 @@ test "vite config generation" {
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
             assert "jacErrorReporter()" in dev_config_content;  # Client error reporter plugin
-            assert "jac:cliet-error" in dev_config_content;  # WebSocket event listener
+            assert "jac:client-error" in dev_config_content;  # WebSocket event listener
 
             # Dev index.html should wire up browser error forwarding
             build_dir = Path(temp_dir) / ".jac" / "client";
