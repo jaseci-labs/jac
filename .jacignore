@@ -229,3 +229,4 @@ prim_builtin_sort.jac
 vite_client_bundle.impl.jac
 test_variant_modules.jac
 async_compr.jac
+checker_getattr_support.jac

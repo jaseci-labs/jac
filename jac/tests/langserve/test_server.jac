@@ -630,6 +630,29 @@ test "test_hover_types" {
             assert hover is not None , f"Compr hover should exist at line {line}, col {col}";
             assert expected in hover.contents.value , f"Compr line {line}: expected '{expected}', got: {hover.contents.value}";
         }
+
+        # __getattr__ dynamic attributes: hover should show "(dynamic attribute) name: type"
+        getattr_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_getattr_support.jac")
+        );
+        lsp.type_check_file(getattr_file);
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(23, 16));
+        assert hover is not None , "__getattr__ hover should exist for p.foo";
+        assert "dynamic attribute" in hover.contents.value , f"p.foo: expected 'dynamic attribute', got: {hover.contents.value}";
+        assert "str" in hover.contents.value , f"p.foo: expected 'str' type, got: {hover.contents.value}";
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(31, 16));
+        assert hover is not None , "Hover should exist for m.real_attr";
+        assert "dynamic attribute" not in hover.contents.value , f"m.real_attr: should NOT be 'dynamic attribute', got: {hover.contents.value}";
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(32, 16));
+        assert hover is not None , "__getattr__ hover should exist for m.dynamic_attr";
+        assert "dynamic attribute" in hover.contents.value , f"m.dynamic_attr: expected 'dynamic attribute', got: {hover.contents.value}";
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(39, 18));
+        assert hover is not None , "Hover should exist for ng.real_attr";
+        assert "dynamic attribute" not in hover.contents.value , f"ng.real_attr: should NOT be 'dynamic attribute', got: {hover.contents.value}";
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(42, 7));
+        if hover is not None {
+            assert "dynamic attribute" not in hover.contents.value , f"ng.nonexistent: should NOT be 'dynamic attribute', got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }

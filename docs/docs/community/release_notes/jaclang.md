@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
+- **Fix: Type Checker Support for `__getattr__`**: Classes defining `__getattr__` no longer produce false "has no attribute" errors. Dynamic attribute access now correctly resolves to the `__getattr__` return type, and `Any` is callable (enabling proxy patterns like `console.error("msg")`). IDE hover shows dynamic attributes as `(dynamic attribute) name: type`.
 - 15 small refactors/changes.
 - **HMR Terminal Output Cleanup**: Styled HMR logs with `console.success/error/warning` and stripped absolute paths from compile errors.
 - **Fix: Implicit `run` Not Detecting Flags Before Filename**: `jac --autonative file.jac` failed to insert the implicit `run` subcommand because the detection only checked if the first argument was a `.jac` file. Now scans all arguments for a `.jac`/`.py` file, so flags like `--autonative` and `--no-cache` before the filename are correctly passed through to `jac run`.
@@ -28,6 +29,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Replace Vendored LSP Stack with Custom `jaclang/lsp/` Package**: Removed ~32,700 lines of vendored Python code (pygls, lsprotocol, cattrs, attrs) and replaced them with a lightweight ~1,400-line Jac-native `jaclang/lsp/` package providing LSP 3.17.0 types, JSON-RPC transport, UTF-16 position encoding, and workspace/document management.
 - **Fix: IDE Hover Types for Comprehension Variables**: Iteration variables in comprehensions (`p` in `[x for p in pool]`, `any(... for p in pool)`) now display their inferred type on hover.
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
+- **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
 
 ## jaclang 0.11.3 (Latest Release)
 

@@ -1178,7 +1178,10 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=True,
-             fields=(FieldDesc(name="is_enum_stmt", kind=2), )
+             fields=(
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="is_getattr_resolved", kind=2)
+             )
          ),
          NodeSpec(
              type_idx=105,
