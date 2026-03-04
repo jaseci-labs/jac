@@ -490,6 +490,7 @@ impl TypeEvaluator._get_special_form_type(
     }
 
     # Check if symbol_type is _SpecialForm (same shared as our prefetched callable_class)
+    # This handles types from typing.pyi and typing_extensions.pyi (now properly resolved)
     is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
@@ -497,11 +498,7 @@ impl TypeEvaluator._get_special_form_type(
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
-    # Also handle known types that may come from unresolved imports (e.g., typing_extensions)
-    # When LiteralString is imported from typing_extensions but not resolved, symbol_type is Unknown
-    is_unresolved_known_type = isinstance(symbol_type, types.UnknownType);
-
-    if not (is_special_form or is_unresolved_known_type) {
+    if not is_special_form {
         return None;
     }
 
@@ -586,4 +583,25 @@ impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
         }
     }
     return True;
+}
+
+"""Create a synthetic special builtin type with a base class.
+
+Similar to Pyright's createSpecialBuiltInClass which creates types like
+LiteralString as a ClassType with str as base class.
+"""
+impl TypeEvaluator._create_special_builtin_type(
+    name: str, base_class: types.ClassType
+) -> types.ClassType {
+    shared = types.ClassType.ClassDetailsShared(
+        class_name=name,
+        symbol_table=base_class.shared.symbol_table,
+        base_classes=[base_class],
+        mro=[],
+        is_builtin_class=True
+    );
+    special_type = types.ClassType(shared=shared);
+    # Compute MRO: [SpecialType, BaseClass, ...]
+    special_type.shared.mro = [special_type] + base_class.shared.mro;
+    return special_type;
 }

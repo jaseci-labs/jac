@@ -1539,11 +1539,16 @@ impl TypeEvaluator._prefetch_types{
     if isinstance(self.prefetch.callable_class, types.ClassType) {
         self.prefetch.callable_class.private.alias_name = "Callable";
     }
+    # Create LiteralString as a special type with str as base class (like Pyright)
+    if isinstance(self.prefetch.str_class, types.ClassType) {
+        self.prefetch.literal_string_class = self._create_special_builtin_type(
+            "LiteralString", self.prefetch.str_class
+        );
+    }
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;
     self.prefetch.final_class = get_jac_builtin_type("Final");
-    self.prefetch.literal_string_class = get_jac_builtin_type("LiteralString");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");

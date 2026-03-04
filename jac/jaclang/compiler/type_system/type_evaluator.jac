@@ -226,6 +226,10 @@ obj TypeEvaluator {
         class_type: types.ClassType
     ) -> types.FunctionType;
 
+    def _create_special_builtin_type(
+        name: str, base_class: types.ClassType
+    ) -> types.ClassType;
+
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType

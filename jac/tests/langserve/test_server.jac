@@ -661,12 +661,11 @@ test "test_hover_types" {
         lsp.type_check_file(overload_file);
         overload_cases = [
             (4, 6, ["list"]),  # parts: list[str]
-            (5, 6, ["Literal"]),  # first: Literal
-            (6, 6, ["Literal"]),  # result: Literal
+            (5, 6, ["str"]),   # first: str (from list[str][0])
+            (6, 6, ["str"]),   # result: str (str + str)
             (8, 6, ["list"]),  # parts2: list[str]
-            (9, 6, ["Literal"]),  # first3: Literal
-            (10, 6, ["Literal"]),  # result3: Literal
-
+            (9, 6, ["str"]),   # first3: str
+            (10, 6, ["str"]),  # result3: str
         ];
         for (line, col, expected_list) in overload_cases {
             hover = lsp.get_hover_info(overload_file, lspt.Position(line - 1, col - 1));
