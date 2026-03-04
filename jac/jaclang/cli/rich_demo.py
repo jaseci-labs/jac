@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Comprehensive Rich Mini Demo - All Features in One File."""
 
-from jacpretty import Console, Style, print, get_console, render_markup
+from jacpretty import Console, Style, get_console, print, render_markup
 
 console = Console()
 
@@ -10,7 +10,9 @@ console = Console()
 # ═══════════════════════════════════════════════════════════════════════════════
 console.rule("Text Styles", style="bold cyan")
 
-print("[bold]Bold[/] [dim]Dim[/] [italic]Italic[/] [underline]Underline[/] [strike]Strike[/] [reverse]Reverse[/] [blink]Blink[/]")
+print(
+    "[bold]Bold[/] [dim]Dim[/] [italic]Italic[/] [underline]Underline[/] [strike]Strike[/] [reverse]Reverse[/] [blink]Blink[/]"
+)
 print("[b]B[/] [d]D[/] [i]I[/] [u]U[/] [s]S[/] [r]R[/] [c]Conceal[/]  ← shortcuts")
 print("[bold italic underline]Combined styles[/]")
 
@@ -19,8 +21,12 @@ print("[bold italic underline]Combined styles[/]")
 # ═══════════════════════════════════════════════════════════════════════════════
 console.rule("Named Colors", style="bold cyan")
 
-print("[black]■[/][red]■[/][green]■[/][yellow]■[/][blue]■[/][magenta]■[/][cyan]■[/][white]■[/] base")
-print("[bright_black]■[/][bright_red]■[/][bright_green]■[/][bright_yellow]■[/][bright_blue]■[/][bright_magenta]■[/][bright_cyan]■[/][bright_white]■[/] bright")
+print(
+    "[black]■[/][red]■[/][green]■[/][yellow]■[/][blue]■[/][magenta]■[/][cyan]■[/][white]■[/] base"
+)
+print(
+    "[bright_black]■[/][bright_red]■[/][bright_green]■[/][bright_yellow]■[/][bright_blue]■[/][bright_magenta]■[/][bright_cyan]■[/][bright_white]■[/] bright"
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ADVANCED COLORS (Hex, RGB, 256)
@@ -29,7 +35,9 @@ console.rule("Advanced Colors", style="bold cyan")
 
 print("[#ff5500]Hex #ff5500[/]  [#00ff88]#00ff88[/]  [#9933ff]#9933ff[/]")
 print("[rgb(255,85,0)]RGB(255,85,0)[/]  [rgb(0,255,136)]RGB(0,255,136)[/]")
-print("[color(196)]color(196)[/]  [color(46)]color(46)[/]  [color(201)]color(201)[/]  ← 256 palette")
+print(
+    "[color(196)]color(196)[/]  [color(46)]color(46)[/]  [color(201)]color(201)[/]  ← 256 palette"
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BACKGROUND COLORS
@@ -59,21 +67,21 @@ print("Escaped: \\[not markup\\] vs [red]actual markup[/]")
 # ═══════════════════════════════════════════════════════════════════════════════
 console.rule("Console.print() Options", style="bold cyan")
 
-console.print("one", "two", "three", sep=" | ")          # Custom separator
-console.print("No newline →", end="")                     # No newline
+console.print("one", "two", "three", sep=" | ")  # Custom separator
+console.print("No newline →", end="")  # No newline
 console.print(" ← same line")
 console.print("Base style applied", style="bold green")  # Base style
-console.print("[not parsed]", markup=False)              # Disable markup
+console.print("[not parsed]", markup=False)  # Disable markup
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSOLE.RULE() VARIANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 console.rule("Rule Variants", style="bold cyan")
 
-console.rule()                                # Default
-console.rule("Titled")                        # With title
-console.rule("Custom Char", char="═")         # Custom character
-console.rule("Styled", style="bold red")      # Styled rule
+console.rule()  # Default
+console.rule("Titled")  # With title
+console.rule("Custom Char", char="═")  # Custom character
+console.rule("Styled", style="bold red")  # Styled rule
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSOLE.LOG() - Timestamped
