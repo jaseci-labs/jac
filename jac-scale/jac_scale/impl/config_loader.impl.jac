@@ -302,12 +302,9 @@ impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
     admin_config = config.get('admin', {});
     return {
         'enabled': admin_config.get('enabled', True),
-        'username': os.environ.get('ADMIN_USERNAME')
-        or admin_config.get('username', 'admin'),
-        'email': os.environ.get('ADMIN_EMAIL')
-        or admin_config.get('email', 'admin@localhost'),
-        'default_password': os.environ.get('ADMIN_DEFAULT_PASSWORD')
-        or admin_config.get('default_password', 'changeme'),
+        'username': admin_config.get('username', 'admin'),
+        'email': admin_config.get('email', 'admin@localhost'),
+        'default_password': admin_config.get('default_password', 'changeme'),
         'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
         'require_password_reset': admin_config.get('require_password_reset', True)
     };

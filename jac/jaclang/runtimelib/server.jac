@@ -246,7 +246,7 @@ obj JacAPIServer {
     def start(
         dev: bool = False,
         no_client: bool = False,
-        on_ready: Callable[[], None] | None = None
+        on_ready: Callable[[int], None] | None = None
     ) -> None;
 }
 

@@ -1,5 +1,4 @@
 """Kubernetes deployment target implementation."""
-import os;
 import from typing { Any }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
@@ -11,6 +10,7 @@ import from jac_scale.abstractions.models.resource_status {
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+    COMPANION_DEFS,
     check_deployment_status,
     check_node_ports_available,
     cluster_type,
@@ -824,7 +824,7 @@ obj KubernetesTarget(DeploymentTarget) {
     def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
-        namespace = os.getenv('K8s_NAMESPACE') or self.k8s_config.namespace;
+        namespace = self.k8s_config.namespace;
         success_status = False;
         details = {};
 
@@ -1648,28 +1648,11 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception { }
 
-        # Resolve status for each component from the cached maps
+        # Resolve status for each component from the cached maps.
+        # Derived from COMPANION_DEFS — add new companions there, not here.
         component_defs = [
-            {'k8s_name': app_name, 'display': 'Jaseci App', 'is_sts': False},
-            {'k8s_name': f"{app_name}-redis", 'display': 'Redis', 'is_sts': False},
-            {'k8s_name': f"{app_name}-mongodb", 'display': 'MongoDB', 'is_sts': True},
-            {
-                'k8s_name': f"{app_name}-prometheus",
-                'display': 'Prometheus',
-                'is_sts': False
-            },
-            {'k8s_name': f"{app_name}-grafana", 'display': 'Grafana', 'is_sts': False},
-            {
-                'k8s_name': f"{app_name}-redis-insight",
-                'display': 'RedisInsight',
-                'is_sts': False
-            },
-            {
-                'k8s_name': f"{app_name}-mongo-express",
-                'display': 'Mongo Express',
-                'is_sts': False
-            },
-
+            {'k8s_name': app_name + d[0], 'display': d[1], 'is_sts': d[2]}
+            for d in COMPANION_DEFS
         ];
 
         grafana_running = False;

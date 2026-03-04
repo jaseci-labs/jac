@@ -89,37 +89,40 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         and caller_type.is_instantiable_class()
     ) {
         validated = False;
+        # NamedTuple: use synthesized __new__ with field parameters (not inherited tuple.__new__)
+        if caller_type.is_namedtuple() {
+            self._validate_constructor_method(
+                expr, self._create_namedtuple_new_method(caller_type)
+            );
+            return caller_type.clone_as_instance();
+        }
         if new_method := self._lookup_class_member(caller_type, "__new__") {
             is_from_object = new_method.class_type.shared.class_name == "object";
-            method_ty = self.get_type_of_symbol(new_method.symbol);
-            overloaded_fns: list[types.FunctionType] = [method_ty];
-            for overload in new_method.overloads {
-                overload_member_ty = self.get_type_of_symbol(overload);
-
-                if isinstance(overload_member_ty, types.FunctionType) {
-                    overload_member_ty = overload_member_ty.specialize(caller_type);
-                    overloaded_fns.append(overload_member_ty);
-                }
-            }
-            overloaded_ty: types.OverloadedType | None = None;
-            if len(overloaded_fns) > 1 {
-                overloaded_ty = types.OverloadedType(overloads=overloaded_fns);
-            }
             if not is_from_object {
                 validated = self._validate_constructor_method(
-                    expr, overloaded_ty or method_ty
+                    expr, self._get_method_with_overloads(new_method, caller_type)
                 );
             }
         }
         # Fall back to init if __new__ didn't have meaningful params
         if not validated {
             init_method = self._lookup_class_member(caller_type, "init");
-            if init_method {
-                validated = self._validate_constructor_method(
-                    expr, self.get_type_of_symbol(init_method.symbol)
-                );
-            }
-            if not validated and caller_type.is_data_class() {
+            is_from_object = init_method
+            and init_method.class_type.shared.class_name == "object";
+            # User-defined init: validate args against explicit init.
+            if init_method and not is_from_object {
+                # Get init type including overloads, then validate call args.
+                method_ty = self._get_method_with_overloads(init_method, caller_type);
+                validated = self._validate_constructor_method(expr, method_ty);
+                if not validated and expr.params {
+                    # Validate args for init without matching overload to emit arity errors.
+                    init_sym_type = self.get_type_of_symbol(init_method.symbol);
+                    if isinstance(init_sym_type, types.FunctionType) {
+                        self.match_args_to_params(expr.params, expr, init_sym_type);
+                    }
+                }
+            } elif caller_type.is_data_class() {
+                # Validate args for dataclass init auto-generated from has-vars.
                 self._validate_constructor_method(
                     expr, self._create_dataclass_init_method(caller_type)
                 );
@@ -269,4 +272,32 @@ impl TypeEvaluator._validate_constructor_method(
         return True;
     }
     return False;
+}
+
+"""
+Extract and build the complete method type including all overloads.
+
+Combines the base method with all its overload signatures, specializing each
+with the caller's class type. Returns an OverloadedType when multiple signatures
+exist, otherwise returns the base FunctionType.
+"""
+impl TypeEvaluator._get_method_with_overloads(
+    method_member: Any, caller_type: types.ClassType
+) -> TypeBase {
+    # Start with the base method as the first (and possibly only) signature.
+    method_ty = self.get_type_of_symbol(method_member.symbol);
+    overloaded_fns: list[types.FunctionType] = [method_ty];
+    for overload in method_member.overloads {
+        overload_member_ty = self.get_type_of_symbol(overload);
+        if isinstance(overload_member_ty, types.FunctionType) {
+            # Replace generic T with actual type, e.g. T -> int for Foo[int].
+            overload_member_ty = overload_member_ty.specialize(caller_type);
+            overloaded_fns.append(overload_member_ty);
+        }
+    }
+    # Multiple signatures: return all so the caller picks the right one.
+    if len(overloaded_fns) > 1 {
+        return types.OverloadedType(overloads=overloaded_fns);
+    }
+    return method_ty;
 }

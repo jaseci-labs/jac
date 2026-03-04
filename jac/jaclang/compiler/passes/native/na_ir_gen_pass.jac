@@ -166,6 +166,7 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
+    def _box_value_tuple(val: ir.Value) -> ir.Value;
     # Phase 10: Comprehensions
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
     def _codegen_compr_loops(

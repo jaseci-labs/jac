@@ -92,6 +92,12 @@ curl -X POST http://localhost:8000/walker/add_task \
 jac start app.jac --port 3000
 ```
 
+If the specified port is already in use, the server automatically finds and uses the next available port:
+
+```
+Port 3000 is in use, using port 3001 instead
+```
+
 ### Development Mode (HMR)
 
 Hot Module Replacement for development:

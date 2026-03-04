@@ -14,6 +14,8 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.cli.console { console }
+import from jaclang.jac0core.bccache { discover_base_file, discover_annex_files }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
@@ -65,15 +67,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def _clear_alerts_for_file(file_path: str) -> None;
     def get_ir(file_path: str) -> Optional[uni.Module];
     def update_modules(file_path: str, build: uni.Module, need: bool = True) -> None;
-    def type_check_file(
-        file_uri: str,
-        cancel_token: Event | None = None,
-        annex_view: Optional[str] = None,
-        # This parameter will be passed recursively
-        # and dont need to pass when the function itself is called
-        # outside.
-    ) -> bool;
-
+    def type_check_file(file_uri: str, cancel_token: Event | None = None) -> bool;
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
     def get_token_at_position(

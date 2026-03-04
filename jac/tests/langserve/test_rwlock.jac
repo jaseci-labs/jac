@@ -57,9 +57,9 @@ def create_server(workspace_path: str | None = None) -> JacLangServer {
     return lsp;
 }
 
-test "rwlock concurrent readers and exclusive writer" {
-    """Verify multiple readers run concurrently, writers get exclusive access,
+"""Verify multiple readers run concurrently, writers get exclusive access,
     and writer priority prevents reader starvation of writers."""
+test "rwlock concurrent readers and exclusive writer" {
     setup_test();
     try {
         lock = ReadWriteLock();
@@ -177,9 +177,9 @@ test "rwlock concurrent readers and exclusive writer" {
     }
 }
 
-test "concurrent queries during type checking" {
-    """Verify that read operations (hover, outline, semantic tokens) can proceed
+"""Verify that read operations (hover, outline, semantic tokens) can proceed
     concurrently without deadlock while type checking updates the hub."""
+test "concurrent queries during type checking" {
     setup_test();
     try {
         lsp = create_server();
@@ -272,8 +272,8 @@ test "concurrent queries during type checking" {
     }
 }
 
+"""Verify shutdown completes without deadlock when the dispatcher is busy."""
 test "shutdown under active dispatch" {
-    """Verify shutdown completes without deadlock when the dispatcher is busy."""
     setup_test();
     try {
         lsp = create_server();
