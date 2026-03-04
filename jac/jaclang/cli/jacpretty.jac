@@ -83,38 +83,37 @@ def get_console -> Console;
 
 def print(*objects: Any, **kwargs: Any) -> None;
 
-class Style {
-    with entry {
-        __slots__ = ["_def", "_codes"];
-    }
+obj Style {
+    has _def: str;
+    has _codes: Optional[str] = None;
 
-    def init(self: Style, definition: str = "") -> object {
+    def init(definition: str = "") -> object {
         (self._def, self._codes) = (definition, None);
     }
 
-    def __repr__(self: Style) -> object {
+    def __repr__() -> object {
         return f"Style({self._def!r})";
     }
 
-    def __bool__(self: Style) -> object {
+    def __bool__() -> object {
         return bool(self._def);
     }
 
-    def __add__(self: Style, other: "Style") -> "Style" {
+    def __add__(other: "Style") -> "Style" {
         return Style(f"{self._def} {other._def}")
             if (self and other)
             else (self or other);
     }
 
     @property
-    def codes(self: Style) -> str {
+    def codes() -> str {
         if (self._codes is None) {
             self._codes = self._parse();
         }
         return self._codes;
     }
 
-    def _parse(self: Style) -> str {
+    def _parse() -> str {
         if not self._def {
             return "";
         }
@@ -143,7 +142,7 @@ class Style {
         return ";".join(codes);
     }
 
-    def render(self: Style, text: str) -> str {
+    def render(text: str) -> str {
         return f"\x1b[{self.codes}m{text}\x1b[0m" if self.codes else text;
     }
 
@@ -153,9 +152,13 @@ class Style {
     }
 }
 
-class Console {
+obj Console {
+    has _file: Any;
+    has _width: Optional[int];
+    has _force_terminal: Optional[bool];
+    has _no_color: bool;
+
     def init(
-        self: Console,
         *,
         file: Any = None,
         width: Optional[int] = None,
@@ -171,7 +174,7 @@ class Console {
     }
 
     @property
-    def width(self: Console) -> int {
+    def width() -> int {
         if self._width {
             return self._width;
         }
@@ -183,7 +186,7 @@ class Console {
     }
 
     @property
-    def is_terminal(self: Console) -> bool {
+    def is_terminal() -> bool {
         if (self._force_terminal is not None) {
             return self._force_terminal;
         }
@@ -195,7 +198,6 @@ class Console {
     }
 
     def print(
-        self: Console,
         *objects: Any,
         sep: str = " ",
         end: str = "\n",
@@ -219,7 +221,7 @@ class Console {
     }
 
     def rule(
-        self: Console, title: str = "", char: str = "─", style: str = "dim"
+        title: str = "", char: str = "─", style: str = "dim"
     ) -> None {
         w = self.width;
         line = (char * ((w - len(title) - 2) // 2)) + f" {title} " + (
@@ -230,7 +232,7 @@ class Console {
         self.print(f"[{style}]{line}[/]" if style else line);
     }
 
-    def log(self: Console, *objects: Any, **kwargs: Any) -> None {
+    def log(*objects: Any, **kwargs: Any) -> None {
         import from datetime { datetime }
         self.print(
             f"[dim][{datetime.now().strftime('%H:%M:%S')}][/]", *objects, **kwargs
