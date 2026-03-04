@@ -9,12 +9,19 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 # Internal jacpretty Console Factories
 # ===============================================================================
 
-def _get_pretty_stdout -> _PrettyConsole {
+def _stdout -> _PrettyConsole {
+    """Get stdout console for using methods like rule()."""
     return _PrettyConsole();
 }
 
-def _get_pretty_stderr -> _PrettyConsole {
+def _stderr -> _PrettyConsole {
+    """Get stderr console for error output."""
     return _PrettyConsole(file=sys.stderr);
+}
+
+def _print(*args: Any, **kwargs: Any) -> None {
+    """Print directly to stdout using jacpretty."""
+    _PrettyConsole().print(*args, **kwargs);
 }
 
 # ===============================================================================
@@ -69,7 +76,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
     # Remove unsupported kwargs
     kwargs.pop('highlight', None);
     # Forward to jacpretty console
-    _get_pretty_stdout().print(
+    _print(
         *args,
         sep=kwargs.pop('sep', ' '),
         end=kwargs.pop('end', '\n'),
@@ -85,7 +92,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
 """Context manager for status during long operations (basic implementation)."""
 impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
     if args {
-        _get_pretty_stdout().print(
+        _print(
             f"[dim]{args[0] if isinstance(args[0], str) else str(args[0])}[/]"
         );
     }
@@ -99,7 +106,7 @@ impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
 """Print a success message with a green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
-    _get_pretty_stdout().print(f"[bold green]{prefix}[/] {message}");
+    _print(f"[bold green]{prefix}[/] {message}");
 }
 
 """Print an error message in red with optional hint.
@@ -113,23 +120,23 @@ impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
-    _get_pretty_stderr().print(f"[bold red]{prefix} Error:[/] {message}");
+    _stderr().print(f"[bold red]{prefix} Error:[/] {message}");
     if hint {
         hint_prefix = '💡' if self.use_emoji else 'HINT:';
-        _get_pretty_stderr().print(f"[dim]{hint_prefix} {hint}[/]");
+        _stderr().print(f"[dim]{hint_prefix} {hint}[/]");
     }
 }
 
 """Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
-    _get_pretty_stdout().print(f"[bold yellow]{prefix}[/] {message}");
+    _print(f"[bold yellow]{prefix}[/] {message}");
 }
 
 """Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
-    _get_pretty_stdout().print(f"[bold cyan]{prefix}[/] {message}");
+    _print(f"[bold cyan]{prefix}[/] {message}");
 }
 
 """Print a header with optional version.
@@ -139,14 +146,14 @@ Args:
     version: Optional version string
 """
 impl JacConsole.print_header(title: str, version: str | None = None) -> None {
-    pc = _get_pretty_stdout();
-    pc.rule();
+    stdout = _stdout();
+    stdout.rule();
     if version {
-        pc.print(f"[bold bright_white]{title}[/]  [dim]v{version}[/]");
+        _print(f"[bold bright_white]{title}[/]  [dim]v{version}[/]");
     } else {
-        pc.print(f"[bold bright_white]{title}[/]");
+        _print(f"[bold bright_white]{title}[/]");
     }
-    pc.rule();
+    stdout.rule();
 }
 
 """Print a list of labeled URLs.
@@ -156,11 +163,10 @@ Args:
     symbol: Symbol to use before each line (default: ➜)
 """
 impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
-    pc = _get_pretty_stdout();
     items = urls.items() if isinstance(urls, dict) else urls;
     for (label, url) in items {
         padded_label = f"{label}:".ljust(10);
-        pc.print(
+        _print(
             f"  [bold cyan]{symbol}[/]  [dim]{padded_label}[/] [bright_blue underline]{url}[/]"
         );
     }
@@ -173,12 +179,11 @@ Args:
     title: Box title (default: "Next Steps")
 """
 impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') -> None {
-    pc = _get_pretty_stdout();
-    pc.print(f"\n[bold bright_white]{title}:[/]");
+    _print(f"\n[bold bright_white]{title}:[/]");
     for (i, step) in enumerate(steps, 1) {
-        pc.print(f"  [bold cyan]{i}.[/] {step}");
+        _print(f"  [bold cyan]{i}.[/] {step}");
     }
-    pc.print();
+    _print();
 }
 
 """Print a list of items with colored symbols.
@@ -191,7 +196,6 @@ Args:
 impl JacConsole.print_list(
     items: list[str], style: str = 'success', symbol: str = '✔'
 ) -> None {
-    pc = _get_pretty_stdout();
     color_map = {
         'success': 'bold green',
         'warning': 'bold yellow',
@@ -200,7 +204,7 @@ impl JacConsole.print_list(
     };
     color = color_map.get(style, 'bold green');
     for item in items {
-        pc.print(f"  [{color}]{symbol}[/] {item}");
+        _print(f"  [{color}]{symbol}[/] {item}");
     }
 }
 
@@ -214,9 +218,8 @@ Args:
 impl JacConsole.print_table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
-    pc = _get_pretty_stdout();
     if title {
-        pc.print(f"\n[bold bright_white]{title}:[/]");
+        _print(f"\n[bold bright_white]{title}:[/]");
     }
     # Calculate column widths
     col_widths: list[int] = [len(h) for h in headers];
@@ -231,18 +234,18 @@ impl JacConsole.print_table(
     header_parts = [
         f"[bold bright_white]{h.ljust(w)}[/]" for (h, w) in zip(headers, col_widths)
     ];
-    pc.print(' [dim]|[/] '.join(header_parts));
+    _print(' [dim]|[/] '.join(header_parts));
     separator = '-' * (sum(col_widths) + (len(col_widths) - 1) * 3);
-    pc.print(f"[dim]{separator}[/]");
+    _print(f"[dim]{separator}[/]");
     # Print data rows
     for row in rows {
         row_parts = [
             str(cell).ljust(col_widths[i]) if i < len(col_widths) else str(cell)
             for (i, cell) in enumerate(row)
         ];
-        pc.print(' [dim]|[/] '.join(row_parts));
+        _print(' [dim]|[/] '.join(row_parts));
     }
-    pc.print();
+    _print();
 }
 
 """Context manager for spinner during long operations.
@@ -254,12 +257,12 @@ Usage:
 """
 @ contextmanager
 impl JacConsole.spinner(text: str) -> object {
-    _get_pretty_stdout().print(f"[dim]{text}...[/]", end='');
+    _print(f"[dim]{text}...[/]", end='');
     sys.stdout.flush();
     try {
         yield None;
     } finally {
-        _get_pretty_stdout().print(f" [bold green]done[/]");
+        _print(f" [bold green]done[/]");
     }
 }
 
@@ -269,12 +272,11 @@ Args:
     seconds: Time in seconds
 """
 impl JacConsole.print_elapsed_time(seconds: float) -> None {
-    pc = _get_pretty_stdout();
     if seconds < 1 {
         ms = seconds * 1000;
-        pc.print(f"  [dim]Done in[/] [bold green]{ms:.0f}ms[/]");
+        _print(f"  [dim]Done in[/] [bold green]{ms:.0f}ms[/]");
     } else {
-        pc.print(f"  [dim]Done in[/] [bold green]{seconds:.1f}s[/]");
+        _print(f"  [dim]Done in[/] [bold green]{seconds:.1f}s[/]");
     }
 }
 
@@ -286,13 +288,12 @@ Args:
 """
 impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> None {
     import from datetime { datetime }
-    pc = _get_pretty_stdout();
     timestamp = datetime.now().strftime('%H:%M:%S');
     emoji_map = {'changed': '⚡', 'created': '✨', 'deleted': '🗑️'};
     color_map = {'changed': 'yellow', 'created': 'green', 'deleted': 'red'};
     emoji = emoji_map.get(action, '📝') if self.use_emoji else action.upper();
     color = color_map.get(action, 'cyan');
-    pc.print(
+    _print(
         f"[dim][{timestamp}][/] [{color}]{emoji} {action.capitalize()}:[/] {filepath}"
     );
 }
@@ -304,10 +305,9 @@ Args:
     count: Number of files
 """
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
-    pc = _get_pretty_stdout();
     watch_emoji = '👀 ' if self.use_emoji else '';
-    pc.print(f"[bold cyan]{watch_emoji}Watching for changes...[/]");
-    pc.print(
+    _print(f"[bold cyan]{watch_emoji}Watching for changes...[/]");
+    _print(
         f"   [dim]Monitoring:[/] [bright_white]{pattern}[/] [dim]({count} files)[/]"
     );
 }
