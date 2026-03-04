@@ -33,6 +33,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **NamedTuple Type Checking**: Classes extending `NamedTuple` now support proper constructor validation (no false "Too many positional arguments" errors), IDE hover for field-related variables including tuple unpacking (`(x, y) = point`) and for-loop iteration (`for coord in point`), and correct field type inference.
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
+- **Fix: `str.split()` Overload Resolution**: Fixed false positive "No matching overload found for `__add__`" when using `str.split()` result with indexing and string operations (e.g., `text.split(" ")[0] + " suffix"`). The type checker now properly resolves `LiteralString` from typeshed and prefers overloads returning concrete types (`list[str]`) over unresolved ones.
 
 ## jaclang 0.11.3 (Latest Release)
 

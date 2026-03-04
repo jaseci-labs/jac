@@ -133,6 +133,8 @@ obj ModuleType(TypeBase) {
 
 """Represents a type variable."""
 obj TypeVarType(TypeBase) {
+    has name: str = "";
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }

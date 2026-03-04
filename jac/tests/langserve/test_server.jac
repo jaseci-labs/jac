@@ -653,6 +653,26 @@ test "test_hover_types" {
         if hover is not None {
             assert "dynamic attribute" not in hover.contents.value , f"ng.nonexistent: should NOT be 'dynamic attribute', got: {hover.contents.value}";
         }
+
+        # Overload resolution: str.split() -> list[str], list[str][0] -> str
+        overload_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_overload_resolution.jac")
+        );
+        lsp.type_check_file(overload_file);
+        overload_cases = [
+            (5, 5, "list"),  # parts: list[str]
+            (6, 5, "str"),  # first: str
+            (7, 5, "str"),  # result: str
+            (12, 5, "list"),  # parts2: list[str] (chained from list[str][0].split())
+            (13, 5, "str"),  # first3: str
+            (14, 5, "str"),  # result3: str
+
+        ];
+        for (line, col, expected) in overload_cases {
+            hover = lsp.get_hover_info(overload_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Overload hover at line {line} should exist";
+            assert expected in hover.contents.value , f"Overload line {line}: expected '{expected}', got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }

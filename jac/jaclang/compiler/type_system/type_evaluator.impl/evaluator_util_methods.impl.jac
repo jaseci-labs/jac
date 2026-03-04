@@ -488,16 +488,23 @@ impl TypeEvaluator._get_special_form_type(
     if not self.prefetch {
         return None;
     }
-    # TODO: handle _SpecialForm types semantically.
-    # Verify symbol_type is _SpecialForm (same shared as our prefetched callable_class)
-    if not (
+
+    # Check if symbol_type is _SpecialForm (same shared as our prefetched callable_class)
+    is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
         and isinstance(self.prefetch.callable_class, types.ClassType)
         and symbol_type.shared == self.prefetch.callable_class.shared
-    ) {
+    );
+
+    # Also handle known types that may come from unresolved imports (e.g., typing_extensions)
+    # When LiteralString is imported from typing_extensions but not resolved, symbol_type is Unknown
+    is_unresolved_known_type = isinstance(symbol_type, types.UnknownType);
+
+    if not (is_special_form or is_unresolved_known_type) {
         return None;
     }
+
     # Map special form names to their prefetched types
     match name {
         case "Callable":

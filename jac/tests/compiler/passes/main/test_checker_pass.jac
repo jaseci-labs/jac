@@ -1839,3 +1839,28 @@ test "namedtuple_constructor" {
         user_errors
     )}: " + "\n".join([err.pretty_print() for err in user_errors]);
 }
+
+"""Test overload resolution prefers concrete types over Unknown in type_args.
+
+When a method has multiple overloads (e.g., str.split), and one returns
+list[LiteralString] (Unknown) and another returns list[str], the type
+checker should prefer the concrete list[str] overload.
+"""
+test "overload_resolution_concrete_types" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_overload_resolution.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+
+    # str.split() -> list[str], list[str][0] -> str, str + str -> str
+    # No errors expected when overload resolution picks concrete types
+    assert len(user_errors) == 0 , f"Expected 0 errors, got {len(user_errors)}: " + "\n".join(
+        [err.pretty_print() for err in user_errors]
+    );
+}

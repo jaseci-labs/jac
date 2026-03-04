@@ -53,6 +53,9 @@ impl ModuleType.__str__ -> str {
 
 """Return a string representation of the type variable."""
 impl TypeVarType.__str__ -> str {
+    if self.name {
+        return self.name;
+    }
     return "<TypeVar>";
 }
 
@@ -61,7 +64,12 @@ impl FunctionType._index_of_type_param(
     class_type: ClassType, type_var: TypeVarType
 ) -> int {
     for (idx, type_param) in enumerate(class_type.shared.type_params) {
-        if (type_param is type_var) {
+        # Compare by name instead of identity (Pyright uses scopeId + name)
+        if type_param.name and type_var.name and type_param.name == type_var.name {
+            return idx;
+        }
+        # Fallback to identity check for backwards compatibility
+        if type_param is type_var {
             return idx;
         }
     }
