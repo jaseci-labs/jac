@@ -1,34 +1,66 @@
 """jacpretty - Lightweight colored terminal output for Jac CLI."""
 import os, re, sys;
-import from typing { Dict, Optional, Tuple }
+import from enum { IntEnum }
+
+# ANSI color codes as IntEnum
+enum Color ( IntEnum ) {
+    BLACK = 0,
+    RED = 1,
+    GREEN = 2,
+    YELLOW = 3,
+    BLUE = 4,
+    MAGENTA = 5,
+    CYAN = 6,
+    WHITE = 7,
+    BRIGHT_BLACK = 8,
+    BRIGHT_RED = 9,
+    BRIGHT_GREEN = 10,
+    BRIGHT_YELLOW = 11,
+    BRIGHT_BLUE = 12,
+    BRIGHT_MAGENTA = 13,
+    BRIGHT_CYAN = 14,
+    BRIGHT_WHITE = 15
+}
+
+# ANSI style codes as regular enum
+enum Style {
+    BOLD = "1",
+    DIM = "2",
+    ITALIC = "3",
+    UNDERLINE = "4",
+    BLINK = "5",
+    REVERSE = "7",
+    CONCEAL = "8",
+    STRIKE = "9"
+}
 
 glob COLORS: Dict[(str, int)] = {
-         "black": 0,
-         "red": 1,
-         "green": 2,
-         "yellow": 3,
-         "blue": 4,
-         "magenta": 5,
-         "cyan": 6,
-         "white": 7,
-         "bright_black": 8,
-         "bright_red": 9,
-         "bright_green": 10,
-         "bright_yellow": 11,
-         "bright_blue": 12,
-         "bright_magenta": 13,
-         "bright_cyan": 14,
-         "bright_white": 15
+         "black": Color.BLACK.value,
+         "red": Color.RED.value,
+         "green": Color.GREEN.value,
+         "yellow": Color.YELLOW.value,
+         "blue": Color.BLUE.value,
+         "magenta": Color.MAGENTA.value,
+         "cyan": Color.CYAN.value,
+         "white": Color.WHITE.value,
+         "bright_black": Color.BRIGHT_BLACK.value,
+         "bright_red": Color.BRIGHT_RED.value,
+         "bright_green": Color.BRIGHT_GREEN.value,
+         "bright_yellow": Color.BRIGHT_YELLOW.value,
+         "bright_blue": Color.BRIGHT_BLUE.value,
+         "bright_magenta": Color.BRIGHT_MAGENTA.value,
+         "bright_cyan": Color.BRIGHT_CYAN.value,
+         "bright_white": Color.BRIGHT_WHITE.value
      },
      STYLES: Dict[(str, str)] = {
-         "bold": "1",
-         "dim": "2",
-         "italic": "3",
-         "underline": "4",
-         "blink": "5",
-         "reverse": "7",
-         "conceal": "8",
-         "strike": "9"
+         "bold": Style.BOLD.value,
+         "dim": Style.DIM.value,
+         "italic": Style.ITALIC.value,
+         "underline": Style.UNDERLINE.value,
+         "blink": Style.BLINK.value,
+         "reverse": Style.REVERSE.value,
+         "conceal": Style.CONCEAL.value,
+         "strike": Style.STRIKE.value
      },
      STYLE_ALIASES: Dict[(str, str)] = {
          "b": "bold",

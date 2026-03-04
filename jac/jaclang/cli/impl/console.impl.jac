@@ -8,7 +8,6 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 # ===============================================================================
 # Internal jacpretty Console Factories
 # ===============================================================================
-
 def _stdout -> _PrettyConsole {
     return _PrettyConsole();
 }
