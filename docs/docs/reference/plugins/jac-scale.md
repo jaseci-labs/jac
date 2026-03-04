@@ -1669,14 +1669,61 @@ histogram_buckets = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0,
 | `{namespace}_http_requests_in_progress` | Gauge | -- | Concurrent HTTP requests |
 | `{namespace}_walker_duration_seconds` | Histogram | `walker_name`, `success` | Walker execution duration (only when `walker_metrics=true`) |
 
-### Usage
+### Authentication
+
+The `/metrics` endpoint requires admin authentication. Include the admin token in the `Authorization` header:
 
 ```bash
-# Scrape metrics
-curl http://localhost:8000/metrics
+# Scrape metrics (admin token required)
+curl -H "Authorization: Bearer <admin_token>" http://localhost:8000/metrics
 ```
 
-The metrics endpoint is auto-registered as a GET route with OpenAPI tag "Monitoring". Requests to the metrics endpoint itself are excluded from tracking.
+Unauthenticated requests receive a 403 Forbidden response. This protects sensitive server performance data from unauthorized access.
+
+### Admin Metrics Dashboard
+
+The admin portal includes a monitoring page that displays metrics in a visual dashboard. Access it at `/admin` and navigate to the Monitoring section.
+
+Additionally, the `/admin/metrics` endpoint returns parsed metrics as structured JSON:
+
+```bash
+curl -H "Authorization: Bearer <admin_token>" http://localhost:8000/admin/metrics
+```
+
+Response format:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "metrics": [
+      {
+        "name": "jac_scale_http_requests_total",
+        "type": "counter",
+        "help": "Total HTTP requests processed",
+        "values": [
+          {"labels": {"method": "GET", "path": "/", "status_code": "200"}, "value": 42}
+        ]
+      }
+    ],
+    "summary": {
+      "total_requests": 156,
+      "avg_latency_ms": 45.2,
+      "error_rate_percent": 0.5,
+      "active_requests": 2
+    }
+  }
+}
+```
+
+The admin dashboard monitoring page displays:
+
+- HTTP traffic breakdown by method and status code
+- Request latency statistics
+- Active requests gauge
+- System metrics (GC collections, memory usage, CPU time, file descriptors)
+
+Requests to the metrics endpoint itself are excluded from tracking.
 
 ---
 

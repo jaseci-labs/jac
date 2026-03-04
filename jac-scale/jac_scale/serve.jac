@@ -103,6 +103,10 @@ obj JacAPIServerCore {
     ) -> TransportResponse;
 
     def register_api_key_endpoints -> None;
+    # Metrics endpoint wrapper for admin-only access
+    def _create_admin_metrics_handler(
+        original_handler: Callable[..., Any]
+    ) -> Callable[..., Any];
 }
 
 """Walker, function, webhook, WebSocket endpoint registration and callbacks."""
