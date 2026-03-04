@@ -243,6 +243,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # Check for __getattr__ override before reporting error.
+                    # When a class defines __getattr__, any attribute access that doesn't
+                    # match an explicit member should return the __getattr__ return type.
+                    # This follows Pyright's applyAttributeAccessOverride pattern.
+                    if getattr_return := self._get_getattr_return_type(base_type) {
+                        expr.right.type = getattr_return;
+                        expr.right.is_getattr_resolved = True;
+                        return getattr_return;
+                    }
                     # TODO: Re-enable after fixing TypeVar resolution.
                     # Disabled: gives false positives on generic types (e.g., list[T].append).
                     # self.add_diagnostic(

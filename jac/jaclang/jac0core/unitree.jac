@@ -451,7 +451,8 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
         _sym: (Symbol | None) by postinit,
         _sym_name: str by postinit,
         _sym_category: SymbolType by postinit,
-        _py_ctx_func: type[ast3.expr_context] by postinit;
+        _py_ctx_func: type[ast3.expr_context] by postinit,
+        is_getattr_resolved: bool = False;
 
     def postinit -> None;
     @property
