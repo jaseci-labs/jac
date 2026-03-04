@@ -840,6 +840,10 @@ impl NameAtom.sem_token -> (tuple[(SemTokType, SemTokMod)] | None) {
     if self.sym {
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
+    # Handle __getattr__ dynamic attributes (explicitly marked by type checker)
+    if self.is_getattr_resolved {
+        return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
+    }
     return None;
 }
 

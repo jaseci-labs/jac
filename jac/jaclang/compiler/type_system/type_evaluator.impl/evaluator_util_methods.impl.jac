@@ -65,6 +65,24 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+"""Get the return type of __getattr__ if defined on the class.
+
+When a class defines __getattr__, any attribute access that doesn't match
+an explicit member should return the __getattr__ return type. This follows
+Pyright's applyAttributeAccessOverride pattern.
+"""
+impl TypeEvaluator._get_getattr_return_type(
+    base_type: types.ClassType
+) -> TypeBase | None {
+    if member := self._lookup_class_member(base_type, "__getattr__") {
+        getattr_type = self.get_type_of_symbol(member.symbol);
+        if isinstance(getattr_type, types.FunctionType) {
+            return getattr_type.return_type or types.UnknownType();
+        }
+    }
+    return None;
+}
+
 """Convert a class type to an instance type."""
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     # TODO: Grep pyright "Handle type[x] as a special case." They handle `type[x]` as a special case:

@@ -1,4 +1,3 @@
-access_mod_check.jac
 actions.jac
 advanced_language_features.jac
 app.jac
@@ -6,7 +5,6 @@ archetype.impl.jac
 archetype.jac
 async_for.jac
 banners.jac
-bccache.jac
 bun_installer.impl.jac
 bun_installer.jac
 cfg_build_pass.jac
@@ -84,7 +82,6 @@ invalid_snippet.jac
 jac_auto_lint_pass.impl.jac
 jac_auto_lint_pass.jac
 jac_formatter_pass.jac
-jaclib.jac
 jfast_api.jac
 jsx_unterminated_hang.jac
 kubernetes_utils.impl.jac
@@ -122,18 +119,12 @@ parser.jac
 plugin_config.jac
 plugin.jac
 precompile_bytecode.jac
-precompiled.jac
-prim_builtins_extra.jac
 prim_builtins.jac
 prim_builtins_introspection.jac
 prim_dict.jac
-prim_dict_extra.jac
-prim_dict_methods.jac
 prim_float.jac
-prim_float_cmp.jac
 prim_runtime_errors.jac
 prim_str.jac
-prim_str_extra.jac
 program.jac
 project.impl.jac
 project.jac
@@ -143,7 +134,6 @@ pyast_gen_pass.jac
 pyast_load_pass.impl.jac
 pyast_load_pass.jac
 pyjac_ast_link_pass.jac
-pyjac_ast_link_pass.impl.jac
 py_imp_test.jac
 random_check.jac
 registry.jac
@@ -192,11 +182,11 @@ test_parser.jac
 test_prim_equivalence.jac
 test_pyast_build_pass.jac
 test_py_infra.jac
+test_rwlock.jac
 test_sem_tokens.jac
 test_serve.jac
 test_sso.jac
 test_storage.jac
-test_types_str.jac
 text_to_type.jac
 tools.impl.jac
 tools.jac
@@ -206,7 +196,6 @@ treeprinter.jac
 type_annotation_assignment.jac
 type_checker_pass.jac
 type_error_snippet.jac
-type_evaluator.impl.jac
 type_evaluator.jac
 type_info.jac
 types.jac
@@ -224,8 +213,7 @@ web_target.jac
 with_context.jac
 with_llm_method.jac
 yield_in_assignment.jac
-prim_builtins_extra2.jac
-prim_builtin_sort.jac
 vite_client_bundle.impl.jac
 test_variant_modules.jac
 async_compr.jac
+checker_getattr_support.jac

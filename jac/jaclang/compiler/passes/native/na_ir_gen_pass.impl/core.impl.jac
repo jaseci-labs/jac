@@ -66,7 +66,11 @@ impl NaIRGenPass.init(
     self._list_type_hint: (str | None) = None;  # hint for empty list creation
     self._last_type_node_hint: (object | None) = None;  # Jac type AST of last evaluated expr
     # Inheritance / vtable support (Phase 5)
-    self.class_hierarchy: dict[(str, str)] = {};  # child → parent
+    self.class_hierarchy: dict[(str, str)] = {};  # child → primary parent (backward compat)
+    self.class_parents: dict[str, list[str]] = {};  # child → [parent1, parent2, ...]
+    self.mro_order: dict[str, list[str]] = {};  # class → C3 MRO [self, parent1, ...]
+    self.parent_field_start: dict[str, dict[str, int]] = {};  # child → {ancestor → first_field_idx}
+    self.arch_ast_map: dict[str, object] = {};  # class_name → Archetype AST node
     self.has_vtable: dict[(str, bool)] = {};
     self.vtable_layouts: dict[(str, list[str])] = {};
     self.vtable_method_indices: dict[(str, dict)] = {};

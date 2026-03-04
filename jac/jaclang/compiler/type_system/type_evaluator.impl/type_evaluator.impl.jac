@@ -243,6 +243,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # Check for __getattr__ override before reporting error.
+                    # When a class defines __getattr__, any attribute access that doesn't
+                    # match an explicit member should return the __getattr__ return type.
+                    # This follows Pyright's applyAttributeAccessOverride pattern.
+                    if getattr_return := self._get_getattr_return_type(base_type) {
+                        expr.right.type = getattr_return;
+                        expr.right.is_getattr_resolved = True;
+                        return getattr_return;
+                    }
                     # TODO: Re-enable after fixing TypeVar resolution.
                     # Disabled: gives false positives on generic types (e.g., list[T].append).
                     # self.add_diagnostic(
@@ -378,6 +387,66 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         type_args_expr = expr.right.slices[0].start;
                     }
                     return self._create_callable_type(type_args_expr, expr);
+                }
+                # --- Handle Union / Optional special forms ---
+                # Union[A, B, C] creates a UnionType, Optional[T] creates Union[T, None].
+                # Similar to how Callable[...] creates a FunctionType above.
+                # We detect these by checking that the base_type is a _SpecialForm
+                # (same shared as Callable) and the target name is "Union" or "Optional".
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.shared is not None
+                    and base_type.shared.is_builtin_class
+                    and self.prefetch
+                    and self.prefetch.callable_class
+                    and isinstance(self.prefetch.callable_class, types.ClassType)
+                    and base_type.shared == self.prefetch.callable_class.shared
+                ) {
+                    target_name: str | None = None;
+                    if isinstance(expr.target, uni.Name) and expr.target.sym {
+                        target_name = expr.target.sym.sym_name;
+                    } elif (
+                        isinstance(expr.target, uni.AtomTrailer)
+                        and expr.target.is_attr
+                        and isinstance(expr.target.right, uni.Name)
+                    ) {
+                        target_name = expr.target.right.value;
+                    }
+                    if target_name == "Union" or target_name == "Optional" {
+                        union_args: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            ua_vals = expr.right.slices[0].start;
+                            if isinstance(ua_vals, uni.TupleVal) {
+                                for val in ua_vals.values {
+                                    union_args.append(
+                                        self._convert_to_instance(
+                                            self.get_type_of_expression(val)
+                                        )
+                                    );
+                                }
+                            } else {
+                                union_args.append(
+                                    self._convert_to_instance(
+                                        self.get_type_of_expression(ua_vals)
+                                    )
+                                );
+                            }
+                        }
+                        if target_name == "Optional" and self.prefetch.none_type_class {
+                            union_args.append(
+                                self._convert_to_instance(
+                                    self.prefetch.none_type_class
+                                )
+                            );
+                        }
+                        if len(union_args) == 1 {
+                            return union_args[0];
+                        }
+                        if len(union_args) > 1 {
+                            return types.UnionType(types=union_args);
+                        }
+                    }
                 }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)

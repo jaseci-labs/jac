@@ -399,6 +399,43 @@ test "inheritance polymorphic" {
     assert f(0) == 2;  # Cat.speak
 }
 
+# --- TestMultipleInheritance ---
+test "multi-inherit two parent fields" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_two_parent_fields", ctypes.c_int64);
+    assert f() == 151;
+}
+
+test "multi-inherit two parent methods" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_two_parent_methods", ctypes.c_int64);
+    assert f() == 192;
+}
+
+test "multi-inherit diamond field access" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_diamond_field_access", ctypes.c_int64);
+    assert f() == 130;
+}
+
+test "multi-inherit diamond single id" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_diamond_single_id", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "multi-inherit mro method resolution" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_mro_method_resolution", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "multi-inherit three mixins" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_three_mixins", ctypes.c_int64);
+    assert f() == 10;
+}
+
 # --- TestNativeLists ---
 test "lists list len" {
     (eng, _) = compile_native("lists.na.jac");
