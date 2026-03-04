@@ -8,12 +8,7 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 # ===============================================================================
 # Internal jacpretty Console Factories
 # ===============================================================================
-# NOTE: These are intentionally NOT singletons. A singleton would cache
-# sys.stdout/sys.stderr at creation time, causing test stdout/stderr redirects
-# (sys.stdout = io.StringIO()) to be bypassed — output would go to the original
-# stream, making captured_output.getvalue() return ''. Creating fresh instances
-# per call ensures Console.__init__ always picks up the *current* sys.stdout
-# or sys.stderr, exactly like Python's built-in print() does.
+
 def _get_pretty_stdout -> _PrettyConsole {
     return _PrettyConsole();
 }
