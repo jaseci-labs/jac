@@ -7,19 +7,8 @@ import from typing { Any }
 # =============================================================================
 # JirWriter implementation
 # =============================================================================
-impl JirWriter.init(self: JirWriter) -> None {
-    self._pool = _StringPool();
-    self._node_ids: dict[int, int] = {};
-    self._nodes: list[object] = [];
-    self._buf = bytearray();
-    self._parent_scope_links: list[tuple[int, int]] = [];
-    self._name_of_links: list[tuple[int, int]] = [];
-    self._overload_entries: list[tuple[int, str, list[int]]] = [];
-    self._inherited_scope_entries: list[tuple[int, int, bool, list[str]]] = [];
-}
-
 impl JirWriter.write_module(
-    self: JirWriter, module: Module, sections: (dict[int, bytes] | None) = None
+    module: Module, sections: (dict[int, bytes] | None) = None
 ) -> bytes {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
     import from importlib.metadata { version as pkg_version }
@@ -50,7 +39,7 @@ impl JirWriter.write_module(
     # Compute source hash
     source_hash = 0;
     if module?.source and module.source is not None {
-        src_str = getattr(module.source, 'source', '');
+        src_str = module.source.code;
         if src_str {
             source_hash = zlib.crc32(src_str.encode()) & 0xFFFFFFFF;
         }
@@ -60,7 +49,7 @@ impl JirWriter.write_module(
 
     # Flags: bit 0 = is_stub
     flags = 0;
-    if getattr(module, 'stub_only', False) {
+    if module.stub_only {
         flags |= 1;
     }
 
@@ -85,7 +74,7 @@ impl JirWriter.write_module(
     return header + compressed + section_bytes;
 }
 
-impl JirWriter._assign_ids(self: JirWriter, ir_node: UniNode) -> int {
+impl JirWriter._assign_ids(ir_node: UniNode) -> int {
     # Visit children first (post-order)
     for kid in ir_node.kid {
         self._assign_ids(kid);
@@ -96,7 +85,7 @@ impl JirWriter._assign_ids(self: JirWriter, ir_node: UniNode) -> int {
     return nid;
 }
 
-impl JirWriter._get_node_id(self: JirWriter, ir_node: (UniNode | None)) -> int {
+impl JirWriter._get_node_id(ir_node: (UniNode | None)) -> int {
     if ir_node is None {
         return SENTINEL_NONE;
     }
@@ -107,7 +96,7 @@ impl JirWriter._get_node_id(self: JirWriter, ir_node: (UniNode | None)) -> int {
     return EXTERNAL_REF;
 }
 
-impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) -> None {
+impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     import from jaclang.jac0core.unitree { UniScopeNode, UniCFGNode, NameAtom, Symbol }
 
     cls_name = type(ir_node).__name__;
@@ -164,7 +153,7 @@ impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) ->
         }
 
         # names_in_scope_overload
-        overload_map = getattr(ir_node, 'names_in_scope_overload', {});
+        overload_map = ir_node.names_in_scope_overload;
         non_empty = {
             k: v
             for (k, v) in overload_map.items()
@@ -195,9 +184,9 @@ impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) ->
 
     # Write CFG overlay
     if is_cfg {
-        bb_in = getattr(ir_node, 'bb_in', []);
-        bb_out = getattr(ir_node, 'bb_out', []);
-        affected = getattr(ir_node, 'affected_symbols', set());
+        bb_in = ir_node.bb_in;
+        bb_out = ir_node.bb_out;
+        affected = ir_node.affected_symbols;
 
         _write_varint(buf, len(bb_in));
         for bb_edge in bb_in {
@@ -227,16 +216,16 @@ impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) ->
         }
 
         # name_of -> AstSymbolNode (deferred to link table)
-        name_of = getattr(ir_node, 'name_of', None);
+        name_of = ir_node.name_of;
         if name_of is not None and name_of is not ir_node {
             na_id = self._node_ids[id(ir_node)];
             self._name_of_links.append((na_id, self._get_node_id(name_of)));
         }
 
         # _sym_name and _sym_category
-        sym_name = getattr(ir_node, '_sym_name', '');
+        sym_name = ir_node._sym_name;
         _write_varint(buf, self._pool.intern(sym_name));
-        sym_cat = getattr(ir_node, '_sym_category', None);
+        sym_cat = ir_node._sym_category;
         if sym_cat is not None and hasattr(sym_cat, 'value') {
             _write_varint(buf, self._pool.intern(str(sym_cat.value)));
         } else {
@@ -245,7 +234,7 @@ impl JirWriter._write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) ->
     }
 }
 
-impl JirWriter._write_symbol(self: JirWriter, buf: bytearray, sym: Symbol) -> None {
+impl JirWriter._write_symbol(buf: bytearray, sym: Symbol) -> None {
     # defn nodes
     _write_varint(buf, len(sym.defn));
     for defn in sym.defn {
@@ -264,7 +253,7 @@ impl JirWriter._write_symbol(self: JirWriter, buf: bytearray, sym: Symbol) -> No
 }
 
 impl JirWriter._write_field(
-    self: JirWriter, buf: bytearray, ir_node: UniNode, field_name: str, kind: int
+    buf: bytearray, ir_node: UniNode, field_name: str, kind: int
 ) -> None {
     val = getattr(ir_node, field_name, None);
     # Token stores line/col under aliased names; fall back when primary is None
@@ -341,7 +330,7 @@ impl JirWriter._write_field(
     # FieldKind.SKIP: do nothing
 }
 
-impl JirWriter._write_link_table(self: JirWriter, buf: bytearray) -> None {
+impl JirWriter._write_link_table(buf: bytearray) -> None {
     # parent_scope links
     _write_varint(buf, len(self._parent_scope_links));
     for (scope_id, parent_id) in self._parent_scope_links {
@@ -356,7 +345,7 @@ impl JirWriter._write_link_table(self: JirWriter, buf: bytearray) -> None {
     }
 }
 
-impl JirWriter._count_symbols(self: JirWriter, module: Module) -> int {
+impl JirWriter._count_symbols(module: Module) -> int {
     import from jaclang.jac0core.unitree { UniScopeNode }
     count = 0;
     for ir_item in self._nodes {
@@ -371,23 +360,7 @@ impl JirWriter._count_symbols(self: JirWriter, module: Module) -> int {
 # =============================================================================
 # JirReader implementation
 # =============================================================================
-impl JirReader.init(
-    self: JirReader, skip_loc: bool = True, source_path: str = ""
-) -> None {
-    self._pool: (_StringPool | None) = None;
-    self._nodes: list[object] = [];
-    self._class_map: (dict[str, type] | None) = None;
-    self._skip_loc = skip_loc;
-    self._source_path = source_path;
-    self._uni_types: (tuple[type, ...] | None) = None;
-    self._enum_cache: (dict[str, dict[str, object]] | None) = None;
-    self.bytecode_section: (bytes | None) = None;
-    self.mtir_section: (bytes | None) = None;
-    self.llvm_ir_section: (bytes | None) = None;
-    self.interop_section: (bytes | None) = None;
-}
-
-impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
+impl JirReader.read_module(data: bytes) -> (Module | None) {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
     try {
         from
@@ -482,9 +455,7 @@ impl JirReader.read_module(self: JirReader, data: bytes) -> (Module | None) {
     return None;
 }
 
-impl JirReader._read_trailing_sections(
-    self: JirReader, data: bytes
-) -> dict[int, bytes] {
+impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
     import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
     try {
         magic_bytes: Any = SECTIONS_MAGIC;
@@ -498,7 +469,7 @@ impl JirReader._read_trailing_sections(
     }
 }
 
-impl JirReader._wire_source(self: JirReader, module: Module) -> None {
+impl JirReader._wire_source(module: Module) -> None {
     import from jaclang.jac0core.unitree { Source, Token }
 
     source_content = '';
@@ -530,7 +501,7 @@ impl JirReader._wire_source(self: JirReader, module: Module) -> None {
     }
 }
 
-impl JirReader._fix_param_kinds(self: JirReader) -> None {
+impl JirReader._fix_param_kinds -> None {
     import from jaclang.jac0core.unitree { FuncSignature, ParamVar, ParamKind }
 
     for ir_item in self._nodes {
@@ -560,7 +531,7 @@ impl JirReader._fix_param_kinds(self: JirReader) -> None {
     }
 }
 
-impl JirReader._init_caches(self: JirReader) -> None {
+impl JirReader._init_caches -> None {
     import from jaclang.jac0core.unitree {
         UniScopeNode,
         UniCFGNode,
@@ -627,7 +598,7 @@ impl JirReader._init_caches(self: JirReader) -> None {
     }
 }
 
-impl JirReader._resolve_node(self: JirReader, node_id: int) -> (UniNode | None) {
+impl JirReader._resolve_node(node_id: int) -> (UniNode | None) {
     if node_id >= SENTINEL_NONE {
         return None;
     }
@@ -637,9 +608,7 @@ impl JirReader._resolve_node(self: JirReader, node_id: int) -> (UniNode | None) 
     return None;
 }
 
-impl JirReader._read_node(
-    self: JirReader, data: (bytes | memoryview), pos: int, idx: int
-) -> int {
+impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int {
     pool = self._pool;
     class_map = self._class_map;
     nodes = self._nodes;
@@ -903,7 +872,7 @@ impl JirReader._read_node(
 }
 
 impl JirReader._read_scope_overlay(
-    self: JirReader, data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
+    data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
 ) -> int {
     import from jaclang.jac0core.unitree { UniScopeNode, Symbol, InheritedSymbolTable }
     import from jaclang.jac0core.constant { SymbolAccess }
@@ -978,9 +947,7 @@ impl JirReader._read_scope_overlay(
     return pos;
 }
 
-impl JirReader._read_symbol(
-    self: JirReader, data: (bytes | memoryview), pos: int
-) -> tuple {
+impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     import from jaclang.jac0core.unitree { Symbol, NameAtom }
     import from jaclang.jac0core.constant { SymbolAccess }
 
@@ -1058,7 +1025,7 @@ impl JirReader._read_symbol(
 }
 
 impl JirReader._read_cfg_overlay(
-    self: JirReader, data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
+    data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
 ) -> int {
     # bb_in
     (bb_in_count, pos) = _read_varint(data, pos);
@@ -1101,7 +1068,7 @@ impl JirReader._read_cfg_overlay(
 }
 
 impl JirReader._read_name_atom_overlay(
-    self: JirReader, data: (bytes | memoryview), pos: int, na_node: NameAtom
+    data: (bytes | memoryview), pos: int, na_node: NameAtom
 ) -> int {
     # has_sym
     has_sym = data[pos];
@@ -1149,9 +1116,7 @@ impl JirReader._read_name_atom_overlay(
     return pos;
 }
 
-impl JirReader._read_link_table(
-    self: JirReader, data: (bytes | memoryview), pos: int
-) -> int {
+impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
     import from jaclang.jac0core.unitree { UniScopeNode, NameAtom, AstSymbolNode }
 
     nodes = self._nodes;

@@ -37,10 +37,8 @@ with entry {
 
 # --- Constants ---
 """Sentinel value for None node references."""
-glob SENTINEL_NONE: int = 0xFFFFFE;
-
-"""Sentinel for external references (builtins parent_scope)."""
-glob EXTERNAL_REF: int = 0xFFFFFF;
+glob SENTINEL_NONE: int = 0xFFFFFE,
+     EXTERNAL_REF: int = 0xFFFFFF;
 
 # --- LEB128 varint (module-private, inlined for performance) ---
 """Encode an unsigned integer as LEB128 varint, appending to buf."""
@@ -70,13 +68,16 @@ def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
 
 # --- String Pool (private, used only by writer/reader) ---
 """Deduplicated string table for serialization."""
-class _StringPool {
-    def init(self: _StringPool) -> None {
-        self._strings: list[str] = [];
-        self._index: dict[str, int] = {};
+obj _StringPool {
+    has _strings: list[str] by postinit,
+        _index: dict[str, int] by postinit;
+
+    def postinit -> None {
+        self._strings = [];
+        self._index = {};
     }
 
-    def intern(self: _StringPool, s: str) -> int {
+    def intern(s: str) -> int {
         idx = self._index.get(s);
         if idx is not None {
             return idx;
@@ -87,15 +88,15 @@ class _StringPool {
         return idx;
     }
 
-    def get(self: _StringPool, idx: int) -> str {
+    def get(idx: int) -> str {
         return self._strings[idx];
     }
 
-    def __len__(self: _StringPool) -> int {
+    def __len__ -> int {
         return len(self._strings);
     }
 
-    def serialize(self: _StringPool) -> bytes {
+    def serialize -> bytes {
         buf = bytearray();
         _write_varint(buf, len(self._strings));
         for s in self._strings {
@@ -126,9 +127,26 @@ def _deserialize_string_pool(
 # JirWriter
 # =============================================================================
 """Serialize a Module tree to JIR binary format."""
-class JirWriter {
-    """Initialize the writer with empty state."""
-    def init(self: JirWriter) -> None;
+obj JirWriter {
+    has _pool: _StringPool by postinit,
+        _node_ids: dict[int, int] by postinit,
+        _nodes: list[object] by postinit,
+        _buf: bytearray by postinit,
+        _parent_scope_links: list[tuple[int, int]] by postinit,
+        _name_of_links: list[tuple[int, int]] by postinit,
+        _overload_entries: list[tuple[int, str, list[int]]] by postinit,
+        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] by postinit;
+
+    def postinit -> None {
+        self._pool = _StringPool();
+        self._node_ids = {};
+        self._nodes = [];
+        self._buf = bytearray();
+        self._parent_scope_links = [];
+        self._name_of_links = [];
+        self._overload_entries = [];
+        self._inherited_scope_entries = [];
+    }
 
     """Serialize a Module to JIR bytes.
 
@@ -136,88 +154,93 @@ class JirWriter {
     AST payload (bytecode, MTIR, LLVM IR, interop).
     """
     def write_module(
-        self: JirWriter, module: Module, sections: (dict[int, bytes] | None) = None
+        module: Module, sections: (dict[int, bytes] | None) = None
     ) -> bytes;
 
     """Post-order walk, assigning sequential IDs to nodes."""
-    def _assign_ids(self: JirWriter, ir_node: UniNode) -> int;
+    def _assign_ids(ir_node: UniNode) -> int;
 
     """Get the ID for a node, or SENTINEL_NONE if None."""
-    def _get_node_id(self: JirWriter, ir_node: (UniNode | None)) -> int;
+    def _get_node_id(ir_node: (UniNode | None)) -> int;
 
     """Serialize a single node to the buffer."""
-    def _write_node(self: JirWriter, buf: bytearray, ir_node: UniNode) -> None;
+    def _write_node(buf: bytearray, ir_node: UniNode) -> None;
 
     """Serialize a Symbol inline."""
-    def _write_symbol(self: JirWriter, buf: bytearray, sym: Symbol) -> None;
+    def _write_symbol(buf: bytearray, sym: Symbol) -> None;
 
     """Serialize a single constructor field by kind."""
     def _write_field(
-        self: JirWriter, buf: bytearray, ir_node: UniNode, field_name: str, kind: int
+        buf: bytearray, ir_node: UniNode, field_name: str, kind: int
     ) -> None;
 
     """Serialize the link table."""
-    def _write_link_table(self: JirWriter, buf: bytearray) -> None;
+    def _write_link_table(buf: bytearray) -> None;
 
     """Count total symbols in the module."""
-    def _count_symbols(self: JirWriter, module: Module) -> int;
+    def _count_symbols(module: Module) -> int;
 }
 
 # =============================================================================
 # JirReader
 # =============================================================================
 """Deserialize JIR binary back to a Module tree."""
-class JirReader {
-    """Initialize the reader."""
-    def init(self: JirReader, skip_loc: bool = True, source_path: str = "") -> None;
-
-    """Sections decoded from the trailing TLV block (populated by read_module)."""
-    has bytecode_section: (bytes | None) = None,
+obj JirReader {
+    has _skip_loc: bool = True,
+        _source_path: str = "",
+        _pool: (_StringPool | None) = None,
+        _nodes: list[object] by postinit,
+        _class_map: (dict[str, type] | None) = None,
+        _uni_types: (tuple[type, ...] | None) = None,
+        _enum_cache: (dict[str, dict[str, object]] | None) = None,
+        bytecode_section: (bytes | None) = None,
         mtir_section: (bytes | None) = None,
         llvm_ir_section: (bytes | None) = None,
         interop_section: (bytes | None) = None;
 
+    def postinit -> None {
+        self._nodes = [];
+    }
+
     """Deserialize bytes into a Module tree. Returns None on failure."""
-    def read_module(self: JirReader, data: bytes) -> (Module | None);
+    def read_module(data: bytes) -> (Module | None);
 
     """Scan data for trailing TLV sections after the compressed payload."""
-    def _read_trailing_sections(self: JirReader, data: bytes) -> dict[int, bytes];
+    def _read_trailing_sections(data: bytes) -> dict[int, bytes];
 
     """Create a Source node and set orig_src on all Token nodes."""
-    def _wire_source(self: JirReader, module: Module) -> None;
+    def _wire_source(module: Module) -> None;
 
     """Derive param_kind for ParamVar nodes from FuncSignature position."""
-    def _fix_param_kinds(self: JirReader) -> None;
+    def _fix_param_kinds -> None;
 
     """Pre-cache type checks and enum mappings for fast deserialization."""
-    def _init_caches(self: JirReader) -> None;
+    def _init_caches -> None;
 
     """Resolve a node ID to a node, handling sentinels."""
-    def _resolve_node(self: JirReader, node_id: int) -> (UniNode | None);
+    def _resolve_node(node_id: int) -> (UniNode | None);
 
     """Deserialize a single node. Returns new pos."""
-    def _read_node(
-        self: JirReader, data: (bytes | memoryview), pos: int, idx: int
-    ) -> int;
+    def _read_node(data: (bytes | memoryview), pos: int, idx: int) -> int;
 
     """Read scope overlay data into a UniScopeNode."""
     def _read_scope_overlay(
-        self: JirReader, data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
+        data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
     ) -> int;
 
     """Read a Symbol from the stream. Returns (symbol_or_none, new_pos)."""
-    def _read_symbol(self: JirReader, data: (bytes | memoryview), pos: int) -> tuple;
+    def _read_symbol(data: (bytes | memoryview), pos: int) -> tuple;
 
     """Read CFG overlay data into a UniCFGNode."""
     def _read_cfg_overlay(
-        self: JirReader, data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
+        data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
     ) -> int;
 
     """Read NameAtom overlay data."""
     def _read_name_atom_overlay(
-        self: JirReader, data: (bytes | memoryview), pos: int, na_node: NameAtom
+        data: (bytes | memoryview), pos: int, na_node: NameAtom
     ) -> int;
 
     """Read the link table and wire up deferred references."""
-    def _read_link_table(self: JirReader, data: (bytes | memoryview), pos: int) -> int;
+    def _read_link_table(data: (bytes | memoryview), pos: int) -> int;
 }
