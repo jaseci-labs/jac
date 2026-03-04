@@ -8,6 +8,13 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # ----------------------------------------------------------------------
         case uni.String():
             if self.prefetch and self.prefetch.str_class {
+                # Byte strings (b"...") -> bytes type, not str
+                if isinstance(expr.lit_value, bytes) {
+                    if self.prefetch.bytes_class {
+                        return self._convert_to_instance(self.prefetch.bytes_class);
+                    }
+                    return types.UnknownType();
+                }
                 # String literal -> Literal["value"]
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
@@ -26,6 +33,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     combined_value = "";
                     for s in expr.strings {
                         if isinstance(s, uni.String) {
+                            # Skip byte strings for literal tracking (lit_value is bytes)
+                            if isinstance(s.lit_value, bytes) {
+                                all_literal = False;
+                                break;
+                            }
                             combined_value += s.lit_value;
                         } elif isinstance(s, uni.FString) {
                             # Check if f-string has any formatted values
@@ -1547,6 +1559,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.int_class = get_builtin_type("int");
     self.prefetch.float_class = get_builtin_type("float");
     self.prefetch.str_class = get_builtin_type("str");
+    self.prefetch.bytes_class = get_builtin_type("bytes");
     self.prefetch.dict_class = get_builtin_type("dict");
     self.prefetch.list_class = get_builtin_type("list");
     self.prefetch.enum_class = get_enum_type("Enum");
