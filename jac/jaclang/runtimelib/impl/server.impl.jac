@@ -382,9 +382,13 @@ impl ModuleIntrospector._extract_access_levels -> None {
         mod_ast: uni.Module, func_name: str
     ) -> (bool | None) {
         for item in mod_ast.body {
-            if isinstance(item, uni.Ability) and item.name_ref is not None and item.name_ref.sym_name == func_name {
-                is_explicitly_public = item.access is not None and item.access.tag.name == Tok.KW_PUB;
+            if isinstance(item, uni.Ability)
+            and item.name_ref is not None
+            and item.name_ref.sym_name == func_name {
+                is_explicitly_public = item.access is not None
+                and item.access.tag.name == Tok.KW_PUB;
                 return not is_explicitly_public;  # True = auth required, False = public
+
             }
         }
         return None;
