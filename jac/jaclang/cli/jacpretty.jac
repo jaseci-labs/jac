@@ -51,29 +51,29 @@ glob COLORS: Dict[(str, int)] = {
          "bright_magenta": Color.BRIGHT_MAGENTA.value,
          "bright_cyan": Color.BRIGHT_CYAN.value,
          "bright_white": Color.BRIGHT_WHITE.value
-        },
-        STYLES: Dict[(str, str)] = {
-            "bold": Style.BOLD.value,
-            "dim": Style.DIM.value,
-            "italic": Style.ITALIC.value,
-            "underline": Style.UNDERLINE.value,
-            "blink": Style.BLINK.value,
-            "reverse": Style.REVERSE.value,
-            "conceal": Style.CONCEAL.value,
-            "strike": Style.STRIKE.value
-        },
-        STYLE_ALIASES: Dict[(str, str)] = {
-            "b": "bold",
-            "d": "dim",
-            "i": "italic",
-            "u": "underline",
-            "r": "reverse",
-            "s": "strike",
-            "c": "conceal"
-        },
-        _console: Optional[Console] = None,
-        RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
-        __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
+     },
+     STYLES: Dict[(str, str)] = {
+         "bold": Style.BOLD.value,
+         "dim": Style.DIM.value,
+         "italic": Style.ITALIC.value,
+         "underline": Style.UNDERLINE.value,
+         "blink": Style.BLINK.value,
+         "reverse": Style.REVERSE.value,
+         "conceal": Style.CONCEAL.value,
+         "strike": Style.STRIKE.value
+     },
+     STYLE_ALIASES: Dict[(str, str)] = {
+         "b": "bold",
+         "d": "dim",
+         "i": "italic",
+         "u": "underline",
+         "r": "reverse",
+         "s": "strike",
+         "c": "conceal"
+     },
+     _console: Optional[Console] = None,
+     RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
+     __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
 
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]];
 
