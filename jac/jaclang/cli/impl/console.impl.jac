@@ -1,5 +1,6 @@
-"""Implementation of console utilities for terminal output (jacpretty-powered)."""
-import os, sys;
+"""Implementation of console utilities for terminal output (jacpretty)."""
+import os; 
+import sys;
 import from contextlib { contextmanager }
 import from typing { Any }
 import from jaclang.cli.jacpretty { Console as _PrettyConsole }
