@@ -74,9 +74,9 @@ glob COLORS: Dict[(str, int)] = {
         _console: Optional[Console] = None,
         RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
         __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
-        
+
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]];
- 
+
 def render_markup(markup: str, base_style: str = "") -> str;
 
 def get_console -> Console;
