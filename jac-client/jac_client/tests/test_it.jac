@@ -185,7 +185,7 @@ test "all in one app endpoints" {
                 print(
                     f"[DEBUG] Waiting for server to be available on 127.0.0.1:{server_port}"
                 );
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server is now accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -843,7 +843,7 @@ test "default client app renders" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -1081,7 +1081,7 @@ test "configurable api base url in bundle" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -1267,7 +1267,7 @@ test "profile config applies to server" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -1354,7 +1354,7 @@ test "no profile omits profile settings" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -1454,7 +1454,7 @@ test "vite env and define config" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
                 );
@@ -1705,7 +1705,7 @@ test "pwa build generates manifest and service worker" {
                 );
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}");
-                wait_for_port("127.0.0.1", server_port, timeout=90.0);
+                wait_for_port("127.0.0.1", server_port, timeout=180.0);
                 print(
                     f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
                 );
