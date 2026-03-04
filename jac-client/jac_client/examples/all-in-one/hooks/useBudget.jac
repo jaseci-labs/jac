@@ -1,9 +1,6 @@
 # Custom hook for budget operations
 # Demonstrates: custom hooks, useState, array methods
-cl import from react {
-    useCallback,
-    useMemo
-}
+cl import from react { useCallback, useMemo }
 
 cl {
     # Main budget management hook

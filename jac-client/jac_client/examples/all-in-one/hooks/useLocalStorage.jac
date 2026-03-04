@@ -1,15 +1,13 @@
 # Custom hook for localStorage persistence
 # Demonstrates: custom hooks, try/except error handling, useEffect
-cl import from react {
-    useEffect
-}
+cl import from react { useEffect }
 
 cl {
     # Custom hook for syncing state with localStorage
     def useLocalStorage(key: str, initialValue: list) -> list {
         # Initialize state with value from localStorage or default
         [storedValue, setStoredValue] = useState(
-            lambda -> any { try {
+            lambda -> Any { try {
                 item = window.localStorage.getItem(key);
                 if item {
                     return JSON.parse(item);

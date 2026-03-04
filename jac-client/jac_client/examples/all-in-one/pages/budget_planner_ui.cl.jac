@@ -28,9 +28,9 @@ cl def:pub BudgetPlanner -> JsxElement {
 
     # Sort by date (newest first)
     sorted = filtered.slice().sort(
-        lambda a: dict , b: dict  -> int { return Reflect.construct(Date, [b["date"]]).getTime() - Reflect.construct(
-            Date, [a["date"]]
-        ).getTime(); }
+        lambda a: dict , b: dict  -> int { return Reflect.construct(
+            Date, [b["date"]]
+        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime(); }
     );
 
     # Prepare chart data with colors

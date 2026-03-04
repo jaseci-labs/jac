@@ -43,7 +43,8 @@ class ViteCompiler {
         compile_to_js_func:
             (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
         extract_exports_func: (Callable[([Any], list[str])] | None) = None,
-        extract_globals_func: (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
+        extract_globals_func:
+            (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];

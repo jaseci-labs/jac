@@ -167,6 +167,7 @@ obj NodeAnchor(Anchor) {
         edges: list[EdgeAnchor];
 
     def __getstate__(self: NodeAnchor) -> dict[(str, object)];
+    def is_populated(self: NodeAnchor) -> bool;
 }
 
 """Edge Anchor."""
@@ -177,6 +178,7 @@ obj EdgeAnchor(Anchor) {
         target: NodeAnchor,
         is_undirected: bool;
 
+    def is_populated(self: EdgeAnchor) -> bool;
     def __getstate__(self: EdgeAnchor) -> dict[(str, object)];
 }
 
@@ -202,6 +204,7 @@ obj Archetype {
     with entry {
         _jac_entry_funcs_: ClassVar[list[ObjectSpatialFunction]] = [];
         _jac_exit_funcs_: ClassVar[list[ObjectSpatialFunction]] = [];
+        _subclass_hooks: ClassVar[list[Callable[[type], None]]] = [];
     }
 
     @cached_property

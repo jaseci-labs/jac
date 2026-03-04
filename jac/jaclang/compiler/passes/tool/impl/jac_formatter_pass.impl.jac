@@ -55,11 +55,22 @@ impl JacFormatPass.format_doc_ir(
     } elif isinstance(doc_node, doc.Concat) {
         result: list[str] = [];
         current_line_budget = width_remaining;
-        for part in doc_node.parts {
+        num_parts = len(doc_node.parts);
+        for (idx, part) in enumerate(doc_node.parts) {
+            effective_budget = current_line_budget;
+            # For Group nodes, reduce budget by flat first-line width of
+            # remaining siblings so the Group knows how much space is
+            # actually left on the line for its flat/break decision.
+            if isinstance(part, doc.Group) and (idx + 1) < num_parts {
+                rest_width = self._flat_first_line_width(
+                    doc.Concat(doc_node.parts[(idx + 1):])
+                );
+                effective_budget = max(0, (current_line_budget - rest_width + 1));
+            }
             part_str = self.format_doc_ir(
                 part,
                 indent_level,
-                current_line_budget,
+                effective_budget,
                 is_broken,
                 align_spaces=align_spaces
             );
@@ -68,16 +79,21 @@ impl JacFormatPass.format_doc_ir(
             }
             result.append(part_str);
             if ('\n' in part_str) {
-                lines = part_str.splitlines();
-                last_line = lines[-1] if lines else '';
                 full_budget = max(0, (self.MAX_LINE_LENGTH - total_indent));
-                indent_str = ' ' * total_indent;
-                if last_line.startswith(indent_str) {
-                    used = len(last_line) - len(indent_str);
+                if part_str.endswith('\n') {
+                    # Cursor is at start of fresh line
+                    current_line_budget = full_budget;
                 } else {
-                    used = len(last_line);
+                    lines = part_str.splitlines();
+                    last_line = lines[-1] if lines else '';
+                    indent_str = ' ' * total_indent;
+                    if last_line.startswith(indent_str) {
+                        used = len(last_line) - len(indent_str);
+                    } else {
+                        used = len(last_line);
+                    }
+                    current_line_budget = max(0, (full_budget - used));
                 }
-                current_line_budget = max(0, (full_budget - used));
             } else {
                 current_line_budget = max(0, (current_line_budget - len(part_str)));
             }
@@ -132,12 +148,18 @@ Stops early on overflow or hard/literal lines.
 impl JacFormatPass._probe_fits(
     nd: doc.DocType, indent_level: int, width_remaining: int, *, max_steps: int = 2000
 ) -> bool {
+    cache_key = (id(nd), indent_level, width_remaining);
+    cached = self._probe_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
     work: deque[tuple[(object, int)]] = deque();
     work.append((nd, indent_level));
     steps = 0;
     remaining = width_remaining;
     while work {
         if (steps >= max_steps) {
+            self._probe_cache[cache_key] = False;
             return False;
         }
         steps += 1;
@@ -145,10 +167,12 @@ impl JacFormatPass._probe_fits(
         if isinstance(cur, doc.Text) {
             remaining -= len(cur.text);
             if (remaining <= 0) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
         } elif isinstance(cur, doc.Line) {
             if (cur.hard or cur.literal) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
             if cur.tight {
@@ -156,6 +180,7 @@ impl JacFormatPass._probe_fits(
             }
             remaining -= 1;
             if (remaining <= 0) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
         } elif isinstance(cur, doc.Concat) {
@@ -176,11 +201,53 @@ impl JacFormatPass._probe_fits(
             raise ValueError(f"Unknown DocType in probe: {type(cur)}") ;
         }
     }
+    self._probe_cache[cache_key] = True;
     return True;
+}
+
+"""Compute the non-breakable trailing width after a position in a Concat.
+
+Walks remaining siblings and counts only non-Group content (Text, Lines,
+etc.) that will definitely appear on the same line.  Stops at the first
+hard/literal line break or Group (since Groups make their own break
+decisions and may wrap to a new line).
+"""
+impl JacFormatPass._flat_first_line_width(nd: doc.DocType) -> int {
+    work: deque[object] = deque();
+    work.append(nd);
+    width = 0;
+    while work {
+        cur = work.pop();
+        if isinstance(cur, doc.Text) {
+            width += len(cur.text);
+        } elif isinstance(cur, doc.Line) {
+            if (cur.hard or cur.literal) {
+                return width;
+            }
+            if not cur.tight {
+                width += 1;
+            }
+        } elif isinstance(cur, doc.Concat) {
+            for p in reversed(cur.parts) {
+                work.append(p);
+            }
+        } elif isinstance(cur, doc.Group) {
+            # Stop at Groups — they make their own break decisions
+            return width;
+        } elif isinstance(cur, doc.Indent) {
+            work.append(cur.contents);
+        } elif isinstance(cur, doc.Align) {
+            work.append(cur.contents);
+        } elif isinstance(cur, doc.IfBreak) {
+            work.append(cur.flat_contents);
+        }
+    }
+    return width;
 }
 
 """Initialize pass."""
 impl JacFormatPass.pre_transform -> None {
     self.indent_size = 4;
     self.MAX_LINE_LENGTH = 88;
+    self._probe_cache: dict = {};
 }

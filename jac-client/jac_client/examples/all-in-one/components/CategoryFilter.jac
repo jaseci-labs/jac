@@ -1,14 +1,10 @@
 # Category filter component
 # Demonstrates: iteration with map, conditional classes, events
-cl import from ..constants.categories {
-    CATEGORIES,
-    CATEGORY_LABELS,
-    CATEGORY_COLORS
-}
+cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS, CATEGORY_COLORS }
 
 cl {
     # Filter buttons for categories
-    def:pub CategoryFilter(selectedCategory: str, onSelect: any) -> JsxElement {
+    def:pub CategoryFilter(selectedCategory: str, onSelect: Any) -> JsxElement {
         # Add "ALL" to the beginning of categories
         allCategories = ["ALL"].concat(CATEGORIES);
 
@@ -22,22 +18,24 @@ cl {
                         <button
                             key={cat}
                             className={("filter-btn active")
-                            if selectedCategory == cat
-                            else ("filter-btn")}
+                                if selectedCategory == cat
+                                else ("filter-btn")}
                             style={{
                                 "borderColor": CATEGORY_COLORS[cat]
-                                if cat != "ALL"
-                                else "#374151",
+                                    if cat != "ALL"
+                                    else "#374151",
                                 "backgroundColor": (
                                     CATEGORY_COLORS[cat] if cat != "ALL" else "#374151"
                                 )
-                                if selectedCategory == cat
-                                else ("transparent"),
+                                    if selectedCategory == cat
+                                    else ("transparent"),
                                 "color": ("#fff")
-                                if selectedCategory == cat
-                                else (
-                                    CATEGORY_COLORS[cat] if cat != "ALL" else "#374151"
-                                )
+                                    if selectedCategory == cat
+                                    else (
+                                        CATEGORY_COLORS[cat]
+                                            if cat != "ALL"
+                                            else "#374151"
+                                    )
                             }}
                             onClick={lambda : onSelect(cat)}
                         >

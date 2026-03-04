@@ -165,6 +165,9 @@ Run `jac jac2py friends.jac` to generate:
     print(result)
     ```
 
+!!! note
+    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
+
 ---
 
 ## **Key Concepts Explained**
@@ -334,6 +337,9 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 ## **Complete Library Interface Reference**
 
+!!! warning "API Scope Notice"
+    The following reference includes both public API functions available via `from jaclang.lib import ...` and internal runtime functions that may not be directly importable. Core functions available for import include: `connect`, `disconnect`, `spawn`, `root`, `node`, `edge`, `walker`, `obj`, `Anchor`, `NodeAnchor`, `EdgeAnchor`, `WalkerAnchor`, `Root`. Other functions listed below may be internal to the runtime and subject to change.
+
 ### **Type Aliases & Constants**
 
 | Name | Type | Description |
@@ -462,7 +468,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 | Function | Description | Use Case |
 |----------|-------------|----------|
-| `by(model)` | Decorator for LLM-powered functions | `@by(model) def func(): ...` |
+| `by_operator(model)` | Decorator for LLM-powered functions | `@by_operator(model) def func(): ...` |
 | `call_llm(model, mtir)` | Direct LLM invocation | Advanced LLM usage |
 | `get_mtir(caller, args, call_params)` | Get method IR for LLM | LLM internal representation |
 | `sem(semstr, inner_semstr)` | Semantic metadata decorator | `@sem("doc", {"field": "desc"})` |

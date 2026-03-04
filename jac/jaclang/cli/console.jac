@@ -49,8 +49,7 @@ obj JacConsole {
 }
 
 # Lazy initialization to avoid circular imports
-glob _console_instance:
-         JacConsole | None = None;
+glob _console_instance: JacConsole | None = None;
 
 def _get_console -> JacConsole;
 

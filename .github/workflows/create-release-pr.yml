@@ -53,6 +53,16 @@ on:
           - patch
           - minor
           - major
+      jac-mcp:
+        description: "jac-mcp version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
       jaseci:
         description: "jaseci (meta package) version bump"
         required: true
@@ -102,6 +112,7 @@ jobs:
             --jac-client ${{ inputs['jac-client'] }} \
             --jac-scale ${{ inputs['jac-scale'] }} \
             --jac-super ${{ inputs['jac-super'] }} \
+            --jac-mcp ${{ inputs['jac-mcp'] }} \
             --jaseci ${{ inputs.jaseci }}
 
       - name: Configure git

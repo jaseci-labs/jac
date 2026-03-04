@@ -7,7 +7,6 @@ import types;
 import from threading { Event }
 import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { BytecodeCache, get_bytecode_cache }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.jac0core.passes { Alert }
@@ -23,11 +22,7 @@ with entry {
 """JacProgram holds the state of a compiled Jac program."""
 class JacProgram {
     """Initialize the JacProgram object."""
-    def init(
-        self: JacProgram,
-        main_mod: (uni.ProgramModule | None) = None,
-        bytecode_cache: (BytecodeCache | None) = None
-    ) -> None;
+    def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
 
     """Get a JacCompiler instance configured with this program's cache."""
     def _get_compiler(self: JacProgram) -> JacCompiler;

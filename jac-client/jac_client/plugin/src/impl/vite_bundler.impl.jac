@@ -82,6 +82,8 @@ impl ViteBundler.create_package_json(
     self.create_tsconfig();
     # Generate config files (postcss, tailwind, etc.) from jac.toml
     self.create_config_files();
+    # Generate .npmrc for scoped registries/auth from jac.toml
+    self.create_npmrc();
     return package_json_path;
 }
 
@@ -119,6 +121,18 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
     user_exclude = user_ts_config.get('exclude', []);
     # Merge compiler options (user overrides defaults)
     merged_compiler_options = {** default_compiler_options, ** user_compiler_options};
+    # Add user-defined path aliases to compiler options
+    paths_config = self.config_loader.get_paths_config();
+    if paths_config {
+        ts_paths: dict[str, list[str]] = {};
+        for (alias_pattern, target_path) in paths_config.items() {
+            # Convert ./components/* to components/*
+            ts_target = target_path.lstrip('./');
+            ts_paths[alias_pattern] = [ts_target];
+        }
+        merged_compiler_options['baseUrl'] = '.';
+        merged_compiler_options['paths'] = ts_paths;
+    }
     # For include/exclude, use user values if provided, otherwise defaults
     merged_include = user_include or default_include;
     merged_exclude = user_exclude or default_exclude;
@@ -353,8 +367,24 @@ impl ViteBundler._generate_vite_config_content(
     build_config = vite_config_data.get('build', {});
     resolve_config = vite_config_data.get('resolve', {});
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
-    if (isinstance(resolve_config, dict) and resolve_config)
-    else '';
+        if (isinstance(resolve_config, dict) and resolve_config)
+        else '';
+    # Get user-defined path aliases for Vite resolve.alias
+    paths_config = self.config_loader.get_paths_config();
+    user_aliases_lines: list[str] = [];
+    q = '"';
+    for (alias_pattern, target_path) in paths_config.items() {
+        # Strip trailing /* for Vite (it handles directory mapping differently)
+        alias_key = alias_pattern.rstrip('/*');
+        # Strip leading ./ and trailing /* from target
+        target_clean = target_path.lstrip('./').rstrip('/*');
+        user_aliases_lines.append(
+            f'        {q}{alias_key}{q}: path.resolve(projectRoot, {q}{target_clean}{q}),'
+        );
+    }
+    user_aliases_str = '\n' + '\n'.join(user_aliases_lines)
+        if user_aliases_lines
+        else '';
     define_config = vite_config_data.get('define', {});
     define_str = self._format_define_entries(api_base_url, define_config);
     imports_section = f"{imports_str}\n" if imports_str else '';
@@ -362,18 +392,47 @@ impl ViteBundler._generate_vite_config_content(
     if is_dev {
         # Dev config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, dict) and build_config)
-        else '';
+            if (isinstance(build_config, dict) and build_config)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, dict) and server_config)
-        else '';
+            if (isinstance(server_config, dict) and server_config)
+            else '';
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
+
+// Vite plugin: forward client-side runtime errors to the terminal via WebSocket
+function jacErrorReporter() {{
+  const seen = new Map();
+  return {{
+    name: "jac-error-reporter",
+    configureServer(server) {{
+      server.ws.on("jac:client-error", (data) => {{
+        const key = data.type + ":" + data.message;
+        const now = Date.now();
+        if (seen.get(key) > now - 2000) return;
+        seen.set(key, now);
+        let loc = "";
+        if (data.source) {{
+          try {{
+            var p = new URL(data.source).pathname.slice(1)
+              .replace("compiled/", "").replace(".vite/deps/", "");
+            if (p.endsWith(".js")) p = p.slice(0, -3) + ".jac";
+            loc = " (" + p;
+            if (data.line) loc += ":" + data.line;
+            if (data.column) loc += ":" + data.column;
+            loc += ")";
+          }} catch(e) {{}}
+        }}
+        console.error("Client error: " + data.type + ": " + data.message + loc);
+      }});
+    }},
+  }};
+}}
 
 /**
  * Vite DEV configuration for HMR mode
@@ -383,7 +442,12 @@ export default defineConfig({{
   define: {{
 {define_str}
   }},
-  plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+  plugins: [
+    jacErrorReporter(),{(
+            newline + plugins_str + newline + '  '
+        )
+            if plugins_str
+            else ''}],
   root: buildDir,
   envDir: projectRoot, // Load .env files from project root
   publicDir: false,
@@ -423,7 +487,7 @@ export default defineConfig({{
   resolve: {{
     alias: {{
       "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
-      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
 {resolve_overrides_str}
@@ -433,15 +497,15 @@ export default defineConfig({{
     } else {
         # Build config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, dict) and build_config)
-        else '';
+            if (isinstance(build_config, dict) and build_config)
+            else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, dict) and server_config)
-        else '';
+            if (isinstance(server_config, dict) and server_config)
+            else '';
         server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
-        if server_config_str
-        else '';
+            if server_config_str
+            else '';
         # Get output dir relative path
         try {
             output_relative = self.output_dir.relative_to(build_dir).as_posix();
@@ -510,9 +574,11 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
-        if plugins_str
-        else ''}],
+    jacSourceMapper(),{(
+            newline + plugins_str + newline + '  '
+        )
+            if plugins_str
+            else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
   envDir: projectRoot, // Load .env files from project root
     build: {{
@@ -536,7 +602,7 @@ export default defineConfig({{
 {server_section}  resolve: {{
       alias: {{
         "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
-        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
 {resolve_overrides_str}
@@ -617,7 +683,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
     # Ensure bun is available before proceeding
     if not ensure_bun_available() {
-        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+        raise ClientBundleError(
+            'Bun is required. Install manually: https://bun.sh'
+        ) from None ;
     }
     # Ensure client npm deps are configured; prompt to install defaults if missing
     if not ensure_client_deps(self.config_loader) {
@@ -644,6 +712,12 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             if configs_package_json.exists() and not build_package_json.exists() {
                 import shutil;
                 shutil.copy2(configs_package_json, build_package_json);
+            }
+            # Copy .npmrc for scoped registry auth during install
+            configs_npmrc = build_dir / 'configs' / '.npmrc';
+            build_npmrc = build_dir / '.npmrc';
+            if configs_npmrc.exists() and not build_npmrc.exists() {
+                shutil.copy2(configs_npmrc, build_npmrc);
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
@@ -779,6 +853,65 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     return created_files;
 }
 
+"""Create .npmrc file from jac.toml [plugins.client.npm] configuration.
+
+Generates an .npmrc file in .jac/client/configs/ with scoped registry
+mappings and authentication tokens.
+
+Example jac.toml:
+    [plugins.client.npm]
+    scoped_registries = { "@ascentcloud" = "https://npm.pkg.github.com" }
+
+    [plugins.client.npm.auth]
+    "//npm.pkg.github.com/" = { _authToken = "${NODE_AUTH_TOKEN}" }
+
+This generates .jac/client/configs/.npmrc with:
+    @ascentcloud:registry=https://npm.pkg.github.com
+    //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+"""
+impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
+    npm_config = self.config_loader.get_npm_config();
+    if not npm_config {
+        return None;
+    }
+    build_dir = self._get_client_dir();
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(parents=True, exist_ok=True);
+    npmrc_path = configs_dir / '.npmrc';
+    lines: list[str] = [];
+    # Process global settings: { "registry" = "...", "always-auth" = true }
+    known_keys = {'scoped_registries','auth','settings'};
+    settings = npm_config.get('settings', {});
+    for (key, value) in settings.items() {
+        if isinstance(value, bool) {
+            lines.append(f"{key}={str(value).lower()}");
+        } else {
+            lines.append(f"{key}={value}");
+        }
+    }
+    # Process scoped registries: { "@scope" = "https://registry.url" }
+    scoped_registries = npm_config.get('scoped_registries', {});
+    for (scope, registry_url) in scoped_registries.items() {
+        lines.append(f"{scope}:registry={registry_url}");
+    }
+    # Process auth entries: { "//registry.url/" = { _authToken = "..." } }
+    auth = npm_config.get('auth', {});
+    for (registry_path, auth_data) in auth.items() {
+        if isinstance(auth_data, dict) {
+            for (key, value) in auth_data.items() {
+                lines.append(f"{registry_path}:{key}={value}");
+            }
+        } elif isinstance(auth_data, str) {
+            lines.append(f"{registry_path}={auth_data}");
+        }
+    }
+    if not lines {
+        return None;
+    }
+    npmrc_path.write_text('\n'.join(lines) + '\n', encoding='utf-8');
+    return npmrc_path;
+}
+
 """Convert TOML config data to JavaScript config file content.
 
 Generates a generic module.exports with the config data as JSON.
@@ -834,8 +967,8 @@ def _forward_vite_output(
                 ready_event.set();
             }
             if ready_event.is_set() {
-                # After ready, forward non-URL output to console
-                if not _is_vite_url_line(line) {
+                # After ready, forward output to console (skip Vite URL banner lines,
+                if '[HMR]' in line or not _is_vite_url_line(line) {
                     sys_module.stdout.write(line);
                     sys_module.stdout.flush();
                 }
@@ -902,6 +1035,32 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
   <body>
     <div id="root"></div>
     <script type="module" src="/compiled/_entry.js"></script>
+    <script type="module">
+    if (import.meta.hot) {
+      function report(d) {
+        try { import.meta.hot.send("jac:client-error", d); } catch(e) {}
+      }
+      window.addEventListener("error", function(e) {
+        report({
+          type: e.error ? e.error.constructor.name : "Error",
+          message: e.error ? e.error.message : e.message,
+          stack: e.error ? e.error.stack : null,
+          source: e.filename || null,
+          line: e.lineno || null,
+          column: e.colno || null
+        });
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        var r = e.reason;
+        report({
+          type: r instanceof Error ? r.constructor.name : "UnhandledPromiseRejection",
+          message: r instanceof Error ? r.message : String(r),
+          stack: r instanceof Error ? r.stack : null,
+          source: null, line: null, column: null
+        });
+      });
+    }
+    </script>
   </body>
 </html>
 ''';
@@ -924,6 +1083,12 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
     if not build_package_json.exists() {
         shutil.copy2(generated_package_json, build_package_json);
     }
+    # Copy .npmrc for scoped registry auth during install
+    configs_npmrc = build_dir / 'configs' / '.npmrc';
+    build_npmrc = build_dir / '.npmrc';
+    if configs_npmrc.exists() and not build_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
@@ -941,6 +1106,10 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
         # Clean up temp package.json
         if build_package_json.exists() {
             build_package_json.unlink();
+        }
+        # Clean up temp .npmrc
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
         }
     }
 }

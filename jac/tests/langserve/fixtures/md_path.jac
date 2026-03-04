@@ -20,10 +20,10 @@ import from jaclang.compiler.type_system.types {
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from missing_mod { SemTokManager }
 import from circle { RAD }
-import from jaclang.vendor.pygls { uris }
-import from jaclang.vendor.pygls.server { LanguageServer }
+import from jaclang.lsp { uris }
+import from jaclang.lsp.server { LanguageServer }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 import nonexistent_module;
 
 include jaclang.jac0core.log;

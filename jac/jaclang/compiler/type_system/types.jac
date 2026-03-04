@@ -306,8 +306,8 @@ def create_callable_type(
 
     # Set GradualCallableForm flag only for Callable[..., T] form
     flags: int = FunctionTypeFlags.GradualCallableForm
-    if is_gradual
-    else FunctionTypeFlags.Null;
+        if is_gradual
+        else FunctionTypeFlags.Null;
 
     return FunctionType(
         func_name="",

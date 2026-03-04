@@ -17,9 +17,7 @@ import from .test_helpers {
 }
 
 # ---- Helper functions (replacing fixtures) ----
-def _fill_auth_form(
-    page: Page, username: str, password: str
-) -> None {
+def _fill_auth_form(page: Page, username: str, password: str) -> None {
     """Fill username and password fields."""
     page.locator('input[type="text"], input[placeholder="Username" i]').first.fill(
         username
@@ -299,7 +297,7 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
                 # ---- Track walker HTTP requests ----
                 walker_requests: list = [];
 
-                def _track_request(request: any) -> None {
+                def _track_request(request: Any) -> None {
                     if "/walker/" in request.url {
                         walker_requests.append(request.url);
                     }

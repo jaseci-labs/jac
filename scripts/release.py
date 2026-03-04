@@ -65,6 +65,13 @@ PACKAGES: dict[str, dict[str, str]] = {
         "pypi_name": "jac-super",
         "notes_display": "jac-super",
     },
+    "jac-mcp": {
+        "dir": "jac-mcp",
+        "pyproject": "jac-mcp/pyproject.toml",
+        "release_notes": "docs/docs/community/release_notes/jac-mcp.md",
+        "pypi_name": "jac-mcp",
+        "notes_display": "jac-mcp",
+    },
     "jaseci": {
         "dir": "jaseci-package",
         "pyproject": "jaseci-package/pyproject.toml",
@@ -81,7 +88,8 @@ INTERNAL_DEPS: dict[str, list[str]] = {
     "jac-client": ["jaclang"],
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
-    "jaseci": ["jaclang", "byllm", "jac-client", "jac-scale", "jac-super"],
+    "jac-mcp": ["jaclang"],
+    "jaseci": ["jaclang", "byllm", "jac-client", "jac-scale", "jac-super", "jac-mcp"],
 }
 
 # Reverse map: pypi_name -> list of package keys that depend on it

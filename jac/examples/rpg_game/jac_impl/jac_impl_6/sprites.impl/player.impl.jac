@@ -139,9 +139,7 @@ impl Player.animate{
     }
 }
 # Ability to collide with blocks without passing through.
-impl Player.collide_blocks(
-    direction: str
-) {
+impl Player.collide_blocks(direction: str) {
     if direction == "x" {
         hits = pygame.sprite.spritecollide(self, self.game.blocks, False);
         if hits {

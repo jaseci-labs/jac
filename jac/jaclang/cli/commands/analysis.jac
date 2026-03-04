@@ -24,13 +24,6 @@ glob registry = get_registry();
             short="e"
         ),
         Arg.create(
-            "warnonly",
-            typ=bool,
-            default=False,
-            help="Treat errors as warnings",
-            short="w"
-        ),
-        Arg.create(
             "ignore",
             kind=ArgKind.MULTI,
             default=[],
@@ -55,7 +48,6 @@ glob registry = get_registry();
         ("jac check myprogram.jac", "Check a single file"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
         ("jac check myproject/", "Check all files in directory"),
-        ("jac check myprogram.jac --warnonly", "Report but don't fail on errors"),
         ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
         (
             "jac check myprogram.jac --parse-only",
@@ -69,7 +61,6 @@ glob registry = get_registry();
 def check(
     paths: list,
     print_errs: bool = True,
-    warnonly: bool = False,
     ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False

@@ -20,9 +20,7 @@ import from jaclang.compiler.primitives {
 }
 
 # --- Helpers -----------------------------------------------------------------
-def _mcall(
-    target: str, method: str, args: list[str]
-) -> str {
+def _mcall(target: str, method: str, args: list[str]) -> str {
     """Emit target.method(arg1, arg2, ...).""";
     if len(args) > 0 {
         return target + "." + method + "(" + ", ".join(args) + ")";

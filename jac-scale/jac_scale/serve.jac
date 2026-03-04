@@ -23,7 +23,6 @@ import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
-import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password, _extract_path_param_names }
 import from jac_scale.config_loader { get_scale_config }
@@ -36,6 +35,8 @@ import from fastapi.responses { StreamingResponse }
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from fastapi { WebSocket, WebSocketDisconnect }
+import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
+import from jac_scale.enums { Platforms, Operations }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -45,10 +46,6 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__);
-
-enum Platforms ( StrEnum ) { GOOGLE = 'google' }
-
-enum Operations ( StrEnum ) { LOGIN = 'login', REGISTER = 'register' }
 
 """Core auth, user management, JWT, API keys, server start/postinit."""
 obj JacAPIServerCore {
@@ -158,7 +155,7 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerEndpoints, JacAPIServerStatic, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None,

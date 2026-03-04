@@ -98,7 +98,7 @@ glob llm = Model(model_name="gpt-4o");
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `model_name` | str | Yes | Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet-20240620") |
+| `model_name` | str | Yes | Model identifier (e.g., "gpt-4o", "claude-sonnet-4-6") |
 | `api_key` | str | No | API key for the model provider (defaults to environment variable) |
 | `config` | dict | No | Configuration dictionary (see below) |
 
@@ -180,7 +180,7 @@ You can also override per-file with `glob llm = Model(...)` (see [Custom Model (
 | Provider | Model Name Format | Example |
 |----------|-------------------|---------|
 | OpenAI | `gpt-*` | `gpt-4o`, `gpt-4o-mini` |
-| Anthropic | `claude-*` | `claude-3-5-sonnet-20240620` |
+| Anthropic | `claude-*` | `claude-sonnet-4-6` |
 | Google | `gemini/*` | `gemini/gemini-2.0-flash` |
 | Ollama | `ollama/*` | `ollama/llama3:70b` |
 | HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
@@ -322,13 +322,18 @@ obj MyClass {
 
 ### Inline Expression
 
-The `by llm` operator can also be used as an inline expression without a function declaration:
+!!! warning "Not Yet Implemented"
+    The inline `by llm` expression syntax is planned but not yet available. Use a function declaration instead:
 
-```jac
-with entry {
-    response = "Explain quantum computing in simple terms" by llm;
-}
-```
+    ```jac
+    # Instead of: response = "prompt" by llm;
+    # Use:
+    def explain(topic: str) -> str by llm();
+
+    with entry {
+        response = explain("quantum computing");
+    }
+    ```
 
 ---
 
@@ -353,6 +358,22 @@ enum Sentiment {
 }
 
 def analyze_sentiment(text: str) -> Sentiment by llm();
+```
+
+Enum member semstrings are included in the LLM's schema, helping the model understand what each value means:
+
+```jac
+enum Personality {
+    INTROVERT,
+    EXTROVERT,
+    AMBIVERT
+}
+
+sem Personality.INTROVERT = "Prefers solitude and small groups, energized by alone time";
+sem Personality.EXTROVERT = "Thrives in social settings, energized by interaction";
+sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
+
+def classify_personality(bio: str) -> Personality by llm();
 ```
 
 ### Object Types
@@ -390,30 +411,20 @@ Parameters passed to `by llm()` at call time:
 |-----------|------|-------------|
 | `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Default: 0.7 |
 | `max_tokens` | int | Maximum tokens in response |
-| `tools` | list | Tool functions for agentic behavior (enables ReAct loop) |
+| `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 
-### Chained Transformations
-
-Compose multiple LLM calls using the pipe operator:
-
-```jac
-with entry {
-    text = "Some input text";
-    result = text
-        |> (lambda t: str -> str: t by llm("Correct grammar"))
-        |> (lambda t: str -> str: t by llm("Simplify language"))
-        |> (lambda t: str -> str: t by llm("Translate to Spanish"));
-}
-```
+!!! warning "Deprecated: `method` parameter"
+    The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
 
 ### Examples
 
 ```jac
 # With temperature control
-def generate_story(prompt: str) -> str by llm(temperature=1.5);
+# Note: Max temperature varies by provider (Anthropic: 0.0-1.0, OpenAI: 0.0-2.0)
+def generate_story(prompt: str) -> str by llm(temperature=0.9);
 def extract_facts(text: str) -> str by llm(temperature=0.0);
 
 # With max tokens
@@ -882,15 +893,138 @@ Too many tools can confuse the LLM. Keep to 5-10 relevant tools per function.
 
 ## Error Handling
 
+byLLM raises typed exceptions that all inherit from `ByLLMError`. Catching the base class handles any library error; catching a specific subclass lets you respond to exactly the failure that occurred.
+
+### Exception Hierarchy
+
+```
+ByLLMError (base)
+├── AuthenticationError   - API key missing, expired, or rejected
+├── RateLimitError        - Rate limit or quota exceeded
+├── ModelNotFoundError    - Model name does not exist or is unavailable
+├── OutputConversionError - LLM response cannot be parsed / converted to the declared return type
+├── UnknownToolError      - LLM called a tool name that was not registered
+├── FinishToolError       - finish_tool output failed validation against the declared return type
+└── ConfigurationError    - Invalid byLLM usage (e.g. streaming with a non-str return type)
+```
+
+All exceptions are importable from `byllm.lib`.
+
+### Quick Reference
+
+| Exception | When raised |
+|-----------|-------------|
+| `AuthenticationError` | API key is missing, expired, or rejected by the provider |
+| `RateLimitError` | Provider rate limit or token quota is exceeded |
+| `ModelNotFoundError` | The requested `model_name` does not exist or is unavailable |
+| `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
+| `UnknownToolError` | The LLM tried to call a tool function that was not in the registered tool list |
+| `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
+| `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+
+### Importing Exceptions
+
+=== "Jac"
+    ```jac
+    import from byllm.lib {
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        UnknownToolError,
+        ConfigurationError
+    }
+    ```
+
+=== "Python"
+    ```python
+    from byllm.lib import (
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        UnknownToolError,
+        ConfigurationError,
+    )
+    ```
+
+### Catching All byLLM Errors
+
 ```jac
+import from byllm.lib { ByLLMError }
+
 with entry {
     try {
         result = my_llm_function(input);
-    } except Exception as e {
-        print(f"LLM error: {e}");
+    } except ByLLMError as e {
+        print(f"byLLM error: {e}");
         # Fallback logic
     }
 }
+```
+
+### Catching Specific Errors
+
+```jac
+import from byllm.lib {
+    AuthenticationError,
+    RateLimitError,
+    ModelNotFoundError,
+    OutputConversionError
+}
+
+with entry {
+    try {
+        result = my_llm_function(input);
+    } except AuthenticationError as e {
+        print(f"Auth failed - check your API key: {e}");
+    } except RateLimitError as e {
+        print(f"Rate limit hit - back off and retry: {e}");
+    } except ModelNotFoundError as e {
+        print(f"Unknown model - check model_name in jac.toml: {e}");
+    } except OutputConversionError as e {
+        print(f"Bad LLM output: {e}");
+        print(f"Raw output was: {e.raw_output}");   # inspect the raw string
+    }
+}
+```
+
+### `OutputConversionError.raw_output`
+
+When the LLM returns a value that cannot be converted to the function's declared return type, `OutputConversionError` is raised and the original LLM string is attached as `raw_output`:
+
+```jac
+import from byllm.lib { OutputConversionError }
+
+obj Product {
+    has name: str;
+    has price: float;
+}
+
+def extract_product(text: str) -> Product by llm();
+
+with entry {
+    try {
+        p = extract_product("some ambiguous text");
+    } except OutputConversionError as e {
+        print(f"Conversion failed: {e}");
+        print(f"Raw LLM output: {e.raw_output}");
+    }
+}
+```
+
+### `ConfigurationError`
+
+Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
+
+```jac
+import from byllm.lib { ConfigurationError }
+
+# This will raise ConfigurationError at call time:
+# streaming is only supported for str return types.
+def get_product(prompt: str) -> Product by llm(stream=True);
 ```
 
 ---
@@ -1007,7 +1141,7 @@ import from byllm.lib { Model }
 glob llm = Model(
     model_name="gpt-4o",
     api_key="your_litellm_virtual_key",
-    proxy_url="http://localhost:8000"
+    config={"api_base": "http://localhost:8000"}
 );
 ```
 
@@ -1017,7 +1151,7 @@ from byllm.lib import Model
 llm = Model(
     model_name="gpt-4o",
     api_key="your_litellm_virtual_key",
-    proxy_url="http://localhost:8000"
+    config={"api_base": "http://localhost:8000"}
 )
 ```
 
@@ -1027,7 +1161,7 @@ llm = Model(
 |-----------|-------------|
 | `model_name` | The model to use (must be configured in LiteLLM proxy) |
 | `api_key` | LiteLLM virtual key or master key (not the provider API key) |
-| `proxy_url` | URL of your LiteLLM proxy server |
+| `config` | Configuration dict; set `api_base` to the URL of your LiteLLM proxy server (also accepts `base_url` or `host` as aliases) |
 
 For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys).
 
@@ -1075,13 +1209,13 @@ For self-hosted models or custom APIs not supported by LiteLLM, create a custom 
             super().__init__(model_name=self.model_name, **self.config);
         }
 
-        def model_call_no_stream(params: dict) {
+        def model_call_no_stream(params: dict) -> object {
             client = OpenAI(api_key=self.api_key);
             response = client.chat.completions.create(**params);
             return response;
         }
 
-        def model_call_with_stream(params: dict) {
+        def model_call_with_stream(params: dict) -> object {
             client = OpenAI(api_key=self.api_key);
             response = client.chat.completions.create(stream=True, **params);
             return response;
@@ -1350,6 +1484,5 @@ walker Coordinator {
 - [Structured Outputs Tutorial](../../tutorials/ai/structured-outputs.md)
 - [Agentic AI Tutorial](../../tutorials/ai/agentic.md)
 - [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md)
-- [Creating byLLM Plugins](creating-plugins.md)
 - [MTP Research Paper](https://arxiv.org/abs/2405.08965)
 - [LiteLLM Documentation](https://docs.litellm.ai/docs)

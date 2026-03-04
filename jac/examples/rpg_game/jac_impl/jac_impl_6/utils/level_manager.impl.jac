@@ -37,8 +37,8 @@ impl LevelManager.get_map{
     }
     map_tiles[map.player_pos.y][map.player_pos.x] = 'P';
     map_tiles: list[list[str]] = [['B'] + row + ['B'] for row in map_tiles];
-    map_tiles: list[list[str]] = [['B' for _ in range(map.level.width + 2)]] + map_tiles + [
+    map_tiles: list[list[str]] = [
         ['B' for _ in range(map.level.width + 2)]
-    ];
+    ] + map_tiles + [['B' for _ in range(map.level.width + 2)]];
     return [''.join(row) for row in map_tiles];
 }

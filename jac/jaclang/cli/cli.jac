@@ -9,9 +9,7 @@ import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.executor { get_executor }
 
 # Import commands module to trigger auto-registration
-import from jaclang.cli {
-    commands
-}
+import from jaclang.cli { commands }
 
 #===============================================================================
 # ENTRY POINT

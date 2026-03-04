@@ -158,8 +158,8 @@ impl EsJsxProcessor.spread_attribute(
 ) -> Expression {
     es = self.es;
     expr: Expression = cast('Expression', nd.expr.gen.es_ast)
-    if (nd.expr and nd.expr.gen.es_ast)
-    else self.pass_ref.sync_loc(es.ObjectExpression(properties=[]), jac_node=nd);
+        if (nd.expr and nd.expr.gen.es_ast)
+        else self.pass_ref.sync_loc(es.ObjectExpression(properties=[]), jac_node=nd);
     nd.gen.es_ast = expr;
     return expr;
 }
@@ -169,9 +169,7 @@ impl EsJsxProcessor.normal_attribute(
     self: EsJsxProcessor, nd: uni.JsxNormalAttribute
 ) -> Property {
     es = self.es;
-    key_expr = self.pass_ref.sync_loc(
-        es.Literal(value=nd.name.value), jac_node=nd.name
-    );
+    key_expr = self.pass_ref.sync_loc(es.Literal(value=nd.name.value), jac_node=nd.name);
     if (nd.value is None) {
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
@@ -213,8 +211,8 @@ impl EsJsxProcessor.expression(
 ) -> Expression {
     es = self.es;
     expr: Expression = cast('Expression', nd.expr.gen.es_ast)
-    if (nd.expr and nd.expr.gen.es_ast)
-    else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.expr);
+        if (nd.expr and nd.expr.gen.es_ast)
+        else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.expr);
     nd.gen.es_ast = expr;
     return expr;
 }
@@ -224,7 +222,9 @@ impl PyJsxProcessor.init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None {
 }
 
 """Generate Python AST for JSX elements."""
-impl PyJsxProcessor.element(self: PyJsxProcessor, nd: uni.JsxElement) -> list[ast3.AST] {
+impl PyJsxProcessor.element(
+    self: PyJsxProcessor, nd: uni.JsxElement
+) -> list[ast3.AST] {
     if (nd.is_fragment or not nd.name) {
         tag_arg: ast3.expr = self.pass_ref.sync(ast3.Constant(value=None), nd);
     } else {

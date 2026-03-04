@@ -110,7 +110,7 @@ def has_display -> bool {
 
 """Get minimal main.jac content for desktop testing."""
 def get_minimal_desktop_jac -> str {
-    return '"""Minimal desktop app for testing."""\n\n# Backend function for sidecar testing\ndef:pub greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n\ndef:pub add(a: int, b: int) -> int {\n    return a + b;\n}\n\n# Client-side component\ncl import from react { useEffect }\n\ncl {\n    def:pub app() -> any {\n        has count: int = 0;\n\n        return <div>\n            <h1>Desktop Test App</h1>\n            <p>Count: {count}</p>\n            <button onClick={lambda -> None { count = count + 1; }}>\n                Increment\n            </button>\n        </div>;\n    }\n}\n';
+    return '"""Minimal desktop app for testing."""\n\n# Backend function for sidecar testing\ndef:pub greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n\ndef:pub add(a: int, b: int) -> int {\n    return a + b;\n}\n\n# Client-side component\ncl import from react { useEffect }\n\ncl {\n    def:pub app() -> Any {\n        has count: int = 0;\n\n        return <div>\n            <h1>Desktop Test App</h1>\n            <p>Count: {count}</p>\n            <button onClick={lambda -> None { count = count + 1; }}>\n                Increment\n            </button>\n        </div>;\n    }\n}\n';
 }
 
 """Get minimal jac.toml content for desktop testing."""
@@ -147,7 +147,7 @@ test "desktop target files exist" {
 
     # Read desktop_target.jac and verify it has the expected methods
     desktop_target_content = desktop_target_jac.read_text();
-    assert "class DesktopTarget" in desktop_target_content;
+    assert "obj DesktopTarget" in desktop_target_content;
     assert "def setup" in desktop_target_content;
     assert "def build" in desktop_target_content;
     assert "def dev" in desktop_target_content;

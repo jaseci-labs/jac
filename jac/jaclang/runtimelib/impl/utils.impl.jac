@@ -60,44 +60,44 @@ impl extract_params(
                 } elif (key == 'incl_info') {
                     if isinstance(value, uni.AtomUnit) {
                         var_name = value.value.right.value
-                        if (
-                            isinstance(value.value, uni.AtomTrailer)
-                            and isinstance(value.value.right, uni.Name)
-                        )
-                        else value.value.value
-                        if isinstance(value.value, uni.Name)
-                        else '';
+                            if (
+                                isinstance(value.value, uni.AtomTrailer)
+                                and isinstance(value.value.right, uni.Name)
+                            )
+                            else value.value.value
+                                if isinstance(value.value, uni.Name)
+                                else '';
                         include_info.append((var_name, value.gen.py_ast[0]));
                     } elif (isinstance(value, uni.TupleVal) and value.values) {
                         for i in value.values {
                             var_name = i.right.value
-                            if (
-                                isinstance(i, uni.AtomTrailer)
-                                and isinstance(i.right, uni.Name)
-                            )
-                            else i.value if isinstance(i, uni.Name) else '';
+                                if (
+                                    isinstance(i, uni.AtomTrailer)
+                                    and isinstance(i.right, uni.Name)
+                                )
+                                else i.value if isinstance(i, uni.Name) else '';
                             include_info.append((var_name, i.gen.py_ast[0]));
                         }
                     }
                 } elif (key == 'excl_info') {
                     if isinstance(value, uni.AtomUnit) {
                         var_name = value.value.right.value
-                        if (
-                            isinstance(value.value, uni.AtomTrailer)
-                            and isinstance(value.value.right, uni.Name)
-                        )
-                        else value.value.value
-                        if isinstance(value.value, uni.Name)
-                        else '';
+                            if (
+                                isinstance(value.value, uni.AtomTrailer)
+                                and isinstance(value.value.right, uni.Name)
+                            )
+                            else value.value.value
+                                if isinstance(value.value, uni.Name)
+                                else '';
                         exclude_info.append((var_name, value.gen.py_ast[0]));
                     } elif (isinstance(value, uni.TupleVal) and value.values) {
                         for i in value.values {
                             var_name = i.right.value
-                            if (
-                                isinstance(i, uni.AtomTrailer)
-                                and isinstance(i.right, uni.Name)
-                            )
-                            else i.value if isinstance(i, uni.Name) else '';
+                                if (
+                                    isinstance(i, uni.AtomTrailer)
+                                    and isinstance(i.right, uni.Name)
+                                )
+                                else i.value if isinstance(i, uni.Name) else '';
                             exclude_info.append((var_name, i.gen.py_ast[0]));
                         }
                     }
@@ -152,8 +152,8 @@ impl traverse_graph(
             and (other_nd := other_nda.archetype)
         ) {
             new_con = (nd, other_nd, `edge.archetype)
-            if not is_in_edge
-            else (other_nd, nd, `edge.archetype);
+                if not is_in_edge
+                else (other_nd, nd, `edge.archetype);
             if ((nd in node_depths) and (node_depths[nd] is not None)) {
                 if (other_nd in node_depths) {
                     node_depths[nd] = min(

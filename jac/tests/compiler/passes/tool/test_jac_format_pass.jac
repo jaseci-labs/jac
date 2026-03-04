@@ -221,6 +221,91 @@ test "jsx hash text preserved" {
     assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
 }
 
+"""Test that Unicode characters survive jac format --lintfix on Windows."""
+test "unicode encoding write roundtrip" {
+    import subprocess;
+
+    path = os.path.join(FIXTURES, "unicode_encoding.jac");
+
+    result = subprocess.run(
+        ["jac", "format", path, "--lintfix"], capture_output=True, text=True
+    );
+    assert result.returncode == 0 , f"jac format failed: {result.stderr}";
+
+    with open(path, 'r', encoding='utf-8') as f {
+        content = f.read();
+    }
+    for char in ['●', '✅', '🚀', 'සාර්ථකයි', 'வெற்றி'] {
+        assert char in content , f"Unicode char '{char}' lost after jac format";
+    }
+}
+
+test "native block comments stay in place" {
+    path = os.path.join(FIXTURES, "native_block_comment.jac");
+    prog = JacProgram.jac_file_formatter(path);
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+
+    # Comments must appear between "na {" and its closing "}", not at end of file
+    na_start = next(
+        (
+            i
+            for (i, ln) in enumerate(lines)
+            if ln.strip().startswith("na {")
+        ),
+        None
+    );
+    assert na_start is not None , "na { not found in formatted output";
+    # Find the matching closing brace at the same or lesser indentation
+    na_indent = len(lines[na_start]) - len(lines[na_start].lstrip());
+    na_end: int | None = None;
+    for i in range(len(lines) - 1, na_start, -1) {
+        if lines[i].strip() == "}"
+        and (len(lines[i]) - len(lines[i].lstrip())) <= na_indent {
+            na_end = i;
+            break;
+        }
+    }
+    assert na_end is not None , "closing } for na block not found in formatted output";
+    comment_lines = [
+        i
+        for (i, ln) in enumerate(lines)
+        if "# Comment inside native block" in ln or "# Another comment" in ln
+    ];
+    assert len(comment_lines) == 2 , f"Expected 2 comments, found {len(comment_lines)}";
+    for cl in comment_lines {
+        assert na_start < cl < na_end , (
+            f"Comment at line {cl + 1} is outside the na block "
+            f"(na: {na_start + 1}-{na_end + 1}):\n" + formatted
+        );
+    }
+
+    # Idempotency
+    prog2 = JacProgram.jac_file_formatter(path);
+    formatted2 = prog2.mod.main.gen.jac;
+    assert formatted == formatted2 , "Formatting of na {} block is not idempotent";
+}
+
+"""Regression: jac_str_formatter must populate errors_had on syntax error
+so that the LSP returns the original source instead of an empty string."""
+test "syntax error preserves original source" {
+    bad_source = "obj Foo { has x: int = ; }";  # invalid syntax
+    prog = JacProgram.jac_str_formatter(source_str=bad_source, file_path="<test>.jac");
+    # Must report errors
+    assert len(prog.errors_had) > 0 , (
+        "jac_str_formatter must populate errors_had on syntax error"
+    );
+    # gen.jac will be empty since no format passes ran
+    gen_output = prog.mod.main.gen.jac;
+    # Simulate the LSP formatted_jac() logic:
+    # return formatted if no errors, else return original source
+    result = gen_output if not prog.errors_had else bad_source;
+    assert result == bad_source , (
+        "Formatter must return original source on syntax error, "
+        f"got: {repr(result)}"
+    );
+}
+
 def format_test(rel_path: str) -> None {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     if not os.path.exists(filename) {

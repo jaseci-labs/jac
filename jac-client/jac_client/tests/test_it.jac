@@ -203,8 +203,8 @@ test "all in one app endpoints" {
                         if raw {
                             captured_output = (
                                 raw.decode("utf-8", errors="ignore")
-                                if isinstance(raw, bytes)
-                                else raw
+                                    if isinstance(raw, bytes)
+                                    else raw
                             );
                         }
                     } except (OSError, BlockingIOError) {
@@ -245,9 +245,7 @@ test "all in one app endpoints" {
 
                 # "/" - server up
                 try {
-                    print(
-                        "[DEBUG] Sending GET request to root endpoint / (with retry)"
-                    );
+                    print("[DEBUG] Sending GET request to root endpoint / (with retry)");
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -284,7 +282,12 @@ test "all in one app endpoints" {
                         f"Body (truncated to 500 chars):\n{page_body[:500]}"
                     );
                     assert "<html" in page_body.lower();
-                } except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc {
+                } except (
+                    URLError,
+                    HTTPError,
+                    TimeoutError,
+                    RemoteDisconnected
+                ) as exc {
                     print(f"[DEBUG] Error while requesting /cl/app endpoint: {exc}");
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}");
                 }
@@ -363,7 +366,12 @@ test "all in one app endpoints" {
                         "postMessage" in worker_js_body
                         or "onmessage" in worker_js_body
                     ) , "Worker JS should contain a message handler";
-                } except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc {
+                } except (
+                    URLError,
+                    HTTPError,
+                    TimeoutError,
+                    RemoteDisconnected
+                ) as exc {
                     print(f"[DEBUG] Error while requesting /workers/worker.js: {exc}");
                     pytest.fail(
                         f"Failed to GET /workers/worker.js after retries: {exc}"
@@ -456,9 +464,7 @@ test "all in one app endpoints" {
                         );
                         assert resp_register.status == 201;
                         register_response = json.loads(register_body);
-                        register_data = register_response.get(
-                            "data", register_response
-                        );
+                        register_data = register_response.get("data", register_response);
                         assert "username" in register_data;
                         assert "token" in register_data;
                         assert "root_id" in register_data;
@@ -578,9 +584,7 @@ test "all in one app endpoints" {
                         "__jac_init__ script tag should be present in served HTML"
                     );
                     init_data = json.loads(init_match.group(1));
-                    print(
-                        f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}"
-                    );
+                    print(f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}");
 
                     # 1. Verify endpointEffects is present
                     assert "endpointEffects" in init_data , (
@@ -1872,8 +1876,8 @@ test "diagnostics syntax error in console" {
                         if raw {
                             captured_output = (
                                 raw.decode("utf-8", errors="ignore")
-                                if isinstance(raw, bytes)
-                                else raw
+                                    if isinstance(raw, bytes)
+                                    else raw
                             );
                         }
                     } except (OSError, BlockingIOError) {
@@ -1923,8 +1927,8 @@ test "diagnostics syntax error in console" {
                         if raw {
                             additional = (
                                 raw.decode("utf-8", errors="ignore")
-                                if isinstance(raw, bytes)
-                                else raw
+                                    if isinstance(raw, bytes)
+                                    else raw
                             );
                             captured_output += additional;
                             print(f"[DEBUG] Additional output:\n{additional}");

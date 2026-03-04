@@ -431,7 +431,9 @@ test "reload with code change preserves functionality" {
             resp2 = client.post("/function/compute", json={"x": 5});
             assert resp2.ok;
             assert resp2.data.get("result") == 15 ,  # 5 * 3
-             f"Expected 15 (5*3), got {resp2.data.get('result')} - code change not applied";
+             f"Expected 15 (5*3), got {resp2.data.get(
+                'result'
+            )} - code change not applied";
         } finally {
             client.close();
         }

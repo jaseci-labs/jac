@@ -31,6 +31,7 @@ import from jaclang.runtimelib.transport {
 }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
+import from jaclang.runtimelib.scheduler { Scheduler }
 
 with entry {
     if TYPE_CHECKING {
@@ -55,12 +56,6 @@ obj UserData {
     has username: str,
         token: str,
         root_id: str;
-}
-
-"""Type-safe serializer for Jac objects."""
-obj JacSerializer {
-    static def serialize(`obj: object) -> JsonValue;
-    static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
 }
 
 """Manage users and their persistent roots (SQLite-backed)."""
@@ -222,7 +217,8 @@ obj JacAPIServer {
         introspection_handler: IntrospectionHandler by postinit,
         execution_handler: ExecutionHandler by postinit,
         transport: BaseTransport by postinit,
-        server: Any by postinit;
+        server: Any by postinit,
+        scheduler: Scheduler by postinit;
 
     obj RestSpecs {
         has method: str = "",

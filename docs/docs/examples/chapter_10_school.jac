@@ -93,7 +93,6 @@ walker StudentAnalyzer {
     can report with Student exit {
         # Only report once at the end
         if len([-->]) == 0 {  # At the last student
-
             print("=== Student Analysis Report ===");
             print(f"High Performers ({len(self.high_performers)}):");
             for student in self.high_performers {

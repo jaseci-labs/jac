@@ -22,13 +22,13 @@ def _convert_transport_response_to_json_response(
     # Serialize error if present
     if not transport_response.ok and transport_response.error {
         error_obj = {};
-        if getattr(transport_response.error, "code", None) {
+        if transport_response.error.code {
             error_obj['code'] = transport_response.error.code;
         }
-        if getattr(transport_response.error, "message", None) {
+        if transport_response.error.message {
             error_obj['message'] = transport_response.error.message;
         }
-        if getattr(transport_response.error, "details", None) is not None {
+        if transport_response.error.details is not None {
             error_obj['details'] = transport_response.error.details;
         }
         response_body['error'] = error_obj;
@@ -36,16 +36,16 @@ def _convert_transport_response_to_json_response(
     # Include metadata if present
     if transport_response.meta {
         meta_dict = {};
-        if getattr(transport_response.meta, "request_id", None) {
+        if transport_response.meta.request_id {
             meta_dict['request_id'] = transport_response.meta.request_id;
         }
-        if getattr(transport_response.meta, "trace_id", None) {
+        if transport_response.meta.trace_id {
             meta_dict['trace_id'] = transport_response.meta.trace_id;
         }
-        if getattr(transport_response.meta, "timestamp", None) {
+        if transport_response.meta.timestamp {
             meta_dict['timestamp'] = transport_response.meta.timestamp;
         }
-        if getattr(transport_response.meta, "extra", None) {
+        if transport_response.meta.extra {
             meta_dict['extra'] = transport_response.meta.extra;
         }
         if meta_dict {
@@ -189,7 +189,9 @@ impl QueryParameterHandler.generate_param_string(param: APIParameter) -> str {
     } elif (param.default is None) {
         return f"{param.name}: Optional[{type_name}] = Query(description='{description}')";
     } else {
-        return f"{param.name}: Optional[{type_name}] = Query({repr(param.default)}, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Query({repr(
+            param.default
+        )}, description='{description}')";
     }
 }
 
@@ -202,7 +204,9 @@ impl HeaderParameterHandler.generate_param_string(param: APIParameter) -> str {
     } elif (param.default is None) {
         return f"{param.name}: Optional[{type_name}] = Header(default=None, description='{description}')";
     } else {
-        return f"{param.name}: Optional[{type_name}] = Header({repr(param.default)}, description='{description}')";
+        return f"{param.name}: Optional[{type_name}] = Header({repr(
+            param.default
+        )}, description='{description}')";
     }
 }
 
@@ -304,7 +308,9 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -326,7 +332,9 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -345,7 +353,9 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -359,7 +369,9 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -378,7 +390,9 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -392,7 +406,9 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(result);
+                            return _convert_transport_response_to_json_response(
+                                result
+                            );
                         }
                         return result;
                     } except Exception as e {
@@ -627,8 +643,8 @@ impl JFastApiServer._create_fastapi_route(
         'summary': (endpoint.summary or f"{method.value} {endpoint.path}"),
         'description': (
             endpoint.description or endpoint.callback.__doc__
-            if endpoint.callback.__doc__
-            else ''
+                if endpoint.callback.__doc__
+                else ''
         ),
         'tags': (endpoint.tags or [])
     };
@@ -745,7 +761,9 @@ endpoint (JEndPoint): The PUT endpoint to execute
 Returns:
 JFastApiServer: Self for method chaining
 """
-impl JFastApiServer._put(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
+impl JFastApiServer._put(
+    self: JFastApiServer, endpoint: JEndPoint
+) -> 'JFastApiServer' {
     self._create_fastapi_route(HTTPMethod.PUT, endpoint);
     return self;
 }
@@ -771,7 +789,9 @@ endpoint (JEndPoint): The GET endpoint to execute
 Returns:
 JFastApiServer: Self for method chaining
 """
-impl JFastApiServer._get(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
+impl JFastApiServer._get(
+    self: JFastApiServer, endpoint: JEndPoint
+) -> 'JFastApiServer' {
     self._create_fastapi_route(HTTPMethod.GET, endpoint);
     return self;
 }

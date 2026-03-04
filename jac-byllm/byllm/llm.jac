@@ -16,6 +16,13 @@ import from byllm.mtir { MTRuntime }
 import litellm;
 import from litellm._logging { _disable_debugging }
 import from openai { OpenAI }
+import openai;
+import from byllm.exceptions {
+    AuthenticationError,
+    RateLimitError,
+    ModelNotFoundError,
+    UnknownToolError
+}
 import from byllm.types {
     CompletionResult,
     LiteLLMMessage,

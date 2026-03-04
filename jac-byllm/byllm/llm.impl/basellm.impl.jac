@@ -32,16 +32,25 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             if mt_run.stream {
                 return self._stream_final_answer(mt_run);
             }
-            # Non-streaming: disable tools and ask for final answer once
+            # Non-streaming: keep only finish_tool and ask for final answer once
             final_instruction = Message(
                 role=MessageRole.USER,
                 content="Based on the tool calls and their results above, provide only your final answer.",
             );
             mt_run.add_message(final_instruction);
             original_tools = mt_run.tools;
-            mt_run.tools = [];
+            finish_tool_obj = mt_run.get_tool("finish_tool");
+            mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
             try {
                 final_resp = self.dispatch_no_streaming(mt_run);
+                if final_resp.tool_calls {
+                    for tool_call in final_resp.tool_calls {
+                        if tool_call.is_finish_call() {
+                            mt_run.add_message(tool_call());
+                            return tool_call.get_output();
+                        }
+                    }
+                }
                 return final_resp.output;
             } finally {
                 mt_run.tools = original_tools;
@@ -63,7 +72,38 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 }
             }
         } else {
-            break;
+            # LLM returned plain text without calling any tool.
+            # If finish_tool is available, the model skipped the expected tool workflow.
+            # Recover: redirect it once more to wrap its answer in finish_tool.
+            finish_tool_obj = mt_run.get_tool("finish_tool");
+            # Only recover when a structured (non-str, non-None) return type was expected.
+            # A plain string output on a str-typed function IS the correct final answer.
+            if not finish_tool_obj
+            or mt_run.resp_type is None
+            or mt_run.resp_type is str {
+                break;
+            }
+            recovery_msg = Message(
+                role=MessageRole.USER,
+                content="You must use finish_tool to return your response. Call finish_tool now.",
+            );
+            mt_run.add_message(recovery_msg);
+            original_tools = mt_run.tools;
+            mt_run.tools = [finish_tool_obj];
+            try {
+                recovery_resp = self.dispatch_no_streaming(mt_run);
+                if recovery_resp.tool_calls {
+                    for tool_call in recovery_resp.tool_calls {
+                        if tool_call.is_finish_call() {
+                            mt_run.add_message(tool_call());
+                            return tool_call.get_output();
+                        }
+                    }
+                }
+                return recovery_resp.output;
+            } finally {
+                mt_run.tools = original_tools;
+            }
         }
     }
     return resp.output;
@@ -128,21 +168,21 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     {log_params["messages"][0]["content"]}
     {MAGENTA}[USER]{RESET}
     {log_params["messages"][1]["content"][0]['text']
-    if isinstance(log_params["messages"][1]["content"], list)
-    else log_params["messages"][1]["content"]}
+        if isinstance(log_params["messages"][1]["content"], list)
+        else log_params["messages"][1]["content"]}
     {MAGENTA}[TOOL]{RESET}
     {log_params["messages"][3]["content"]
-    if len(log_params["messages"]) > 3
-    else "No tools provided."}
+        if len(log_params["messages"]) > 3
+        else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
     {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)
-    if log_params.get("tools")
-    else ""}
+        if log_params.get("tools")
+        else ""}
     {MAGENTA}[RESPONSE FORMAT]{RESET}
     {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)
-    if log_params.get("response_format") is not None
-    else "None"}""";
+        if log_params.get("response_format") is not None
+        else "None"}""";
     return log;
 }
 
@@ -164,20 +204,27 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # https://docs.litellm.ai/docs/#response-format-openai-format
     #
     # TODO: Handle stream output (type ignoring stream response)
-    message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
+    message: LiteLLMMessage = response.get("choices", [])[0].get(
+        "message"
+    );  # type: ignore
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
-    output_value = mt_run.parse_response(output_content);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
+    # Only parse the content as the final output when there are no tool calls.
+    # gpt-4o may return non-JSON content alongside tool calls (e.g. "I'll handle that."),
+    # which would cause json.loads to fail if we parsed it as the typed response.
+    output_value = mt_run.parse_response(output_content)
+        if not tool_calls_list
+        else output_content;
     for tool_call in tool_calls_list {
         if tool := mt_run.get_tool(tool_call.function.name) {
             args_json = json.loads(tool_call.function.arguments);
             args = tool.parse_arguments(args_json);
             tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
         } else {
-            raise RuntimeError(
+            raise UnknownToolError(
                 f"Attempted to call tool: '{tool_call.function.name}' which was not present."
             ) ;
         }
@@ -244,10 +291,11 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         "Be comprehensive and synthesize all the information gathered.",
     );
     mt_run.add_message(final_instruction);
-    # Remove tools and make a streaming call to get the real-time answer
-    # We temporarily clear tools so the LLM just responds with text
+    # Keep only finish_tool so Anthropic sees a valid tools= param
+    # (conversation history may already contain tool call results)
     original_tools = mt_run.tools;
-    mt_run.tools = [];
+    finish_tool_obj = mt_run.get_tool("finish_tool");
+    mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
         yield from self.dispatch_streaming(mt_run);

@@ -29,7 +29,9 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
             JEndPoint(
                 method=spec_method,
                 path=spec_path,
-                callback=self.create_walker_callback(walker_name, has_node_param=False),
+                callback=self.create_walker_callback(
+                    walker_name, has_node_param=False
+                ),
                 parameters=self.create_walker_parameters(
                     walker_name, invoke_on_root=True, method=spec_method
                 ),
@@ -51,9 +53,9 @@ impl JacAPIServerEndpoints.create_walker_parameters(
     restspec = walker_cls.restspec if walker_cls?.restspec else None;
     spec_path = restspec.path if restspec else None;
     path_param_names = _extract_path_param_names(spec_path);
-    walker_fields = self.introspector.introspect_walker(
-        self.get_walkers()[walker_name]
-    )['fields'];
+    walker_fields = self.introspector.introspect_walker(self.get_walkers()[walker_name])[
+        'fields'
+    ];
     for field_name in walker_fields {
         if ((field_name == '_jac_spawn_node') and invoke_on_root) {
             continue;
@@ -292,9 +294,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
 ) -> Callable[..., TransportResponse] {
     async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
         webhook_config = get_scale_config().get_webhook_config();
-        signature_header = webhook_config.get(
-            'signature_header', 'X-Webhook-Signature'
-        );
+        signature_header = webhook_config.get('signature_header', 'X-Webhook-Signature');
         verify_signature = webhook_config.get('verify_signature', True);
 
         # Get API key from header
@@ -401,9 +401,9 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
         )
     );
     # Add walker fields as body parameters (excluding protocol)
-    walker_fields = self.introspector.introspect_walker(
-        self.get_walkers()[walker_name]
-    )['fields'];
+    walker_fields = self.introspector.introspect_walker(self.get_walkers()[walker_name])[
+        'fields'
+    ];
     for field_name in walker_fields {
         if field_name in ('_jac_spawn_node', ) {
             continue;
@@ -463,8 +463,8 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
     # Check if this walker has broadcast enabled
     walker_cls = self.get_walkers()[walker_name];
     restspec = walker_cls.restspec
-    if walker_cls?.restspec and walker_cls.restspec
-    else None;
+        if walker_cls?.restspec and walker_cls.restspec
+        else None;
     is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
     async def websocket_handler(websocket: WebSocket) -> None {
         await ws_manager.connect(websocket, walker_name);
@@ -1070,9 +1070,7 @@ impl JacAPIServerEndpoints.register_dynamic_webhook_endpoint -> None {
         }
 
         webhook_config = get_scale_config().get_webhook_config();
-        signature_header = webhook_config.get(
-            'signature_header', 'X-Webhook-Signature'
-        );
+        signature_header = webhook_config.get('signature_header', 'X-Webhook-Signature');
         verify_signature = webhook_config.get('verify_signature', True);
 
         # Get API key from header
@@ -1195,9 +1193,7 @@ impl JacAPIServerEndpoints.register_dynamic_websocket_endpoint -> None {
 
         walkers = self.get_walkers();
         if walker_name not in walkers {
-            await websocket.close(
-                code=4004, reason=f"Walker '{walker_name}' not found"
-            );
+            await websocket.close(code=4004, reason=f"Walker '{walker_name}' not found");
             return;
         }
 

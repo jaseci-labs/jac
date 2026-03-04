@@ -226,9 +226,21 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Store an anchor. Writes to memory immediately, database on sync."""
+"""Store an anchor. Writes to memory and immediately persists to database."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
+    if anchor.persistent {
+        self._ensure_connection();
+        try {
+            self.__conn__.execute(
+                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
+                (str(anchor.id), dumps(anchor))
+            );
+            self.__conn__.commit();
+        } except Exception as e {
+            logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
+        }
+    }
 }
 
 """Delete an anchor and track for garbage collection (only if persistent)."""
@@ -345,6 +357,10 @@ impl SqliteMemory.sync -> None {
         if not anchor.persistent {
             continue;
         }
+        # Skip stubs - only sync fully populated anchors
+        if not anchor.is_populated() {
+            continue;
+        }
 
         key = str(id);
         try {
@@ -354,7 +370,7 @@ impl SqliteMemory.sync -> None {
             row = cursor.fetchone();
             stored = loads(row[0]) if row else None;
 
-            if stored {
+            if stored and stored.is_populated() {
                 changed = False;
                 # Handle edge updates (CONNECT access)
                 if (
@@ -373,7 +389,6 @@ impl SqliteMemory.sync -> None {
                     changed = True;
                 }
                 # Handle access/archetype updates (WRITE access)
-                # Only check write access when there are actual changes
                 access_changed = hash(dumps(stored.access)) != hash(
                     dumps(anchor.access)
                 );
@@ -397,13 +412,14 @@ impl SqliteMemory.sync -> None {
                         (key, dumps(stored))
                     );
                 }
-            } elif not (
-                isinstance(anchor, NodeAnchor)
-                and not isinstance(anchor.archetype, Root)
-                and not anchor.edges
-            ) {
-                # New anchor - check write access before persisting
-                if Jac.check_write_access(anchor) {
+            } else {
+                # No stored or stored is a stub - save anchor if valid
+                if not (
+                    isinstance(anchor, NodeAnchor)
+                    and not isinstance(anchor.archetype, Root)
+                    and not anchor.edges
+                )
+                and Jac.check_write_access(anchor) {
                     self.__conn__.execute(
                         "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
                         (key, dumps(anchor))

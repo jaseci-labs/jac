@@ -13,7 +13,10 @@ impl create_hpa(
     hpa = V2HorizontalPodAutoscaler(
         api_version='autoscaling/v2',
         kind='HorizontalPodAutoscaler',
-        metadata={'name': f"{deployment_name}-hpa"},
+        metadata={
+            'name': f"{deployment_name}-hpa",
+            'labels': {'managed': 'jac-scale'}
+        },
         spec=V2HorizontalPodAutoscalerSpec(
             scale_target_ref=V2CrossVersionObjectReference(
                 api_version='apps/v1', kind='Deployment', name=deployment_name

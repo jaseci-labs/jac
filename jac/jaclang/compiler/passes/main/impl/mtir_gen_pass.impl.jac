@@ -145,7 +145,8 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                 # Extract the target name (should be a single Name/NameAtom)
                 if enum_stmt.target and len(enum_stmt.target) > 0 {
                     target = enum_stmt.target[0];
-                    if isinstance(target, uni.NameAtom) or isinstance(target, uni.Name) {
+                    if isinstance(target, uni.NameAtom)
+                    or isinstance(target, uni.Name) {
                         member_name = target.value;
                         # Determine type from the assigned value
                         type_info = None;
@@ -264,8 +265,8 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
                     type_symbol_obj = self._extract_type_symbol(parsed_type, arch_node);
 
                     semstr_val = type_symbol_obj.semstr
-                    if type_symbol_obj
-                    else var.sym.semstr;
+                        if type_symbol_obj
+                        else var.sym.semstr;
                     field_info = FieldInfo(
                         name=var.name.value, semstr=semstr_val, type_info=parsed_type
                     );
@@ -417,7 +418,9 @@ impl MTIRGenPass._extract_tools_from_expr(
     }
     # Extract tools from the params we found
     for param in params_to_check {
-        if isinstance(param, uni.KWPair) and param?.key and param.key.value == 'tools' {
+        if isinstance(param, uni.KWPair)
+        and param?.key
+        and param.key.value == 'tools' {
             # params.value should be a list of tool references
             if param.value?.values {
                 for tool in param.value.values {
@@ -436,8 +439,8 @@ impl MTIRGenPass._extract_tools_from_expr(
 
                         if tool_sym {
                             tool_ability = tool_sym.decl.name_of
-                            if tool_sym.decl
-                            else None;
+                                if tool_sym.decl
+                                else None;
                             if tool_ability and isinstance(tool_ability, uni.Ability) {
                                 if tool_ability.is_method {
                                     tool_info = self._extract_method_info(tool_ability);
@@ -475,8 +478,8 @@ impl MTIRGenPass.enter_ability(nd: uni.Ability) -> None {
         ) {
             func_info.return_type = func_info.parent_class;
             parent_name = func_info.parent_class.name
-            if func_info.parent_class
-            else None;
+                if func_info.parent_class
+                else None;
             ret_str = type_to_str(func_info.return_type);
         }
     } else {

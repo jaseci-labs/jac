@@ -139,7 +139,7 @@ my_project/
 | `.jac` | Universal Jac code (head module) |
 | `.sv.jac` | Server-variant code |
 | `.cl.jac` | Client-variant code |
-| `.na.jac` | Native-variant code |
+| `.na.jac` | Native-variant code (compiles to LLVM IR, JIT-executed) |
 | `.impl.jac` | Implementation file (annex) |
 | `.test.jac` | Test file (annex) |
 
@@ -211,12 +211,12 @@ Jac keywords are reserved and cannot be used as identifiers:
 | **Abilities** | `can`, `def`, `init`, `postinit` |
 | **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abs` |
 | **Control** | `if`, `elif`, `else`, `while`, `for`, `match`, `case`, `switch`, `default` |
-| **Loop** | `break`, `continue`, `skip` |
-| **Return** | `return`, `yield`, `report` |
+| **Loop** | `break`, `continue` |
+| **Return** | `return`, `yield`, `report`, `skip` |
 | **Exception** | `try`, `except`, `finally`, `raise`, `assert` |
 | **OSP** | `visit`, `disengage`, `spawn`, `here`, `root`, `visitor`, `entry`, `exit` |
 | **Module** | `import`, `include`, `from`, `as`, `glob` |
-| **Blocks** | `cl` (client), `sv` (server) |
+| **Blocks** | `cl` (client), `sv` (server), `na` (native) |
 | **Other** | `with`, `test`, `impl`, `sem`, `by`, `del`, `in`, `is`, `and`, `or`, `not`, `async`, `await`, `flow`, `wait`, `lambda`, `props` |
 
 **Note:** The abstract modifier keyword is `abs`, not `abstract`.
@@ -232,6 +232,9 @@ obj Example {
     has `class: str;  # Backtick-escaped keyword used as identifier
 }
 ```
+
+!!! danger
+    Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
 ### 7 Entry Point Variants
 
@@ -275,6 +278,20 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `any` | Any type | -- |
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
+
+**Fixed-width types** (for native code and C interop):
+
+| Type | Description | C Equivalent |
+|------|-------------|--------------|
+| `i8`, `u8` | 8-bit signed/unsigned integer | `int8_t`, `uint8_t` |
+| `i16`, `u16` | 16-bit signed/unsigned integer | `int16_t`, `uint16_t` |
+| `i32`, `u32` | 32-bit signed/unsigned integer | `int32_t`, `uint32_t` |
+| `i64`, `u64` | 64-bit signed/unsigned integer | `int64_t`, `uint64_t` |
+| `f32` | 32-bit float | `float` |
+| `f64` | 64-bit float | `double` |
+| `c_void` | Opaque pointer | `void*` |
+
+These types are used in `.na.jac` files for C library interop. The compiler automatically coerces between Jac's standard types (`int` = `i64`, `float` = `f64`) and fixed-width types at call boundaries.
 
 ### 2 Type Annotations
 
@@ -588,7 +605,6 @@ glob PI: float = 3.14159;
 glob config: dict = {};
 
 with entry {
-    global PI;
     print(PI);
 }
 ```
@@ -937,6 +953,8 @@ def example(obj: User | None, user: User | None) {
 
 **Safe index access (`?[]`):**
 
+The `?[]` operator safely handles both `None` containers and invalid subscripts. It returns `None` instead of raising `IndexError`, `KeyError`, or `TypeError`:
+
 ```jac
 def example(my_list: list | None, config: dict | None) {
     # Without null-safe: raises TypeError if list is None
@@ -947,6 +965,14 @@ def example(my_list: list | None, config: dict | None) {
 
     # Works with dictionaries too
     value = config?["key"];
+
+    # Also handles out-of-bounds indices
+    items = [1, 2, 3];
+    result = items?[10];         # None (no IndexError)
+
+    # And missing dictionary keys
+    data = {"a": 1};
+    result = data?["missing"];   # None (no KeyError)
 }
 ```
 
@@ -1139,7 +1165,7 @@ obj Builder {
 
 def example() {
     # Dot forward pipe
-    result = Builder() .> add(5) .> double;
+    result = Builder() .> add(5) .> double();
 
     # Equivalent to:
     result = Builder().add(5).double();
@@ -1497,7 +1523,7 @@ def example(value: int) {
 }
 ```
 
-Note: Unlike C, there is no fall-through between cases.
+Note: Like C, cases fall through to subsequent cases. Use `break` to prevent fall-through.
 
 ### 6 Loop Control
 
@@ -1755,7 +1781,7 @@ def example() {
         return str(n);
     }
 
-    can countdown(n: int) -> Generator[int] {
+    def countdown(n: int) -> Generator[int] {
         while n > 0 {
             yield n;
             n -= 1;
@@ -1768,6 +1794,108 @@ def example() {
         print([x for x in countdown(5)]);
     }
     ```
+
+---
+
+## Native Compilation
+
+Jac supports compiling to native machine code via LLVM for performance-critical workloads. Native code runs as pure machine code with zero Python interpreter overhead.
+
+### .na.jac Files
+
+Files ending in `.na.jac` are compiled to native code via LLVM IR:
+
+```bash
+# Run a native Jac file
+jac run compute.na.jac
+```
+
+Native code can also be part of a larger module via variant annexing. Given `main.jac`, a sibling `main.na.jac` is automatically discovered, compiled, and merged as the native codespace.
+
+### Supported Features
+
+The native backend supports:
+
+- Primitive types: `int`, `float`, `bool`, `str`
+- Fixed-width C types: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `c_void`
+- Collections: `list`, `dict`, `set` with literals, subscript, iteration, and comprehensions
+- Control flow: `if`/`elif`/`else`, `for`, `while`, `match`
+- Functions, closures, and cross-module imports
+- Context managers (`with` statements)
+- Python/native interop (native functions can call Python and vice versa)
+
+### C Library Imports
+
+Import C shared libraries directly in native Jac code:
+
+<!-- jac-skip -->
+```jac
+# compute.na.jac
+import from "libm" {
+    def sin(x: f64) -> f64;
+    def cos(x: f64) -> f64;
+    def sqrt(x: f64) -> f64;
+}
+
+with entry {
+    result = sqrt(sin(1.0) ** 2 + cos(1.0) ** 2);
+    print(result);  # 1.0
+}
+```
+
+C structs can be declared inside library import blocks and used as normal Jac objects with automatic value-type coercion at call boundaries:
+
+<!-- jac-skip -->
+```jac
+import from "libgraphics" {
+    obj Color {
+        has r: u8, g: u8, b: u8, a: u8;
+    }
+    def set_pixel(x: i32, y: i32, color: Color) -> c_void;
+}
+```
+
+### Python-Native Interop
+
+Native and Python codespaces can call each other within the same module:
+
+```jac
+# main.jac (Python/server codespace)
+sv {
+    def process_data(data: list) -> list {
+        # Python code with full PyPI access
+        return sorted(data);
+    }
+}
+
+# main.na.jac (native codespace)
+import from ...main { process_data }
+
+with entry {
+    # Native code calling Python function
+    result = process_data([3, 1, 2]);
+}
+```
+
+### Standalone Binaries
+
+Self-contained `.na.jac` files (those with a `with entry {}` block and no Python dependencies) can be compiled to standalone native executables:
+
+```bash
+# Compile to a standalone binary
+jac nacompile program.na.jac
+
+# Run it directly -- no jac or Python needed
+./program
+```
+
+The `nacompile` command requires no external compiler, assembler, or linker. The entire pipeline runs in pure Python:
+
+1. The Jac compiler generates LLVM IR from the `.na.jac` source
+2. llvmlite emits native object code for the host architecture
+3. A built-in pure-Python ELF linker produces a dynamically-linked executable
+
+The resulting binary links only against `libc` at runtime. See [`jac nacompile`](../../reference/cli/index.md#jac-nacompile) for full usage details.
 
 ---
 

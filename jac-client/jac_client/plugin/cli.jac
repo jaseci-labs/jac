@@ -17,9 +17,7 @@ glob registry = get_registry();
 
 # Register targets when module loads
 # Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
-import from jac_client.plugin.src.targets.desktop_target {
-    DesktopTarget
-}
+import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 import from jac_client.plugin.src.targets.register { register_targets }
 
@@ -209,9 +207,7 @@ def _handle_npm_add(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
+        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -269,7 +265,9 @@ def _handle_npm_add(ctx: HookContext) -> None {
         );
         for pkg_spec in packages {
             (name, version) = resolver.parse_spec(pkg_spec);
-            with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
+            with console.status(
+                f"[cyan]Installing {name}...[/cyan]", spinner="dots"
+            ) as status {
                 dep_type.install_handler(config, name, version, dev);
             }
             console.print(f"  ✔ {name}", style="success");

@@ -24,19 +24,13 @@ import from jaclang.compiler.primitives {
 }
 
 # --- Context ----------------------------------------------------------------
-class ESEmitCtx {
+obj ESEmitCtx {
     """ES emission context — carries the JS code generator."""
     has unparser: object;
-
-    def init(self, unparser: object) {
-        self.unparser = unparser;
-    }
 }
 
 # --- Helpers -----------------------------------------------------------------
-def _mcall(
-    target: str, method: str, args: list[str]
-) -> str {
+def _mcall(target: str, method: str, args: list[str]) -> str {
     """Emit target.method(arg1, arg2, ...).""";
     if len(args) > 0 {
         return target + "." + method + "(" + ", ".join(args) + ")";
@@ -68,9 +62,7 @@ def _binop(left: str, op: str, right: str) -> str {
 # =============================================================================
 #  Numeric Types
 # =============================================================================
-class ESIntEmitter(IntEmitter[
-    (str, ESEmitCtx)
-]) {
+class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
     # --- Named methods ---
     def emit_bit_length(
         self, ctx: ESEmitCtx, target: str, args: list[str]
@@ -298,7 +290,9 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
         return "(-" + target + ")";
     }
 
-    def emit_op_pos(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+    def emit_op_pos(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
         return "(+" + target + ")";
     }
 }
@@ -348,7 +342,9 @@ class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
         return _rt("complex", "neg", [target]);
     }
 
-    def emit_op_pos(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+    def emit_op_pos(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
         return _rt("complex", "pos", [target]);
     }
 }
@@ -361,7 +357,9 @@ class ESBoolEmitter(ESIntEmitter) {
     in the JS output, matching Python semantics where bool & bool → bool.
     """
     # Override bitwise ops to return boolean
-    def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+    def emit_op_and(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
         return "Boolean(" + _binop(target, "&", args[0]) + ")";
     }
 
@@ -369,7 +367,9 @@ class ESBoolEmitter(ESIntEmitter) {
         return "Boolean(" + _binop(target, "|", args[0]) + ")";
     }
 
-    def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+    def emit_op_xor(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
         return "Boolean(" + _binop(target, "^", args[0]) + ")";
     }
 }
@@ -377,9 +377,7 @@ class ESBoolEmitter(ESIntEmitter) {
 # =============================================================================
 #  String Types
 # =============================================================================
-class ESStrEmitter(StrEmitter[
-    (str, ESEmitCtx)
-]) {
+class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
     # Case conversion
     def emit_capitalize(
         self, ctx: ESEmitCtx, target: str, args: list[str]
@@ -974,9 +972,7 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
 # =============================================================================
 #  Collection Types
 # =============================================================================
-class ESListEmitter(ListEmitter[
-    (str, ESEmitCtx)
-]) {
+class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
     # --- Named methods ---
     def emit_append(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _mcall(target, "push", args);
@@ -1006,9 +1002,6 @@ class ESListEmitter(ListEmitter[
     }
 
     def emit_index(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        if len(args) == 1 {
-            return _mcall(target, "indexOf", args);
-        }
         return _rt("list", "index", [target] + args);
     }
 
@@ -1164,7 +1157,9 @@ class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
     }
 
     # --- In-place operators ---
-    def emit_op_ior(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+    def emit_op_ior(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
         return "Object.assign(" + target + ", " + args[0] + ")";
     }
 }
@@ -1438,9 +1433,6 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_index(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        if len(args) == 1 {
-            return _mcall(target, "indexOf", args);
-        }
         return _rt("tuple", "index", [target] + args);
     }
 
@@ -1516,9 +1508,7 @@ class ESRangeEmitter(RangeEmitter[(str, ESEmitCtx)]) {
 # =============================================================================
 #  Builtin Functions
 # =============================================================================
-class ESBuiltinEmitter(BuiltinEmitter[
-    (str, ESEmitCtx)
-]) {
+class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     def emit_print(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _fcall("console.log", args);
     }

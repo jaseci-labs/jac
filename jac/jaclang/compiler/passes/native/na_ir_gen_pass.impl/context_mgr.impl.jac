@@ -29,7 +29,9 @@ impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
 }
 
 """Recursively generate nested with blocks for multiple context managers."""
-impl NaIRGenPass._codegen_with_recursive(exprs: object, idx: int, body: object) -> None {
+impl NaIRGenPass._codegen_with_recursive(
+    exprs: object, idx: int, body: object
+) -> None {
     if idx >= len(exprs) {
         # Base case: generate the actual body
         if isinstance(body, (list, tuple)) {
@@ -68,11 +70,10 @@ impl NaIRGenPass._codegen_with_recursive(exprs: object, idx: int, body: object) 
         self._codegen_with_recursive(exprs, idx + 1, body);
         return;
     }
-    # Look up __enter__ and __exit__ methods
+    # Look up __enter__ and __exit__ methods via MRO
     enter_fn: (ir.Function | None) = None;
     exit_fn: (ir.Function | None) = None;
-    check_name = type_name;
-    while check_name is not None {
+    for check_name in self.mro_order.get(type_name, [type_name]) {
         enter_key = f"{check_name}.__enter__";
         exit_key = f"{check_name}.__exit__";
         if enter_fn is None and enter_key in self.method_funcs {
@@ -84,7 +85,6 @@ impl NaIRGenPass._codegen_with_recursive(exprs: object, idx: int, body: object) 
         if enter_fn is not None and exit_fn is not None {
             break;
         }
-        check_name = self.class_hierarchy.get(check_name);
     }
     if enter_fn is None or exit_fn is None {
         # Type doesn't support context manager protocol — just run body

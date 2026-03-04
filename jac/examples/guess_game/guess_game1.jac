@@ -2,24 +2,23 @@
 
 import random;
 
-class Game {
-    def init(self: Game, attempts: int = 10) {
-        self.attempts = attempts;
-        self.won = False;
-    }
+obj Game {
+    has attempts: int = 10,
+        won: bool = False;
 
-    def play(self: Game) {
+    def play {
         raise NotImplementedError("Subclasses must implement this method.") ;
     }
 }
 
-class GuessTheNumberGame(Game) {
-    def init(self: GuessTheNumberGame, attempts: int = 10) {
-        super.init(attempts);
+obj GuessTheNumberGame(Game) {
+    has correct_number: int by postinit;
+
+    def postinit {
         self.correct_number = random.randint(1, 10);
     }
 
-    def play(self: GuessTheNumberGame) {
+    def play {
         while self.attempts > 0 {
             guess = input("Guess a number between 1 and 10: ");
             if guess.isdigit() {
@@ -36,7 +35,7 @@ class GuessTheNumberGame(Game) {
         }
     }
 
-    def process_guess(self: GuessTheNumberGame, guess: int) {
+    def process_guess(guess: int) {
         if guess > self.correct_number {
             print("Too high!");
         } elif guess < self.correct_number {

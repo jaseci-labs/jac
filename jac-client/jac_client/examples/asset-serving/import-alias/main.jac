@@ -1,8 +1,6 @@
 # Pages
 # Import image using the @jac-client/assets alias
-cl import from "@jac-client/assets/burger.png" {
-    default as burgerImage
-}
+cl import from "@jac-client/assets/burger.png" { default as burgerImage }
 
 cl {
     def:pub app -> JsxElement {
@@ -49,7 +47,7 @@ cl {
                     times!
                 </p>
                 <button
-                    onClick={lambda e: any  -> None { count = count + 1;}}
+                    onClick={lambda e: Any  -> None { count = count + 1;}}
                     style={{
                         padding: "10px 20px",
                         fontSize: "16px",

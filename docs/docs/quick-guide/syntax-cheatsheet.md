@@ -286,7 +286,7 @@ obj Dog {
 class Cat {
     has name: str = "Unnamed";
 
-    def meow() {
+    def meow(self) {
         print(f"{self.name} says Meow!");
     }
 }
@@ -672,7 +672,7 @@ node Person {
 
 # Edges connect nodes and can carry data
 edge Friendship {
-    has since: int;
+    has since: int = 0;
 }
 
 # Nodes with abilities (triggered by walkers)
@@ -944,7 +944,6 @@ with entry {
     # Spawn returns result object
     result = root spawn Greeter();
     print(result.reports);   # List of reported values
-    print(result.returns);   # Return value (if any)
 
     # Reverse: walker spawn node
     w spawn root;
@@ -1134,7 +1133,7 @@ sem support_agent = "Answer customer questions about our products.";
 # Multimodal AI
 # ============================================================
 
-import from byllm { Image }
+import from byllm.lib { Image }
 
 def describe_image(image: Image) -> str by llm;
 

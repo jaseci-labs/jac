@@ -585,7 +585,9 @@ test "dynamic archetype creation" {
 }
 
 test "dynamic archetype creation rel import" {
-    lines = run_jac(os.path.join(FIXTURES, "arch_rel_import_creation.jac")).strip().splitlines();
+    lines = run_jac(
+        os.path.join(FIXTURES, "arch_rel_import_creation.jac")
+    ).strip().splitlines();
     for val in ["DynamicWalker Started", "UtilityNode Data: 42"] {
         assert val in lines;
     }
@@ -677,4 +679,31 @@ test "type aliases and modern generics" {
 test "operator precedence matches python" {
     output = run_jac(os.path.join(FIXTURES, "operator_precedence.jac"));
     assert "PASS" in output , f"Operator precedence test failed:\n{output}";
+}
+
+"""Test that escape sequences like \\x1b, \\033, \\n, \\t are properly handled."""
+test "escape sequences in strings and fstrings" {
+    output = run_jac(os.path.join(FIXTURES, "escape_sequences.jac"));
+
+    # Test 1: hex \x1b in regular string → ESC (ord 27), 5 chars
+    assert "hex_escape_len:5" in output , f"Expected hex escape len 5, got: {output}";
+    assert "hex_escape_first_ord:27" in output , f"Expected ESC char (27), got: {output}";
+
+    # Test 2: octal \033 distinct parsing path → same ESC result
+    assert "octal_escape_len:5" in output , f"Expected octal escape len 5, got: {output}";
+    assert "octal_escape_first_ord:27" in output , f"Expected ESC char (27), got: {output}";
+
+    # Test 3: \x1b in f-string (JoinedStr AST node - different code path)
+    assert "fstring_hex_first_ord:27" in output , f"F-string hex escape failed: {output}";
+
+    # Test 5: standard escapes \n=10, \t=9, \r=13
+    assert "newline_ord:10" in output , f"Newline escape failed: {output}";
+    assert "tab_ord:9" in output , f"Tab escape failed: {output}";
+    assert "carriage_ord:13" in output , f"Carriage return escape failed: {output}";
+
+    # Test 7: escaped backslash \\x1b → literal \ (ord 92), NOT ESC
+    assert "escaped_backslash_first_ord:92" in output , f"Escaped backslash failed: {output}";
+
+    # Test 9: unicode \u001b → ESC (third distinct escape syntax)
+    assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
 }

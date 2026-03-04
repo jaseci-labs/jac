@@ -11,8 +11,8 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     for stmt in (nd).body {
         if isinstance(stmt, uni.Assignment) {
             targets = stmt.target
-            if isinstance(stmt.target, (list, tuple))
-            else [stmt.target];
+                if isinstance(stmt.target, (list, tuple))
+                else [stmt.target];
             for target_expr in targets {
                 member_name = self._get_name(target_expr);
                 if member_name is None {

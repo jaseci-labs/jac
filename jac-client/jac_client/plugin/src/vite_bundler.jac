@@ -71,6 +71,9 @@ class ViteBundler {
     """Create config files from jac.toml [plugins.client.configs]."""
     def create_config_files(self: ViteBundler) -> list[Path];
 
+    """Create .npmrc from jac.toml [plugins.client.npm]."""
+    def create_npmrc(self: ViteBundler) -> Optional[Path];
+
     """Start Vite dev server as a subprocess.
 
     Args:

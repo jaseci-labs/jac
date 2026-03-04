@@ -92,7 +92,9 @@ obj CommandRegistry {
     def _apply_pending_extensions(name: str) -> None;
 
     """Build argparse subparser for a command."""
-    def _build_subparser(subparsers: Any, spec: CommandSpec) -> argparse.ArgumentParser;
+    def _build_subparser(
+        subparsers: Any, spec: CommandSpec
+    ) -> argparse.ArgumentParser;
 
     """Add an argument to an argparse parser."""
     def _add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None;

@@ -745,7 +745,9 @@ test "install with pip and git deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -789,7 +791,9 @@ test "install pip and npm deps" {
             mock_registry = MagicMock();
             mock_registry.get_all.return_value = {"npm": mock_dep_type};
 
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip, patch(
                 "jaclang.project.dep_registry.get_dependency_registry",
@@ -836,7 +840,9 @@ test "install with plugin deps" {
             mock_registry = MagicMock();
             mock_registry.get_all.return_value = {"npm": mock_dep_type};
 
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip, patch(
                 "jaclang.project.dep_registry.get_dependency_registry",
@@ -875,7 +881,9 @@ test "install plugin deps individual fallback" {
             mock_registry = MagicMock();
             mock_registry.get_all.return_value = {"npm": mock_dep_type};
 
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip, patch(
                 "jaclang.project.dep_registry.get_dependency_registry",
@@ -962,7 +970,9 @@ test "add resolves version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -994,7 +1004,9 @@ test "add with explicit version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
@@ -1024,7 +1036,9 @@ test "update all deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -1059,7 +1073,9 @@ test "update specific package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -1130,7 +1146,9 @@ test "add dev dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -1164,7 +1182,9 @@ test "add multiple packages" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -1202,7 +1222,9 @@ test "add pip failure no toml update" {
         original_toml = f.read();
         f.close();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -1236,7 +1258,9 @@ test "add git dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed my-lib", "");
@@ -1267,7 +1291,9 @@ test "update with dev deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.side_effect = [
@@ -1325,7 +1351,9 @@ test "remove package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -1360,14 +1388,12 @@ test "remove dev dep without flag" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch("jaclang.project.dependencies.DependencyInstaller.ensure_venv") as _ev, patch(
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.return_value = (
-                    0,
-                    "Successfully uninstalled pytest-8.0.0",
-                    ""
-                );
+                mock_pip.return_value = (0, "Successfully uninstalled pytest-8.0.0", "");
                 result = proj_cmds.remove(packages=["pytest"]);
             }
             assert result == 0;

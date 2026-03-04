@@ -129,7 +129,9 @@ test "app config creation" {
 }
 
 test "deployment target with logger" {
-    with unittest.mock.patch("jac_scale.factories.deployment_factory.KubernetesTarget") as mock_kubernetes_target {
+    with unittest.mock.patch(
+        "jac_scale.factories.deployment_factory.KubernetesTarget"
+    ) as mock_kubernetes_target {
         mock_target = unittest.mock.MagicMock();
         mock_kubernetes_target.return_value = mock_target;
         config = {"app_name": "test-app", "namespace": "default"};

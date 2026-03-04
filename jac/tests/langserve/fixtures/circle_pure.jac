@@ -11,7 +11,7 @@ def calculate_area(radius: float) -> float;
 def main_run;
 
 """Base class for a shape."""
-obj : priv Shape {
+obj:priv Shape {
     has shape_type: ShapeType;
 
     def area -> float abs;

@@ -73,6 +73,9 @@ print(f'5! = {factorial(5)}')
 
 The compiled output demonstrates how Jac's object-oriented features map to standard Python classes inheriting from `Obj` (Jac's base object archetype), with imports from the `jaclang.lib` package.
 
+!!! note
+    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
+
 ---
 
 ### **Seamless Interoperability: Import Jac Files Like Python Modules**
@@ -588,14 +591,14 @@ Jac accommodates both new application development and enhancement of existing Py
 ### Using Jac from Python
 
 ```python
-from jaclang import jac_import
+import jaclang  # Registers the Jac import hook
 
-# Import Jac module
-my_module = jac_import("my_module.jac")
+# Import Jac modules using standard Python import syntax
+from my_module import my_function, MyClass
 
 # Use exported functions/classes
-result = my_module.my_function(arg1, arg2)
-instance = my_module.MyClass()
+result = my_function(arg1, arg2)
+instance = MyClass()
 ```
 
 ---

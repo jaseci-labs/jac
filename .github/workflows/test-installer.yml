@@ -1,0 +1,175 @@
+name: Test Installer
+
+on:
+  pull_request:
+    paths:
+      - "scripts/install.sh"
+      - ".github/workflows/build-standalone.yml"
+      - ".github/workflows/test-installer.yml"
+  workflow_dispatch:
+
+jobs:
+  test-installer:
+    name: Test install methods
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # --- ShellCheck ---
+      - name: ShellCheck install.sh
+        run: shellcheck scripts/install.sh
+
+      # --- uv install (full) ---
+      - name: "uv install: full ecosystem"
+        run: bash scripts/install.sh
+
+      - name: "uv install: verify jac"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          which jac
+          jac --version
+
+      - name: "uv install: run test program"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          echo 'with entry { print("hello from uv full"); }' > /tmp/test_uv_full.jac
+          jac /tmp/test_uv_full.jac
+
+      - name: "uv install: uninstall full"
+        run: bash scripts/install.sh --uninstall
+
+      - name: "uv install: verify uninstall"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v jac &>/dev/null; then
+            echo "FAIL: jac still found after uninstall"
+            exit 1
+          fi
+          echo "PASS: jac removed"
+
+      # --- uv install (core only) ---
+      - name: "uv install: core only"
+        run: bash scripts/install.sh --core
+
+      - name: "uv install: verify core jac"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          jac --version
+
+      - name: "uv install: run test program (core)"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          echo 'with entry { print("hello from uv core"); }' > /tmp/test_uv_core.jac
+          jac /tmp/test_uv_core.jac
+
+      - name: "uv install: uninstall core"
+        run: bash scripts/install.sh --uninstall
+
+      # --- pex scie builds ---
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pex
+        run: pip install pex
+
+      # --- Version resolution (mirrors build-standalone.yml resolve-versions job) ---
+      - name: "versions: resolve jaclang and jaseci independently"
+        id: versions
+        run: |
+          # Get latest jaseci version
+          JASECI_VERSION=$(pip index versions jaseci 2>/dev/null | head -1 | grep -oP '\(\K[^)]+' || echo "")
+          if [ -z "$JASECI_VERSION" ]; then
+            JASECI_VERSION=$(pip install jaseci --dry-run 2>&1 | grep -oP 'jaseci-\K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          fi
+
+          # Resolve jaclang version from jaseci's dependency (same method as build-standalone)
+          pip install "jaseci==$JASECI_VERSION" --dry-run 2>&1 | tee /tmp/pip-resolve.txt
+          JACLANG_VERSION=$(grep -oP 'jaclang==\K[0-9]+\.[0-9]+\.[0-9]+' /tmp/pip-resolve.txt | head -1)
+          if [ -z "$JACLANG_VERSION" ]; then
+            pip install "jaseci==$JASECI_VERSION"
+            JACLANG_VERSION=$(pip show jaclang | grep -oP '^Version: \K.*')
+          fi
+
+          echo "jaseci_version=$JASECI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "jaclang_version=$JACLANG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved: jaseci==$JASECI_VERSION, jaclang==$JACLANG_VERSION"
+
+      - name: "versions: assert jaclang and jaseci versions differ"
+        run: |
+          JASECI="${{ steps.versions.outputs.jaseci_version }}"
+          JACLANG="${{ steps.versions.outputs.jaclang_version }}"
+          echo "jaseci=$JASECI jaclang=$JACLANG"
+
+          # Both must be valid semver (X.Y.Z)
+          for V in "$JASECI" "$JACLANG"; do
+            if ! echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "FAIL: '$V' is not valid semver"
+              exit 1
+            fi
+          done
+          echo "PASS: both versions are valid semver"
+
+          # They must differ (jaclang and jaseci have independent version schemes)
+          if [ "$JASECI" = "$JACLANG" ]; then
+            echo "FAIL: jaseci and jaclang versions are identical ($JASECI)"
+            echo "This would cause build-standalone.yml to use the wrong version for jaclang"
+            exit 1
+          fi
+          echo "PASS: versions differ (jaseci=$JASECI, jaclang=$JACLANG)"
+
+      # --- pex scie build (jaclang) ---
+      - name: "pex: build jaclang scie binary"
+        run: |
+          pex \
+            "jaclang==${{ steps.versions.outputs.jaclang_version }}" \
+            --console-script jac \
+            --scie eager \
+            --interpreter-constraint "CPython==3.12.*" \
+            -o jac-test-binary
+
+      - name: "pex: verify jaclang binary version"
+        run: |
+          chmod +x jac-test-binary
+          OUTPUT=$(./jac-test-binary --version 2>&1)
+          echo "$OUTPUT"
+          EXPECTED="${{ steps.versions.outputs.jaclang_version }}"
+          if ! echo "$OUTPUT" | grep -q "$EXPECTED"; then
+            echo "FAIL: expected version $EXPECTED in output"
+            exit 1
+          fi
+          echo "PASS: jaclang binary reports version $EXPECTED"
+
+      - name: "pex: run test program (jaclang)"
+        run: |
+          echo 'with entry { print("hello from pex jaclang"); }' > /tmp/test_pex_jac.jac
+          ./jac-test-binary /tmp/test_pex_jac.jac
+
+      # --- pex scie build (jaseci) ---
+      - name: "pex: build jaseci scie binary"
+        run: |
+          pex \
+            "jaseci==${{ steps.versions.outputs.jaseci_version }}" \
+            --console-script jac \
+            --scie eager \
+            --interpreter-constraint "CPython==3.12.*" \
+            -o jaseci-test-binary
+
+      - name: "pex: verify jaseci binary version"
+        run: |
+          chmod +x jaseci-test-binary
+          OUTPUT=$(./jaseci-test-binary --version 2>&1)
+          echo "$OUTPUT"
+          EXPECTED="${{ steps.versions.outputs.jaclang_version }}"
+          if ! echo "$OUTPUT" | grep -q "$EXPECTED"; then
+            echo "FAIL: expected version $EXPECTED in output"
+            exit 1
+          fi
+          echo "PASS: jaseci binary reports version $EXPECTED"
+
+      - name: "pex: run test program (jaseci)"
+        run: |
+          echo 'with entry { print("hello from pex jaseci"); }' > /tmp/test_pex_jaseci.jac
+          ./jaseci-test-binary /tmp/test_pex_jaseci.jac

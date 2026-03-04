@@ -189,8 +189,8 @@ impl SemTokManager.handle_multi_line_insertion(
             total_char_del = changing_line_text[1] + char_del;
         } else {
             total_char_del = sem_tokens[next_token_index + TOK_COL_DELTA]
-            if next_token_index + TOK_COL_DELTA < tok_count
-            else 0;
+                if next_token_index + TOK_COL_DELTA < tok_count
+                else 0;
             line_delta -= change_end_line - change_start_line;
         }
     }
@@ -308,8 +308,8 @@ impl SemTokManager.handle_multi_line_delete(
             sem_tokens[next_token_index + TOK_COL_DELTA] = (
                 total_char_del - prev_tok_pos[1]
             )
-            if prev_tok_pos[0] == change_start_line
-            else total_char_del;
+                if prev_tok_pos[0] == change_start_line
+                else total_char_del;
         }
     }
     if next_token_index + TOK_LINE_DELTA < tok_count {
@@ -354,12 +354,12 @@ impl SemTokManager.update_sem_tokens(
                 and change_start_char > (
                     prev_tok_pos[1] + sem_tokens[(prev_token_index + TOK_LENGTH)]
                 )
-                if prev_token_index
-                and (prev_token_index + TOK_LENGTH) < len(sem_tokens)
-                else 0
-                and change_end_line < nxt_tok_pos[0]
-                or change_end_line == nxt_tok_pos[0]
-                and change_end_char < nxt_tok_pos[1]
+                    if prev_token_index
+                    and (prev_token_index + TOK_LENGTH) < len(sem_tokens)
+                    else 0
+                    and change_end_line < nxt_tok_pos[0]
+                    or change_end_line == nxt_tok_pos[0]
+                    and change_end_char < nxt_tok_pos[1]
             );
             text = '%s' % change.text;
             line_delta = len(text.split('\n')) - 1;
@@ -367,13 +367,13 @@ impl SemTokManager.update_sem_tokens(
             is_next_token_same_line = change_end_line == nxt_tok_pos[0];
             if is_delete {
                 next_token_index = (prev_token_index + TOK_STRIDE)
-                if insert_inside_token
-                and prev_token_index is not None
-                or next_token_index
-                and prev_token_index is not None
-                and next_token_index >= 2 * TOK_STRIDE
-                and (next_token_index - prev_token_index) == 2 * TOK_STRIDE
-                else next_token_index;
+                    if insert_inside_token
+                    and prev_token_index is not None
+                    or next_token_index
+                    and prev_token_index is not None
+                    and next_token_index >= 2 * TOK_STRIDE
+                    and (next_token_index - prev_token_index) == 2 * TOK_STRIDE
+                    else next_token_index;
                 if next_token_index is None {
                     return sem_tokens;
                 }

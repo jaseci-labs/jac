@@ -33,7 +33,9 @@ obj HotReloader {
     def stop -> None;
 
     """Callback for file change events from the watcher."""
-    def on_file_change(event: Any) -> None;  # FileChangeEvent - using Any to avoid circular import
+    def on_file_change(
+        event: Any
+    ) -> None;  # FileChangeEvent - using Any to avoid circular import
 
 
     """Process a file change by classifying declarations and taking action."""

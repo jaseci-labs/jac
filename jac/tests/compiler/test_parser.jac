@@ -252,10 +252,7 @@ cl {
     client_block = bd[2];
     assert isinstance(client_block, uni.ClientBlock);
     assert len(client_block.body) == 2;
-    assert [type(stmt).__name__ for stmt in client_block.body] == [
-        "GlobalVars",
-        "Test"
-    ];
+    assert [type(stmt).__name__ for stmt in client_block.body] == ["GlobalVars", "Test"];
     assert all(
         stmt.code_context == CodeContext.CLIENT
         for stmt in client_block.body

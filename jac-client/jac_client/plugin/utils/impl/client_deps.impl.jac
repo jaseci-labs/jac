@@ -23,7 +23,9 @@ def prompt_install_client_deps(config_loader: object) -> bool {
     );
     console.error("  These will be added to your jac.toml file.\n");
     try {
-        response = input("  Install default client dependencies now? [Y/n]: ").strip().lower();
+        response = input(
+            "  Install default client dependencies now? [Y/n]: "
+        ).strip().lower();
     } except (EOFError, KeyboardInterrupt) {
         console.error("");
         return False;

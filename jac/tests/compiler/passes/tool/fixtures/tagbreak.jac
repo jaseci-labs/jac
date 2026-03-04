@@ -21,20 +21,20 @@ def walrus_example() {
 with entry {
     c = (
         a()
-        if 1
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        else (
-            999
-            if isinstance(a, int)
+            if 1
             and isinstance(a, int)
             and isinstance(a, int)
-            and isinstance(4, bool)
-            else 7
-        )
+            and isinstance(a, int)
+            and isinstance(a, int)
+            and isinstance(a, int)
+            else (
+                999
+                    if isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(4, bool)
+                    else 7
+            )
     );
     print("""This is a long
         line of code.""");
@@ -431,7 +431,7 @@ cl {
 
     # Handle liking a tweet - calls server walker directly
     # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> any {
+    async def like_tweet_action(tweet_id: str) -> Any {
         try {
             result = await like_tweet(tweet_id);
             print("Tweet liked:", result);

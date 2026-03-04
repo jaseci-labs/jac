@@ -369,7 +369,9 @@ def _describe_node(`obj: object) -> str {
 
 """One object per line, index-friendly for returning list."""
 def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
+    return '\n'.join(
+        f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects)
+    );
 }
 
 """Minimal distribution facade for tracking plugin origins.
@@ -377,10 +379,8 @@ def _describe_nodes_list(objects: Sequence) -> str {
     Used when manually loading entry points to maintain compatibility
     with pluggy's list_plugin_distinfo() interface.
     """
-class DistFacade {
-    def init(self: DistFacade, dist: 'object | None') -> None {
-        self._dist = dist;
-    }
+obj DistFacade {
+    has _dist: (object | None);
 
     """Get the distribution/package name."""
     @property

@@ -33,7 +33,9 @@ impl JSCodeGenerator.gen_export_specifier(nd: es.ExportSpecifier) -> str {
 }
 
 """Generate export named declaration."""
-impl JSCodeGenerator.gen_export_named_declaration(nd: es.ExportNamedDeclaration) -> str {
+impl JSCodeGenerator.gen_export_named_declaration(
+    nd: es.ExportNamedDeclaration
+) -> str {
     if nd.declaration {
         return f"{self.indent()}export {self.generate(nd.declaration).lstrip()}";
     }
@@ -53,7 +55,9 @@ impl JSCodeGenerator.gen_import_namespace_specifier(
 }
 
 """Generate import default specifier."""
-impl JSCodeGenerator.gen_import_default_specifier(nd: es.ImportDefaultSpecifier) -> str {
+impl JSCodeGenerator.gen_import_default_specifier(
+    nd: es.ImportDefaultSpecifier
+) -> str {
     return self.generate(nd.local);
 }
 
@@ -376,7 +380,9 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
         return nd.raw;
     }
     if isinstance(nd.value, str) {
-        escaped = nd.value.replace('\\', '\\\\').replace('"', '\\"').replace(
+        escaped = nd.value.replace('\\', '\\\\').replace(
+            '"', '\\"'
+        ).replace(
             '\n', '\\n'
         ).replace(
             '\r', '\\r'
@@ -497,8 +503,8 @@ impl JSCodeGenerator.gen_function_declaration(nd: es.FunctionDeclaration) -> str
 """Generate switch case."""
 impl JSCodeGenerator.gen_switch_case(nd: es.SwitchCase) -> str {
     result = f"{self.indent()}case {self.generate(nd.test)}:\\n"
-    if nd.test
-    else f"{self.indent()}default:\\n";
+        if nd.test
+        else f"{self.indent()}default:\\n";
     self.indent_level += 1;
     for stmt in nd.consequent {
         result += f"{self.generate(stmt)}\\n";

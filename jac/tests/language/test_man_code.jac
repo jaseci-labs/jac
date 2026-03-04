@@ -64,9 +64,7 @@ test "pure circle jac" {
 test "pure circle impl not double generated" {
     captured = io.StringIO();
     sys.stdout = captured;
-    tools.tool(
-        "ir", ["py", os.path.join(EXAMPLES, "manual_code", "circle_pure.jac"), ]
-    );
+    tools.tool("ir", ["py", os.path.join(EXAMPLES, "manual_code", "circle_pure.jac"), ]);
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
     assert "\ndef __init__(self" not in stdout_value;

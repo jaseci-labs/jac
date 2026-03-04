@@ -31,7 +31,7 @@ jobs:
         pip install watchdog
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto --dist worksteal
+      run: pytest -x jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
@@ -101,8 +101,39 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-byllm
 
+    - name: Install docs dependencies
+      run: pip install -e docs
+
+    - name: Build documentation
+      run: mkdocs build --strict
+      working-directory: docs
+
     - name: Run documentation validation tests
       run: pytest -q -x docs/tests/test_validate_md_files.jac
+
+  test-mcp:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.12
+
+    - name: Install jac-mcp and test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-mcp
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run jac-mcp tests
+      run: pytest -x jac-mcp -n auto
 
   test-scale:
     runs-on: ubuntu-latest
@@ -152,6 +183,14 @@ jobs:
     - name: Run SSO tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.jac
+
+    - name: Run admin API tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_admin.jac
+
+    - name: Run Serializer tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
@@ -253,6 +292,6 @@ jobs:
 
     - name: Run tests on built packages
       run: |
-        jac check jac/tests/compiler/passes/main/fixtures/checker_type_ref.jac
+        jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
         pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac

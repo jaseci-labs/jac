@@ -45,7 +45,7 @@ pytest jac -n auto
 **Build something awesome, or fix something that's broken**
 
 See Rules below.
-And check [`.pre-commit-config.yaml`](.pre-commit-config.yaml) to see our lint strategy.
+And check [`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml) to see our lint strategy.
 
 **This is how we run the docs.**
 

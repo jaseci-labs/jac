@@ -25,7 +25,7 @@ cl {
             };
         }
 
-        def handleLogout(e: any) -> None {
+        def handleLogout(e: Any) -> None {
             e.preventDefault();
             jacLogout();
             navigate("/login");

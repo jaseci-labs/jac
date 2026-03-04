@@ -139,7 +139,7 @@ walker:pub GetUsers {
     }
 }
 
-# Endpoint: POST /GetUsers
+# Endpoint: POST /walker/GetUsers
 ```
 
 Start the server:
@@ -526,12 +526,10 @@ cl {
         async def handle_toggle(task_id: str) -> None {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.map(lambda t: any -> any {
-                    if t["id"] == task_id {
-                        return {**t, "completed": not t["completed"]};
-                    }
-                    return t;
-                });
+                tasks = [
+                    {**t, "completed": not t["completed"]} if t["id"] == task_id else t
+                    for t in tasks
+                ];
             }
         }
 
@@ -539,9 +537,7 @@ cl {
         async def handle_delete(task_id: str) -> None {
             result = root spawn delete_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.filter(lambda t: any -> bool {
-                    return t["id"] != task_id;
-                });
+                tasks = [t for t in tasks if t["id"] != task_id];
             }
         }
 
@@ -568,7 +564,7 @@ cl {
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
-            } except e {
+            } except Exception as e {
                 error = f"Failed to load: {e}";
             }
             loading = False;
@@ -1087,10 +1083,94 @@ cl_route_prefix = "/cl"       # Client route prefix
 [plugins.client]
 enabled = true
 
+# Import path aliases
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+
 [plugins.client.configs.tailwind]
 # Generates tailwind.config.js
 content = ["./src/**/*.{jac,tsx,jsx}"]
+
+# Private/scoped npm registries
+[plugins.client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+
+[plugins.client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+
+# Global npm settings
+[plugins.client.npm.settings]
+always-auth = true
 ```
+
+### NPM Registry Configuration
+
+The `[plugins.client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `settings` | `dict` | Global `.npmrc` key-value settings (registry, always-auth, strict-ssl, proxy, etc.) |
+| `scoped_registries` | `dict` | Maps npm scopes to registry URLs |
+| `auth` | `dict` | Registry authentication tokens |
+
+**Global settings** emit arbitrary `.npmrc` key-value pairs:
+
+```toml
+[plugins.client.npm.settings]
+registry = "https://registry.internal.example.com"
+always-auth = true
+strict-ssl = false
+proxy = "http://proxy.company.com:8080"
+```
+
+**Scoped registries** map `@scope` prefixes to custom registry URLs:
+
+```toml
+[plugins.client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+"@internal" = "https://registry.internal.example.com"
+```
+
+**Auth tokens** configure authentication for each registry. Use environment variables to avoid committing secrets:
+
+```toml
+[plugins.client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${NODE_AUTH_TOKEN}"
+```
+
+The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
+
+The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac add --npm`, `jac start`, or `jac build`).
+
+### Import Path Aliases
+
+The `[plugins.client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
+
+```toml
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+"@shared" = "./shared/index"
+```
+
+With the above config, you can use aliases in your `.cl.jac` or `cl {}` code:
+
+```jac
+cl {
+    import from "@components/Button" { Button }
+    import from "@utils/format" { formatDate }
+    import from "@shared" { constants }
+}
+```
+
+| Feature | How It's Applied |
+|---------|-----------------|
+| **Vite** | Added to `resolve.alias` in `vite.config.js` - resolves `@components/Button` to `./components/Button` at build time |
+| **TypeScript** | Added to `compilerOptions.paths` in `tsconfig.json` with `baseUrl: "."` - enables IDE autocompletion and type checking |
+| **Module resolver** | The Jac compiler resolves aliases during compilation, so `import from "@components/Button"` finds the correct file |
+
+**Wildcard patterns** (`@alias/*` -> `./path/*`) match any sub-path under the prefix. **Exact patterns** (`@alias` -> `./path`) match only the alias itself.
 
 ---
 
@@ -1122,6 +1202,8 @@ npm dependencies can also be declared in `jac.toml`:
 lodash = "^4.17.21"
 axios = "^1.6.0"
 ```
+
+For private packages from custom registries, see [NPM Registry Configuration](#npm-registry-configuration) above.
 
 ### jac build
 
@@ -1299,7 +1381,80 @@ description = "My awesome Jac app"
 
 ---
 
+## Automatic Endpoint Caching
+
+The client runtime automatically caches responses from reader endpoints and invalidates caches when writer endpoints are called. This uses compiler-provided `endpoint_effects` metadata -- no manual cache annotations or `jacInvalidate()` calls needed.
+
+**How it works:**
+
+1. The compiler classifies each walker/function endpoint as a **reader** (no side effects) or **writer** (modifies state)
+2. Reader responses are stored in an LRU cache (500 entries, 60-second TTL)
+3. Concurrent identical requests are deduplicated (only one network call)
+4. When a writer endpoint is called, all cached reader responses are automatically invalidated
+5. Auth state changes (login/logout) clear the entire cache
+
+This means spawning the same walker twice in quick succession only makes one API call, and creating/updating data automatically refreshes any cached reads.
+
+---
+
+## BrowserRouter (Clean URLs)
+
+jac-client uses `BrowserRouter` for client-side routing, producing clean URLs like `/about` and `/users/123` instead of hash-based URLs like `#/about`.
+
+For this to work in production, your server must return the SPA HTML for all non-API routes. When using `jac start`, this is handled automatically -- the server's catch-all route serves the SPA HTML for extensionless paths, excluding API prefixes (`cl/`, `walker/`, `function/`, `user/`, `static/`).
+
+The Vite dev server is configured with `appType: 'spa'` for history API fallback during development.
+
+---
+
+## Build Error Diagnostics
+
+When client builds fail, jac-client displays structured error diagnostics instead of raw Vite/Rollup output. Errors include:
+
+- **Error codes** (`JAC_CLIENT_001`, `JAC_CLIENT_003`, etc.)
+- **Source snippets** pointing to the original `.jac` file location
+- **Actionable hints** and quick fix commands
+
+| Code | Issue | Example Fix |
+|------|-------|-------------|
+| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
+| `JAC_CLIENT_004` | Unresolved import | Verify import path |
+
+To see raw error output alongside formatted diagnostics, set `debug = true` under `[plugins.client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
+
+> **Note:** Debug mode is enabled by default for a better development experience. For production deployments, set `debug = false` in `jac.toml`.
+
+---
+
+## Build-Time Constants
+
+Define global variables that are replaced at compile time using the `[plugins.client.vite.define]` section in `jac.toml`:
+
+```toml
+[plugins.client.vite.define]
+"globalThis.API_URL" = "\"https://api.example.com\""
+"globalThis.FEATURE_ENABLED" = true
+"globalThis.BUILD_VERSION" = "\"1.2.3\""
+```
+
+These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). Access them in client code:
+
+```jac
+cl {
+    def:pub Footer() -> JsxElement {
+        return <p>Version: {globalThis.BUILD_VERSION}</p>;
+    }
+}
+```
+
+---
+
 ## Development Server
+
+### Prerequisites
+
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. If Bun is not installed, the CLI prompts you to install it automatically.
 
 ### Start Server
 

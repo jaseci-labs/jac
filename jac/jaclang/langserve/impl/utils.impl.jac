@@ -27,8 +27,8 @@ impl get_line_of_code(
         return (
             line,
             (first_non_space + 4)
-            if line.strip().endswith(('(', '{', '['))
-            else first_non_space
+                if line.strip().endswith(('(', '{', '['))
+                else first_non_space
         );
     }
     return None;
@@ -137,8 +137,8 @@ impl parse_symbol_path(text: str, dot_position: int) -> list[str] {
         }
     }
     all_words = all_words[::-1]
-    if not current_word
-    else ([''.join(current_word[::-1])] + all_words[::-1]);
+        if not current_word
+        else ([''.join(current_word[::-1])] + all_words[::-1]);
     return all_words;
 }
 
@@ -177,8 +177,8 @@ impl collect_all_symbols_in_scope(
             return symbols;
         }
         current_tab = current_tab.parent_scope
-        if current_tab.parent_scope != current_tab
-        else None;
+            if current_tab.parent_scope != current_tab
+            else None;
     }
     return symbols;
 }
@@ -187,41 +187,41 @@ impl collect_all_symbols_in_scope(
 impl label_map(sub_tab: SymbolType) -> lspt.CompletionItemKind {
     return (
         lspt.CompletionItemKind.Function
-        if sub_tab in [SymbolType.ABILITY, SymbolType.TEST]
-        else lspt.CompletionItemKind.Class
-        if sub_tab in [
-            SymbolType.OBJECT_ARCH,
-            SymbolType.NODE_ARCH,
-            SymbolType.EDGE_ARCH,
-            SymbolType.WALKER_ARCH
-        ]
-        else lspt.CompletionItemKind.Module
-        if sub_tab == SymbolType.MODULE
-        else lspt.CompletionItemKind.Enum
-        if sub_tab == SymbolType.ENUM_ARCH
-        else lspt.CompletionItemKind.Field
-        if sub_tab == SymbolType.HAS_VAR
-        else lspt.CompletionItemKind.Method
-        if sub_tab == SymbolType.METHOD
-        else lspt.CompletionItemKind.EnumMember
-        if sub_tab == SymbolType.ENUM_MEMBER
-        else lspt.CompletionItemKind.Interface
-        if sub_tab == SymbolType.IMPL
-        else lspt.CompletionItemKind.Variable
+            if sub_tab in [SymbolType.ABILITY, SymbolType.TEST]
+            else lspt.CompletionItemKind.Class
+                if sub_tab in [
+                    SymbolType.OBJECT_ARCH,
+                    SymbolType.NODE_ARCH,
+                    SymbolType.EDGE_ARCH,
+                    SymbolType.WALKER_ARCH
+                ]
+                else lspt.CompletionItemKind.Module
+                    if sub_tab == SymbolType.MODULE
+                    else lspt.CompletionItemKind.Enum
+                        if sub_tab == SymbolType.ENUM_ARCH
+                        else lspt.CompletionItemKind.Field
+                            if sub_tab == SymbolType.HAS_VAR
+                            else lspt.CompletionItemKind.Method
+                                if sub_tab == SymbolType.METHOD
+                                else lspt.CompletionItemKind.EnumMember
+                                    if sub_tab == SymbolType.ENUM_MEMBER
+                                    else lspt.CompletionItemKind.Interface
+                                        if sub_tab == SymbolType.IMPL
+                                        else lspt.CompletionItemKind.Variable
     );
 }
 
 """Map the symbol node to an lspt.SymbolKind."""
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
     return lspt.SymbolKind.Function
-    if isinstance(sub_tab, uni.Ability)
-    else lspt.SymbolKind.Enum
-    if isinstance(sub_tab, uni.Enum)
-    else lspt.SymbolKind.Class
-    if isinstance(sub_tab, (uni.Archetype, uni.ImplDef))
-    else lspt.SymbolKind.Module
-    if isinstance(sub_tab, uni.Module)
-    else lspt.SymbolKind.Variable;
+        if isinstance(sub_tab, uni.Ability)
+        else lspt.SymbolKind.Enum
+            if isinstance(sub_tab, uni.Enum)
+            else lspt.SymbolKind.Class
+                if isinstance(sub_tab, (uni.Archetype, uni.ImplDef))
+                else lspt.SymbolKind.Module
+                    if isinstance(sub_tab, uni.Module)
+                    else lspt.SymbolKind.Variable;
 }
 
 """Create an lspt.Range from a location object."""
@@ -365,8 +365,10 @@ impl find_deepest_symbol_node_at_pos(
 """Iterate through symbol table."""
 impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
     sym_tabs = [sym_tab]
-    if not (isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path)
-    else [];
+        if not (
+            isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path
+        )
+        else [];
     for i in sym_tab.kid_scope {
         sym_tabs += sym_tab_list(i, file_path=file_path);
     }

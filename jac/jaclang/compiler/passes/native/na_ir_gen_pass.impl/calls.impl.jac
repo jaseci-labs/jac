@@ -1,4 +1,20 @@
 """Function call codegen including builtins and method calls."""
+
+"""Resolve a type name string to an LLVM type.
+
+Checks type_map (primitives), then struct_types (user-defined objs),
+falling back to i64 for unknown types.
+"""
+impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
+    if type_name in self.type_map {
+        return self.type_map[type_name];
+    }
+    if type_name in self.struct_types {
+        return self.struct_types[type_name].as_pointer();
+    }
+    return ir.IntType(64);
+}
+
 """Generate function call."""
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Handle method calls: obj.method(args)
@@ -37,7 +53,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 # Check for dict type by inferring from value
                 for (dict_key, helpers) in self.dict_helpers.items() {
                     dict_type = self.dict_types.get(dict_key);
-                    if dict_type is not None and arg_val.type == dict_type.as_pointer() {
+                    if dict_type is not None
+                    and arg_val.type == dict_type.as_pointer() {
                         return self.builder.call(
                             helpers["len"], [arg_val], name="dict.len"
                         );
@@ -84,8 +101,146 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Handle complex() constructor: complex(real, imag) -> JacComplex*
+    if func_name == "complex" {
+        params_l = nd.params or [];
+        if len(params_l) >= 2 {
+            real_val = self._codegen_expr(params_l[0]);
+            imag_val = self._codegen_expr(params_l[1]);
+            if real_val is not None and imag_val is not None {
+                f64 = ir.DoubleType();
+                i64 = ir.IntType(64);
+                real_f = self._coerce_type(real_val, f64)
+                    if not isinstance(real_val.type, ir.DoubleType)
+                    else real_val;
+                imag_f = self._coerce_type(imag_val, f64)
+                    if not isinstance(imag_val.type, ir.DoubleType)
+                    else imag_val;
+                ctype = self.complex_struct_type;
+                raw = self.builder.call(
+                    self.rc_alloc_fn, [ir.Constant(i64, 16)], name="complex.raw"
+                );
+                ptr = self.builder.bitcast(raw, ctype.as_pointer(), name="complex.ptr");
+                rp = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                    name="complex.re.ptr"
+                );
+                ip = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
+                    name="complex.im.ptr"
+                );
+                self.builder.store(real_f, rp);
+                self.builder.store(imag_f, ip);
+                return ptr;
+            }
+        }
+    }
+    # Handle range() constructor: range(stop), range(start,stop), range(start,stop,step)
+    if func_name == "range" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            rtype = self.range_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="range.raw"
+            );
+            ptr = self.builder.bitcast(raw, rtype.as_pointer(), name="range.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="range.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="range.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="range.tp")
+            );
+            return ptr;
+        }
+    }
+    # Handle slice() constructor: slice(stop), slice(start,stop), slice(start,stop,step)
+    if func_name == "slice" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            stype = self.slice_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="slice.raw"
+            );
+            ptr = self.builder.bitcast(raw, stype.as_pointer(), name="slice.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="slice.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="slice.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="slice.tp")
+            );
+            return ptr;
+        }
+    }
     # Handle multi-arg builtins via emitter dispatch
-    if func_name in ("abs", "min", "max", "pow") {
+    if func_name in (
+        "abs",
+        "min",
+        "max",
+        "pow",
+        "divmod",
+        "sum",
+        "any",
+        "all",
+        "format"
+    ) {
         params_l = nd.params or [];
         arg_vals: list[ir.Value] = [];
         for param in params_l {
@@ -101,7 +256,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord, int, chr, str, hex, oct, bin, round, float builtins via emitter dispatch
+    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
     if func_name in (
         "ord",
         "int",
@@ -112,7 +267,19 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "bin",
         "round",
         "float",
-        "bool"
+        "bool",
+        "sorted",
+        "reversed",
+        "list",
+        "set",
+        "frozenset",
+        "dict",
+        "bytes",
+        "bytearray",
+        "id",
+        "hash",
+        "repr",
+        "ascii"
     ) {
         params_l = nd.params or [];
         if params_l {
@@ -152,8 +319,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         buf = self.builder.alloca(buf_type, name="input.buf");
         buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
         # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
-        # Declare stdin as external global
-        stdin_name = "stdin";
+        # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
+        import platform;
+        stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
         if stdin_name not in self.extern_funcs {
             stdin_type = i8p;
             stdin_global = ir.GlobalVariable(
@@ -179,9 +347,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.cbranch(is_eof, eof_bb, ok_bb);
         # EOF path: return empty string
         self.builder.position_at_start(eof_bb);
-        gc_malloc_eof = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
         eof_str = self.builder.call(
-            gc_malloc_eof, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
+            self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
         );
         self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
         self.builder.branch(merge_bb);
@@ -191,12 +358,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
         strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
         slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
-        # Copy to GC-allocated string
-        gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
+        # Copy to RC-managed string
         alloc_size = self.builder.add(
             slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
         );
-        result_ptr = self.builder.call(gc_malloc, [alloc_size], name="input.result");
+        result_ptr = self.builder.call(
+            self.rc_alloc_fn, [alloc_size], name="input.result"
+        );
         memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
         self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
         # Strip trailing newline if present (only if slen > 0)
@@ -271,9 +439,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 # Declare extern function for this Python function (sv↔na)
                 param_ir_types: list = [];
                 for pt in binding.param_types {
-                    param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                    param_ir_types.append(self._resolve_type_str(pt));
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );
@@ -284,7 +452,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 param_ir_types: list = [];
                 if binding.param_types {
                     for pt in binding.param_types {
-                        param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                        param_ir_types.append(self._resolve_type_str(pt));
                     }
                 } else {
                     # Infer parameter types from call arguments
@@ -293,7 +461,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         param_ir_types.append(ir.IntType(64));  # Default to i64
                     }
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );
@@ -303,6 +471,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         return None;
     }
+    # Propagate return type hint for for-loop element resolution
+    if func_name in self.method_ast_sigs {
+        fn_sig = self.method_ast_sigs[func_name];
+        if fn_sig?.return_type and fn_sig.return_type is not None {
+            self._last_type_node_hint = fn_sig.return_type;
+        }
+    }
     # Build arguments
     args: list[ir.Value] = [];
     params = nd.params or [];
@@ -310,6 +485,26 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         val = self._codegen_expr(param);
         if val is not None {
             args.append(val);
+        }
+    }
+    # Fill in missing optional parameters with their AST default values
+    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
+        sig_params = self.method_ast_sigs[func_name].get_parameters();
+        for pix in range(len(args), len(sig_params)) {
+            p = sig_params[pix];
+            expected_type = func.args[len(args)].type
+                if len(args) < len(func.args)
+                else ir.IntType(64);
+            if p.value is not None {
+                dval = self._codegen_expr(p.value);
+                if dval is not None {
+                    args.append(self._coerce_type(dval, expected_type));
+                } else {
+                    args.append(ir.Constant(expected_type, 0));
+                }
+            } else {
+                args.append(ir.Constant(expected_type, 0));
+            }
         }
     }
     # Type coerce arguments
@@ -321,6 +516,28 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             coerced.append(arg);
         }
     }
-    return self.builder.call(func, coerced, name=f"call.{func_name}");
+    result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
+    if func_name in self.clib_extern_names {
+        # Check ABI integer return types first (small structs coerced to int)
+        for (sname, abi_type) in self.clib_struct_abi_types.items() {
+            if result.type == abi_type {
+                result = self._coerce_type(
+                    result, self.struct_types[sname].as_pointer()
+                );
+                break;
+            }
+        }
+        # Check direct struct return types (larger structs)
+        if not isinstance(result.type, ir.PointerType) {
+            for (sname, stype) in self.struct_types.items() {
+                if sname in self.clib_struct_names and result.type == stype {
+                    result = self._coerce_type(result, stype.as_pointer());
+                    break;
+                }
+            }
+        }
+    }
+    return result;
 }
 # ─── External Function Support ───────────────────────────────

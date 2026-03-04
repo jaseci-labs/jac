@@ -127,9 +127,11 @@ node SecureRoom {
         }
     }
 
-    # Type reference entry - using Root for root
+    # Typed entry for Root walker - in node abilities, the type in
+    # 'with Type entry' refers to the *walker* type visiting this node,
+    # NOT the node type. This triggers when a walker of type Root visits.
     can at_root with Root entry {
-        print("At root node");
+        print("A Root-type walker is visiting this node");
     }
 
     # Walker exiting
@@ -150,7 +152,7 @@ node SecureRoom {
 |------|---------------|
 | `with entry` | Any walker enters (no type filter) |
 | `with TypeName entry` | Walker of TypeName enters |
-| `with Root entry` | At root node entry |
+| `with Root entry` | Walker of type Root visits (in node context, the type refers to the *walker* type) |
 | `with Type1 \| Type2 entry` | Walker of either type enters |
 | `with exit` | Any walker exits |
 | `with TypeName exit` | Walker of TypeName exits |
@@ -207,6 +209,9 @@ edge Road {
     }
 }
 ```
+
+!!! warning "Known Limitation"
+    Edge entry/exit abilities are not currently triggered during walker traversal. This feature is planned but not yet implemented. For now, perform edge-related logic in the walker's node abilities instead.
 
 ### 3 Directed vs Undirected
 
@@ -349,25 +354,37 @@ walker Visitor {
 }
 ```
 
-**Indexed Visit:**
+**Queue Insertion Index:**
+
+The `visit : index : [-->]` syntax controls *where* in the walker's traversal queue new destinations are inserted. This enables DFS, BFS, and custom traversal strategies:
 
 ```jac
 node Item {}
 
 walker Visitor {
-    can indexed with Item entry {
-        visit : 0 : [-->];              # Visit first outgoing node only
-        visit : -1 : [-->];             # Visit last outgoing node only
-        visit : 2 : [-->];              # Visit third node (0-indexed)
+    can traverse with Item entry {
+        visit : 0 : [-->];              # Insert at FRONT of queue (DFS behavior)
+        visit : -1 : [-->];             # Insert at END of queue (BFS behavior)
+        visit : 2 : [-->];              # Insert at position 2 in queue
     }
 }
 ```
 
-Out-of-bounds indices result in no visit.
+| Syntax | Queue Position | Effect |
+|--------|---------------|--------|
+| `visit [-->]` | End (default) | BFS-like -- standard breadth-first traversal |
+| `visit : 0 : [-->]` | Front | DFS-like -- depth-first by inserting at front |
+| `visit : -1 : [-->]` | End | Explicit BFS -- same as default |
+| `visit : N : [-->]` | Position N | Custom insertion point |
+
+Out-of-bounds indices fall back to appending at the end.
 
 ### 4 The `report` Statement
 
-Send data back without stopping:
+Send data back without stopping. Each `report` appends to the `.reports` array and also prints the value to stdout.
+
+!!! note
+    `report value;` both adds `value` to `.reports` **and** prints it to stdout. Keep this in mind when reading output from walker examples.
 
 ```jac
 node DataNode {
@@ -375,6 +392,10 @@ node DataNode {
 }
 
 walker DataCollector {
+    can start with Root entry {
+        visit [-->];
+    }
+
     can collect with DataNode entry {
         report here.value;  # Continues execution
         visit [-->];
@@ -419,6 +440,7 @@ walker MyWalker {
     }
     can collect with Item entry {
         report here.value;
+        visit [-->];
     }
 }
 
@@ -435,7 +457,6 @@ with entry {
     result = root spawn MyWalker(param=10);
 
     # Access results
-    print(result.returns);  # Return value
     print(result.reports);  # All reported values
 }
 ```
@@ -501,12 +522,14 @@ Walker `has` properties become the request body. The `report` values become the 
 walker BaseVisitor {
     can log with entry {
         print(f"Visiting: {here}");
+        visit [-->];
     }
 }
 
 walker DetailedVisitor(BaseVisitor) {
     override can log with entry {
         print(f"Detailed visit to: {type(here).__name__}");
+        visit [-->];
     }
 }
 ```
@@ -594,6 +617,7 @@ with entry {
 !!! note "The `++>` operator returns a list"
     The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
 
+    <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
     new_node = here ++> Todo(id="123", title="Buy groceries");
     created_todo = new_node[0];  # Access the actual node
@@ -706,7 +730,7 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
-| `printgraph(root)` | Print graph for debugging |
+| `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
 ```jac
 node Person { has name: str; }
@@ -743,6 +767,42 @@ walker BFSWalker {
     }
 }
 ```
+
+### Traversal Semantics: Deferred Exits
+
+Walker traversal uses recursive post-order exit execution. Entry abilities execute immediately when entering a node, while **exit abilities are deferred** until all descendants are visited. This means exits execute in LIFO order (last visited node exits first), similar to function call stack unwinding.
+
+```jac
+node Step { has label: str; }
+
+walker Logger {
+    can start with Root entry {
+        visit [-->];  # Begin traversal from root
+    }
+
+    can enter with Step entry {
+        print(f"ENTER: {here.label}");
+        visit [-->];
+    }
+
+    can leave with Step exit {
+        print(f"EXIT: {here.label}");
+    }
+}
+
+# Setup: root -> A -> B -> C
+# root spawn Logger();
+#
+# Output:
+#   ENTER: A
+#   ENTER: B
+#   ENTER: C
+#   EXIT: C    ← innermost exits first
+#   EXIT: B
+#   EXIT: A    ← outermost exits last
+```
+
+This is useful for aggregation patterns where you need to collect results from children before processing the parent (e.g., calculating subtree totals, building trees bottom-up).
 
 ### 2 Filtered Traversal
 
@@ -896,6 +956,9 @@ walker AnimalVisitor {
 - Code typically on same line with closing brace
 - Use `->_` for default/catch-all case
 
+!!! warning "Known Limitation"
+    The `->_{}` wildcard/default case is not currently supported at runtime and will produce a `name '_' is not defined` error. Use an explicit base type or `else` branch instead.
+
 ### 2 Tuple-Based Dispatch
 
 ```jac
@@ -1034,9 +1097,13 @@ walker:priv SearchItems {
 
 ### Hierarchical Traversal
 
+<!-- This example illustrates the pattern conceptually; [node -->] inside a def
+     method is not standard walker traversal syntax. A production implementation
+     would use recursive walker spawning or accumulate results via entry/exit abilities. -->
+
 ```
 walker:priv GetTree {
-    can build_tree(node: any) -> dict {
+    def build_tree(node: any) -> dict {
         children = [];
         for child in [node -->] {
             children.append(self.build_tree(child));
@@ -1054,6 +1121,9 @@ walker:priv GetTree {
     }
 }
 ```
+
+!!! note "Pseudocode"
+    The above example illustrates the hierarchical traversal pattern conceptually. The `[node -->]` syntax inside a `def` method and the use of `here` outside a walker ability context may not work as written. In practice, use recursive walker spawning or accumulate results via entry/exit abilities.
 
 ### Aggregate Walker
 

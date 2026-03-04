@@ -16,6 +16,7 @@ import from jac_scale.factories.database_factory {
 }
 import from bson { ObjectId }
 import from uuid { uuid4 }
+import from jaclang.runtimelib.serializer { Serializer }
 import json;
 
 glob _mongo_clients: dict[str, MongoClient] = {},
@@ -214,4 +215,8 @@ obj Db {
     Warning: This uses SCAN which is safer than KEYS but still O(n).
     """
     def scan_keys(pattern: str, col_name: str = 'default') -> list[str];
+
+    def find_nodes(
+        node_type: str, filter: dict = {}, col_name: str = '_anchors'
+    ) -> list;
 }

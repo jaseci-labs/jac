@@ -12,12 +12,6 @@ def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None 
             return sym;
         }
     }
-    for i in tab.inherited_scope {
-        found = i.base_symbol_table.lookup(name, deep=False);
-        if found {
-            return found;
-        }
-    }
     if deep and tab.kid_scope {
         for kid in tab.kid_scope {
             found = kid.lookup(name, deep=True);
@@ -66,7 +60,9 @@ def assert_symbol_defns_at(
 }
 
 """Assert that a symbol has uses at specific locations."""
-def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) -> None {
+def assert_symbol_uses_at(
+    symbol: Symbol, expected_uses: list[tuple[int, int]]
+) -> None {
     symbol_uses_str = str(symbol.uses);
     for (line, col) in expected_uses {
         expected_use = f"{line}:{col}";

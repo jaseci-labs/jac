@@ -81,9 +81,11 @@ impl SymTabBuildPass.enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) 
 impl SymTabBuildPass.exit_global_vars(
     self: SymTabBuildPass, nd: uni.GlobalVars
 ) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.assignments {
         for j in i.target {
             if isinstance(j, uni.AstSymbolNode) {
+                j.name_spec._sym_category = SymbolType.MOD_VAR;
                 j.sym_tab.def_insert(j, access_spec=nd, single_decl='global var');
             } else {
                 self.ice('Expected name type for global vars');
@@ -93,6 +95,7 @@ impl SymTabBuildPass.exit_global_vars(
 }
 
 impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
@@ -104,18 +107,28 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
                 and not isinstance(
                     i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
                 )
-                and ((outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
+                and (
+                    (outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
+                )
                 and self._outer_has_type_annotation(outer)
             ) {
                 outer.add_use(i.name_spec);
             } else {
+                # Tag enum members with the correct sym_category
+                if isinstance(i.sym_tab, uni.Enum) {
+                    i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
+                }
                 i.sym_tab.def_insert(i, single_decl='local var');
             }
         }
     }
 }
 
-"""Handle walrus operator (:=) assignments."""
+"""Handle walrus operator (:=) assignments.
+
+Walrus variables are scoped to the enclosing function, not the local block.
+This matches Python semantics where `if (x := expr):` defines x in the function scope.
+"""
 impl SymTabBuildPass.exit_binary_expr(
     self: SymTabBuildPass, nd: uni.BinaryExpr
 ) -> None {
@@ -124,8 +137,14 @@ impl SymTabBuildPass.exit_binary_expr(
         return;
     }
     if isinstance(nd.left, uni.Name) {
-        if ((sym := nd.left.sym_tab.lookup(nd.left.sym_name, deep=False)) is None) {
-            nd.left.sym_tab.def_insert(nd.left, single_decl='walrus var');
+        # Find enclosing function scope for walrus variable
+        # (walrus vars scope to function, not local block)
+        target_scope = nd.left.sym_tab;
+        if func := nd.find_parent_of_type(uni.Ability) {
+            target_scope = func.sym_tab;
+        }
+        if ((sym := target_scope.lookup(nd.left.sym_name, deep=False)) is None) {
+            target_scope.def_insert(nd.left, single_decl='walrus var');
         } else {
             sym.add_use(nd.left.name_spec);
         }
@@ -140,7 +159,9 @@ impl SymTabBuildPass.enter_test(self: SymTabBuildPass, nd: uni.Test) -> None {
         for j in dir(unittest.TestCase())
         if j.startswith('assert')
     ] {
-        nd.sym_tab.def_insert(uni.Name.gen_stub_from_node(nd, i, set_name_of=nd));
+        nd.sym_tab.def_insert(
+            uni.Name.gen_stub_from_node(nd, i, set_name_of=nd), imported=True
+        );
     }
 }
 
@@ -172,7 +193,7 @@ impl SymTabBuildPass._exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) 
         for sym in module.names_in_scope.values() {
             if (sym.access != SymbolAccess.PRIVATE) {
                 sym_table_to_update.def_insert(
-                    sym.defn[0], single_decl='import absorb'
+                    sym.defn[0], single_decl='import absorb', imported=True
                 );
             }
         }
@@ -189,7 +210,7 @@ impl SymTabBuildPass.exit_module_path(
     self: SymTabBuildPass, nd: uni.ModulePath
 ) -> None {
     if nd.alias {
-        nd.alias.sym_tab.def_insert(nd.alias, single_decl='import');
+        nd.alias.sym_tab.def_insert(nd.alias, single_decl='import', imported=True);
     } elif (
         nd.path
         and not nd.is_import_from
@@ -200,7 +221,7 @@ impl SymTabBuildPass.exit_module_path(
         )
     ) {
         if isinstance(nd.path[0], uni.Name) {
-            nd.path[0].sym_tab.def_insert(nd.path[0]);
+            nd.path[0].sym_tab.def_insert(nd.path[0], imported=True);
         }
     } else {
         ;
@@ -215,7 +236,7 @@ impl SymTabBuildPass.exit_module_item(
 ) -> None {
     if isinstance(nd.name, uni.Name) {
         sym_node = nd.alias or nd.name;
-        sym_node.sym_tab.def_insert(sym_node, single_decl='import');
+        sym_node.sym_tab.def_insert(sym_node, single_decl='import', imported=True);
         if nd.alias {
             nd.name.sym = nd.name.create_symbol(
                 access=SymbolAccess.PUBLIC, imported=True
@@ -223,7 +244,7 @@ impl SymTabBuildPass.exit_module_item(
         }
     } elif (isinstance(nd.name, uni.Token) and nd.alias) {
         sym_node = nd.alias;
-        sym_node.sym_tab.def_insert(sym_node, single_decl='import');
+        sym_node.sym_tab.def_insert(sym_node, single_decl='import', imported=True);
     }
 }
 
@@ -297,11 +318,27 @@ impl SymTabBuildPass.exit_atom_trailer(
         return;
     }
     chain = nd.as_attr_list;
+    # Case 1: Inside an Ability directly (e.g., obj Foo { def init() { self.x = 1; } })
     ability = nd.find_parent_of_type(uni.Ability);
     if (ability and ability.method_owner) {
         archetype = ability.method_owner;
         if isinstance(archetype, uni.Archetype) {
             archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+        }
+        return;
+    }
+    # Case 2: Inside an ImplDef (e.g., impl Foo.init() { self.x = 1; })
+    # For same-module impls, insert directly. For separate .impl.jac files,
+    # DeclImplMatchPass handles it after connecting impl to declaration.
+    impl_def = nd.find_parent_of_type(uni.ImplDef);
+    if (impl_def and (len(impl_def.target) >= 2)) {
+        archetype_name = impl_def.target[0].sym_name;
+        if impl_def.sym_tab and impl_def.sym_tab.parent_scope {
+            lookup = impl_def.sym_tab.parent_scope.lookup(archetype_name, deep=True);
+            if (lookup and isinstance(lookup.decl.name_of, uni.Archetype)) {
+                archetype = lookup.decl.name_of;
+                archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+            }
         }
     }
 }
@@ -320,13 +357,20 @@ impl SymTabBuildPass._is_self_member_assignment(
     if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
         return False;
     }
+    # Case 1: Inside an Ability directly
     ability = nd.find_parent_of_type(uni.Ability);
-    return (
-        (ability is not None)
-        and ability.is_method
-        and not ability.is_static
-        and not ability.is_cls_method
-    );
+    if ability is not None {
+        return (
+            ability.is_method and not ability.is_static and not ability.is_cls_method
+        );
+    }
+    # Case 2: Inside an ImplDef that represents a method implementation
+    impl_def = nd.find_parent_of_type(uni.ImplDef);
+    if (impl_def and (len(impl_def.target) >= 2)) {
+        # target has >= 2 parts means it's impl Archetype.method, not just impl Archetype
+        return True;
+    }
+    return False;
 }
 
 impl SymTabBuildPass.exit_enum(self: SymTabBuildPass, nd: uni.Enum) -> None {
@@ -517,6 +561,18 @@ impl SymTabBuildPass.enter_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) 
 }
 
 impl SymTabBuildPass.exit_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -> None {
+    self.pop_scope();
+}
+
+impl SymTabBuildPass.enter_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_inner_compr(
+    self: SymTabBuildPass, nd: uni.InnerCompr
+) -> None {
     self.pop_scope();
 }
 

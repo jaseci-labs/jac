@@ -10,7 +10,7 @@ import inspect;
 import os;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.passes.main { PyastBuildPass }
+import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.helpers { pascal_to_snake }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.unitree { PythonModuleAst, Source }
@@ -63,6 +63,9 @@ test "str2doc" {
         prog=JacProgram()
     ).ir_out.unparse();
     assert '"""This is a test function."""\ndef foo()' in code;
+    # \n and \t must remain as escape sequences, not real control characters
+    assert '"""hello\\nworld"""' in code;
+    assert '"""line1\\ttabbed"""' in code;
 }
 
 test "fstring triple quotes" {
@@ -79,4 +82,59 @@ test "fstring triple quotes" {
     assert 'f"""Hello\n{name}"""' in code;
     assert "f'''Hello\n{name}'''''''" not in code;
     assert 'f"""Hello\n{name}"""""""' not in code;
+}
+
+"""Test that escape sequences are preserved when converting Python to Jac."""
+test "py2jac escape sequences" {
+    with open(os.path.join(FIXTURES, "py2jac_escape_sequences.py")) as f {
+        file_source = f.read();
+    }
+    code = PyastBuildPass(
+        ir_in=PythonModuleAst(
+            py_ast.parse(file_source),
+            orig_src=Source(file_source, "py2jac_escape_sequences.py")
+        ),
+        prog=JacProgram()
+    ).ir_out.unparse();
+
+    # No actual ESC character (0x1b) should leak into output
+    assert chr(0x1b) not in code;
+
+    # Hex/octal/standard escapes preserved
+    assert "\\x1b[31m" in code and "\\x1b[0m" in code;
+    assert "\\x1b[32m" in code or "\\033[32m" in code;
+    assert "\\n" in code and "\\t" in code;
+
+    # F-strings, raw strings, triple-quoted
+    assert "f\"\\x1b[" in code or "f'\\x1b[" in code;
+    assert 'r"\\x1b[31m' in code or "r'\\x1b[31m" in code;
+    assert 'f"""Hello {name}' in code or "f'''Hello {name}" in code;
+
+    # Backslashes, quotes, unicode, braces, hash
+    assert "path\\\\to\\\\file" in code;
+    assert "\\u0041" in code or "A" in code;
+    assert "{{literal braces}}" in code;
+    assert "# not a comment" in code;
+    assert "\\x00" in code;
+}
+
+"""Test BinOp chain flattening and mixed-precedence grouping."""
+test "py2jac binop operator precedence" {
+    with open(os.path.join(FIXTURES, "py2jac_binop.py")) as f {
+        file_source = f.read();
+    }
+    code = PyastBuildPass(
+        ir_in=PythonModuleAst(
+            py_ast.parse(file_source), orig_src=Source(file_source, "py2jac_binop.py")
+        ),
+        prog=JacProgram()
+    ).ir_out.unparse();
+
+    assert "((a + b) + c)" not in code , f"Same-op chain not flattened in: {code}";
+    assert "((a - b) - c)" not in code , f"Same-op chain not flattened in: {code}";
+    assert "a + b + c" in code , f"Expected flat add chain in: {code}";
+    assert "a - b - c" in code , f"Expected flat sub chain in: {code}";
+    assert "w - title_len - 2 // 2" not in code , f"Mixed-precedence bug in: {code}";
+    assert "(w - title_len - 2) // 2" in code , f"Expected correct floor-div grouping in: {code}";
+    assert "(w - title_len - 1) // 2" in code , f"Expected correct floor-div grouping in: {code}";
 }

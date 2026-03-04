@@ -4,18 +4,18 @@ node Task {
         completed: bool = False;
 }
 
-walker CreateTask {
+walker:pub CreateTask {
     has id: int,
         title: str;
 
     can create with Root entry {
         new_task = here ++> Task(id=self.id, title=self.title);
-        report new_task ;
+        report new_task;
     }
 }
 
-walker GetAllTasks {
-    can read with Root entry{
+walker:pub GetAllTasks {
+    can read with Root entry {
         tasks = [-->];
         report tasks;
     }
@@ -24,9 +24,9 @@ walker GetAllTasks {
 walker GetTask {
     has id: int;
 
-    can get with Root entry{
-        for task in [-->]{
-            if (self.id == task.id){
+    can get with Root entry {
+        for task in [-->] {
+            if (self.id == task.id) {
                 report task;
             }
         }
@@ -38,7 +38,7 @@ walker CompleteTask {
 
     can complete with Root entry {
         for task in [-->Task] {
-            if (self.id == task.id){
+            if (self.id == task.id) {
                 visit task;
             }
         }
@@ -46,7 +46,7 @@ walker CompleteTask {
 
     can mark_complete with Task entry {
         here.completed = True;
-        report here ;  # here is the visited task
+        report here;  # here is the visited task
     }
 }
 
@@ -55,7 +55,7 @@ walker DeleteTask {
 
     can visit_node with Root entry {
         for task in [-->] {
-            if (self.id == task.id){
+            if (self.id == task.id) {
                 visit task;
             }
         }

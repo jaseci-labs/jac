@@ -153,7 +153,7 @@ cl {
                 if result.reports and result.reports.length > 0 {
                     tasks = result.reports[0];
                 }
-            } except e {
+            } except Exception as e {
                 error = f"Failed to load: {e}";
             }
             loading = False;
@@ -244,7 +244,7 @@ cl {
                 <input
                     value={new_title}
                     onChange={lambda e: any -> None { new_title = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onKeyDown={lambda e: any -> None {
                         if e.key == "Enter" { handle_add(); }
                     }}
                     placeholder="New task..."
@@ -305,7 +305,7 @@ cl {
                         error_msg = response["error"];
                     }
                 }
-            } except e {
+            } except Exception as e {
                 error_msg = f"Network error: {e}";
             }
 
@@ -345,7 +345,7 @@ cl {
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
-            } except e {
+            } except Exception as e {
                 error = f"Failed to load: {e}";
             }
             loading = False;
@@ -502,7 +502,7 @@ cl {
                 <input
                     value={input_text}
                     onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onKeyDown={lambda e: any -> None {
                         if e.key == "Enter" { add(); }
                     }}
                     placeholder="Add a task..."
@@ -541,7 +541,7 @@ cl {
 | Call walker | `result = root spawn walker_name(args)` |
 | Get results | `result.reports[0]` |
 | Node spawn | `node_id spawn walker_name(args)` |
-| Error handling | `try { ... } except e { ... }` |
+| Error handling | `try { ... } except Exception as e { ... }` |
 
 ---
 

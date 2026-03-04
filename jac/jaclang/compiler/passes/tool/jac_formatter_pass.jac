@@ -18,6 +18,7 @@ obj JacFormatPass(Transform[uni.Module, uni.Module]) {
         max_steps: int = 2000
     ) -> bool;
 
+    def _flat_first_line_width(nd: doc.DocType) -> int;
     def transform(ir_in: uni.Module) -> uni.Module;
     def format_doc_ir(
         doc_node: (doc.DocType | None) = None,

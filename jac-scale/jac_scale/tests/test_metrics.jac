@@ -2,9 +2,7 @@
 
 import from jac_scale.abstractions.metrics { NoOpMetricsCollector }
 import from jac_scale.factories.utility_factory { UtilityFactory }
-import from jac_scale.utilities.metrics.prometheus_metrics {
-    PrometheusMetricsCollector
-}
+import from jac_scale.utilities.metrics.prometheus_metrics { PrometheusMetricsCollector }
 
 # --- NoOpMetricsCollector tests ---
 test "noop is disabled" {

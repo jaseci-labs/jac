@@ -27,12 +27,12 @@ cl {
             for item in allResults
             if (
                 True
-                if not query
-                else item["title"].toLowerCase().includes(query.toLowerCase())
+                    if not query
+                    else item["title"].toLowerCase().includes(query.toLowerCase())
             )
         ];
 
-        def handleSearch(e: any) -> None {
+        def handleSearch(e: Any) -> None {
             e.preventDefault();
             if inputValue.trim() {
                 navigate(f"/search?q={encodeURIComponent(inputValue.trim())}&page=1");
@@ -62,7 +62,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: any  -> None { inputValue = e.target.value;}}
+                            onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",
@@ -148,9 +148,7 @@ cl {
                         </li> for item in results
                     ]}
                 </ul>
-                <div
-                    style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}
-                >
+                <div style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}>
                     <button
                         onClick={lambda -> None { goToPage(page - 1);}}
                         disabled={page <= 1}

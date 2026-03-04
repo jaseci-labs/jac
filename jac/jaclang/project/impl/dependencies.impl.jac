@@ -308,9 +308,7 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
 # ===============================================================================
 # Venv Site-Packages Helper
 # ===============================================================================
-impl get_venv_site_packages(
-    venv_dir: Path
-) -> Path {
+impl get_venv_site_packages(venv_dir: Path) -> Path {
     import sys;
     if sys.platform == "win32" {
         return venv_dir / "Lib" / "site-packages";
@@ -322,9 +320,7 @@ impl get_venv_site_packages(
 # ===============================================================================
 # Venv Path Management Implementation
 # ===============================================================================
-impl add_venv_to_path(
-    config: JacConfig | None = None
-) -> None {
+impl add_venv_to_path(config: JacConfig | None = None) -> None {
     import sys;
     import from jaclang.project.config { get_config }
     if config is None {
