@@ -450,6 +450,32 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
             return self.builder.trunc(val, target_type, name="trunc");
         }
     }
+    # Value tuple auto-boxing: box to pointer then coerce if needed.
+    # Detects tuples by checking all elements are primitive (not overflow {i64, i1} etc.)
+    if isinstance(val.type, ir.LiteralStructType)
+    and val.type != target_type
+    and len(val.type.elements) >= 2 {
+        _all_prim = True;
+        for _el in val.type.elements {
+            if not isinstance(
+                _el, (ir.IntType, ir.DoubleType, ir.FloatType, ir.PointerType)
+            ) {
+                _all_prim = False;
+                break;
+            }
+        }
+        if _all_prim {
+            boxed = self._box_value_tuple(val);
+            if boxed.type == target_type {
+                return boxed;
+            }
+            # Pointer-to-pointer bitcast (e.g., {i64,i64}* → i8*)
+            if isinstance(boxed.type, ir.PointerType)
+            and isinstance(target_type, ir.PointerType) {
+                return self.builder.bitcast(boxed, target_type, name="tuple.box.cast");
+            }
+        }
+    }
     return val;
 }
 
@@ -917,6 +943,157 @@ impl NaIRGenPass._emit_binary_op(
 impl NaIRGenPass._emit_comparison(
     op: str, left: ir.Value, right: ir.Value, is_float: bool
 ) -> (ir.Value | None) {
+    # Tuple comparison (value/pointer/mixed): must be before pointer block
+    _l_is_tval = isinstance(left.type, ir.LiteralStructType);
+    _r_is_tval = isinstance(right.type, ir.LiteralStructType);
+    _l_is_tptr = isinstance(left.type, ir.PointerType)
+    and isinstance(left.type.pointee, ir.LiteralStructType);
+    _r_is_tptr = isinstance(right.type, ir.PointerType)
+    and isinstance(right.type.pointee, ir.LiteralStructType);
+    if _l_is_tval or _r_is_tval or _l_is_tptr or _r_is_tptr {
+        tcmp_struct: (ir.LiteralStructType | None) = None;
+        tcmp_left_val: (ir.Value | None) = None;
+        tcmp_right_val: (ir.Value | None) = None;
+        i8_ptr = ir.IntType(8).as_pointer();
+        if _l_is_tval and _r_is_tval and str(left.type) == str(right.type) {
+            tcmp_struct = left.type;
+            tcmp_left_val = left;
+            tcmp_right_val = right;
+        } elif _l_is_tptr
+        and _r_is_tptr
+        and str(left.type.pointee) == str(right.type.pointee) {
+            tcmp_struct = left.type.pointee;
+            tcmp_left_val = self.builder.load(left, name="tcmp.l.val");
+            tcmp_right_val = self.builder.load(right, name="tcmp.r.val");
+        } elif _l_is_tval
+        and _r_is_tptr
+        and str(left.type) == str(right.type.pointee) {
+            tcmp_struct = left.type;
+            tcmp_left_val = left;
+            tcmp_right_val = self.builder.load(right, name="tcmp.r.val");
+        } elif _r_is_tval
+        and _l_is_tptr
+        and str(right.type) == str(left.type.pointee) {
+            tcmp_struct = right.type;
+            tcmp_left_val = self.builder.load(left, name="tcmp.l.val");
+            tcmp_right_val = right;
+        }
+        if tcmp_struct is not None
+        and tcmp_left_val is not None
+        and tcmp_right_val is not None {
+            n = len(tcmp_struct.elements);
+            i1_t = ir.IntType(1);
+            if op == Tok.EE or op == Tok.NE {
+                result = ir.Constant(i1_t, 1);
+                for i in range(n) {
+                    ea = self.builder.extract_value(
+                        tcmp_left_val, i, name=f"tcmp.ea.{i}"
+                    );
+                    eb = self.builder.extract_value(
+                        tcmp_right_val, i, name=f"tcmp.eb.{i}"
+                    );
+                    if isinstance(ea.type, ir.IntType) {
+                        eq_i = self.builder.icmp_signed(
+                            "==", ea, eb, name=f"tcmp.eq.{i}"
+                        );
+                    } elif isinstance(ea.type, ir.DoubleType) {
+                        eq_i = self.builder.fcmp_ordered(
+                            "==", ea, eb, name=f"tcmp.eq.{i}"
+                        );
+                    } else {
+                        tcmp_strcmp = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        tcmp_sc = self.builder.call(
+                            tcmp_strcmp, [ea, eb], name=f"tcmp.sc.{i}"
+                        );
+                        eq_i = self.builder.icmp_signed(
+                            "==",
+                            tcmp_sc,
+                            ir.Constant(ir.IntType(32), 0),
+                            name=f"tcmp.eq.{i}"
+                        );
+                    }
+                    result = self.builder.and_(result, eq_i, name=f"tcmp.all.{i}");
+                }
+                if op == Tok.NE {
+                    return self.builder.not_(result, name="tcmp.ne");
+                }
+                return result;
+            }
+            if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) and n > 0 {
+                func = self.builder.basic_block.function;
+                tcmp_true_bb = func.append_basic_block(name="tcmp.lex.true");
+                tcmp_false_bb = func.append_basic_block(name="tcmp.lex.false");
+                tcmp_done_bb = func.append_basic_block(name="tcmp.lex.done");
+                for i in range(n) {
+                    ea = self.builder.extract_value(
+                        tcmp_left_val, i, name=f"tcmp.lex.ea.{i}"
+                    );
+                    eb = self.builder.extract_value(
+                        tcmp_right_val, i, name=f"tcmp.lex.eb.{i}"
+                    );
+                    if isinstance(ea.type, ir.IntType) {
+                        lt_i = self.builder.icmp_signed(
+                            "<", ea, eb, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.icmp_signed(
+                            ">", ea, eb, name=f"tcmp.gt.{i}"
+                        );
+                    } elif isinstance(ea.type, ir.DoubleType) {
+                        lt_i = self.builder.fcmp_ordered(
+                            "<", ea, eb, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.fcmp_ordered(
+                            ">", ea, eb, name=f"tcmp.gt.{i}"
+                        );
+                    } else {
+                        tcmp_strcmp2 = self._get_or_declare_extern(
+                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+                        );
+                        tcmp_sc2 = self.builder.call(
+                            tcmp_strcmp2, [ea, eb], name=f"tcmp.lex.sc.{i}"
+                        );
+                        tcmp_z32 = ir.Constant(ir.IntType(32), 0);
+                        lt_i = self.builder.icmp_signed(
+                            "<", tcmp_sc2, tcmp_z32, name=f"tcmp.lt.{i}"
+                        );
+                        gt_i = self.builder.icmp_signed(
+                            ">", tcmp_sc2, tcmp_z32, name=f"tcmp.gt.{i}"
+                        );
+                    }
+                    next_bb = func.append_basic_block(name=f"tcmp.lex.next.{i}");
+                    if op == Tok.LT or op == Tok.LTE {
+                        self.builder.cbranch(lt_i, tcmp_true_bb, next_bb);
+                        self.builder.position_at_start(next_bb);
+                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
+                        self.builder.cbranch(gt_i, tcmp_false_bb, next2_bb);
+                        self.builder.position_at_start(next2_bb);
+                    } else {
+                        self.builder.cbranch(gt_i, tcmp_true_bb, next_bb);
+                        self.builder.position_at_start(next_bb);
+                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
+                        self.builder.cbranch(lt_i, tcmp_false_bb, next2_bb);
+                        self.builder.position_at_start(next2_bb);
+                    }
+                }
+                if op == Tok.LTE or op == Tok.GTE {
+                    self.builder.branch(tcmp_true_bb);
+                } else {
+                    self.builder.branch(tcmp_false_bb);
+                }
+                self.builder.position_at_start(tcmp_true_bb);
+                self.builder.branch(tcmp_done_bb);
+                self.builder.position_at_start(tcmp_false_bb);
+                self.builder.branch(tcmp_done_bb);
+                self.builder.position_at_start(tcmp_done_bb);
+                tcmp_res = self.builder.phi(i1_t, name="tcmp.lex.res");
+                tcmp_res.add_incoming(ir.Constant(i1_t, 1), tcmp_true_bb);
+                tcmp_res.add_incoming(ir.Constant(i1_t, 0), tcmp_false_bb);
+                return tcmp_res;
+            }
+        }
+    }
     # Pointer comparisons
     if isinstance(left.type, ir.PointerType)
     and isinstance(right.type, ir.PointerType) {
@@ -1329,151 +1506,6 @@ impl NaIRGenPass._emit_comparison(
                 return result;
             } elif op == Tok.NE {
                 return self.builder.not_(result, name="ceq.ne");
-            }
-        }
-        # Tuple comparison: pointer to LiteralStructType with same pointee
-        if isinstance(left.type.pointee, ir.LiteralStructType)
-        and isinstance(right.type.pointee, ir.LiteralStructType)
-        and str(left.type.pointee) == str(right.type.pointee) {
-            struct_type = left.type.pointee;
-            n = len(struct_type.elements);
-            i1_t = ir.IntType(1);
-            if op == Tok.EE or op == Tok.NE {
-                # Element-wise equality: all elements must match
-                result = ir.Constant(i1_t, 1);
-                for i in range(n) {
-                    ea_ptr = self.builder.gep(
-                        left,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tcmp.a.{i}"
-                    );
-                    eb_ptr = self.builder.gep(
-                        right,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tcmp.b.{i}"
-                    );
-                    ea = self.builder.load(ea_ptr, name=f"tcmp.ea.{i}");
-                    eb = self.builder.load(eb_ptr, name=f"tcmp.eb.{i}");
-                    if isinstance(ea.type, ir.IntType) {
-                        eq_i = self.builder.icmp_signed(
-                            "==", ea, eb, name=f"tcmp.eq.{i}"
-                        );
-                    } elif isinstance(ea.type, ir.DoubleType) {
-                        eq_i = self.builder.fcmp_ordered(
-                            "==", ea, eb, name=f"tcmp.eq.{i}"
-                        );
-                    } else {
-                        tcmp_strcmp = self._get_or_declare_extern(
-                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
-                        );
-                        tcmp_sc = self.builder.call(
-                            tcmp_strcmp, [ea, eb], name=f"tcmp.sc.{i}"
-                        );
-                        eq_i = self.builder.icmp_signed(
-                            "==",
-                            tcmp_sc,
-                            ir.Constant(ir.IntType(32), 0),
-                            name=f"tcmp.eq.{i}"
-                        );
-                    }
-                    result = self.builder.and_(result, eq_i, name=f"tcmp.all.{i}");
-                }
-                if op == Tok.NE {
-                    return self.builder.not_(result, name="tcmp.ne");
-                }
-                return result;
-            }
-            # Lexicographic: <, >, <=, >=
-            if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) and n > 0 {
-                # Cascade: check each element pair, return on first difference
-                func = self.builder.basic_block.function;
-                tcmp_true_bb = func.append_basic_block(name="tcmp.lex.true");
-                tcmp_false_bb = func.append_basic_block(name="tcmp.lex.false");
-                tcmp_done_bb = func.append_basic_block(name="tcmp.lex.done");
-                for i in range(n) {
-                    ea_ptr = self.builder.gep(
-                        left,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tcmp.lex.a.{i}"
-                    );
-                    eb_ptr = self.builder.gep(
-                        right,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tcmp.lex.b.{i}"
-                    );
-                    ea = self.builder.load(ea_ptr, name=f"tcmp.lex.ea.{i}");
-                    eb = self.builder.load(eb_ptr, name=f"tcmp.lex.eb.{i}");
-                    if isinstance(ea.type, ir.IntType) {
-                        lt_i = self.builder.icmp_signed(
-                            "<", ea, eb, name=f"tcmp.lt.{i}"
-                        );
-                        gt_i = self.builder.icmp_signed(
-                            ">", ea, eb, name=f"tcmp.gt.{i}"
-                        );
-                    } elif isinstance(ea.type, ir.DoubleType) {
-                        lt_i = self.builder.fcmp_ordered(
-                            "<", ea, eb, name=f"tcmp.lt.{i}"
-                        );
-                        gt_i = self.builder.fcmp_ordered(
-                            ">", ea, eb, name=f"tcmp.gt.{i}"
-                        );
-                    } else {
-                        tcmp_strcmp2 = self._get_or_declare_extern(
-                            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
-                        );
-                        tcmp_sc2 = self.builder.call(
-                            tcmp_strcmp2, [ea, eb], name=f"tcmp.lex.sc.{i}"
-                        );
-                        tcmp_z32 = ir.Constant(ir.IntType(32), 0);
-                        lt_i = self.builder.icmp_signed(
-                            "<", tcmp_sc2, tcmp_z32, name=f"tcmp.lt.{i}"
-                        );
-                        gt_i = self.builder.icmp_signed(
-                            ">", tcmp_sc2, tcmp_z32, name=f"tcmp.gt.{i}"
-                        );
-                    }
-                    next_bb = func.append_basic_block(name=f"tcmp.lex.next.{i}");
-                    if op == Tok.LT or op == Tok.LTE {
-                        self.builder.cbranch(lt_i, tcmp_true_bb, next_bb);
-                        self.builder.position_at_start(next_bb);
-                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
-                        self.builder.cbranch(gt_i, tcmp_false_bb, next2_bb);
-                        self.builder.position_at_start(next2_bb);
-                    } else {
-                        self.builder.cbranch(gt_i, tcmp_true_bb, next_bb);
-                        self.builder.position_at_start(next_bb);
-                        next2_bb = func.append_basic_block(name=f"tcmp.lex.eq.{i}");
-                        self.builder.cbranch(lt_i, tcmp_false_bb, next2_bb);
-                        self.builder.position_at_start(next2_bb);
-                    }
-                }
-                # All elements equal: <= and >= are true, < and > are false
-                if op == Tok.LTE or op == Tok.GTE {
-                    self.builder.branch(tcmp_true_bb);
-                } else {
-                    self.builder.branch(tcmp_false_bb);
-                }
-                self.builder.position_at_start(tcmp_true_bb);
-                self.builder.branch(tcmp_done_bb);
-                self.builder.position_at_start(tcmp_false_bb);
-                self.builder.branch(tcmp_done_bb);
-                self.builder.position_at_start(tcmp_done_bb);
-                tcmp_res = self.builder.phi(i1_t, name="tcmp.lex.res");
-                tcmp_res.add_incoming(ir.Constant(i1_t, 1), tcmp_true_bb);
-                tcmp_res.add_incoming(ir.Constant(i1_t, 0), tcmp_false_bb);
-                return tcmp_res;
             }
         }
         # For other pointer types (structs, tuples), use pointer comparison

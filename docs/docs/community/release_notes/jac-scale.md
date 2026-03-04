@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.4 (Unreleased)
 
+- **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
 - [fix]Fix for internet facing aws load balancer
 - 1 Minor refactor/change.
 
@@ -36,6 +37,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - jac destroy command deletes non default namespace
 - **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
 - 1 Minor refactor
+- Internal: check whether redis,mongodb,grafana and prometheus are also restarted when checking deployment status
 
 ## jac-scale 0.2.0
 

@@ -352,7 +352,11 @@ class JacScalePlugin {
         return ctx;
     }
 
-    """Create the API server instance."""
+    """Create the API server instance.
+
+    Note: jac-scale doesn't bind the port until run_server is called.
+    Port fallback is handled in run_server.
+    """
     @hookimpl
     static def create_server(
         jac_server: JacServer, host: str, port: int

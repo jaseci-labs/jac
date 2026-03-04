@@ -1800,12 +1800,40 @@ class JacAPIServer {
         return JacAPIServer;
     }
 
-    """Create the API server instance."""
+    """Create the API server instance.
+
+    If the specified port is in use, tries subsequent ports up to max_retries times.
+    Updates jac_server.port with the actual bound port if different from requested.
+    """
     static def create_server(
-        jac_server: JacServer, host: str, port: int
+        jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer {
         handler_class = jac_server.create_handler();
-        return HTTPServer((host, port), handler_class);
+        current_port = port;
+        for _ in range(max_retries) {
+            try {
+                server = HTTPServer((host, current_port), handler_class);
+                if current_port != port {
+                    import from jaclang.cli.console { console }
+                    console.print(
+                        f"  Port {port} is in use, using port {current_port} instead",
+                        style="warning"
+                    );
+                    jac_server.port = current_port;  # Update the server's port
+                }
+                return server;
+            } except OSError as e {
+                # errno 98 = EADDRINUSE (Linux), errno 10048 = WSAEADDRINUSE (Windows)
+                if e.errno in (98, 10048) or "Address already in use" in str(e) {
+                    current_port += 1;
+                } else {
+                    raise ;
+                }
+            }
+        }
+        raise OSError(
+            f"Could not find an available port after trying {port}-{current_port}"
+        ) ;
     }
 
     """Render HTML page for client function."""
