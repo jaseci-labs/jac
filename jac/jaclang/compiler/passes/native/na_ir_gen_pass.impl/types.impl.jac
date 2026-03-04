@@ -1660,9 +1660,8 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
     if type_name is None {
         return None;
     }
-    # Walk hierarchy to find method signature and extract return element type
-    check = type_name;
-    while check is not None {
+    # Walk MRO to find method signature and extract return element type
+    for check in self.mro_order.get(type_name, [type_name]) {
         full = f"{check}.{method_name}";
         if full in self.method_ast_sigs {
             sig = self.method_ast_sigs[full];
@@ -1678,7 +1677,6 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
             }
             break;
         }
-        check = self.class_hierarchy.get(check);
     }
     return None;
 }

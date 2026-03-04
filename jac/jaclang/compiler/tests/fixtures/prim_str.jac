@@ -277,7 +277,16 @@ def str_py() -> dict {
         # str.format method (emit_format) — SV/Python only
         "fmt_pos_args": "x={} y={}".format(1, 2),
         "fmt_single": "hello {}".format("world"),
-        "fmt_repeat": "{0} {0}".format("hi")
+        "fmt_repeat": "{0} {0}".format("hi"),
+        # str.format (shared with NA)
+        "fmt_one": "hello {}".format("world"),
+        "fmt_two": "{} and {}".format("foo", "bar"),
+        "fmt_int": "x={}".format(42),
+        "fmt_none": "no placeholders".format(),
+        # string slicing
+        "sslice_mid": "hello world"[3:7],
+        "sslice_to": "hello world"[:5],
+        "sslice_from": "hello world"[6:]
     };
 }
 
@@ -718,7 +727,16 @@ na {
             "empty_sep": empty_sep_j,
             "single_joined": single_joined,
             "encode_len": len("hello".encode()),
-            "encode_empty_len": len("".encode())
+            "encode_empty_len": len("".encode()),
+            # str.format
+            "fmt_one": "hello {}".format("world"),
+            "fmt_two": "{} and {}".format("foo", "bar"),
+            "fmt_int": "x={}".format(42),
+            "fmt_none": "no placeholders".format(),
+            # string slicing
+            "sslice_mid": "hello world"[3:7],
+            "sslice_to": "hello world"[:5],
+            "sslice_from": "hello world"[6:]
         };
     }
 }

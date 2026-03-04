@@ -62,7 +62,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="is_static", kind=2),
                  FieldDesc(name="is_abstract", kind=2),
                  FieldDesc(name="signature", kind=6),
-                 FieldDesc(name="decorators", kind=5)
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="type_params", kind=5)
              )
          ),
          NodeSpec(

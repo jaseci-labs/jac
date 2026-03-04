@@ -13,24 +13,18 @@ import from jac_scale.config_loader { get_scale_config }
 glob logger = logging.getLogger(__name__);
 
 """Redis provider for Kubernetes deployments."""
-class KubernetesRedisProvider(DatabaseProvider) {
+obj KubernetesRedisProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
         config: dict[str, Any] = {},
-        app_name: str = '',
+        app_name: str by postinit,
         connection_string: str = '';
 
-    def init(
-        self: KubernetesRedisProvider,
-        target: (DeploymentTarget | None) = None,
-        config: dict[str, Any] = {}
-    ) -> None {
-        self.target = target;
-        self.config = config;
-        self.app_name = config.get('app_name', 'jaseci');
+    def postinit {
+        self.app_name = self.config.get('app_name', 'jaseci');
     }
 
     """Load and generate Redis configuration from template."""
-    def _load_redis_config(self: KubernetesRedisProvider) -> str {
+    def _load_redis_config -> str {
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
 
@@ -157,18 +151,14 @@ class KubernetesRedisProvider(DatabaseProvider) {
     }
 
     """Calculate hash of Redis configuration for change detection."""
-    def _calculate_config_hash(
-        self: KubernetesRedisProvider, config_content: str
-    ) -> str {
+    def _calculate_config_hash(config_content: str) -> str {
         config_bytes = config_content.encode('utf-8');
         hash_obj = hashlib.md5(config_bytes);
         # Return first 8 chars for brevity (sufficient for change detection)
         return hash_obj.hexdigest()[:8];
     }
 
-    def deploy(
-        self: KubernetesRedisProvider, config: dict[str, Any] = {}
-    ) -> dict[str, Any] {
+    def deploy(config: dict[str, Any] = {}) -> dict[str, Any] {
         redis_name = f"{self.app_name}-redis";
         redis_port = 6379;
         redis_service_name = f"{redis_name}-service";
@@ -322,7 +312,7 @@ class KubernetesRedisProvider(DatabaseProvider) {
         };
     }
 
-    def get_connection_string(self: KubernetesRedisProvider) -> str {
+    def get_connection_string -> str {
         if not self.connection_string {
             # Generate default connection string
             service_name = f"{self.app_name}-redis-service";
@@ -331,17 +321,17 @@ class KubernetesRedisProvider(DatabaseProvider) {
         return self.connection_string;
     }
 
-    def is_available(self: KubernetesRedisProvider) -> bool {
+    def is_available -> bool {
         # TODO: Implement actual check
         return True;
     }
 
-    def cleanup(self: KubernetesRedisProvider) -> None {
+    def cleanup -> None {
     # Cleanup is handled by the deployment target
     }
 
     override def get_init_container(
-        self: KubernetesRedisProvider, app_name: str, wait_image: str
+        app_name: str, wait_image: str
     ) -> (dict[(str, Any)] | None) {
         return {
             'name': 'wait-for-redis',
@@ -365,7 +355,6 @@ class KubernetesRedisProvider(DatabaseProvider) {
     NodePort, AWS NLB, and Ingress (ClusterIP) deployments.
     """
     def deploy_dashboard(
-        self: KubernetesRedisProvider,
         cluster_env: str,
         node_port: int,
         ingress_enabled: bool = False,
