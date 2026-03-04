@@ -8,7 +8,6 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole }
 # ===============================================================================
 # Internal jacpretty Console Factories
 # ===============================================================================
-
 def _stdout -> _PrettyConsole {
     """Get stdout console for using methods like rule()."""
     return _PrettyConsole();
@@ -92,9 +91,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
 """Context manager for status during long operations (basic implementation)."""
 impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
     if args {
-        _print(
-            f"[dim]{args[0] if isinstance(args[0], str) else str(args[0])}[/]"
-        );
+        _print(f"[dim]{args[0] if isinstance(args[0], str) else str(args[0])}[/]");
     }
     @contextmanager
     def _noop_status -> object {
