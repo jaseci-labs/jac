@@ -29,6 +29,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Replace Vendored LSP Stack with Custom `jaclang/lsp/` Package**: Removed ~32,700 lines of vendored Python code (pygls, lsprotocol, cattrs, attrs) and replaced them with a lightweight ~1,400-line Jac-native `jaclang/lsp/` package providing LSP 3.17.0 types, JSON-RPC transport, UTF-16 position encoding, and workspace/document management.
 - **Fix: IDE Hover Types for Comprehension Variables**: Iteration variables in comprehensions (`p` in `[x for p in pool]`, `any(... for p in pool)`) now display their inferred type on hover.
 - **Fix: `Union[]` and `Optional[]` Special Forms**: `Union[int, str]` and `Optional[str]` from `typing` now work correctly for type checking, narrowing.
+- **NamedTuple Type Checking**: Classes extending `NamedTuple` now support proper constructor validation (no false "Too many positional arguments" errors), IDE hover for field-related variables including tuple unpacking (`(x, y) = point`) and for-loop iteration (`for coord in point`), and correct field type inference.
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
 
