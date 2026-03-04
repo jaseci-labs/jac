@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
-- 9 small refactors/changes.
+- 10 small refactors/changes.
 - 11 small refactors/changes.
 - 13 small refactors/changes.
 - **HMR Terminal Output Cleanup**: Styled HMR logs with `console.success/error/warning` and stripped absolute paths from compile errors.
