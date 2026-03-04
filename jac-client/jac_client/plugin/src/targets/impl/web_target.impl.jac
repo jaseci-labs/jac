@@ -8,7 +8,7 @@ glob VITE_DEV_SERVER_PORT = 5173,
      DEFAULT_FUNCTION_NAME = "app";
 
 """Setup web target (no-op - web works out of the box)."""
-impl WebTarget.setup(self: WebTarget, project_dir: Path) -> None { }
+impl WebTarget.setup(project_dir: Path) -> None { }
 
 """Start web dev server with HMR.
 
@@ -16,9 +16,7 @@ For web target, this delegates to the core jac start --dev behavior.
 The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.dev(
-    self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-) -> None {
+impl WebTarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
     import from jaclang.cli.console { console }
     # Web dev mode is handled by core jac start --dev
     # When called directly (e.g., from PWATarget.dev() -> super().dev()),
@@ -56,7 +54,7 @@ For web target, this builds the bundle and serves it.
 This method is called when using non-default targets that inherit from WebTarget.
 """
 impl WebTarget.start(
-    self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     import from jaclang.cli.console { console }
     import http.server;
@@ -85,10 +83,7 @@ impl WebTarget.start(
 
 """Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
-    self: WebTarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import os;
     import shutil;

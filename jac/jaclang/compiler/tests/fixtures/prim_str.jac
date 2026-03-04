@@ -282,7 +282,11 @@ def str_py() -> dict {
         "fmt_one": "hello {}".format("world"),
         "fmt_two": "{} and {}".format("foo", "bar"),
         "fmt_int": "x={}".format(42),
-        "fmt_none": "no placeholders".format()
+        "fmt_none": "no placeholders".format(),
+        # string slicing
+        "sslice_mid": "hello world"[3:7],
+        "sslice_to": "hello world"[:5],
+        "sslice_from": "hello world"[6:]
     };
 }
 
@@ -728,7 +732,11 @@ na {
             "fmt_one": "hello {}".format("world"),
             "fmt_two": "{} and {}".format("foo", "bar"),
             "fmt_int": "x={}".format(42),
-            "fmt_none": "no placeholders".format()
+            "fmt_none": "no placeholders".format(),
+            # string slicing
+            "sslice_mid": "hello world"[3:7],
+            "sslice_to": "hello world"[:5],
+            "sslice_from": "hello world"[6:]
         };
     }
 }

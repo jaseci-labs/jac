@@ -17,7 +17,7 @@ glob _F = TypeVar('_F', bound=Callable[(..., object)]),
 obj HookimplMarker {
     has project_name: str = '';
 
-    def __call__(self: HookimplMarker, function: _F) -> _F;
+    def __call__(function: _F) -> _F;
 }
 
 """Marks a function as a hook specification."""
@@ -25,10 +25,7 @@ obj HookspecMarker {
     has project_name: str = '';
 
     def __call__(
-        self: HookspecMarker,
-        function: (_F | None) = None,
-        *,
-        firstresult: bool = False
+        function: (_F | None) = None, *, firstresult: bool = False
     ) -> (_F | Callable[([_F], _F)]);
 }
 
@@ -65,54 +62,55 @@ obj HookImpl {
         plugin_name: str,
         argnames: (tuple[(str, ...)] | None) = None;
 
-    def __repr__(self: HookImpl) -> str;
+    def __repr__ -> str;
 }
 
 """Manages implementations for a single hook and dispatches calls."""
-class HookCaller {
-    def init(self: HookCaller, name: str, firstresult: bool = False) -> None {
-        self.name = name;
-        self._hookimpls: list[HookImpl] = [];
-        self._firstresult = firstresult;
+obj HookCaller {
+    has name: str,
+        _hookimpls: list[HookImpl] by postinit,
+        _firstresult: bool = False;
+
+    def postinit -> None {
+        self._hookimpls = [];
     }
 
-    def _add_hookimpl(self: HookCaller, hi: HookImpl) -> None;
-    def _remove_plugin(self: HookCaller, plugin: object) -> None;
-    def get_hookimpls(self: HookCaller) -> list[HookImpl];
-    def _call_impl(
-        self: HookCaller, hi: HookImpl, kwargs: dict[(str, object)]
-    ) -> object;
-
-    def __call__(self: HookCaller, **kwargs: object) -> object;
-    def __repr__(self: HookCaller) -> str;
+    def _add_hookimpl(hi: HookImpl) -> None;
+    def _remove_plugin(plugin: object) -> None;
+    def get_hookimpls -> list[HookImpl];
+    def _call_impl(hi: HookImpl, kwargs: dict[(str, object)]) -> object;
+    def __call__(**kwargs: object) -> object;
+    def __repr__ -> str;
 }
 
 """Namespace object for plugin_manager.hook.<name> access."""
 class HookRelay {}
 
 """Registers plugins, manages hook specs, and dispatches hook calls."""
-class PluginManager {
-    def init(self: PluginManager, project_name: str = '') -> None {
-        self.project_name = project_name;
-        self._name2plugin: dict[(str, object)] = {};
-        self._plugin2name: dict[(int, str)] = {};
-        self._plugin_distinfo: list[tuple[(object, Any)]] = [];
+obj PluginManager {
+    has project_name: str = '',
+        _name2plugin: dict[(str, object)] by postinit,
+        _plugin2name: dict[(int, str)] by postinit,
+        _plugin_distinfo: list[tuple[(object, Any)]] by postinit,
+        hook: HookRelay by postinit;
+
+    def postinit -> None {
+        self._name2plugin = {};
+        self._plugin2name = {};
+        self._plugin_distinfo = [];
         self.hook = HookRelay();
     }
 
-    def register(
-        self: PluginManager, plugin: object, name: (str | None) = None
-    ) -> (str | None);
-
+    def register(plugin: object, name: (str | None) = None) -> (str | None);
     def unregister(
-        self: PluginManager, plugin: (object | None) = None, name: (str | None) = None
+        plugin: (object | None) = None, name: (str | None) = None
     ) -> (object | None);
 
-    def is_registered(self: PluginManager, plugin: object) -> bool;
-    def add_hookspecs(self: PluginManager, spec_class: type) -> None;
-    def list_name_plugin(self: PluginManager) -> list[tuple[(str, object)]];
-    def list_plugin_distinfo(self: PluginManager) -> list[tuple[(object, Any)]];
-    def load_setuptools_entrypoints(self: PluginManager, group: str) -> int;
+    def is_registered(plugin: object) -> bool;
+    def add_hookspecs(spec_class: type) -> None;
+    def list_name_plugin -> list[tuple[(str, object)]];
+    def list_plugin_distinfo -> list[tuple[(object, Any)]];
+    def load_setuptools_entrypoints(group: str) -> int;
 }
 
 def _canonical_name(plugin: object) -> str {
@@ -124,10 +122,10 @@ obj _DistFacade {
     has _dist: importlib.metadata.Distribution;
 
     @property
-    def project_name(self: _DistFacade) -> str;
+    def project_name -> str;
 
     @property
-    def version(self: _DistFacade) -> str;
+    def version -> str;
 
-    def __getattr__(self: _DistFacade, attr: str) -> object;
+    def __getattr__(attr: str) -> object;
 }

@@ -147,7 +147,7 @@ test "desktop target files exist" {
 
     # Read desktop_target.jac and verify it has the expected methods
     desktop_target_content = desktop_target_jac.read_text();
-    assert "class DesktopTarget" in desktop_target_content;
+    assert "obj DesktopTarget" in desktop_target_content;
     assert "def setup" in desktop_target_content;
     assert "def build" in desktop_target_content;
     assert "def dev" in desktop_target_content;

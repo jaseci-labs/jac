@@ -41,20 +41,21 @@ Exposes standard HTTP metrics that can be scraped by Prometheus:
 - Active requests gauge
 - Optional walker execution timing
 """
-class PrometheusMetricsCollector(MetricsCollector) {
-    has _enabled: bool = True,
-        _namespace: str = "jac_scale",
-        _include_walker_metrics: bool = False,
+obj PrometheusMetricsCollector(MetricsCollector) {
+    has config: dict[str, Any] = {},
+        _enabled: bool by postinit,
+        _namespace: str by postinit,
+        _include_walker_metrics: bool by postinit,
         _registry: CollectorRegistry | None = None,
         _request_count: Counter | None = None,
         _request_latency: Histogram | None = None,
         _active_requests: Gauge | None = None,
         _walker_latency: Histogram | None = None;
 
-    def init(self: PrometheusMetricsCollector, config: dict[str, Any] = {}) -> None {
-        self._enabled = bool(config.get("enabled", True));
-        self._namespace = str(config.get("namespace", "jac_scale"));
-        self._include_walker_metrics = bool(config.get("walker_metrics", False));
+    def postinit {
+        self._enabled = bool(self.config.get("enabled", True));
+        self._namespace = str(self.config.get("namespace", "jac_scale"));
+        self._include_walker_metrics = bool(self.config.get("walker_metrics", False));
 
         if not self._enabled {
             return;
@@ -63,7 +64,7 @@ class PrometheusMetricsCollector(MetricsCollector) {
         # Use custom registry to avoid conflicts in tests
         self._registry = REGISTRY;
 
-        buckets = config.get("histogram_buckets");
+        buckets = self.config.get("histogram_buckets");
         if buckets {
             buckets = tuple(buckets);
         } else {
@@ -107,11 +108,7 @@ class PrometheusMetricsCollector(MetricsCollector) {
     }
 
     def record_request(
-        self: PrometheusMetricsCollector,
-        method: str,
-        path: str,
-        status_code: int,
-        duration_seconds: float
+        method: str, path: str, status_code: int, duration_seconds: float
     ) -> None {
         if not self._enabled {
             return;
@@ -124,23 +121,20 @@ class PrometheusMetricsCollector(MetricsCollector) {
         );
     }
 
-    def request_started(self: PrometheusMetricsCollector) -> None {
+    def request_started -> None {
         if self._enabled and self._active_requests {
             self._active_requests.inc();
         }
     }
 
-    def request_finished(self: PrometheusMetricsCollector) -> None {
+    def request_finished -> None {
         if self._enabled and self._active_requests {
             self._active_requests.dec();
         }
     }
 
     def record_walker(
-        self: PrometheusMetricsCollector,
-        walker_name: str,
-        duration_seconds: float,
-        success: bool = True
+        walker_name: str, duration_seconds: float, success: bool = True
     ) -> None {
         if self._enabled and self._walker_latency {
             self._walker_latency.labels(
@@ -151,7 +145,7 @@ class PrometheusMetricsCollector(MetricsCollector) {
         }
     }
 
-    def get_endpoint_handler(self: PrometheusMetricsCollector) -> Callable[..., Any] {
+    def get_endpoint_handler -> Callable[..., Any] {
         registry = self._registry;
         def metrics_endpoint -> Response {
             return Response(
@@ -161,7 +155,7 @@ class PrometheusMetricsCollector(MetricsCollector) {
         return metrics_endpoint;
     }
 
-    def is_enabled(self: PrometheusMetricsCollector) -> bool {
+    def is_enabled -> bool {
         return self._enabled;
     }
 }
