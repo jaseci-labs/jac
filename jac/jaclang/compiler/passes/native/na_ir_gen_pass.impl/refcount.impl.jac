@@ -32,20 +32,75 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
 
+    # --- Bump allocator arena globals ---
+    # Uses chained arenas: when one fills up, a new one is malloc'd.
+    # Arena size chosen to balance page-fault cost vs fragmentation.
+    ARENA_SIZE = 128 * 1024 * 1024;  # 128 MB per arena
+    arena_base_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__jac_arena_base");
+    arena_base_gv.linkage = "private";
+    arena_base_gv.initializer = ir.Constant(i8_ptr, None);
+    arena_offset_gv = ir.GlobalVariable(self.llvm_module, i64, name="__jac_arena_off");
+    arena_offset_gv.linkage = "private";
+    arena_offset_gv.initializer = ir.Constant(i64, 0);
+    arena_size_const = ir.Constant(i64, ARENA_SIZE);
+
     # --- __rc_alloc(i64 size) -> i8* ---
-    # Allocates size+8 bytes, stores refcount=1 at offset 0, returns ptr+8
+    # Bump allocator with chained arenas (128MB each).
+    # Flow: entry → try_bump → bump_ok (fast path)
+    #                        → need_arena → check_size → alloc_arena → try_bump (retry)
+    #                                                   → fallback (oversized)
     alloc_fnty = ir.FunctionType(i8_ptr, [i64]);
     alloc_fn = ir.Function(self.llvm_module, alloc_fnty, name="__rc_alloc");
     alloc_fn.linkage = "private";
     alloc_fn.args[0].name = "size";
-    bb = alloc_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
+    entry_bb = alloc_fn.append_basic_block("entry");
+    try_bb = alloc_fn.append_basic_block("try_bump");
+    bump_ok_bb = alloc_fn.append_basic_block("bump_ok");
+    need_bb = alloc_fn.append_basic_block("need_arena");
+    alloc_bb = alloc_fn.append_basic_block("alloc_arena");
+    fallback_bb = alloc_fn.append_basic_block("fallback");
+    # Entry: compute aligned total
+    b = ir.IRBuilder(entry_bb);
     total = b.add(alloc_fn.args[0], ir.Constant(i64, 8), name="total");
-    raw = b.call(self.malloc_fn, [total], name="raw");
+    total = b.add(total, ir.Constant(i64, 15), name="total.pad");
+    total = b.and_(total, ir.Constant(i64, -16), name="total.align");
+    b.branch(try_bb);
+    # Try bump: check arena exists and has space
+    b = ir.IRBuilder(try_bb);
+    cur_base = b.load(arena_base_gv, name="cur.base");
+    cur_off = b.load(arena_offset_gv, name="cur.off");
+    new_off = b.add(cur_off, total, name="new.off");
+    is_null = b.icmp_unsigned(
+        "==", cur_base, ir.Constant(i8_ptr, None), name="no.arena"
+    );
+    no_space = b.icmp_unsigned(">=", new_off, arena_size_const, name="no.space");
+    need_arena = b.or_(is_null, no_space, name="need.arena");
+    b.cbranch(need_arena, need_bb, bump_ok_bb);
+    # Need arena: check if request fits in an arena at all
+    b = ir.IRBuilder(need_bb);
+    too_big = b.icmp_unsigned(">", total, arena_size_const, name="too.big");
+    b.cbranch(too_big, fallback_bb, alloc_bb);
+    # Alloc arena: malloc fresh 128MB chunk, reset offset, retry
+    b = ir.IRBuilder(alloc_bb);
+    new_arena = b.call(self.malloc_fn, [arena_size_const], name="new.arena");
+    b.store(new_arena, arena_base_gv);
+    b.store(ir.Constant(i64, 0), arena_offset_gv);
+    b.branch(try_bb);
+    # Bump OK: fast path — advance offset, store refcount, return
+    b = ir.IRBuilder(bump_ok_bb);
+    b.store(new_off, arena_offset_gv);
+    raw = b.gep(cur_base, [cur_off], name="bump.raw");
     rc_ptr = b.bitcast(raw, i64_ptr, name="rc.ptr");
     b.store(ir.Constant(i64, 1), rc_ptr);
     user = b.gep(raw, [ir.Constant(i64, 8)], name="user");
     b.ret(user);
+    # Fallback: regular malloc for oversized allocations
+    b = ir.IRBuilder(fallback_bb);
+    fb_raw = b.call(self.malloc_fn, [total], name="fb.raw");
+    fb_rc_ptr = b.bitcast(fb_raw, i64_ptr, name="fb.rc.ptr");
+    b.store(ir.Constant(i64, 1), fb_rc_ptr);
+    fb_user = b.gep(fb_raw, [ir.Constant(i64, 8)], name="fb.user");
+    b.ret(fb_user);
     self.rc_alloc_fn = alloc_fn;
 
     # --- __rc_retain(i8* ptr) -> void ---
@@ -81,7 +136,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.rc_retain_fn = retain_fn;
 
     # --- __rc_release_simple(i8* ptr) -> void ---
-    # Null check, sentinel check, decrement refcount, free if 0. No child cleanup.
+    # Null check, sentinel check, decrement refcount. No free (bump allocator).
+    # When proper retain/release balancing is implemented, this will need
+    # arena-aware freeing. For now, all RC memory is bump-allocated and leaked.
     release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     release_fn = ir.Function(self.llvm_module, release_fnty, name="__rc_release_simple");
     release_fn.linkage = "private";
@@ -89,7 +146,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     entry_bb = release_fn.append_basic_block("entry");
     check_bb = release_fn.append_basic_block("check_sentinel");
     do_bb = release_fn.append_basic_block("do_release");
-    free_bb = release_fn.append_basic_block("do_free");
     done_bb = release_fn.append_basic_block("done");
     b = ir.IRBuilder(entry_bb);
     is_null = b.icmp_unsigned(
@@ -108,10 +164,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b = ir.IRBuilder(do_bb);
     new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
     b.store(new_rc, rc_ptr);
-    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
-    b.cbranch(is_zero, free_bb, done_bb);
-    b = ir.IRBuilder(free_bb);
-    b.call(self.free_fn, [raw_ptr]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -325,8 +377,8 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
             }
         }
     }
-    # Free the struct itself
-    b.call(self.free_fn, [rc_raw]);
+    # Skip free: bump allocator arena memory cannot be freed individually.
+    # Memory is reclaimed when the process exits.
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

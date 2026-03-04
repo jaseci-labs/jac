@@ -25,7 +25,7 @@ jac start app.jac
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--port` `-p` | Server port | 8000 |
+| `--port` `-p` | Server port (auto-fallback if in use) | 8000 |
 | `--main` `-m` | Treat as `__main__` | false |
 | `--faux` `-f` | Print generated API docs only (no server) | false |
 | `--dev` `-d` | Enable HMR (Hot Module Replacement) mode | false |

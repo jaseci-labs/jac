@@ -42,10 +42,13 @@ impl NaIRGenPass._declare_exception_runtime -> None {
         self._exc_handler_global = handler_global;
     }
     # Declare setjmp: i32 setjmp(i8*)  — takes pointer to jmp_buf
+    # Must mark as returns_twice so LLVM optimizer doesn't break setjmp/longjmp control flow
     jmp_buf_ptr = ir.ArrayType(ir.IntType(8), 200).as_pointer();
-    self._get_or_declare_extern("setjmp", i32, [i8p]);
+    setjmp_fn = self._get_or_declare_extern("setjmp", i32, [i8p]);
+    setjmp_fn.attributes.add("returns_twice");
     # Declare longjmp: void longjmp(i8*, i32)
-    self._get_or_declare_extern("longjmp", ir.VoidType(), [i8p, i32]);
+    longjmp_fn = self._get_or_declare_extern("longjmp", ir.VoidType(), [i8p, i32]);
+    longjmp_fn.attributes.add("noreturn");
     # Declare abort for uncaught exceptions
     self._get_or_declare_extern("abort", ir.VoidType(), []);
     # Emit __jac_exc_push: initialize state and push onto handler stack
@@ -366,6 +369,12 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     exc_state_type = self._exc_state_type;
     exc_state_ptr = exc_state_type.as_pointer();
     func = self.builder.function;
+    # Prevent the optimizer from promoting allocas to SSA across setjmp.
+    # Without optnone, LLVM's SROA/mem2reg promotes local variables to
+    # registers even with returns_twice on setjmp, causing values modified
+    # between setjmp and longjmp to be lost (e.g. result=1 before raise).
+    func.attributes.add("optnone");
+    func.attributes.add("noinline");
     # Create basic blocks
     setup_bb = func.append_basic_block(name="try.setup");
     body_bb = func.append_basic_block(name="try.body");

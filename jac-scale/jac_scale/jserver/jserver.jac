@@ -95,9 +95,12 @@ class JServer(ABC, Generic[T]) {
     @abstractmethod
     def create_server(self: JServer) -> T { }
 
-    """Run the server on the specified host and port."""
+    """Run the server on the specified host and port.
+
+    If the port is in use, tries subsequent ports up to max_retries times.
+    """
     @abstractmethod
     def run_server(
-        self: JServer, host: str = 'localhost', port: int = 8000
+        self: JServer, host: str = 'localhost', port: int = 8000, max_retries: int = 10
     ) -> None { }
 }
