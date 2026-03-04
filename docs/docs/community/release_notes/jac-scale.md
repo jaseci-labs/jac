@@ -36,6 +36,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - jac destroy command deletes non default namespace
 - **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
 - 1 Minor refactor
+- Internal: check whether redis,mongodb,grafana and prometheus are also restarted when checking deployment status
 
 ## jac-scale 0.2.0
 

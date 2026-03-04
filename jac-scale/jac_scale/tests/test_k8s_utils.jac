@@ -9,6 +9,7 @@ import from kubernetes.client.exceptions { ApiException }
 import from jaclang.runtimelib.test { parametrize }
 import from jac_scale.targets.kubernetes.utils { kubernetes_utils as utils }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+    check_pods_restarted,
     create_tarball,
     ensure_pvc_exists,
     load_env_variables,
@@ -283,4 +284,59 @@ test "sync code to pvc sets pod affinity to code server" {
     term = rules[0]["podAffinityTerm"];
     assert term["labelSelector"]["matchLabels"] == {"app": "myapp-code-server"};
     assert term["topologyKey"] == "kubernetes.io/hostname";
+}
+
+# --- check_pods_restarted ---
+test "check pods restarted selector and return values" {
+    app_name = "myapp";
+    namespace = "test-ns";
+    expected_labels = [
+        app_name,
+        f"{app_name}-redis",
+        f"{app_name}-mongodb",
+        f"{app_name}-grafana",
+        f"{app_name}-prometheus",
+        f"{app_name}-mongo-express",
+        f"{app_name}-redis-insight"
+    ];
+
+    # --- Case 1: no restarts → False, single API call with correct selector ---
+    clean = unittest.mock.MagicMock();
+    clean.restart_count = 0;
+    pod_clean = unittest.mock.MagicMock();
+    pod_clean.status.container_statuses = [clean];
+    resp_clean = unittest.mock.MagicMock();
+    resp_clean.items = [pod_clean];
+    fake_v1 = unittest.mock.MagicMock();
+    fake_v1.list_namespaced_pod.return_value = resp_clean;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            result_false = check_pods_restarted(namespace, app_name);
+        }
+    }
+
+    assert result_false is False;
+    assert fake_v1.list_namespaced_pod.call_count == 1 , "expected single API call";
+    selector = fake_v1.list_namespaced_pod.call_args[1]["label_selector"];
+    for label in expected_labels {
+        assert label in selector , f"Label '{label}' missing from selector '{selector}'";
+    }
+
+    # --- Case 2: one pod restarted → True ---
+    restarted = unittest.mock.MagicMock();
+    restarted.restart_count = 1;
+    pod_restarted = unittest.mock.MagicMock();
+    pod_restarted.status.container_statuses = [restarted];
+    resp_restarted = unittest.mock.MagicMock();
+    resp_restarted.items = [pod_clean, pod_restarted];
+    fake_v1.list_namespaced_pod.return_value = resp_restarted;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            result_true = check_pods_restarted(namespace, app_name);
+        }
+    }
+
+    assert result_true is True;
 }

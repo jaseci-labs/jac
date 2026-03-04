@@ -450,9 +450,9 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
         config.load_incluster_config();
     }
     v1 = client.CoreV1Api();
-    pods = v1.list_namespaced_pod(
-        namespace=namespace, label_selector="app={}".format(app_name)
-    );
+    app_labels = [app_name + d[0] for d in COMPANION_DEFS];
+    selector = "app in ({})".format(", ".join(app_labels));
+    pods = v1.list_namespaced_pod(namespace=namespace, label_selector=selector);
     for pod in pods.items {
         statuses = pod.status.container_statuses;
         if not statuses {

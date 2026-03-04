@@ -13,6 +13,20 @@ import from kubernetes.client.rest { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
 
+"""Each companion component: (suffix, display_name, is_statefulset).
+Adding a new companion here automatically updates both check_pods_restarted
+and get_full_status component_defs."""
+glob COMPANION_DEFS: list = [
+         ("", "Jaseci App", False),
+         ("-redis", "Redis", False),
+         ("-mongodb", "MongoDB", True),
+         ("-prometheus", "Prometheus", False),
+         ("-grafana", "Grafana", False),
+         ("-redis-insight", "RedisInsight", False),
+         ("-mongo-express", "Mongo Express", False),
+
+     ];
+
 def check_pods_restarted(namespace: str, app_name: str) -> bool;
 
 def debug_print(statement: str, debug_only: bool = False) -> None;
