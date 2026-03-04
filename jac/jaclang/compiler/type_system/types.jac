@@ -164,6 +164,7 @@ Holds the shared details of class type.
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
+            is_namedtuple: bool = False,
             is_root_class: bool = False,
             is_enum_class: bool = False,
             enum_value_type: (TypeBase | None) = None,
@@ -200,6 +201,7 @@ Holds the private details of class type.
 
     def is_builtin(class_name: (str | None) = None) -> bool;
     def is_data_class -> bool;
+    def is_namedtuple -> bool;
     def is_enum_class -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;

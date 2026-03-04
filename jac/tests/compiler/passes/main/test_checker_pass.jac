@@ -1820,3 +1820,22 @@ test "getattr_support" {
     assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}";
     assert "Cannot assign" in user_errors[0].pretty_print();
 }
+
+"""Test NamedTuple type checking: constructor accepts positional arguments for fields."""
+test "namedtuple_constructor" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_namedtuple.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+
+    # NamedTuple should accept positional arguments for fields - no errors expected
+    assert len(user_errors) == 0 , f"Expected 0 errors for NamedTuple, got {len(
+        user_errors
+    )}: " + "\n".join([err.pretty_print() for err in user_errors]);
+}

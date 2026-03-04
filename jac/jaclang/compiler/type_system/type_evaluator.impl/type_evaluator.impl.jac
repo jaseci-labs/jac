@@ -742,8 +742,7 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     and unpack_assignment.value is not None
                 ) {
                     rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                    if isinstance(rhs_type, types.ClassType)
-                    and rhs_type.private.type_args {
+                    if isinstance(rhs_type, types.ClassType) {
                         idx = -1;
                         for (vi, v) in enumerate(unpack_container.values) {
                             if v is node_ {
@@ -751,10 +750,26 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                                 break;
                             }
                         }
-                        if idx >= 0 and idx < len(rhs_type.private.type_args) {
-                            return self._convert_to_instance(
-                                rhs_type.private.type_args[idx]
-                            );
+                        if idx >= 0 {
+                            # NamedTuple: get field types from has vars
+                            if rhs_type.is_namedtuple() {
+                                has_vars = rhs_type.shared.symbol_table.get_has_vars();
+                                if idx < len(has_vars) {
+                                    field = has_vars[idx];
+                                    if field.type_tag {
+                                        field_type = self.get_type_of_expression(
+                                            field.type_tag.tag
+                                        );
+                                        return self._convert_to_instance(field_type);
+                                    }
+                                }
+                                # Regular tuple with type_args
+                            } elif rhs_type.private.type_args
+                            and idx < len(rhs_type.private.type_args) {
+                                return self._convert_to_instance(
+                                    rhs_type.private.type_args[idx]
+                                );
+                            }
                         }
                     }
                 }
@@ -809,6 +824,45 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
             if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
+
+                # Special handling for NamedTuple iteration
+                # Iterating over a NamedTuple yields its field values
+                if isinstance(collection_type, types.ClassType)
+                and collection_type.is_namedtuple() {
+                    has_vars = collection_type.shared.symbol_table.get_has_vars();
+                    if has_vars {
+                        # Collect all field types
+                        field_types: list[types.TypeBase] = [];
+                        for field in has_vars {
+                            if field.type_tag {
+                                field_type = self.get_type_of_expression(
+                                    field.type_tag.tag
+                                );
+                                field_types.append(
+                                    self._convert_to_instance(field_type)
+                                );
+                            }
+                        }
+                        # If all fields have the same type, use that type
+                        if field_types {
+                            first_type = field_types[0];
+                            all_same = all(
+                                isinstance(ft, types.ClassType)
+                                and isinstance(first_type, types.ClassType)
+                                and ft.shared == first_type.shared
+                                for ft in field_types
+                            );
+                            if all_same {
+                                node_.type = first_type;
+                                return first_type;
+                            }
+                            # Different types: return first type for now (TODO: union)
+                            node_.type = field_types[0];
+                            return field_types[0];
+                        }
+                    }
+                }
+
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
                 );

@@ -135,6 +135,17 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
+            # Cache the type on the Name node for hover info
+            target.type = left_type;
+        } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+            # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
+            # Cache type on each Name in the unpacking pattern
+            for val in target.values {
+                if isinstance(val, uni.Name) {
+                    self.evaluator.get_type_of_expression(val);
+                }
+            }
+            left_type = self.evaluator.get_type_of_expression(target);
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }
@@ -143,7 +154,21 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             self.log_error(f"Cannot assign {right_type} to {left_type}");
         }
     } else {
-        ;
+        # Handle multi-target assignments: set type on each target for hover
+        for target in nd.target {
+            if isinstance(target, uni.Name) and target.sym {
+                target.type = self.evaluator.get_type_of_symbol(target.sym);
+            } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+                # Tuple/list unpacking in multi-target assignment
+                for val in target.values {
+                    if isinstance(val, uni.Name) {
+                        self.evaluator.get_type_of_expression(val);
+                    }
+                }
+            } else {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
     }
 }
 
@@ -264,5 +289,20 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     if (sym := nd.sym) {
         nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
+}
+
+"""Set type on for loop iteration variable for hover info."""
+impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None {
+    # Cache type on the iteration target (e.g., 'coord' in 'for coord in p')
+    if isinstance(nd.target, uni.Name) {
+        self.evaluator.get_type_of_expression(nd.target);
+    } elif isinstance(nd.target, (uni.TupleVal, uni.ListVal)) {
+        # Tuple unpacking in for loop: for (a, b) in items
+        for val in nd.target.values {
+            if isinstance(val, uni.Name) {
+                self.evaluator.get_type_of_expression(val);
+            }
+        }
     }
 }

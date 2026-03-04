@@ -89,6 +89,13 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         and caller_type.is_instantiable_class()
     ) {
         validated = False;
+        # NamedTuple: use synthesized __new__ with field parameters (not inherited tuple.__new__)
+        if caller_type.is_namedtuple() {
+            self._validate_constructor_method(
+                expr, self._create_namedtuple_new_method(caller_type)
+            );
+            return caller_type.clone_as_instance();
+        }
         if new_method := self._lookup_class_member(caller_type, "__new__") {
             is_from_object = new_method.class_type.shared.class_name == "object";
             method_ty = self.get_type_of_symbol(new_method.symbol);

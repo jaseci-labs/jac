@@ -13,7 +13,6 @@ circle_pure_err.impl.jac
 clib_import.na.jac
 clib_import_na_block.jac
 clib_struct_coerce.na.jac
-client_app.jac
 client_bundle.jac
 client.jac
 client_jsx.jac
