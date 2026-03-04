@@ -13,6 +13,11 @@ class MixedClass {
     def __getattr__(self: MixedClass, name: str) -> str { return ""; }
 }
 
+# Class without __getattr__ - for negative test
+class NoGetAttr {
+    has real_attr: int = 42;
+}
+
 with entry {
     # Valid: __getattr__ returns str
     p = StrProxy();
@@ -29,4 +34,11 @@ with entry {
 
     # ERROR: __getattr__ returns str, not int
     bad: int = p.bar;  # <-- type error expected
+
+    # Class without __getattr__ - regular attr should NOT show "dynamic attribute"
+    ng = NoGetAttr();
+    ng_val: int = ng.real_attr;
+
+    # No __getattr__ - hover should NOT show "dynamic attribute"
+    ng.nonexistent;
 }

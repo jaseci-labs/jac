@@ -249,6 +249,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     # This follows Pyright's applyAttributeAccessOverride pattern.
                     if getattr_return := self._get_getattr_return_type(base_type) {
                         expr.right.type = getattr_return;
+                        expr.right.is_getattr_resolved = True;
                         return getattr_return;
                     }
                     # TODO: Re-enable after fixing TypeVar resolution.
