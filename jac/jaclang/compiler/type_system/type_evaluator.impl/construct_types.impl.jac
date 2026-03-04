@@ -209,7 +209,10 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    is_builtin_class = node_.find_parent_of_type(uni.Module) == self.builtins_module;
+    is_builtin_class = node_.find_parent_of_type(uni.Module) in [
+        self.builtins_module,
+        self.typing_module
+    ];
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";

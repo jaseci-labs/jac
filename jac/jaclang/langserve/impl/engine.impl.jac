@@ -1,6 +1,3 @@
-import from jaclang.cli.console { console }
-import time;
-
 impl Task.postinit -> None {
     self.task_id = Task._task_id;
     self.cancel_token = threading.Event();
@@ -71,10 +68,7 @@ impl JacLangServer._do_type_check(file_uri: str) -> None {
 
 """Rebuild a file and its dependencies (typecheck)."""
 impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: Event | None = None, annex_view: Optional[str] = None,
-    # This parameter will be passed recursively
-    # and dont need to pass when the function itself is called
-    # outside.
+    file_uri: str, cancel_token: Event | None = None
 ) -> bool {
     if cancel_token and cancel_token.is_set() {
         return False;
@@ -82,11 +76,26 @@ impl JacLangServer.type_check_file(
     try {
         document = self.workspace.get_text_document(file_uri);
         fs_path = document.path;
-        self._clear_alerts_for_file(fs_path);
 
+        # Determine the main file to compile
+        base = discover_base_file(fs_path);
+        main_path = base or fs_path;
+
+        # Collect all files involved (main + annexes) for diagnostics
+        files_to_check = [main_path];
+        files_to_check.extend(discover_annex_files(main_path, '.impl.jac'));
+        files_to_check.extend(discover_annex_files(main_path, '.test.jac'));
+
+        # Clear alerts for all involved files
+        for f in files_to_check {
+            self._clear_alerts_for_file(f);
+        }
+
+        # Compile the main file
+        main_doc = self.workspace.get_text_document(uris.from_fs_path(main_path));
         build = self.compile(
-            use_str=document.source,
-            file_path=document.path,
+            use_str=main_doc.source,
+            file_path=main_path,
             type_check=True,
             no_cgen=True,
             cancel_token=cancel_token,
@@ -95,15 +104,8 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        self.update_modules(fs_path, build);
+        self.update_modules(main_path, build);
 
-        if build.annexable_by {
-            return self.type_check_file(
-                uris.from_fs_path(build.annexable_by),
-                cancel_token=cancel_token,
-                annex_view=fs_path,
-            );
-        }
         # Aggregate errors from internal_program (jaclang.* modules) if any
         all_errors = list(self.errors_had);
         all_warnings = list(self.warnings_had);
@@ -111,19 +113,12 @@ impl JacLangServer.type_check_file(
             all_errors.extend(self._compiler._internal_program.errors_had);
             all_warnings.extend(self._compiler._internal_program.warnings_had);
         }
-        self.publish_diagnostics(
-            (
-                uris.from_fs_path(annex_view)
-                    if annex_view
-                    else uris.from_fs_path(fs_path)
-                # to display diagnostic , it need URI starts with "file://"
-            ),
-            utils.gen_diagnostics((annex_view or fs_path), all_errors, all_warnings)
-        );
-        if annex_view {
+
+        # Publish diagnostics to all involved files
+        for f in files_to_check {
             self.publish_diagnostics(
-                uris.from_fs_path(fs_path),
-                utils.gen_diagnostics(fs_path, all_errors, all_warnings)
+                uris.from_fs_path(f),
+                utils.gen_diagnostics(f, all_errors, all_warnings)
             );
         }
     } except Exception as e {
