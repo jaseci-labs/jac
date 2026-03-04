@@ -8,7 +8,6 @@ Verifies that:
 """
 
 import os;
-import shutil;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
