@@ -45,6 +45,10 @@ username = "admin"
 default_password = "admin123"
 require_password_reset = true
 
+[plugins.scale.kubernetes]
+redis_dashboard = true
+mongodb_dashboard = true
+
 [dependencies.npm]
 antd = "^6.0.0"
 jac-client-node = "1.0.4"

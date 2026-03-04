@@ -18,7 +18,7 @@ def:pub app -> JsxElement {
             <h1>Items</h1>
             <input
                 value={itemName}
-                onChange={lambda e: any -> None { itemName = e.target.value; }}
+                onChange={lambda e: Any -> None { itemName = e.target.value; }}
             />
             <button onClick={addItem}>Add</button>
         </div>;

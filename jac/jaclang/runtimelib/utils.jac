@@ -3,6 +3,7 @@ import ast as ast3;
 import sys;
 import from collections.abc { Callable, Iterator }
 import from contextlib { contextmanager }
+import from pathlib { Path }
 import from types { UnionType }
 import from typing { TYPE_CHECKING }
 import from uuid { UUID }
@@ -70,3 +71,12 @@ def to_uuid(id: (UUID | str)) -> UUID {
     }
     return UUID(str(id));
 }
+
+"""Get project name from jac.toml if exists in same directory, None otherwise."""
+def get_name -> (str | None);
+
+"""Get database path:
+- Projects (jac.toml in same dir) → .jac/data/project-name.db
+- Standalone files (no jac.toml) → .jac/data/filename.db
+"""
+def get_db_path(base_path: str) -> (str | None);

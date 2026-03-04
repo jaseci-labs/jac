@@ -32,7 +32,7 @@ cl {
             )
         ];
 
-        def handleSearch(e: any) -> None {
+        def handleSearch(e: Any) -> None {
             e.preventDefault();
             if inputValue.trim() {
                 navigate(f"/search?q={encodeURIComponent(inputValue.trim())}&page=1");
@@ -62,7 +62,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: any  -> None { inputValue = e.target.value;}}
+                            onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",

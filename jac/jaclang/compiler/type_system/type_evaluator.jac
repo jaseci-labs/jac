@@ -202,6 +202,7 @@ obj TypeEvaluator {
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
 
+    def _get_getattr_return_type(base_type: types.ClassType) -> TypeBase | None;
     def match_args_to_params(
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
@@ -220,7 +221,14 @@ obj TypeEvaluator {
         class_type: types.ClassType
     ) -> types.FunctionType;
 
+    def _create_namedtuple_new_method(
+        class_type: types.ClassType
+    ) -> types.FunctionType;
+
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
+    def _get_method_with_overloads(
+        method_member: Any, caller_type: types.ClassType
+    ) -> TypeBase;
     # -------------------------------------------------------------------------
     # Type narrowing support
     #

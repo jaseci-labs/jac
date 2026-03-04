@@ -51,7 +51,7 @@ cl {
         overrides = {"retries": 3, "timeout": 30};
         merged = {** defaults, ** overrides};
 
-        def collect(label: str, *items: tuple, **options: dict) -> dict {
+        def collect(label: str, *items: tuple, **options: int) -> dict {
             return {"label": label, "items": list(items), "options": options};
         }
 
@@ -176,7 +176,7 @@ cl {
         };
     }
 
-    def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> JsxElement {
+    def TodoList(filteredTodos: Any, toggleTodo: Any, deleteTodo: Any) -> JsxElement {
         if filteredTodos.length == 0 {
             return <div
                 style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
@@ -187,7 +187,7 @@ cl {
 
         return <div>
             {filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
+                lambda  todo: Any  -> Any{ return <TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     toggleTodo={toggleTodo}
@@ -198,7 +198,7 @@ cl {
         </div>;
     }
 
-    def PropTodoList(props: any) -> JsxElement {
+    def PropTodoList(props: Any) -> JsxElement {
         if props.filteredTodos.length == 0 {
             return <div
                 style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
@@ -209,7 +209,7 @@ cl {
 
         return <div>
             {props.filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
+                lambda  todo: Any  -> Any{ return <TodoItem
                     key={todo._jac_id}
                     todo={todo}
                     toggleTodo={props.toggleTodo}

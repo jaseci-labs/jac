@@ -7,33 +7,28 @@ import from typing { Optional }
 import from jac_client.plugin.src.targets.registry { ClientTarget }
 
 """Web build target."""
-class WebTarget(ClientTarget) {
-    def init(self: WebTarget) {
-        self.name = "web";
-        self.default = True;
-        self.requires_setup = False;
-        self.config_section = "plugin.client";
-        self.output_dir = Path(".jac/client/dist");
-    }
+obj WebTarget(ClientTarget) {
+    has name: str = "web",
+        default: bool = True,
+        requires_setup: bool = False,
+        config_section: str = "plugin.client",
+        output_dir: Path = Path(".jac/client/dist");
 
     """Setup web target (no-op for web, already set up by default)."""
-    override def setup(self: WebTarget, project_dir: Path) -> None;
+    override def setup(project_dir: Path) -> None;
 
     """Build web bundle using existing Vite pipeline."""
     override def build(
-        self: WebTarget,
-        entry_file: Path,
-        project_dir: Path,
-        platform: Optional[str] = None
+        entry_file: Path, project_dir: Path, platform: Optional[str] = None
     ) -> Path;
 
     """Start web dev server."""
     override def dev(
-        self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
 
     """Start web target (production preview mode)."""
     override def start(
-        self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
 }

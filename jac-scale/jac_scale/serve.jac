@@ -45,7 +45,16 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_ALGORITHM = _jwt_config['algorithm'],
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
      SSO_HOST = _sso_config['host'],
-     logger = logging.getLogger(__name__);
+     logger = logging.getLogger(__name__),
+     PORT_RETRY_LIMIT: int = 10,
+     ERRNO_ADDR_IN_USE_LINUX: int = 98,
+     ERRNO_ADDR_IN_USE_WINDOWS: int = 10048;
+
+"""Find an available port starting from the given port."""
+def _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int;
+
+"""Get local network IP addresses (non-localhost)."""
+def _get_network_ips -> list[str];
 
 """Core auth, user management, JWT, API keys, server start/postinit."""
 obj JacAPIServerCore {
@@ -53,10 +62,11 @@ obj JacAPIServerCore {
     def start(
         dev: bool = False,
         no_client: bool = False,
-        on_ready: Callable[[], None] | None = None
+        on_ready: Callable[..., None] | None = None
     ) -> None;
 
     def _configure_openapi_security -> None;
+    def _print_startup_banner(dev: bool, no_client: bool) -> None;
     # User/Auth endpoints
     def login(username: str, password: str) -> TransportResponse;
     def register_login_endpoint -> None;

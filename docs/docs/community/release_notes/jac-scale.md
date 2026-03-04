@@ -4,12 +4,24 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.4 (Unreleased)
 
+- **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
+- [fix]Fix for internet facing aws load balancer
+- 1 Minor refactor/change.
+- update jac-scale plugin documentation with missing features
+- APP_NAME, K8s_NAMESPACE, DOCKER_USERNAME, DOCKER_PASSWORD are no longer read from environment variables and must be configured via `jac.toml.
+
+- **Redis Cache Configuration with TTL Support**: Added configurable eviction policies and TTL support for Kubernetes Redis deployments via `jac.toml` (`redis_max_memory`, `redis_eviction_policy`, `redis_eviction_samples`, `redis_default_ttl`, `redis_enable_keyspace_notifications`); ConfigMap-based with automatic pod restart on change. Anchors stored in Redis L2 cache now respect the `redis_default_ttl` setting and will automatically expire after the configured duration (default: 0 = no expiration).
+- 1 small refactor/change.
+
 ## jac-scale 0.2.3 (Latest Release)
 
 - **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
 - **Admin-Only Metrics Endpoint**: The `/metrics` Prometheus scrape endpoint now requires admin authentication. Unauthenticated requests receive a 403 Forbidden response. This prevents unauthorized access to server performance data.
 - **Admin Metrics Dashboard**: Added `/admin/metrics` endpoint that returns parsed Prometheus metrics as structured JSON with summary statistics (total requests, average latency, error rate, active requests). The admin dashboard monitoring page now displays metrics in a visual dashboard with HTTP traffic breakdown, system stats (GC, memory, CPU time), and real-time counters.
 - Set default maximum memory limit of k8s pods from unlimited to 12Gb
+- Automatically deploy Redis (RedisInsight) and MongoDB (MongoDB Dashboard) dashboards in Kubernetes when the redis_dashboard and mongodb_dashboard flags are enabled.
+- Set default maximum memory limit for jaseci app pod to None (unlimited)
+- 1 Minor refactor/change.
 
 ## jac-scale 0.2.2
 
@@ -31,6 +43,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - jac destroy command deletes non default namespace
 - **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
 - 1 Minor refactor
+- Internal: check whether redis,mongodb,grafana and prometheus are also restarted when checking deployment status
 
 ## jac-scale 0.2.0
 

@@ -1,7 +1,7 @@
 """Card components for stats and content."""
 
 cl {
-    def:pub Card(children: any, className: str = "") -> JsxElement {
+    def:pub Card(children: Any, className: str = "") -> JsxElement {
         return
             <div
                 className={"bg-slate-900 border border-slate-800 rounded-lg " + className}
@@ -10,7 +10,7 @@ cl {
             </div>;
     }
 
-    def:pub CardHeader(title: str, action: any = None) -> JsxElement {
+    def:pub CardHeader(title: str, action: Any = None) -> JsxElement {
         return
             <div
                 className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
@@ -22,14 +22,14 @@ cl {
             </div>;
     }
 
-    def:pub CardBody(children: any, className: str = "p-4") -> JsxElement {
+    def:pub CardBody(children: Any, className: str = "p-4") -> JsxElement {
         return
             <div className={className}>
                 {children}
             </div>;
     }
 
-    def:pub StatsCard(label: str, value: any, color: str = "white") -> JsxElement {
+    def:pub StatsCard(label: str, value: Any, color: str = "white") -> JsxElement {
         colorClasses = {
             "white": "text-white",
             "orange": "text-orange-500",

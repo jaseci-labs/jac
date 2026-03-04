@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.4 (Unreleased)
 
+- **HMR Client Error Reporting**: Client-side runtime and module import errors now reported to terminal via Vite WebSocket.
+- Internal: updated jac.toml of all-in-one example to use redis dashboard and mongodb dashboard
+- 2 Minor refactors/changes.
+
 ## jac-client 0.3.3 (Latest Release)
 
 ## jac-client 0.3.2

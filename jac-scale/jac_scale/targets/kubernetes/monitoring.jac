@@ -24,18 +24,9 @@ Kubernetes metrics are collected via:
   - kube-state-metrics: exposes K8s object state (pods, deployments, replicas, restarts)
   - node-exporter:      exposes host-level metrics (CPU, memory, disk, network)
 """
-class MonitoringDeployer {
+obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
-
-    def init(
-        self: MonitoringDeployer,
-        k8s_config: KubernetesConfig,
-        logger: (Logger | None) = None
-    ) -> None {
-        self.k8s_config = k8s_config;
-        self.logger = logger;
-    }
 
     """Deploy Prometheus ConfigMap with scrape config + Deployment + ClusterIP Service.
 
@@ -45,12 +36,7 @@ class MonitoringDeployer {
       - node-exporter for host-level node metrics (CPU, memory, disk, network)
     """
     def _deploy_prometheus(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        cluster_env: str
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
     ) -> None {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
@@ -221,11 +207,7 @@ class MonitoringDeployer {
     A ClusterRole is required so it can list/watch cluster-wide resources.
     """
     def _deploy_kube_state_metrics(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
     ) -> None {
         ksm_name = f"{app_name}-kube-state-metrics";
         ksm_sa_name = f"{ksm_name}-sa";
@@ -453,11 +435,7 @@ class MonitoringDeployer {
     to it correctly.
     """
     def _deploy_node_exporter(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
     ) -> None {
         ne_name = f"{app_name}-node-exporter";
 
@@ -481,8 +459,7 @@ class MonitoringDeployer {
                                 'image': 'prom/node-exporter:v1.10.2',
                                 'args': [
                                     '--path.procfs=/host/proc',
-                                    '--path.sysfs=/host/sys',
-                                    '--path.rootfs=/host/root'
+                                    '--path.sysfs=/host/sys'
                                 ],
                                 'ports': [{'containerPort': 9100, 'name': 'metrics'}],
                                 'volumeMounts': [
@@ -495,20 +472,13 @@ class MonitoringDeployer {
                                         'name': 'sys',
                                         'mountPath': '/host/sys',
                                         'readOnly': True
-                                    },
-                                    {
-                                        'name': 'root',
-                                        'mountPath': '/host/root',
-                                        'readOnly': True,
-                                        'mountPropagation': 'HostToContainer'
                                     }
                                 ]
                             }
                         ],
                         'volumes': [
                             {'name': 'proc', 'hostPath': {'path': '/proc'}},
-                            {'name': 'sys', 'hostPath': {'path': '/sys'}},
-                            {'name': 'root', 'hostPath': {'path': '/'}}
+                            {'name': 'sys', 'hostPath': {'path': '/sys'}}
                         ]
                     }
                 }
@@ -575,12 +545,7 @@ class MonitoringDeployer {
       - k8s-metrics.json: Kubernetes cluster metrics (nodes, pods, deployments)
     """
     def _deploy_grafana(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        cluster_env: str
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
     ) -> None {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
@@ -1078,7 +1043,8 @@ class MonitoringDeployer {
                     'namespace': namespace,
                     'labels': {'app': grafana_name, 'managed': 'jac-scale'},
                     'annotations': {
-                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb'
+                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
+                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
                     }
                 },
                 'spec': {
@@ -1138,12 +1104,7 @@ class MonitoringDeployer {
 
     """Deploy the full monitoring stack (Prometheus, kube-state-metrics, node-exporter, Grafana) for an app namespace."""
     def deploy(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        cluster_env: str
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
     ) -> None {
         if not self.k8s_config.monitoring_enabled {
             return;
@@ -1158,13 +1119,7 @@ class MonitoringDeployer {
     }
 
     """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter."""
-    def destroy(
-        self: MonitoringDeployer,
-        app_name: str,
-        namespace: str,
-        apps_v1: Any,
-        core_v1: Any
-    ) -> None {
+    def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) -> None {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";

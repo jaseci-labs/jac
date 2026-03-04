@@ -125,6 +125,11 @@ def list_py() -> dict {
     iadd_c: list = [10, 20];
     iadd_c += [30, 40];
 
+    # list slicing
+    sl_src: list[int] = [10, 20, 30, 40, 50];
+    sl_mid: list[int] = sl_src[1:4];
+    sl_to: list[int] = sl_src[:2];
+
     return {
         "after_append": a1,
         "after_extend": a2,
@@ -222,7 +227,11 @@ def list_py() -> dict {
         "concat_5": op_c[5],
         "orig_a_len": len(op_a),
         "orig_b_len": len(op_b),
-        "list_iadd": iadd_c
+        "list_iadd": iadd_c,
+        "sl_mid_len": len(sl_mid),
+        "sl_mid_0": sl_mid[0], "sl_mid_1": sl_mid[1], "sl_mid_2": sl_mid[2],
+        "sl_to_len": len(sl_to),
+        "sl_to_0": sl_to[0], "sl_to_1": sl_to[1]
     };
 }
 
@@ -494,6 +503,11 @@ na {
         grow_len: int = len(grow);
         grow_last: int = grow[len(grow) - 1];
 
+        # list slicing
+        sl_src: list[int] = [10, 20, 30, 40, 50];
+        sl_mid: list[int] = sl_src[1:4];
+        sl_to: list[int] = sl_src[:2];
+
         return {
             "append_len": append_len,
             "append_last": append_last,
@@ -581,7 +595,11 @@ na {
             "orig_a_len": len(op_a),
             "orig_b_len": len(op_b),
             "iadd_len": grow_len,
-            "iadd_last": grow_last
+            "iadd_last": grow_last,
+            "sl_mid_len": len(sl_mid),
+            "sl_mid_0": sl_mid[0], "sl_mid_1": sl_mid[1], "sl_mid_2": sl_mid[2],
+            "sl_to_len": len(sl_to),
+            "sl_to_0": sl_to[0], "sl_to_1": sl_to[1]
         };
     }
 }

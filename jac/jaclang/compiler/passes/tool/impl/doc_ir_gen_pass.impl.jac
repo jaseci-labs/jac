@@ -1907,6 +1907,15 @@ impl DocIRGenPass.exit_ability(nd: uni.Ability) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.LSQUARE)) {
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RSQUARE)) {
+            parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.TypeParam) {
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());

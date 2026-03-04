@@ -9,7 +9,7 @@ cl obj: pub ButtonProps {
     has color: str = "primary";
 }
 
-cl def: pub client_page() {
+cl def: pub client_page() -> JsxElement {
     props = ButtonProps(label="Tap Me", color="primary");
     return <div class="app">
         <h1>

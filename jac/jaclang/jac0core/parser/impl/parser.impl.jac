@@ -5528,6 +5528,16 @@ impl Parser.parse_ability -> Ability {
         name_tok = self.advance();
         name = self._make_attr_from_keyword(name_tok);
     }
+    # Parse optional type parameters: def foo[T, E](...)
+    type_params: list[TypeParam] | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    tp_comma_unis: list = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        (type_params, tp_comma_unis) = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
     signature: FuncSignature | EventSignature;
     if is_can and self.check(TokenKind.KW_WITH) {
         with_uni = self.make_uni_token(self.advance());
@@ -5601,6 +5611,16 @@ impl Parser.parse_ability -> Ability {
     if name {
         kid.append(name);
     }
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(tp_comma_unis[i - 1]);
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
     # Only add signature if it has actual content (parens/return type present)
     has_sig_content = not (
         len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
@@ -5634,7 +5654,8 @@ impl Parser.parse_ability -> Ability {
         body=body,
         kid=kid,
         doc=None,
-        decorators=decorators
+        decorators=decorators,
+        type_params=type_params
     );
 }
 

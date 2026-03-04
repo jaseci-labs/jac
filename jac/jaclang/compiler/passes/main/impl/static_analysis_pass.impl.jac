@@ -1,9 +1,4 @@
 """Static analysis pass implementation."""
-import ast as ast3;
-import from collections.abc { Sequence }
-import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.constant { SymbolType }
 
 impl StaticAnalysisPass.init(
     ir_in: uni.Module, prog: Any, cancel_token: Any = None
@@ -77,6 +72,12 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
     }
     # Recurse into child scopes
     for kid in scope.kid_scope {
+        if isinstance(kid, uni.AstImplNeedingNode) {
+            if isinstance(kid.body, uni.ImplDef) {
+                self._check_unused_symbols(kid.body);
+                continue;
+            }
+        }
         self._check_unused_symbols(kid);
     }
 }
@@ -85,7 +86,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
 impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
     all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
     for name_nd in all_names {
-        if name_nd.sym is not None {
+        if name_nd.sym {
             continue;
         }
         # Only flag Load context (usage, not definition)

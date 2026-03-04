@@ -122,11 +122,18 @@ def int_py() -> dict {
         "and_val": and_val, "or_val": or_val, "xor_val": xor_val,
         # int extra
         "ratio": ratio_list,
+        "ratio_0": ratio_list[0], "ratio_1": ratio_list[1],
         "conj": conj,
         "tb_big": tb_big, "tb_little": tb_little,
         "tb_zero": tb_zero, "tb_255": tb_255,
         "fb_big": fb_big, "fb_little": fb_little,
-        "fb_single": fb_single
+        "fb_single": fb_single,
+        # to_bytes (ord of single-byte results)
+        "tb_65": ord((65).to_bytes(1, "big")),
+        "tb_255": ord((255).to_bytes(1, "big")),
+        # from_bytes round-trip
+        "fb_rt_258": int.from_bytes((258).to_bytes(2, "big"), "big"),
+        "fb_rt_65": int.from_bytes((65).to_bytes(1, "big"), "big")
     };
 }
 
@@ -306,7 +313,15 @@ na {
             "and_tf": and_tf, "and_tt": and_tt, "and_ff": and_ff,
             "or_tf": or_tf, "or_tt": or_tt, "or_ff": or_ff,
             "xor_tf": xor_tf, "xor_tt": xor_tt, "xor_ff": xor_ff,
-            "and_val": and_val, "or_val": or_val, "xor_val": xor_val
+            "and_val": and_val, "or_val": or_val, "xor_val": xor_val,
+            "ratio_0": (42).as_integer_ratio()[0],
+            "ratio_1": (42).as_integer_ratio()[1],
+            # to_bytes (test with non-zero bytes to avoid strlen null-term issues)
+            "tb_65": ord((65).to_bytes(1, "big")),
+            "tb_255": ord((255).to_bytes(1, "big")),
+            # from_bytes round-trip (avoids bytes vs i8* type mismatch)
+            "fb_rt_258": int.from_bytes((258).to_bytes(2, "big"), "big"),
+            "fb_rt_65": int.from_bytes((65).to_bytes(1, "big"), "big")
         };
     }
 }
