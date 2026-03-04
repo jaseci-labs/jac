@@ -219,6 +219,10 @@ obj TypeEvaluator {
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
 
+    def _build_field_params(
+        class_type: types.ClassType, skip_deferred: bool = True
+    ) -> dict[str, types.Parameter];
+
     def _create_dataclass_init_method(
         class_type: types.ClassType
     ) -> types.FunctionType;

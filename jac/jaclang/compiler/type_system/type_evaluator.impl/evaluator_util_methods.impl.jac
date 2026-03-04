@@ -1,23 +1,19 @@
-impl TypeEvaluator._create_dataclass_init_method(
-    class_type: types.ClassType
-) -> types.FunctionType {
+"""Build field parameters from class MRO for synthesized constructors."""
+impl TypeEvaluator._build_field_params(
+    class_type: types.ClassType, skip_deferred: bool = True
+) -> dict[str, types.Parameter] {
     param_map: dict[str, types.Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
-        # Iterate over the has vars and create parameters.
         for has_var in cls.shared.symbol_table.get_has_vars() {
-            # Skip fields marked with 'by postinit' - they are initialized in postinit method
-            if has_var.defer {
+            if skip_deferred and has_var.defer {
                 continue;
             }
-            # Get parameter type.
             param_type: TypeBase | None = None;
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
                 type_cls = self.get_type_of_expression(var_type_expr);
                 param_type = self._convert_to_instance(type_cls);
             }
-
-            # Use dict to deduplicate by name so child class fields override parent fields.
             param_map[has_var.name.value] = types.Parameter(
                 name=has_var.name.value,
                 category=types.ParameterCategory.Positional,
@@ -28,8 +24,14 @@ impl TypeEvaluator._create_dataclass_init_method(
             );
         }
     }
+    return param_map;
+}
+
+impl TypeEvaluator._create_dataclass_init_method(
+    class_type: types.ClassType
+) -> types.FunctionType {
+    param_map = self._build_field_params(class_type, skip_deferred=True);
     parameters = list(param_map.values());
-    # Create and return the __init__ method type.
     return types.FunctionType(
         func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
     );
@@ -46,7 +48,6 @@ impl TypeEvaluator._create_namedtuple_new_method(
     class_type: types.ClassType
 ) -> types.FunctionType {
     parameters: list[types.Parameter] = [];
-
     # Add cls parameter first (NamedTuple __new__ is a classmethod)
     parameters.append(
         types.Parameter(
@@ -57,33 +58,8 @@ impl TypeEvaluator._create_namedtuple_new_method(
             param_kind=types.ParamKind.NORMAL,
         )
     );
-
-    # Add field parameters from has vars (iterate MRO in reverse for proper override)
-    param_map: dict[str, types.Parameter] = {};
-    for cls in class_type.shared.mro[::-1] {
-        for has_var in cls.shared.symbol_table.get_has_vars() {
-            # Get parameter type
-            param_type: TypeBase | None = None;
-            if has_var.type_tag {
-                var_type_expr = has_var.type_tag.tag;
-                type_cls = self.get_type_of_expression(var_type_expr);
-                param_type = self._convert_to_instance(type_cls);
-            }
-
-            # Use dict to deduplicate by name so child class fields override parent fields
-            param_map[has_var.name.value] = types.Parameter(
-                name=has_var.name.value,
-                category=types.ParameterCategory.Positional,
-                param_type=param_type,
-                default_value=has_var.value,
-                is_self=False,
-                param_kind=types.ParamKind.NORMAL,
-            );
-        }
-    }
+    param_map = self._build_field_params(class_type, skip_deferred=False);
     parameters.extend(list(param_map.values()));
-
-    # Create and return the __new__ method type
     return types.FunctionType(
         func_name="__new__",
         return_type=class_type.clone_as_instance(),

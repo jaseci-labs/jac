@@ -139,29 +139,13 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             continue;
         }
         # Collect methods already provided by own + primary ancestors
-        provided_methods: set[str] = set();
-        if arch.body is not None {
-            for stmt in arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                    if mn is not None {
-                        provided_methods.add(mn);
-                    }
-                }
-            }
-        }
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
         for anc in mro[1:] {
             if layout_reg.is_primary_ancestor(arch_name, anc) {
                 anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None and anc_arch.body is not None {
-                    for stmt in anc_arch.body {
-                        if isinstance(stmt, uni.Ability) {
-                            mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                            if mn is not None {
-                                provided_methods.add(mn);
-                            }
-                        }
-                    }
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
                 }
             }
         }
@@ -286,31 +270,13 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         }
         # Collect methods provided by the child's own definition + primary ancestors
         # (these will be handled by own codegen or bitcast wrappers in Pass 6)
-        provided_methods: set[str] = set();
-        # Own methods
-        if arch.body is not None {
-            for stmt in arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                    if mn is not None {
-                        provided_methods.add(mn);
-                    }
-                }
-            }
-        }
-        # Methods from primary ancestor chain
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
         for anc in mro[1:] {
             if layout_reg.is_primary_ancestor(arch_name, anc) {
                 anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None and anc_arch.body is not None {
-                    for stmt in anc_arch.body {
-                        if isinstance(stmt, uni.Ability) {
-                            mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                            if mn is not None {
-                                provided_methods.add(mn);
-                            }
-                        }
-                    }
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
                 }
             }
         }

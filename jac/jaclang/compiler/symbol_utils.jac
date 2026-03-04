@@ -185,6 +185,25 @@ def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
     return symbols;
 }
 
+"""Collect method names from an archetype's raw body (no ImplDef resolution).
+
+Used by native backend where raw body iteration is intentional.
+"""
+def collect_method_names(arch: uni.Archetype) -> set[str] {
+    names: set[str] = set();
+    if arch.body is not None and isinstance(arch.body, Sequence) {
+        for stmt in arch.body {
+            if isinstance(stmt, uni.Ability) {
+                mn = stmt.name_ref.sym_name if stmt.name_ref else None;
+                if mn is not None {
+                    names.add(mn);
+                }
+            }
+        }
+    }
+    return names;
+}
+
 """Categorize a symbol's scope: local, param, captured, global, builtin, imported."""
 def categorize_symbol(sym: uni.Symbol, ref_scope: uni.UniScopeNode) -> SymbolCategory {
     if sym.imported {
