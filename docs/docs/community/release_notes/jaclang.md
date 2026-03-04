@@ -4,9 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
-- 9 small refactors/changes.
-- 11 small refactors/changes.
-- 13 small refactors/changes.
+- 15 small refactors/changes.
 - **HMR Terminal Output Cleanup**: Styled HMR logs with `console.success/error/warning` and stripped absolute paths from compile errors.
 - **Fix: Implicit `run` Not Detecting Flags Before Filename**: `jac --autonative file.jac` failed to insert the implicit `run` subcommand because the detection only checked if the first argument was a `.jac` file. Now scans all arguments for a `.jac`/`.py` file, so flags like `--autonative` and `--no-cache` before the filename are correctly passed through to `jac run`.
 - **Unified JIR Cache: Single Binary Cache File Per Module**: Introduced JIR (Jac IR), a compact binary format that unifies all per-module caches -- type-checked AST, bytecode, MTIR, LLVM IR, and interop metadata -- into a single `.jir` file under `~/.cache/jac/jir/`. The format uses a 32-byte header, zlib-compressed AST payload, and optional TLV sections for each artifact type. On subsequent `jac check` or `jac run` invocations, cached modules are deserialized directly instead of being re-parsed, scope-built, and type-inferred, yielding **1.8-2.5x speedup on real compiler files**. Cache entries are invalidated automatically via mtime comparison against source, impl, and variant files. The old `DiskBytecodeCache` and `precompiled.jac` mechanisms have been removed in favor of this single unified format. A new `jac gen-jir-registry` command (itself a Jac module) auto-generates the 141-type node registry used for binary serialization, with a `--verify` mode for CI enforcement.
