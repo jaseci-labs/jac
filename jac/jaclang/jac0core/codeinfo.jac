@@ -122,7 +122,8 @@ obj CodeGenTarget {
         interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[Any] = field(default_factory=`list),
-        _auto_promoted_native: bool = False;
+        _auto_promoted_native: bool = False,
+        layout_registry: Any = None;
 
     """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""
     @property

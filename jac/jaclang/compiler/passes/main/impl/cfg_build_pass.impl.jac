@@ -223,26 +223,27 @@ impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
 
 """Enter BasicBlockStmt nodes."""
 impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
+    import from jaclang.compiler.symbol_utils {
+        collect_narrowing_symbols,
+        collect_assigned_symbols
+    }
     if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
         # Collect symbols that THIS node directly affects (Pyright-style optimization).
         # Narrowing patterns: isinstance(x, T) → {'x'}, y is None → {'y'}, if z → {'z'}
         # Assignment patterns: a = 1 → {'a'}, for b in list → {'b'}
         # These enable skipping irrelevant branches during backward CFG walks.
         if isinstance(nd, (uni.IfStmt, uni.ElseIf)) {
-            narrowing_syms = self._collect_narrowing_symbols(nd.condition);
-            nd.affected_symbols.update(narrowing_syms);
+            nd.affected_symbols.update(collect_narrowing_symbols(nd.condition));
         }
         # Assert statement: collect affected symbols from isinstance checks
         if isinstance(nd, uni.AssertStmt) {
-            narrowing_syms = self._collect_narrowing_symbols(nd.condition);
-            nd.affected_symbols.update(narrowing_syms);
+            nd.affected_symbols.update(collect_narrowing_symbols(nd.condition));
         }
         # Match statement: collect affected symbols from match subject
         if isinstance(nd, uni.MatchStmt) and isinstance(nd.target, uni.Name) {
             nd.affected_symbols.add(nd.target.value);
         }
-        assigned_syms = self._collect_assigned_symbols(nd);
-        nd.affected_symbols.update(assigned_syms);
+        nd.affected_symbols.update(collect_assigned_symbols(nd));
         bb_stmts = self.get_code_block_sequence(nd.parent);
         if (
             isinstance(nd, uni.CodeBlockStmt)
@@ -406,85 +407,6 @@ impl CFGBuildPass.before_pass -> None {
     self.ability_stack: list[list[uni.UniCFGNode]] = [];
     self.to_connect: list[uni.UniCFGNode] = [];
     self.first_exit: bool = False;
-}
-
-"""Collect symbols that are narrowed by isinstance checks in a condition.
-This enables Pyright-style optimization: skip branches where the symbol isn't affected.
-"""
-impl CFGBuildPass._collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
-    symbols: set[str] = set();
-    # Pattern: isinstance(x, T) - collect 'x'
-    if isinstance(condition, uni.FuncCall) {
-        if (
-            isinstance(condition.target, uni.Name)
-            and condition.target.value == "isinstance"
-            and len(condition.params) >= 1
-            and isinstance(condition.params[0], uni.Name)
-        ) {
-            symbols.add(condition.params[0].value);
-        }
-    }
-    # Pattern: x is None / x is not None - collect 'x'
-    elif isinstance(condition, uni.CompareExpr) {
-        if isinstance(condition.left, uni.Name) {
-            symbols.add(condition.left.value);
-        }
-    }
-    # Pattern: not <condition> - recurse
-    elif isinstance(condition, uni.UnaryExpr) {
-        symbols.update(self._collect_narrowing_symbols(condition.operand));
-    }
-    # Pattern: <cond1> and/or <cond2> - collect from both
-    elif isinstance(condition, uni.BoolExpr) {
-        for val in condition.values {
-            symbols.update(self._collect_narrowing_symbols(val));
-        }
-    }
-    # Pattern: (parenthesized) - unwrap
-    elif isinstance(condition, uni.AtomUnit)
-    and isinstance(condition.value, uni.Expr) {
-        symbols.update(self._collect_narrowing_symbols(condition.value));
-    }
-    # Pattern: x (truthiness check like `if val:`) - collect 'x'
-    elif isinstance(condition, uni.Name) {
-        symbols.add(condition.value);
-    }
-    # Pattern: (x := expr) walrus operator - collect 'x'
-    elif (
-        isinstance(condition, uni.BinaryExpr)
-        and isinstance(condition.op, uni.Token)
-        and condition.op.name == "WALRUS_EQ"
-        and isinstance(condition.left, uni.Name)
-    ) {
-        symbols.add(condition.left.value);
-    }
-    return symbols;
-}
-
-"""Collect all symbols assigned in a statement (for affected_symbols tracking)."""
-impl CFGBuildPass._collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
-    symbols: set[str] = set();
-    # Assignment: x = ... (target is a Sequence[Expr])
-    if isinstance(nd, uni.Assignment) {
-        for target in nd.target {
-            if isinstance(target, uni.Name) {
-                symbols.add(target.value);
-            }
-        }
-    }
-    # For loop: for x in ...
-    elif isinstance(nd, uni.InForStmt) {
-        if isinstance(nd.target, uni.Name) {
-            symbols.add(nd.target.value);
-        }
-    }
-    # Walrus operator / assignment comprehension: (x := ...)
-    elif isinstance(nd, uni.AssignCompr) {
-        if isinstance(nd.target, uni.Name) {
-            symbols.add(nd.target.value);
-        }
-    }
-    return symbols;
 }
 
 """Check if a node is a break statement."""

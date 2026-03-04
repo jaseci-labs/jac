@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
+- 16 small refactors/changes.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
 - 9 small refactors/changes.
@@ -38,6 +39,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
 - 1 small refactors/changes.
+- **Centralized Type Layout & Symbol Resolution**: Extracted class hierarchy computation (C3 MRO, field layout, vtable structure) and symbol resolution utilities into shared modules (`layout_pass.jac`, `symbol_utils.jac`) that all backends query. The native LLVM backend and ES backend now delegate to these centralized implementations instead of maintaining independent copies of the C3 linearization algorithm, hierarchy extraction, symbol lookup, and field collection logic (~128 lines of duplicated code removed across backends).
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
 ## jaclang 0.11.3 (Latest Release)
