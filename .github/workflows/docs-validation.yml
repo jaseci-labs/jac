@@ -4,17 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'docs/**/*.md'
-      - 'docs/scripts/validate_docs_code.jac'
-      - '.github/workflows/docs-validation.yml'
-      - 'jac/jaclang/**'
-      - 'jac-scale/jac_scale/**'
-      - 'jac-client/jac_client/**'
-      - 'jac-byllm/byllm/**'
-      - 'jac-super/jac_super/**'
-      - 'docs/docs/community/release_notes/**'
-      - '!**/tests/**'
   push:
     branches:
       - main
