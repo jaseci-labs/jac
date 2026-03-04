@@ -1,12 +1,12 @@
 """Implementation for plugin system."""
 
-impl HookimplMarker.__call__(self: HookimplMarker, function: _F) -> _F {
+impl HookimplMarker.__call__(function: _F) -> _F {
     setattr(function, _IMPL_ATTR, True);
     return function;
 }
 
 impl HookspecMarker.__call__(
-    self: HookspecMarker, function: (_F | None) = None, *, firstresult: bool = False
+    function: (_F | None) = None, *, firstresult: bool = False
 ) -> (_F | Callable[([_F], _F)]) {
     def mark(func: _F) -> _F {
         setattr(func, _SPEC_ATTR, {'firstresult': firstresult});
@@ -18,15 +18,15 @@ impl HookspecMarker.__call__(
     return mark;
 }
 
-impl HookImpl.__repr__(self: HookImpl) -> str {
+impl HookImpl.__repr__ -> str {
     return f"<HookImpl plugin_name={self.plugin_name!r}>";
 }
 
-impl HookCaller._add_hookimpl(self: HookCaller, hi: HookImpl) -> None {
+impl HookCaller._add_hookimpl(hi: HookImpl) -> None {
     self._hookimpls.append(hi);
 }
 
-impl HookCaller._remove_plugin(self: HookCaller, plugin: object) -> None {
+impl HookCaller._remove_plugin(plugin: object) -> None {
     self._hookimpls = [
         h
         for h in self._hookimpls
@@ -34,13 +34,11 @@ impl HookCaller._remove_plugin(self: HookCaller, plugin: object) -> None {
     ];
 }
 
-impl HookCaller.get_hookimpls(self: HookCaller) -> list[HookImpl] {
+impl HookCaller.get_hookimpls -> list[HookImpl] {
     return `list(self._hookimpls);
 }
 
-impl HookCaller._call_impl(
-    self: HookCaller, hi: HookImpl, kwargs: dict[(str, object)]
-) -> object {
+impl HookCaller._call_impl(hi: HookImpl, kwargs: dict[(str, object)]) -> object {
     if hi.argnames is None {
         return hi.function(**kwargs);
     }
@@ -53,7 +51,7 @@ impl HookCaller._call_impl(
     );
 }
 
-impl HookCaller.__call__(self: HookCaller, **kwargs: object) -> object {
+impl HookCaller.__call__(**kwargs: object) -> object {
     if self._firstresult {
         for hi in reversed(self._hookimpls) {
             result = self._call_impl(hi, kwargs);
@@ -73,13 +71,11 @@ impl HookCaller.__call__(self: HookCaller, **kwargs: object) -> object {
     return results;
 }
 
-impl HookCaller.__repr__(self: HookCaller) -> str {
+impl HookCaller.__repr__ -> str {
     return f"<HookCaller {self.name!r}>";
 }
 
-impl PluginManager.register(
-    self: PluginManager, plugin: object, name: (str | None) = None
-) -> (str | None) {
+impl PluginManager.register(plugin: object, name: (str | None) = None) -> (str | None) {
     plugin_name = name or _canonical_name(plugin);
     if id(plugin) in self._plugin2name {
         return None;
@@ -118,7 +114,7 @@ impl PluginManager.register(
 
             hook: (HookCaller | None) = getattr(self.hook, attr_name, None);
             if hook is None {
-                hook = HookCaller(attr_name, firstresult=False);
+                hook = HookCaller(attr_name, _firstresult=False);
                 setattr(self.hook, attr_name, hook);
             }
             hook._add_hookimpl(hi);
@@ -128,7 +124,7 @@ impl PluginManager.register(
 }
 
 impl PluginManager.unregister(
-    self: PluginManager, plugin: (object | None) = None, name: (str | None) = None
+    plugin: (object | None) = None, name: (str | None) = None
 ) -> (object | None) {
     if plugin is None and name is not None {
         plugin = self._name2plugin.get(name);
@@ -152,11 +148,11 @@ impl PluginManager.unregister(
     return plugin;
 }
 
-impl PluginManager.is_registered(self: PluginManager, plugin: object) -> bool {
+impl PluginManager.is_registered(plugin: object) -> bool {
     return id(plugin) in self._plugin2name;
 }
 
-impl PluginManager.add_hookspecs(self: PluginManager, spec_class: type) -> None {
+impl PluginManager.add_hookspecs(spec_class: type) -> None {
     for attr_name in dir(spec_class) {
         method = getattr(spec_class, attr_name, None);
         if method is None {
@@ -170,7 +166,7 @@ impl PluginManager.add_hookspecs(self: PluginManager, spec_class: type) -> None 
         firstresult = spec_opts.get('firstresult', False);
         hook: (HookCaller | None) = getattr(self.hook, attr_name, None);
         if hook is None {
-            hook = HookCaller(attr_name, firstresult=firstresult);
+            hook = HookCaller(attr_name, _firstresult=firstresult);
             setattr(self.hook, attr_name, hook);
         } else {
             hook._firstresult = firstresult;
@@ -178,17 +174,15 @@ impl PluginManager.add_hookspecs(self: PluginManager, spec_class: type) -> None 
     }
 }
 
-impl PluginManager.list_name_plugin(self: PluginManager) -> list[tuple[(str, object)]] {
+impl PluginManager.list_name_plugin -> list[tuple[(str, object)]] {
     return `list(self._name2plugin.items());
 }
 
-impl PluginManager.list_plugin_distinfo(
-    self: PluginManager
-) -> list[tuple[(object, Any)]] {
+impl PluginManager.list_plugin_distinfo -> list[tuple[(object, Any)]] {
     return `list(self._plugin_distinfo);
 }
 
-impl PluginManager.load_setuptools_entrypoints(self: PluginManager, group: str) -> int {
+impl PluginManager.load_setuptools_entrypoints(group: str) -> int {
     count = 0;
     for dist in importlib.metadata.distributions() {
         for ep in dist.entry_points {
@@ -212,15 +206,15 @@ impl PluginManager.load_setuptools_entrypoints(self: PluginManager, group: str) 
 }
 
 @ property
-impl _DistFacade.project_name(self: _DistFacade) -> str {
+impl _DistFacade.project_name -> str {
     return self._dist.metadata['Name'];
 }
 
 @ property
-impl _DistFacade.version(self: _DistFacade) -> str {
+impl _DistFacade.version -> str {
     return self._dist.metadata.get('Version', '0.0.0');
 }
 
-impl _DistFacade.__getattr__(self: _DistFacade, attr: str) -> object {
+impl _DistFacade.__getattr__(attr: str) -> object {
     return getattr(self._dist, attr);
 }

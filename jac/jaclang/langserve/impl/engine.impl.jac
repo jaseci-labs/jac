@@ -326,9 +326,10 @@ impl JacLangServer.get_definition(
     if node_type {
         if isinstance(node_type, ModuleType) {
             return make_location(node_selected, is_module=True);
-        } elif isinstance(node_type, ClassType) {
+        } elif isinstance(node_type, ClassType) and node_selected.sym {
             return make_location(node_selected.sym.decl);
-        } elif isinstance(node_type, (FunctionType, OverloadedType)) {
+        } elif isinstance(node_type, (FunctionType, OverloadedType))
+        and node_selected.sym {
             return make_location(node_selected.sym.decl);
         }
     }
@@ -372,7 +373,12 @@ impl JacLangServer.get_outline(file_path: str) -> list[lspt.DocumentSymbol] {
 impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
     node_info: Optional[str] = None;
     try {
+        # Handle NameAtom: convert to name_of for symbol info.
         if isinstance(sym_node, uni.NameAtom) {
+            # Dynamic attribute from __getattr__: show type directly
+            if sym_node.is_getattr_resolved {
+                return f"(dynamic attribute) {sym_node.value}: {sym_node.type}";
+            }
             sym_node = sym_node.name_of;
         }
         access = (sym_node.sym.access.value + ' ') if sym_node.sym else None;

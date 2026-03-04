@@ -54,13 +54,13 @@ impl HTTPTransport.send(data: Any) -> None {
         # Serialize error if present
         if not data.ok and data.error {
             error_obj = {};
-            if getattr(data.error, "code", None) {
+            if data.error.code {
                 error_obj['code'] = data.error.code;
             }
-            if getattr(data.error, "message", None) {
+            if data.error.message {
                 error_obj['message'] = data.error.message;
             }
-            if getattr(data.error, "details", None) is not None {
+            if data.error.details is not None {
                 error_obj['details'] = data.error.details;
             }
             response_body['error'] = error_obj;
@@ -68,16 +68,16 @@ impl HTTPTransport.send(data: Any) -> None {
         # Include metadata if present
         if data.meta {
             meta_dict = {};
-            if getattr(data.meta, "request_id", None) {
+            if data.meta.request_id {
                 meta_dict['request_id'] = data.meta.request_id;
             }
-            if getattr(data.meta, "trace_id", None) {
+            if data.meta.trace_id {
                 meta_dict['trace_id'] = data.meta.trace_id;
             }
-            if getattr(data.meta, "timestamp", None) {
+            if data.meta.timestamp {
                 meta_dict['timestamp'] = data.meta.timestamp;
             }
-            if getattr(data.meta, "extra", None) {
+            if data.meta.extra {
                 meta_dict['extra'] = data.meta.extra;
             }
             if meta_dict {

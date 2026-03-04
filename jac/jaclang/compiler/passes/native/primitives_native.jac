@@ -26,18 +26,13 @@ import from jaclang.compiler.primitives {
 }
 
 # --- Context ----------------------------------------------------------------
-class NativeEmitCtx {
+obj NativeEmitCtx {
     """Native emission — provides typed access to LLVM infrastructure.
 
     Created per dispatch call with the appropriate type_key.
     """
     has pass_ref: object,
         type_key: str = "";
-
-    def init(self, pass_ref: object, type_key: str = "") {
-        self.pass_ref = pass_ref;
-        self.type_key = type_key;
-    }
 }
 
 # =============================================================================

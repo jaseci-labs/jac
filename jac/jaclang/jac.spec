@@ -429,7 +429,7 @@ has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
 
 ability ::=
     ("@" atomic_chain)* "override"? "static"? "async"? access_tag (NAME | KWESC_NAME)?
-    ("with" expression | func_signature)
+    ("[" type_params "]")? ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?

@@ -1281,6 +1281,15 @@ class Parser:
         # consume 'def' or 'can'
         self._advance()
         name = self._expect(TT.NAME).value
+        # Skip optional type parameters: def foo[T, E](...)
+        if self._match(TT.LBRACKET):
+            depth = 1
+            while depth > 0 and not self._at(TT.EOF):
+                if self._at(TT.LBRACKET):
+                    depth += 1
+                elif self._at(TT.RBRACKET):
+                    depth -= 1
+                self._advance()
         params: list[Param] = []
         if self._match(TT.LPAREN):
             params = self._parse_params()

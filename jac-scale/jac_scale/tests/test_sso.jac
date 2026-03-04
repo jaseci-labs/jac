@@ -60,23 +60,13 @@ obj MockUserInfo {
 }
 
 """Mock GoogleSSO for testing - implements SSOProvider interface."""
-class MockGoogleSSO {
+obj MockGoogleSSO {
     has client_id: str,
         client_secret: str,
         redirect_uri: str,
         allow_insecure_http: bool = False;
 
-    def init(
-        self,
-        client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = False
-    ) -> None {
-        self.client_id = client_id;
-        self.client_secret = client_secret;
-        self.redirect_uri = redirect_uri;
-        self.allow_insecure_http = allow_insecure_http;
+    def postinit {
         self.get_login_redirect = self._default_get_login_redirect;
         self.verify_and_process = self._default_verify_and_process;
         self.initiate_auth = self._default_initiate_auth;
@@ -84,36 +74,35 @@ class MockGoogleSSO {
     }
 
     """Mock get_login_redirect method."""
-    async def _default_get_login_redirect(self) -> RedirectResponse {
+    async def _default_get_login_redirect -> RedirectResponse {
         return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
     }
 
     """Mock verify_and_process method."""
-    async def _default_verify_and_process(self, _request: Request) -> MockUserInfo {
+    async def _default_verify_and_process(_request: Request) -> MockUserInfo {
         return MockUserInfo(email="test@example.com");
     }
 
     """Mock initiate_auth method (SSOProvider interface)."""
-    async def _default_initiate_auth(self, operation: str) -> RedirectResponse {
+    async def _default_initiate_auth(operation: str) -> RedirectResponse {
         return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
     }
 
     """Mock handle_callback method (SSOProvider interface)."""
-    async def _default_handle_callback(self, request: Request) -> MockUserInfo {
+    async def _default_handle_callback(request: Request) -> MockUserInfo {
         return await self.verify_and_process(request);
     }
 
     """Mock get_platform_name method (SSOProvider interface)."""
-    def get_platform_name(self) -> str {
+    def get_platform_name -> str {
         return "google";
     }
 
-    def __enter__(self) -> "MockGoogleSSO" {
+    def __enter__ -> "MockGoogleSSO" {
         return self;
     }
 
     def __exit__(
-        self,
         _exc_type: type | None,
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None
@@ -123,26 +112,27 @@ class MockGoogleSSO {
 }
 
 """Mock JacScaleConfig for testing."""
-class MockScaleConfig {
-    has _sso_config: dict;
+obj MockScaleConfig {
+    has sso_config: dict | None = None,
+        _sso_config: dict by postinit;
 
-    def init(self, sso_config: dict | None = None) -> None {
-        self._sso_config = sso_config or mock_sso_config_with_credentials();
+    def postinit {
+        self._sso_config = self.sso_config or mock_sso_config_with_credentials();
     }
 
-    def get_sso_config(self) -> dict {
+    def get_sso_config -> dict {
         return self._sso_config;
     }
 
-    def get_jwt_config(self) -> dict {
+    def get_jwt_config -> dict {
         return {"secret": "test_secret", "algorithm": "HS256", "exp_delta_days": 1};
     }
 
-    def get_kubernetes_config(self) -> dict {
+    def get_kubernetes_config -> dict {
         return {"namespace": "default"};
     }
 
-    def get_monitoring_config(self) -> dict {
+    def get_monitoring_config -> dict {
         return {"enabled": False};
     }
 }
