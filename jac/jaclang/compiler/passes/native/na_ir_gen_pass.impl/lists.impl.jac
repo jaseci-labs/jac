@@ -227,8 +227,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     data_f = b.load(data_p_f, name="data.f");
     data_f_i8 = b.bitcast(data_f, i8_ptr, name="data.f.i8");
     b.call(free_fn, [data_f_i8]);
-    # Free list struct (RC header is at ptr-8)
-    b.call(free_fn, [rc_raw]);
+    # Skip: bump allocator arena memory cannot be freed individually.
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -284,6 +283,8 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     if first_val is None {
         return None;
     }
+    # Box value tuples to pointers for container storage
+    first_val = self._box_value_tuple(first_val);
     elem_type = first_val.type;
     elem_type_name = "i64";
     if isinstance(elem_type, ir.DoubleType) {
@@ -307,6 +308,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            val = self._box_value_tuple(val);
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {

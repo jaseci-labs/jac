@@ -213,6 +213,62 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             self._build_vtable(topo_name);
         }
     }
+    # Pass 3.6: Compute non-overridden methods for devirtualization
+    # A method M on class C is "non-overridden" if NO child class has its own C.M.
+    # For these methods, we can emit direct calls instead of vtable dispatch.
+    for (base_name, layout) in self.vtable_layouts.items() {
+        non_overridden: set[str] = set();
+        for method_name in layout {
+            # Find the class that defines this method (walk MRO)
+            defining_class: (str | None) = None;
+            base_mro = self.mro_order.get(base_name, [base_name]);
+            for check in base_mro {
+                if f"{check}.{method_name}" in self.method_funcs {
+                    defining_class = check;
+                    break;
+                }
+            }
+            if defining_class is None {
+                continue;
+            }
+            # Check if any child class overrides this method
+            overridden = False;
+            for (child_name, child_parents) in self.class_parents.items() {
+                # Is base_name an ancestor of child_name?
+                child_mro = self.mro_order.get(child_name, [child_name]);
+                if base_name not in child_mro {
+                    continue;
+                }
+                # Does child have its own implementation?
+                child_full = f"{child_name}.{method_name}";
+                if child_full in self.method_funcs {
+                    # Check if it's a wrapper or an actual override
+                    # An actual override means the child class defined this method itself
+                    child_arch = self.arch_ast_map.get(child_name);
+                    if child_arch is not None and child_arch.body is not None {
+                        for stmt in child_arch.body {
+                            if isinstance(stmt, uni.Ability) {
+                                mn = stmt.name_ref.sym_name if stmt.name_ref else None;
+                                if mn == method_name {
+                                    overridden = True;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if overridden {
+                    break;
+                }
+            }
+            if not overridden {
+                non_overridden.add(method_name);
+            }
+        }
+        if non_overridden {
+            self._non_overridden_methods[base_name] = non_overridden;
+        }
+    }
     # Pass 4: Emit vtable globals
     for arch_name in self.has_vtable {
         self._emit_vtable_global(arch_name);
@@ -1152,6 +1208,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         if params {
                             val = self._codegen_expr(params[0]);
                             if val is not None {
+                                val = self._box_value_tuple(val);
                                 elem_type = helpers["elem_type"];
                                 val = self._coerce_type(val, elem_type);
                                 self.builder.call(helpers["append"], [obj_val, val]);

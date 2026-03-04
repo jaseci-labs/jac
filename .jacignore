@@ -213,4 +213,5 @@ yield_in_assignment.jac
 vite_client_bundle.impl.jac
 test_variant_modules.jac
 async_compr.jac
+checker_parameterless_init.jac
 checker_getattr_support.jac

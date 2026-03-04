@@ -590,8 +590,7 @@ impl NaIRGenPass._emit_dict_helpers(
     );
     vals_f = b.load(vals_p_f, name="vals.f");
     b.call(free_fn, [b.bitcast(vals_f, i8_ptr, name="vals.cast")]);
-    # Free dict struct
-    b.call(free_fn, [rc_raw]);
+    # Skip: bump allocator arena memory cannot be freed individually.
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

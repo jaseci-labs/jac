@@ -1,4 +1,53 @@
 """Core auth, user management, JWT, API keys, server start/postinit implementations."""
+import socket;
+
+"""Find an available port starting from the given port.
+
+Returns the first available port, or raises OSError if none found within max_retries.
+"""
+impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int {
+    current_port = start_port;
+    for _ in range(max_retries) {
+        try {
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+                s.bind(('0.0.0.0', current_port));
+            }
+            return current_port;
+        } except OSError as e {
+            if e.errno in (ERRNO_ADDR_IN_USE_LINUX, ERRNO_ADDR_IN_USE_WINDOWS)
+            or "Address already in use" in str(e) {
+                current_port += 1;
+            } else {
+                raise ;
+            }
+        }
+    }
+    raise OSError(
+        f"Could not find an available port after trying {start_port}-{current_port}"
+    ) ;
+}
+
+"""Get local network IP addresses (non-localhost)."""
+impl _get_network_ips -> list[str] {
+    ips: list[str] = [];
+    try {
+        hostname = socket.gethostname();
+        for addr in socket.getaddrinfo(hostname, None) {
+            ip = addr[4][0];
+            # Filter out localhost and IPv6
+            if not ip.startswith('127.') and ':' not in ip {
+                if ip not in ips {
+                    ips.append(ip);
+                }
+            }
+        }
+    } except Exception {
+    # Silently ignore network interface errors
+    }
+    return ips;
+}
+
 impl JacAPIServerCore.postinit -> None {
     super.postinit();
     self._api_key_manager = ApiKeyManager();
@@ -99,7 +148,7 @@ impl JacAPIServerCore.postinit -> None {
 impl JacAPIServerCore.start(
     dev: bool = False,
     no_client: bool = False,
-    on_ready: Callable[[], None] | None = None
+    on_ready: Callable[..., None] | None = None
 ) -> None {
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
@@ -179,11 +228,43 @@ impl JacAPIServerCore.start(
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
-    # Call the ready callback (e.g., to print startup banner)
-    if on_ready {
-        on_ready();
+    # Find an available port (may differ from requested if port is in use)
+    original_port = self.port;
+    self.port = _find_available_port(self.port);
+    if self.port != original_port {
+        console.print(
+            f"  Port {original_port} is in use, using port {self.port} instead",
+            style="warning"
+        );
     }
+    # Print startup banner with correct port
+    self._print_startup_banner(dev, no_client);
     self.server.run_server(port=self.port);
+}
+
+"""Print startup banner with correct port."""
+impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
+    import from importlib.metadata { version as pkg_version }
+
+    # Print header
+    try {
+        version = pkg_version('jaclang');
+        console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
+    } except Exception {
+        console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
+    }
+
+    # Build URLs list (consistent with existing _print_startup_message pattern)
+    urls: list[tuple[str, str]] = [];
+    urls.append(("Local", f"http://localhost:{self.port}/"));
+    for ip in _get_network_ips() {
+        urls.append(("Network", f"http://{ip}:{self.port}/"));
+    }
+
+    # Print URLs with arrows (uses console.print_urls for consistency)
+    console.print_urls(urls);
+    console.print();
+    console.print("  🚀 Server ready", style="bold green");
 }
 
 """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""

@@ -9,6 +9,8 @@ import contextlib;
 import gc;
 import glob;
 import json;
+import re;
+import select;
 import socket;
 import subprocess;
 import sys;
@@ -1777,5 +1779,214 @@ test "dev mode operations" {
         assert content == expected , f"Expected '{expected}', got '{content}'";
     } finally {
         teardown_dev_mode_server(sp);
+    }
+}
+
+# =============================================================================
+# GROUP 7: PORT FALLBACK TESTS
+# =============================================================================
+import from jac_scale.serve {
+    _find_available_port,
+    _get_network_ips,
+    PORT_RETRY_LIMIT,
+    ERRNO_ADDR_IN_USE_LINUX,
+    ERRNO_ADDR_IN_USE_WINDOWS
+}
+
+"""Test _find_available_port returns the same port when it's available."""
+test "port fallback - available port returns same port" {
+    # Get a free port and verify _find_available_port returns it
+    free_port = get_free_port();
+    result = _find_available_port(free_port);
+    assert result == free_port , f"Expected {free_port}, got {result}";
+}
+
+"""Test _find_available_port finds next port when requested port is in use."""
+test "port fallback - finds next available port when port in use" {
+    # Bind to a port to block it
+    blocked_port = get_free_port();
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        s.bind(('0.0.0.0', blocked_port));
+        s.listen(1);
+        # Request the blocked port - should get next available
+        result = _find_available_port(blocked_port);
+        assert result > blocked_port , f"Expected port > {blocked_port}, got {result}";
+        assert result <= blocked_port + PORT_RETRY_LIMIT , (
+            f"Result {result} exceeds retry limit from {blocked_port}"
+        );
+    }
+}
+
+"""Test _find_available_port skips multiple blocked ports."""
+test "port fallback - skips multiple blocked ports" {
+    # Block consecutive ports
+    start_port = get_free_port();
+    sockets: list[socket.socket] = [];
+    ports_to_block = 3;
+
+    try {
+        for i in range(ports_to_block) {
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+            try {
+                s.bind(('0.0.0.0', start_port + i));
+                s.listen(1);
+                sockets.append(s);
+            } except OSError {
+                # Port already in use, skip
+                s.close();
+            }
+        }
+
+        # Request the first blocked port - should skip all blocked ones
+        result = _find_available_port(start_port);
+        assert result >= start_port + len(sockets) , (
+            f"Expected port >= {start_port + len(sockets)}, got {result}"
+        );
+    } finally {
+        for s in sockets {
+            s.close();
+        }
+    }
+}
+
+"""Test _find_available_port raises OSError when all ports exhausted."""
+test "port fallback - raises error when no ports available" {
+    # Block all ports within retry limit
+    start_port = get_free_port();
+    sockets: list[socket.socket] = [];
+
+    try {
+        for i in range(PORT_RETRY_LIMIT) {
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+            try {
+                s.bind(('0.0.0.0', start_port + i));
+                s.listen(1);
+                sockets.append(s);
+            } except OSError {
+                s.close();
+            }
+        }
+
+        # Only test if we successfully blocked all ports
+        if len(sockets) == PORT_RETRY_LIMIT {
+            error_raised = False;
+            try {
+                _find_available_port(start_port);
+            } except OSError as e {
+                error_raised = True;
+                assert "Could not find an available port" in str(e);
+            }
+            assert error_raised , "Expected OSError when all ports exhausted";
+        }
+    } finally {
+        for s in sockets {
+            s.close();
+        }
+    }
+}
+
+"""Test _get_network_ips returns list of valid IPs."""
+test "network IPs - returns valid IP list" {
+    ips = _get_network_ips();
+    assert isinstance(ips, list) , "Expected list of IPs";
+
+    # All IPs should be non-localhost and non-IPv6
+    for ip in ips {
+        assert not ip.startswith('127.') , f"Localhost IP {ip} should be filtered";
+        assert ':' not in ip , f"IPv6 address {ip} should be filtered";
+    }
+
+    # No duplicates
+    assert len(ips) == len(set(ips)) , "IP list should not contain duplicates";
+}
+
+"""Test constants are defined correctly."""
+test "port constants - values are correct" {
+    assert PORT_RETRY_LIMIT == 10 , "PORT_RETRY_LIMIT should be 10";
+    assert ERRNO_ADDR_IN_USE_LINUX == 98 , "ERRNO_ADDR_IN_USE_LINUX should be 98";
+    assert ERRNO_ADDR_IN_USE_WINDOWS == 10048 , "ERRNO_ADDR_IN_USE_WINDOWS should be 10048";
+}
+
+"""Test server startup with port fallback via subprocess."""
+test "server startup - port fallback integration" {
+    # Start a server on a specific port
+    port1 = get_free_port();
+    sp1: subprocess.Popen | None = None;
+    sp2: subprocess.Popen | None = None;
+
+    try {
+        # Start first server
+        sp1 = _start_server(
+            sv_fixtures_dir, sv_test_file, port1, f"http://localhost:{port1}"
+        );
+
+        # Verify first server is running
+        response = requests.get(f"http://localhost:{port1}/docs", timeout=5);
+        assert response.status_code == 200 , "First server should be running";
+
+        # Try to start second server on same port - should fallback to next port
+        jac_executable = Path(sys.executable).parent / "jac";
+        cmd = [str(jac_executable), "start", sv_test_file.name, "--port", str(port1)];
+
+        sp2 = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(sv_fixtures_dir)
+        );
+
+        # Wait for server to start and detect port fallback
+        actual_port = port1;
+        max_wait = 60;
+        start_time = time.time();
+
+        while time.time() - start_time < max_wait {
+            # Check stdout for port fallback message
+            if sp2.stdout and select.select([sp2.stdout], [], [], 0.5)[0] {
+                line = sp2.stdout.readline();
+                if line and "using port" in line {
+                    port_match = re.search(r'using port (\d+)', line);
+                    if port_match {
+                        actual_port = int(port_match.group(1));
+                    }
+                }
+            }
+
+            # Check if server is responding on fallback ports
+            for test_port in range(port1 + 1, port1 + 5) {
+                try {
+                    resp = requests.get(f"http://localhost:{test_port}/docs", timeout=1);
+                    if resp.status_code == 200 {
+                        actual_port = test_port;
+                        break;
+                    }
+                } except Exception {
+                # Connection not ready yet
+                }
+            }
+            if actual_port > port1 {
+                break;
+            }
+        }
+
+        # Verify the fallback happened
+        assert actual_port > port1 , f"Second server should use port > {port1}, got {actual_port}";
+    } finally {
+        if sp2 {
+            sp2.terminate();
+            try {
+                sp2.wait(timeout=5);
+            } except subprocess.TimeoutExpired {
+                sp2.kill();
+            }
+        }
+        if sp1 {
+            _stop_server(sp1);
+        }
+        _cleanup_db_files(sv_fixtures_dir);
     }
 }

@@ -2860,7 +2860,8 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         if helpers is None or not args {
             return None;
         }
-        val = p._coerce_type(args[0], helpers["elem_type"]);
+        val = p._box_value_tuple(args[0]);
+        val = p._coerce_type(val, helpers["elem_type"]);
         p.builder.call(helpers["append"], [target, val]);
         return ir.Constant(ir.IntType(64), 0);
     }

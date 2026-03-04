@@ -65,10 +65,17 @@ class ConsoleLogHandler(logging.Handler) {
     }
 }
 
-"""Run the FastAPI server using Uvicorn."""
+"""Run the FastAPI server using Uvicorn.
+
+If the specified port is in use, tries subsequent ports up to max_retries times.
+"""
 impl JFastApiServer.run_server(
-    self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
+    self: JFastApiServer,
+    host: str = '0.0.0.0',
+    port: int = 8000,
+    max_retries: int = 10
 ) -> None {
+    import from jaclang.cli.console { console }
     app = self.create_server();
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
@@ -107,7 +114,37 @@ impl JFastApiServer.run_server(
         },
 
     };
-    uvicorn.run(app, host=host, port=port, log_config=log_config);
+    current_port = port;
+    for _ in range(max_retries) {
+        try {
+            if current_port != port {
+                console.print(
+                    f"  Port {port} is in use, using port {current_port} instead",
+                    style="warning"
+                );
+            }
+            uvicorn.run(app, host=host, port=current_port, log_config=log_config);
+            return;
+        } except SystemExit as e {
+            # uvicorn raises SystemExit when port is in use
+            # errno 98 = EADDRINUSE (Linux), errno 10048 = WSAEADDRINUSE (Windows)
+            if "Address already in use" in str(e)
+            or "address already in use" in str(e) {
+                current_port += 1;
+            } else {
+                raise ;
+            }
+        } except OSError as e {
+            if e.errno in (98, 10048) or "Address already in use" in str(e) {
+                current_port += 1;
+            } else {
+                raise ;
+            }
+        }
+    }
+    raise OSError(
+        f"Could not find an available port after trying {port}-{current_port}"
+    ) ;
 }
 
 """Get the underlying FastAPI application instance."""
