@@ -183,6 +183,52 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return ptr;
         }
     }
+    # Handle slice() constructor: slice(stop), slice(start,stop), slice(start,stop,step)
+    if func_name == "slice" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            stype = self.slice_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="slice.raw"
+            );
+            ptr = self.builder.bitcast(raw, stype.as_pointer(), name="slice.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="slice.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="slice.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="slice.tp")
+            );
+            return ptr;
+        }
+    }
     # Handle multi-arg builtins via emitter dispatch
     if func_name in (
         "abs",

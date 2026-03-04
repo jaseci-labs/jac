@@ -22,7 +22,7 @@ def _get_toml_api_base_url(project_dir: Path) -> str {
 }
 
 """Setup desktop target - scaffold Tauri project structure."""
-impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
+impl DesktopTarget.setup(project_dir: Path) -> None {
     # Define tauri_dir early so we can use it in error handling
     tauri_dir = project_dir / "src-tauri";
     # Create src-tauri directory structure FIRST (before ANY other operations)
@@ -1518,10 +1518,7 @@ def _check_and_install_tauri_cli -> None {
 Uses super().build() to get the web bundle, then adds sidecar and Tauri wrapping.
 """
 impl DesktopTarget.build(
-    self: DesktopTarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
@@ -2139,7 +2136,7 @@ exec python -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
 
 """Start desktop dev server - start web dev server and launch tauri dev."""
 impl DesktopTarget.dev(
-    self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import signal;
@@ -2461,7 +2458,7 @@ def _resolve_server_port(toml_base_url: str, api_port: int) -> int {
 
 """Start desktop app - build web bundle and launch Tauri with built bundle."""
 impl DesktopTarget.start(
-    self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     import from jac_client.plugin.src.targets.web_target { WebTarget }
     import signal;

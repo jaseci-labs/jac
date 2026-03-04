@@ -24,13 +24,9 @@ import from jaclang.compiler.primitives {
 }
 
 # --- Context ----------------------------------------------------------------
-class ESEmitCtx {
+obj ESEmitCtx {
     """ES emission context — carries the JS code generator."""
     has unparser: object;
-
-    def init(self, unparser: object) {
-        self.unparser = unparser;
-    }
 }
 
 # --- Helpers -----------------------------------------------------------------

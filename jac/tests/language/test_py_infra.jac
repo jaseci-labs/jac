@@ -102,6 +102,41 @@ test "pyfunc 3" {
     assert "class Sample {\n    def init" in output;
 }
 
+test "pyfunc binop" {
+    Jac.attach_program(JacProgram());
+    py_out_path = os.path.join(FIXTURES, "pyfunc_binop.py");
+    with open(py_out_path) as f {
+        file_source = f.read();
+        output = PyastBuildPass(
+            ir_in=uni.PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=uni.Source(file_source, py_out_path)
+            ),
+            prog=JacProgram()
+        ).ir_out.unparse();
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
+        tmp.write(output);
+        tmp_path = tmp.name;
+    }
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        Jac.attach_program(JacProgram());
+        execution.run(tmp_path);
+    } finally {
+        sys.stdout = old_stdout;
+        os.unlink(tmp_path);
+    }
+    stdout_value = captured.getvalue();
+    # Expected output from running pyfunc_binop.py arithmetic
+    assert "2 7 75 80 -15" in stdout_value;
+    assert "0 0 0 0" in stdout_value;
+    assert "-2 -25 2" in stdout_value;
+    assert "False False True True" in stdout_value;
+}
+
 test "py2jac" {
     Jac.attach_program(JacProgram());
     py_out_path = os.path.join(FIXTURES, "py2jac.py");

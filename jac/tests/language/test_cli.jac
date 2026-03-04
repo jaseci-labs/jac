@@ -626,6 +626,18 @@ test "cli defaults to run with file" {
     assert "Hello World!" in stdout;
 }
 
+test "cli implicit run passes through flags before filename" {
+    process = subprocess.Popen(
+        ["jac", "--no-cache", fixture_path("hello.jac")],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    );
+    (stdout, stderr) = process.communicate();
+    assert process.returncode == 0 , f"Expected exit 0, got {process.returncode}: {stderr}";
+    assert "Hello World!" in stdout;
+}
+
 test "cli error exit codes" {
     # Test run command with syntax error
     captured_stderr = io.StringIO();
