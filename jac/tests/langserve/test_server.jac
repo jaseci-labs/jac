@@ -660,18 +660,25 @@ test "test_hover_types" {
         );
         lsp.type_check_file(overload_file);
         overload_cases = [
-            (5, 5, "list"),  # parts: list[str]
-            (6, 5, "str"),  # first: str
-            (7, 5, "str"),  # result: str
-            (12, 5, "list"),  # parts2: list[str] (chained from list[str][0].split())
-            (13, 5, "str"),  # first3: str
-            (14, 5, "str"),  # result3: str
+            (4, 6, ["list"]),  # parts: list[str]
+            (5, 6, ["Literal"]),  # first: Literal
+            (6, 6, ["Literal"]),  # result: Literal
+            (8, 6, ["list"]),  # parts2: list[str]
+            (9, 6, ["Literal"]),  # first3: Literal
+            (10, 6, ["Literal"]),  # result3: Literal
 
         ];
-        for (line, col, expected) in overload_cases {
+        for (line, col, expected_list) in overload_cases {
             hover = lsp.get_hover_info(overload_file, lspt.Position(line - 1, col - 1));
             assert hover is not None , f"Overload hover at line {line} should exist";
-            assert expected in hover.contents.value , f"Overload line {line}: expected '{expected}', got: {hover.contents.value}";
+            found = False;
+            for exp in expected_list {
+                if exp in hover.contents.value {
+                    found = True;
+                    break;
+                }
+            }
+            assert found , f"Overload line {line}: expected one of {expected_list}, got: {hover.contents.value}";
         }
     } finally {
         teardown_test();

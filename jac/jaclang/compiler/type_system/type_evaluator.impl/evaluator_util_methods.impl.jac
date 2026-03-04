@@ -519,6 +519,9 @@ impl TypeEvaluator._get_special_form_type(
         case "LiteralString":
             return self.prefetch.literal_string_class;
 
+        # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
+        # Requires _create_literal_type() method to parse type args into literal ClassTypes.
+
         # Future special forms:
         # case "Union": return self.prefetch.union_class;
         # case "Optional": return self.prefetch.optional_class;
@@ -543,4 +546,44 @@ impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
     }
     # Named import — use the standard resolver (e.g. from .utils import x).
     return Path(from_mod.resolve_relative_path());
+}
+
+"""Check if an f-string contains only literal parts (no non-literal interpolations).
+
+An f-string is considered all-literal if:
+1. All parts are String nodes, OR
+2. FormattedValue parts have expressions that evaluate to literal types
+
+This is used to determine if an f-string result should be LiteralString or str.
+Similar to Pyright's isLiteralString check in getTypeOfString().
+"""
+impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
+    for part in fstring.parts {
+        if isinstance(part, uni.String) {
+            # String parts are always literal
+            continue;
+        }
+        if isinstance(part, uni.FormattedValue) {
+            # Check if the formatted expression evaluates to a literal type
+            part_type = self.get_type_of_expression(part.format_part);
+            if isinstance(part_type, types.ClassType) {
+                # Accept if it's a literal type or LiteralString
+                if part_type.is_literal_type() {
+                    continue;
+                }
+                if self.prefetch and self.prefetch.literal_string_class {
+                    if isinstance(
+                        self.prefetch.literal_string_class, types.ClassType
+                    ) {
+                        if part_type.shared == self.prefetch.literal_string_class.shared {
+                            continue;
+                        }
+                    }
+                }
+            }
+            # Not a literal type - f-string result is plain str
+            return False;
+        }
+    }
+    return True;
 }

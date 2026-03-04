@@ -243,7 +243,9 @@ impl ClassType.get_class_symbol -> Symbol {
 """Return a new class type specialized with the given type arguments."""
 impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
     new_private = ClassType.ClassDetailsPrivate(
-        type_args=type_args, alias_name=self.private.alias_name  # Preserve alias_name
+        type_args=type_args,
+        alias_name=self.private.alias_name,  # Preserve alias_name
+        literal_value=self.private.literal_value  # Preserve literal_value
     );
     return ClassType(shared=self.shared, private=new_private, flags=self.flags);
 }
@@ -254,7 +256,8 @@ impl ClassType.clone_as_class -> ClassType {
     }
     private = ClassType.ClassDetailsPrivate(
         type_args=self.private.type_args[:],
-        alias_name=self.private.alias_name  # Preserve alias_name
+        alias_name=self.private.alias_name,  # Preserve alias_name
+        literal_value=self.private.literal_value  # Preserve literal_value
     );
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
@@ -270,7 +273,8 @@ impl ClassType.clone_as_instance -> ClassType {
     }
     private = ClassType.ClassDetailsPrivate(
         type_args=self.private.type_args[:],
-        alias_name=self.private.alias_name  # Preserve alias_name
+        alias_name=self.private.alias_name,  # Preserve alias_name
+        literal_value=self.private.literal_value  # Preserve literal_value
     );
     new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
@@ -298,8 +302,43 @@ impl ClassType.is_special_form(name: str | None = None) -> bool {
     return self.private.alias_name == name;
 }
 
+"""Clone this class type with a literal value.
+
+Creates a new ClassType instance representing a Literal type like Literal["hello"].
+Similar to Pyright's creating a class type with literalValue set.
+"""
+impl ClassType.clone_with_literal(value: (str | int | bool | None)) -> ClassType {
+    private = ClassType.ClassDetailsPrivate(
+        type_args=self.private.type_args[:],
+        alias_name=None,  # Clear alias_name for literal types
+        literal_value=value
+    );
+    return ClassType(shared=self.shared, private=private, flags=self.flags);
+}
+
+"""Check if this class type is a literal type (has a literal value)."""
+impl ClassType.is_literal_type -> bool {
+    return self.private is not None and self.private.literal_value is not None;
+}
+
+"""Get the literal value of this type, or None if not a literal type."""
+impl ClassType.get_literal_value -> (str | int | bool | None) {
+    if self.private is None {
+        return None;
+    }
+    return self.private.literal_value;
+}
+
 """Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
+    # Display literal types as Literal[value]
+    if self.private is not None and self.private.literal_value is not None {
+        lit_val = self.private.literal_value;
+        if isinstance(lit_val, str) {
+            return f"Literal[\"{lit_val}\"]";
+        }
+        return f"Literal[{lit_val}]";
+    }
     return f"<class {self.shared.class_name}>";
 }
 
