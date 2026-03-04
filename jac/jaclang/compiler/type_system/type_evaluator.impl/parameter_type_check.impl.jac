@@ -128,6 +128,16 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return caller_type.clone_as_instance();
     }
     if caller_type.is_class_instance() {
+        # Any type is callable and returns Any. This is essential for
+        # proxy patterns using __getattr__ that return Any.
+        if (
+            isinstance(caller_type, types.ClassType)
+            and self.prefetch.any_class
+            and caller_type.shared == self.prefetch.any_class.shared
+        ) {
+            return caller_type;  # Any() -> Any
+
+        }
         magic_call_ret = self.get_type_of_magic_method_call(
             caller_type, "__call__", expr.params, expr
         );

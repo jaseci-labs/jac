@@ -1765,3 +1765,21 @@ test "impl_imports_from_parent" {
     );
     assert "checker_impl_imports.impl.jac" in program.errors_had[1].loc.mod_path;
 }
+
+"""Test __getattr__ support: dynamic attrs use __getattr__ return type."""
+test "getattr_support" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_getattr_support.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+
+    # Expect 1 error: assigning str to int (proves __getattr__ return type is enforced)
+    assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}";
+    assert "Cannot assign" in user_errors[0].pretty_print();
+}

@@ -630,6 +630,17 @@ test "test_hover_types" {
             assert hover is not None , f"Compr hover should exist at line {line}, col {col}";
             assert expected in hover.contents.value , f"Compr line {line}: expected '{expected}', got: {hover.contents.value}";
         }
+
+        # __getattr__ dynamic attributes: hover should show "(dynamic attribute) name: type"
+        getattr_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker_getattr_support.jac")
+        );
+        lsp.type_check_file(getattr_file);
+        # Line 20: p.foo where __getattr__ returns str
+        hover = lsp.get_hover_info(getattr_file, lspt.Position(18, 15));
+        assert hover is not None , "__getattr__ hover should exist";
+        assert "dynamic attribute" in hover.contents.value , f"__getattr__: expected 'dynamic attribute', got: {hover.contents.value}";
+        assert "str" in hover.contents.value , f"__getattr__: expected 'str' type, got: {hover.contents.value}";
     } finally {
         teardown_test();
     }

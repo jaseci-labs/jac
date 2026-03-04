@@ -840,6 +840,11 @@ impl NameAtom.sem_token -> (tuple[(SemTokType, SemTokMod)] | None) {
     if self.sym {
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
+    # Handle __getattr__ proxied attributes: type is set but sym is None.
+    # This allows hover/go-to-def to work for dynamically resolved attributes.
+    if self.type and not self.sym {
+        return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
+    }
     return None;
 }
 
