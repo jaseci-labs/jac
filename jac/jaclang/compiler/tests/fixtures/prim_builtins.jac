@@ -218,6 +218,7 @@ def builtins_py() -> dict {
         "hash_int": hash(42),
         "repr_int": repr(42),
         "repr_neg": repr(-17),
+        "ascii_str": ascii("hello"),
         "fs_na_len": len(frozenset([1, 2, 3])),
         "ba_len": len(bytearray([68, 69]))
     };
@@ -502,6 +503,16 @@ na {
         ba_src: list[int] = [68, 69];
         ba: str = bytearray(ba_src);
 
+        # slice builtin
+        sl1 = slice(5);
+        s1_stop: int = sl1.stop;
+        sl2 = slice(1, 5);
+        s2_start: int = sl2.start;
+        s2_stop: int = sl2.stop;
+        sl3 = slice(0, 10, 2);
+        s3_start: int = sl3.start;
+        s3_stop: int = sl3.stop;
+        s3_step: int = sl3.step;
 
         return {
             "abs_pos": abs(5),
@@ -581,9 +592,13 @@ na {
             "fmt_int": fmt_int, "fmt_hex": fmt_hex, "fmt_oct": fmt_oct,
             "hash_int": hash_int,
             "repr_int": repr_int, "repr_neg": repr_neg,
+            "ascii_str": ascii("hello"),
             "fs_na_len": len(fs),
             "bs_len": len(bs),
-            "ba_len": len(ba)
+            "ba_len": len(ba),
+            "s1_stop": s1_stop,
+            "s2_start": s2_start, "s2_stop": s2_stop,
+            "s3_start": s3_start, "s3_stop": s3_stop, "s3_step": s3_step
         };
     }
 }

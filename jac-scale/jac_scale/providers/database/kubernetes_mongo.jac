@@ -4,25 +4,17 @@ import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 
 """MongoDB provider for Kubernetes deployments."""
-class KubernetesMongoProvider(DatabaseProvider) {
+obj KubernetesMongoProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
         config: dict[str, Any] = {},
-        app_name: str = '',
+        app_name: str by postinit,
         connection_string: str = '';
 
-    def init(
-        self: KubernetesMongoProvider,
-        target: (DeploymentTarget | None) = None,
-        config: dict[str, Any] = {}
-    ) -> None {
-        self.target = target;
-        self.config = config;
-        self.app_name = config.get('app_name', 'jaseci');
+    def postinit {
+        self.app_name = self.config.get('app_name', 'jaseci');
     }
 
-    def deploy(
-        self: KubernetesMongoProvider, config: dict[str, Any] = {}
-    ) -> dict[str, Any] {
+    def deploy(config: dict[str, Any] = {}) -> dict[str, Any] {
         mongodb_name = f"{self.app_name}-mongodb";
         mongodb_port = 27017;
         mongodb_service_name = f"{mongodb_name}-service";
@@ -106,7 +98,7 @@ class KubernetesMongoProvider(DatabaseProvider) {
         };
     }
 
-    def get_connection_string(self: KubernetesMongoProvider) -> str {
+    def get_connection_string -> str {
         if not self.connection_string {
             # Generate default connection string
             service_name = f"{self.app_name}-mongodb-service";
@@ -115,17 +107,17 @@ class KubernetesMongoProvider(DatabaseProvider) {
         return self.connection_string;
     }
 
-    def is_available(self: KubernetesMongoProvider) -> bool {
+    def is_available -> bool {
         # TODO: Implement actual check
         return True;
     }
 
-    def cleanup(self: KubernetesMongoProvider) -> None {
+    def cleanup -> None {
     # Cleanup is handled by the deployment target
     }
 
     override def get_init_container(
-        self: KubernetesMongoProvider, app_name: str, wait_image: str
+        app_name: str, wait_image: str
     ) -> (dict[(str, Any)] | None) {
         return {
             'name': 'wait-for-mongodb',
@@ -144,7 +136,6 @@ class KubernetesMongoProvider(DatabaseProvider) {
     Follows the same pattern as deploy(): pure spec construction, no API calls.
     """
     def deploy_dashboard(
-        self: KubernetesMongoProvider,
         cluster_env: str,
         node_port: int,
         username: str = 'admin',

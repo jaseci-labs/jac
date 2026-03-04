@@ -405,6 +405,35 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
+// Vite plugin: forward client-side runtime errors to the terminal via WebSocket
+function jacErrorReporter() {{
+  const seen = new Map();
+  return {{
+    name: "jac-error-reporter",
+    configureServer(server) {{
+      server.ws.on("jac:client-error", (data) => {{
+        const key = data.type + ":" + data.message;
+        const now = Date.now();
+        if (seen.get(key) > now - 2000) return;
+        seen.set(key, now);
+        let loc = "";
+        if (data.source) {{
+          try {{
+            var p = new URL(data.source).pathname.slice(1)
+              .replace("compiled/", "").replace(".vite/deps/", "");
+            if (p.endsWith(".js")) p = p.slice(0, -3) + ".jac";
+            loc = " (" + p;
+            if (data.line) loc += ":" + data.line;
+            if (data.column) loc += ":" + data.column;
+            loc += ")";
+          }} catch(e) {{}}
+        }}
+        console.error("Client error: " + data.type + ": " + data.message + loc);
+      }});
+    }},
+  }};
+}}
+
 /**
  * Vite DEV configuration for HMR mode
  * Proxies API routes to Python server at localhost:{api_port}
@@ -413,7 +442,8 @@ export default defineConfig({{
   define: {{
 {define_str}
   }},
-  plugins: [{(
+  plugins: [
+    jacErrorReporter(),{(
             newline + plugins_str + newline + '  '
         )
             if plugins_str
@@ -937,8 +967,8 @@ def _forward_vite_output(
                 ready_event.set();
             }
             if ready_event.is_set() {
-                # After ready, forward non-URL output to console
-                if not _is_vite_url_line(line) {
+                # After ready, forward output to console (skip Vite URL banner lines,
+                if '[HMR]' in line or not _is_vite_url_line(line) {
                     sys_module.stdout.write(line);
                     sys_module.stdout.flush();
                 }
@@ -1005,6 +1035,32 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
   <body>
     <div id="root"></div>
     <script type="module" src="/compiled/_entry.js"></script>
+    <script type="module">
+    if (import.meta.hot) {
+      function report(d) {
+        try { import.meta.hot.send("jac:client-error", d); } catch(e) {}
+      }
+      window.addEventListener("error", function(e) {
+        report({
+          type: e.error ? e.error.constructor.name : "Error",
+          message: e.error ? e.error.message : e.message,
+          stack: e.error ? e.error.stack : null,
+          source: e.filename || null,
+          line: e.lineno || null,
+          column: e.colno || null
+        });
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        var r = e.reason;
+        report({
+          type: r instanceof Error ? r.constructor.name : "UnhandledPromiseRejection",
+          message: r instanceof Error ? r.message : String(r),
+          stack: r instanceof Error ? r.stack : null,
+          source: null, line: null, column: null
+        });
+      });
+    }
+    </script>
   </body>
 </html>
 ''';

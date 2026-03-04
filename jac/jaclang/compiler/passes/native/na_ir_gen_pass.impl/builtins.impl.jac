@@ -271,6 +271,111 @@ impl NaIRGenPass._codegen_string_index(
     return new_str;
 }
 
+"""List slicing: lst[start:stop:step] → new list with copied elements."""
+impl NaIRGenPass._codegen_list_slice(
+    target_val: ir.Value, slice_node: object, elem_type_name: str
+) -> (ir.Value | None) {
+    helpers = self.list_helpers.get(elem_type_name);
+    if helpers is None {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    func = self.builder.basic_block.function;
+    # Get source list length
+    src_len = self.builder.call(helpers["len"], [target_val], name="sl.srclen");
+    # Compute start (default 0)
+    start_val: ir.Value = ir.Constant(i64, 0);
+    if slice_node?.start is not None {
+        sv = self._codegen_expr(slice_node.start);
+        if sv is not None {
+            start_val = self._coerce_type(sv, i64);
+        }
+    }
+    # Compute stop (default len)
+    stop_val: ir.Value = src_len;
+    if slice_node?.stop is not None {
+        sv = self._codegen_expr(slice_node.stop);
+        if sv is not None {
+            stop_val = self._coerce_type(sv, i64);
+        }
+    }
+    # Compute step (default 1)
+    step_val: ir.Value = ir.Constant(i64, 1);
+    if slice_node?.step is not None {
+        sv = self._codegen_expr(slice_node.step);
+        if sv is not None {
+            step_val = self._coerce_type(sv, i64);
+        }
+    }
+    # Create new list
+    new_list = self.builder.call(helpers["new"], [], name="sl.new");
+    # Loop: i = start; i < stop; i += step
+    i_alloca = self.builder.alloca(i64, name="sl.i");
+    self.builder.store(start_val, i_alloca);
+    loop_check = func.append_basic_block(name="sl.check");
+    loop_body = func.append_basic_block(name="sl.body");
+    loop_done = func.append_basic_block(name="sl.done");
+    self.builder.branch(loop_check);
+    # Check: i < stop
+    self.builder.position_at_end(loop_check);
+    cur_i = self.builder.load(i_alloca, name="sl.cur");
+    in_range = self.builder.icmp_signed("<", cur_i, stop_val, name="sl.inrange");
+    self.builder.cbranch(in_range, loop_body, loop_done);
+    # Body: get element, append to new list
+    self.builder.position_at_end(loop_body);
+    elem = self.builder.call(helpers["get"], [target_val, cur_i], name="sl.elem");
+    self.builder.call(helpers["append"], [new_list, elem]);
+    # i += step
+    next_i = self.builder.add(cur_i, step_val, name="sl.next");
+    self.builder.store(next_i, i_alloca);
+    self.builder.branch(loop_check);
+    # Done
+    self.builder.position_at_end(loop_done);
+    # Track new list type
+    return new_list;
+}
+
+"""String slicing: s[start:stop:step] → new substring."""
+impl NaIRGenPass._codegen_string_slice(
+    target_val: ir.Value, slice_node: object
+) -> (ir.Value | None) {
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    # Get string length
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
+    memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    src_len = self.builder.call(strlen_fn, [target_val], name="ss.len");
+    # Compute start (default 0)
+    start_val: ir.Value = ir.Constant(i64, 0);
+    if slice_node?.start is not None {
+        sv = self._codegen_expr(slice_node.start);
+        if sv is not None {
+            start_val = self._coerce_type(sv, i64);
+        }
+    }
+    # Compute stop (default len)
+    stop_val: ir.Value = src_len;
+    if slice_node?.stop is not None {
+        sv = self._codegen_expr(slice_node.stop);
+        if sv is not None {
+            stop_val = self._coerce_type(sv, i64);
+        }
+    }
+    # For step=1 (basic substring): use memcpy
+    # slice_len = stop - start
+    slice_len = self.builder.sub(stop_val, start_val, name="ss.slen");
+    alloc_size = self.builder.add(slice_len, ir.Constant(i64, 1), name="ss.alloc");
+    new_str = self.builder.call(self.rc_alloc_fn, [alloc_size], name="ss.new");
+    # src_ptr = target_val + start
+    src_ptr = self.builder.gep(target_val, [start_val], name="ss.src");
+    self.builder.call(memcpy_fn, [new_str, src_ptr, slice_len]);
+    # Null terminate
+    null_ptr = self.builder.gep(new_str, [slice_len], name="ss.null");
+    self.builder.store(ir.Constant(i8, 0), null_ptr);
+    return new_str;
+}
+
 """String strip: remove leading/trailing whitespace."""
 impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
     i8 = ir.IntType(8);

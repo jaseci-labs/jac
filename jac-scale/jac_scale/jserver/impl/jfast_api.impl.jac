@@ -22,13 +22,13 @@ def _convert_transport_response_to_json_response(
     # Serialize error if present
     if not transport_response.ok and transport_response.error {
         error_obj = {};
-        if getattr(transport_response.error, "code", None) {
+        if transport_response.error.code {
             error_obj['code'] = transport_response.error.code;
         }
-        if getattr(transport_response.error, "message", None) {
+        if transport_response.error.message {
             error_obj['message'] = transport_response.error.message;
         }
-        if getattr(transport_response.error, "details", None) is not None {
+        if transport_response.error.details is not None {
             error_obj['details'] = transport_response.error.details;
         }
         response_body['error'] = error_obj;
@@ -36,16 +36,16 @@ def _convert_transport_response_to_json_response(
     # Include metadata if present
     if transport_response.meta {
         meta_dict = {};
-        if getattr(transport_response.meta, "request_id", None) {
+        if transport_response.meta.request_id {
             meta_dict['request_id'] = transport_response.meta.request_id;
         }
-        if getattr(transport_response.meta, "trace_id", None) {
+        if transport_response.meta.trace_id {
             meta_dict['trace_id'] = transport_response.meta.trace_id;
         }
-        if getattr(transport_response.meta, "timestamp", None) {
+        if transport_response.meta.timestamp {
             meta_dict['timestamp'] = transport_response.meta.timestamp;
         }
-        if getattr(transport_response.meta, "extra", None) {
+        if transport_response.meta.extra {
             meta_dict['extra'] = transport_response.meta.extra;
         }
         if meta_dict {

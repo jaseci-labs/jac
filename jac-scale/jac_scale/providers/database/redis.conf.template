@@ -1,0 +1,11 @@
+maxmemory {redis_max_memory}
+maxmemory-policy {redis_eviction_policy}
+maxmemory-samples {redis_eviction_samples}
+save ""
+appendonly no
+tcp-keepalive 300
+timeout 0
+loglevel notice
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes{redis_keyspace_events_line}
