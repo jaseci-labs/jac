@@ -1,5 +1,4 @@
 actions.jac
-advanced_language_features.jac
 app.jac
 archetype.impl.jac
 archetype.jac
@@ -13,7 +12,6 @@ circle_pure_err.impl.jac
 clib_import.na.jac
 clib_import_na_block.jac
 clib_struct_coerce.na.jac
-client_bundle.jac
 client.jac
 client_jsx.jac
 client_runtime.cl.jac
