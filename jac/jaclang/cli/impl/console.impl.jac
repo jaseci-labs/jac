@@ -1,5 +1,5 @@
 """Implementation of console utilities for terminal output (jacpretty)."""
-import os; 
+import os;
 import sys;
 import from contextlib { contextmanager }
 import from typing { Any }
