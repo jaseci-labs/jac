@@ -2591,6 +2591,7 @@ with entry {
 class JacRuntime(JacRuntimeInterface) {
     with entry {
         base_path_dir: (str | None) = os.getcwd();
+        full_target_path: (str | None) = None;
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();

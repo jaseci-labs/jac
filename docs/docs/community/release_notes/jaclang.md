@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
+- 16 small refactors/changes.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
 - 9 small refactors/changes.
@@ -38,6 +39,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
 - **Fix: `str.split()` Overload Resolution**: Fixed false positive "No matching overload found for `__add__`" when using `str.split()` result with indexing and string operations (e.g., `text.split(" ")[0] + " suffix"`). The type checker now properly resolves `LiteralString` from typeshed and prefers overloads returning concrete types (`list[str]`) over unresolved ones.
+- **Centralized Type Layout & Symbol Resolution**: Extracted class hierarchy computation (C3 MRO, field layout, vtable structure) and symbol resolution utilities into shared modules (`layout_pass.jac`, `symbol_utils.jac`) that all backends query. The native LLVM backend and ES backend now delegate to these centralized implementations instead of maintaining independent copies of the C3 linearization algorithm, hierarchy extraction, symbol lookup, and field collection logic (~128 lines of duplicated code removed across backends).
+- **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
 ## jaclang 0.11.3 (Latest Release)
 
@@ -187,6 +190,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1
 
+- **Stale Persistence Cache Handling**:  Resolved an issue where running different Jac applications sequentially caused NodeAnchor [UUID] is not a valid reference! errors due to stale anchors persisting in SQLite/MongoDB/Redis backends. The runtime now validates that an anchor’s archetype still exists before loading it and automatically removes invalid entries. This removes the need for manual cache deletion in normal workflows.
 - **`jac purge` Command**: Added `jac purge` to clear the bytecode cache. Works even when the cache is corrupted.
 - **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
 - **Fix: MTIR scope key uses file stem for portability**: Fixed MTIR scope key generation to use only the file stem (filename without extension) instead of path-relative module names. This ensures consistent scope keys across different execution environments (local vs Docker) and enables compiled bytecode to be portable across different directory structures.
