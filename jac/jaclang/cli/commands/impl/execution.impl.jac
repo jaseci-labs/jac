@@ -33,8 +33,11 @@ def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig, get_config, set_config }
     import from jaclang.project.dependencies { add_venv_to_path }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
+    # Store entry file path for runtime utilities (called before _proc_file)
+    Jac.full_target_path = str(file_path);
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that

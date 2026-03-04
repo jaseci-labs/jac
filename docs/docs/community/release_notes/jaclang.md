@@ -187,6 +187,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1
 
+- **Stale Persistence Cache Handling**:  Resolved an issue where running different Jac applications sequentially caused NodeAnchor [UUID] is not a valid reference! errors due to stale anchors persisting in SQLite/MongoDB/Redis backends. The runtime now validates that an anchor’s archetype still exists before loading it and automatically removes invalid entries. This removes the need for manual cache deletion in normal workflows.
 - **`jac purge` Command**: Added `jac purge` to clear the bytecode cache. Works even when the cache is corrupted.
 - **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
 - **Fix: MTIR scope key uses file stem for portability**: Fixed MTIR scope key generation to use only the file stem (filename without extension) instead of path-relative module names. This ensures consistent scope keys across different execution environments (local vs Docker) and enables compiled bytecode to be portable across different directory structures.
