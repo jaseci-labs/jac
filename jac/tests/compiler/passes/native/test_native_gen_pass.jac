@@ -1484,6 +1484,57 @@ test "cross module struct execution" {
     assert result2 == 7 , f"Expected 7, got {result2}";
 }
 
+# --- TestLocalFnImportedStruct ---
+test "local fn imported struct compiles" {
+    # A locally-defined function whose parameter type comes from an imported
+    # .na.jac module must compile without errors.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_local_fn_imported_struct.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine produced";
+}
+
+test "local fn imported struct field access" {
+    # local_get_x(p) is defined in the importing module with p: Point (imported).
+    # Before the fix the call site emitted i64 0 and returned 0; now it must
+    # return the actual x field value.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_local_fn_imported_struct.na.jac")));
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    local_get_x = get_func(eng, "local_get_x", ctypes.c_int64, ctypes.c_int64);
+    make_point_addr = eng.get_function_address("make_point");
+    assert make_point_addr != 0 , "make_point not linked";
+    make_point_fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(
+        make_point_addr
+    );
+    pt = make_point_fn(3, 4);
+    assert local_get_x(pt) == 3 , f"Expected 3, got {local_get_x(pt)}";
+    pt2 = make_point_fn(7, 9);
+    assert local_get_x(pt2) == 7 , f"Expected 7, got {local_get_x(pt2)}";
+}
+
+test "local fn imported struct multiple field access" {
+    # local_sum(p) accesses both x and y to exercise multiple imported fields.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_local_fn_imported_struct.na.jac")));
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    local_sum = get_func(eng, "local_sum", ctypes.c_int64, ctypes.c_int64);
+    make_point_addr = eng.get_function_address("make_point");
+    assert make_point_addr != 0 , "make_point not linked";
+    make_point_fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(
+        make_point_addr
+    );
+    pt = make_point_fn(3, 4);
+    assert local_sum(pt) == 7 , f"Expected 7, got {local_sum(pt)}";
+    pt2 = make_point_fn(10, 5);
+    assert local_sum(pt2) == 15 , f"Expected 15, got {local_sum(pt2)}";
+}
+
 # --- TestNativeCacheMarker ---
 test "cache marker non native file caches empty llvmir" {
     # Compiling a file without na blocks stores '' for llvm_ir in cache.

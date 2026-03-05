@@ -226,25 +226,154 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         processed_modules.add(resolved_path);
-        # Look up the imported module in the hub
+        # Look up the imported module in the hub.
+        # NOTE: .na.jac files skip the type-checking passes that would normally
+        # populate the hub (TypeEvaluator._import_module_from_path only runs
+        # during type-checking).  If the imported module is absent, compile it
+        # on-demand (parse + symtab only, no codegen) and cache it in the hub.
+        if not (resolved_path in self.prog.mod.hub) {
+            try {
+                imported_mod_tmp = self.prog.compile(
+                    resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
+                );
+                self.prog.mod.hub[resolved_path] = imported_mod_tmp;
+            } except Exception {
+                continue;
+            }
+        }
         if not (resolved_path in self.prog.mod.hub) {
             continue;
         }
         imported_mod = self.prog.mod.hub[resolved_path];
-        # Walk the imported module for archetype definitions
+        # Walk the imported module for archetype definitions AND free functions.
         for imp_stmt in imported_mod.body {
             if isinstance(imp_stmt, uni.NativeBlock) {
                 for inner in imp_stmt.body {
                     if isinstance(inner, uni.Archetype) {
                         self._register_imported_archetype(inner);
+                        # Forward-declare methods so calls like obj.is_foo() resolve.
+                        _aname = inner.name.value if inner.name else None;
+                        if _aname is not None and inner.body is not None {
+                            for _m in inner.body {
+                                if (
+                                    isinstance(_m, uni.Ability)
+                                    and _m.signature is not None
+                                    and isinstance(_m.signature, uni.FuncSignature)
+                                ) {
+                                    self._forward_declare_method(_aname, _m);
+                                }
+                            }
+                        }
+                        # Ensure the module is linked at JIT time.
+                        import from jaclang.jac0core.codeinfo {
+                            InteropBinding,
+                            InteropContext
+                        }
+                        _link_key = f"__link__{resolved_path}";
+                        _manifest = self.ir_in.gen.interop_manifest;
+                        if _link_key not in _manifest.bindings {
+                            _manifest.bindings[_link_key] = InteropBinding(
+                                name=_link_key,
+                                source_context=InteropContext.NATIVE,
+                                callers={InteropContext.NATIVE},
+                                source_module=resolved_path
+                            );
+                        }
+                    } elif isinstance(inner, uni.Enum) {
+                        # Register imported enum member values so struct
+                        # construction keyword initializers (e.g. Foo(tag=MyEnum.Val))
+                        # emit the correct integer instead of 0.
+                        self._codegen_enum(inner);
+                    } elif (
+                        isinstance(inner, uni.Ability)
+                        and isinstance(inner, uni.ContextAwareNode)
+                        and inner.code_context == CodeContext.NATIVE
+                        and inner.signature is not None
+                        and isinstance(inner.signature, uni.FuncSignature)
+                    ) {
+                        # Forward-declare imported free functions so calls from
+                        # locally-defined functions can resolve them in func_symtab.
+                        self._maybe_declare_ability(inner);
+                        # Register a cross-module binding so NativeCompilePass
+                        # knows to link this imported module at JIT time.
+                        # (InteropAnalysisPass misses calls in `with entry {}` because
+                        # in_native_context() doesn't walk through ModuleCode.)
+                        import from jaclang.jac0core.codeinfo {
+                            InteropBinding,
+                            InteropContext
+                        }
+                        _fn_name = inner.name_ref.sym_name if inner.name_ref else None;
+                        if _fn_name is not None {
+                            _manifest = self.ir_in.gen.interop_manifest;
+                            if _fn_name not in _manifest.bindings {
+                                _manifest.bindings[_fn_name] = InteropBinding(
+                                    name=_fn_name,
+                                    source_context=InteropContext.NATIVE,
+                                    callers={InteropContext.NATIVE},
+                                    source_module=resolved_path
+                                );
+                            }
+                        }
                     }
                 }
+            } elif isinstance(imp_stmt, uni.Enum) {
+                # Top-level imported enum — same treatment as inside NativeBlock.
+                self._codegen_enum(imp_stmt);
             } elif isinstance(imp_stmt, uni.Archetype) {
                 if (
                     isinstance(imp_stmt, uni.ContextAwareNode)
                     and imp_stmt.code_context == CodeContext.NATIVE
                 ) {
                     self._register_imported_archetype(imp_stmt);
+                    # Forward-declare methods so calls like obj.is_foo() resolve.
+                    _aname = imp_stmt.name.value if imp_stmt.name else None;
+                    if _aname is not None and imp_stmt.body is not None {
+                        for _m in imp_stmt.body {
+                            if (
+                                isinstance(_m, uni.Ability)
+                                and _m.signature is not None
+                                and isinstance(_m.signature, uni.FuncSignature)
+                            ) {
+                                self._forward_declare_method(_aname, _m);
+                            }
+                        }
+                    }
+                    # Ensure the module is linked at JIT time.
+                    import from jaclang.jac0core.codeinfo {
+                        InteropBinding,
+                        InteropContext
+                    }
+                    _link_key = f"__link__{resolved_path}";
+                    _manifest = self.ir_in.gen.interop_manifest;
+                    if _link_key not in _manifest.bindings {
+                        _manifest.bindings[_link_key] = InteropBinding(
+                            name=_link_key,
+                            source_context=InteropContext.NATIVE,
+                            callers={InteropContext.NATIVE},
+                            source_module=resolved_path
+                        );
+                    }
+                }
+            } elif (
+                isinstance(imp_stmt, uni.Ability)
+                and isinstance(imp_stmt, uni.ContextAwareNode)
+                and imp_stmt.code_context == CodeContext.NATIVE
+                and imp_stmt.signature is not None
+                and isinstance(imp_stmt.signature, uni.FuncSignature)
+            ) {
+                self._maybe_declare_ability(imp_stmt);
+                import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+                _fn_name = imp_stmt.name_ref.sym_name if imp_stmt.name_ref else None;
+                if _fn_name is not None {
+                    _manifest = self.ir_in.gen.interop_manifest;
+                    if _fn_name not in _manifest.bindings {
+                        _manifest.bindings[_fn_name] = InteropBinding(
+                            name=_fn_name,
+                            source_context=InteropContext.NATIVE,
+                            callers={InteropContext.NATIVE},
+                            source_module=resolved_path
+                        );
+                    }
                 }
             }
         }
