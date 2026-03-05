@@ -21,7 +21,7 @@ def check_pypi(pypi_name: str, version: str) -> bool:
     """Check if a package version is available on PyPI.
 
     Note: Uses simple error handling (any error = not available) since this is
-    for polling/waiting. The validate_release script uses _common.check_pypi
+    for polling/waiting. The validate_release script uses release_utils.check_pypi
     which has more nuanced error handling for validation.
     """
     url = f"https://pypi.org/pypi/{pypi_name}/{version}/json"
