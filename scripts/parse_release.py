@@ -14,7 +14,7 @@ Input:
 Output (GitHub Actions):
   has_releases: "true" or "false"
   matrix: JSON {"include": [{"name", "dir", "pypi", "tier", "version"}, ...]}
-  release_summary: "jaclang 1.2.3, jac-byllm 2.0.0"
+  release_summary: "jaclang 1.2.3, jac-byllm 3.0.0"
 """
 
 from __future__ import annotations
