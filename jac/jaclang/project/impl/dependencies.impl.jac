@@ -11,7 +11,7 @@ impl DependencyInstaller.postinit -> None {
         self.config = get_config();
     }
     if self.config is None {
-        raise ValueError("No jac.toml found. Run 'jac init' to create a project.") ;
+        raise ValueError("No jac.toml found. Run 'jac init' to create a project.");
     }
     self.venv_dir = self.config.get_venv_dir();
 }
@@ -30,9 +30,9 @@ impl DependencyInstaller.ensure_venv -> None {
                     "Failed to create virtual environment: ensurepip is not available.\n"
                     "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
                     "On Fedora/RHEL: sudo dnf install python3-libs"
-                ) from e ;
+                ) from e;
             }
-            raise ;
+            raise;
         }
     }
     if self.venv_dir.exists() {
@@ -250,7 +250,7 @@ impl DependencyResolver.postinit -> None {
         self.config = get_config();
     }
     if self.config is None {
-        raise ValueError("No jac.toml found.") ;
+        raise ValueError("No jac.toml found.");
     }
 }
 

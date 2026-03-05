@@ -91,7 +91,7 @@ impl __getattr__(name: str) -> object {
     } elif (name == 'llm') {
         return _get_llm();
     }
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}") ;
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }
 
 """Get commit lazily."""
@@ -171,7 +171,7 @@ impl schedule(**kwargs: Any) -> Callable {
         trigger = ScheduleTrigger(trigger);
     }
     if trigger == ScheduleTrigger.DYNAMIC {
-        raise NotImplementedError("Dynamic scheduling requires jac-scale.") ;
+        raise NotImplementedError("Dynamic scheduling requires jac-scale.");
     }
     spec = ScheduleSpec(trigger=trigger, **kwargs);
     def decorator(target: type) -> type {

@@ -303,12 +303,28 @@ impl NaIRGenPass._export_native_layout -> None {
         for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
+            # Detect function pointer fields
+            is_fn_ptr = False;
+            fn_param_types: (list[str] | None) = None;
+            fn_ret_type: (str | None) = None;
+            if (
+                ftype is not None
+                and isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType)
+            ) {
+                is_fn_ptr = True;
+                fn_param_types = [self._llvm_type_str(a) for a in ftype.pointee.args];
+                fn_ret_type = self._llvm_type_str(ftype.pointee.return_type);
+            }
             fields.append(
                 NativeFieldInfo(
                     name=fname,
                     llvm_type=llvm_t,
                     index=idx,
-                    enum_type=enum_types.get(fname)
+                    enum_type=enum_types.get(fname),
+                    is_func_ptr=is_fn_ptr,
+                    func_param_types=fn_param_types,
+                    func_ret_type=fn_ret_type
                 )
             );
         }

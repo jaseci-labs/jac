@@ -22,7 +22,7 @@ glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures");
 def fixture_path(filename: str) -> str {
     p = os.path.join(FIXTURE_BASE, filename);
     if not os.path.exists(p) {
-        raise FileNotFoundError(f"Fixture not found: {p}") ;
+        raise FileNotFoundError(f"Fixture not found: {p}");
     }
     return p;
 }

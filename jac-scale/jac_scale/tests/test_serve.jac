@@ -147,7 +147,7 @@ def _start_server(
             raise RuntimeError(
                 f"Server process terminated unexpectedly.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
-            ) ;
+            );
         }
 
         try {
@@ -173,7 +173,7 @@ def _start_server(
         raise RuntimeError(
             f"Server failed to start after {max_attempts} attempts.\n"
             f"STDOUT: {stdout}\nSTDERR: {stderr}"
-        ) ;
+        );
     }
 
     return server_process;
@@ -234,7 +234,7 @@ glob sv_fixtures_dir: Path = Path(__file__).parent / "fixtures",
 """Setup and start the serve server."""
 def setup_serve_server -> subprocess.Popen {
     if not sv_test_file.exists() {
-        raise FileNotFoundError(f"Test fixture not found: {sv_test_file}") ;
+        raise FileNotFoundError(f"Test fixture not found: {sv_test_file}");
     }
     _cleanup_db_files(sv_fixtures_dir);
     return _start_server(sv_fixtures_dir, sv_test_file, sv_port, sv_base_url);
@@ -1398,7 +1398,7 @@ def _extract_data_dev(json_response: dict[str, Any]) -> dict[str, Any] {
 """Setup and start the dev mode server."""
 def setup_dev_mode_server -> subprocess.Popen {
     if not dm_test_file.exists() {
-        raise FileNotFoundError(f"Test fixture not found: {dm_test_file}") ;
+        raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
     }
     _cleanup_db_files(dm_fixtures_dir);
 
@@ -1426,7 +1426,7 @@ def setup_dev_mode_server -> subprocess.Popen {
             raise RuntimeError(
                 f"Server process terminated unexpectedly.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
-            ) ;
+            );
         }
 
         try {
@@ -1452,7 +1452,7 @@ def setup_dev_mode_server -> subprocess.Popen {
         raise RuntimeError(
             f"Server failed to start in dev mode after {max_attempts} attempts.\n"
             f"STDOUT: {stdout}\nSTDERR: {stderr}"
-        ) ;
+        );
     }
 
     return server_process;

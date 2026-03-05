@@ -7,7 +7,7 @@ obj Game {
         won: bool = False;
 
     def play {
-        raise NotImplementedError("Subclasses must implement this method.") ;
+        raise NotImplementedError("Subclasses must implement this method.");
     }
 }
 

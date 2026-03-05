@@ -32,7 +32,7 @@ def _scale_pre_hook(context: HookContext) -> None {
         target = context.get_arg("target", "kubernetes");
         registry = context.get_arg("registry", "dockerhub");
         if not os.path.exists(filename) {
-            raise FileNotFoundError(f"File not found: '{filename}'") ;
+            raise FileNotFoundError(f"File not found: '{filename}'");
         }
         code_folder = os.path.dirname(filename) or '.';
         dotenv_path = os.path.join(code_folder, '.env');
@@ -80,7 +80,7 @@ def _scale_pre_hook(context: HookContext) -> None {
         # Deploy
         result = deployment_target.deploy(app_config);
         if not result.success {
-            raise RuntimeError(result.message or "Deployment failed") ;
+            raise RuntimeError(result.message or "Deployment failed");
         }
         if result.service_url {
             console.print(
@@ -237,7 +237,7 @@ class JacCmd {
         )
         def destroy(file_path: str, target: str = "kubernetes") -> int {
             if not os.path.exists(file_path) {
-                raise FileNotFoundError(f"File not found: '{file_path}'") ;
+                raise FileNotFoundError(f"File not found: '{file_path}'");
             }
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
@@ -306,7 +306,7 @@ class JacCmd {
         )
         def status(file_path: str, target: str = "kubernetes") -> int {
             if not os.path.exists(file_path) {
-                raise FileNotFoundError(f"File not found: '{file_path}'") ;
+                raise FileNotFoundError(f"File not found: '{file_path}'");
             }
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');

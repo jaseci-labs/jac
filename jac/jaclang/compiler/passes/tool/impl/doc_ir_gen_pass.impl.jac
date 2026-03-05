@@ -319,6 +319,8 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
+            parts.append(i.gen.doc_ir);
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -409,6 +411,8 @@ impl DocIRGenPass.exit_enum(nd: uni.Enum) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
+            parts.append(i.gen.doc_ir);
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -761,7 +765,16 @@ impl DocIRGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
 
 """Generate DocIR for nonlocal statements."""
 impl DocIRGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    self._assign_space_group(nd);
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
+            parts.pop();
+        }
+        parts.append(i.gen.doc_ir);
+        parts.append(self.space());
+    }
+    parts.pop();
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 """Generate DocIR for global statements."""
@@ -973,7 +986,16 @@ impl DocIRGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 """Generate DocIR for raise statements."""
 impl DocIRGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
-    self._assign_space_group(nd);
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
+            parts.pop();
+        }
+        parts.append(i.gen.doc_ir);
+        parts.append(self.space());
+    }
+    parts.pop();
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 """Generate DocIR for assert statements."""

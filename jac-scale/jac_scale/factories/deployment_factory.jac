@@ -33,11 +33,11 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'aws' {
-            raise NotImplementedError("AWS target not yet implemented") ;
+            raise NotImplementedError("AWS target not yet implemented");
         } elif target_type == 'gcp' {
-            raise NotImplementedError("GCP target not yet implemented") ;
+            raise NotImplementedError("GCP target not yet implemented");
         } else {
-            raise ValueError(f"Unsupported deployment target type: {target_type}") ;
+            raise ValueError(f"Unsupported deployment target type: {target_type}");
         }
     }
 }

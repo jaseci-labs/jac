@@ -175,6 +175,10 @@ impl UnparsePass.exit_test(nd: uni.Test) -> None {
     if nd.doc {
         parts.append(nd.doc.gen.jac);
     }
+    if nd.decorators {
+        decs = " @".join([d.gen.jac for d in nd.decorators]);
+        parts.append("@" + decs);
+    }
     parts.append("test");
     if nd.description {
         parts.append(nd.description.gen.jac);
@@ -339,7 +343,7 @@ impl UnparsePass.exit_impl_def(nd: uni.ImplDef) -> None {
 """SemDef definition."""
 impl UnparsePass.exit_sem_def(nd: uni.SemDef) -> None {
     target_str = ".".join([t.gen.jac for t in nd.target]);
-    nd.gen.jac = "sem " + target_str + " = " + nd.value.gen.jac + " ;";
+    nd.gen.jac = "sem " + target_str + " = " + nd.value.gen.jac + ";";
 }
 
 """Enum definition."""
@@ -565,7 +569,7 @@ impl UnparsePass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     if nd.expr {
         result = nd.expr.gen.jac;
     }
-    nd.gen.jac = result + " ;";
+    nd.gen.jac = result + ";";
 }
 
 """TryStmt: try { body }."""
@@ -686,8 +690,7 @@ impl UnparsePass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         parts.append("from");
         parts.append(nd.from_target.gen.jac);
     }
-    parts.append(";");
-    nd.gen.jac = " ".join(parts);
+    nd.gen.jac = " ".join(parts) + ";";
 }
 
 """AssertStmt: assert expr [, msg] ;"""
@@ -697,23 +700,22 @@ impl UnparsePass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
         parts.append(",");
         parts.append(nd.error_msg.gen.jac);
     }
-    parts.append(";");
-    nd.gen.jac = " ".join(parts);
+    nd.gen.jac = " ".join(parts) + ";";
 }
 
 """CtrlStmt: break/continue ;"""
 impl UnparsePass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
-    nd.gen.jac = str(nd.ctrl.value) + " ;";
+    nd.gen.jac = str(nd.ctrl.value) + ";";
 }
 
 """DeleteStmt: delete targets ;"""
 impl UnparsePass.exit_delete_stmt(nd: uni.DeleteStmt) -> None {
-    nd.gen.jac = "delete " + nd.target.gen.jac + " ;";
+    nd.gen.jac = "delete " + nd.target.gen.jac + ";";
 }
 
 """ReportStmt: report expr ;"""
 impl UnparsePass.exit_report_stmt(nd: uni.ReportStmt) -> None {
-    nd.gen.jac = "report " + nd.expr.gen.jac + " ;";
+    nd.gen.jac = "report " + nd.expr.gen.jac + ";";
 }
 
 """ReturnStmt: return [expr] ;"""
@@ -753,12 +755,12 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
 
 """GlobalStmt: global names ;"""
 impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    nd.gen.jac = "global " + self._comma_sep(nd.target) + " ;";
+    nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
 }
 
 """NonLocalStmt: nonlocal names ;"""
 impl UnparsePass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + " ;";
+    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + ";";
     # ── Assignments ──────────────────────────────────────────────────────
 }
 
@@ -786,7 +788,7 @@ impl UnparsePass.exit_assignment(nd: uni.Assignment) -> None {
         isinstance(nd.parent, uni.IterForStmt)
         and (nd == nd.parent.iter or nd == nd.parent.count_by)
     ) {
-        result = result + " ;";
+        result = result + ";";
     }
     nd.gen.jac = result;
     # ── Expressions ──────────────────────────────────────────────────────

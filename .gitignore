@@ -77,3 +77,4 @@ node_modules
 CLAUDE.local.md
 
 jactastic/**
+.mcp.json

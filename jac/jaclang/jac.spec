@@ -244,8 +244,14 @@ element_stmt ::=
     | module_code
 
 docstring_target ::=
-    STRING
-    (test | "enum" enum | type_alias | global_var | "impl" impl_def | module_code)?
+    STRING (
+        "test" test
+        | "enum" enum
+        | type_alias
+        | global_var
+        | "impl" impl_def
+        | module_code
+    )?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
 
@@ -445,7 +451,7 @@ enum ::=
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?
 
-test ::= "test" STRING? "{" code_block_stmts "}"
+test ::= ("@" atomic_chain)* "test" STRING? "{" code_block_stmts "}"
 
 switch_stmt ::= "switch" expression "{" switch_case* "}"
 

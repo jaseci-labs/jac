@@ -87,7 +87,7 @@ impl BaseTransform.post_transform(self: BaseTransform) -> None {
 }
 
 """Transform interface."""
-@ abstractmethod
+@abstractmethod
 impl BaseTransform.transform(self: BaseTransform, ir_in: T_in) -> T_out {
     ;
 }
