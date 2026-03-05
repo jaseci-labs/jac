@@ -175,6 +175,10 @@ impl UnparsePass.exit_test(nd: uni.Test) -> None {
     if nd.doc {
         parts.append(nd.doc.gen.jac);
     }
+    if nd.decorators {
+        decs = " @".join([d.gen.jac for d in nd.decorators]);
+        parts.append("@" + decs);
+    }
     parts.append("test");
     if nd.description {
         parts.append(nd.description.gen.jac);
