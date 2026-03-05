@@ -25,10 +25,7 @@ impl JacShadcnPlugin.create_cmd -> None {
         command_name="remove",
         args=[
             Arg.create(
-                "shadcn",
-                typ=bool,
-                default=False,
-                help="Remove shadcn UI component(s)"
+                "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
             ),
 
         ],

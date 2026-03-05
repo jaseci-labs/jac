@@ -14,7 +14,6 @@ import from jac_shadcn.plugin { JacShadcnPlugin }
 
 
 # ── Config Reader Tests ──
-
 test "read shadcn config returns none when no project root" {
     obj MockConfig {
         has project_root: None = None;
@@ -34,7 +33,9 @@ test "read shadcn config returns none when no raw data" {
 test "read shadcn config returns section when present" {
     obj MockConfig {
         has project_root: str = "/tmp",
-            _raw_data: dict = {"jac-shadcn": {"style": "nova", "registry": "http://localhost:8004"}};
+            _raw_data: dict = {
+                "jac-shadcn": {"style": "nova", "registry": "http://localhost:8004"}
+            };
     }
     result = _read_shadcn_config(MockConfig());
     assert result is not None;
@@ -53,12 +54,9 @@ test "read shadcn config returns none when section missing" {
 
 
 # ── Peer Dependency Resolution Tests ──
-
 test "resolve peer deps with no dependencies" {
     registry_data = {
-        "components": {
-            "button": {"file": "button.cl.jac", "peerComponents": []}
-        }
+        "components": {"button": {"file": "button.cl.jac", "peerComponents": []}}
     };
     result = _resolve_peer_deps(["button"], registry_data, set());
     assert result == ["button"];
@@ -123,18 +121,15 @@ test "resolve peer deps no duplicates" {
 
 
 # ── Update NPM Deps Tests ──
-
 test "update npm deps adds new dependency" {
     with tempfile.TemporaryDirectory() as tmpdir {
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text('[dependencies.npm]\nclsx = "^2.1.1"\n');
-
         obj MockConfig {
             has project_root: str;
         }
         config = MockConfig(project_root=tmpdir);
         _update_npm_deps(config, {"tailwind-merge": "^3.5.0"});
-
         content = toml_path.read_text();
         assert "tailwind-merge" in content;
         assert "clsx" in content;
@@ -146,13 +141,11 @@ test "update npm deps skips existing dependency" {
         toml_path = Path(tmpdir) / "jac.toml";
         original = '[dependencies.npm]\nclsx = "^2.1.1"\n';
         toml_path.write_text(original);
-
         obj MockConfig {
             has project_root: str;
         }
         config = MockConfig(project_root=tmpdir);
         _update_npm_deps(config, {"clsx": "^2.1.1"});
-
         content = toml_path.read_text();
         assert content == original;
     }
@@ -163,13 +156,11 @@ test "update npm deps does nothing for empty deps" {
         toml_path = Path(tmpdir) / "jac.toml";
         original = '[dependencies.npm]\n';
         toml_path.write_text(original);
-
         obj MockConfig {
             has project_root: str;
         }
         config = MockConfig(project_root=tmpdir);
         _update_npm_deps(config, {});
-
         content = toml_path.read_text();
         assert content == original;
     }
@@ -177,13 +168,11 @@ test "update npm deps does nothing for empty deps" {
 
 
 # ── Remove Components Tests ──
-
 test "remove existing component" {
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
         (ui_dir / "button.cl.jac").write_text("// button component");
-
         obj MockConfig {
             has project_root: str;
         }
@@ -198,7 +187,6 @@ test "remove nonexistent component returns false" {
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-
         obj MockConfig {
             has project_root: str;
         }
@@ -225,7 +213,6 @@ test "remove multiple components" {
         ui_dir.mkdir(parents=True);
         (ui_dir / "button.cl.jac").write_text("// button");
         (ui_dir / "card.cl.jac").write_text("// card");
-
         obj MockConfig {
             has project_root: str;
         }
@@ -239,7 +226,6 @@ test "remove multiple components" {
 
 
 # ── Jacpack Template Tests ──
-
 test "jacpack template file exists and is valid json" {
     template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
     assert template_path.exists();
@@ -300,7 +286,6 @@ test "jacpack template has required files" {
 
 
 # ── Live Registry Integration Tests ──
-
 test "fetch registry index from live server" {
     data = _fetch_json("https://jac-shadcn.jaseci.org/registry");
     assert data is not None;
@@ -324,7 +309,6 @@ test "add components from live registry" {
         toml_path.write_text(
             '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\nregistry = "https://jac-shadcn.jaseci.org"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
         );
-
         obj MockConfig {
             has project_root: str,
                 _raw_data: dict;
@@ -338,17 +322,13 @@ test "add components from live registry" {
                 }
             }
         );
-
         result = add_shadcn_components(config, ["button"]);
         assert result == True;
-
         ui_dir = Path(tmpdir) / "components" / "ui";
         assert ui_dir.exists();
-
         # Check button file was created
         button_files = list(ui_dir.glob("button*.cl.jac"));
         assert len(button_files) > 0;
-
         # Check utils was created
         utils_path = Path(tmpdir) / "lib" / "utils.cl.jac";
         assert utils_path.exists();
@@ -361,10 +341,7 @@ test "add components fails without shadcn config" {
             has project_root: str,
                 _raw_data: dict;
         }
-        config = MockConfig(
-            project_root=tmpdir,
-            _raw_data={}
-        );
+        config = MockConfig(project_root=tmpdir, _raw_data={});
         result = add_shadcn_components(config, ["button"]);
         assert result == False;
     }
