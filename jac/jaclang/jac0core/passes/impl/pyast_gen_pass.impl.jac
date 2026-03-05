@@ -2960,7 +2960,21 @@ impl PyastGenPass.exit_edge_ref_trailer(
                     )
                 )
             );
+            if cur.filter_cond.f_type {
+                keywords.append(
+                    self.sync(
+                        ast3.keyword(
+                            arg='edge_type',
+                            value=cast(
+                                ast3.expr,
+                                self.sync(cur.filter_cond.f_type.gen.py_ast[0])
+                            )
+                        )
+                    )
+                );
+            }
         }
+        filt: (uni.UniNode | None) = None;
         if (chomp and not isinstance(chomp[0], uni.EdgeOpRef)) {
             filt = chomp.pop(0);
             keywords.append(
@@ -2970,6 +2984,16 @@ impl PyastGenPass.exit_edge_ref_trailer(
                     )
                 )
             );
+            if (isinstance(filt, uni.FilterCompr) and filt.f_type) {
+                keywords.append(
+                    self.sync(
+                        ast3.keyword(
+                            arg='node_type',
+                            value=cast(ast3.expr, self.sync(filt.f_type.gen.py_ast[0]))
+                        )
+                    )
+                );
+            }
         }
         pynode = self.sync(
             ast3.Call(

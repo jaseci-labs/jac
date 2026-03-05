@@ -8,12 +8,112 @@ import from logging { getLogger }
 import from pickle { dumps }
 import from types { UnionType }
 import from typing { Any, ClassVar, TypeAlias, TypeVar }
+import weakref;
 import from uuid { UUID, uuid4 }
 import from jaclang.jac0core.constant { EdgeDir }
 glob logger = getLogger(__name__),
      TARCH = TypeVar('TARCH', bound='Archetype'),
      TANCH = TypeVar('TANCH', bound='Anchor'),
      T = TypeVar('T');
+
+"""Type reference that uniquely identifies a type."""
+@dataclass(frozen=True)
+obj TypeRef {
+    has module: str,
+        qualname: str;
+}
+
+"""Sentinel base classes excluded from the MRO chain."""
+glob _TYPEREF_STOP_CLASSES: frozenset[str] = frozenset(
+         [
+             'Archetype',
+             'NodeArchetype',
+             'EdgeArchetype',
+             'WalkerArchetype',
+             'ObjectArchetype',
+             'object'
+         ]
+     );
+
+"""Registry mapping TypeRef -> weakref(cls) for collision detection.
+
+When two distinct classes produce the same TypeRef (same module + qualname),
+the shortcircuit optimization cannot distinguish them reliably. This registry
+detects that situation so we can fall back to the full populate + isinstance path.
+
+Uses weakrefs so that when a class is garbage-collected (e.g., between test
+runs redefining __main__), its registry entry expires naturally and does not
+cause false-positive collisions.
+"""
+glob _TYPEREF_REGISTRY: dict[(TypeRef, weakref.ref)] = {};
+
+"""Set of TypeRefs known to have collisions (multiple classes -> same TypeRef)."""
+glob _TYPEREF_COLLISIONS: set[TypeRef] = set();
+
+"""Build a frozenset of TypeRefs from a class's MRO (excluding base framework classes).
+
+Returns None if any TypeRef in the chain has a collision (two distinct classes
+mapping to the same module.qualname). When None is returned, callers should skip
+setting arch_cls on the stub so the shortcircuit is bypassed and the full
+populate + isinstance path is used instead.
+"""
+def build_type_chain(cls: `type) -> (frozenset[TypeRef] | None) {
+    chain: list[TypeRef] = [];
+    for klass in cls.__mro__ {
+        if klass.__name__ in _TYPEREF_STOP_CLASSES {
+            break;
+        }
+        ref = TypeRef(module=klass.__module__, qualname=klass.__qualname__);
+        if ref in _TYPEREF_COLLISIONS {
+            # Already known collision — skip shortcircuit entirely.
+            return None;
+        }
+        existing_ref = _TYPEREF_REGISTRY.get(ref);
+        if existing_ref is not None {
+            existing_cls = existing_ref();
+            if existing_cls is not None and existing_cls is not klass {
+                # Two live classes with the same TypeRef — real collision.
+                _TYPEREF_COLLISIONS.add(ref);
+                logger.warning(
+                    f"TypeRef collision detected: {ref.module}.{ref.qualname} "
+                    f"maps to multiple distinct live classes. Falling back to "
+                    f"full populate + isinstance for type filtering on stubs "
+                    f"involving this type."
+                );
+                return None;
+            }
+        }
+        _TYPEREF_REGISTRY[ref] = weakref.ref(klass);
+        chain.append(ref);
+    }
+    return frozenset(chain);
+}
+
+"""Clear the TypeRef registry and collision set.
+
+Useful in test fixtures to prevent false-positive collisions when multiple
+.jac files define classes under the same __main__ module.
+"""
+def clear_typeref_registry -> None {
+    _TYPEREF_REGISTRY.clear();
+    _TYPEREF_COLLISIONS.clear();
+}
+
+"""Create a TypeRef from a class."""
+def make_type_ref(cls: `type) -> TypeRef {
+    return TypeRef(module=cls.__module__, qualname=cls.__qualname__);
+}
+
+"""Check if a TypeRef matches an arch_cls value (frozenset or legacy string)."""
+def type_ref_in_arch_cls(ref: TypeRef, arch_cls: object) -> bool {
+    if isinstance(arch_cls, frozenset) {
+        return ref in arch_cls;
+    }
+    if isinstance(arch_cls, str) {
+        return f"{ref.module}.{ref.qualname}" == arch_cls;
+    }
+    return False;
+}
 
 """Access level enum."""
 class AccessLevel(IntEnum) {
@@ -62,7 +162,9 @@ glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
 obj ObjectSpatialDestination {
     has direction: EdgeDir,
         `edge: (Callable[([Archetype], bool)] | None) = None,
-        nd: (Callable[([Archetype], bool)] | None) = None;
+        nd: (Callable[([Archetype], bool)] | None) = None,
+        edge_type: (`type | None) = None,
+        node_type: (`type | None) = None;
 
     def edge_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
@@ -90,25 +192,33 @@ obj ObjectSpatialPath {
         self: ObjectSpatialPath,
         direction: EdgeDir,
         `edge: ObjectSpatialFilter,
-        nd: ObjectSpatialFilter
+        nd: ObjectSpatialFilter,
+        edge_type: (`type | None) = None,
+        node_type: (`type | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_out(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        edge_type: (`type | None) = None,
+        node_type: (`type | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_in(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        edge_type: (`type | None) = None,
+        node_type: (`type | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_any(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        edge_type: (`type | None) = None,
+        node_type: (`type | None) = None
     ) -> ObjectSpatialPath;
 
     def set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath;

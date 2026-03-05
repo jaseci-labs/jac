@@ -681,6 +681,42 @@ test "operator precedence matches python" {
     assert "PASS" in output , f"Operator precedence test failed:\n{output}";
 }
 
+# ── Tests for edge/node type filter short-circuit optimization ────────────────
+test "type filtered traversal correctness" {
+    output = run_jac(os.path.join(FIXTURES, "populate_shortcircuit.jac"));
+    assert "FUNCTIONAL_TESTS_PASSED" in output , f"Functional traversal tests failed:\n{output}";
+    assert "ALL_COUNT 4" in output;
+    assert "FOLLOW_COUNT 2" in output;
+    assert "FOLLOW_PROFILE_COUNT 2" in output;
+    assert "AUTHORED_COUNT 1" in output;
+    assert "POST_COUNT 1" in output;
+    assert "COMMENT_COUNT 1" in output;
+    assert "CHAINED_COUNT 1" in output;
+}
+
+test "populate short-circuit skips non-matching stubs" {
+    output = run_jac(os.path.join(FIXTURES, "populate_shortcircuit_mock.jac"));
+    assert "SHORTCIRCUIT_TESTS_PASSED" in output , f"Populate short-circuit tests failed:\n{output}";
+    # Verify non-matching stubs were NOT populated (exact 0)
+    assert "OWNS_POP_AFTER_LIKES 0" in output;
+    assert "LIKES_POP_AFTER_OWNS 0" in output;
+    # Verify matching stubs were populated exactly once
+    assert "LIKES_POP 1" in output;
+    assert "OWNS_POP2 1" in output;
+}
+
+test "inheritance respects subclass in type-filtered traversal on stubs" {
+    output = run_jac(os.path.join(FIXTURES, "inheritance_traversal.jac"));
+    assert "INHERITANCE_STUB_TESTS_PASSED" in output , f"Inheritance stub traversal tests failed:\n{output}";
+    # Edge inheritance: Follow filter must match CloseFriend (subclass of Follow) on stubs
+    assert "FOLLOW_EDGE_STUB_COUNT 2" in output;
+    # Node inheritance: Person filter must match VIPPerson (subclass of Person) on stubs
+    assert "PERSON_NODE_STUB_COUNT 2" in output;
+    # Derived filters should still work correctly on stubs
+    assert "CLOSEFRIEND_EDGE_STUB_COUNT 1" in output;
+    assert "VIP_NODE_STUB_COUNT 1" in output;
+}
+
 """Test that escape sequences like \\x1b, \\033, \\n, \\t are properly handled."""
 test "escape sequences in strings and fstrings" {
     output = run_jac(os.path.join(FIXTURES, "escape_sequences.jac"));

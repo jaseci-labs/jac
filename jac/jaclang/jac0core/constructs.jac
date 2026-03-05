@@ -11,8 +11,13 @@ import from jaclang.jac0core.archetype {
     NodeArchetype,
     ObjectSpatialFunction,
     Root,
+    TypeRef,
     WalkerAnchor,
-    WalkerArchetype
+    WalkerArchetype,
+    build_type_chain,
+    clear_typeref_registry,
+    make_type_ref,
+    type_ref_in_arch_cls
 }
 import from jaclang.jac0core.mtp { MTIR, MTRuntime }
 glob __all__ = [
@@ -30,5 +35,10 @@ glob __all__ = [
          'Root',
          'MTIR',
          'MTRuntime',
-         'ObjectSpatialFunction'
+         'ObjectSpatialFunction',
+         'TypeRef',
+         'build_type_chain',
+         'clear_typeref_registry',
+         'make_type_ref',
+         'type_ref_in_arch_cls'
      ];
