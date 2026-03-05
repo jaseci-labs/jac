@@ -1,20 +1,20 @@
 """Parse release info from PR title for the publish workflow.
 
 Extracts package names and versions from PR titles like:
-  "release: jaclang 1.2.3, byllm 2.0.0"
+  "release: jaclang 1.2.3, jac-byllm 2.0.0"
 
 Outputs a matrix for GitHub Actions with tier info for dependency ordering:
   - Tier 1: jaclang (base)
-  - Tier 2: byllm, jac-client, jac-scale, jac-super, jac-mcp (depend on jaclang)
+  - Tier 2: jac-byllm, jac-client, jac-scale, jac-super, jac-mcp (depend on jaclang)
   - Tier 3: jaseci (depends on all)
 
 Input:
-  --pr-title: PR title string (e.g., "release: jaclang 1.2.3, byllm 2.0.0")
+  --pr-title: PR title string (e.g., "release: jaclang 1.2.3, jac-byllm 2.0.0")
 
 Output (GitHub Actions):
   has_releases: "true" or "false"
   matrix: JSON {"include": [{"name", "dir", "pypi", "tier", "version"}, ...]}
-  release_summary: "jaclang 1.2.3, byllm 2.0.0"
+  release_summary: "jaclang 1.2.3, jac-byllm 2.0.0"
 """
 
 from __future__ import annotations

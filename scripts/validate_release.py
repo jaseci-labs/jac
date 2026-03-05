@@ -12,7 +12,7 @@ from pathlib import Path
 
 import tomlkit
 
-from release_utils import CANONICAL_PACKAGES, bump_version, check_pypi, set_output
+from release_utils import PACKAGES, bump_version, check_pypi, set_output
 
 
 def get_current_version(repo_root: Path, pkg_dir: str) -> str:
@@ -24,7 +24,7 @@ def get_current_version(repo_root: Path, pkg_dir: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    for pkg_name in CANONICAL_PACKAGES:
+    for pkg_name in PACKAGES:
         parser.add_argument(
             f"--{pkg_name}", choices=["skip", "patch", "minor", "major"], default="skip"
         )
@@ -34,7 +34,7 @@ def main() -> int:
     releases: list[dict[str, str]] = []
     errors: list[str] = []
 
-    for pkg_name, pkg_info in CANONICAL_PACKAGES.items():
+    for pkg_name, pkg_info in PACKAGES.items():
         bump_type = getattr(args, pkg_name.replace("-", "_"))
         if bump_type == "skip":
             continue

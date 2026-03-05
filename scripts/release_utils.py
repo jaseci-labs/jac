@@ -20,17 +20,13 @@ class PackageInfo(NamedTuple):
 # Package registry - single source of truth for all release scripts
 PACKAGES: dict[str, PackageInfo] = {
     "jaclang": PackageInfo(dir="jac", pypi="jaclang", tier=1),
-    "byllm": PackageInfo(dir="jac-byllm", pypi="byllm", tier=2),
-    "jac-byllm": PackageInfo(dir="jac-byllm", pypi="byllm", tier=2),  # alias
+    "jac-byllm": PackageInfo(dir="jac-byllm", pypi="byllm", tier=2),
     "jac-client": PackageInfo(dir="jac-client", pypi="jac-client", tier=2),
     "jac-scale": PackageInfo(dir="jac-scale", pypi="jac-scale", tier=2),
     "jac-super": PackageInfo(dir="jac-super", pypi="jac-super", tier=2),
     "jac-mcp": PackageInfo(dir="jac-mcp", pypi="jac-mcp", tier=2),
     "jaseci": PackageInfo(dir="jaseci-package", pypi="jaseci", tier=3),
 }
-
-# Canonical package names (excluding aliases like "byllm" -> "jac-byllm")
-CANONICAL_PACKAGES = {k: v for k, v in PACKAGES.items() if k.startswith("jac") or k == "jaseci"}
 
 
 def bump_version(current: str, bump_type: str) -> str:
