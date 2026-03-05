@@ -167,6 +167,34 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             expr.right.type = special_form;
                             return special_form;
                         }
+                        # Check for function overloads in module-level functions
+                        # (e.g., math.floor has multiple @overload signatures).
+                        # This mirrors the overload collection done for Name expressions
+                        # and is required for proper type checking of overloaded functions.
+                        if isinstance(sym_type, types.FunctionType) {
+                            overloaded_fns: list[types.FunctionType] = [sym_type];
+                            # Look up all symbols with the same name to find overloads
+                            all_syms = base_type.symbol_table.lookup_all(
+                                expr.right.value, deep=False
+                            );
+                            for overload_symbol in all_syms {
+                                if overload_symbol == sym {
+                                    continue;
+                                }
+                                overload_type = self.get_type_of_symbol(overload_symbol);
+                                if isinstance(overload_type, types.FunctionType) {
+                                    overloaded_fns.append(overload_type);
+                                }
+                            }
+                            if len(overloaded_fns) > 1 {
+                                overloaded_ty = types.OverloadedType(
+                                    overloads=overloaded_fns
+                                );
+                                sym.add_use(expr.right);
+                                expr.right.type = overloaded_ty;
+                                return overloaded_ty;
+                            }
+                        }
                         # Not a special form, return the resolved type
                         sym.add_use(expr.right);
                         expr.right.type = sym_type;
