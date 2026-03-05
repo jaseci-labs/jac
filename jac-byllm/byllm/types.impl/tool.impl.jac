@@ -51,7 +51,7 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
         } except Exception as e {
             raise FinishToolError(
                 f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
-            ) ;
+            );
         }
     }
     finish_tool.__annotations__["return"] = resp_type;

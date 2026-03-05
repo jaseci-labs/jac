@@ -1593,7 +1593,7 @@ impl TypeEvaluator._prefetch_types{
 """Load and return builtins stub module."""
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     if not os.path.exists(path) {
-        raise FileNotFoundError(f"Stub file not found at {path}") ;
+        raise FileNotFoundError(f"Stub file not found at {path}");
     }
     # Convert to absolute path so this function and _import_module_from_path share the same hub key.
     resolved_path = str(Path(path).resolve());

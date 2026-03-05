@@ -45,14 +45,14 @@ def compare_files(
         );
         if diff {
             print(f"Differences found in comparison:\n{diff}");
-            raise AssertionError("Files differ after formatting.") ;
+            raise AssertionError("Files differ after formatting.");
         }
     } except FileNotFoundError {
         print(f"File not found: {original_file} or {formatted_file}");
-        raise ;
+        raise;
     } except Exception as e {
         print(f"Error comparing files: {e}");
-        raise ;
+        raise;
     }
 }
 
@@ -91,7 +91,7 @@ def micro_suite_test(filename: str, auto_lint: bool = False) {
         if before and after {
             print("\n".join(unified_diff(before.splitlines(), after.splitlines())));
         }
-        raise e ;
+        raise e;
     }
 }
 
@@ -132,7 +132,7 @@ test "fstring comment not injected" {
         if in_fstring and "# Standalone comment" in line {
             raise AssertionError(
                 "Comment was injected inside an f-string:\n" + formatted
-            ) ;
+            );
         }
         if in_fstring and '";' in stripped {
             in_fstring = False;

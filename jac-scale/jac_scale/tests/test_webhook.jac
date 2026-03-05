@@ -142,7 +142,7 @@ def _start_server(
             raise RuntimeError(
                 f"Server process terminated unexpectedly.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
-            ) ;
+            );
         }
 
         try {
@@ -168,7 +168,7 @@ def _start_server(
         raise RuntimeError(
             f"Server failed to start after {max_attempts} attempts.\n"
             f"STDOUT: {stdout}\nSTDERR: {stderr}"
-        ) ;
+        );
     }
 
     return server_process;

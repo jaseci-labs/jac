@@ -656,18 +656,18 @@ obj JacCompiler {
         llvm.initialize_native_asmprinter();
         # Parse platform header: [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
         if len(section_data) < 2 {
-            raise ValueError("SEC_NATIVE_OBJ section too short") ;
+            raise ValueError("SEC_NATIVE_OBJ section too short");
         }
         (triple_len, ) = _struct.unpack_from('<H', section_data, 0);
         if len(section_data) < 2 + triple_len {
-            raise ValueError("SEC_NATIVE_OBJ triple truncated") ;
+            raise ValueError("SEC_NATIVE_OBJ triple truncated");
         }
         cached_triple = section_data[2:2 + triple_len].decode('utf-8');
         current_triple = llvm.get_default_triple();
         if cached_triple != current_triple {
             raise ValueError(
                 f"Platform mismatch: cached={cached_triple}, current={current_triple}"
-            ) ;
+            );
         }
         bitcode = section_data[2 + triple_len:];
         # Load shared libraries for symbol resolution

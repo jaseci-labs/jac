@@ -6,7 +6,7 @@ impl ToolCall.__call__ -> ToolCallResultMsg {
     if self.args is not None {
         result = self.tool(**self.args);
     } else {
-        raise ByLLMError("ToolCall.args is None, expected a dictionary") ;
+        raise ByLLMError("ToolCall.args is None, expected a dictionary");
     }
     return ToolCallResultMsg(
         content=str(result), tool_call_id=self.call_id, name=self.tool.get_name(),

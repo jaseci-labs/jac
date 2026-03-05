@@ -149,7 +149,7 @@ impl ParamAssignmentTracker.match_positional_argument(
                 return param;
             }
         }
-        raise Exception('Too many positional arguments') ;
+        raise Exception('Too many positional arguments');
     }
 }
 
@@ -166,7 +166,7 @@ impl ParamAssignmentTracker.match_named_argument(
         }
         raise Exception(
             f"Named argument '{arg.key.sym_name}' does not match any parameter"
-        ) ;
+        );
     }
 }
 
@@ -213,14 +213,14 @@ impl ParamAssignmentTracker.lookup_named_parameter(
             self.matched_params.add(param);
             raise Exception(
                 f"Positional only parameter '{param.name}' cannot be matched with a named argument"
-            ) ;
+            );
         }
         if (param.param_kind not in (types.ParamKind.NORMAL, types.ParamKind.KWONLY)) {
             continue;
         }
         if (param.name == param_name) {
             if (param in self.matched_params) {
-                raise Exception(f"Parameter '{param.name}' already matched") ;
+                raise Exception(f"Parameter '{param.name}' already matched");
             }
             self.matched_params.add(param);
             return param;

@@ -1,7 +1,7 @@
 """Implementation for pyast_gen_pass constructs."""
 
 """Get the set of builtin names, cached after first successful access."""
-@ classmethod
+@classmethod
 impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
     if (cls._builtin_names is None) {
         try {
@@ -398,7 +398,7 @@ impl PyastGenPass.resolve_switch_pattern(
             )
         );
     } else {
-        raise self.ice('Unsupported switch pattern type') ;
+        raise self.ice('Unsupported switch pattern type');
     }
 }
 
@@ -621,7 +621,7 @@ impl PyastGenPass.exit_global_vars(self: PyastGenPass, nd: uni.GlobalVars) -> No
         if isinstance(doc, ast3.AST) {
             nd.gen.py_ast = [doc] + assigns_ast;
         } else {
-            raise self.ice() ;
+            raise self.ice();
         }
     } else {
         nd.gen.py_ast = self._flatten_ast_list([a.gen.py_ast for a in nd.assignments]);
@@ -746,7 +746,7 @@ impl PyastGenPass.exit_py_inline_code(self: PyastGenPass, nd: uni.PyInlineCode) 
         if isinstance(doc, ast3.AST) {
             nd.gen.py_ast = self.pyinline_sync([doc, *ast3.parse(nd.code.value).body]);
         } else {
-            raise self.ice() ;
+            raise self.ice();
         }
     } else {
         nd.gen.py_ast = self.pyinline_sync(
@@ -779,7 +779,7 @@ impl PyastGenPass.exit_import(self: PyastGenPass, nd: uni.Import) -> None {
     if nd.is_absorb {
         source = nd.items[0];
         if not isinstance(source, uni.ModulePath) {
-            raise self.ice() ;
+            raise self.ice();
         }
         module_name_parts = [p.value for p in source.path] if source.path else [];
         module_name = '.'.join(module_name_parts) if module_name_parts else None;
@@ -1033,7 +1033,7 @@ impl PyastGenPass.gen_llm_body(self: PyastGenPass, nd: uni.Ability) -> list[ast3
     } elif isinstance(nd.body, uni.Expr) {
         model_expr = cast(ast3.expr, nd.body.gen.py_ast[0]);
     } else {
-        raise self.ice('gen_llm_body called without model expression') ;
+        raise self.ice('gen_llm_body called without model expression');
     }
     caller: ast3.expr;
     if nd.method_owner {
@@ -1341,7 +1341,7 @@ impl PyastGenPass.exit_arch_has(self: PyastGenPass, nd: uni.ArchHas) -> None {
         if isinstance(doc, ast3.AST) {
             nd.gen.py_ast = [doc] + vars_py;
         } else {
-            raise self.ice() ;
+            raise self.ice();
         }
     } else {
         nd.gen.py_ast = vars_py;
@@ -1604,7 +1604,7 @@ impl PyastGenPass.exit_iter_for_stmt(self: PyastGenPass, nd: uni.IterForStmt) ->
     ) {
         body += [nd.count_by.gen.py_ast[0]];
     } else {
-        raise self.ice() ;
+        raise self.ice();
     }
     py_nodes.append(nd.iter.gen.py_ast[0]);
     py_nodes.append(
@@ -2206,7 +2206,7 @@ impl PyastGenPass.translate_jac_bin_op(
     self: PyastGenPass, nd: uni.BinaryExpr
 ) -> list[ast3.AST] {
     if isinstance(nd.op, (uni.DisconnectOp, uni.ConnectOp)) {
-        raise self.ice() ;
+        raise self.ice();
     } elif (nd.op.name in [Tok.PIPE_FWD, Tok.A_PIPE_FWD]) {
         func_node = uni.FuncCall(
             target=nd.right,
@@ -2449,7 +2449,7 @@ impl PyastGenPass.exit_multi_string(self: PyastGenPass, nd: uni.MultiString) -> 
             } elif (isinstance(i, uni.Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])) {
                 continue;
             } else {
-                raise self.ice('Multi string made of something weird.') ;
+                raise self.ice('Multi string made of something weird.');
             }
         }
         return pieces;

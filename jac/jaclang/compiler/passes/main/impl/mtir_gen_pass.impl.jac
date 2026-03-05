@@ -133,7 +133,7 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, uni.Enum) {
-        raise Exception(f"Symbol {symbol} is not an Enum.") ;
+        raise Exception(f"Symbol {symbol} is not an Enum.");
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
@@ -170,7 +170,7 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                                         enum_stmt.value
                                     ).__name__}. "
                                     f"Only int, str, float, and bool literals are allowed."
-                                ) ;
+                                );
                             }
                         }
                         # Get semantic string from symbol if available

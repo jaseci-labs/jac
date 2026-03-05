@@ -249,7 +249,7 @@ Usage:
         # do work
         pass
 """
-@ contextmanager
+@contextmanager
 impl JacConsole.spinner(text: str) -> object {
     _print(f"[dim]{text}...[/]", end='');
     sys.stdout.flush();

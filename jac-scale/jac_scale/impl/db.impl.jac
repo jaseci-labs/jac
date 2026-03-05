@@ -21,7 +21,7 @@ def _validate_not_read_only(col_name: str) -> None {
         raise PermissionError(
             f"Collection '{col_name}' is read-only and cannot be modified. "
             "This is a system collection managed internally."
-        ) ;
+        );
     }
 }
 
@@ -66,7 +66,7 @@ impl Db.get(key: str, col_name: str = 'default') -> dict | None {
         }
         return None;
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 impl Db.set(key: str, value: dict, col_name: str = 'default') -> str {
@@ -84,7 +84,7 @@ impl Db.set(key: str, value: dict, col_name: str = 'default') -> str {
         self.client.set(redis_key, json.dumps(value));
         return key;
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 impl Db.delete(key: str, col_name: str = 'default') -> int {
@@ -103,7 +103,7 @@ impl Db.delete(key: str, col_name: str = 'default') -> int {
     } elif self.db_type == DatabaseType.REDIS {
         return self.client.delete(self._get_redis_key(col_name, key));
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 impl Db.exists(key: str, col_name: str = 'default') -> bool {
@@ -123,7 +123,7 @@ impl Db.exists(key: str, col_name: str = 'default') -> bool {
     } elif self.db_type == DatabaseType.REDIS {
         return self.client.exists(self._get_redis_key(col_name, key)) > 0;
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 # ===== MONGODB-ONLY METHODS =====
@@ -132,7 +132,7 @@ impl Db.find_one(col_name: str, filter: dict) -> dict | None {
         raise NotImplementedError(
             "find_one() with filters is not supported for Redis. "
             "Redis is a key-value store. Use get(key) instead."
-        ) ;
+        );
     }
     return self._get_mongo_collection(col_name).find_one(filter);
 }
@@ -142,7 +142,7 @@ impl Db.find(col_name: str, filter: dict) -> Cursor | list {
         raise NotImplementedError(
             "find() with filters is not supported for Redis. "
             "Redis is a key-value store. Use scan_keys(pattern) for pattern matching."
-        ) ;
+        );
     }
     return self._get_mongo_collection(col_name).find(filter);
 }
@@ -153,7 +153,7 @@ impl Db.insert_one(
     if self.db_type == DatabaseType.REDIS {
         raise NotImplementedError(
             "insert_one() is not supported for Redis. Use set(key, value) instead."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).insert_one(document);
@@ -166,7 +166,7 @@ impl Db.update_one(
         raise NotImplementedError(
             "update_one() with filters is not supported for Redis. "
             "Use set(key, value) to update a value."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_one(
@@ -179,7 +179,7 @@ impl Db.delete_one(col_name: str, filter: dict) -> PyMongoDeleteResult | DeleteR
         raise NotImplementedError(
             "delete_one() with filters is not supported for Redis. "
             "Use delete(key) instead."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).delete_one(filter);
@@ -193,7 +193,7 @@ impl Db.insert_many(
         raise NotImplementedError(
             "insert_many() is not supported for Redis. "
             "Use set(key, value) in a loop or use Redis pipelines."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).insert_many(documents);
@@ -206,7 +206,7 @@ impl Db.update_many(
         raise NotImplementedError(
             "update_many() with filters is not supported for Redis. "
             "Redis does not support bulk updates with filters."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_many(
@@ -219,7 +219,7 @@ impl Db.delete_many(col_name: str, filter: dict) -> PyMongoDeleteResult | Delete
         raise NotImplementedError(
             "delete_many() with filters is not supported for Redis. "
             "Use scan_keys(pattern) to find keys, then delete them individually."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).delete_many(filter);
@@ -233,7 +233,7 @@ impl Db.find_by_id(col_name: str, id: str) -> dict | None {
         # For Redis, this is just an alias for get()
         return self.get(id, col_name);
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 impl Db.update_by_id(
@@ -243,7 +243,7 @@ impl Db.update_by_id(
         raise NotImplementedError(
             "update_by_id() is not supported for Redis. "
             "Use get(key) to retrieve, modify, then set(key, value)."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self._get_mongo_collection(col_name).update_one(
@@ -260,7 +260,7 @@ impl Db.delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResu
         deleted = self.delete(id, col_name);
         return DeleteResult(deleted_count=deleted);
     }
-    raise ValueError(f"Unsupported database type: {self.db_type}") ;
+    raise ValueError(f"Unsupported database type: {self.db_type}");
 }
 
 # ===== REDIS-ONLY METHODS =====
@@ -271,7 +271,7 @@ impl Db.set_with_ttl(
         raise NotImplementedError(
             "set_with_ttl() is not supported for MongoDB. "
             "MongoDB uses TTL indexes, not per-key expiration."
-        ) ;
+        );
     }
     _validate_not_read_only(col_name);
     return self.client.setex(
@@ -284,7 +284,7 @@ impl Db.incr(key: str, col_name: str = 'default') -> int {
         raise NotImplementedError(
             "incr() is not supported for MongoDB. "
             "Use update_one() with $inc operator instead."
-        ) ;
+        );
     }
     return self.client.incr(self._get_redis_key(col_name, key));
 }
@@ -294,7 +294,7 @@ impl Db.expire(key: str, seconds: int, col_name: str = 'default') -> bool {
         raise NotImplementedError(
             "expire() is not supported for MongoDB. "
             "MongoDB uses TTL indexes for document expiration."
-        ) ;
+        );
     }
     return self.client.expire(self._get_redis_key(col_name, key), seconds);
 }
@@ -304,7 +304,7 @@ impl Db.scan_keys(pattern: str, col_name: str = 'default') -> list[str] {
         raise NotImplementedError(
             "scan_keys() is not supported for MongoDB. "
             "Use find() with filters instead."
-        ) ;
+        );
     }
     # Build pattern with namespace
     full_pattern = self._get_redis_key(col_name, pattern);
@@ -335,7 +335,7 @@ impl Db.find_nodes(
         raise NotImplementedError(
             "find_nodes() is not supported for Redis. "
             "Redis stores serialized data without query capability."
-        ) ;
+        );
     }
     # Build MongoDB query that filters on archetype fields
     mongo_filter: dict = {"data.archetype.__type__": node_type};

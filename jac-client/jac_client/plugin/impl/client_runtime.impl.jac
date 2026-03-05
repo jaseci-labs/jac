@@ -201,7 +201,7 @@ impl __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> Any {
         }
         error_text = await response.text();
         walker_name = f"{walker}/{nodeId}" if nodeId else walker;
-        raise Exception(f"Walker {walker_name} failed: {error_text}") ;
+        raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
     return payload["data"] if payload["data"] else {};
@@ -221,12 +221,12 @@ impl __doFuncFetch(function_name: str, args: dict) -> Any {
     );
     if not response.ok {
         error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}") ;
+        raise Exception(f"Function {function_name} failed: {error_text}");
     }
     payload = await response.json();
     if not payload["ok"] {
         error_msg = payload["error"] if payload["error"] else "Unknown error";
-        raise Exception(f"Function {function_name} failed: {error_msg}") ;
+        raise Exception(f"Function {function_name} failed: {error_msg}");
     }
     result = None;
     try {

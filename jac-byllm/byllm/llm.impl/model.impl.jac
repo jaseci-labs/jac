@@ -56,17 +56,17 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = litellm.completion(api_key=self.api_key or None, **params);
         }
     } except litellm.exceptions.AuthenticationError as e {
-        raise AuthenticationError(str(e)) ;
+        raise AuthenticationError(str(e));
     } except openai.AuthenticationError as e {
-        raise AuthenticationError(str(e)) ;
+        raise AuthenticationError(str(e));
     } except litellm.exceptions.RateLimitError as e {
-        raise RateLimitError(str(e)) ;
+        raise RateLimitError(str(e));
     } except openai.RateLimitError as e {
-        raise RateLimitError(str(e)) ;
+        raise RateLimitError(str(e));
     } except litellm.exceptions.NotFoundError as e {
-        raise ModelNotFoundError(str(e)) ;
+        raise ModelNotFoundError(str(e));
     } except openai.NotFoundError as e {
-        raise ModelNotFoundError(str(e)) ;
+        raise ModelNotFoundError(str(e));
     }
     return response;
 }
@@ -87,17 +87,17 @@ impl Model.model_call_with_stream(params: dict) {
             );
         }
     } except litellm.exceptions.AuthenticationError as e {
-        raise AuthenticationError(str(e)) ;
+        raise AuthenticationError(str(e));
     } except openai.AuthenticationError as e {
-        raise AuthenticationError(str(e)) ;
+        raise AuthenticationError(str(e));
     } except litellm.exceptions.RateLimitError as e {
-        raise RateLimitError(str(e)) ;
+        raise RateLimitError(str(e));
     } except openai.RateLimitError as e {
-        raise RateLimitError(str(e)) ;
+        raise RateLimitError(str(e));
     } except litellm.exceptions.NotFoundError as e {
-        raise ModelNotFoundError(str(e)) ;
+        raise ModelNotFoundError(str(e));
     } except openai.NotFoundError as e {
-        raise ModelNotFoundError(str(e)) ;
+        raise ModelNotFoundError(str(e));
     }
     return response;
 }

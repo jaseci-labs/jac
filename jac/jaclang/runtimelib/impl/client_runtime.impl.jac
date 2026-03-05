@@ -369,7 +369,7 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     if not response.ok {
         error_text = await response.json();
         walker_name = f"{left}/{right}" if right else left;
-        raise Exception(f"Walker {walker_name} failed: {error_text}") ;
+        raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
     # Handle TransportResponse envelope format
@@ -391,7 +391,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     );
     if not response.ok {
         error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}") ;
+        raise Exception(f"Function {function_name} failed: {error_text}");
     }
     payload = JSON.parse(await response.text());
     # Handle TransportResponse envelope format

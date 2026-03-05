@@ -226,7 +226,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
         } else {
             raise UnknownToolError(
                 f"Attempted to call tool: '{tool_call.function.name}' which was not present."
-            ) ;
+            );
         }
     }
     return CompletionResult(output=output_value, tool_calls=tool_calls,);
@@ -261,7 +261,7 @@ Should return the raw API response object.
 impl BaseLLM.model_call_no_stream(params: dict) -> dict {
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call without streaming."
-    ) ;
+    );
 }
 
 """Make a direct model call with streaming.
@@ -272,7 +272,7 @@ Should return a generator that yields response chunks.
 impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] {
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call with streaming."
-    ) ;
+    );
 }
 
 """Stream the final answer after ReAct tool calls complete.

@@ -6,7 +6,7 @@ import from kubernetes { client }
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
     if (trimmed == '') {
-        raise ValueError('CPU quantity cannot be empty.') ;
+        raise ValueError('CPU quantity cannot be empty.');
     }
     lower = trimmed.lower();
     if lower.endswith('m') {
@@ -14,7 +14,7 @@ impl parse_cpu_quantity(quantity: str) -> float {
         if (value == '') {
             raise ValueError(
                 f"CPU quantity '{quantity}' is missing a numeric component."
-            ) ;
+            );
         }
         return float(value) / 1000.0;
     }
@@ -24,7 +24,7 @@ impl parse_cpu_quantity(quantity: str) -> float {
 impl parse_memory_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
     if (trimmed == '') {
-        raise ValueError('Memory quantity cannot be empty.') ;
+        raise ValueError('Memory quantity cannot be empty.');
     }
     suffixes = [
         ('EI', float(1024 ** 6)),
@@ -47,7 +47,7 @@ impl parse_memory_quantity(quantity: str) -> float {
             if (number_part == '') {
                 raise ValueError(
                     f"Memory quantity '{quantity}' is missing a numeric component."
-                ) ;
+                );
             }
             return float(number_part) * multiplier;
         }
@@ -66,12 +66,12 @@ impl validate_resource_limits(
             cpu_request_value = parse_cpu_quantity(cpu_request);
             cpu_limit_value = parse_cpu_quantity(cpu_limit);
         } except ValueError as exc {
-            raise ValueError(f"Invalid CPU quantity: {exc}") ;
+            raise ValueError(f"Invalid CPU quantity: {exc}");
         }
         if (cpu_limit_value < cpu_request_value) {
             raise ValueError(
                 f"K8s_CPU_LIMIT ({cpu_limit}) must not be lower than K8s_CPU_REQUEST ({cpu_request})."
-            ) ;
+            );
         }
     }
     if (memory_request and memory_limit) {
@@ -79,12 +79,12 @@ impl validate_resource_limits(
             memory_request_value = parse_memory_quantity(memory_request);
             memory_limit_value = parse_memory_quantity(memory_limit);
         } except ValueError as exc {
-            raise ValueError(f"Invalid memory quantity: {exc}") ;
+            raise ValueError(f"Invalid memory quantity: {exc}");
         }
         if (memory_limit_value < memory_request_value) {
             raise ValueError(
                 f"K8s_MEMORY_LIMIT ({memory_limit}) must not be lower than K8s_MEMORY_REQUEST ({memory_request})."
-            ) ;
+            );
         }
     }
 }
@@ -144,7 +144,7 @@ impl sync_code_to_pvc(
             wait_for_pod_deletion(core_v1, namespace, sync_pod_name);
             core_v1.create_namespaced_pod(namespace, pod_body);
         } else {
-            raise ;
+            raise;
         }
     }
     wait_for_pod_phase(core_v1, namespace, sync_pod_name, {'Running'});
@@ -223,7 +223,7 @@ impl sync_code_to_pvc(
             wait_for_pod_deletion(core_v1, namespace, sync_pod_name);
         } except ApiException as exc {
             if (exc.status != 404) {
-                raise ;
+                raise;
             }
         }
     }
@@ -234,7 +234,7 @@ impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None
     import shutil;
     import subprocess;
     if (shutil.which('kubectl') is None) {
-        raise RuntimeError('kubectl is required to sync code to the PVC.') ;
+        raise RuntimeError('kubectl is required to sync code to the PVC.');
     }
     try {
         subprocess.run(
@@ -243,7 +243,7 @@ impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None
     } except subprocess.CalledProcessError as exc {
         raise exc from RuntimeError(
             f"kubectl command failed: {' '.join(['kubectl', *args])}"
-        ) ;
+        );
     }
 }
 
@@ -259,11 +259,11 @@ impl wait_for_pod_deletion(
             if (exc.status == 404) {
                 return;
             }
-            raise ;
+            raise;
         }
         time.sleep(2);
     }
-    raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.") ;
+    raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.");
 }
 
 """Poll the pod until it reaches one of the desired phases."""
@@ -283,20 +283,20 @@ impl wait_for_pod_phase(
                 time.sleep(2);
                 continue;
             }
-            raise ;
+            raise;
         }
         phase = (pod.status.phase or '').strip();
         if (phase in target_phases) {
             return;
         }
         if (phase == 'Failed') {
-            raise RuntimeError(f"Sync pod '{pod_name}' entered Failed state.") ;
+            raise RuntimeError(f"Sync pod '{pod_name}' entered Failed state.");
         }
         time.sleep(2);
     }
     raise TimeoutError(
         f"Timed out while waiting for pod '{pod_name}' to reach phase {target_phases}."
-    ) ;
+    );
 }
 
 """Create a PersistentVolumeClaim if it does not already exist."""
@@ -313,7 +313,7 @@ impl ensure_pvc_exists(
         return;
     } except ApiException as exc {
         if (exc.status != 404) {
-            raise ;
+            raise;
         }
     }
     import from typing { Any }
@@ -401,7 +401,7 @@ impl check_node_ports_available(
             f"Please choose different port values in your KubernetesConfig "
             f"(node_port, prometheus_node_port, grafana_node_port, "
             f"redis_insight_node_port, mongo_express_node_port) and try again."
-        ) ;
+        );
     }
 }
 
@@ -541,7 +541,7 @@ impl create_or_update_configmap(
         if (e.status == 404) {
             v1.create_namespaced_config_map(namespace, body);
         } else {
-            raise ;
+            raise;
         }
     }
 }
@@ -561,7 +561,7 @@ impl exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo] {
 """
 impl create_tarball(source_dir: str, tar_path: str) -> None {
     if not os.path.exists(source_dir) {
-        raise FileNotFoundError(f"Source directory not found: {source_dir}") ;
+        raise FileNotFoundError(f"Source directory not found: {source_dir}");
     }
     os.makedirs((os.path.dirname(tar_path) or '.'), exist_ok=True);
     with tarfile.open(tar_path, 'w:gz') as tar {
@@ -587,7 +587,7 @@ impl delete_namespace(namespace: str) -> None {
         if (e.status == 404) {
             console.print(f"Namespace '{namespace}' not found, skipping deletion.");
         } else {
-            raise ;
+            raise;
         }
     }
 }
@@ -621,7 +621,7 @@ impl ensure_namespace_exists(namespace: str) -> None {
             );
             console.print(f"Namespace '{namespace}' created successfully.");
         } else {
-            raise ;
+            raise;
         }
     }
 }
@@ -636,7 +636,7 @@ impl delete_if_exists(
         if (e.status == 404) {
             ;
         } else {
-            raise ;
+            raise;
         }
     }
 }
@@ -651,7 +651,7 @@ impl check_K8s_status -> None {
         try {
             config.load_incluster_config();
         } except ConfigException {
-            raise None from Exception('Kubernetes is not configured on this machine.') ;
+            raise None from Exception('Kubernetes is not configured on this machine.');
         }
     }
     try {
@@ -660,7 +660,7 @@ impl check_K8s_status -> None {
     } except (ApiException, urllib3.exceptions.HTTPError, OSError) {
         raise None from Exception(
             'Unable to connect to kubernetes APi.Check whether kubernetes cluster is up'
-        ) ;
+        );
     }
 }
 
@@ -706,7 +706,7 @@ impl create_k8s_secret(
                 name=secret_name, namespace=namespace, body=secret_body
             );
         } else {
-            raise ;
+            raise;
         }
     }
     return True;
@@ -720,7 +720,7 @@ impl delete_k8s_secret(
         core_v1.delete_namespaced_secret(name=secret_name, namespace=namespace);
     } except ApiException as e {
         if e.status != 404 {
-            raise ;
+            raise;
         }
     }
 }

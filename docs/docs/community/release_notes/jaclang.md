@@ -4,7 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
-- 19 small refactors/changes.
+- 20 small refactors/changes.
+- **Fix: Formatter Semicolon & Decorator Spacing**: Fixed spacing bugs in the formatter where `@` decorators produced `@ decorator` instead of `@decorator`, and statement semicolons produced `raise ;` instead of `raise;`.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
 - **Fix: LSP Impl File Diagnostics**: Editing `.impl.jac` or `.test.jac` now shows errors correctly across all related files.
@@ -40,6 +41,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **New: Decorator Support on `test` Blocks**: `test` blocks now accept decorators using the same `@decorator` syntax as abilities. Example: `@skip @timeout(5000) test "slow operation" { ... }`. This enables patterns like `@skip`, `@timeout`, `@tag`, or any custom decorator on tests.
 - **Fix: String Literal Type Checking**: Fixed false positive errors for `str.split()[0] + " suffix"`, string reassignment (`msg += " world"`), `LiteralString` with `len()`, and byte string (`b"..."`) type inference.
 - **Centralized Type Layout & Symbol Resolution**: Extracted class hierarchy computation (C3 MRO, field layout, vtable structure) and symbol resolution utilities into shared modules (`layout_pass.jac`, `symbol_utils.jac`) that all backends query. The native LLVM backend and ES backend now delegate to these centralized implementations instead of maintaining independent copies of the C3 linearization algorithm, hierarchy extraction, symbol lookup, and field collection logic (~128 lines of duplicated code removed across backends).
+- **CType Struct Contract for `obj`**: Formalized `obj` archetypes as CType-compatible structs with a strict layout contract. All `obj` fields must use layout-compatible types: primitives (`int`, `float`, `bool`, `str`, `bytes`, fixed-width `i8`–`u64`, `f32`, `f64`), other `obj` types (as pointers), enums, typed collections (`list[T]`, `dict[K,V]`, `set[T]`), optional types (`T | None`), or function pointer signatures. The layout pass now validates field types at compile time with warnings for non-compatible types (e.g., `Any`, untyped fields). Added function pointer type resolution in the native LLVM backend (`FuncSignature` → `ir.FunctionType.as_pointer()`), extended `NativeFieldInfo` with function pointer metadata (`is_func_ptr`, `func_param_types`, `func_ret_type`), and updated the zero-copy ctypes marshalling layer to wrap function pointer fields as callable `CFUNCTYPE` objects on access.
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
 ## jaclang 0.11.3 (Latest Release)
