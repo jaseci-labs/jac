@@ -55,6 +55,15 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
+            # Track list element types for global lists
+            if isinstance(var_type, ir.PointerType) {
+                for (ename, ltype) in self.list_types.items() {
+                    if var_type == ltype.as_pointer() {
+                        self.var_list_elem_type[var_name] = ename;
+                        break;
+                    }
+                }
+            }
             # Track dict types for global dicts
             if isinstance(var_type, ir.PointerType) {
                 for (dict_key, dtype) in self.dict_types.items() {

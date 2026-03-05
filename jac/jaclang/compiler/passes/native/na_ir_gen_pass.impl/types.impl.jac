@@ -398,6 +398,10 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                 }
             }
         }
+        # Null pointer → integer -1 sentinel (e.g., None for optional enum T | None)
+        if isinstance(target_type, ir.IntType) and isinstance(val, ir.Constant) {
+            return ir.Constant(target_type, -1);
+        }
     }
     # Struct value → struct pointer (C value → Jac pointer at call boundary)
     if not isinstance(val.type, ir.PointerType)

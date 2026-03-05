@@ -40,4 +40,16 @@ else:
     # No disabling - load all plugins normally
     plugin_manager.load_setuptools_entrypoints("jac")
 
+# Schedule deferred native acceleration if autonative is enabled in jac.toml
+try:
+    from jaclang.project.config import get_config as _get_jac_config
+
+    _jac_cfg = _get_jac_config()
+    if _jac_cfg and _jac_cfg.run.autonative:
+        from jaclang.jac0core.native_accel import schedule_native_acceleration
+
+        schedule_native_acceleration()
+except Exception:
+    pass  # Config not available or acceleration failed — continue normally
+
 __all__ = ["JacRuntimeInterface", "JacRuntime"]

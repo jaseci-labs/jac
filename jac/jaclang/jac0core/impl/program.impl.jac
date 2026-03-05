@@ -17,6 +17,7 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
+    self._native_cache: dict = {};
 }
 
 """Get a JacCompiler instance for this program."""

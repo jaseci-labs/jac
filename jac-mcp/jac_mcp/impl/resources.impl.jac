@@ -286,7 +286,7 @@ impl ResourceProvider.index_resources -> None {
             "path": str(spec_path)
         };
     }
-    tokens_path = repo_root / "jac" / "jaclang" / "jac0core" / "parser" / "tokens.jac";
+    tokens_path = repo_root / "jac" / "jaclang" / "jac0core" / "parser" / "tokens.na.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
             "uri": "jac://grammar/tokens",
@@ -386,7 +386,7 @@ impl ResourceProvider._index_bundled_docs -> None {
         };
     }
     # Token definitions
-    tokens_path = docs_dir / "tokens.jac";
+    tokens_path = docs_dir / "tokens.na.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
             "uri": "jac://grammar/tokens",

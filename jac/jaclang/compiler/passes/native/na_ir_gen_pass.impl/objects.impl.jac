@@ -393,6 +393,14 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                             self.field_type_node[arch_name] = {};
                         }
                         self.field_type_node[arch_name][fname] = var.type_tag.tag;
+                        # Track enum-typed fields
+                        ftag_name = self._get_name(var.type_tag.tag);
+                        if ftag_name is not None and ftag_name in self.enum_types {
+                            if arch_name not in self.struct_field_enum_type {
+                                self.struct_field_enum_type[arch_name] = {};
+                            }
+                            self.struct_field_enum_type[arch_name][fname] = ftag_name;
+                        }
                     }
                     new_idx = len(field_types);
                     field_types.append(ftype);
@@ -479,6 +487,17 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
     self.type_var_map["self"] = arch_name;
+    # Re-populate field list/type info from archetype has-declarations
+    if arch_name in self.field_type_node {
+        for (fname, ftn) in self.field_type_node[arch_name].items() {
+            qname = f"self.{fname}";
+            self.var_type_node[qname] = ftn;
+            ename = self._get_list_elem_from_type_node(ftn);
+            if ename is not None {
+                self.var_list_elem_type[qname] = ename;
+            }
+        }
+    }
     # Store other parameters
     sig = method.signature;
     for (i, p) in enumerate(sig.get_parameters()) {
@@ -517,6 +536,10 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
             }
             if tag_name is not None and tag_name in self.struct_types {
                 self.type_var_map[param_name] = tag_name;
+            }
+            # Track enum type for enum-typed method parameters
+            if tag_name is not None and tag_name in self.enum_types {
+                self.var_enum_type[param_name] = tag_name;
             }
         }
     }
@@ -580,6 +603,17 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
     self.type_var_map["self"] = arch_name;
+    # Re-populate field list/type info from archetype has-declarations
+    if arch_name in self.field_type_node {
+        for (fname, ftn) in self.field_type_node[arch_name].items() {
+            qname = f"self.{fname}";
+            self.var_type_node[qname] = ftn;
+            ename = self._get_list_elem_from_type_node(ftn);
+            if ename is not None {
+                self.var_list_elem_type[qname] = ename;
+            }
+        }
+    }
     # Generate body — handle both list bodies and ImplDef wrapper nodes
     body = method.body;
     if isinstance(body, (list, tuple)) {
@@ -955,9 +989,22 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Dict methods (simple name target)
+    # Dict methods (simple name target or global dict)
+    dict_type_key: (str | None) = None;
     if target_name is not None and target_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[target_name];
+    }
+    if dict_type_key is None and target_name is not None {
+        # Fallback: infer dict type from LLVM type (handles globals after var_dict_type reset)
+        probe_val = self._codegen_expr(trailer.target);
+        if probe_val is not None {
+            dict_type_info = self._infer_dict_type(probe_val);
+            if dict_type_info is not None {
+                dict_type_key = f"{dict_type_info[0]}:{dict_type_info[1]}";
+            }
+        }
+    }
+    if dict_type_key is not None {
         dict_val = self._codegen_expr(trailer.target);
         if dict_val is not None {
             params = nd.params or [];

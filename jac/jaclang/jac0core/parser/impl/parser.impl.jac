@@ -392,7 +392,6 @@ impl Parser.expect_name -> Token {
 }
 
 impl Parser.make_uni_token(tok: Token) -> UniToken {
-    # Convert parser Token into unitree UniToken
     tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
         if tok.kind in TOKEN_KIND_TO_TOK
         else tok.kind.value;

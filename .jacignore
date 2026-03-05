@@ -204,3 +204,10 @@ async_compr.jac
 checker_parameterless_init.jac
 checker_getattr_support.jac
 static_analysis_pass.impl.jac
+na_enum_export.na.jac
+na_enum_import.na.jac
+lexer.na.jac
+native_marshal.jac
+tokens.na.jac
+string_enums.na.jac
+test_native_lexer.jac
