@@ -7,7 +7,7 @@ cl obj ButtonProps {
     has color: str = "primary";
 }
 
-cl def app() {
+cl def app() -> JsxElement {
     props = ButtonProps(label="Tap Me", color="primary");
     return <div class="app">
         <h1>

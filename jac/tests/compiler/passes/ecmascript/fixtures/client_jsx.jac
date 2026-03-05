@@ -11,7 +11,7 @@ cl walker:pub MyComponent {
     has title: str = "My Component";
 }
 
-cl def:pub component() {
+cl def:pub component() -> JsxElement {
     return <div class="box">
         <h1>
             Hello

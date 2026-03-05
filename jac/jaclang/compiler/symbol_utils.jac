@@ -107,21 +107,24 @@ Handles isinstance, None checks, truthiness, walrus, boolean ops.
 """
 def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     symbols: set[str] = set();
-    # Pattern: isinstance(x, T) — collect 'x'
+    # Pattern: isinstance(x, T) or isinstance(x.attr, T) — collect narrowing key
     if isinstance(condition, uni.FuncCall) {
         if (
             isinstance(condition.target, uni.Name)
             and condition.target.value == "isinstance"
             and len(condition.params) >= 1
-            and isinstance(condition.params[0], uni.Name)
         ) {
-            symbols.add(condition.params[0].value);
+            key = build_narrowing_key(condition.params[0]);
+            if key {
+                symbols.add(key);
+            }
         }
     }
-    # Pattern: x is None / x is not None — collect 'x'
+    # Pattern: x is None / x.attr is None — collect narrowing key
     elif isinstance(condition, uni.CompareExpr) {
-        if isinstance(condition.left, uni.Name) {
-            symbols.add(condition.left.value);
+        key = build_narrowing_key(condition.left);
+        if key {
+            symbols.add(key);
         }
     }
     # Pattern: not <condition> — recurse
@@ -139,9 +142,12 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     and isinstance(condition.value, uni.Expr) {
         symbols.update(collect_narrowing_symbols(condition.value));
     }
-    # Pattern: x (truthiness check like `if val:`) — collect 'x'
-    elif isinstance(condition, uni.Name) {
-        symbols.add(condition.value);
+    # Pattern: x or x.attr (truthiness check) — collect narrowing key
+    elif isinstance(condition, (uni.Name, uni.AtomTrailer)) {
+        key = build_narrowing_key(condition);
+        if key {
+            symbols.add(key);
+        }
     }
     # Pattern: (x := expr) walrus operator — collect 'x'
     elif (
@@ -155,18 +161,43 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     return symbols;
 }
 
+"""Build a narrowing key for an expression (e.g., "x", "self.foo", "a.b.c").
+
+Returns None if the expression is not suitable for narrowing tracking.
+Used for CFG-based assignment narrowing of attribute access chains.
+"""
+def build_narrowing_key(expr: uni.Expr) -> str | None {
+    if isinstance(expr, uni.Name) {
+        return expr.value;
+    }
+    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        # Build path like "x.foo.bar"
+        base_key = build_narrowing_key(expr.target);
+        if base_key and isinstance(expr.right, uni.Name) {
+            return f"{base_key}.{expr.right.value}";
+        }
+    }
+    return None;
+}
+
 """Collect all symbols assigned/bound in a statement.
 
 Extracted from CFGBuildPass._collect_assigned_symbols.
-Handles assignments, for-loops, and walrus operators.
+Handles assignments, for-loops, walrus operators, and attribute access chains.
 """
 def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
     symbols: set[str] = set();
-    # Assignment: x = ...
+    # Assignment: x = ... or self.attr = ...
     if isinstance(nd, uni.Assignment) {
         for target in nd.target {
             if isinstance(target, uni.Name) {
                 symbols.add(target.value);
+            } elif isinstance(target, uni.AtomTrailer) {
+                # Handle attribute access: self._doc_ir = ... -> "self._doc_ir"
+                key = build_narrowing_key(target);
+                if key {
+                    symbols.add(key);
+                }
             }
         }
     }

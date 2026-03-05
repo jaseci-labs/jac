@@ -146,8 +146,10 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             if expr.is_attr {  # <expr>.member
                 # Check for full expr narrowing: `if c.field is not None: use(c.field)`
                 # We still do member lookup below for IDE features (symbol, go-to-def)
+                # Try scope-based narrowing first, then CFG-based for attribute assignments.
                 full_narrowed: TypeBase | None = None;
-                if full_key := self.get_narrowing_key(expr) {
+                full_key: str | None = self.get_narrowing_key(expr);
+                if full_key {
                     full_narrowed = self.get_scope_narrowing(full_key);
                 }
                 # Member lookup on (narrowed) base type
@@ -296,6 +298,14 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         #
                         # expr_type = self._set_symbol_to_expr(expr.right, member.symbol);
                         member.symbol.add_use(expr.right);
+                        # Try CFG-based narrowing if scope narrowing didn't find anything.
+                        # This handles attribute assignments: self._doc_ir = Text()
+                        if full_narrowed is None and full_key {
+                            declared = overloaded_ty or member_ty;
+                            full_narrowed = self.get_narrowed_type_for_key(
+                                full_key, declared, expr
+                            );
+                        }
                         # Use narrowed type for hover/IDE if available, otherwise declared type
                         expr.right.type = full_narrowed or overloaded_ty or member_ty;
                         return expr.right.type;
@@ -1496,6 +1506,46 @@ impl TypeEvaluator.get_type_of_expression(node_: uni.Expr) -> TypeBase {
     return result;
 }
 
+"""Get the declared type of an attribute access, without narrowing.
+
+Used for assignment LHS where we need the declared type, not the narrowed type.
+For example, in `if self._doc_ir is None: self._doc_ir = Text()`, the LHS
+should use the declared type `Doc | None`, not the narrowed type `None`.
+"""
+impl TypeEvaluator.get_declared_member_type(node_: uni.AtomTrailer) -> TypeBase {
+    if not node_.is_attr {
+        return self.get_type_of_expression(node_);
+    }
+    # Get the base type (without narrowing for the full expression)
+    base_type = self.get_type_of_expression(node_.target);
+    if not isinstance(node_.right, uni.Name) {
+        return types.UnknownType();
+    }
+    member_name = node_.right.value;
+    # Look up the member in the base type
+    if base_type.is_class_instance() {
+        assert isinstance(base_type, types.ClassType);
+        if member := self._lookup_object_member(base_type, member_name) {
+            # Return declared type without narrowing
+            member_ty = self.get_type_of_symbol(member.symbol);
+            # Handle properties
+            if self._is_symbol_property(member.symbol) {
+                if isinstance(member_ty, types.FunctionType)
+                and member_ty.return_type {
+                    return member_ty.return_type;
+                }
+            }
+            return member_ty;
+        }
+    } elif base_type.is_instantiable_class() {
+        assert isinstance(base_type, types.ClassType);
+        if member := self._lookup_class_member(base_type, member_name) {
+            return self.get_type_of_symbol(member.symbol);
+        }
+    }
+    return types.UnknownType();
+}
+
 """Pop a symbol from the resolution stack."""
 impl TypeEvaluator.pop_symbol_resolution(symbol: uni.Symbol) -> bool {
     popped_entry = self.symbol_resolution_stack.pop();
@@ -1901,6 +1951,170 @@ impl TypeEvaluator._compute_narrowed_at(
             has_unnarrowed_pred = True;
         }
     }
+    # Merge incoming types.
+    result: TypeBase | None = None;
+    if len(incoming_types) == 0 {
+        result = None;
+    } elif has_unnarrowed_pred {
+        # Some predecessor has no narrowing -- widen to declared type.
+        result = None;
+    } elif len(incoming_types) == 1 {
+        result = incoming_types[0];
+    } else {
+        result = self._union_narrowed_types(incoming_types);
+    }
+    self._narrowing_cache[cache_key] = result;
+    visited.discard(stmt_id);
+    return result;
+}
+
+"""CFG-based narrowing for attribute access chains (e.g., self._doc_ir).
+
+Unlike get_narrowed_type which uses Symbol objects, this uses string keys
+to support narrowing of attribute accesses like self._doc_ir after assignment.
+"""
+impl TypeEvaluator.get_narrowed_type_for_key(
+    key: str, declared_type: TypeBase, at_node: uni.UniNode
+) -> TypeBase | None {
+    # Performance optimization: Only do CFG walk for types that can be narrowed.
+    if not isinstance(declared_type, (types.UnionType, types.ClassType)) {
+        return None;
+    }
+    # Find the enclosing CodeBlockStmt (CFG node) for this node.
+    stmt: uni.CodeBlockStmt | None = None;
+    if isinstance(at_node, uni.CodeBlockStmt) {
+        stmt = at_node;
+    } else {
+        stmt = at_node.find_parent_of_type(uni.CodeBlockStmt);
+    }
+    if stmt is None {
+        return None;
+    }
+    return self._compute_narrowed_at_for_key(key, declared_type, stmt, set());
+}
+
+"""Backward CFG walk for key-based narrowing.
+
+Similar to _compute_narrowed_at but matches by expression key instead of symbol.
+Handles:
+1. AtomTrailer assignments: self._doc_ir = Text() narrows self._doc_ir to Text
+2. None checks in conditions: if self._doc_ir is not None
+"""
+impl TypeEvaluator._compute_narrowed_at_for_key(
+    key: str, declared_type: TypeBase, stmt: uni.UniCFGNode, visited: set
+) -> TypeBase | None {
+    import from jaclang.compiler.symbol_utils { build_narrowing_key }
+    import from jaclang.jac0core.constant { Tokens as Tok }
+
+    cache_key = (id(stmt), f"key:{key}");
+    if cache_key in self._narrowing_cache {
+        return self._narrowing_cache[cache_key];
+    }
+    stmt_id = id(stmt);
+    if stmt_id in visited {
+        return None;  # Cycle (back-edge in loop) -- conservative
+    }
+    # Depth limit to prevent very deep recursion in large modules.
+    if len(visited) > 64 {
+        self._narrowing_cache[cache_key] = None;
+        return None;
+    }
+    visited.add(stmt_id);
+
+    incoming_types: list[TypeBase] = [];
+    has_unnarrowed_pred = False;
+
+    for pred in stmt.bb_in {
+        # Optimization: skip branches where key isn't affected
+        if key not in pred.affected_symbols {
+            pred_narrowed = self._compute_narrowed_at_for_key(
+                key, declared_type, pred, visited
+            );
+            if pred_narrowed is not None {
+                incoming_types.append(pred_narrowed);
+            } else {
+                has_unnarrowed_pred = True;
+            }
+            continue;
+        }
+
+        # Check if predecessor is IfStmt/ElseIf with narrowing condition.
+        if isinstance(pred, (uni.IfStmt, uni.ElseIf)) and pred.condition {
+            # Check for None check: `if self._doc_ir is not None`
+            edge_type = self._classify_edge(pred, stmt) if isinstance(pred, uni.IfStmt) else "true";
+
+            cond = pred.condition;
+            # Handle parentheses
+            while isinstance(cond, uni.AtomUnit) and cond.value {
+                cond = cond.value;
+            }
+
+            # Check for: key is None / key is not None
+            if (
+                isinstance(cond, uni.CompareExpr)
+                and len(cond.ops) == 1
+                and len(cond.rights) == 1
+                and isinstance(cond.rights[0], uni.Null)
+            ) {
+                cond_key = self.get_narrowing_key(cond.left);
+                if cond_key == key
+                and self.prefetch
+                and self.prefetch.none_type_class {
+                    none_type = self._convert_to_instance(self.prefetch.none_type_class);
+
+                    if cond.ops[0].name == Tok.KW_ISN {  # is not None
+                        if edge_type == "true" {
+                            # True branch: exclude None
+                            if self._union_contains_none(declared_type) {
+                                narrowed = self.exclude_type_from_union(declared_type, none_type);
+                                incoming_types.append(narrowed);
+                                continue;
+                            }
+                        }
+                    } elif cond.ops[0].name == Tok.KW_IS {  # is None
+                        if edge_type == "false" {
+                            # False branch of "is None" means not None
+                            if self._union_contains_none(declared_type) {
+                                narrowed = self.exclude_type_from_union(declared_type, none_type);
+                                incoming_types.append(narrowed);
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        # Check if predecessor is an Assignment to this key.
+        # e.g., self._doc_ir = Text('') narrows self._doc_ir to Text
+        if isinstance(pred, uni.Assignment) and pred.value {
+            for target in pred.target {
+                target_key = build_narrowing_key(target);
+                if target_key == key {
+                    # Get the type of the assigned value
+                    assigned_type = self.get_type_of_expression(pred.value);
+                    if assigned_type and not isinstance(assigned_type, types.UnknownType) {
+                        incoming_types.append(assigned_type);
+                        break;
+                    }
+                }
+            }
+            if incoming_types {
+                continue;
+            }
+        }
+
+        # No narrowing from this predecessor; propagate recursively.
+        pred_narrowed = self._compute_narrowed_at_for_key(
+            key, declared_type, pred, visited
+        );
+        if pred_narrowed is not None {
+            incoming_types.append(pred_narrowed);
+        } else {
+            has_unnarrowed_pred = True;
+        }
+    }
+
     # Merge incoming types.
     result: TypeBase | None = None;
     if len(incoming_types) == 0 {

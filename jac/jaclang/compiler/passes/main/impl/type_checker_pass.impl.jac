@@ -133,10 +133,17 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         # For assignment targets, use the declared symbol type (not the
         # narrowed type). Narrowing reflects the *current* value; the
         # variable's declared type determines what can be assigned to it.
+        # For assignment LHS, we use declared type, not narrowed type.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
             # Cache the type on the Name node for hover info
             target.type = left_type;
+        } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+            # Attribute access: self._doc_ir = ...
+            # Use declared member type, not narrowed type.
+            # get_type_of_expression returns narrowed type inside if blocks,
+            # but for assignment LHS we need the declared type.
+            left_type = self.evaluator.get_declared_member_type(target);
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
             self._eval_unpacking_names(target);

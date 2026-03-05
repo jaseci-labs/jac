@@ -13,9 +13,7 @@ clib_import.na.jac
 clib_import_na_block.jac
 clib_struct_coerce.na.jac
 client.jac
-client_jsx.jac
 client_runtime.cl.jac
-codeinfo.jac
 comment_injection_pass.impl.jac
 comment_injection_pass.jac
 comment_normalize_stress_test.jac

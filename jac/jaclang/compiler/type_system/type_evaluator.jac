@@ -127,6 +127,9 @@ obj TypeEvaluator {
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
+    # Get the declared type of an attribute access (without narrowing).
+    # Used for assignment LHS where we need the declared type, not narrowed.
+    def get_declared_member_type(node_: uni.AtomTrailer) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
     # Comments from pyright:
@@ -260,6 +263,13 @@ obj TypeEvaluator {
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(
         symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+    ) -> TypeBase | None;
+    # Key-based CFG narrowing for attribute access chains (e.g., self._doc_ir)
+    def get_narrowed_type_for_key(
+        key: str, declared_type: TypeBase, at_node: uni.UniNode
+    ) -> TypeBase | None;
+    def _compute_narrowed_at_for_key(
+        key: str, declared_type: TypeBase, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
