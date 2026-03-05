@@ -47,6 +47,7 @@ obj PrefetchedTypes {
         int_class: TypeBase | None = None,
         float_class: TypeBase | None = None,
         str_class: TypeBase | None = None,
+        bytes_class: TypeBase | None = None,
         dict_class: TypeBase | None = None,
         list_class: TypeBase | None = None,
         module_type_class: TypeBase | None = None,
@@ -115,6 +116,7 @@ obj TypeEvaluator {
     def _import_module_from_path(path: str) -> uni.Module;
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
+    def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
@@ -217,6 +219,10 @@ obj TypeEvaluator {
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
 
+    def _build_field_params(
+        class_type: types.ClassType, skip_deferred: bool = True
+    ) -> dict[str, types.Parameter];
+
     def _create_dataclass_init_method(
         class_type: types.ClassType
     ) -> types.FunctionType;
@@ -224,6 +230,10 @@ obj TypeEvaluator {
     def _create_namedtuple_new_method(
         class_type: types.ClassType
     ) -> types.FunctionType;
+
+    def _create_special_builtin_type(
+        name: str, base_class: types.ClassType
+    ) -> types.ClassType;
 
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
     def _get_method_with_overloads(

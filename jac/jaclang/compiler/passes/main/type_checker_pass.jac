@@ -42,4 +42,5 @@ class TypeCheckPass(UniPass) {
     def exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None;
     def exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None;
     def exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None;
+    def _eval_unpacking_names(self: TypeCheckPass, container: uni.Expr) -> None;
 }

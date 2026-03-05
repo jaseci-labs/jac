@@ -1,6 +1,5 @@
 """Layout pass implementation — computes class hierarchy, C3 MRO,
 field layout, and vtable structure for all archetypes."""
-import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 
@@ -260,36 +259,30 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
         }
     }
 
-    # Add own fields from ArchHas nodes
-    if arch.body is not None and isinstance(arch.body, Sequence) {
-        for stmt in arch.body {
-            if isinstance(stmt, uni.ArchHas) {
-                for var in stmt.vars {
-                    fname = var.name.value if var.name else "field";
-                    if fname in seen_fields {
-                        continue;  # Skip fields already inherited
-                    }
-                    seen_fields.add(fname);
-                    type_tag = "";
-                    type_node: (uni.UniNode | None) = None;
-                    if var.type_tag and var.type_tag.tag {
-                        type_node = var.type_tag.tag;
-                        type_tag = var.type_tag.tag?.unparse() or str(var.type_tag.tag);
-                    }
-                    new_field = FieldInfo(
-                        name=fname,
-                        index=current_idx,
-                        type_tag=type_tag,
-                        type_node=type_node,
-                        default_expr=var.value,
-                        owner=aname
-                    );
-                    fields.append(new_field);
-                    field_index[fname] = current_idx;
-                    current_idx += 1;
-                }
-            }
+    # Add own fields via Archetype.get_has_vars() (handles ImplDef resolution)
+    for var in arch.get_has_vars() {
+        fname = var.name.value if var.name else "field";
+        if fname in seen_fields {
+            continue;  # Skip fields already inherited
         }
+        seen_fields.add(fname);
+        type_tag = "";
+        type_node: (uni.UniNode | None) = None;
+        if var.type_tag and var.type_tag.tag {
+            type_node = var.type_tag.tag;
+            type_tag = var.type_tag.tag?.unparse() or str(var.type_tag.tag);
+        }
+        new_field = FieldInfo(
+            name=fname,
+            index=current_idx,
+            type_tag=type_tag,
+            type_node=type_node,
+            default_expr=var.value,
+            owner=aname
+        );
+        fields.append(new_field);
+        field_index[fname] = current_idx;
+        current_idx += 1;
     }
 
     return ArchetypeLayout(
@@ -331,16 +324,14 @@ impl LayoutPass._build_vtable_layout(
         }
     }
 
-    # Add own methods
+    # Add own methods via Archetype.get_methods() (handles ImplDef resolution)
     arch = arch_map.get(arch_name);
-    if arch is not None and arch.body is not None and isinstance(arch.body, Sequence) {
-        for stmt in arch.body {
-            if isinstance(stmt, uni.Ability) {
-                method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                if method_name is not None and method_name not in seen_methods {
-                    method_list.append(method_name);
-                    seen_methods.add(method_name);
-                }
+    if arch is not None {
+        for method in arch.get_methods() {
+            method_name = method.name_ref.sym_name if method.name_ref else None;
+            if method_name is not None and method_name not in seen_methods {
+                method_list.append(method_name);
+                seen_methods.add(method_name);
             }
         }
     }
@@ -354,17 +345,13 @@ impl LayoutPass._build_vtable_layout(
         owner = arch_name;
         for check_name in mro {
             check_arch = arch_map.get(check_name);
-            if check_arch is not None
-            and check_arch.body is not None
-            and isinstance(check_arch.body, Sequence) {
-                for stmt in check_arch.body {
-                    if isinstance(stmt, uni.Ability) {
-                        mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                        if mn == mname {
-                            sig_node = stmt.signature;
-                            owner = check_name;
-                            break;
-                        }
+            if check_arch is not None {
+                for method in check_arch.get_methods() {
+                    mn = method.name_ref.sym_name if method.name_ref else None;
+                    if mn == mname {
+                        sig_node = method.signature;
+                        owner = check_name;
+                        break;
                     }
                 }
                 if sig_node is not None {

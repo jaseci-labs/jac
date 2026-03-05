@@ -6,8 +6,78 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # check if they are available, if the're not, we're inside builtins or
         # typeshed module itself and in that case we can just return unknown type.
         # ----------------------------------------------------------------------
-        case uni.String() | uni.MultiString() | uni.FString():
-            if self.prefetch {
+        case uni.String():
+            if self.prefetch and self.prefetch.str_class {
+                # Byte strings (b"...") -> bytes type, not str
+                if isinstance(expr.lit_value, bytes) {
+                    if self.prefetch.bytes_class {
+                        return self._convert_to_instance(self.prefetch.bytes_class);
+                    }
+                    return types.UnknownType();
+                }
+                # String literal -> Literal["value"]
+                str_class = self.prefetch.str_class;
+                if isinstance(str_class, types.ClassType) {
+                    literal_type = str_class.clone_with_literal(expr.lit_value);
+                    return self._convert_to_instance(literal_type);
+                }
+                return self._convert_to_instance(str_class);
+            }
+
+        case uni.MultiString():
+            if self.prefetch and self.prefetch.str_class {
+                str_class = self.prefetch.str_class;
+                if isinstance(str_class, types.ClassType) {
+                    # Check if all parts are simple strings (no f-strings with interpolation)
+                    all_literal = True;
+                    combined_value = "";
+                    for s in expr.strings {
+                        if isinstance(s, uni.String) {
+                            # Skip byte strings for literal tracking (lit_value is bytes)
+                            if isinstance(s.lit_value, bytes) {
+                                all_literal = False;
+                                break;
+                            }
+                            combined_value += s.lit_value;
+                        } elif isinstance(s, uni.FString) {
+                            # Check if f-string has any formatted values
+                            if not self._is_fstring_all_literal(s) {
+                                all_literal = False;
+                                break;
+                            }
+                            # F-string with only literal parts - can't get exact value
+                            # but we know it's a literal string
+                            all_literal = True;
+                        }
+                    }
+                    if all_literal
+                    and not any(isinstance(s, uni.FString) for s in expr.strings) {
+                        # Pure string concatenation -> Literal["combined"]
+                        literal_type = str_class.clone_with_literal(combined_value);
+                        return self._convert_to_instance(literal_type);
+                    } elif all_literal {
+                        # Has f-strings but all literal -> LiteralString
+                        if self.prefetch.literal_string_class {
+                            return self._convert_to_instance(
+                                self.prefetch.literal_string_class
+                            );
+                        }
+                    }
+                }
+                return self._convert_to_instance(str_class);
+            }
+
+        case uni.FString():
+            if self.prefetch and self.prefetch.str_class {
+                # Check if all parts are literal (no FormattedValue with non-literal exprs)
+                if self._is_fstring_all_literal(expr) {
+                    # F-string with only literal parts -> LiteralString
+                    if self.prefetch.literal_string_class {
+                        return self._convert_to_instance(
+                            self.prefetch.literal_string_class
+                        );
+                    }
+                }
                 return self._convert_to_instance(self.prefetch.str_class);
             }
 
@@ -1032,6 +1102,17 @@ impl TypeEvaluator._assign_class(
         }
     }
     if src_type.shared == dest_type.shared {
+        # Same class type, but check literal values if dest is a literal type
+        if dest_type.is_literal_type() {
+            # Destination expects a specific literal value
+            if not src_type.is_literal_type() {
+                # Source is not a literal - can't assign plain type to Literal
+                return False;
+            }
+            # Both are literals - values must match
+            return src_type.get_literal_value() == dest_type.get_literal_value();
+        }
+        # Destination is not a literal type, any instance is OK
         return True;
     }
     # Check if src class is a subclass of dest class.
@@ -1050,6 +1131,15 @@ impl TypeEvaluator._assign_class(
         if base_cls.shared == self.prefetch.protocol_class.shared {
             if type_utils.class_implements_protocol(src_type, dest_type) {
                 return True;
+            }
+            # For synthetic types like LiteralString that share symbol_table with
+            # their base class, also check if any MRO class implements the protocol.
+            for mro_cls in src_type.shared.mro {
+                if mro_cls.shared != src_type.shared {
+                    if type_utils.class_implements_protocol(mro_cls, dest_type) {
+                        return True;
+                    }
+                }
             }
             # TODO: The dest_class can have other base classes as well, do this
             # Recursively.
@@ -1170,13 +1260,65 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if src_type == dest_type {
         return True;
     }
-    # LiteralString can be assigned to str.
-    if self.prefetch and self.prefetch.literal_string_class {
-        if isinstance(dest_type, types.ClassType)
-        and isinstance(src_type, types.ClassType) {
-            if dest_type.shared == self.prefetch.str_class.shared {
+    # Literal type assignability rules (similar to Pyright's literalValue handling)
+    if self.prefetch
+    and isinstance(src_type, types.ClassType)
+    and isinstance(dest_type, types.ClassType) {
+        # Case 1: Literal["x"] -> LiteralString
+        if src_type.is_literal_type()
+        and self.prefetch.str_class
+        and self.prefetch.literal_string_class {
+            if isinstance(self.prefetch.str_class, types.ClassType) {
+                if src_type.shared == self.prefetch.str_class.shared {
+                    if isinstance(
+                        self.prefetch.literal_string_class, types.ClassType
+                    ) {
+                        if dest_type.shared == self.prefetch.literal_string_class.shared {
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
+
+        # Case 2: Literal["x"] -> str (and other base types like int, bool)
+        if src_type.is_literal_type() and not dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;  # Literal[value] is assignable to its base type
+
+            }
+        }
+
+        # Case 3: Literal["x"] -> Literal["y"] (same base type)
+        # Allow any literal to be assigned to another literal of the same base type.
+        # This effectively widens both to the base type (e.g., str).
+        if src_type.is_literal_type() and dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;
+            }
+        }
+
+        # Case 3b: str -> Literal["x"] (base type to literal)
+        # Allow base type to be assigned to a literal variable.
+        # This handles cases like: part = ""; part = part + ":" where
+        # the result type (str) needs to be assigned back to a Literal variable.
+        if not src_type.is_literal_type() and dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;
+            }
+        }
+
+        # Case 4: LiteralString -> any type that str is assignable to
+        # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
+        if self.prefetch.literal_string_class and self.prefetch.str_class {
+            if isinstance(self.prefetch.str_class, types.ClassType)
+            and isinstance(self.prefetch.literal_string_class, types.ClassType) {
                 if src_type.shared == self.prefetch.literal_string_class.shared {
-                    return True;
+                    # Delegate to str for assignability check
+                    str_instance = self._convert_to_instance(self.prefetch.str_class);
+                    if self.assign_type(str_instance, dest_type) {
+                        return True;
+                    }
                 }
             }
         }
@@ -1417,6 +1559,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.int_class = get_builtin_type("int");
     self.prefetch.float_class = get_builtin_type("float");
     self.prefetch.str_class = get_builtin_type("str");
+    self.prefetch.bytes_class = get_builtin_type("bytes");
     self.prefetch.dict_class = get_builtin_type("dict");
     self.prefetch.list_class = get_builtin_type("list");
     self.prefetch.enum_class = get_enum_type("Enum");
@@ -1432,11 +1575,16 @@ impl TypeEvaluator._prefetch_types{
     if isinstance(self.prefetch.callable_class, types.ClassType) {
         self.prefetch.callable_class.private.alias_name = "Callable";
     }
+    # Create LiteralString as a special type with str as base class (like Pyright)
+    if isinstance(self.prefetch.str_class, types.ClassType) {
+        self.prefetch.literal_string_class = self._create_special_builtin_type(
+            "LiteralString", self.prefetch.str_class
+        );
+    }
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;
     self.prefetch.final_class = get_jac_builtin_type("Final");
-    self.prefetch.literal_string_class = get_jac_builtin_type("LiteralString");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");

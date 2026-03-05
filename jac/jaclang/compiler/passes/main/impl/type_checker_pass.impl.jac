@@ -139,12 +139,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             target.type = left_type;
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
-            # Cache type on each Name in the unpacking pattern
-            for val in target.values {
-                if isinstance(val, uni.Name) {
-                    self.evaluator.get_type_of_expression(val);
-                }
-            }
+            self._eval_unpacking_names(target);
             left_type = self.evaluator.get_type_of_expression(target);
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
@@ -159,12 +154,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             if isinstance(target, uni.Name) and target.sym {
                 target.type = self.evaluator.get_type_of_symbol(target.sym);
             } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
-                # Tuple/list unpacking in multi-target assignment
-                for val in target.values {
-                    if isinstance(val, uni.Name) {
-                        self.evaluator.get_type_of_expression(val);
-                    }
-                }
+                self._eval_unpacking_names(target);
             } else {
                 self.evaluator.get_type_of_expression(target);
             }
@@ -298,8 +288,16 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     if isinstance(nd.target, uni.Name) {
         self.evaluator.get_type_of_expression(nd.target);
     } elif isinstance(nd.target, (uni.TupleVal, uni.ListVal)) {
-        # Tuple unpacking in for loop: for (a, b) in items
-        for val in nd.target.values {
+        self._eval_unpacking_names(nd.target);
+    }
+}
+
+"""Evaluate types for each Name in a tuple/list unpacking pattern."""
+impl TypeCheckPass._eval_unpacking_names(
+    self: TypeCheckPass, container: uni.Expr
+) -> None {
+    if isinstance(container, (uni.TupleVal, uni.ListVal)) {
+        for val in container.values {
             if isinstance(val, uni.Name) {
                 self.evaluator.get_type_of_expression(val);
             }

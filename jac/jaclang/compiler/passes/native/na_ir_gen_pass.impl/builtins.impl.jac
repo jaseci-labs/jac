@@ -169,6 +169,16 @@ impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir
     return gep;
 }
 
+"""Process common escape sequences in string literals."""
+def _unescape_string(text: str) -> str {
+    text = text.replace("\\n", "\n");
+    text = text.replace("\\t", "\t");
+    text = text.replace("\\\\", "\\");
+    text = text.replace('\\"', '"');
+    text = text.replace("\\'", "'");
+    return text;
+}
+
 """Generate a string literal as a global constant, returning i8*."""
 impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
     raw = nd.value;
@@ -181,12 +191,7 @@ impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
         # F-string literal parts have no quotes
         text = raw;
     }
-    # Handle common escape sequences
-    text = text.replace("\\n", "\n");
-    text = text.replace("\\t", "\t");
-    text = text.replace("\\\\", "\\");
-    text = text.replace('\\"', '"');
-    text = text.replace("\\'", "'");
+    text = _unescape_string(text);
     return self._make_global_string(text);
 }
 
@@ -203,9 +208,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
             } else {
                 text = raw;
             }
-            text = text.replace("\\n", "\n");
-            text = text.replace("\\t", "\t");
-            text = text.replace("\\\\", "\\");
+            text = _unescape_string(text);
             # Escape % for printf format
             text = text.replace("%", "%%");
             fmt_parts.append(text);
