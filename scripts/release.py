@@ -17,7 +17,6 @@ import re
 from pathlib import Path
 
 import tomlkit
-
 from release_utils import DEPENDENTS, PACKAGES, bump_version, set_output
 
 
