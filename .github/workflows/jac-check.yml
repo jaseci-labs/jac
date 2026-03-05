@@ -30,4 +30,4 @@ jobs:
 
       - name: Run jac check (using .jacignore)
         run: |
-          jac check . --ignore checker_*.jac *_err.jac  --nowarn || true
+          jac check . --ignore checker_*.jac *_err.jac --no-print_errs --nowarn || true
