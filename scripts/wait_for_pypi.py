@@ -1,7 +1,10 @@
 """Wait for packages to appear on PyPI before publishing dependent packages.
 
-Used between publish tiers because dependent packages (e.g., byllm) require
-their dependencies (e.g., jaclang>=1.2.4) to be live on PyPI first.
+PyPI has propagation delay after upload. This script polls until packages
+are available, ensuring dependent packages (e.g., byllm requiring jaclang>=1.2.4)
+can be installed during their own publish step.
+
+Used between tier publishes in the release workflow.
 """
 
 from __future__ import annotations
@@ -10,30 +13,19 @@ import argparse
 import json
 import sys
 import time
-import urllib.error
-import urllib.request
+
+from release_utils import check_pypi
 
 DEFAULT_TIMEOUT = 300  # 5 minutes
 DEFAULT_INTERVAL = 10  # seconds
 
 
-def check_pypi(pypi_name: str, version: str) -> bool:
-    """Check if a package version is available on PyPI.
-
-    Note: Uses simple error handling (any error = not available) since this is
-    for polling/waiting. The validate_release script uses release_utils.check_pypi
-    which has more nuanced error handling for validation.
-    """
-    url = f"https://pypi.org/pypi/{pypi_name}/{version}/json"
-    try:
-        urllib.request.urlopen(url, timeout=10)
-        return True
-    except (urllib.error.HTTPError, urllib.error.URLError):
-        return False
-
-
 def wait_for_packages(packages: list[tuple[str, str]]) -> bool:
-    """Poll PyPI until all packages are available or timeout."""
+    """Poll PyPI until all specified packages are available.
+
+    Checks every 10 seconds for up to 5 minutes. Returns True if all packages
+    become available, False on timeout.
+    """
     if not packages:
         return True
 

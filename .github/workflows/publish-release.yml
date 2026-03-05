@@ -39,7 +39,6 @@ jobs:
         id: parse
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           python scripts/parse_release.py --pr-title "$PR_TITLE"
 
@@ -80,7 +79,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          submodules: ${{ matrix.pypi == 'jaclang' }}
+          submodules: ${{ matrix.submodules }}
 
       - name: Build package
         uses: hynek/build-and-inspect-python-package@b5076c307dc91924a82ad150cdd1533b444d3310 # v2.12.0
@@ -270,7 +269,6 @@ jobs:
           TIER1_RESULT: ${{ needs.publish-tier1.result }}
           TIER2_RESULT: ${{ needs.publish-tier2.result }}
           TIER3_RESULT: ${{ needs.publish-tier3.result }}
-          GITHUB_SHA: ${{ github.sha }}
         run: |
           echo "$MATRIX" | jq -c '.include[]' | while read -r pkg; do
             pypi_name=$(echo "$pkg" | jq -r '.pypi')
@@ -286,7 +284,7 @@ jobs:
             if [[ "$result" == "success" ]]; then
               tag="${pypi_name}-v${version}"
               echo "Creating tag: $tag"
-              git tag --annotate --message="Release $pypi_name $version" "$tag" "$GITHUB_SHA"
+              git tag --annotate --message="Release ${pypi_name} ${version}" "$tag" "$GITHUB_SHA"
               git push origin "$tag"
             else
               echo "Skipping tag for $pypi_name (tier $tier result: $result)"

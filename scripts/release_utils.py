@@ -1,8 +1,14 @@
-"""Shared utilities for release scripts."""
+"""Shared utilities for release scripts.
+
+This module provides the single source of truth for package metadata,
+version bumping logic, PyPI availability checks, and GitHub Actions output helpers.
+All release-related scripts import from here to ensure consistency.
+"""
 
 from __future__ import annotations
 
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -15,26 +21,105 @@ class PackageInfo(NamedTuple):
     dir: str  # Directory name (e.g., "jac", "jac-byllm")
     pypi: str  # PyPI package name (e.g., "jaclang", "byllm")
     tier: int  # Publish order: 1=base, 2=depends on jaclang, 3=depends on all
+    release_notes: str = ""  # Path to release notes markdown (empty for meta-packages)
+    notes_display: str = ""  # Display name in release notes
+    submodules: bool = False  # Whether to checkout git submodules for this package
 
 
 # Package registry - single source of truth for all release scripts
 PACKAGES: dict[str, PackageInfo] = {
-    "jaclang": PackageInfo(dir="jac", pypi="jaclang", tier=1),
-    "jac-byllm": PackageInfo(dir="jac-byllm", pypi="byllm", tier=2),
-    "jac-client": PackageInfo(dir="jac-client", pypi="jac-client", tier=2),
-    "jac-scale": PackageInfo(dir="jac-scale", pypi="jac-scale", tier=2),
-    "jac-super": PackageInfo(dir="jac-super", pypi="jac-super", tier=2),
-    "jac-mcp": PackageInfo(dir="jac-mcp", pypi="jac-mcp", tier=2),
-    "jaseci": PackageInfo(dir="jaseci-package", pypi="jaseci", tier=3),
+    "jaclang": PackageInfo(
+        dir="jac",
+        pypi="jaclang",
+        tier=1,
+        release_notes="docs/docs/community/release_notes/jaclang.md",
+        notes_display="jaclang",
+        submodules=True,
+    ),
+    "jac-byllm": PackageInfo(
+        dir="jac-byllm",
+        pypi="byllm",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/byllm.md",
+        notes_display="byllm",
+    ),
+    "jac-client": PackageInfo(
+        dir="jac-client",
+        pypi="jac-client",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-client.md",
+        notes_display="jac-client",
+    ),
+    "jac-scale": PackageInfo(
+        dir="jac-scale",
+        pypi="jac-scale",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-scale.md",
+        notes_display="jac-scale",
+    ),
+    "jac-super": PackageInfo(
+        dir="jac-super",
+        pypi="jac-super",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-super.md",
+        notes_display="jac-super",
+    ),
+    "jac-mcp": PackageInfo(
+        dir="jac-mcp",
+        pypi="jac-mcp",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-mcp.md",
+        notes_display="jac-mcp",
+    ),
+    "jaseci": PackageInfo(
+        dir="jaseci-package",
+        pypi="jaseci",
+        tier=3,
+        release_notes="",
+        notes_display="jaseci",
+    ),
 }
+
+# Internal dependency graph: pypi_name -> list of pypi_names it depends on
+INTERNAL_DEPS: dict[str, list[str]] = {
+    "jaclang": [],
+    "byllm": ["jaclang"],
+    "jac-client": ["jaclang"],
+    "jac-scale": ["jaclang"],
+    "jac-super": ["jaclang"],
+    "jac-mcp": ["jaclang"],
+    "jaseci": ["jaclang", "byllm", "jac-client", "jac-scale", "jac-super", "jac-mcp"],
+}
+
+# Reverse map: pypi_name -> list of package keys that depend on it
+DEPENDENTS: dict[str, list[str]] = {}
+for _pkg_key, _pkg_info in PACKAGES.items():
+    for _dep in INTERNAL_DEPS.get(_pkg_info.pypi, []):
+        DEPENDENTS.setdefault(_dep, []).append(_pkg_key)
 
 
 def bump_version(current: str, bump_type: str) -> str:
-    """Compute the next version given a bump type (patch/minor/major)."""
+    """Compute the next semantic version based on bump type.
+
+    Given a version like "1.2.3" and bump type:
+      - "patch" -> "1.2.4" (bug fixes)
+      - "minor" -> "1.3.0" (new features, backwards compatible)
+      - "major" -> "2.0.0" (breaking changes)
+
+    Raises ValueError if version format is invalid or bump type is unrecognized.
+    """
+    # Validate version format with regex first
+    if not re.match(r"^\d+\.\d+\.\d+$", current):
+        raise ValueError(
+            f"Invalid version format '{current}': expected X.Y.Z where X, Y, Z are integers"
+        )
+
     parts = current.split(".")
-    if len(parts) != 3:
-        raise ValueError(f"Expected semver X.Y.Z, got: {current}")
     major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+
+    # Validate non-negative (regex ensures digits, but be explicit)
+    if major < 0 or minor < 0 or patch < 0:
+        raise ValueError(f"Version parts must be non-negative: {current}")
 
     if bump_type == "patch":
         patch += 1
@@ -43,13 +128,20 @@ def bump_version(current: str, bump_type: str) -> str:
     elif bump_type == "major":
         major, minor, patch = major + 1, 0, 0
     else:
-        raise ValueError(f"Unknown bump type: {bump_type}")
+        raise ValueError(
+            f"Unknown bump type '{bump_type}': expected patch, minor, or major"
+        )
 
     return f"{major}.{minor}.{patch}"
 
 
 def check_pypi(pypi_name: str, version: str) -> bool:
-    """Check if a package version exists on PyPI. Returns True if it exists."""
+    """Check if a specific package version already exists on PyPI.
+
+    Used to prevent publishing duplicate versions and to wait for packages
+    to become available between tier publishes. Returns True if the version
+    exists, False if it doesn't or if PyPI is unreachable (fail-open for polling).
+    """
     url = f"https://pypi.org/pypi/{pypi_name}/{version}/json"
     try:
         urllib.request.urlopen(url, timeout=10)
@@ -64,7 +156,12 @@ def check_pypi(pypi_name: str, version: str) -> bool:
 
 
 def set_output(name: str, value: str) -> None:
-    """Write a key=value pair to GitHub Actions output (or print if not in CI)."""
+    """Write a workflow output variable for GitHub Actions.
+
+    In CI, writes to $GITHUB_OUTPUT file using heredoc syntax for multiline values.
+    Locally, prints the output for debugging. These outputs can be referenced
+    by subsequent workflow jobs via needs.<job>.outputs.<name>.
+    """
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with Path(github_output).open("a") as f:
@@ -76,4 +173,6 @@ def set_output(name: str, value: str) -> None:
                 f.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
             else:
                 f.write(f"{name}={value}\n")
-    print(f"{name}={value}")
+    else:
+        # Only print when not in CI (for local debugging)
+        print(f"  [output] {name}={value}")

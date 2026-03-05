@@ -1,6 +1,9 @@
-"""Pre-release validation: ensures versions don't already exist on PyPI.
+"""Pre-release validation to catch version conflicts early.
 
-Run before creating a release PR to fail fast on version conflicts.
+Runs during the create-release-pr workflow BEFORE bumping versions.
+Computes what the new versions would be and checks PyPI to ensure
+they don't already exist. Fails fast to prevent wasted PR creation
+if a version was already published.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from release_utils import PACKAGES, bump_version, check_pypi, set_output
 
 
 def get_current_version(repo_root: Path, pkg_dir: str) -> str:
-    """Read the version from a package's pyproject.toml."""
+    """Read the current version from a package's pyproject.toml."""
     pyproject = repo_root / pkg_dir / "pyproject.toml"
     data = tomlkit.loads(pyproject.read_text())
     return str(data["project"]["version"])

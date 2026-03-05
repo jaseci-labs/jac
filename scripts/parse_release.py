@@ -1,20 +1,14 @@
 """Parse release info from PR title for the publish workflow.
 
-Extracts package names and versions from PR titles like:
-  "release: jaclang 1.2.3, jac-byllm 2.0.0"
+Extracts package names and versions from merged release PR titles and outputs
+a GitHub Actions matrix for tiered publishing.
 
-Outputs a matrix for GitHub Actions with tier info for dependency ordering:
-  - Tier 1: jaclang (base)
-  - Tier 2: jac-byllm, jac-client, jac-scale, jac-super, jac-mcp (depend on jaclang)
-  - Tier 3: jaseci (depends on all)
+Example PR title: "release: jaclang 1.2.3, jac-byllm 2.0.0"
 
-Input:
-  --pr-title: PR title string (e.g., "release: jaclang 1.2.3, jac-byllm 2.0.0")
-
-Output (GitHub Actions):
-  has_releases: "true" or "false"
-  matrix: JSON {"include": [{"name", "dir", "pypi", "tier", "version"}, ...]}
-  release_summary: "jaclang 1.2.3, jac-byllm 3.0.0"
+The output matrix includes tier information for dependency-aware publishing:
+  - Tier 1: jaclang (base package, no internal dependencies)
+  - Tier 2: jac-byllm, jac-client, etc. (depend on jaclang)
+  - Tier 3: jaseci meta-package (depends on all)
 """
 
 from __future__ import annotations
@@ -27,7 +21,7 @@ import sys
 from release_utils import PACKAGES, set_output
 
 
-def parse_from_title(pr_title: str) -> list[dict[str, str | int]]:
+def parse_from_title(pr_title: str) -> list[dict[str, str | int | bool]]:
     """Match patterns like 'jaclang 1.2.3' or 'jac-client 2.0.0'."""
     releases = []
     for pkg_name, version in re.findall(r"([\w-]+)\s+(\d+\.\d+\.\d+)", pr_title):
@@ -41,6 +35,7 @@ def parse_from_title(pr_title: str) -> list[dict[str, str | int]]:
                     "pypi": pkg_info.pypi,
                     "tier": pkg_info.tier,
                     "version": version,
+                    "submodules": pkg_info.submodules,
                 }
             )
     return releases
