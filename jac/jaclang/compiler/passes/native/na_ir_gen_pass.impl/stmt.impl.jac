@@ -992,11 +992,17 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 break;
             }
         }
-        # Track tuple type for tuple variables
-        if isinstance(value.type, ir.PointerType)
+        # Track tuple type for tuple variables (value or pointer tuples)
+        ttrack_struct: (ir.LiteralStructType | None) = None;
+        if isinstance(value.type, ir.LiteralStructType) {
+            ttrack_struct = value.type;
+        } elif isinstance(value.type, ir.PointerType)
         and isinstance(value.type.pointee, ir.LiteralStructType) {
+            ttrack_struct = value.type.pointee;
+        }
+        if ttrack_struct is not None {
             for (tkey, ttype) in self.tuple_types.items() {
-                if str(value.type.pointee) == str(ttype) {
+                if str(ttrack_struct) == str(ttype) {
                     self.var_tuple_type[var_name] = tkey;
                     break;
                 }
@@ -1009,6 +1015,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         # Track range variables
         if value.type == self.range_struct_type.as_pointer() {
             self.var_range.add(var_name);
+        }
+        # Track slice variables
+        if value.type == self.slice_struct_type.as_pointer() {
+            self.var_slice.add(var_name);
         }
     }
 }

@@ -41,9 +41,10 @@ impl check(
         # Print progress line
         print_file_progress(file_path, success, idx, total);
 
-        # Store only failed results
         if not success {
             failed_files += 1;
+        }
+        if not success or (warns > 0 and not nowarn) {
             failed_results.append(
                 {'path': file_path, 'errors': errors_list, 'warnings': warnings_list}
             );
@@ -122,10 +123,10 @@ impl check(
         }
     }
     # Print FAILURES section and summary
+    if print_errs and len(failed_results) > 0 {
+        print_failures(failed_results, nowarn);
+    }
     if failed_files > 0 {
-        if print_errs {
-            print_failures(failed_results, nowarn);
-        }
         print_failed_summary(failed_results);
     }
     # Print final summary line

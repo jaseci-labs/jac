@@ -154,3 +154,108 @@ test "prometheus implements interface" {
     assert hasattr(collector, "get_endpoint_handler");
     assert hasattr(collector, "is_enabled");
 }
+
+# --- Prometheus text parsing and summary tests ---
+test "parse prometheus text and calculate summary" {
+    import from jac_scale.admin.admin_portal {
+        _parse_prometheus_text,
+        _calculate_metrics_summary
+    }
+
+    raw = (
+        "# HELP http_requests_total Total HTTP requests\n"
+        "# TYPE http_requests_total counter\n"
+        "http_requests_total{method=\"GET\",status_code=\"200\"} 100\n"
+        "http_requests_total{method=\"POST\",status_code=\"500\"} 5\n"
+        "# HELP requests_in_progress Active requests\n"
+        "# TYPE requests_in_progress gauge\n"
+        "requests_in_progress 3\n"
+        "# HELP request_duration_seconds Request latency\n"
+        "# TYPE request_duration_seconds histogram\n"
+        "request_duration_seconds_sum 2.5\n"
+        "request_duration_seconds_count 50\n"
+    );
+
+    metrics = _parse_prometheus_text(raw);
+
+    # Should parse 3 metric families
+    assert len(metrics) == 3;
+    assert metrics[0]['name'] == 'http_requests_total';
+    assert metrics[0]['type'] == 'counter';
+    assert len(metrics[0]['values']) == 2;
+    assert metrics[0]['values'][0]['labels']['method'] == 'GET';
+    assert metrics[0]['values'][0]['value'] == 100.0;
+
+    summary = _calculate_metrics_summary(metrics);
+
+    assert summary['total_requests'] == 105;
+    assert summary['error_count'] == 5;
+    assert summary['active_requests'] == 3;
+    assert summary['avg_latency_ms'] == 50.0;
+}
+
+# --- Admin metrics endpoint integration tests ---
+import shutil;
+import tempfile;
+import from pathlib { Path }
+import from jac_scale.tests.scale_test_client { ScaleTestClient }
+
+glob FIXTURES_DIR: str = str(Path(__file__).parent / "fixtures");
+
+test "admin metrics endpoint returns valid response" {
+    tmp = tempfile.mkdtemp();
+    try {
+        # Copy fixture files to temp dir for isolation
+        import glob as glob_mod;
+        for f in glob_mod.glob(str(Path(FIXTURES_DIR) / "*")) {
+            dest = Path(tmp) / Path(f).name;
+            if Path(f).is_file() {
+                shutil.copy2(f, dest);
+            }
+        }
+        client = ScaleTestClient.from_file(
+            str(Path(FIXTURES_DIR) / "test_api.jac"), base_path=tmp
+        );
+        try {
+            token = client.admin_login();
+            response = client.get(
+                "/admin/metrics", headers={"Authorization": f"Bearer {token}"}
+            );
+            assert response.status_code == 200;
+            data = response.json();
+            assert data["ok"] is True;
+            assert "enabled" in data["data"];
+            assert "metrics" in data["data"];
+        } finally {
+            client.close();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "admin metrics endpoint requires authentication" {
+    tmp = tempfile.mkdtemp();
+    try {
+        import glob as glob_mod;
+        for f in glob_mod.glob(str(Path(FIXTURES_DIR) / "*")) {
+            dest = Path(tmp) / Path(f).name;
+            if Path(f).is_file() {
+                shutil.copy2(f, dest);
+            }
+        }
+        client = ScaleTestClient.from_file(
+            str(Path(FIXTURES_DIR) / "test_api.jac"), base_path=tmp
+        );
+        try {
+            response = client.get("/admin/metrics");
+            assert response.status_code == 403;
+            data = response.json();
+            assert data["ok"] is False;
+        } finally {
+            client.close();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

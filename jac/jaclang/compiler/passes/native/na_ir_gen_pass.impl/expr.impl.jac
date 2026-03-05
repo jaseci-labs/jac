@@ -231,25 +231,25 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                 return result;
             }
         }
-        # Check if right is a tuple (pointer to LiteralStructType)
-        if isinstance(right.type, ir.PointerType)
+        # Check if right is a tuple (value or pointer to LiteralStructType)
+        tin_struct: (ir.LiteralStructType | None) = None;
+        tin_val: (ir.Value | None) = None;
+        if isinstance(right.type, ir.LiteralStructType) {
+            tin_struct = right.type;
+            tin_val = right;
+        } elif isinstance(right.type, ir.PointerType)
         and isinstance(right.type.pointee, ir.LiteralStructType) {
-            struct_type = right.type.pointee;
-            n = len(struct_type.elements);
+            tin_struct = right.type.pointee;
+            tin_val = self.builder.load(right, name="tuple.in.val");
+        }
+        if tin_struct is not None and tin_val is not None {
+            n = len(tin_struct.elements);
             if n > 0 {
                 i64 = ir.IntType(64);
                 i1_t = ir.IntType(1);
                 found = ir.Constant(i1_t, 0);
                 for i in range(n) {
-                    elem_ptr = self.builder.gep(
-                        right,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tuple.in.{i}.ptr"
-                    );
-                    elem = self.builder.load(elem_ptr, name=f"tuple.in.{i}");
+                    elem = self.builder.extract_value(tin_val, i, name=f"tuple.in.{i}");
                     left_c = self._coerce_type(left, elem.type);
                     if isinstance(elem.type, ir.IntType) {
                         eq = self.builder.icmp_signed(
@@ -615,6 +615,55 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         }
     }
+    # Handle slice/range attribute access: sl.start, sl.stop, sl.step
+    if nd.is_attr and target_name is not None and right_name is not None {
+        _slice_field_map: dict[(str, int)] = {"start": 0, "stop": 1, "step": 2};
+        if (target_name in self.var_slice and right_name in _slice_field_map) {
+            obj_val = self._codegen_expr(nd.target);
+            if obj_val is not None {
+                i32 = ir.IntType(32);
+                z0 = ir.Constant(i32, 0);
+                fidx = ir.Constant(i32, _slice_field_map[right_name]);
+                ptr = self.builder.gep(
+                    obj_val, [z0, fidx], name=f"slice.{right_name}.ptr"
+                );
+                return self.builder.load(ptr, name=f"slice.{right_name}");
+            }
+        }
+    }
+    # Handle slice access: lst[1:3], s[1:3] (range-based slicing)
+    if not nd.is_attr and nd.right?.slices and nd.right.is_range {
+        target_name = self._get_name(nd.target);
+        slices = nd.right.slices or [];
+        if slices {
+            s = slices[0];
+            # List slicing
+            if target_name is not None and target_name in self.var_list_elem_type {
+                elem_type_name = self.var_list_elem_type[target_name];
+                target_val = self._codegen_expr(nd.target);
+                if target_val is not None {
+                    result = self._codegen_list_slice(target_val, s, elem_type_name);
+                    if result is not None {
+                        # Track sliced list as same elem type
+                        self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
+                        return result;
+                    }
+                }
+            } else {
+                # String slicing
+                target_val = self._codegen_expr(nd.target);
+                if target_val is not None {
+                    i8p = ir.IntType(8).as_pointer();
+                    if target_val.type == i8p {
+                        result = self._codegen_string_slice(target_val, s);
+                        if result is not None {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+    }
     # Handle index access: items[i] or expr[i]
     if not nd.is_attr and nd.right?.slices {
         target_name = self._get_name(nd.target);
@@ -734,22 +783,26 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         }
                     }
                 }
-                # Check for tuple indexing (pointer to LiteralStructType)
-                if isinstance(target_val.type, ir.PointerType) {
-                    pointee = target_val.type.pointee;
-                    if isinstance(pointee, ir.LiteralStructType) {
-                        slices = nd.right.slices or [];
-                        if slices {
-                            idx_node = slices[0];
-                            idx_val = self._codegen_expr(idx_node);
-                            if idx_val is None and idx_node?.start {
-                                idx_val = self._codegen_expr(idx_node.start);
-                            }
-                            if idx_val is not None {
-                                return self._codegen_tuple_index(
-                                    target_val, idx_val, pointee
-                                );
-                            }
+                # Check for tuple indexing (value or pointer to LiteralStructType)
+                tsub_struct: (ir.LiteralStructType | None) = None;
+                if isinstance(target_val.type, ir.LiteralStructType) {
+                    tsub_struct = target_val.type;
+                } elif isinstance(target_val.type, ir.PointerType)
+                and isinstance(target_val.type.pointee, ir.LiteralStructType) {
+                    tsub_struct = target_val.type.pointee;
+                }
+                if tsub_struct is not None {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._codegen_tuple_index(
+                                target_val, idx_val, tsub_struct
+                            );
                         }
                     }
                 }

@@ -1,9 +1,4 @@
 """Static analysis pass implementation."""
-import ast as ast3;
-import from collections.abc { Sequence }
-import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.constant { SymbolType }
 
 impl StaticAnalysisPass.init(
     ir_in: uni.Module, prog: Any, cancel_token: Any = None
@@ -77,6 +72,12 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
     }
     # Recurse into child scopes
     for kid in scope.kid_scope {
+        if isinstance(kid, uni.AstImplNeedingNode) {
+            if isinstance(kid.body, uni.ImplDef) {
+                self._check_unused_symbols(kid.body);
+                continue;
+            }
+        }
         self._check_unused_symbols(kid);
     }
 }
@@ -85,7 +86,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
 impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
     all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
     for name_nd in all_names {
-        if name_nd.sym is not None {
+        if name_nd.sym {
             continue;
         }
         # Only flag Load context (usage, not definition)
@@ -93,72 +94,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
             continue;
         }
         # Skip well-known builtins and special names
-        if name_nd.value in (
-            "self",
-            "super",
-            "True",
-            "False",
-            "None",
-            "print",
-            "len",
-            "range",
-            "int",
-            "str",
-            "float",
-            "bool",
-            "list",
-            "dict",
-            "set",
-            "tuple",
-            "type",
-            "object",
-            "isinstance",
-            "issubclass",
-            "hasattr",
-            "getattr",
-            "setattr",
-            "input",
-            "open",
-            "enumerate",
-            "zip",
-            "map",
-            "filter",
-            "any",
-            "all",
-            "min",
-            "max",
-            "sum",
-            "abs",
-            "round",
-            "sorted",
-            "reversed",
-            "iter",
-            "next",
-            "repr",
-            "hash",
-            "id",
-            "callable",
-            "staticmethod",
-            "classmethod",
-            "property",
-            "Exception",
-            "ValueError",
-            "TypeError",
-            "KeyError",
-            "IndexError",
-            "RuntimeError",
-            "StopIteration",
-            "NotImplementedError",
-            "AttributeError",
-            "OSError",
-            "FileNotFoundError",
-            "ImportError",
-            "NameError",
-            "AssertionError",
-            "ZeroDivisionError",
-            "OverflowError",
-            "almostEqual"
-        ) {
+        import builtins;
+        if name_nd.value in dir(builtins)
+        or name_nd.value in ("self", "super", "almostEqual") {
             continue;
         }
         # Skip dunder names
@@ -179,24 +117,20 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
 
 """Detect unreachable code by scanning code blocks for statements after return/break/continue."""
 impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
-    # Find all nodes that contain code body sequences
-    all_abilities = mod.get_all_sub_nodes(typ=uni.Ability, brute_force=True);
-    all_if_stmts = mod.get_all_sub_nodes(typ=uni.IfStmt, brute_force=True);
-    all_else_stmts = mod.get_all_sub_nodes(typ=uni.ElseStmt, brute_force=True);
-    all_elif_stmts = mod.get_all_sub_nodes(typ=uni.ElseIf, brute_force=True);
-    all_while_stmts = mod.get_all_sub_nodes(typ=uni.WhileStmt, brute_force=True);
-    all_for_stmts = mod.get_all_sub_nodes(typ=uni.InForStmt, brute_force=True);
-    all_iter_for_stmts = mod.get_all_sub_nodes(typ=uni.IterForStmt, brute_force=True);
-
     # Collect all code body containers
+    container_types = [
+        uni.Ability,
+        uni.IfStmt,
+        uni.ElseStmt,
+        uni.ElseIf,
+        uni.WhileStmt,
+        uni.InForStmt,
+        uni.IterForStmt
+    ];
     containers: list = [];
-    containers.extend(all_abilities);
-    containers.extend(all_if_stmts);
-    containers.extend(all_else_stmts);
-    containers.extend(all_elif_stmts);
-    containers.extend(all_while_stmts);
-    containers.extend(all_for_stmts);
-    containers.extend(all_iter_for_stmts);
+    for typ in container_types {
+        containers.extend(mod.get_all_sub_nodes(typ=typ, brute_force=True));
+    }
 
     for container in containers {
         body = getattr(container, 'body', None);

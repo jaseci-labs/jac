@@ -6,8 +6,78 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # check if they are available, if the're not, we're inside builtins or
         # typeshed module itself and in that case we can just return unknown type.
         # ----------------------------------------------------------------------
-        case uni.String() | uni.MultiString() | uni.FString():
-            if self.prefetch {
+        case uni.String():
+            if self.prefetch and self.prefetch.str_class {
+                # Byte strings (b"...") -> bytes type, not str
+                if isinstance(expr.lit_value, bytes) {
+                    if self.prefetch.bytes_class {
+                        return self._convert_to_instance(self.prefetch.bytes_class);
+                    }
+                    return types.UnknownType();
+                }
+                # String literal -> Literal["value"]
+                str_class = self.prefetch.str_class;
+                if isinstance(str_class, types.ClassType) {
+                    literal_type = str_class.clone_with_literal(expr.lit_value);
+                    return self._convert_to_instance(literal_type);
+                }
+                return self._convert_to_instance(str_class);
+            }
+
+        case uni.MultiString():
+            if self.prefetch and self.prefetch.str_class {
+                str_class = self.prefetch.str_class;
+                if isinstance(str_class, types.ClassType) {
+                    # Check if all parts are simple strings (no f-strings with interpolation)
+                    all_literal = True;
+                    combined_value = "";
+                    for s in expr.strings {
+                        if isinstance(s, uni.String) {
+                            # Skip byte strings for literal tracking (lit_value is bytes)
+                            if isinstance(s.lit_value, bytes) {
+                                all_literal = False;
+                                break;
+                            }
+                            combined_value += s.lit_value;
+                        } elif isinstance(s, uni.FString) {
+                            # Check if f-string has any formatted values
+                            if not self._is_fstring_all_literal(s) {
+                                all_literal = False;
+                                break;
+                            }
+                            # F-string with only literal parts - can't get exact value
+                            # but we know it's a literal string
+                            all_literal = True;
+                        }
+                    }
+                    if all_literal
+                    and not any(isinstance(s, uni.FString) for s in expr.strings) {
+                        # Pure string concatenation -> Literal["combined"]
+                        literal_type = str_class.clone_with_literal(combined_value);
+                        return self._convert_to_instance(literal_type);
+                    } elif all_literal {
+                        # Has f-strings but all literal -> LiteralString
+                        if self.prefetch.literal_string_class {
+                            return self._convert_to_instance(
+                                self.prefetch.literal_string_class
+                            );
+                        }
+                    }
+                }
+                return self._convert_to_instance(str_class);
+            }
+
+        case uni.FString():
+            if self.prefetch and self.prefetch.str_class {
+                # Check if all parts are literal (no FormattedValue with non-literal exprs)
+                if self._is_fstring_all_literal(expr) {
+                    # F-string with only literal parts -> LiteralString
+                    if self.prefetch.literal_string_class {
+                        return self._convert_to_instance(
+                            self.prefetch.literal_string_class
+                        );
+                    }
+                }
                 return self._convert_to_instance(self.prefetch.str_class);
             }
 
@@ -243,6 +313,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    # Check for __getattr__ override before reporting error.
+                    # When a class defines __getattr__, any attribute access that doesn't
+                    # match an explicit member should return the __getattr__ return type.
+                    # This follows Pyright's applyAttributeAccessOverride pattern.
+                    if getattr_return := self._get_getattr_return_type(base_type) {
+                        expr.right.type = getattr_return;
+                        expr.right.is_getattr_resolved = True;
+                        return getattr_return;
+                    }
                     # TODO: Re-enable after fixing TypeVar resolution.
                     # Disabled: gives false positives on generic types (e.g., list[T].append).
                     # self.add_diagnostic(
@@ -378,6 +457,66 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         type_args_expr = expr.right.slices[0].start;
                     }
                     return self._create_callable_type(type_args_expr, expr);
+                }
+                # --- Handle Union / Optional special forms ---
+                # Union[A, B, C] creates a UnionType, Optional[T] creates Union[T, None].
+                # Similar to how Callable[...] creates a FunctionType above.
+                # We detect these by checking that the base_type is a _SpecialForm
+                # (same shared as Callable) and the target name is "Union" or "Optional".
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.shared is not None
+                    and base_type.shared.is_builtin_class
+                    and self.prefetch
+                    and self.prefetch.callable_class
+                    and isinstance(self.prefetch.callable_class, types.ClassType)
+                    and base_type.shared == self.prefetch.callable_class.shared
+                ) {
+                    target_name: str | None = None;
+                    if isinstance(expr.target, uni.Name) and expr.target.sym {
+                        target_name = expr.target.sym.sym_name;
+                    } elif (
+                        isinstance(expr.target, uni.AtomTrailer)
+                        and expr.target.is_attr
+                        and isinstance(expr.target.right, uni.Name)
+                    ) {
+                        target_name = expr.target.right.value;
+                    }
+                    if target_name == "Union" or target_name == "Optional" {
+                        union_args: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            ua_vals = expr.right.slices[0].start;
+                            if isinstance(ua_vals, uni.TupleVal) {
+                                for val in ua_vals.values {
+                                    union_args.append(
+                                        self._convert_to_instance(
+                                            self.get_type_of_expression(val)
+                                        )
+                                    );
+                                }
+                            } else {
+                                union_args.append(
+                                    self._convert_to_instance(
+                                        self.get_type_of_expression(ua_vals)
+                                    )
+                                );
+                            }
+                        }
+                        if target_name == "Optional" and self.prefetch.none_type_class {
+                            union_args.append(
+                                self._convert_to_instance(
+                                    self.prefetch.none_type_class
+                                )
+                            );
+                        }
+                        if len(union_args) == 1 {
+                            return union_args[0];
+                        }
+                        if len(union_args) > 1 {
+                            return types.UnionType(types=union_args);
+                        }
+                    }
                 }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
@@ -673,8 +812,7 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     and unpack_assignment.value is not None
                 ) {
                     rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                    if isinstance(rhs_type, types.ClassType)
-                    and rhs_type.private.type_args {
+                    if isinstance(rhs_type, types.ClassType) {
                         idx = -1;
                         for (vi, v) in enumerate(unpack_container.values) {
                             if v is node_ {
@@ -682,10 +820,26 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                                 break;
                             }
                         }
-                        if idx >= 0 and idx < len(rhs_type.private.type_args) {
-                            return self._convert_to_instance(
-                                rhs_type.private.type_args[idx]
-                            );
+                        if idx >= 0 {
+                            # NamedTuple: get field types from has vars
+                            if rhs_type.is_namedtuple() {
+                                has_vars = rhs_type.shared.symbol_table.get_has_vars();
+                                if idx < len(has_vars) {
+                                    field = has_vars[idx];
+                                    if field.type_tag {
+                                        field_type = self.get_type_of_expression(
+                                            field.type_tag.tag
+                                        );
+                                        return self._convert_to_instance(field_type);
+                                    }
+                                }
+                                # Regular tuple with type_args
+                            } elif rhs_type.private.type_args
+                            and idx < len(rhs_type.private.type_args) {
+                                return self._convert_to_instance(
+                                    rhs_type.private.type_args[idx]
+                                );
+                            }
                         }
                     }
                 }
@@ -740,6 +894,45 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
             if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
+
+                # Special handling for NamedTuple iteration
+                # Iterating over a NamedTuple yields its field values
+                if isinstance(collection_type, types.ClassType)
+                and collection_type.is_namedtuple() {
+                    has_vars = collection_type.shared.symbol_table.get_has_vars();
+                    if has_vars {
+                        # Collect all field types
+                        field_types: list[types.TypeBase] = [];
+                        for field in has_vars {
+                            if field.type_tag {
+                                field_type = self.get_type_of_expression(
+                                    field.type_tag.tag
+                                );
+                                field_types.append(
+                                    self._convert_to_instance(field_type)
+                                );
+                            }
+                        }
+                        # If all fields have the same type, use that type
+                        if field_types {
+                            first_type = field_types[0];
+                            all_same = all(
+                                isinstance(ft, types.ClassType)
+                                and isinstance(first_type, types.ClassType)
+                                and ft.shared == first_type.shared
+                                for ft in field_types
+                            );
+                            if all_same {
+                                node_.type = first_type;
+                                return first_type;
+                            }
+                            # Different types: return first type for now (TODO: union)
+                            node_.type = field_types[0];
+                            return field_types[0];
+                        }
+                    }
+                }
+
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
                 );
@@ -909,6 +1102,17 @@ impl TypeEvaluator._assign_class(
         }
     }
     if src_type.shared == dest_type.shared {
+        # Same class type, but check literal values if dest is a literal type
+        if dest_type.is_literal_type() {
+            # Destination expects a specific literal value
+            if not src_type.is_literal_type() {
+                # Source is not a literal - can't assign plain type to Literal
+                return False;
+            }
+            # Both are literals - values must match
+            return src_type.get_literal_value() == dest_type.get_literal_value();
+        }
+        # Destination is not a literal type, any instance is OK
         return True;
     }
     # Check if src class is a subclass of dest class.
@@ -927,6 +1131,15 @@ impl TypeEvaluator._assign_class(
         if base_cls.shared == self.prefetch.protocol_class.shared {
             if type_utils.class_implements_protocol(src_type, dest_type) {
                 return True;
+            }
+            # For synthetic types like LiteralString that share symbol_table with
+            # their base class, also check if any MRO class implements the protocol.
+            for mro_cls in src_type.shared.mro {
+                if mro_cls.shared != src_type.shared {
+                    if type_utils.class_implements_protocol(mro_cls, dest_type) {
+                        return True;
+                    }
+                }
             }
             # TODO: The dest_class can have other base classes as well, do this
             # Recursively.
@@ -1047,13 +1260,65 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if src_type == dest_type {
         return True;
     }
-    # LiteralString can be assigned to str.
-    if self.prefetch and self.prefetch.literal_string_class {
-        if isinstance(dest_type, types.ClassType)
-        and isinstance(src_type, types.ClassType) {
-            if dest_type.shared == self.prefetch.str_class.shared {
+    # Literal type assignability rules (similar to Pyright's literalValue handling)
+    if self.prefetch
+    and isinstance(src_type, types.ClassType)
+    and isinstance(dest_type, types.ClassType) {
+        # Case 1: Literal["x"] -> LiteralString
+        if src_type.is_literal_type()
+        and self.prefetch.str_class
+        and self.prefetch.literal_string_class {
+            if isinstance(self.prefetch.str_class, types.ClassType) {
+                if src_type.shared == self.prefetch.str_class.shared {
+                    if isinstance(
+                        self.prefetch.literal_string_class, types.ClassType
+                    ) {
+                        if dest_type.shared == self.prefetch.literal_string_class.shared {
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
+
+        # Case 2: Literal["x"] -> str (and other base types like int, bool)
+        if src_type.is_literal_type() and not dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;  # Literal[value] is assignable to its base type
+
+            }
+        }
+
+        # Case 3: Literal["x"] -> Literal["y"] (same base type)
+        # Allow any literal to be assigned to another literal of the same base type.
+        # This effectively widens both to the base type (e.g., str).
+        if src_type.is_literal_type() and dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;
+            }
+        }
+
+        # Case 3b: str -> Literal["x"] (base type to literal)
+        # Allow base type to be assigned to a literal variable.
+        # This handles cases like: part = ""; part = part + ":" where
+        # the result type (str) needs to be assigned back to a Literal variable.
+        if not src_type.is_literal_type() and dest_type.is_literal_type() {
+            if src_type.shared == dest_type.shared {
+                return True;
+            }
+        }
+
+        # Case 4: LiteralString -> any type that str is assignable to
+        # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
+        if self.prefetch.literal_string_class and self.prefetch.str_class {
+            if isinstance(self.prefetch.str_class, types.ClassType)
+            and isinstance(self.prefetch.literal_string_class, types.ClassType) {
                 if src_type.shared == self.prefetch.literal_string_class.shared {
-                    return True;
+                    # Delegate to str for assignability check
+                    str_instance = self._convert_to_instance(self.prefetch.str_class);
+                    if self.assign_type(str_instance, dest_type) {
+                        return True;
+                    }
                 }
             }
         }
@@ -1294,6 +1559,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.int_class = get_builtin_type("int");
     self.prefetch.float_class = get_builtin_type("float");
     self.prefetch.str_class = get_builtin_type("str");
+    self.prefetch.bytes_class = get_builtin_type("bytes");
     self.prefetch.dict_class = get_builtin_type("dict");
     self.prefetch.list_class = get_builtin_type("list");
     self.prefetch.enum_class = get_enum_type("Enum");
@@ -1309,11 +1575,16 @@ impl TypeEvaluator._prefetch_types{
     if isinstance(self.prefetch.callable_class, types.ClassType) {
         self.prefetch.callable_class.private.alias_name = "Callable";
     }
+    # Create LiteralString as a special type with str as base class (like Pyright)
+    if isinstance(self.prefetch.str_class, types.ClassType) {
+        self.prefetch.literal_string_class = self._create_special_builtin_type(
+            "LiteralString", self.prefetch.str_class
+        );
+    }
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;
     self.prefetch.final_class = get_jac_builtin_type("Final");
-    self.prefetch.literal_string_class = get_jac_builtin_type("LiteralString");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");

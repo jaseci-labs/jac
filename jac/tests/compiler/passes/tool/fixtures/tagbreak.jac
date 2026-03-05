@@ -476,7 +476,7 @@ with entry {
 }
 
 # Match statement comment preservation
-def test_match_comments(x: int) {
+def test_match_comments(x: int) -> bool {
     match x {
         # comment before first case
         case 1:

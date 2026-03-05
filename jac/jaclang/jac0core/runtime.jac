@@ -81,6 +81,32 @@ glob plugin_manager = plugin.PluginManager('jac'),
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
+    """Resolve the live anchor for an archetype from runtime memory."""
+    static def _resolve_anchor(archetype: Archetype) -> tuple {
+        anchor = archetype.__jac__;
+        jctx = JacRuntimeInterface.get_context();
+        mem_anchor = jctx.mem.get(anchor.id);
+        if (mem_anchor and (mem_anchor is not anchor)) {
+            anchor = mem_anchor;
+        }
+        return (anchor, jctx);
+    }
+
+    """Check if current root has at least min_level access to target anchor."""
+    static def _check_access(
+        `to: Anchor, min_level: AccessLevel, operation: str
+    ) -> bool {
+        access_level = JacRuntimeInterface.check_access_level(`to) > min_level;
+        if not access_level {
+            logger.info(
+                "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
+                    `to.id
+                ) + "]"
+            );
+        }
+        return access_level;
+    }
+
     """Allow all access from target root graph to current Archetype."""
     static def allow_root(
         archetype: Archetype,
@@ -91,12 +117,7 @@ class JacAccessValidation {
             level = AccessLevel.READ;
         }
         level = AccessLevel.cast(level);
-        anchor = archetype.__jac__;
-        jctx = JacRuntimeInterface.get_context();
-        mem_anchor = jctx.mem.get(anchor.id);
-        if (mem_anchor and (mem_anchor is not anchor)) {
-            anchor = mem_anchor;
-        }
+        (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
         access = anchor.access.roots;
         _root_id = str(root_id);
         if (level != access.anchors.get(_root_id, AccessLevel.NO_ACCESS)) {
@@ -115,12 +136,7 @@ class JacAccessValidation {
             level = AccessLevel.READ;
         }
         level = AccessLevel.cast(level);
-        anchor = archetype.__jac__;
-        jctx = JacRuntimeInterface.get_context();
-        mem_anchor = jctx.mem.get(anchor.id);
-        if (mem_anchor and (mem_anchor is not anchor)) {
-            anchor = mem_anchor;
-        }
+        (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
         access = anchor.access.roots;
         access.anchors.pop(str(root_id), None);
         jctx.mem.put(anchor);
@@ -134,12 +150,7 @@ class JacAccessValidation {
             level = AccessLevel.READ;
         }
         level = AccessLevel.cast(level);
-        anchor = archetype.__jac__;
-        jctx = JacRuntimeInterface.get_context();
-        mem_anchor = jctx.mem.get(anchor.id);
-        if (mem_anchor and (mem_anchor is not anchor)) {
-            anchor = mem_anchor;
-        }
+        (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
         if (level != anchor.access.all) {
             anchor.access.all = level;
             jctx.mem.put(anchor);
@@ -148,12 +159,7 @@ class JacAccessValidation {
 
     """Disallow others to access current Archetype."""
     static def perm_revoke(archetype: Archetype) -> None {
-        anchor = archetype.__jac__;
-        jctx = JacRuntimeInterface.get_context();
-        mem_anchor = jctx.mem.get(anchor.id);
-        if (mem_anchor and (mem_anchor is not anchor)) {
-            anchor = mem_anchor;
-        }
+        (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
         if (anchor.access.all > AccessLevel.NO_ACCESS) {
             anchor.access.all = AccessLevel.NO_ACCESS;
             jctx.mem.put(anchor);
@@ -162,48 +168,17 @@ class JacAccessValidation {
 
     """Read Access Validation."""
     static def check_read_access(`to: Anchor) -> bool {
-        raw_level = JacRuntimeInterface.check_access_level(`to);
-        access_level = raw_level > AccessLevel.NO_ACCESS;
-        if not access_level {
-            logger.info(
-                "Current root doesn't have read access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
-                    `to.id
-                ) + "]"
-            );
-        }
-        return access_level;
+        return JacAccessValidation._check_access(`to, AccessLevel.NO_ACCESS, "read");
     }
 
-    """Write Access Validation."""
+    """Connect Access Validation."""
     static def check_connect_access(`to: Anchor) -> bool {
-        if not (
-            access_level := (
-                JacRuntimeInterface.check_access_level(`to) > AccessLevel.READ
-            )
-        ) {
-            logger.info(
-                "Current root doesn't have connect access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
-                    `to.id
-                ) + "]"
-            );
-        }
-        return access_level;
+        return JacAccessValidation._check_access(`to, AccessLevel.READ, "connect");
     }
 
     """Write Access Validation."""
     static def check_write_access(`to: Anchor) -> bool {
-        if not (
-            access_level := (
-                JacRuntimeInterface.check_access_level(`to) > AccessLevel.CONNECT
-            )
-        ) {
-            logger.info(
-                "Current root doesn't have write access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
-                    `to.id
-                ) + "]"
-            );
-        }
-        return access_level;
+        return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, "write");
     }
 
     """Access validation."""
@@ -1800,12 +1775,40 @@ class JacAPIServer {
         return JacAPIServer;
     }
 
-    """Create the API server instance."""
+    """Create the API server instance.
+
+    If the specified port is in use, tries subsequent ports up to max_retries times.
+    Updates jac_server.port with the actual bound port if different from requested.
+    """
     static def create_server(
-        jac_server: JacServer, host: str, port: int
+        jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer {
         handler_class = jac_server.create_handler();
-        return HTTPServer((host, port), handler_class);
+        current_port = port;
+        for _ in range(max_retries) {
+            try {
+                server = HTTPServer((host, current_port), handler_class);
+                if current_port != port {
+                    import from jaclang.cli.console { console }
+                    console.print(
+                        f"  Port {port} is in use, using port {current_port} instead",
+                        style="warning"
+                    );
+                    jac_server.port = current_port;  # Update the server's port
+                }
+                return server;
+            } except OSError as e {
+                # errno 98 = EADDRINUSE (Linux), errno 10048 = WSAEADDRINUSE (Windows)
+                if e.errno in (98, 10048) or "Address already in use" in str(e) {
+                    current_port += 1;
+                } else {
+                    raise ;
+                }
+            }
+        }
+        raise OSError(
+            f"Could not find an available port after trying {port}-{current_port}"
+        ) ;
     }
 
     """Render HTML page for client function."""
@@ -2563,6 +2566,7 @@ with entry {
 class JacRuntime(JacRuntimeInterface) {
     with entry {
         base_path_dir: (str | None) = os.getcwd();
+        full_target_path: (str | None) = None;
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();

@@ -320,7 +320,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
 }
 
 """Setup PWA target - copies default icons and configures jac.toml."""
-impl PWATarget.setup(self: PWATarget, project_dir: Path) -> None {
+impl PWATarget.setup(project_dir: Path) -> None {
     console.print("\n📱 Setting up PWA target", style="bold");
     icons_dest = project_dir / "pwa_icons";
     if not icons_dest.exists() {
@@ -401,10 +401,7 @@ background_color = "#ffffff"
 Uses super().build() to get the web bundle, then adds PWA artifacts.
 """
 impl PWATarget.build(
-    self: PWATarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     console.print("\n📱 Building PWA target", style="bold");
     # Use inherited WebTarget.build() via super()
@@ -426,9 +423,7 @@ impl PWATarget.build(
 
 Service worker is disabled in dev mode for better developer experience.
 """
-impl PWATarget.dev(
-    self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-) -> None {
+impl PWATarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
     console.print("\n📱 Starting PWA dev server", style="bold");
     console.print(
         "  Note: Service worker is disabled in dev mode for better DX", style="muted"
@@ -442,7 +437,7 @@ impl PWATarget.dev(
 Delegates to WebTarget.start() via super() after building PWA artifacts.
 """
 impl PWATarget.start(
-    self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     # Build PWA first (which calls super().build() + adds PWA artifacts)
     self.build(entry_file, project_dir, None);

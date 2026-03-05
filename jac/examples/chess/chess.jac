@@ -211,10 +211,8 @@ glob game = Game(),
 with entry {
     for i in range(1, len(_args)) {
         arg = _args[i];
-        if arg == "--benchmark" or arg == "-b" {
-            _benchmark_mode = 10;
-        } elif arg == "--benchmark" {
-            _benchmark_mode = 10;
+        if (arg == "--benchmark" or arg == "-b") and i + 1 < len(_args) {
+            _benchmark_mode = int(_args[i + 1]);
         }
     }
     if _benchmark_mode > 0 {

@@ -12,6 +12,7 @@ cl {
     # Import pages
     import from .users.UsersPage { UsersPage }
     import from .sso.SSOPage { SSOPage }
+    import from .monitoring.MetricsPage { MetricsPage }
     import from .placeholder.PlaceholderPage {
         SessionsPage,
         ApiKeysPage,
@@ -21,7 +22,6 @@ cl {
         WalkersPage,
         JobsPage,
         WebhooksPage,
-        MetricsPage,
         LogsPage,
         HealthPage,
         AlertsConfigPage,

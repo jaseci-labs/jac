@@ -85,8 +85,19 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             module.gen.llvm_ir = mod;
         }
 
-        # Debug: dump IR before JIT compilation
+        # Run LLVM optimization pipeline (after linking, before JIT)
         import os as _os;
+        _opt_level = int(_os.environ.get("JAC_OPT_LEVEL", "2"));
+        if _opt_level > 0 {
+            pto = llvm.create_pipeline_tuning_options(
+                speed_level=_opt_level, size_level=0
+            );
+            pb = llvm.create_pass_builder(target_machine, pto);
+            opt_mpm = pb.getModulePassManager();
+            opt_mpm.run(mod, pb);
+        }
+
+        # Debug: dump IR before JIT compilation (after optimization)
         _dump_path = _os.environ.get("JAC_DUMP_IR", "");
         if _dump_path {
             with open(_dump_path, "w") as _f {

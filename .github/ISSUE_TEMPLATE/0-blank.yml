@@ -1,0 +1,8 @@
+name: "Blank Issue"
+description: "Open a blank issue."
+body:
+  - type: textarea
+    id: content
+    attributes:
+      label: "Description"
+      placeholder: "Write anything you'd like to share."

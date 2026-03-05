@@ -64,39 +64,38 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         self.struct_types[arch_name] = struct_type;
         self.has_native_code = True;
     }
-    # Pass 1.5: Build class hierarchy
+    # Pass 1.5 + 1.7: Read class hierarchy and MRO from centralized LayoutRegistry
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
-        if arch.base_classes {
-            for base_expr in arch.base_classes {
-                parent_name = self._get_name(base_expr);
-                if parent_name is not None and parent_name in self.struct_types {
-                    self.class_hierarchy[arch_name] = parent_name;
-                    break;
-                }
-            }
+        self.arch_ast_map[arch_name] = arch;
+        parents = layout_reg.class_parents.get(arch_name, []);
+        # Filter to only include native parents (those with struct types)
+        native_parents = [
+            p
+            for p in parents
+            if p in self.struct_types
+        ];
+        if native_parents {
+            self.class_parents[arch_name] = native_parents;
+            self.class_hierarchy[arch_name] = native_parents[0];
+        }
+        self.mro_order[arch_name] = layout_reg.get_mro(arch_name);
+    }
+    # Determine which classes need vtables from LayoutRegistry
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        arch_layout = layout_reg.get_layout(arch_name);
+        if arch_layout is not None and arch_layout.has_vtable {
+            self.has_vtable[arch_name] = True;
         }
     }
-    # Determine which classes need vtables (any class in the hierarchy)
-    parents_set: set[str] = set();
-    for (child, parent) in self.class_hierarchy.items() {
-        parents_set.add(parent);
-        self.has_vtable[child] = True;
-    }
-    for parent in parents_set {
-        self.has_vtable[parent] = True;
-    }
-    # Pass 2: Define struct bodies (parents before children)
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        if arch_name not in self.class_hierarchy {
-            self._codegen_archetype(arch);
-        }
-    }
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        if arch_name in self.class_hierarchy {
-            self._codegen_archetype(arch);
+    # Pass 2: Define struct bodies in topological order from LayoutRegistry
+    topo_order = layout_reg.get_topo_order();
+    for topo_name in topo_order {
+        if topo_name in arch_map {
+            self._codegen_archetype(arch_map[topo_name]);
         }
     }
     # Pass 2.5: Emit per-archetype RC destructors (struct bodies must be defined)
@@ -104,7 +103,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         arch_name = arch.name.value if arch.name else "unknown";
         self._emit_struct_release_fn(arch_name);
     }
-    # Pass 3: Forward-declare all methods
+    # Pass 3: Forward-declare all own methods
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         if arch.body is not None {
@@ -131,17 +130,111 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             }
         }
     }
-    # Pass 3.5: Build vtable layouts (parents before children)
+    # Pass 3.1: Forward-declare methods from non-primary ancestors (for re-compilation)
+    # Only for methods NOT already provided by own definition or primary ancestor chain
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
-        if arch_name in self.has_vtable and arch_name not in self.class_hierarchy {
-            self._build_vtable(arch_name);
+        mro = self.mro_order.get(arch_name, [arch_name]);
+        if len(mro) < 2 {
+            continue;
+        }
+        # Collect methods already provided by own + primary ancestors
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
+        for anc in mro[1:] {
+            if layout_reg.is_primary_ancestor(arch_name, anc) {
+                anc_arch = self.arch_ast_map.get(anc);
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
+                }
+            }
+        }
+        for ancestor_name in mro[1:] {
+            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
+                continue;
+            }
+            ancestor_arch = self.arch_ast_map.get(ancestor_name);
+            if ancestor_arch is None or ancestor_arch.body is None {
+                continue;
+            }
+            for stmt in ancestor_arch.body {
+                if isinstance(stmt, uni.Ability) {
+                    if stmt.signature is not None
+                    and isinstance(stmt.signature, uni.FuncSignature) {
+                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
+                        if method_name is not None
+                        and method_name not in provided_methods {
+                            full_name = f"{arch_name}.{method_name}";
+                            if full_name not in self.method_funcs {
+                                self._forward_declare_method(arch_name, stmt);
+                            }
+                            provided_methods.add(method_name);
+                        }
+                    }
+                }
+            }
         }
     }
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        if arch_name in self.has_vtable and arch_name in self.class_hierarchy {
-            self._build_vtable(arch_name);
+    # Pass 3.5: Build vtable layouts (topological order via MRO)
+    for topo_name in topo_order {
+        if topo_name in self.has_vtable {
+            self._build_vtable(topo_name);
+        }
+    }
+    # Pass 3.6: Compute non-overridden methods for devirtualization
+    # A method M on class C is "non-overridden" if NO child class has its own C.M.
+    # For these methods, we can emit direct calls instead of vtable dispatch.
+    for (base_name, layout) in self.vtable_layouts.items() {
+        non_overridden: set[str] = set();
+        for method_name in layout {
+            # Find the class that defines this method (walk MRO)
+            defining_class: (str | None) = None;
+            base_mro = self.mro_order.get(base_name, [base_name]);
+            for check in base_mro {
+                if f"{check}.{method_name}" in self.method_funcs {
+                    defining_class = check;
+                    break;
+                }
+            }
+            if defining_class is None {
+                continue;
+            }
+            # Check if any child class overrides this method
+            overridden = False;
+            for (child_name, child_parents) in self.class_parents.items() {
+                # Is base_name an ancestor of child_name?
+                child_mro = self.mro_order.get(child_name, [child_name]);
+                if base_name not in child_mro {
+                    continue;
+                }
+                # Does child have its own implementation?
+                child_full = f"{child_name}.{method_name}";
+                if child_full in self.method_funcs {
+                    # Check if it's a wrapper or an actual override
+                    # An actual override means the child class defined this method itself
+                    child_arch = self.arch_ast_map.get(child_name);
+                    if child_arch is not None and child_arch.body is not None {
+                        for stmt in child_arch.body {
+                            if isinstance(stmt, uni.Ability) {
+                                mn = stmt.name_ref.sym_name if stmt.name_ref else None;
+                                if mn == method_name {
+                                    overridden = True;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if overridden {
+                    break;
+                }
+            }
+            if not overridden {
+                non_overridden.add(method_name);
+            }
+        }
+        if non_overridden {
+            self._non_overridden_methods[base_name] = non_overridden;
         }
     }
     # Pass 4: Emit vtable globals
@@ -150,7 +243,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 4.5: Forward-declare free functions (must happen before method bodies)
     self._forward_declare_functions(module);
-    # Pass 5: Generate method bodies
+    # Pass 5: Generate method bodies (own methods)
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         if arch.body is not None {
@@ -162,6 +255,53 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                     } elif stmt.signature is None and stmt.body is not None {
                         # Generate body for methods without FuncSignature (e.g., postinit)
                         self._codegen_no_sig_method(arch_name, stmt);
+                    }
+                }
+            }
+        }
+    }
+    # Pass 5.1: Re-compile non-primary ancestor methods against child struct layout
+    # Only for methods that are NOT already provided by an earlier MRO class
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        mro = self.mro_order.get(arch_name, [arch_name]);
+        if len(mro) < 2 {
+            continue;
+        }
+        # Collect methods provided by the child's own definition + primary ancestors
+        # (these will be handled by own codegen or bitcast wrappers in Pass 6)
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
+        for anc in mro[1:] {
+            if layout_reg.is_primary_ancestor(arch_name, anc) {
+                anc_arch = self.arch_ast_map.get(anc);
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
+                }
+            }
+        }
+        # Now re-compile only non-primary ancestor methods NOT already provided
+        for ancestor_name in mro[1:] {
+            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
+                continue;
+            }
+            ancestor_arch = self.arch_ast_map.get(ancestor_name);
+            if ancestor_arch is None or ancestor_arch.body is None {
+                continue;
+            }
+            for stmt in ancestor_arch.body {
+                if isinstance(stmt, uni.Ability) {
+                    if stmt.signature is not None
+                    and isinstance(stmt.signature, uni.FuncSignature) {
+                        method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
+                        if method_name is not None
+                        and method_name not in provided_methods {
+                            full_name = f"{arch_name}.{method_name}";
+                            if full_name in self.method_funcs {
+                                self._codegen_method(arch_name, stmt);
+                            }
+                            provided_methods.add(method_name);
+                        }
                     }
                 }
             }
@@ -179,7 +319,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         return;
     }
     needs_vtable = arch_name in self.has_vtable;
-    parent_name = self.class_hierarchy.get(arch_name);
     # Collect fields
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
@@ -189,25 +328,50 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if needs_vtable {
         field_types.append(ir.IntType(8).as_pointer().as_pointer());
     }
-    # Inherit parent fields (in order by index)
-    if parent_name is not None and parent_name in self.struct_field_indices {
-        parent_indices = self.struct_field_indices[parent_name];
-        parent_types = self.struct_field_types[parent_name];
-        parent_defaults = self.struct_field_defaults.get(parent_name, {});
+    # Flatten fields from all ancestors in MRO order (diamond dedup by name)
+    mro = self.mro_order.get(arch_name, [arch_name]);
+    seen_fields: set[str] = set();
+    for ancestor_name in mro[1:] {
+        if ancestor_name not in self.struct_field_indices {
+            continue;
+        }
+        ancestor_indices = self.struct_field_indices[ancestor_name];
+        ancestor_types = self.struct_field_types.get(ancestor_name, {});
+        ancestor_defaults = self.struct_field_defaults.get(ancestor_name, {});
+        # Record start index for this ancestor's region
+        if arch_name not in self.parent_field_start {
+            self.parent_field_start[arch_name] = {};
+        }
+        self.parent_field_start[arch_name][ancestor_name] = len(field_types);
         # Build reverse map: index → field name, then iterate in order
         idx_to_name: dict[(int, str)] = {};
-        for (fname, pidx) in parent_indices.items() {
+        for (fname, pidx) in ancestor_indices.items() {
             idx_to_name[pidx] = fname;
         }
         sorted_idxs = sorted(idx_to_name.keys());
         for pidx in sorted_idxs {
             fname = idx_to_name[pidx];
-            ftype = parent_types.get(fname, ir.IntType(64));
+            if fname in seen_fields {
+                continue;  # Diamond dedup: skip fields already present
+            }
+            seen_fields.add(fname);
+            ftype = ancestor_types.get(fname, ir.IntType(64));
+            new_idx = len(field_types);
             field_types.append(ftype);
-            field_index_map[fname] = pidx;
+            field_index_map[fname] = new_idx;
             field_type_map[fname] = ftype;
-            if fname in parent_defaults {
-                field_default_map[fname] = parent_defaults[fname];
+            if fname in ancestor_defaults {
+                field_default_map[fname] = ancestor_defaults[fname];
+            }
+            # Propagate Jac-level type AST from ancestor
+            if ancestor_name in self.field_type_node
+            and fname in self.field_type_node[ancestor_name] {
+                if arch_name not in self.field_type_node {
+                    self.field_type_node[arch_name] = {};
+                }
+                self.field_type_node[arch_name][fname] = self.field_type_node[
+                    ancestor_name
+                ][fname];
             }
         }
     }
@@ -217,6 +381,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             if isinstance(stmt, uni.ArchHas) {
                 for var in stmt.vars {
                     fname = var.name.value if var.name else "field";
+                    if fname in seen_fields {
+                        continue;  # Skip fields already inherited
+                    }
+                    seen_fields.add(fname);
                     ftype = ir.IntType(64);
                     if var.type_tag and var.type_tag.tag {
                         ftype = self._resolve_jac_type(var.type_tag.tag);
@@ -679,6 +847,49 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_sys_exit(arg_vals);
         }
     }
+    # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
+    if target_name == "int" and method_name == "from_bytes" {
+        params = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            self._ensure_emitters();
+            _emitter = self._native_emitters.get("int");
+            if _emitter is not None {
+                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+                result = _emitter.emit_from_bytes(_ctx, arg_vals);
+                if result is not None {
+                    return result;
+                }
+            }
+        }
+    }
+    if target_name == "float" and method_name == "fromhex" {
+        params = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            self._ensure_emitters();
+            _emitter = self._native_emitters.get("float");
+            if _emitter is not None {
+                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+                result = _emitter.emit_fromhex(_ctx, arg_vals);
+                if result is not None {
+                    return result;
+                }
+            }
+        }
+    }
     # --- Primitive emitter dispatch (list, set, str methods) ---
     # Evaluate target and args, dispatch through emitter layer.
     # List methods (simple name target)
@@ -766,7 +977,13 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     # Int methods (on any target expression whose type is i64)
-    if method_name in ("conjugate", "bit_length", "bit_count", "as_integer_ratio") {
+    if method_name in (
+        "conjugate",
+        "bit_length",
+        "bit_count",
+        "as_integer_ratio",
+        "to_bytes"
+    ) {
         int_val = self._codegen_expr(trailer.target);
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             params = nd.params or [];
@@ -884,7 +1101,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         "splitlines",
         "partition",
         "rpartition",
-        "encode"
+        "encode",
+        "format"
     ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
@@ -925,6 +1143,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         if params {
                             val = self._codegen_expr(params[0]);
                             if val is not None {
+                                val = self._box_value_tuple(val);
                                 elem_type = helpers["elem_type"];
                                 val = self._coerce_type(val, elem_type);
                                 self.builder.call(helpers["append"], [obj_val, val]);
@@ -939,16 +1158,15 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if type_name is None {
         return None;
     }
-    # Find method: check this class and walk up hierarchy
+    # Find method: walk MRO
     func = None;
-    check_name = type_name;
-    while check_name is not None {
+    full_name = "";
+    for check_name in self.mro_order.get(type_name, [type_name]) {
         full_name = f"{check_name}.{method_name}";
         if full_name in self.method_funcs {
             func = self.method_funcs[full_name];
             break;
         }
-        check_name = self.class_hierarchy.get(check_name);
     }
     if func is None {
         return None;
