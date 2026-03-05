@@ -5,7 +5,7 @@ impl foo{
 }
 
 obj out {
-    has cnt: int;
+    has cnt: int = 0;
 
     def bar;
     def baz;

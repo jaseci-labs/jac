@@ -364,6 +364,12 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             }
             return self.builder.icmp_unsigned("==", left, right, name="is.eq");
         }
+        # i64 is None: compare against -1 sentinel (for optional enum/int)
+        if isinstance(left.type, ir.IntType)
+        and isinstance(right.type, ir.PointerType) {
+            sentinel = ir.Constant(left.type, -1);
+            return self.builder.icmp_signed("==", left, sentinel, name="is.none");
+        }
         return self._to_bool(left);
     }
     if op == Tok.KW_ISN {
@@ -373,6 +379,12 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                 right = self.builder.bitcast(right, left.type);
             }
             return self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+        }
+        # i64 is not None: compare against -1 sentinel (for optional enum/int)
+        if isinstance(left.type, ir.IntType)
+        and isinstance(right.type, ir.PointerType) {
+            sentinel = ir.Constant(left.type, -1);
+            return self.builder.icmp_signed("!=", left, sentinel, name="isnot.none");
         }
         return self._to_bool(left);
     }
@@ -581,6 +593,44 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             full_name = f"{target_name}.{right_name}";
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
+            }
+            # Check enum .value / .name attribute: kind.value, kind.name
+            if (right_name == "value" or right_name == "name")
+            and target_name is not None
+            and target_name in self.var_enum_type {
+                enum_name = self.var_enum_type[target_name];
+                ordinal_val = self._codegen_expr(nd.target);
+                if ordinal_val is not None {
+                    use_name = right_name == "name";
+                    return self._codegen_enum_value_lookup(
+                        enum_name, ordinal_val, use_name=use_name
+                    );
+                }
+            }
+            # Check chained enum .value / .name: self.kind.value
+            if (right_name == "value" or right_name == "name")
+            and isinstance(nd.target, uni.AtomTrailer)
+            and nd.target.is_attr {
+                inner_target = self._get_name(nd.target.target);
+                inner_field = self._get_name(nd.target.right);
+                if inner_target is not None and inner_field is not None {
+                    inner_type = self.type_var_map.get(inner_target);
+                    if inner_type is not None
+                    and inner_type in self.struct_field_enum_type {
+                        enum_name = self.struct_field_enum_type[inner_type].get(
+                            inner_field
+                        );
+                        if enum_name is not None {
+                            ordinal_val = self._codegen_expr(nd.target);
+                            if ordinal_val is not None {
+                                use_name = right_name == "name";
+                                return self._codegen_enum_value_lookup(
+                                    enum_name, ordinal_val, use_name=use_name
+                                );
+                            }
+                        }
+                    }
+                }
             }
             # Check field access on a known-type variable: self.x, p.x
             if target_name in self.type_var_map {

@@ -1,4 +1,5 @@
 import math;
+import from typing { Callable }
 
 glob RAD = 5;
 
@@ -6,7 +7,7 @@ glob DIA = 10;
 
 # this comment is for walker
 walker decorator_walk {
-    def hash(func: Any) {
+    def hash(func: Callable) -> Callable {
         def inner(a: Any) {
             print(("#" * 20));
             func(a);
@@ -15,7 +16,7 @@ walker decorator_walk {
         return inner;
     }
 
-    def exclaim(func: Any) {
+    def exclaim(func: Callable) -> Callable {
         def inner(b: Any) {
             print(("!" * 20));
             func(b);
@@ -24,7 +25,7 @@ walker decorator_walk {
         return inner;
     }
 
-    def tilde(func: Any) {
+    def tilde(func: Callable) -> Callable {
         def inner(c: Any) {
             print(("~" * 20));
             func(c);

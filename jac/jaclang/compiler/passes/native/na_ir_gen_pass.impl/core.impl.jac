@@ -54,6 +54,12 @@ impl NaIRGenPass.init(
     # Enum support (Phase 1)
     self.enum_values: dict[(str, ir.Constant)] = {};
     self.enum_types: dict[(str, ir.IntType)] = {};
+    # String-valued enum lookup tables
+    self.enum_string_values: dict[str, list] = {};  # enum_name → [(member_name, string_value, ordinal), ...]
+    self.enum_value_arrays: dict[str, object] = {};  # enum_name → global [N x i8*] array (.value strings)
+    self.enum_name_arrays: dict[str, object] = {};  # enum_name → global [N x i8*] array (.name strings)
+    self.var_enum_type: dict[str, str] = {};  # var_name → enum_name (tracks enum-typed vars)
+    self.struct_field_enum_type: dict[str, dict] = {};  # struct_name → {field_name → enum_name}
     # Loop stack for break/continue (Phase 1)
     self.loop_stack: list[tuple] = [];
     # String counter for unique global names (Phase 2)
@@ -216,8 +222,258 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
                 _f.write(str(self.llvm_module));
             }
         }
+        # Export native layout metadata for auto-marshalling
+        self._export_native_layout();
     }
     return self.ir_in;
+}
+
+"""Convert an LLVM IR type to a string descriptor for ctypes marshalling."""
+impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
+    if isinstance(ty, ir.IntType) {
+        if ty.width == 64 {
+            return "i64";
+        }
+        if ty.width == 32 {
+            return "i32";
+        }
+        if ty.width == 8 {
+            return "i8";
+        }
+        if ty.width == 1 {
+            return "i1";
+        }
+        return f"i{ty.width}";
+    }
+    if isinstance(ty, ir.DoubleType) {
+        return "f64";
+    }
+    if isinstance(ty, ir.FloatType) {
+        return "f32";
+    }
+    if isinstance(ty, ir.VoidType) {
+        return "void";
+    }
+    if isinstance(ty, ir.PointerType) {
+        if ty?.pointee {
+            # Check for i8* (string)
+            if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
+                return "i8*";
+            }
+            # Check for known struct type
+            for (sname, stype) in self.struct_types.items() {
+                if ty.pointee == stype {
+                    return f"{sname}*";
+                }
+            }
+            # Check for list type
+            for (ename, ltype) in self.list_types.items() {
+                if ty.pointee == ltype {
+                    return f"List.{ename}*";
+                }
+            }
+            # Check for tuple type
+            for (tkey, ttype) in self.tuple_types.items() {
+                if ty.pointee == ttype {
+                    return f"Tuple*";
+                }
+            }
+        }
+        return "ptr";
+    }
+    return "i64";
+}
+
+"""Export struct/enum/function layout metadata to CodeGenTarget."""
+impl NaIRGenPass._export_native_layout -> None {
+    import from jaclang.jac0core.codeinfo {
+        NativeModuleLayout,
+        NativeStructLayout,
+        NativeFieldInfo,
+        NativeEnumLayout,
+        NativeFuncLayout,
+        NativeTupleLayout
+    }
+    layout = NativeModuleLayout();
+    # Structs
+    for (arch_name, field_indices) in self.struct_field_indices.items() {
+        field_types = self.struct_field_types.get(arch_name, {});
+        fields: list[NativeFieldInfo] = [];
+        enum_types = self.struct_field_enum_type.get(arch_name, {});
+        for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
+            ftype = field_types.get(fname);
+            llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
+            fields.append(
+                NativeFieldInfo(
+                    name=fname,
+                    llvm_type=llvm_t,
+                    index=idx,
+                    enum_type=enum_types.get(fname)
+                )
+            );
+        }
+        layout.structs[arch_name] = NativeStructLayout(
+            name=arch_name,
+            fields=fields,
+            has_vtable=self.has_vtable.get(arch_name, False)
+        );
+    }
+    # Enums
+    for (enum_name, entries) in self.enum_string_values.items() {
+        layout.enums[enum_name] = NativeEnumLayout(
+            name=enum_name, is_string_valued=True, members=list(entries)
+        );
+    }
+    # Tuples
+    for (tkey, ttype) in self.tuple_types.items() {
+        elem_types = [self._llvm_type_str(e) for e in ttype.elements];
+        layout.tuples[tkey] = NativeTupleLayout(
+            key=tkey,
+            element_types=elem_types,
+            element_struct_hints=[None] * len(elem_types)
+        );
+    }
+    # Free functions (exclude methods which are also in func_symtab)
+    method_names = set(self.method_funcs.keys());
+    for (fname, func) in self.func_symtab.items() {
+        if fname.startswith("__") or fname == "jac_entry" or fname in method_names {
+            continue;
+        }
+        param_types = [self._llvm_type_str(a) for a in func.function_type.args];
+        param_names: list[str] = [a.name for a in func.args];
+        ret_type = self._llvm_type_str(func.function_type.return_type);
+        ret_struct: (str | None) = None;
+        ret_tuple: (NativeTupleLayout | None) = None;
+        if isinstance(func.function_type.return_type, ir.PointerType) {
+            for (sn, st) in self.struct_types.items() {
+                if func.function_type.return_type.pointee == st {
+                    ret_struct = sn;
+                    break;
+                }
+            }
+            # Match tuple return type and extract struct hints from AST
+            if ret_type.startswith("Tuple") {
+                for (tkey, ttype) in self.tuple_types.items() {
+                    if func.function_type.return_type.pointee == ttype {
+                        ret_tuple = layout.tuples.get(tkey);
+                        if ret_tuple is not None {
+                            sig = self.method_ast_sigs.get(fname);
+                            if sig and sig.return_type {
+                                hints = self._extract_tuple_struct_hints(
+                                    sig.return_type
+                                );
+                                if hints
+                                and len(hints) == len(ret_tuple.element_types) {
+                                    ret_tuple = NativeTupleLayout(
+                                        key=ret_tuple.key,
+                                        element_types=ret_tuple.element_types,
+                                        element_struct_hints=hints
+                                    );
+                                    layout.tuples[tkey] = ret_tuple;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        layout.functions[fname] = NativeFuncLayout(
+            name=fname,
+            param_types=param_types,
+            param_names=param_names,
+            ret_type=ret_type,
+            ret_struct_name=ret_struct,
+            ret_tuple_layout=ret_tuple
+        );
+    }
+    # Methods
+    for (mname, func) in self.method_funcs.items() {
+        param_types = [self._llvm_type_str(a) for a in func.function_type.args];
+        param_names = [a.name for a in func.args];
+        ret_type = self._llvm_type_str(func.function_type.return_type);
+        ret_struct: (str | None) = None;
+        if isinstance(func.function_type.return_type, ir.PointerType) {
+            for (sn, st) in self.struct_types.items() {
+                if func.function_type.return_type.pointee == st {
+                    ret_struct = sn;
+                    break;
+                }
+            }
+        }
+        layout.methods[mname] = NativeFuncLayout(
+            name=mname,
+            param_types=param_types,
+            param_names=param_names,
+            ret_type=ret_type,
+            ret_struct_name=ret_struct
+        );
+    }
+    # List element types
+    for (ename, ltype) in self.list_types.items() {
+        layout.list_elem_types[f"List.{ename}"] = ename;
+    }
+    self.ir_in.gen.native_layout = layout;
+}
+
+"""Extract struct hints from a tuple return type AST node.
+
+Walks the return type annotation (e.g. tuple[list[Token], list[LexerError]])
+to extract struct names for each tuple element that contains struct pointers.
+Returns a list of (struct_name | None) for each element.
+"""
+impl NaIRGenPass._extract_tuple_struct_hints(type_node: object) -> list {
+    hints: list = [];
+    if not isinstance(type_node, uni.Expr) {
+        return hints;
+    }
+    # Walk slices of tuple[...] annotation
+    if type_node?.right and type_node.right?.slices {
+        slices = type_node.right.slices or [];
+        for s in slices {
+            inner = s.start if s?.start else s;
+            # Handle TupleVal wrapping: tuple[(T1, T2)] parses as TupleVal
+            if isinstance(inner, uni.TupleVal) {
+                for tv in inner.values {
+                    hints.append(self._extract_elem_struct_hint(tv));
+                }
+            } else {
+                hints.append(self._extract_elem_struct_hint(inner));
+            }
+        }
+    }
+    return hints;
+}
+
+"""Extract a struct hint from a single type element (e.g. list[Token] -> 'Token')."""
+impl NaIRGenPass._extract_elem_struct_hint(type_node: object) -> (str | None) {
+    if not isinstance(type_node, uni.Expr) {
+        return None;
+    }
+    # For AtomTrailer nodes (e.g. list[Token]), get the base name from kid[0]
+    name = self._get_name(type_node);
+    if name is None and isinstance(type_node, uni.AtomTrailer) {
+        # AtomTrailer has kid[0] = Name("list"), kid[1] = IndexSlice
+        if type_node.kid {
+            name = self._get_name(type_node.kid[0]);
+        }
+    }
+    # Check if this is list[StructName] or similar container
+    if name == "list" and type_node?.right and type_node.right?.slices {
+        inner_slices = type_node.right.slices or [];
+        for is_ in inner_slices {
+            inner_type = is_.start if is_?.start else is_;
+            inner_name = self._get_name(inner_type);
+            if inner_name is not None and inner_name in self.struct_types {
+                return inner_name;
+            }
+        }
+    }
+    # Direct struct name
+    if name is not None and name in self.struct_types {
+        return name;
+    }
+    return None;
 }
 
 # ─── Imported Struct Type Registration ────────────────────────
@@ -230,6 +486,7 @@ imported struct types in function signatures, instantiate them,
 and access their fields.
 """
 impl NaIRGenPass._register_imported_struct_types -> None {
+    import os;
     # Collect imports from top-level and inside na {} blocks
     imports: list = [];
     for stmt in self.ir_in.body {
@@ -262,25 +519,73 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         processed_modules.add(resolved_path);
-        # Look up the imported module in the hub
-        if not (resolved_path in self.prog.mod.hub) {
+        # Look up the imported module in the hub (try both relative and absolute)
+        imported_mod = self.prog.mod.hub.get(resolved_path);
+        if imported_mod is None {
+            abs_path = os.path.abspath(resolved_path);
+            imported_mod = self.prog.mod.hub.get(abs_path);
+        }
+        # If not in hub, parse the imported .jac file to get its AST for type
+        # extraction. Use rd_parse directly (not parse_str) to avoid adding a
+        # parse-only module to the hub, which would prevent TypeCheckPass from
+        # properly compiling it with SymTabBuildPass later.
+        # Only parse .jac files — .py/.pyi stubs must use the Python parser.
+        if (
+            imported_mod is None
+            and resolved_path.endswith('.jac')
+            and os.path.isfile(resolved_path)
+        ) {
+            try {
+                import from jaclang.jac0core.parser { parse as rd_parse }
+                source = open(resolved_path).read();
+                (imported_mod, _, _) = rd_parse(source, resolved_path, prog=self.prog);
+            } except Exception {
+                continue;
+            }
+        }
+        if imported_mod is None {
             continue;
         }
-        imported_mod = self.prog.mod.hub[resolved_path];
-        # Walk the imported module for archetype definitions
-        for imp_stmt in imported_mod.body {
-            if isinstance(imp_stmt, uni.NativeBlock) {
-                for inner in imp_stmt.body {
-                    if isinstance(inner, uni.Archetype) {
-                        self._register_imported_archetype(inner);
-                    }
+        # Walk the imported module for archetypes, enums, globals, functions
+        self._walk_imported_module(imported_mod);
+    }
+}
+
+"""Walk an imported module's AST and register all type declarations."""
+impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
+    for imp_stmt in imported_mod.body {
+        if isinstance(imp_stmt, uni.NativeBlock) {
+            for inner in imp_stmt.body {
+                if isinstance(inner, uni.Archetype) {
+                    self._register_imported_archetype(inner);
                 }
-            } elif isinstance(imp_stmt, uni.Archetype) {
-                if (
-                    isinstance(imp_stmt, uni.ContextAwareNode)
-                    and imp_stmt.code_context == CodeContext.NATIVE
-                ) {
+                if isinstance(inner, uni.Enum) {
+                    self._codegen_enum(inner);
+                }
+                if isinstance(inner, uni.GlobalVars) {
+                    self._register_imported_globals(inner);
+                }
+                if isinstance(inner, uni.Ability) {
+                    self._forward_declare_imported_ability(inner);
+                }
+            }
+        } else {
+            # Top-level definitions: register unless explicitly CLIENT context.
+            # Imported modules may be plain .jac (SERVER context) or .na.jac (NATIVE);
+            # both need their types/enums registered for native compilation.
+            is_client = (
+                isinstance(imp_stmt, uni.ContextAwareNode)
+                and imp_stmt.code_context == CodeContext.CLIENT
+            );
+            if not is_client {
+                if isinstance(imp_stmt, uni.Archetype) {
                     self._register_imported_archetype(imp_stmt);
+                } elif isinstance(imp_stmt, uni.Enum) {
+                    self._codegen_enum(imp_stmt);
+                } elif isinstance(imp_stmt, uni.GlobalVars) {
+                    self._register_imported_globals(imp_stmt);
+                } elif isinstance(imp_stmt, uni.Ability) {
+                    self._forward_declare_imported_ability(imp_stmt);
                 }
             }
         }
@@ -298,6 +603,64 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     self.struct_types[aname] = struct_type;
     # Define struct body with full field layout
     self._codegen_archetype(arch);
+}
+
+"""Register imported global variables with external linkage (resolved at link time)."""
+impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
+    for assign in nd.assignments {
+        targets = assign.target
+            if isinstance(assign.target, (list, tuple))
+            else [(assign.target)];
+        for target in targets {
+            var_name = self._get_name(target);
+            if var_name is None or var_name in self.global_vars {
+                continue;
+            }
+            var_type: ir.Type = ir.IntType(64);
+            if assign.type_tag and assign.type_tag.tag {
+                var_type = self._resolve_jac_type(assign.type_tag.tag);
+            }
+            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+            global_var.linkage = "external";
+            self.global_vars[var_name] = global_var;
+            self.global_var_types[var_name] = var_type;
+            # Track list element types for imported list globals
+            if isinstance(var_type, ir.PointerType) {
+                for (ename, ltype) in self.list_types.items() {
+                    if var_type == ltype.as_pointer() {
+                        self.var_list_elem_type[var_name] = ename;
+                        break;
+                    }
+                }
+            }
+            # Track dict types for imported dict globals
+            if isinstance(var_type, ir.PointerType) {
+                for (dict_key, dtype) in self.dict_types.items() {
+                    if var_type == dtype.as_pointer() {
+                        self.var_dict_type[var_name] = dict_key;
+                        break;
+                    }
+                }
+            }
+            self.has_native_code = True;
+        }
+    }
+}
+
+"""Forward-declare an imported function (resolved at link time).
+
+Delegates to _maybe_declare_ability which handles all type resolution correctly.
+"""
+impl NaIRGenPass._forward_declare_imported_ability(nd: uni.Ability) -> None {
+    name = nd.name_ref.sym_name if nd.name_ref else None;
+    if name is None or name in self.func_symtab {
+        return;
+    }
+    # Only forward-declare concrete function definitions (with body + signature)
+    if nd.body is None {
+        return;
+    }
+    self._maybe_declare_ability(nd);
 }
 
 # ─── C Library Import Processing ──────────────────────────────

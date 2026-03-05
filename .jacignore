@@ -7,7 +7,6 @@ banners.jac
 bun_installer.impl.jac
 bun_installer.jac
 cfg_build_pass.jac
-chandra_bugs.jac
 circle_pure_err.impl.jac
 clib_import.na.jac
 clib_import_na_block.jac
@@ -27,9 +26,7 @@ constant.jac
 context.impl.jac
 context.jac
 corelib_fmt.jac
-custom_access_validation.jac
 data_spatial_types.jac
-decorator_stack.jac
 def_impl_match_pass.jac
 defn_decl_mismatch.jac
 dependencies.jac
@@ -48,7 +45,6 @@ enum_utils.impl.jac
 enum_utils.jac
 err2.jac
 esast_gen_pass.jac
-essay_review.jac
 es_unparse.impl.jac
 es_unparse.jac
 execution.impl.jac
@@ -57,17 +53,12 @@ executor.jac
 fam.jac
 fantasy_trading_game.jac
 fstrings.jac
-funccall_genexpr.jac
-func.jac
-game1.jac
 game_obj.jac
 grammar_extract_pass.jac
 guess_game6.jac
 helpers.jac
 help.jac
-iife_functions.jac
 image_types.jac
-impl_grab.jac
 impl_match_confused.jac
 import_all.jac
 import_symbol_type_infer.jac
@@ -84,9 +75,7 @@ jsx_unterminated_hang.jac
 kubernetes_utils.impl.jac
 kubernetes_utils.jac
 lang_tools.jac
-level_genarator.jac
 level_manager.jac
-line_spacing.jac
 llm.jac
 macho_linker.impl.jac
 macho_linker.jac
@@ -96,7 +85,6 @@ member_access_type_resolve.jac
 memory_hierarchy.jac
 memory.jac
 modresolver.jac
-mtest.jac
 mtir_gen_pass.impl.jac
 mtir_gen_pass.jac
 mtp.jac
@@ -105,7 +93,6 @@ nacompile.jac
 na_compile_pass.jac
 na_ir_gen_pass.jac
 nested_class_sig.jac
-nested_impls.jac
 NonGPT.jac
 normalize_pass.jac
 one.jac
@@ -134,7 +121,6 @@ pyjac_ast_link_pass.jac
 py_imp_test.jac
 random_check.jac
 registry.jac
-rename.jac
 runtime_errors.na.jac
 runtime.jac
 safe_call_operator.jac
@@ -208,7 +194,6 @@ webhook.jac
 web_target.impl.jac
 web_target.jac
 with_context.jac
-with_llm_method.jac
 yield_in_assignment.jac
 admin_portal.impl.jac
 prim_builtins_extra2.jac
@@ -219,3 +204,10 @@ async_compr.jac
 checker_parameterless_init.jac
 checker_getattr_support.jac
 static_analysis_pass.impl.jac
+na_enum_export.na.jac
+na_enum_import.na.jac
+lexer.na.jac
+native_marshal.jac
+tokens.na.jac
+string_enums.na.jac
+test_native_lexer.jac

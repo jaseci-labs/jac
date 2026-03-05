@@ -666,7 +666,7 @@ impl Lexer.scan_fstring_content -> Token {
 }
 
 impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
-    match mode {
+    switch mode {
         case LexerMode.FSTRING_DQ:
             return TokenKind.F_TEXT_DQ;
 
@@ -679,7 +679,7 @@ impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
         case LexerMode.FSTRING_TSQ:
             return TokenKind.F_TEXT_TSQ;
 
-        case _:
+        default:
             return TokenKind.F_TEXT_DQ;  # Fallback
 
 
@@ -687,7 +687,7 @@ impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
 }
 
 impl Lexer.get_fstring_end_kind(mode: LexerMode) -> TokenKind {
-    match mode {
+    switch mode {
         case LexerMode.FSTRING_DQ:
             return TokenKind.F_DQ_END;
 
@@ -700,7 +700,7 @@ impl Lexer.get_fstring_end_kind(mode: LexerMode) -> TokenKind {
         case LexerMode.FSTRING_TSQ:
             return TokenKind.F_TSQ_END;
 
-        case _:
+        default:
             return TokenKind.F_DQ_END;  # Fallback
 
 
@@ -1367,7 +1367,7 @@ impl Lexer.scan_operator -> Token {
     }
     # Single-character operators and delimiters
     self.advance();
-    match ch {
+    switch ch {
         case "(":
             return self.make_token(
                 TokenKind.LPAREN, "(", start_line, start_col, start_pos
