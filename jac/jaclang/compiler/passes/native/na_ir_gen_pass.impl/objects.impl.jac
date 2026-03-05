@@ -64,51 +64,35 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         self.struct_types[arch_name] = struct_type;
         self.has_native_code = True;
     }
-    # Pass 1.5: Build class hierarchy (multiple inheritance)
+    # Pass 1.5 + 1.7: Read class hierarchy and MRO from centralized LayoutRegistry
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    layout_reg = get_layout_registry(self.ir_in, self.prog);
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         self.arch_ast_map[arch_name] = arch;
-        if arch.base_classes {
-            parents: list[str] = [];
-            for base_expr in arch.base_classes {
-                parent_name = self._get_name(base_expr);
-                if parent_name is not None and parent_name in self.struct_types {
-                    parents.append(parent_name);
-                }
-            }
-            if parents {
-                self.class_parents[arch_name] = parents;
-                self.class_hierarchy[arch_name] = parents[
-                    0
-                ];  # primary parent (backward compat)
-            }
+        parents = layout_reg.class_parents.get(arch_name, []);
+        # Filter to only include native parents (those with struct types)
+        native_parents = [
+            p
+            for p in parents
+            if p in self.struct_types
+        ];
+        if native_parents {
+            self.class_parents[arch_name] = native_parents;
+            self.class_hierarchy[arch_name] = native_parents[0];
         }
+        self.mro_order[arch_name] = layout_reg.get_mro(arch_name);
     }
-    # Pass 1.7: Compute C3 MRO for all classes
+    # Determine which classes need vtables from LayoutRegistry
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
-        if arch_name not in self.mro_order {
-            self.mro_order[arch_name] = self._compute_c3_mro(arch_name);
+        arch_layout = layout_reg.get_layout(arch_name);
+        if arch_layout is not None and arch_layout.has_vtable {
+            self.has_vtable[arch_name] = True;
         }
     }
-    # Determine which classes need vtables (any class with parents or that is a parent)
-    parents_set: set[str] = set();
-    for (child, parent_list) in self.class_parents.items() {
-        self.has_vtable[child] = True;
-        for p in parent_list {
-            parents_set.add(p);
-        }
-    }
-    for parent in parents_set {
-        self.has_vtable[parent] = True;
-    }
-    # Pass 2: Define struct bodies in topological order (all ancestors before descendants)
-    topo_processed: set[str] = set();
-    topo_order: list[str] = [];
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
-        self._topo_visit(arch_name, arch_map, topo_processed, topo_order);
-    }
+    # Pass 2: Define struct bodies in topological order from LayoutRegistry
+    topo_order = layout_reg.get_topo_order();
     for topo_name in topo_order {
         if topo_name in arch_map {
             self._codegen_archetype(arch_map[topo_name]);
@@ -155,34 +139,18 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             continue;
         }
         # Collect methods already provided by own + primary ancestors
-        provided_methods: set[str] = set();
-        if arch.body is not None {
-            for stmt in arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                    if mn is not None {
-                        provided_methods.add(mn);
-                    }
-                }
-            }
-        }
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
         for anc in mro[1:] {
-            if self._is_primary_ancestor(arch_name, anc) {
+            if layout_reg.is_primary_ancestor(arch_name, anc) {
                 anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None and anc_arch.body is not None {
-                    for stmt in anc_arch.body {
-                        if isinstance(stmt, uni.Ability) {
-                            mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                            if mn is not None {
-                                provided_methods.add(mn);
-                            }
-                        }
-                    }
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
                 }
             }
         }
         for ancestor_name in mro[1:] {
-            if self._is_primary_ancestor(arch_name, ancestor_name) {
+            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
                 continue;
             }
             ancestor_arch = self.arch_ast_map.get(ancestor_name);
@@ -302,37 +270,19 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         }
         # Collect methods provided by the child's own definition + primary ancestors
         # (these will be handled by own codegen or bitcast wrappers in Pass 6)
-        provided_methods: set[str] = set();
-        # Own methods
-        if arch.body is not None {
-            for stmt in arch.body {
-                if isinstance(stmt, uni.Ability) {
-                    mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                    if mn is not None {
-                        provided_methods.add(mn);
-                    }
-                }
-            }
-        }
-        # Methods from primary ancestor chain
+        import from jaclang.compiler.symbol_utils { collect_method_names }
+        provided_methods = collect_method_names(arch);
         for anc in mro[1:] {
-            if self._is_primary_ancestor(arch_name, anc) {
+            if layout_reg.is_primary_ancestor(arch_name, anc) {
                 anc_arch = self.arch_ast_map.get(anc);
-                if anc_arch is not None and anc_arch.body is not None {
-                    for stmt in anc_arch.body {
-                        if isinstance(stmt, uni.Ability) {
-                            mn = stmt.name_ref.sym_name if stmt.name_ref else None;
-                            if mn is not None {
-                                provided_methods.add(mn);
-                            }
-                        }
-                    }
+                if anc_arch is not None {
+                    provided_methods.update(collect_method_names(anc_arch));
                 }
             }
         }
         # Now re-compile only non-primary ancestor methods NOT already provided
         for ancestor_name in mro[1:] {
-            if self._is_primary_ancestor(arch_name, ancestor_name) {
+            if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
                 continue;
             }
             ancestor_arch = self.arch_ast_map.get(ancestor_name);
@@ -359,21 +309,6 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
     # Pass 6: Generate wrapper functions for inherited methods
     self._generate_inherited_method_wrappers();
-}
-
-"""Topological sort helper: visit a class after all its ancestors."""
-impl NaIRGenPass._topo_visit(
-    name: str, arch_map: dict, visited: set[str], order: list[str]
-) -> None {
-    if name in visited {
-        return;
-    }
-    visited.add(name);
-    mro = self.mro_order.get(name, [name]);
-    for ancestor in mro[1:] {
-        self._topo_visit(ancestor, arch_map, visited, order);
-    }
-    order.append(name);
 }
 
 """Register a struct type — define its field layout from has declarations."""

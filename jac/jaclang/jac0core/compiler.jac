@@ -68,6 +68,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
+        # Pre-compile shared analysis modules so codegen passes can import them
+        import jaclang.compiler.symbol_utils;
+        import jaclang.compiler.passes.main.layout_pass;
         return [
             SymTabBuildPass,
             DeclImplMatchPass,

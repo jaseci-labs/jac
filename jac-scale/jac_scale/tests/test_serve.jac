@@ -22,7 +22,12 @@ import pytest;
 import jwt as pyjwt;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { Any }
+import from jac_scale.tests.scale_test_client {
+    ScaleTestClient,
+    make_client,
+    extract_data
+}
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -189,46 +194,6 @@ def _stop_server(server_process: subprocess.Popen | None) -> None {
     gc.collect();
 }
 
-"""Make HTTP request to server and return JSON response."""
-def _request(
-    base_url: str,
-    method: str,
-    path: str,
-    data: dict[str, Any] | None = None,
-    token: str | None = None,
-    timeout: int = 5,
-    max_retries: int = 60,
-    retry_interval: float = 0.5
-) -> dict[str, Any] {
-    url = f"{base_url}{path}";
-    headers = {"Content-Type": "application/json"};
-
-    if token {
-        headers["Authorization"] = f"Bearer {token}";
-    }
-
-    response = None;
-    for attempt in range(max_retries) {
-        response = requests.request(
-            method=method, url=url, json=data, headers=headers, timeout=timeout
-        );
-
-        if response.status_code == 503 {
-            print(
-                f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
-            );
-            time.sleep(retry_interval);
-            continue;
-        }
-
-        break;
-    }
-
-    assert response is not None , "No response received";
-    json_response: Any = response.json();
-    return _extract_transport_response_data(json_response);
-}
-
 """Create an expired JWT token for testing."""
 def _create_expired_token(username: str, days_ago: int = 1) -> str {
     secret = "supersecretkey_for_testing_only!";
@@ -258,7 +223,7 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
 }
 
 # =============================================================================
-# SERVER CONFIGURATION
+# SERVER CONFIGURATION (used by websocket, dev mode, and port fallback tests)
 # =============================================================================
 glob sv_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
@@ -285,10 +250,10 @@ def teardown_serve_server(sp: subprocess.Popen | None) -> None {
 # GROUP 1: STATIC & SCHEMA TESTS (Read-only, no state changes)
 # =============================================================================
 test "static and schema endpoints" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Test: server root endpoint returns docs
-        response = requests.get(f"{sv_base_url}/docs", timeout=5);
+        response = client.get("/docs");
         assert response.status_code == 200 , "Docs endpoint should return 200";
 
         # Test: custom response headers from config
@@ -300,7 +265,7 @@ test "static and schema endpoints" {
         assert response.headers["cross-origin-embedder-policy"] == "require-corp";
 
         # Test: OpenAPI schema is accessible and correct
-        openapi_response = requests.get(f"{sv_base_url}/openapi.json", timeout=5);
+        openapi_response = client.get("/openapi.json");
         assert openapi_response.status_code == 200;
         openapi_spec = openapi_response.json();
         paths = openapi_spec.get("paths", {});
@@ -328,21 +293,21 @@ test "static and schema endpoints" {
         }
 
         # Test: 404 responses for non-existent paths
-        response = requests.get(f"{sv_base_url}/cl/nonexistent_page_xyz", timeout=5);
+        response = client.get("/cl/nonexistent_page_xyz");
         assert response.status_code == 404;
         assert "404" in response.text;
 
-        response = requests.get(f"{sv_base_url}/static/nonexistent_file.css", timeout=5);
+        response = client.get("/static/nonexistent_file.css");
         assert response.status_code == 404;
         assert "not found" in response.text.lower();
 
-        response = requests.get(f"{sv_base_url}/nonexistent_image.png", timeout=5);
+        response = client.get("/nonexistent_image.png");
         assert response.status_code == 404;
 
         # Test: disallowed extensions return 404
-        response = requests.get(f"{sv_base_url}/malware.exe", timeout=5);
+        response = client.get("/malware.exe");
         assert response.status_code == 404;
-        response = requests.get(f"{sv_base_url}/script.php", timeout=5);
+        response = client.get("/script.php");
         assert response.status_code == 404;
 
         # Test: reserved paths return 404 for asset requests
@@ -354,23 +319,23 @@ test "static and schema endpoints" {
             "static/something.png"
         ];
         for path in reserved_paths {
-            response = requests.get(f"{sv_base_url}/{path}", timeout=5);
+            response = client.get(f"/{path}");
             assert response.status_code == 404;
         }
 
         # Test: static client.js (may be 200, 503, or 500 depending on build state)
-        response = requests.get(f"{sv_base_url}/static/client.js", timeout=60);
+        response = client.get("/static/client.js");
         assert response.status_code in [200, 503, 500];
         if response.status_code == 200 {
             assert "application/javascript" in response.headers.get("content-type", "");
         }
 
         # Test: graph endpoint returns html page
-        response = requests.get(f"{sv_base_url}/graph", timeout=5);
+        response = client.get("/graph");
         assert response.status_code == 200;
         assert "text/html" in response.headers["content-type"];
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
@@ -378,16 +343,15 @@ test "static and schema endpoints" {
 # GROUP 2: USER AUTHENTICATION TESTS (Register, Login, Token Refresh)
 # =============================================================================
 test "user registration and login" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Test: user creation
         test_username = f"testuser_{uuid.uuid4().hex[:8]}";
-        result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": test_username, "password": "testpass123"}
+            json={"username": test_username, "password": "testpass123"}
         );
+        result = extract_data(response.json());
         assert "username" in result;
         assert "token" in result;
         assert "root_id" in result;
@@ -395,116 +359,94 @@ test "user registration and login" {
 
         # Test: status code 201 for successful registration
         status_user = f"status_{uuid.uuid4().hex[:8]}";
-        response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": status_user, "password": "password123"},
-            timeout=5
+        response = client.post(
+            "/user/register", json={"username": status_user, "password": "password123"}
         );
         assert response.status_code == 201;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        data = extract_data(response.json());
         assert "token" in data;
         assert data["username"] == status_user;
 
         # Test: status code 400 for duplicate registration
-        response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": status_user, "password": "password123"},
-            timeout=5
+        response = client.post(
+            "/user/register", json={"username": status_user, "password": "password123"}
         );
         assert response.status_code == 400;
 
         # Test: user login
         login_username = f"login_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": login_username, "password": "loginpass"}
+            json={"username": login_username, "password": "loginpass"}
         );
-        login_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/login",
-            {"username": login_username, "password": "loginpass"}
+        create_result = extract_data(response.json());
+        response = client.post(
+            "/user/login", json={"username": login_username, "password": "loginpass"}
         );
+        login_result = extract_data(response.json());
         assert "token" in login_result;
         assert login_result["username"] == login_username;
         assert login_result["root_id"] == create_result["root_id"];
 
         # Test: status code 200 for successful login
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": login_username, "password": "loginpass"},
-            timeout=5
+        response = client.post(
+            "/user/login", json={"username": login_username, "password": "loginpass"}
         );
         assert response.status_code == 200;
 
         # Test: user login wrong password
         fail_username = f"fail_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": fail_username, "password": "correctpass"}
+            json={"username": fail_username, "password": "correctpass"}
         );
-        login_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/login",
-            {"username": fail_username, "password": "wrongpass"}
+        response = client.post(
+            "/user/login", json={"username": fail_username, "password": "wrongpass"}
         );
+        login_result = extract_data(response.json());
         assert "error" in login_result;
 
         # Test: status code 401 for invalid credentials
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": fail_username, "password": "wrongpass"},
-            timeout=5
+        response = client.post(
+            "/user/login", json={"username": fail_username, "password": "wrongpass"}
         );
         assert response.status_code == 401;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        data = extract_data(response.json());
         assert data["error"] == "Invalid credentials";
 
         # Test: status code 400/422 for missing credentials
-        response = requests.post(
-            f"{sv_base_url}/user/login", json={"username": "test"}, timeout=5
-        );
+        response = client.post("/user/login", json={"username": "test"});
         assert response.status_code in [400, 422];
 
-        response = requests.post(
-            f"{sv_base_url}/user/login", json={"password": "password123"}, timeout=5
-        );
+        response = client.post("/user/login", json={"password": "password123"});
         assert response.status_code in [400, 422];
 
-        response = requests.post(f"{sv_base_url}/user/login", json={}, timeout=5);
+        response = client.post("/user/login", json={});
         assert response.status_code in [400, 422];
 
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": "", "password": "password123"},
-            timeout=5
+        response = client.post(
+            "/user/login", json={"username": "", "password": "password123"}
         );
         assert response.status_code == 400;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        data = extract_data(response.json());
         assert data["error"] == "Username and password required";
 
         # Test: nonexistent user returns 401
-        response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": "nonexistent", "password": "password"},
-            timeout=5
+        response = client.post(
+            "/user/login", json={"username": "nonexistent", "password": "password"}
         );
         assert response.status_code == 401;
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
 test "token refresh functionality" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Test: refresh token with missing token
-        refresh_result = _request(sv_base_url, "POST", "/user/refresh-token", {});
+        response = client.post("/user/refresh-token", json={});
+        refresh_result = extract_data(response.json());
         if "detail" in refresh_result {
             assert isinstance(refresh_result["detail"], list);
             error_entry = refresh_result["detail"][0];
@@ -519,130 +461,106 @@ test "token refresh functionality" {
         }
 
         # Test: refresh token with empty token
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": ""}
-        );
+        response = client.post("/user/refresh-token", json={"token": ""});
+        refresh_result = extract_data(response.json());
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Token is required";
 
         # Test: status code 400 for empty token
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": ""}, timeout=5
-        );
+        response = client.post("/user/refresh-token", json={"token": ""});
         assert response.status_code == 400;
 
         # Test: refresh token with invalid/malformed tokens (all return same error)
         invalid_tokens = ["invalid.token.here", "not.a.jwt", "invalid_token_string"];
         for invalid_token in invalid_tokens {
-            refresh_result = _request(
-                sv_base_url, "POST", "/user/refresh-token", {"token": invalid_token}
-            );
+            response = client.post("/user/refresh-token", json={"token": invalid_token});
+            refresh_result = extract_data(response.json());
             assert "error" in refresh_result;
             assert refresh_result["error"] == "Invalid or expired token";
         }
 
         # Test: status code 401 for invalid token
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token",
-            json={"token": "invalid_token_string"},
-            timeout=5
+        response = client.post(
+            "/user/refresh-token", json={"token": "invalid_token_string"}
         );
         assert response.status_code == 401;
 
         # Test: refresh token with bearer prefix
-        create_result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {
+            json={
                 "username": f"refresh_bearer_{uuid.uuid4().hex[:8]}",
                 "password": "password123"
             }
         );
+        create_result = extract_data(response.json());
         original_token = create_result["token"];
 
-        refresh_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/refresh-token",
-            {"token": f"Bearer {original_token}"}
+        response = client.post(
+            "/user/refresh-token", json={"token": f"Bearer {original_token}"}
         );
+        refresh_result = extract_data(response.json());
         assert "token" in refresh_result;
         assert "message" in refresh_result;
         assert refresh_result["message"] == "Token refreshed successfully";
 
         # Test: status code 200 for successful refresh
-        response = requests.post(
-            f"{sv_base_url}/user/refresh-token",
-            json={"token": original_token},
-            timeout=5
-        );
+        response = client.post("/user/refresh-token", json={"token": original_token});
         assert response.status_code == 200;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        data = extract_data(response.json());
         assert "token" in data;
         assert data["message"] == "Token refreshed successfully";
 
         # Test: refresh token too old
         old_user = f"refresh_old_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": old_user, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": old_user, "password": "password123"}
         );
         very_old_token = _create_very_old_token(old_user, days_ago=15);
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": very_old_token}
-        );
+        response = client.post("/user/refresh-token", json={"token": very_old_token});
+        refresh_result = extract_data(response.json());
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
 
         # Test: refresh token with nonexistent user
         fake_token = _create_expired_token("nonexistent", days_ago=1);
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": fake_token}
-        );
+        response = client.post("/user/refresh-token", json={"token": fake_token});
+        refresh_result = extract_data(response.json());
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
 
         # Test: refresh token multiple times
-        create_result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {
+            json={
                 "username": f"refresh_multi_{uuid.uuid4().hex[:8]}",
                 "password": "password123"
             }
         );
+        create_result = extract_data(response.json());
         token1 = create_result["token"];
 
-        refresh_result1 = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": token1}
-        );
+        response = client.post("/user/refresh-token", json={"token": token1});
+        refresh_result1 = extract_data(response.json());
         token2 = refresh_result1["token"];
         assert token2 != token1;
 
-        refresh_result2 = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": token2}
-        );
+        response = client.post("/user/refresh-token", json={"token": token2});
+        refresh_result2 = extract_data(response.json());
         token3 = refresh_result2["token"];
         assert token3 != token2;
         assert token3 != token1;
 
         # Test: refresh token preserves username
         username = f"refresh_preserve_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "password123"}
         );
+        create_result = extract_data(response.json());
         original_token = create_result["token"];
 
-        refresh_result = _request(
-            sv_base_url, "POST", "/user/refresh-token", {"token": original_token}
-        );
+        response = client.post("/user/refresh-token", json={"token": original_token});
+        refresh_result = extract_data(response.json());
         new_token = refresh_result["token"];
 
         secret = "supersecretkey_for_testing_only!";
@@ -655,54 +573,40 @@ test "token refresh functionality" {
         assert new_payload["username"] == username;
         assert original_payload["username"] == new_payload["username"];
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
 test "integration auth flow" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         username = f"integration_{uuid.uuid4().hex[:8]}";
 
         # Register
-        register_response = requests.post(
-            f"{sv_base_url}/user/register",
-            json={"username": username, "password": "secure123"},
-            timeout=5
+        register_response = client.post(
+            "/user/register", json={"username": username, "password": "secure123"}
         );
         assert register_response.status_code == 201;
-        data = cast(
-            dict[str, Any], _extract_transport_response_data(register_response.json())
-        );
+        data = extract_data(register_response.json());
         token1 = data["token"];
 
         # Login
-        login_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "secure123"},
-            timeout=5
+        login_response = client.post(
+            "/user/login", json={"username": username, "password": "secure123"}
         );
         assert login_response.status_code == 200;
-        data = cast(
-            dict[str, Any], _extract_transport_response_data(login_response.json())
-        );
+        data = extract_data(login_response.json());
         token2 = data["token"];
 
         # Refresh
-        refresh_response = requests.post(
-            f"{sv_base_url}/user/refresh-token", json={"token": token1}, timeout=5
-        );
+        refresh_response = client.post("/user/refresh-token", json={"token": token1});
         assert refresh_response.status_code == 200;
-        data = cast(
-            dict[str, Any], _extract_transport_response_data(refresh_response.json())
-        );
+        data = extract_data(refresh_response.json());
         token3 = data["token"];
 
         # Failed login
-        fail_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "wrongpass"},
-            timeout=5
+        fail_response = client.post(
+            "/user/login", json={"username": username, "password": "wrongpass"}
         );
         assert fail_response.status_code == 401;
 
@@ -711,7 +615,7 @@ test "integration auth flow" {
         assert token2 != token3;
         assert token1 != token3;
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
@@ -719,115 +623,115 @@ test "integration auth flow" {
 # GROUP 3: API OPERATIONS (Functions and Walkers)
 # =============================================================================
 test "function calls" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Create a user for authenticated calls
-        create_result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": f"funcuser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+            json={"username": f"funcuser_{uuid.uuid4().hex[:8]}", "password": "pass"}
         );
+        create_result = extract_data(response.json());
         token = create_result["token"];
 
         # Test: call function add_numbers
-        result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/function/add_numbers",
-            {"a": 10, "b": 25},
-            token=token
+            json={"a": 10, "b": 25},
+            headers={"Authorization": f"Bearer {token}"}
         );
+        result = extract_data(response.json());
         assert "result" in result;
         assert result["result"] == 35;
 
         # Test: call function greet
-        result = _request(
-            sv_base_url, "POST", "/function/greet", {"name": "Alice"}, token=token
+        response = client.post(
+            "/function/greet",
+            json={"name": "Alice"},
+            headers={"Authorization": f"Bearer {token}"}
         );
+        result = extract_data(response.json());
         assert "result" in result;
         assert result["result"] == "Hello, Alice!";
 
         # Test: call function with defaults
-        result = _request(
-            sv_base_url, "POST", "/function/greet", {"args": {}}, token=token
+        response = client.post(
+            "/function/greet",
+            json={"args": {}},
+            headers={"Authorization": f"Bearer {token}"}
         );
+        result = extract_data(response.json());
         assert "result" in result;
         assert result["result"] == "Hello, World!";
 
         # Test: multiply function
-        result = _request(
-            sv_base_url, "POST", "/function/multiply", {"x": 7, "y": 8}, token=token
+        response = client.post(
+            "/function/multiply",
+            json={"x": 7, "y": 8},
+            headers={"Authorization": f"Bearer {token}"}
         );
+        result = extract_data(response.json());
         assert "result" in result;
         assert result["result"] == 56;
 
         # Test: status code 200 for function success
-        response = requests.post(
-            f"{sv_base_url}/function/add_numbers",
+        response = client.post(
+            "/function/add_numbers",
             json={"a": 10, "b": 20},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
-        data = cast(dict[str, Any], _extract_transport_response_data(response.json()));
+        data = extract_data(response.json());
         assert "result" in data;
 
-        # Test: invalid function returns 405
-        result = _request(
-            sv_base_url, "POST", "/function/nonexistent", {"args": {}}, token=token
+        # Test: invalid function returns 404/405
+        response = client.post(
+            "/function/nonexistent",
+            json={"args": {}},
+            headers={"Authorization": f"Bearer {token}"}
         );
-        assert "Method Not Allowed" in result["detail"];
+        assert response.status_code in [404, 405];
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
 test "walker calls" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Create a user for authenticated calls
-        create_result = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": f"walkeruser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+            json={"username": f"walkeruser_{uuid.uuid4().hex[:8]}", "password": "pass"}
         );
+        create_result = extract_data(response.json());
         token = create_result["token"];
 
         # Test: status code 200 for walker success
-        response = requests.post(
-            f"{sv_base_url}/walker/CreateTask",
+        response = client.post(
+            "/walker/CreateTask",
             json={"title": "Test Task", "priority": 2},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
 
-        # Test: invalid walker returns 405
-        result = _request(
-            sv_base_url,
-            "POST",
+        # Test: invalid walker returns 404/405
+        response = client.post(
             "/walker/NonExistentWalker",
-            {"fields": {}},
-            token=token
+            json={"fields": {}},
+            headers={"Authorization": f"Bearer {token}"}
         );
-        assert "Method Not Allowed" in result["detail"];
+        assert response.status_code in [404, 405];
 
         # Test: private walker 401 unauthorized (no token)
-        response = requests.post(
-            f"{sv_base_url}/walker/PrivateCreateTask",
-            json={"title": "Private Task", "priority": 1},
-            timeout=5
+        response = client.post(
+            "/walker/PrivateCreateTask", json={"title": "Private Task", "priority": 1}
         );
         assert response.status_code == 401;
 
         # Test: public walker 200 no auth
-        response = requests.post(f"{sv_base_url}/walker/PublicInfo", json={}, timeout=5);
+        response = client.post("/walker/PublicInfo", json={});
         assert response.status_code == 200;
-        response_data = cast(
-            dict[str, Any], _extract_transport_response_data(response.json())
-        );
+        response_data = extract_data(response.json());
         data = response_data["reports"][0];
         assert "message" in data;
         assert data["message"] == "This is a public endpoint";
@@ -835,16 +739,11 @@ test "walker calls" {
         assert data["auth_required"] is False;
 
         # Test: public walker 200 with auth
-        response = requests.post(
-            f"{sv_base_url}/walker/PublicInfo",
-            json={},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+        response = client.post(
+            "/walker/PublicInfo", json={}, headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
-        response_data = cast(
-            dict[str, Any], _extract_transport_response_data(response.json())
-        );
+        response_data = extract_data(response.json());
         data = response_data["reports"][0];
         assert data["message"] == "This is a public endpoint";
 
@@ -858,46 +757,40 @@ test "walker calls" {
         };
         fake_token = pyjwt.encode(payload, secret, algorithm="HS256");
 
-        response = requests.post(
-            f"{sv_base_url}/walker/PrivateCreateTask",
+        response = client.post(
+            "/walker/PrivateCreateTask",
             json={"title": "Ghost Task", "priority": 1},
-            headers={"Authorization": f"Bearer {fake_token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {fake_token}"}
         );
         assert response.status_code == 401 , (
             f"Expected 401 for deleted/non-existent user, got {response.status_code}"
         );
 
         # Test: graph data returns nodes and edges
-        response = requests.get(f"{sv_base_url}/graph/data", timeout=5);
+        response = client.get("/graph/data");
         assert response.status_code == 200;
         data = response.json();
         assert "nodes" in data and "edges" in data;
 
         # Create a node and verify it appears for authenticated user
-        reg = _request(
-            sv_base_url,
-            "POST",
+        response = client.post(
             "/user/register",
-            {"username": f"guser_{uuid.uuid4().hex[:8]}", "password": "gpass"}
+            json={"username": f"guser_{uuid.uuid4().hex[:8]}", "password": "gpass"}
         );
-        _request(
-            sv_base_url,
-            "POST",
+        reg = extract_data(response.json());
+        response = client.post(
             "/walker/CreateTask",
-            {"title": "T1", "priority": 1},
-            token=reg["token"]
+            json={"title": "T1", "priority": 1},
+            headers={"Authorization": f"Bearer {reg['token']}"}
         );
-        auth_resp = requests.get(
-            f"{sv_base_url}/graph/data",
-            headers={"Authorization": f"Bearer {reg['token']}"},
-            timeout=5
+        auth_resp = client.get(
+            "/graph/data", headers={"Authorization": f"Bearer {reg['token']}"}
         );
         auth_data = auth_resp.json();
         assert len(auth_data["nodes"]) == 2;
         assert len(auth_data["edges"]) == 1;
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 
@@ -905,27 +798,24 @@ test "walker calls" {
 # GROUP 4: USER MANAGEMENT (Username and Password Updates)
 # =============================================================================
 test "user management operations" {
-    sp = setup_serve_server();
+    client = make_client();
     try {
         # Test: update username success
         username = f"olduser_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "password123"}
         );
+        create_result = extract_data(response.json());
         original_token = create_result["token"];
         original_root_id = create_result["root_id"];
 
         new_username = f"newuser_{uuid.uuid4().hex[:8]}";
-        update_result = _request(
-            sv_base_url,
-            "PUT",
+        response = client.put(
             "/user/username",
-            {"current_username": username, "new_username": new_username},
-            token=original_token
+            json={"current_username": username, "new_username": new_username},
+            headers={"Authorization": f"Bearer {original_token}"}
         );
+        update_result = extract_data(response.json());
 
         assert "username" in update_result;
         assert update_result["username"] == new_username;
@@ -934,306 +824,250 @@ test "user management operations" {
         assert update_result["root_id"] == original_root_id;
 
         # Verify login with new username works
-        login_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/login",
-            {"username": new_username, "password": "password123"}
+        response = client.post(
+            "/user/login", json={"username": new_username, "password": "password123"}
         );
+        login_result = extract_data(response.json());
         assert login_result["username"] == new_username;
         assert "token" in login_result;
 
         # Verify login with old username fails
-        login_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "password123"},
-            timeout=5
+        login_response = client.post(
+            "/user/login", json={"username": username, "password": "password123"}
         );
         assert login_response.status_code == 401;
 
         # Test: update username requires auth
         username = f"authtest_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "password123"}
         );
-        response = requests.put(
-            f"{sv_base_url}/user/username",
-            json={"current_username": username, "new_username": "newname"},
-            timeout=5
+        response = client.put(
+            "/user/username",
+            json={"current_username": username, "new_username": "newname"}
         );
         assert response.status_code == 401;
 
         # Test: update username cannot update other users
         user1_name = f"user1_{uuid.uuid4().hex[:8]}";
-        user1_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user1_name, "password": "pass1"}
+        response = client.post(
+            "/user/register", json={"username": user1_name, "password": "pass1"}
         );
+        user1_result = extract_data(response.json());
         user1_token = user1_result["token"];
 
         user2_name = f"user2_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user2_name, "password": "pass2"}
+        response = client.post(
+            "/user/register", json={"username": user2_name, "password": "pass2"}
         );
 
-        response = requests.put(
-            f"{sv_base_url}/user/username",
+        response = client.put(
+            "/user/username",
             json={"current_username": user2_name, "new_username": "hacked"},
-            headers={"Authorization": f"Bearer {user1_token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {user1_token}"}
         );
         assert response.status_code == 403;
 
         # Test: update username duplicate fails
         user1_name = f"dup1_{uuid.uuid4().hex[:8]}";
-        user1_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user1_name, "password": "pass1"}
+        response = client.post(
+            "/user/register", json={"username": user1_name, "password": "pass1"}
         );
+        user1_result = extract_data(response.json());
         user1_token = user1_result["token"];
 
         user2_name = f"dup2_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user2_name, "password": "pass2"}
+        response = client.post(
+            "/user/register", json={"username": user2_name, "password": "pass2"}
         );
 
-        response = requests.put(
-            f"{sv_base_url}/user/username",
+        response = client.put(
+            "/user/username",
             json={"current_username": user1_name, "new_username": user2_name},
-            headers={"Authorization": f"Bearer {user1_token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {user1_token}"}
         );
         assert response.status_code == 400;
 
         # Test: update username empty validation
         username = f"testuser_{uuid.uuid4().hex[:8]}";
-        user_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "password123"}
         );
+        user_result = extract_data(response.json());
         token = user_result["token"];
 
-        response = requests.put(
-            f"{sv_base_url}/user/username",
+        response = client.put(
+            "/user/username",
             json={"current_username": username, "new_username": ""},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 400;
 
         # Test: update password success
         username = f"passuser_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "oldpass123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "oldpass123"}
         );
+        create_result = extract_data(response.json());
         token = create_result["token"];
 
-        update_result = _request(
-            sv_base_url,
-            "PUT",
+        response = client.put(
             "/user/password",
-            {
+            json={
                 "username": username,
                 "current_password": "oldpass123",
                 "new_password": "newpass456"
             },
-            token=token
+            headers={"Authorization": f"Bearer {token}"}
         );
+        update_result = extract_data(response.json());
 
         assert "username" in update_result;
         assert update_result["username"] == username;
         assert "message" in update_result or "success" in str(update_result).lower();
 
         # Verify login with new password works
-        login_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/login",
-            {"username": username, "password": "newpass456"}
+        response = client.post(
+            "/user/login", json={"username": username, "password": "newpass456"}
         );
+        login_result = extract_data(response.json());
         assert login_result["username"] == username;
 
         # Verify login with old password fails
-        login_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "oldpass123"},
-            timeout=5
+        login_response = client.post(
+            "/user/login", json={"username": username, "password": "oldpass123"}
         );
         assert login_response.status_code == 401;
 
         # Test: update password requires auth
         username = f"noauthuser_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "password123"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "password123"}
         );
 
-        response = requests.put(
-            f"{sv_base_url}/user/password",
+        response = client.put(
+            "/user/password",
             json={
                 "username": username,
                 "current_password": "password123",
                 "new_password": "newpass"
-            },
-            timeout=5
+            }
         );
         assert response.status_code == 401;
 
         # Test: update password wrong current password
         username = f"wrongpass_{uuid.uuid4().hex[:8]}";
-        user_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "correctpass"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "correctpass"}
         );
+        user_result = extract_data(response.json());
         token = user_result["token"];
 
-        response = requests.put(
-            f"{sv_base_url}/user/password",
+        response = client.put(
+            "/user/password",
             json={
                 "username": username,
                 "current_password": "wrongpass",
                 "new_password": "newpass"
             },
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 400;
 
         # Test: update password cannot update other users
         user1_name = f"passuser1_{uuid.uuid4().hex[:8]}";
-        user1_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user1_name, "password": "pass1"}
+        response = client.post(
+            "/user/register", json={"username": user1_name, "password": "pass1"}
         );
+        user1_result = extract_data(response.json());
         user1_token = user1_result["token"];
 
         user2_name = f"passuser2_{uuid.uuid4().hex[:8]}";
-        _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": user2_name, "password": "pass2"}
+        response = client.post(
+            "/user/register", json={"username": user2_name, "password": "pass2"}
         );
 
-        response = requests.put(
-            f"{sv_base_url}/user/password",
+        response = client.put(
+            "/user/password",
             json={
                 "username": user2_name,
                 "current_password": "pass2",
                 "new_password": "hacked"
             },
-            headers={"Authorization": f"Bearer {user1_token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {user1_token}"}
         );
         assert response.status_code == 403;
 
         # Test: update password empty validation
         username = f"emptypass_{uuid.uuid4().hex[:8]}";
-        user_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "oldpass"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "oldpass"}
         );
+        user_result = extract_data(response.json());
         token = user_result["token"];
 
-        response = requests.put(
-            f"{sv_base_url}/user/password",
+        response = client.put(
+            "/user/password",
             json={
                 "username": username,
                 "current_password": "oldpass",
                 "new_password": ""
             },
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5
+            headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 400;
 
         # Test: username and password update flow (combined)
         username = f"original_{uuid.uuid4().hex[:8]}";
-        create_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/register",
-            {"username": username, "password": "oldpass"}
+        response = client.post(
+            "/user/register", json={"username": username, "password": "oldpass"}
         );
+        create_result = extract_data(response.json());
         token = create_result["token"];
         root_id = create_result["root_id"];
 
         new_username = f"updated_{uuid.uuid4().hex[:8]}";
-        username_update = _request(
-            sv_base_url,
-            "PUT",
+        response = client.put(
             "/user/username",
-            {"current_username": username, "new_username": new_username},
-            token=token
+            json={"current_username": username, "new_username": new_username},
+            headers={"Authorization": f"Bearer {token}"}
         );
+        username_update = extract_data(response.json());
         new_token = username_update["token"];
         assert username_update["root_id"] == root_id;
 
-        password_update = _request(
-            sv_base_url,
-            "PUT",
+        response = client.put(
             "/user/password",
-            {
+            json={
                 "username": new_username,
                 "current_password": "oldpass",
                 "new_password": "newpass"
             },
-            token=new_token
+            headers={"Authorization": f"Bearer {new_token}"}
         );
+        password_update = extract_data(response.json());
         assert password_update["username"] == new_username;
 
-        login_result = _request(
-            sv_base_url,
-            "POST",
-            "/user/login",
-            {"username": new_username, "password": "newpass"}
+        response = client.post(
+            "/user/login", json={"username": new_username, "password": "newpass"}
         );
+        login_result = extract_data(response.json());
         assert login_result["username"] == new_username;
         assert login_result["root_id"] == root_id;
 
         # Old username should fail
-        old_username_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": username, "password": "newpass"},
-            timeout=5
+        old_username_response = client.post(
+            "/user/login", json={"username": username, "password": "newpass"}
         );
         assert old_username_response.status_code == 401;
 
         # Old password should fail
-        old_password_response = requests.post(
-            f"{sv_base_url}/user/login",
-            json={"username": new_username, "password": "oldpass"},
-            timeout=5
+        old_password_response = client.post(
+            "/user/login", json={"username": new_username, "password": "oldpass"}
         );
         assert old_password_response.status_code == 401;
     } finally {
-        teardown_serve_server(sp);
+        client.close();
     }
 }
 

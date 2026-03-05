@@ -51,6 +51,18 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         # Prefer overloads with concrete (non-Unknown) return types
         # to avoid broken overloads (e.g. LiteralString) shadowing correct ones.
         _fallback_result: types.TypeBase | None = None;
+
+        # Helper to check if a type contains Unknown (either is Unknown or has Unknown in type_args)
+        def _contains_unknown(ty: types.TypeBase) -> bool {
+            if isinstance(ty, types.UnknownType) {
+                return True;
+            }
+            if isinstance(ty, types.ClassType) and ty.private.type_args {
+                return any(_contains_unknown(arg) for arg in ty.private.type_args);
+            }
+            return False;
+        }
+
         for overload in caller_type.overloads {
             arg_param_match = self.match_args_to_params(
                 expr.params,
@@ -62,7 +74,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
             if not arg_param_match.argument_errors {
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
-                    if not isinstance(overload.return_type, types.UnknownType) {
+                    # Check if return type is concrete (no Unknown types anywhere)
+                    if not _contains_unknown(overload.return_type) {
                         return overload.return_type or types.UnknownType();
                     }
                     if _fallback_result is None {
@@ -82,7 +95,16 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     }
     if isinstance(caller_type, types.ClassType)
     and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
-        return types.TypeVarType();
+        # Extract the TypeVar name from the first argument: TypeVar('T')
+        type_var_name = "";
+        if expr.params and len(expr.params) > 0 {
+            first_arg = expr.params[0];
+            if isinstance(first_arg, uni.String) {
+                # Use lit_value to get the parsed string without quotes
+                type_var_name = first_arg.lit_value;
+            }
+        }
+        return types.TypeVarType(name=type_var_name);
     }
     if (
         isinstance(caller_type, types.ClassType)

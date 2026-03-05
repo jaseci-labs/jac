@@ -50,6 +50,12 @@ impl _get_network_ips -> list[str] {
 
 impl JacAPIServerCore.postinit -> None {
     super.postinit();
+    # Support test mode (port=0): base postinit sets self.server = None,
+    # but jac-scale needs a JFastApiServer for middleware/endpoint registration.
+    if self.server is None {
+        import from jac_scale.jserver.jfast_api { JFastApiServer }
+        self.server = JFastApiServer();
+    }
     self._api_key_manager = ApiKeyManager();
     self.server.app.add_middleware(
         CORSMiddleware,

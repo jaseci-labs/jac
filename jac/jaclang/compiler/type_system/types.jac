@@ -133,6 +133,8 @@ obj ModuleType(TypeBase) {
 
 """Represents a type variable."""
 obj TypeVarType(TypeBase) {
+    has name: str = "";
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }
@@ -184,7 +186,11 @@ Holds the private details of class type.
             # Similar to Pyright's classType.priv.aliasName.
             # This is set when loading special forms from typing module
             # to distinguish between different _SpecialForm instances.
-            alias_name: (str | None) = None;
+            alias_name: (str | None) = None,
+            # Literal value for Literal types (e.g., Literal["hello"], Literal[42]).
+            # Similar to Pyright's classType.priv.literalValue.
+            # When set, this ClassType represents a literal type like Literal["x"].
+            literal_value: (str | int | bool | None) = None;
 
         def postinit -> None;
     }
@@ -207,6 +213,10 @@ Holds the private details of class type.
     def is_node_type -> bool;
     # Check if this is a special form with the given alias name (like Pyright's isSpecialBuiltIn)
     def is_special_form(name: (str | None) = None) -> bool;
+    # Literal type support (similar to Pyright's literalValue handling)
+    def clone_with_literal(value: (str | int | bool | None)) -> ClassType;
+    def is_literal_type -> bool;
+    def get_literal_value -> (str | int | bool | None);
 }
 
 """Enumeration of parameter kinds."""
