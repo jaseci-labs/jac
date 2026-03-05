@@ -1524,6 +1524,70 @@ test "jac cli check ignore with wildcards" {
     assert result_count == 3;
 }
 
+test "jac check shows warnings for files with warnings only" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.check([fixture_path("warnings_only.jac")]);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # Should exit with code 0 (warnings don't fail the check)
+    assert result == 0 , "check should exit with code 0 for warnings only";
+
+    # Should show FAILURES section with warnings
+    assert "FAILURES" in combined , "should display FAILURES section for warnings";
+
+    # Should show the warning messages
+    assert "defined but never used" in combined , "should display unused variable warnings";
+
+    # Should show warning indicators
+    assert "warning" in combined.lower() , "should indicate warnings in output";
+
+    # File should appear in summary with warnings count
+    assert "warnings_only.jac" in combined , "should show file path in output";
+}
+
+test "jac check nowarn flag suppresses warnings" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.check([fixture_path("warnings_only.jac")], nowarn=True);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # Should still exit with code 0
+    assert result == 0 , "check should exit with code 0 when warnings are suppressed";
+
+    # Should show PASSED status
+    assert "PASSED" in combined , "should show PASSED when warnings are suppressed";
+
+    # Should NOT show detailed warning messages
+    assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
+}
+
 test "lexer does not hang on unterminated jsx" {
     # BUG: Unterminated JSX (e.g. `<div>hello` with no closing tag)
     # hits EOF while the lexer is still in JSX_CONTENT mode.
