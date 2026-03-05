@@ -170,7 +170,7 @@ jac test tests/test_shadcn.jac
 
 ## Registry
 
-The component registry is hosted at [https://jac-shadcn.jaseci.org](https://jac-shadcn.jaseci.org). Components are served with style-resolved Tailwind classes — the `cn-*` tokens are replaced with concrete classes based on your chosen style before delivery.
+The component registry is hosted at [https://jac-shadcn.jaseci.org](https://jac-shadcn.jaseci.org). Components are served with style-resolved Tailwind classes -the `cn-*` tokens are replaced with concrete classes based on your chosen style before delivery.
 
 ### Registry API
 
