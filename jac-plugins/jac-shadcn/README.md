@@ -55,6 +55,7 @@ jac add --shadcn button card dialog
 ```
 
 This will:
+
 1. Fetch resolved components from the registry
 2. Auto-install peer dependencies (e.g., `dialog` pulls in `button` if missing)
 3. Write `.cl.jac` files to `components/ui/`
