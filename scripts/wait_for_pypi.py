@@ -71,8 +71,12 @@ def wait_for_packages(packages: list[tuple[str, str]]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--matrix", required=True, help="JSON matrix from GitHub Actions")
-    parser.add_argument("--tier", type=int, required=True, help="Only wait for this tier")
+    parser.add_argument(
+        "--matrix", required=True, help="JSON matrix from GitHub Actions"
+    )
+    parser.add_argument(
+        "--tier", type=int, required=True, help="Only wait for this tier"
+    )
     args = parser.parse_args()
 
     # Matrix format: {"include": [{"pypi": "jaclang", "version": "1.2.4", "tier": 1}, ...]}

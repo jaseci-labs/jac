@@ -23,7 +23,6 @@ import re
 from pathlib import Path
 
 import tomlkit
-
 from release_utils import bump_version, set_output
 
 # ---------------------------------------------------------------------------
@@ -219,8 +218,6 @@ def update_release_notes(
     content = content.replace(latest_line, new_unreleased_header + latest_line)
 
     release_notes_path.write_text(content)
-
-
 
 
 # ---------------------------------------------------------------------------

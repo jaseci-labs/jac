@@ -34,13 +34,15 @@ def parse_from_title(pr_title: str) -> list[dict[str, str | int]]:
         pkg_name_lower = pkg_name.lower()
         if pkg_name_lower in PACKAGES:
             pkg_info = PACKAGES[pkg_name_lower]
-            releases.append({
-                "name": pkg_name_lower,
-                "dir": pkg_info.dir,
-                "pypi": pkg_info.pypi,
-                "tier": pkg_info.tier,
-                "version": version,
-            })
+            releases.append(
+                {
+                    "name": pkg_name_lower,
+                    "dir": pkg_info.dir,
+                    "pypi": pkg_info.pypi,
+                    "tier": pkg_info.tier,
+                    "version": version,
+                }
+            )
     return releases
 
 

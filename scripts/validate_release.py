@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import tomlkit
-
 from release_utils import PACKAGES, bump_version, check_pypi, set_output
 
 
@@ -46,14 +45,16 @@ def main() -> int:
         if check_pypi(pkg_info.pypi, new_version):
             errors.append(f"{pkg_info.pypi} {new_version} already exists on PyPI")
         else:
-            releases.append({
-                "name": pkg_name,
-                "pypi": pkg_info.pypi,
-                "dir": pkg_info.dir,
-                "current": current,
-                "new": new_version,
-                "bump": bump_type,
-            })
+            releases.append(
+                {
+                    "name": pkg_name,
+                    "pypi": pkg_info.pypi,
+                    "dir": pkg_info.dir,
+                    "current": current,
+                    "new": new_version,
+                    "bump": bump_type,
+                }
+            )
 
     if errors:
         print("\nValidation failed:")
