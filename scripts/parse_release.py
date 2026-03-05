@@ -7,6 +7,14 @@ Outputs a matrix for GitHub Actions with tier info for dependency ordering:
   - Tier 1: jaclang (base)
   - Tier 2: byllm, jac-client, jac-scale, jac-super, jac-mcp (depend on jaclang)
   - Tier 3: jaseci (depends on all)
+
+Input:
+  --pr-title: PR title string (e.g., "release: jaclang 1.2.3, byllm 2.0.0")
+
+Output (GitHub Actions):
+  has_releases: "true" or "false"
+  matrix: JSON {"include": [{"name", "dir", "pypi", "tier", "version"}, ...]}
+  release_summary: "jaclang 1.2.3, byllm 2.0.0"
 """
 
 from __future__ import annotations
@@ -74,18 +82,16 @@ def main() -> int:
         set_output("release_summary", "none")
         return 1
 
-    # Sort by tier, dedupe by pypi name
+    # Sort by tier for dependency ordering
     releases.sort(key=lambda x: x["tier"])
-    seen: set[str] = set()
-    unique = [r for r in releases if r["pypi"] not in seen and not seen.add(r["pypi"])]  # type: ignore[func-returns-value]
 
     print("Packages to release:")
-    for r in unique:
+    for r in releases:
         print(f"  - {r['pypi']} {r['version']} (tier {r['tier']})")
 
-    summary = ", ".join(f"{r['pypi']} {r['version']}" for r in unique)
+    summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases)
     set_output("has_releases", "true")
-    set_output("matrix", json.dumps({"include": unique}))
+    set_output("matrix", json.dumps({"include": releases}))
     set_output("release_summary", summary)
     return 0
 
