@@ -41,7 +41,7 @@ def _signup(page: Page, base_url: str, username: str, password: str) -> None {
 
 def _login(page: Page, base_url: str, username: str, password: str) -> None {
     """Navigate to login, fill form, and submit."""
-    page.goto(f"{base_url}/login", wait_until="networkidle", timeout=60000);
+    page.goto(f"{base_url}/login", wait_until="networkidle", timeout=30000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
     _submit_form(page);
