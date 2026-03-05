@@ -26,7 +26,7 @@ def check_pypi(pypi_name: str, version: str) -> bool:
         return False
 
 
-def wait_for_packages(packages: list[tuple[str, str]], timeout: int, interval: int) -> bool:
+def wait_for_packages(packages: list[tuple[str, str]]) -> bool:
     if not packages:
         return True
 
@@ -38,7 +38,7 @@ def wait_for_packages(packages: list[tuple[str, str]], timeout: int, interval: i
     pending = set(packages)
     attempt = 0
 
-    while pending and (time.time() - start) < timeout:
+    while pending and (time.time() - start) < DEFAULT_TIMEOUT:
         attempt += 1
         print(f"\nAttempt {attempt}...")
 
@@ -52,7 +52,7 @@ def wait_for_packages(packages: list[tuple[str, str]], timeout: int, interval: i
 
         pending = still_pending
         if pending:
-            time.sleep(interval)
+            time.sleep(DEFAULT_INTERVAL)
 
     if pending:
         print(f"\nTimeout. Still waiting for: {pending}")
@@ -66,10 +66,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--matrix", required=True, help="JSON matrix from GitHub Actions")
     parser.add_argument("--tier", type=int, required=True, help="Only wait for this tier")
-    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
-    parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL)
     args = parser.parse_args()
 
+    # Matrix format: {"include": [{"pypi": "jaclang", "version": "1.2.4", "tier": 1}, ...]}
     matrix = json.loads(args.matrix)
     packages = [
         (item["pypi"], item["version"])
@@ -81,7 +80,7 @@ def main() -> int:
         print(f"No tier {args.tier} packages to wait for")
         return 0
 
-    return 0 if wait_for_packages(packages, args.timeout, args.interval) else 1
+    return 0 if wait_for_packages(packages) else 1
 
 
 if __name__ == "__main__":
