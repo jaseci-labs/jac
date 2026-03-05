@@ -95,6 +95,7 @@
 - The abstract keyword is `abs`, not `abstract`
 - Logical operators have both word and symbol forms: `and`/`&&`, `or`/`||`
 - `cl`, `sv`, and `na` are block keywords for client/server/native code separation
+- **Special variable references** (`self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`) are used directly without backtick escaping -- they are built-in references, not identifiers. Only use backtick escaping when repurposing other keywords as regular identifiers (e.g., `` `type `` as a field name).
 
 ---
 

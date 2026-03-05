@@ -3,6 +3,7 @@
 ## jac-mcp 0.1.3 (Unreleased)
 
 - **Updated token definitions path**: Grammar resource now references `tokens.na.jac` (renamed from `tokens.jac`)
+- **Added backtick escaping pitfall**: New section documenting when keywords need backtick escaping and clarifying that special variable references (`self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`) are used directly without backticks
 
 ## jac-mcp 0.1.2 (Latest Release)
 

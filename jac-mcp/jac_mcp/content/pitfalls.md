@@ -186,7 +186,44 @@ for (i, x) in enumerate(items) {
 }
 ```
 
-### 8. Mutable objects are passed by reference automatically
+### 8. Backtick escaping for keywords used as identifiers
+
+Jac keywords are reserved. To use one as a regular identifier (e.g., a variable or field name), prefix it with a backtick:
+
+```jac
+has `type: str;   # "type" is a keyword, backtick lets you use it as a field name
+`edge = 5;        # "edge" is a keyword, backtick lets you use it as a variable
+```
+
+**However, special variable references do NOT need backtick escaping.** These are built-in references used directly as intended --they are not identifiers that happen to share a keyword name:
+
+- `self` -- current instance
+- `super` -- parent class
+- `root` -- root node of the graph
+- `here` -- current node (in walker abilities)
+- `visitor` -- visiting walker (in node/edge abilities)
+- `init` -- constructor method name
+- `postinit` -- post-constructor method name
+
+WRONG:
+
+```
+`self.name = "Alice";
+`root ++> node;
+def `init() { }
+```
+
+RIGHT:
+
+```jac
+self.name = "Alice";
+root ++> node;
+def init() { }
+```
+
+Keywords that commonly need backtick escaping when used as identifiers: `type`, `edge`, `node`, `obj`, `test`, `default`, `case`, `visit`, `spawn`, `root`, `entry`, `exit`.
+
+### 9. Mutable objects are passed by reference automatically
 
 In Jac (like Python), mutable objects (lists, dicts) are passed by reference by default. You don't need any special syntax:
 
@@ -196,7 +233,7 @@ def modify(data: list) -> None {
 }
 ```
 
-### 9. Instance variables use `has`, not `self`
+### 10. Instance variables use `has`, not `self`
 
 WRONG:
 
@@ -216,7 +253,7 @@ obj Foo {
 }
 ```
 
-### 10. Static methods use `static def`
+### 11. Static methods use `static def`
 
 WRONG:
 
@@ -246,7 +283,7 @@ def bar() -> int {
 }
 ```
 
-### 11. String formatting
+### 12. String formatting
 
 Jac supports f-strings with the same syntax as Python:
 
@@ -255,7 +292,7 @@ name = "world";
 print(f"Hello, {name}!");
 ```
 
-### 12. Type annotations are important
+### 13. Type annotations are important
 
 Always declare types on `has` declarations:
 
@@ -266,7 +303,7 @@ has items: list[str] = [];
 has mapping: dict[str, int] = {};
 ```
 
-### 13. Boolean literals
+### 14. Boolean literals
 
 Use Python-style `True`/`False`/`None`:
 
@@ -275,14 +312,14 @@ has active: bool = True;
 has data: dict | None = None;
 ```
 
-### 14. List/Dict comprehensions
+### 15. List/Dict comprehensions
 
 ```jac
 squares = [x ** 2 for x in range(10)];
 even = {k: v for (k, v) in items.items() if v % 2 == 0};
 ```
 
-### 15. Exception handling
+### 16. Exception handling
 
 ```jac
 try {
@@ -296,7 +333,7 @@ try {
 
 ## Data-Spatial Gotchas
 
-### 16. Walker definition and visit syntax
+### 17. Walker definition and visit syntax
 
 WRONG:
 
@@ -316,7 +353,7 @@ walker MyWalker {
 }
 ```
 
-### 17. Edge definitions
+### 18. Edge definitions
 
 ```jac
 edge MyEdge {
@@ -324,7 +361,7 @@ edge MyEdge {
 }
 ```
 
-### 18. Graph construction with spawn
+### 19. Graph construction with spawn
 
 ```jac
 node A {
@@ -341,7 +378,7 @@ with entry {
 }
 ```
 
-### 19. Node connections and traversal
+### 20. Node connections and traversal
 
 ```jac
 # Connect nodes
@@ -353,7 +390,7 @@ visit [-->];           # visit all connected nodes
 visit [-->](`?B);      # visit only B-type nodes
 ```
 
-### 20. Walker spawn syntax
+### 21. Walker spawn syntax
 
 ```jac
 root spawn MyWalker();
@@ -361,7 +398,7 @@ root spawn MyWalker();
 
 ## File Organization
 
-### 21. Interface/Implementation separation
+### 22. Interface/Implementation separation
 
 - `.jac` files contain declarations - method signatures end with `;`
 - `.impl.jac` files (in `impl/` subdirectory) contain implementations
@@ -389,11 +426,11 @@ impl Calculator.reset -> None {
 }
 ```
 
-### 22. A parse error in .impl.jac breaks the ENTIRE file
+### 23. A parse error in .impl.jac breaks the ENTIRE file
 
 A single syntax error in an impl file causes all implementations in that file to produce 0 body items. Always check syntax carefully.
 
-### 23. Module entry point
+### 24. Module entry point
 
 Use `with entry { }` for code that runs when the module is executed:
 
@@ -403,7 +440,7 @@ with entry {
 }
 ```
 
-### 24. Global variables
+### 25. Global variables
 
 Use `glob` for module-level variables:
 

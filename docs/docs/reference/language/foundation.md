@@ -236,6 +236,9 @@ obj Example {
 !!! danger
     Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
+!!! note "Special variable references don't need backtick escaping"
+    The following are **built-in references**, not regular identifiers. Use them directly without backticks: `self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`. For example, write `self.name`, `root ++> node`, and `def init()` -- never `` `self ``, `` `root ``, or `` `init ``.
+
 ### 7 Entry Point Variants
 
 Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
