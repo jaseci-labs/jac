@@ -67,7 +67,9 @@ def set_output(name: str, value: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     for pkg_name in PACKAGES:
-        parser.add_argument(f"--{pkg_name}", choices=["skip", "patch", "minor", "major"], default="skip")
+        parser.add_argument(
+            f"--{pkg_name}", choices=["skip", "patch", "minor", "major"], default="skip"
+        )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -86,14 +88,16 @@ def main() -> int:
         if version_exists_on_pypi(pypi_name, new_version):
             errors.append(f"{pypi_name} {new_version} already exists on PyPI")
         else:
-            releases.append({
-                "name": pkg_name,
-                "pypi": pypi_name,
-                "dir": pkg_dir,
-                "current": current,
-                "new": new_version,
-                "bump": bump_type,
-            })
+            releases.append(
+                {
+                    "name": pkg_name,
+                    "pypi": pypi_name,
+                    "dir": pkg_dir,
+                    "current": current,
+                    "new": new_version,
+                    "bump": bump_type,
+                }
+            )
 
     if errors:
         print("\nValidation failed:")
