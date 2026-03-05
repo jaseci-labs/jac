@@ -341,5 +341,10 @@ glob KEYWORDS: dict[str, TokenKind] = {
      };
 
 def lookup_keyword(text: str) -> TokenKind | None {
-    return KEYWORDS.get(text, None);
+    if text in KEYWORDS {
+        return KEYWORDS[text];
+    }
+    return None;
 }
+
+glob _init = 0;

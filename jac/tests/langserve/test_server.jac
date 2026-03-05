@@ -653,6 +653,105 @@ test "test_hover_types" {
         if hover is not None {
             assert "dynamic attribute" not in hover.contents.value , f"ng.nonexistent: should NOT be 'dynamic attribute', got: {hover.contents.value}";
         }
+
+        # Overload resolution: str.split() -> list[str], list[str][0] -> str
+        overload_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_overload_resolution.jac")
+        );
+        lsp.type_check_file(overload_file);
+        overload_cases = [
+            (4, 6, ["list"]),  # parts: list[str]
+            (5, 6, ["str"]),  # first: str (from list[str][0])
+            (6, 6, ["str"]),  # result: str (str + str)
+            (8, 6, ["list"]),  # parts2: list[str]
+            (9, 6, ["str"]),  # first3: str
+            (10, 6, ["str"]),  # result3: str
+
+        ];
+        for (line, col, expected_list) in overload_cases {
+            hover = lsp.get_hover_info(overload_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Overload hover at line {line} should exist";
+            found = False;
+            for exp in expected_list {
+                if exp in hover.contents.value {
+                    found = True;
+                    break;
+                }
+            }
+            assert found , f"Overload line {line}: expected one of {expected_list}, got: {hover.contents.value}";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
+"""Test NamedTuple hover information - comprehensive tests for all features."""
+test "test_namedtuple_hover" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        namedtuple_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_namedtuple.jac")
+        );
+        lsp.type_check_file(namedtuple_file);
+
+        # Comprehensive list of all variables and their expected hover types
+        # Format: (line_0indexed, col, name, expected_type_substring)
+        hover_tests: list[tuple[int, int, str, str]] = [
+            # Class definitions
+            (3, 7, "ProcessedImports", "ProcessedImports"),
+            (8, 7, "Point", "Point"),
+            (13, 7, "Person", "Person"),
+            # Field definitions (has vars)
+            (4, 9, "import_pieces", "list"),
+            (5, 9, "bundled_module_names", "set"),
+            (9, 9, "x", "int"),
+            (10, 9, "y", "int"),
+            (14, 9, "name", "str"),
+            (15, 9, "age", "int"),
+            (16, 9, "city", "str"),
+            # Function definitions
+            (20, 5, "process_point", "process_point"),
+            (25, 5, "process_tuple", "process_tuple"),
+            # Constructor variables - TEST 1
+            (33, 5, "import_pieces", "list"),
+            (34, 5, "bundled_module_names", "set"),
+            (35, 5, "result", "ProcessedImports"),
+            (38, 5, "result2", "ProcessedImports"),
+            (41, 4, "p", "Point"),
+            (44, 5, "person1", "Person"),
+            (46, 5, "person2", "Person"),
+            # Field access - TEST 2
+            (51, 5, "x_val", "int"),
+            (52, 5, "y_val", "int"),
+            (53, 5, "name_val", "str"),
+            (54, 5, "age_val", "int"),
+            (55, 5, "pieces", "list"),
+            # Tuple unpacking - TEST 3
+            (60, 5, "px", "int"),
+            (60, 9, "py", "int"),
+            (61, 5, "pname", "str"),
+            (61, 12, "page", "int"),
+            (61, 18, "pcity", "str"),
+            # For loop iteration - TEST 5
+            (72, 9, "coord", "int"),
+            # Function call result - TEST 6
+            (79, 5, "total", "int"),
+            # Comparison - TEST 9
+            (97, 5, "p1", "Point"),
+            (98, 5, "p2", "Point"),
+            (99, 5, "p3", "Point"),
+            (100, 5, "is_equal", "bool"),
+            (101, 5, "is_less", "bool"),
+
+        ];
+
+        # Run all hover tests
+        for (line, col, name, expected_type) in hover_tests {
+            hover = lsp.get_hover_info(namedtuple_file, lspt.Position(line, col));
+            assert hover is not None , f"Hover for '{name}' at line {line + 1} should exist";
+            assert expected_type in hover.contents.value , f"'{name}' at line {line + 1}: expected '{expected_type}', got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }

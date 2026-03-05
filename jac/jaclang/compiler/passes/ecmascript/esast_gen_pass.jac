@@ -180,10 +180,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def _resolve_expr_symbol(expr: uni.Expr) -> (uni.Symbol | None);
     def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
     def get_main_mod -> uni.Module;
-    def _collect_walker_field_names(walker_symbol: (uni.Symbol | None)) -> list[str];
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
     ) -> es.Expression;

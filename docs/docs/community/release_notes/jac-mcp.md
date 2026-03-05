@@ -2,6 +2,8 @@
 
 ## jac-mcp 0.1.3 (Unreleased)
 
+- **Updated token definitions path**: Grammar resource now references `tokens.na.jac` (renamed from `tokens.jac`)
+
 ## jac-mcp 0.1.2 (Latest Release)
 
 - **Compiler-validated MCP content**: Cross-validated all code snippets in pitfalls.md and patterns.md against the Jac compiler, fixing critical issues where the server was teaching syntax the compiler rejects

@@ -254,34 +254,19 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
         }
     }
     fields: list[FieldInfo] = [];
-    if arch_node.body and isinstance(arch_node.body, Sequence) {
-        for stmt in arch_node.body {
-            if isinstance(stmt, uni.ArchHas) {
-                for var in stmt.vars {
-                    type_annotation = var.type_tag.tag if var.type_tag else None;
-
-                    parsed_type = self._parse_type_expr(type_annotation, arch_node);
-
-                    type_symbol_obj = self._extract_type_symbol(parsed_type, arch_node);
-
-                    semstr_val = type_symbol_obj.semstr
-                        if type_symbol_obj
-                        else var.sym.semstr;
-                    field_info = FieldInfo(
-                        name=var.name.value, semstr=semstr_val, type_info=parsed_type
-                    );
-                    fields.append(field_info);
-                }
-            }
-        }
+    for var in arch_node.get_has_vars() {
+        type_annotation = var.type_tag.tag if var.type_tag else None;
+        parsed_type = self._parse_type_expr(type_annotation, arch_node);
+        type_symbol_obj = self._extract_type_symbol(parsed_type, arch_node);
+        semstr_val = type_symbol_obj.semstr if type_symbol_obj else var.sym.semstr;
+        field_info = FieldInfo(
+            name=var.name.value, semstr=semstr_val, type_info=parsed_type
+        );
+        fields.append(field_info);
     }
     methods: list[MethodInfo] = [];
-    if arch_node.body and isinstance(arch_node.body, Sequence) {
-        for stmt in arch_node.body {
-            if isinstance(stmt, uni.Ability) and stmt.is_method {
-                methods.append(self._extract_method_info(stmt));
-            }
-        }
+    for method in arch_node.get_methods() {
+        methods.append(self._extract_method_info(method));
     }
     placeholder.fields = fields;
     placeholder.base_classes = base_classes;

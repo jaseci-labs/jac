@@ -82,6 +82,8 @@ obj JacAPIServerAdmin {
         content: str, profile: str = "default", Authorization: str | None = None
     ) -> TransportResponse;
 
+    # Monitoring
+    def admin_get_metrics(Authorization: str | None = None) -> TransportResponse;
     # Admin UI
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;

@@ -315,8 +315,7 @@ impl NaIRGenPass._emit_set_helpers(
     );
     elems_f = b.load(elems_p_f, name="elems.f");
     b.call(free_fn, [b.bitcast(elems_f, i8_ptr, name="elems.cast")]);
-    # Free set struct
-    b.call(free_fn, [rc_raw]);
+    # Skip: bump allocator arena memory cannot be freed individually.
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

@@ -230,6 +230,14 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         isinstance(base, types.ClassType) and base.shared.is_enum_class
         for base in base_classes
     );
+    # Detect NamedTuple subclasses: class X(NamedTuple) { ... }
+    # Check both the name AND that it's a builtin class (from typing module)
+    # to avoid false positives from user-defined classes named "NamedTuple"
+    is_namedtuple = any(
+        isinstance(base, types.ClassType)
+        and base.shared.is_builtin_class
+        and base.shared.class_name == "NamedTuple" for base in base_classes
+    );
     enum_members: dict[str, types.EnumMemberInfo] | None = None;
     enum_value_type: types.TypeBase | None = None;
     if is_enum_class {
@@ -246,6 +254,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             base_classes=base_classes,
             is_builtin_class=is_builtin_class,
             is_data_class=is_data_class,
+            is_namedtuple=is_namedtuple,
             is_enum_class=is_enum_class,
             enum_value_type=enum_value_type,
             enum_members=enum_members,

@@ -33,8 +33,11 @@ def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig, get_config, set_config }
     import from jaclang.project.dependencies { add_venv_to_path }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
+    # Store entry file path for runtime utilities (called before _proc_file)
+    Jac.full_target_path = str(file_path);
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that
@@ -405,16 +408,26 @@ impl start(
             } except Exception as e {
                 console.error(f"Warning: Initial client compilation failed: {e}");
             }
-            vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
+            vite_process = _start_vite_dev_server(base, vite_port, server.port);
         }
     }
     # Pass startup banner callback so it's printed AFTER compilation/bundling completes
+    # The actual_port parameter receives the port that was actually bound (may differ if original was in use)
+    # In dev mode with client, vite_port is separate from API port
     try {
         server.start(
             dev=dev,
             no_client=no_client,
-            on_ready=lambda :
-                _print_startup_message(dev, no_client, port, actual_api_port, base)
+            on_ready=lambda actual_port :
+                _print_startup_message(
+                    dev,
+                    no_client,
+                    vite_port
+                        if (dev and not no_client)
+                        else actual_port,
+                    actual_port,
+                    base
+                )
         );
         return 0;
     } except KeyboardInterrupt {

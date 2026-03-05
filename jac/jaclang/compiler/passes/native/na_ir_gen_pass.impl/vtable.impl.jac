@@ -1,92 +1,4 @@
 """Virtual table (vtable) support for inheritance with C3 MRO."""
-"""Compute C3 linearization (MRO) for a class."""
-impl NaIRGenPass._compute_c3_mro(class_name: str) -> list[str] {
-    # Base case: no parents
-    parents = self.class_parents.get(class_name);
-    if parents is None or not parents {
-        return [class_name];
-    }
-    # Compute MRO for each parent first (recursive, with memoization)
-    parent_mros: list[list[str]] = [];
-    for p in parents {
-        if p not in self.mro_order {
-            self.mro_order[p] = self._compute_c3_mro(p);
-        }
-        parent_mros.append(list(self.mro_order[p]));
-    }
-    # Add the parents list itself as a constraint
-    parent_mros.append(list(parents));
-    # C3 merge
-    result: list[str] = [class_name];
-    while True {
-        # Check if all lists are empty
-        any_remaining = False;
-        for mro_list in parent_mros {
-            if len(mro_list) > 0 {
-                any_remaining = True;
-                break;
-            }
-        }
-        if not any_remaining {
-            break;
-        }
-        # Find a candidate: head of some list not in tail of any other
-        candidate: (str | None) = None;
-        for mro_list in parent_mros {
-            if len(mro_list) == 0 {
-                continue;
-            }
-            head = mro_list[0];
-            # Check if head appears in tail of any non-empty list
-            in_tail = False;
-            for other_list in parent_mros {
-                if len(other_list) > 1 and head in other_list[1:] {
-                    in_tail = True;
-                    break;
-                }
-            }
-            if not in_tail {
-                candidate = head;
-                break;
-            }
-        }
-        if candidate is None {
-            self.log_error(
-                f"Cannot compute C3 MRO for {class_name}: inconsistent hierarchy"
-            );
-            return result;
-        }
-        result.append(candidate);
-        # Remove candidate from heads of all lists
-        new_parent_mros: list[list[str]] = [];
-        for mro_list in parent_mros {
-            if len(mro_list) > 0 and mro_list[0] == candidate {
-                mro_list.pop(0);
-            }
-            new_parent_mros.append(mro_list);
-        }
-        parent_mros = new_parent_mros;
-    }
-    return result;
-}
-
-"""Check if ancestor is reachable via primary parent chain from child."""
-impl NaIRGenPass._is_primary_ancestor(child_name: str, ancestor_name: str) -> bool {
-    current = child_name;
-    while current is not None {
-        parents = self.class_parents.get(current);
-        if parents is None or not parents {
-            return False;
-        }
-        primary = parents[0];
-        if primary == ancestor_name {
-            return True;
-        }
-        current = primary;
-    }
-    return False;
-}
-
 """Build vtable layout for a class (merge from all MRO ancestors + own methods)."""
 impl NaIRGenPass._build_vtable(arch_name: str) -> None {
     layout: list[str] = [];
@@ -156,7 +68,8 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     self.vtable_globals[arch_name] = vtable_global;
 }
 
-"""Generate a virtual method call via vtable lookup."""
+"""Generate a virtual method call via vtable lookup.
+Devirtualizes to direct call when the method is never overridden by any subclass."""
 impl NaIRGenPass._codegen_virtual_call(
     obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
 ) -> (ir.Value | None) {
@@ -164,6 +77,35 @@ impl NaIRGenPass._codegen_virtual_call(
     if indices is None or method_name not in indices {
         return None;
     }
+    # Find the resolved function (walk MRO)
+    func = None;
+    mro = self.mro_order.get(obj_type_name, [obj_type_name]);
+    for check_name in mro {
+        full_name = f"{check_name}.{method_name}";
+        if full_name in self.method_funcs {
+            func = self.method_funcs[full_name];
+            break;
+        }
+    }
+    if func is None {
+        return None;
+    }
+    fn_type = func.function_type;
+    # Coerce args to expected types
+    coerced: list[ir.Value] = [];
+    for (i, arg) in enumerate(args) {
+        if i < len(fn_type.args) {
+            coerced.append(self._coerce_type(arg, fn_type.args[i]));
+        } else {
+            coerced.append(arg);
+        }
+    }
+    # Devirtualization: if this method is never overridden, use direct call
+    non_overridden = self._non_overridden_methods.get(obj_type_name);
+    if non_overridden is not None and method_name in non_overridden {
+        return self.builder.call(func, coerced, name=f"call.{method_name}");
+    }
+    # Full vtable dispatch for overridden methods
     method_idx = indices[method_name];
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
@@ -177,33 +119,10 @@ impl NaIRGenPass._codegen_virtual_call(
         vtable_ptr, [ir.Constant(i32, method_idx)], name=f"vt.{method_name}"
     );
     method_i8 = self.builder.load(method_slot, name=f"fn.{method_name}.raw");
-    # Find function type to cast to (walk MRO)
-    func = None;
-    mro = self.mro_order.get(obj_type_name, [obj_type_name]);
-    for check_name in mro {
-        full_name = f"{check_name}.{method_name}";
-        if full_name in self.method_funcs {
-            func = self.method_funcs[full_name];
-            break;
-        }
-    }
-    if func is None {
-        return None;
-    }
     # Bitcast to expected function type and call
-    fn_type = func.function_type;
     typed_fn = self.builder.bitcast(
         method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"
     );
-    # Coerce args to expected types
-    coerced: list[ir.Value] = [];
-    for (i, arg) in enumerate(args) {
-        if i < len(fn_type.args) {
-            coerced.append(self._coerce_type(arg, fn_type.args[i]));
-        } else {
-            coerced.append(arg);
-        }
-    }
     return self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
 }
 

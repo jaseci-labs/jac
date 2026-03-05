@@ -20,7 +20,7 @@ obj outer {
     obj inner {
         has diary_entries: list[str];
 
-        def get_personality(person: list[Person]) -> Personality by llm(
+        def get_personality(person: Person) -> Personality by llm(
             incl_info={
                 "personality_examples": personality_examples,
                 "diary_entries": self.diary_entries,

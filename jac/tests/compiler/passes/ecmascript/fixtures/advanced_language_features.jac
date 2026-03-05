@@ -51,7 +51,7 @@ cl {
         overrides = {"retries": 3, "timeout": 30};
         merged = {** defaults, ** overrides};
 
-        def collect(label: str, *items: tuple, **options: dict) -> dict {
+        def collect(label: str, *items: tuple, **options: int) -> dict {
             return {"label": label, "items": list(items), "options": options};
         }
 

@@ -231,25 +231,25 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                 return result;
             }
         }
-        # Check if right is a tuple (pointer to LiteralStructType)
-        if isinstance(right.type, ir.PointerType)
+        # Check if right is a tuple (value or pointer to LiteralStructType)
+        tin_struct: (ir.LiteralStructType | None) = None;
+        tin_val: (ir.Value | None) = None;
+        if isinstance(right.type, ir.LiteralStructType) {
+            tin_struct = right.type;
+            tin_val = right;
+        } elif isinstance(right.type, ir.PointerType)
         and isinstance(right.type.pointee, ir.LiteralStructType) {
-            struct_type = right.type.pointee;
-            n = len(struct_type.elements);
+            tin_struct = right.type.pointee;
+            tin_val = self.builder.load(right, name="tuple.in.val");
+        }
+        if tin_struct is not None and tin_val is not None {
+            n = len(tin_struct.elements);
             if n > 0 {
                 i64 = ir.IntType(64);
                 i1_t = ir.IntType(1);
                 found = ir.Constant(i1_t, 0);
                 for i in range(n) {
-                    elem_ptr = self.builder.gep(
-                        right,
-                        [
-                            ir.Constant(ir.IntType(32), 0),
-                            ir.Constant(ir.IntType(32), i)
-                        ],
-                        name=f"tuple.in.{i}.ptr"
-                    );
-                    elem = self.builder.load(elem_ptr, name=f"tuple.in.{i}");
+                    elem = self.builder.extract_value(tin_val, i, name=f"tuple.in.{i}");
                     left_c = self._coerce_type(left, elem.type);
                     if isinstance(elem.type, ir.IntType) {
                         eq = self.builder.icmp_signed(
@@ -364,6 +364,12 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             }
             return self.builder.icmp_unsigned("==", left, right, name="is.eq");
         }
+        # i64 is None: compare against -1 sentinel (for optional enum/int)
+        if isinstance(left.type, ir.IntType)
+        and isinstance(right.type, ir.PointerType) {
+            sentinel = ir.Constant(left.type, -1);
+            return self.builder.icmp_signed("==", left, sentinel, name="is.none");
+        }
         return self._to_bool(left);
     }
     if op == Tok.KW_ISN {
@@ -373,6 +379,12 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                 right = self.builder.bitcast(right, left.type);
             }
             return self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+        }
+        # i64 is not None: compare against -1 sentinel (for optional enum/int)
+        if isinstance(left.type, ir.IntType)
+        and isinstance(right.type, ir.PointerType) {
+            sentinel = ir.Constant(left.type, -1);
+            return self.builder.icmp_signed("!=", left, sentinel, name="isnot.none");
         }
         return self._to_bool(left);
     }
@@ -582,6 +594,44 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
             }
+            # Check enum .value / .name attribute: kind.value, kind.name
+            if (right_name == "value" or right_name == "name")
+            and target_name is not None
+            and target_name in self.var_enum_type {
+                enum_name = self.var_enum_type[target_name];
+                ordinal_val = self._codegen_expr(nd.target);
+                if ordinal_val is not None {
+                    use_name = right_name == "name";
+                    return self._codegen_enum_value_lookup(
+                        enum_name, ordinal_val, use_name=use_name
+                    );
+                }
+            }
+            # Check chained enum .value / .name: self.kind.value
+            if (right_name == "value" or right_name == "name")
+            and isinstance(nd.target, uni.AtomTrailer)
+            and nd.target.is_attr {
+                inner_target = self._get_name(nd.target.target);
+                inner_field = self._get_name(nd.target.right);
+                if inner_target is not None and inner_field is not None {
+                    inner_type = self.type_var_map.get(inner_target);
+                    if inner_type is not None
+                    and inner_type in self.struct_field_enum_type {
+                        enum_name = self.struct_field_enum_type[inner_type].get(
+                            inner_field
+                        );
+                        if enum_name is not None {
+                            ordinal_val = self._codegen_expr(nd.target);
+                            if ordinal_val is not None {
+                                use_name = right_name == "name";
+                                return self._codegen_enum_value_lookup(
+                                    enum_name, ordinal_val, use_name=use_name
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             # Check field access on a known-type variable: self.x, p.x
             if target_name in self.type_var_map {
                 type_name = self.type_var_map[target_name];
@@ -783,22 +833,26 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         }
                     }
                 }
-                # Check for tuple indexing (pointer to LiteralStructType)
-                if isinstance(target_val.type, ir.PointerType) {
-                    pointee = target_val.type.pointee;
-                    if isinstance(pointee, ir.LiteralStructType) {
-                        slices = nd.right.slices or [];
-                        if slices {
-                            idx_node = slices[0];
-                            idx_val = self._codegen_expr(idx_node);
-                            if idx_val is None and idx_node?.start {
-                                idx_val = self._codegen_expr(idx_node.start);
-                            }
-                            if idx_val is not None {
-                                return self._codegen_tuple_index(
-                                    target_val, idx_val, pointee
-                                );
-                            }
+                # Check for tuple indexing (value or pointer to LiteralStructType)
+                tsub_struct: (ir.LiteralStructType | None) = None;
+                if isinstance(target_val.type, ir.LiteralStructType) {
+                    tsub_struct = target_val.type;
+                } elif isinstance(target_val.type, ir.PointerType)
+                and isinstance(target_val.type.pointee, ir.LiteralStructType) {
+                    tsub_struct = target_val.type.pointee;
+                }
+                if tsub_struct is not None {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._codegen_tuple_index(
+                                target_val, idx_val, tsub_struct
+                            );
                         }
                     }
                 }

@@ -384,6 +384,29 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
 
+        # Auto-install native wrappers if native engine is available
+        if native_engine is not None:
+            layout = compiler.get_native_layout(file_path, program)
+            if layout is not None:
+                try:
+                    from jaclang.jac0core.native_marshal import (
+                        install_native_wrappers,
+                    )
+
+                    count = install_native_wrappers(module, native_engine, layout)
+                    if count > 0:
+                        import logging
+
+                        logging.getLogger(__name__).debug(
+                            f"Installed {count} native wrappers for {file_path}"
+                        )
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger(__name__).debug(
+                        f"Native wrapper install failed for {file_path}: {e}"
+                    )
+
     def get_code(self, fullname: str) -> object | None:
         """Get the code object for a module.
 

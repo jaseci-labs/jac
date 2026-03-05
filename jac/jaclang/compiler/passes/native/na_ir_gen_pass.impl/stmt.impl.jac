@@ -32,6 +32,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_try(nd);
     } elif isinstance(nd, uni.RaiseStmt) {
         self._codegen_raise(nd);
+    } elif isinstance(nd, uni.SwitchStmt) {
+        self._codegen_switch(nd);
     } elif isinstance(nd, uni.WithStmt) {
         self._codegen_with(nd);
     } elif isinstance(nd, uni.AssertStmt) {
@@ -167,6 +169,76 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
     self.builder.position_at_end(merge_bb);
 }
 
+"""Generate switch statement as chained comparisons."""
+impl NaIRGenPass._codegen_switch(nd: uni.SwitchStmt) -> None {
+    target_val = self._codegen_expr(nd.target);
+    if target_val is None {
+        return;
+    }
+    func = self.builder.function;
+    merge_bb = func.append_basic_block(name="switch.end");
+    # Separate default case from value cases
+    default_case: (uni.SwitchCase | None) = None;
+    value_cases: list = [];
+    for sc in nd.cases {
+        if sc.pattern is None {
+            default_case = sc;
+        } else {
+            value_cases.append(sc);
+        }
+    }
+    i8p = ir.IntType(8).as_pointer();
+    is_str = target_val.type == i8p;
+    strcmp_fn = None;
+    if is_str {
+        strcmp_fn = self._get_or_declare_extern("strcmp", ir.IntType(32), [i8p, i8p]);
+    }
+    # Build if/elif chain for each value case
+    for (i, sc) in enumerate(value_cases) {
+        pattern_val = None;
+        if isinstance(sc.pattern, uni.MatchValue) {
+            pattern_val = self._codegen_expr(sc.pattern.value);
+        }
+        if pattern_val is None {
+            continue;
+        }
+        # Compare target to pattern
+        if is_str and strcmp_fn is not None {
+            pattern_coerced = self._coerce_type(pattern_val, i8p);
+            cmp_result = self.builder.call(
+                strcmp_fn, [target_val, pattern_coerced], name="switch.strcmp"
+            );
+            cond = self.builder.icmp_signed(
+                "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="switch.eq"
+            );
+        } else {
+            pattern_coerced = self._coerce_type(pattern_val, target_val.type);
+            cond = self.builder.icmp_signed(
+                "==", target_val, pattern_coerced, name="switch.eq"
+            );
+        }
+        case_bb = func.append_basic_block(name=f"switch.case.{i}");
+        next_bb = func.append_basic_block(name=f"switch.next.{i}");
+        self.builder.cbranch(cond, case_bb, next_bb);
+        # Case body
+        self.builder.position_at_end(case_bb);
+        self._codegen_body(sc.body);
+        if not self.builder.block.is_terminated {
+            self.builder.branch(merge_bb);
+        }
+        # Continue checking next case
+        self.builder.position_at_end(next_bb);
+    }
+    # Default case (or fall through to merge)
+    if default_case is not None {
+        self._codegen_body(default_case.body);
+    }
+    if not self.builder.block.is_terminated {
+        self.builder.branch(merge_bb);
+    }
+    self.builder.position_at_end(merge_bb);
+}
+
 """Generate while loop with proper basic blocks."""
 impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     func = self.builder.function;
@@ -232,6 +304,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         }
                     }
                 }
+            }
+        }
+    }
+    # 3. From existing variable's tracked list element type (for reassignment/globals)
+    if self._list_type_hint is None {
+        check_targets = nd.target
+            if isinstance(nd.target, (list, tuple))
+            else [(nd.target)];
+        for ct in check_targets {
+            ct_name = self._get_name(ct);
+            if ct_name is not None and ct_name in self.var_list_elem_type {
+                self._list_type_hint = self.var_list_elem_type[ct_name];
+                break;
             }
         }
     }
@@ -968,6 +1053,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             if tag_name is not None and tag_name in self.struct_types {
                 self.type_var_map[var_name] = tag_name;
             }
+            # Track enum type for enum-typed variables
+            if tag_name is not None and tag_name in self.enum_types {
+                self.var_enum_type[var_name] = tag_name;
+            }
             # Store the full type AST node for nested type resolution
             self.var_type_node[var_name] = tag_node;
         }
@@ -992,11 +1081,17 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 break;
             }
         }
-        # Track tuple type for tuple variables
-        if isinstance(value.type, ir.PointerType)
+        # Track tuple type for tuple variables (value or pointer tuples)
+        ttrack_struct: (ir.LiteralStructType | None) = None;
+        if isinstance(value.type, ir.LiteralStructType) {
+            ttrack_struct = value.type;
+        } elif isinstance(value.type, ir.PointerType)
         and isinstance(value.type.pointee, ir.LiteralStructType) {
+            ttrack_struct = value.type.pointee;
+        }
+        if ttrack_struct is not None {
             for (tkey, ttype) in self.tuple_types.items() {
-                if str(value.type.pointee) == str(ttype) {
+                if str(ttrack_struct) == str(ttype) {
                     self.var_tuple_type[var_name] = tkey;
                     break;
                 }

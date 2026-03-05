@@ -43,7 +43,7 @@ obj Lexer {
         jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
         prev_token_kind:
             TokenKind | None = None,  # Previous token kind for JSX disambiguation
-        comments: list[tuple] = [];  # Captured comments: (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [];
 
     # Mode management
     def push_mode(mode: LexerMode);

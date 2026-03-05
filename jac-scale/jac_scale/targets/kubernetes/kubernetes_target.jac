@@ -1,5 +1,4 @@
 """Kubernetes deployment target implementation."""
-import os;
 import from typing { Any }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
@@ -592,9 +591,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 );
 
                 # Check if deployment needs update (config hash changed)
-                existing_hash = existing_deploy.spec.template.metadata.annotations.get(
+                annotations = existing_deploy.spec.template.metadata.annotations;
+                existing_hash = annotations.get(
                     'redis-config-hash', ''
-                );
+                )
+                    if annotations
+                    else '';
                 new_hash = redis_result['config_hash'];
 
                 if existing_hash != new_hash or config_updated {
@@ -825,7 +827,7 @@ obj KubernetesTarget(DeploymentTarget) {
     def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
-        namespace = os.getenv('K8s_NAMESPACE') or self.k8s_config.namespace;
+        namespace = self.k8s_config.namespace;
         success_status = False;
         details = {};
 

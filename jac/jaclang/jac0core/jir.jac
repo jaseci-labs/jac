@@ -52,6 +52,15 @@ glob SEC_LLVM_IR: int = 0x04;
 """Section type: json.dumps(interop_dict).encode() bytes."""
 glob SEC_INTEROP: int = 0x05;
 
+"""Section type: post-optimization LLVM bitcode bytes.
+
+Stores the native module's bitcode after optimization passes have run.
+This is faster to parse than text IR (SEC_LLVM_IR) and produces properly
+optimized code on cache reload. Includes a platform header:
+  [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
+"""
+glob SEC_NATIVE_OBJ: int = 0x06;
+
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
 
