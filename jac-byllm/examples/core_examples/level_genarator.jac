@@ -42,7 +42,7 @@ obj LevelManager {
     ) -> Level by llm();
 
     def create_next_map(level: Level) -> Map by llm();
-    def get_next_level -> tuple(Level, Map) {
+    def get_next_level -> tuple[Level, Map] {
         self.current_level += 1;
         # Keeping Only the Last 3 Levels
         if len(self.prev_levels) > 3 {

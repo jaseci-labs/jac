@@ -48,7 +48,6 @@ enum_utils.impl.jac
 enum_utils.jac
 err2.jac
 esast_gen_pass.jac
-essay_review.jac
 es_unparse.impl.jac
 es_unparse.jac
 execution.impl.jac
@@ -84,7 +83,6 @@ jsx_unterminated_hang.jac
 kubernetes_utils.impl.jac
 kubernetes_utils.jac
 lang_tools.jac
-level_genarator.jac
 level_manager.jac
 line_spacing.jac
 llm.jac
@@ -208,7 +206,6 @@ webhook.jac
 web_target.impl.jac
 web_target.jac
 with_context.jac
-with_llm_method.jac
 yield_in_assignment.jac
 admin_portal.impl.jac
 prim_builtins_extra2.jac

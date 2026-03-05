@@ -42,7 +42,7 @@ obj LevelManager {
 
     def create_next_map(level: Level) -> Map_tiles by llm(temperature=0.8);
     '''Get the Next Level'''
-    def get_next_level(current_level: int) -> tuple(Level, Map_tiles);
+    def get_next_level(current_level: int) -> tuple[Level, Map_tiles];
 
     '''Get the map of the level'''
     def get_map(map: Map_tiles) -> str;
