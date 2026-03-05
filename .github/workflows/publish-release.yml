@@ -244,7 +244,10 @@ jobs:
   # ============================================================================
   push-tags:
     needs: [parse-release, publish-tier1, publish-tier2, publish-tier3]
-    if: always() && needs.parse-release.outputs.has_releases == 'true'
+    if: |
+      always() &&
+      needs.parse-release.outputs.has_releases == 'true' &&
+      (needs.publish-tier1.result == 'success' || needs.publish-tier2.result == 'success' || needs.publish-tier3.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -267,6 +270,7 @@ jobs:
           TIER1_RESULT: ${{ needs.publish-tier1.result }}
           TIER2_RESULT: ${{ needs.publish-tier2.result }}
           TIER3_RESULT: ${{ needs.publish-tier3.result }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           echo "$MATRIX" | jq -c '.include[]' | while read -r pkg; do
             pypi_name=$(echo "$pkg" | jq -r '.pypi')
@@ -282,7 +286,7 @@ jobs:
             if [[ "$result" == "success" ]]; then
               tag="${pypi_name}-v${version}"
               echo "Creating tag: $tag"
-              git tag --annotate --message="Release $pypi_name $version" "$tag"
+              git tag --annotate --message="Release $pypi_name $version" "$tag" "$GITHUB_SHA"
               git push origin "$tag"
             else
               echo "Skipping tag for $pypi_name (tier $tier result: $result)"
@@ -303,8 +307,9 @@ jobs:
       - name: Download all packages
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          path: artifacts
+          path: dist
           pattern: Packages-*
+          merge-multiple: true
 
       - name: Create GitHub Release
         env:
@@ -316,24 +321,23 @@ jobs:
           # Get primary tag (first package)
           PRIMARY_TAG=$(echo "$MATRIX" | jq -r '.include[0] | "\(.pypi)-v\(.version)"')
 
-          # Build release notes
-          NOTES="## Packages Released\n\n"
-          echo "$MATRIX" | jq -c '.include[]' | while read -r pkg; do
-            pypi_name=$(echo "$pkg" | jq -r '.pypi')
-            version=$(echo "$pkg" | jq -r '.version')
-            NOTES+="- **${pypi_name}** ${version} ([PyPI](https://pypi.org/project/${pypi_name}/${version}/))\n"
-          done
-
-          # Flatten artifacts
-          mkdir -p dist
-          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} dist/ \;
+          # Build release notes (process substitution avoids subshell variable loss)
+          {
+            echo "## Packages Released"
+            echo ""
+            while read -r pkg; do
+              pypi_name=$(echo "$pkg" | jq -r '.pypi')
+              version=$(echo "$pkg" | jq -r '.version')
+              echo "- **${pypi_name}** ${version} ([PyPI](https://pypi.org/project/${pypi_name}/${version}/))"
+            done < <(echo "$MATRIX" | jq -c '.include[]')
+          } > release_notes.md
 
           # Create release
-          echo -e "$NOTES" > release_notes.md
           gh release create "$PRIMARY_TAG" \
+            --verify-tag \
             --title "Release: $RELEASE_SUMMARY" \
             --notes-file release_notes.md \
-            dist/* || echo "Release created (some artifacts may have failed)"
+            dist/*
 
   # ============================================================================
   # Summary
@@ -354,22 +358,22 @@ jobs:
           TAGS: ${{ needs.push-tags.result }}
           RELEASE: ${{ needs.create-github-release.result }}
         run: |
-          echo "## Release Summary: $SUMMARY"
-          echo ""
-          echo "| Step | Status |"
-          echo "|------|--------|"
-          echo "| Build | $BUILD |"
-          echo "| Publish Tier 1 (jaclang) | $TIER1 |"
-          echo "| Publish Tier 2 (plugins) | $TIER2 |"
-          echo "| Publish Tier 3 (jaseci) | $TIER3 |"
-          echo "| Push Tags | $TAGS |"
-          echo "| GitHub Release | $RELEASE |"
+          {
+            echo "## Release Summary: $SUMMARY"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Build | $BUILD |"
+            echo "| Publish Tier 1 (jaclang) | $TIER1 |"
+            echo "| Publish Tier 2 (plugins) | $TIER2 |"
+            echo "| Publish Tier 3 (jaseci) | $TIER3 |"
+            echo "| Push Tags | $TAGS |"
+            echo "| GitHub Release | $RELEASE |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$TIER1" == "failure" || "$TIER2" == "failure" || "$TIER3" == "failure" ]]; then
-            echo ""
             echo "::error::Some packages failed to publish"
             exit 1
           fi
 
-          echo ""
-          echo "All packages published successfully!"
+          echo "All packages published successfully!" >> "$GITHUB_STEP_SUMMARY"
