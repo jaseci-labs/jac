@@ -19,7 +19,7 @@ jac add --help  # should show --shadcn flag
 ### Create a new project
 
 ```bash
-jac create --use jac-shadcn myapp
+jac create --use 'https://jac-shadcn.jaseci.org/jacpack' myapp
 cd myapp
 jac install
 ```
@@ -28,7 +28,7 @@ This scaffolds a project with Tailwind v4, theming CSS variables, and the `lib/u
 
 ### Create with custom theme
 
-You can pass theme options via the registry URL:
+Pass theme options as query parameters:
 
 ```bash
 jac create --use 'https://jac-shadcn.jaseci.org/jacpack?style=mira&baseColor=stone&theme=emerald&font=outfit&radius=none' myapp
