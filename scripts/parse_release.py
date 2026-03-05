@@ -59,12 +59,7 @@ def set_output(name: str, value: str) -> None:
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with Path(github_output).open("a") as f:
-            if "\n" in value:
-                import uuid
-                delimiter = uuid.uuid4().hex
-                f.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
-            else:
-                f.write(f"{name}={value}\n")
+            f.write(f"{name}={value}\n")
     print(f"{name}={value}")
 
 
