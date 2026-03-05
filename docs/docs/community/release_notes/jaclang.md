@@ -38,6 +38,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **NamedTuple Type Checking**: Classes extending `NamedTuple` now support proper constructor validation (no false "Too many positional arguments" errors), IDE hover for field-related variables including tuple unpacking (`(x, y) = point`) and for-loop iteration (`for coord in point`), and correct field type inference.
 - **Fix: `py2jac` BinOp operator precedence**: `(a - b - c) // 2` was incorrectly converted to `a - b - c // 2`. Fixed by wrapping same-op chains in `AtomUnit` so parent operators bind to the whole group.
 - **New: jacpretty**: Implment an new library for enhanced CLI colors and designs.
+- **Fix: String Literal Type Checking**: Fixed false positive errors for `str.split()[0] + " suffix"`, string reassignment (`msg += " world"`), `LiteralString` with `len()`, and byte string (`b"..."`) type inference.
 - **Centralized Type Layout & Symbol Resolution**: Extracted class hierarchy computation (C3 MRO, field layout, vtable structure) and symbol resolution utilities into shared modules (`layout_pass.jac`, `symbol_utils.jac`) that all backends query. The native LLVM backend and ES backend now delegate to these centralized implementations instead of maintaining independent copies of the C3 linearization algorithm, hierarchy extraction, symbol lookup, and field collection logic (~128 lines of duplicated code removed across backends).
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
