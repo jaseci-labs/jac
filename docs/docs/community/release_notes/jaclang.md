@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.11.4 (Unreleased)
 
-- 17 small refactors/changes.
+- 19 small refactors/changes.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
 - 9 small refactors/changes.
