@@ -1521,7 +1521,6 @@ impl DesktopTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
     console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
     # Check if setup has been run
     tauri_dir = project_dir / "src-tauri";
@@ -1537,12 +1536,8 @@ impl DesktopTarget.build(
     }
     # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
-    web_target = WebTarget();
     try {
-        # Use 'defer' for desktop/Tauri (file:// protocol blocks ES modules)
-        web_bundle_path = web_target.build(
-            entry_file, project_dir, platform, script_loading="defer"
-        );
+        web_bundle_path = super.build(entry_file, project_dir, platform);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
@@ -2485,10 +2480,7 @@ impl DesktopTarget.start(
     console.print("  Step 1: Building web bundle...", style="muted");
     web_target = WebTarget();
     try {
-        # Use 'defer' for desktop/Tauri (file:// protocol blocks ES modules)
-        web_bundle_path = web_target.build(
-            entry_file, project_dir, None, script_loading="defer"
-        );
+        web_bundle_path = web_target.build(entry_file, project_dir, None);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }

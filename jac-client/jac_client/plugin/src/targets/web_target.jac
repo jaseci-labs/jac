@@ -17,17 +17,9 @@ obj WebTarget(ClientTarget) {
     """Setup web target (no-op for web, already set up by default)."""
     override def setup(project_dir: Path) -> None;
 
-    """Build web bundle using existing Vite pipeline.
-
-    Args:
-        script_loading: Script loading strategy - 'module' (default, ES modules) or 'defer' (classic script for Tauri file://)
-    """
+    """Build web bundle using existing Vite pipeline."""
     override def build(
-        self: WebTarget,
-        entry_file: Path,
-        project_dir: Path,
-        platform: Optional[str] = None,
-        script_loading: str = "module"
+        entry_file: Path, project_dir: Path, platform: Optional[str] = None
     ) -> Path;
 
     """Start web dev server."""

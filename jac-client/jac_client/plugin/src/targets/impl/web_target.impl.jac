@@ -4,11 +4,6 @@ import from pathlib { Path }
 import from typing { Optional }
 import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
-"""Build web bundle using existing Vite pipeline.
-
-Args:
-    script_loading: Script loading strategy - 'module' (default, ES modules) or 'defer' (classic script for Tauri file://)
-"""
 glob VITE_DEV_SERVER_PORT = 5173,
      DEFAULT_FUNCTION_NAME = "app";
 
@@ -88,11 +83,7 @@ impl WebTarget.start(
 
 """Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
-    self: WebTarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None,
-    script_loading: str = "module"
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import os;
     import shutil;
@@ -132,8 +123,7 @@ impl WebTarget.build(
         bundle_path=bundle_path,
         bundler=bundler,
         loaded_mod=loaded_mod,
-        project_dir=project_dir,
-        script_loading=script_loading
+        project_dir=project_dir
     );
     return bundle_path;
 }
@@ -195,17 +185,12 @@ def _get_app_meta_data -> dict {
     return client_cfg.get("app_meta_data", {});
 }
 
-"""Generate static index.html file for the built bundle.
-
-Args:
-    script_loading: 'module' for ES modules (web) or 'defer' for classic scripts (Tauri file://)
-"""
+"""Generate static index.html file for the built bundle."""
 def _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
-    project_dir: Path,
-    script_loading: str = "module"
+    project_dir: Path
 ) -> None {
     import html;
     import json;
@@ -214,44 +199,36 @@ def _generate_index_html(
     function_name = _get_client_function_name(loaded_mod);
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
-
     css_link = _build_css_link(bundler);
     meta_data = _get_app_meta_data();
-
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
-
     if css_link {
         head_content += f"\n            {css_link}";
-        init_payload = {
-            "module": module_name,
-            "function": function_name,
-            "args": {},
-            "argOrder": [],
-            "globals": {}
-        };
-        init_json = json.dumps(init_payload);
-        bundle_filename = bundle_path.name;
-        script_tag = (
-            f'<script src="{bundle_filename}" defer></script>'
-                if script_loading == "defer"
-                else f'<script type="module" src="{bundle_filename}"></script>'
-        );
-        html_content = f'''<!DOCTYPE html>
+    }
+    init_payload = {
+        "module": module_name,
+        "function": function_name,
+        "args": {},
+        "argOrder": [],
+        "globals": {}
+    };
+    init_json = json.dumps(init_payload);
+    bundle_filename = bundle_path.name;
+
+    html_content = f'''<!DOCTYPE html>
 <html lang="en">
   <head>
 {head_content}
   </head>
   <body>
     <div id="root"></div>
-
-    {script_tag}
     <script id="__jac_init__" type="application/json">{html.escape(
-            init_json
-        )}</script>
+        init_json
+    )}</script>
+    <script type="module" src="{bundle_filename}"></script>
   </body>
 </html>''';
-        index_html = dist_dir / 'index.html';
-        index_html.write_text(html_content, encoding='utf-8');
-    }
+    index_html = dist_dir / 'index.html';
+    index_html.write_text(html_content, encoding='utf-8');
 }
