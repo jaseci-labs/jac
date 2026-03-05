@@ -1,4 +1,4 @@
-def foo(param: int, **kwargs: dict) -> int {
+def foo(param: int, **kwargs: int) -> int {
     return (param + kwargs['bar'], 'from_foo');
 }
 

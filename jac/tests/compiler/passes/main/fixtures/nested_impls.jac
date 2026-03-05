@@ -5,7 +5,7 @@ impl mainObject{
     obj subObject;
 }
 
-def foo {
+def foo -> Any {
     obj ObjInsideFunction;
     return ObjInsideFunction();
 }
