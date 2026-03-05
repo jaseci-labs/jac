@@ -18,6 +18,12 @@ DEFAULT_INTERVAL = 10  # seconds
 
 
 def check_pypi(pypi_name: str, version: str) -> bool:
+    """Check if a package version is available on PyPI.
+
+    Note: Uses simple error handling (any error = not available) since this is
+    for polling/waiting. The validate_release script uses _common.check_pypi
+    which has more nuanced error handling for validation.
+    """
     url = f"https://pypi.org/pypi/{pypi_name}/{version}/json"
     try:
         urllib.request.urlopen(url, timeout=10)
@@ -27,6 +33,7 @@ def check_pypi(pypi_name: str, version: str) -> bool:
 
 
 def wait_for_packages(packages: list[tuple[str, str]]) -> bool:
+    """Poll PyPI until all packages are available or timeout."""
     if not packages:
         return True
 
@@ -64,12 +71,8 @@ def wait_for_packages(packages: list[tuple[str, str]]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--matrix", required=True, help="JSON matrix from GitHub Actions"
-    )
-    parser.add_argument(
-        "--tier", type=int, required=True, help="Only wait for this tier"
-    )
+    parser.add_argument("--matrix", required=True, help="JSON matrix from GitHub Actions")
+    parser.add_argument("--tier", type=int, required=True, help="Only wait for this tier")
     args = parser.parse_args()
 
     # Matrix format: {"include": [{"pypi": "jaclang", "version": "1.2.4", "tier": 1}, ...]}

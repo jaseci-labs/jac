@@ -19,11 +19,12 @@ This script:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 from pathlib import Path
 
 import tomlkit
+
+from release_utils import bump_version, set_output
 
 # ---------------------------------------------------------------------------
 # Package registry
@@ -108,28 +109,6 @@ def read_version(pyproject_path: Path) -> str:
     """Read the version string from a pyproject.toml file."""
     data = tomlkit.loads(pyproject_path.read_text())
     return str(data["project"]["version"])  # type: ignore[index]
-
-
-def bump_version(current: str, bump_type: str) -> str:
-    """Compute the next version given a bump type."""
-    parts = current.split(".")
-    if len(parts) != 3:
-        raise ValueError(f"Expected semver X.Y.Z, got: {current}")
-    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-
-    if bump_type == "patch":
-        patch += 1
-    elif bump_type == "minor":
-        minor += 1
-        patch = 0
-    elif bump_type == "major":
-        major += 1
-        minor = 0
-        patch = 0
-    else:
-        raise ValueError(f"Unknown bump type: {bump_type}")
-
-    return f"{major}.{minor}.{patch}"
 
 
 # ---------------------------------------------------------------------------
@@ -242,29 +221,6 @@ def update_release_notes(
     release_notes_path.write_text(content)
 
 
-# ---------------------------------------------------------------------------
-# GitHub Actions output
-# ---------------------------------------------------------------------------
-
-
-def set_output(name: str, value: str) -> None:
-    """Write a key=value pair to $GITHUB_OUTPUT (or print if not in CI)."""
-    github_output = os.environ.get("GITHUB_OUTPUT")
-    if github_output:
-        with Path(github_output).open("a") as f:
-            # Handle multiline values using GitHub Actions heredoc syntax.
-            # Format: name<<DELIMITER\nvalue\nDELIMITER\n
-            # A random UUID is used as delimiter to avoid conflicts with value content.
-            # See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
-            if "\n" in value:
-                import uuid
-
-                delimiter = uuid.uuid4().hex
-                f.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
-            else:
-                f.write(f"{name}={value}\n")
-    else:
-        print(f"  [output] {name}={value}")
 
 
 # ---------------------------------------------------------------------------

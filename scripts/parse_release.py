@@ -21,21 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
-from pathlib import Path
 
-PACKAGES: dict[str, dict[str, str | int]] = {
-    "jaclang": {"dir": "jac", "pypi": "jaclang", "tier": 1},
-    "byllm": {"dir": "jac-byllm", "pypi": "byllm", "tier": 2},
-    "jac-byllm": {"dir": "jac-byllm", "pypi": "byllm", "tier": 2},
-    "jac-client": {"dir": "jac-client", "pypi": "jac-client", "tier": 2},
-    "jac-scale": {"dir": "jac-scale", "pypi": "jac-scale", "tier": 2},
-    "jac-super": {"dir": "jac-super", "pypi": "jac-super", "tier": 2},
-    "jac-mcp": {"dir": "jac-mcp", "pypi": "jac-mcp", "tier": 2},
-    "jaseci": {"dir": "jaseci-package", "pypi": "jaseci", "tier": 3},
-}
+from release_utils import PACKAGES, set_output
 
 
 def parse_from_title(pr_title: str) -> list[dict[str, str | int]]:
@@ -45,24 +34,14 @@ def parse_from_title(pr_title: str) -> list[dict[str, str | int]]:
         pkg_name_lower = pkg_name.lower()
         if pkg_name_lower in PACKAGES:
             pkg_info = PACKAGES[pkg_name_lower]
-            releases.append(
-                {
-                    "name": pkg_name_lower,
-                    "dir": pkg_info["dir"],
-                    "pypi": pkg_info["pypi"],
-                    "tier": pkg_info["tier"],
-                    "version": version,
-                }
-            )
+            releases.append({
+                "name": pkg_name_lower,
+                "dir": pkg_info.dir,
+                "pypi": pkg_info.pypi,
+                "tier": pkg_info.tier,
+                "version": version,
+            })
     return releases
-
-
-def set_output(name: str, value: str) -> None:
-    github_output = os.environ.get("GITHUB_OUTPUT")
-    if github_output:
-        with Path(github_output).open("a") as f:
-            f.write(f"{name}={value}\n")
-    print(f"{name}={value}")
 
 
 def main() -> int:
