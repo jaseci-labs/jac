@@ -381,6 +381,14 @@ test "recovery from syntax error" {
                 client.reload();
             }
 
+            # --- error-overlay check ---
+            entry_file = temp_project / ".jac" / "client" / "compiled" / "_entry.js";
+            if entry_file.exists() {
+                entry_content = entry_file.read_text();
+                assert "errorOverlay" in entry_content , "_entry.js should contain errorOverlay call after a failed reload";
+                assert client._hot_reloader and client._hot_reloader._overlay_entry , "_overlay_entry should be True while an error overlay is active";
+            }
+
             # Fix the syntax error with new value
             app_file.write_text(
                 "walker get_value {\n"
@@ -397,6 +405,15 @@ test "recovery from syntax error" {
             resp2 = client.post("/walker/get_value", json={});
             assert resp2.ok;
             assert resp2.data.get("reports", [{}])[0].get("value") == 3 , "Code not updated after recovery from syntax error";
+
+            # --- error-overlay cleared check ---
+            if entry_file.exists() {
+                restored_content = entry_file.read_text();
+                assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after a successful reload";
+                assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component after error is fixed";
+                assert client._hot_reloader
+                and not client._hot_reloader._overlay_entry , "_overlay_entry should be False after the error is resolved";
+            }
         } finally {
             client.close();
         }
@@ -474,6 +491,35 @@ test "jacjsx import added in real compilation" {
         # JSX code should compile to use __jacJsx
         assert "__jacJsx" in content , "Compiled JS should contain __jacJsx for JSX elements";
         assert "import {__jacJsx" in content or "import{__jacJsx" in content , "__jacJsx is used but import statement is missing";
+        # --- error-overlay: introduce a client compile error ---
+        entry_file = unique_dir / ".jac" / "client" / "compiled" / "_entry.js";
+        bad_file = unique_dir / "app.jac";
+        bad_file.write_text(
+            "cl {\n"
+            "    def app() {\n"
+            "        return <div UNCLOSED;\n"  # malformed JSX / syntax error
+            "    }\n"
+            "}\n"
+        );
+        reloader._recompile_client_code(str(bad_file));
+        # The reloader must write an _entry.js that shows the error overlay
+        overlay_content = entry_file.read_text();
+        assert "errorOverlay" in overlay_content , "_entry.js should contain errorOverlay call when client compilation fails";
+        assert reloader._overlay_entry , "_overlay_entry should be True while client error overlay is active";
+        # --- error-overlay: fix the error and recompile ---
+        bad_file.write_text(
+            "cl {\n"
+            "    def app() {\n"
+            "        return <div>Fixed</div>;\n"
+            "    }\n"
+            "}\n"
+        );
+        reloader._recompile_client_code(str(bad_file));
+        # _entry.js should now point back to the real app (no errorOverlay)
+        restored_content = entry_file.read_text();
+        assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after client compile is fixed";
+        assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component once the error is resolved";
+        assert not reloader._overlay_entry , "_overlay_entry should be False after client error is resolved";
     }
 }
 

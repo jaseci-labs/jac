@@ -98,6 +98,16 @@ impl NormalizePass.enter_test(nd: uni.Test) -> None {
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
     }
+    if nd.decorators {
+        new_kid.append(nd.gen_token(Tok.DECOR_OP));
+        for idx in range(len(nd.decorators)) {
+            new_kid.append(nd.decorators[idx]);
+            if idx < len(nd.decorators) - 1 {
+                new_kid.append(nd.gen_token(Tok.DECOR_OP));
+            }
+        }
+        new_kid.append(nd.gen_token(Tok.WS));
+    }
     new_kid.append(nd.gen_token(Tok.KW_TEST));
     if nd.description {
         new_kid.append(nd.description);

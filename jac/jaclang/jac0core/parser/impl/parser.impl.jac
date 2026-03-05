@@ -3422,11 +3422,14 @@ impl Parser._dispatch_decorated{
     is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
     is_enum = self.check(TokenKind.KW_ENUM);
     is_impl = self.check(TokenKind.KW_IMPL);
+    is_test = self.check(TokenKind.KW_TEST);
     self.pos = save_pos;  # Restore position
     if has_abs_prefix {
         self.error("'abs' is not a valid prefix modifier");
     }
-    if is_ability {
+    if is_test {
+        return self.parse_test();
+    } elif is_ability {
         return self.parse_ability();
     } elif is_enum {
         return self.parse_enum();
@@ -6032,6 +6035,12 @@ impl Parser.parse_enum_member -> Assignment {
 
 impl Parser.parse_test -> Test {
     import re;
+    decorators: list = [];
+    decor_unis: list = [];
+    while self.check(TokenKind.DECOR_OP) {
+        decor_unis.append(self.make_uni_token(self.advance()));
+        decorators.append(self.parse_atomic_chain());
+    }
     test_kw_uni = self.consume_uni(TokenKind.KW_TEST);
     # When no explicit description, create a placeholder empty name token
     cur = self.current();
@@ -6073,14 +6082,26 @@ impl Parser.parse_test -> Test {
     test_lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     test_rb_uni = self.consume_uni(TokenKind.RBRACE);
-    kid: list = [test_kw_uni];
+    kid: list = [];
+    for (di, d) in enumerate(decorators) {
+        kid.append(decor_unis[di]);
+        kid.append(d);
+    }
+    kid.append(test_kw_uni);
     if has_description {
         kid.append(description);
     }
     kid.append(test_lb_uni);
     kid.extend(body);
     kid.append(test_rb_uni);
-    return Test(name=name, body=body, kid=kid, doc=None, description=description);
+    return Test(
+        name=name,
+        body=body,
+        kid=kid,
+        doc=None,
+        description=description,
+        decorators=decorators
+    );
 }
 
 impl Parser.parse_switch_stmt -> SwitchStmt {

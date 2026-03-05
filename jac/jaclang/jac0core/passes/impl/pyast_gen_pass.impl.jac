@@ -650,7 +650,11 @@ impl PyastGenPass.exit_test(self: PyastGenPass, nd: uni.Test) -> None {
                 cast(ast3.stmt, stmt)
                 for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
             ],
-            decorator_list=[],
+            decorator_list=[
+                cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators
+            ]
+                if nd.decorators
+                else [],
             returns=self.sync(ast3.Constant(value=None)),
             type_comment=None,
             type_params=[]
