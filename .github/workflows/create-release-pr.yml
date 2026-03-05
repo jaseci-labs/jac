@@ -99,11 +99,20 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install tomlkit==0.14.0
+        run: pip install tomlkit==0.14.0
 
-      - name: Run release script
+      - name: Validate versions against PyPI
+        run: |
+          python scripts/validate_release.py \
+            --jaclang "${{ inputs.jaclang }}" \
+            --jac-byllm "${{ inputs.jac-byllm }}" \
+            --jac-client "${{ inputs.jac-client }}" \
+            --jac-scale "${{ inputs.jac-scale }}" \
+            --jac-super "${{ inputs.jac-super }}" \
+            --jac-mcp "${{ inputs.jac-mcp }}" \
+            --jaseci "${{ inputs.jaseci }}"
+
+      - name: Bump versions
         id: release
         run: |
           python scripts/release.py \
