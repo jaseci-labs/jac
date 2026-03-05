@@ -43,8 +43,15 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         }
                         continue;
                     }
+                    flags = type_utils.compute_module_source_flags(str(path));
                     mod_type = types.ModuleType(
-                        mod_name=node_.name.sym_name, file_uri=path, symbol_table=mod,
+                        mod_name=node_.name.sym_name,
+                        file_uri=path,
+                        symbol_table=mod,
+                        is_stub_file=flags.is_stub_file,
+                        is_stdlib_stub=flags.is_stdlib_stub,
+                        is_typing_stub=flags.is_typing_stub,
+                        is_builtin_stub=flags.is_builtin_stub,
                     );
 
                     node_.name.type = mod_type;
@@ -96,10 +103,15 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(mod_path);
+            flags = type_utils.compute_module_source_flags(mod_path);
             mod_type = types.ModuleType(
                 mod_name=npath.value,
                 file_uri=Path(mod_path).resolve(),
-                symbol_table=mod
+                symbol_table=mod,
+                is_stub_file=flags.is_stub_file,
+                is_stdlib_stub=flags.is_stdlib_stub,
+                is_typing_stub=flags.is_typing_stub,
+                is_builtin_stub=flags.is_builtin_stub,
             );
             npath.type = mod_type;
             npath._sym_category = SymbolType.MODULE;

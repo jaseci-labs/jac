@@ -2,20 +2,39 @@
 
 This checks if a class has all the methods required by a protocol,
 including methods inherited from base classes via MRO.
+
+Uses symbol table lookup instead of get_methods() to properly handle
+stub file classes where AST parent relationships may not be set correctly.
 """
 impl class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
-    proto_ast: uni.Archetype = proto.shared.symbol_table;
-    # FIXME: For now I'm only checking if method names are equal
-    # However we need to check the full signature compatibility.
-    proto_method_names = {method.sym_name for method in proto_ast.get_methods()};
+    # Get protocol method names from symbol table (more reliable than get_methods())
+    # This handles stub file classes where is_method may not work correctly.
+    proto_method_names: set[str] = set();
+    proto_symtab = proto.shared.symbol_table;
+    if isinstance(proto_symtab, uni.UniScopeNode) {
+        for (name, sym) in proto_symtab.names_in_scope.items() {
+            # Include methods (Ability nodes) but skip special attributes
+            if sym.decl and isinstance(sym.decl.name_of, uni.Ability) {
+                proto_method_names.add(name);
+            }
+        }
+    }
 
-    # Collect method names from the class and all its MRO classes
+    # If no protocol methods found, protocol is trivially satisfied
+    if not proto_method_names {
+        return True;
+    }
+
+    # Collect method names from the class and all its MRO classes using symbol table
     cls_method_names: set[str] = set();
     for mro_cls in cls.shared.mro {
-        if isinstance(mro_cls.shared.symbol_table, uni.Archetype) {
-            cls_method_names.update(
-                method.sym_name for method in mro_cls.shared.symbol_table.get_methods()
-            );
+        mro_symtab = mro_cls.shared.symbol_table;
+        if isinstance(mro_symtab, uni.UniScopeNode) {
+            for (name, sym) in mro_symtab.names_in_scope.items() {
+                if sym.decl and isinstance(sym.decl.name_of, uni.Ability) {
+                    cls_method_names.add(name);
+                }
+            }
         }
     }
     return proto_method_names.issubset(cls_method_names);
@@ -265,4 +284,58 @@ impl compute_mro_linearization(cls: types.ClassType) -> None {
             }
         }
     }
+}
+
+"""
+Compute module source flags from file path.
+
+Similar to Pyright's SourceFileInfo which computes _isStubFile, _isTypingStubFile,
+_isTypeshedStubFile, _isBuiltInStubFile based on the file URI.
+
+These flags help determine how to handle types from the module:
+- is_stub_file: True for .pyi files (type stubs)
+- is_stdlib_stub: True for files from vendor/typeshed/stdlib/
+- is_typing_stub: True for typing.pyi or typing_extensions.pyi
+- is_builtin_stub: True for core builtin stubs (builtins.pyi, abc.pyi, etc.)
+"""
+impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
+    flags = ModuleSourceFlags();
+
+    # Check if it's a stub file (.pyi)
+    flags.is_stub_file = file_path.endswith(".pyi");
+
+    if not flags.is_stub_file {
+        return flags;
+    }
+
+    # Check if it's from stdlib (vendor/typeshed/stdlib/)
+    # Normalize path separators for cross-platform compatibility
+    normalized_path = file_path.replace("\\", "/");
+    flags.is_stdlib_stub = "vendor/typeshed/stdlib/" in normalized_path;
+
+    # Check if it's a typing stub
+    # Similar to Pyright: _isTypingStubFile for typing.pyi and typing_extensions.pyi
+    if normalized_path.endswith("stdlib/typing.pyi")
+    or normalized_path.endswith("typing_extensions.pyi") {
+        flags.is_typing_stub = True;
+    }
+
+    # Check if it's a builtin stub (core Python stubs)
+    # Similar to Pyright's _isBuiltInStubFile list
+    if (
+        normalized_path.endswith("stdlib/builtins.pyi")
+        or normalized_path.endswith("stdlib/abc.pyi")
+        or normalized_path.endswith("stdlib/collections/__init__.pyi")
+        or normalized_path.endswith("stdlib/asyncio/futures.pyi")
+        or normalized_path.endswith("stdlib/asyncio/tasks.pyi")
+        or normalized_path.endswith("stdlib/dataclasses.pyi")
+        or normalized_path.endswith("stdlib/enum.pyi")
+        or normalized_path.endswith("stdlib/types.pyi")
+        or normalized_path.endswith("stdlib/typing.pyi")
+        or normalized_path.endswith("stdlib/_typeshed/__init__.pyi")
+    ) {
+        flags.is_builtin_stub = True;
+    }
+
+    return flags;
 }

@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.11.4 (Unreleased)
 
 - 19 small refactors/changes.
+- **Fix: Module-Level Overload Resolution**: `math.floor()`, `math.ceil()` and other module-level overloaded functions now correctly resolve all `@overload` signatures instead of only the first.
+- **Stdlib Protocol Detection**: Added Pyright-style `ModuleSourceFlags` for production-grade stdlib type detection. Protocol types like `_SupportsFloor` and `_SupportsTrunc` are now properly recognized, enabling `math.floor(3.7)` and `math.trunc(4.9)` to type-check correctly.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
 - **Fix: LSP Impl File Diagnostics**: Editing `.impl.jac` or `.test.jac` now shows errors correctly across all related files.
