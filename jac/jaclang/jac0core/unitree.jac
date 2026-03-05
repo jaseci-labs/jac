@@ -614,7 +614,8 @@ obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
 
     has name: (Name | Token),
         body: Sequence[CodeBlockStmt],
-        description: (String | None) = None;
+        description: (String | None) = None,
+        decorators: (Sequence[Expr] | None) = None;
 
     def postinit -> None;
 }
