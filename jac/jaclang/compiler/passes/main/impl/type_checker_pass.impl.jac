@@ -86,42 +86,39 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing context for AND expressions."""
+"""Enter a boolean expression - set up narrowing scope for AND expressions."""
 impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
     # For AND expressions, push a narrowing scope
     if nd.op.name == Tok.KW_AND {
-        self.evaluator._push_and_narrowing_scope();
-        # Pre-process isinstance checks to add narrowings BEFORE children are evaluated
+        self.evaluator.push_narrowing_scope();
+        # Pre-process conditions to add narrowings BEFORE children are evaluated
         for val in nd.values {
-            if (
-                isinstance(val, uni.FuncCall)
-                and isinstance(val.target, uni.Name)
-                and val.target.value == "isinstance"
-                and val.params
-                and len(val.params) == 2
-            ) {
-                # Support both simple names (x) and member access (x.foo)
-                if narrowing_key := self.evaluator._get_narrowing_key(val.params[0]) {
-                    type_arg = val.params[1];
-                    isinstance_type = self.evaluator.get_type_of_expression(type_arg);
-                    isinstance_inst = self.evaluator._convert_to_instance(
-                        isinstance_type
-                    );
-                    self.evaluator._add_and_narrowing(narrowing_key, isinstance_inst);
-                }
-            }
+            self.evaluator.process_condition(val);
         }
     }
 }
 
-"""Exit a boolean expression - clean up narrowing context."""
+"""Exit a boolean expression - clean up narrowing scope."""
 impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
     # Pop the narrowing scope for AND expressions
     if nd.op.name == Tok.KW_AND {
-        self.evaluator._pop_and_narrowing_scope();
+        self.evaluator.pop_narrowing_scope();
     }
+}
+
+"""Enter an if statement - set up narrowing scope for the if body."""
+impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    # Push a narrowing scope for the if body
+    self.evaluator.push_narrowing_scope();
+    # Process the condition to add narrowings
+    self.evaluator.process_condition(nd.condition);
+}
+
+"""Exit an if statement - clean up narrowing scope."""
+impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    self.evaluator.pop_narrowing_scope();
 }
 
 """Handle the atom trailer node."""
@@ -138,6 +135,12 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
+            # Cache the type on the Name node for hover info
+            target.type = left_type;
+        } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+            # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
+            self._eval_unpacking_names(target);
+            left_type = self.evaluator.get_type_of_expression(target);
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }
@@ -146,7 +149,16 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             self.log_error(f"Cannot assign {right_type} to {left_type}");
         }
     } else {
-        ;
+        # Handle multi-target assignments: set type on each target for hover
+        for target in nd.target {
+            if isinstance(target, uni.Name) and target.sym {
+                target.type = self.evaluator.get_type_of_symbol(target.sym);
+            } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+                self._eval_unpacking_names(target);
+            } else {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
     }
 }
 
@@ -254,4 +266,41 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
+}
+
+"""Set type on function/method parameters for hover info."""
+impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
+}
+
+"""Set type on class fields (has vars) for hover info."""
+impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
+}
+
+"""Set type on for loop iteration variable for hover info."""
+impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None {
+    # Cache type on the iteration target (e.g., 'coord' in 'for coord in p')
+    if isinstance(nd.target, uni.Name) {
+        self.evaluator.get_type_of_expression(nd.target);
+    } elif isinstance(nd.target, (uni.TupleVal, uni.ListVal)) {
+        self._eval_unpacking_names(nd.target);
+    }
+}
+
+"""Evaluate types for each Name in a tuple/list unpacking pattern."""
+impl TypeCheckPass._eval_unpacking_names(
+    self: TypeCheckPass, container: uni.Expr
+) -> None {
+    if isinstance(container, (uni.TupleVal, uni.ListVal)) {
+        for val in container.values {
+            if isinstance(val, uni.Name) {
+                self.evaluator.get_type_of_expression(val);
+            }
+        }
+    }
 }

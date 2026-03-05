@@ -180,10 +180,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def _resolve_expr_symbol(expr: uni.Expr) -> (uni.Symbol | None);
     def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
     def get_main_mod -> uni.Module;
-    def _collect_walker_field_names(walker_symbol: (uni.Symbol | None)) -> list[str];
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
     ) -> es.Expression;
@@ -263,6 +261,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
+    def _ensure_emitters -> None;
     def _try_primitive_op(
         expr_node: uni.UniNode,
         emit_method: str,

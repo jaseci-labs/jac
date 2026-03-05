@@ -70,5 +70,19 @@ jobs:
           if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
             echo "Release already existed — no action taken." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "GitHub Release created. Standalone binary build will be triggered automatically." >> "$GITHUB_STEP_SUMMARY"
+            echo "GitHub Release created. Standalone binary build chained." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_created: ${{ steps.check.outputs.exists == 'false' }}
+
+  build-standalone-binaries:
+    needs: create-release
+    if: needs.create-release.outputs.release_created == 'true'
+    uses: ./.github/workflows/build-standalone.yml
+    with:
+      jaseci_version: ${{ needs.create-release.outputs.version }}
+      release_tag: v${{ needs.create-release.outputs.version }}
+    permissions:
+      contents: write

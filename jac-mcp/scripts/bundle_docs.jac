@@ -17,7 +17,7 @@ import from jac_mcp.resources { find_repo_root, DOC_MAPPINGS }
 """Grammar files to copy (source relative to repo root, destination filename)."""
 glob GRAMMAR_FILES: list[tuple] = [
          ("jac/jaclang/jac.spec", "jac-grammar.spec"),
-         ("jac/jaclang/jac0core/parser/tokens.jac", "tokens.jac"),
+         ("jac/jaclang/jac0core/parser/tokens.na.jac", "tokens.jac"),
 
      ],
      w = sys.stdout.write;

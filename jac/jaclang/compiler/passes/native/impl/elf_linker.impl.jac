@@ -1,7 +1,7 @@
 """Architecture-agnostic ELF64 linker implementation.
 
 Converts a relocatable .o (from llvmlite emit_object) into a runnable
-ELF executable with dynamic linking against libc/libgc.
+ELF executable with dynamic linking against libc.
 Architecture is auto-detected from the object file.
 """
 

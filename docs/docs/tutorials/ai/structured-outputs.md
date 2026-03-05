@@ -311,7 +311,12 @@ node Ticket {
 }
 
 def analyze_priority(title: str, description: str) -> Priority by llm();
+```
 
+!!! warning "Graph Persistence"
+    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
+
+```jac
 walker PrioritizeTickets {
     can with Root entry { visit [-->]; }
 
@@ -376,4 +381,3 @@ If the LLM returns invalid types, byLLM will:
 
 - [Agentic AI](agentic.md) - Add tools for the LLM to use
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation
-- [Examples Gallery](../examples/index.md) - See structured outputs in action

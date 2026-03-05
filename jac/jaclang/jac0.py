@@ -536,6 +536,12 @@ class MatchStmt:
 
 
 @dataclass
+class SwitchStmt:
+    subject: str = ""
+    cases: list = field(default_factory=list)  # list of (pattern_or_None, body)
+
+
+@dataclass
 class DeleteStmt:
     expr: str = ""
 
@@ -925,11 +931,17 @@ class Parser:
 
     # ── Expression Collection ─────────────────────────────────────────────
 
-    def _collect_until(self, *stop: TT, stop_values: set | None = None) -> str:
+    def _collect_until(
+        self,
+        *stop: TT,
+        stop_values: set | None = None,
+        stop_names: set | None = None,
+    ) -> str:
         """Collect tokens until a stop token at depth 0, return as Python str."""
         toks: list[Token] = []
         depth = 0
         sv = stop_values or set()
+        sn = stop_names or set()
         while True:
             tok = self._peek()
             if tok.type == TT.EOF:
@@ -938,6 +950,8 @@ class Parser:
                 if tok.type in stop:
                     break
                 if tok.type == TT.OP and tok.value in sv:
+                    break
+                if sn and tok.type == TT.NAME and tok.value in sn:
                     break
             if tok.type in (TT.LPAREN, TT.LBRACKET, TT.LBRACE):
                 depth += 1
@@ -948,10 +962,17 @@ class Parser:
             toks.append(self._advance())
         return tokens_to_str(toks)
 
-    def _collect_type(self, *extra_stop: TT, stop_vals: set | None = None) -> str:
+    def _collect_type(
+        self,
+        *extra_stop: TT,
+        stop_vals: set | None = None,
+        stop_names: set | None = None,
+    ) -> str:
         """Collect type annotation tokens."""
         stops = {TT.LBRACE, TT.SEMI, TT.COMMA, *extra_stop}
-        return self._collect_until(*stops, stop_values=stop_vals or {"="})
+        return self._collect_until(
+            *stops, stop_values=stop_vals or {"="}, stop_names=stop_names
+        )
 
     def _collect_dotted(self) -> str:
         # Handle leading dots for relative imports (e.g., .tokens, ..utils)
@@ -1062,6 +1083,8 @@ class Parser:
                 return self._parse_with_stmt()
             if v == "match":
                 return self._parse_match()
+            if v == "switch":
+                return self._parse_switch()
             if v == "if":
                 return self._parse_if()
             if v == "for":
@@ -1266,6 +1289,15 @@ class Parser:
         # consume 'def' or 'can'
         self._advance()
         name = self._expect(TT.NAME).value
+        # Skip optional type parameters: def foo[T, E](...)
+        if self._match(TT.LBRACKET):
+            depth = 1
+            while depth > 0 and not self._at(TT.EOF):
+                if self._at(TT.LBRACKET):
+                    depth += 1
+                elif self._at(TT.RBRACKET):
+                    depth -= 1
+                self._advance()
         params: list[Param] = []
         if self._match(TT.LPAREN):
             params = self._parse_params()
@@ -1344,7 +1376,7 @@ class Parser:
         while True:
             name = self._expect(TT.NAME).value
             self._expect(TT.COLON)
-            type_ann = self._collect_type(stop_vals={"="})
+            type_ann = self._collect_type(stop_vals={"="}, stop_names={"by"})
             default = ""
             by_postinit = False
             if self._match_op("="):
@@ -1508,6 +1540,48 @@ class Parser:
             cases.append((pattern, body))
         self._expect(TT.RBRACE)
         return MatchStmt(subject=subject, cases=cases)
+
+    def _parse_switch(self) -> SwitchStmt:
+        self._expect(TT.NAME, "switch")
+        subject = self._collect_until(TT.LBRACE)
+        self._expect(TT.LBRACE)
+        cases: list[tuple[str | None, list]] = []
+        while not self._at(TT.RBRACE) and not self._at(TT.EOF):
+            if self._match(TT.NAME, "default"):
+                self._expect(TT.COLON)
+                body: list = []
+                while (
+                    not self._at(TT.RBRACE)
+                    and not self._at(TT.EOF)
+                    and not (
+                        self._peek().type == TT.NAME
+                        and self._peek().value in ("case", "default")
+                    )
+                ):
+                    node = self._parse_item()
+                    if node is not None:
+                        body.append(node)
+                cases.append((None, body))
+            elif self._match(TT.NAME, "case"):
+                pattern = self._collect_until(TT.COLON)
+                self._expect(TT.COLON)
+                body = []
+                while (
+                    not self._at(TT.RBRACE)
+                    and not self._at(TT.EOF)
+                    and not (
+                        self._peek().type == TT.NAME
+                        and self._peek().value in ("case", "default")
+                    )
+                ):
+                    node = self._parse_item()
+                    if node is not None:
+                        body.append(node)
+                cases.append((pattern, body))
+            else:
+                break
+        self._expect(TT.RBRACE)
+        return SwitchStmt(subject=subject, cases=cases)
 
     def _parse_while(self) -> WhileStmt:
         self._expect(TT.NAME, "while")
@@ -1732,6 +1806,8 @@ class CodeGen:
             self._emit_try(node)
         elif isinstance(node, MatchStmt):
             self._emit_match(node)
+        elif isinstance(node, SwitchStmt):
+            self._emit_switch(node)
         elif isinstance(node, WithStmt):
             self._emit_with(node)
         elif isinstance(node, ReturnStmt):
@@ -1784,7 +1860,30 @@ class CodeGen:
         if node.is_dataclass:
             has_dc = any("dataclass" in d for d in node.decorators)
             if not has_dc:
-                self._line("@dataclass")
+                # Check if the class has 'has' fields
+                has_fields = any(isinstance(n, HasDecl) for n in node.body)
+                # Check if the class has a manual __init__ (def init)
+                impls = self.impl_registry.get(node.name, [])
+                has_init = any(
+                    isinstance(n, FuncDef) and n.name in ("init", "__init__")
+                    for n in node.body
+                ) or any(
+                    i.target.endswith(".init") or i.target.endswith(".__init__")
+                    for i in impls
+                )
+                if has_fields and not has_init:
+                    # Class uses has fields with dataclass-generated __init__
+                    # Use kw_only=True when class has parents to avoid
+                    # field ordering issues (child required fields after
+                    # parent defaulted fields)
+                    if node.bases:
+                        self._line("@dataclass(eq=False, repr=False, kw_only=True)")
+                    else:
+                        self._line("@dataclass(eq=False, repr=False)")
+                else:
+                    # Suppress dataclass __init__ to preserve manual
+                    # or inherited __init__
+                    self._line("@dataclass(eq=False, repr=False, init=False)")
         tp_str = f"[{node.type_params}]" if node.type_params else ""
         base_str = f"({node.bases})" if node.bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
@@ -1832,7 +1931,8 @@ class CodeGen:
             self._line(f"@{dec}")
         if node.is_static:
             self._line("@staticmethod")
-        name = "__init__" if node.name == "init" else node.name
+        _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
+        name = _dunder_names.get(node.name, node.name)
         func_params = list(node.params)
         # Auto-add self for instance methods inside a class
         if (
@@ -1907,8 +2007,8 @@ class CodeGen:
     def _emit_impl_as_method(self, impl: ImplDef) -> None:
         parts = impl.target.split(".")
         method_name = parts[-1] if len(parts) > 1 else parts[0]
-        if method_name == "init":
-            method_name = "__init__"
+        _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
+        method_name = _dunder_names.get(method_name, method_name)
         for dec in impl.decorators:
             self._line(f"@{dec}")
         if impl.is_static:
@@ -2005,6 +2105,22 @@ class CodeGen:
             self.indent -= 1
         self.indent -= 1
 
+    def _emit_switch(self, node: SwitchStmt) -> None:
+        subject = self._strip_parens(node.subject)
+        first = True
+        for pattern, body in node.cases:
+            if pattern is None:
+                # default case
+                self._line("else:")
+            elif first:
+                self._line(f"if ({subject}) == ({pattern}):")
+                first = False
+            else:
+                self._line(f"elif ({subject}) == ({pattern}):")
+            self.indent += 1
+            self._emit_body(body)
+            self.indent -= 1
+
 
 # =============================================================================
 # Orchestrator
@@ -2018,22 +2134,53 @@ def discover_impl_files(jac_path: str) -> list[str]:
     dir_path = os.path.dirname(jac_path) or "."
     base_name = os.path.basename(base)
 
-    # Same directory: foo.impl.jac
+    # Detect variant suffix (.na, .sv, .cl) and compute bare base
+    bare_base = base
+    bare_base_name = base_name
+    variant = None
+    for vext in (".na", ".sv", ".cl"):
+        if base_name.endswith(vext):
+            variant = vext
+            bare_base_name = base_name[: -len(vext)]
+            bare_base = os.path.join(dir_path, bare_base_name)
+            break
+
+    # Same directory: foo.impl.jac (or foo.na.impl.jac for variants)
     impl_file = f"{base}.impl.jac"
     if os.path.isfile(impl_file):
         impls.append(impl_file)
 
-    # Module folder: foo.impl/*.impl.jac
+    # Module folder: foo.impl/*.impl.jac (or foo.na.impl/*.impl.jac)
     impl_dir = f"{base}.impl"
     if os.path.isdir(impl_dir):
         for f in sorted(os.listdir(impl_dir)):
             if f.endswith(".impl.jac"):
                 impls.append(os.path.join(impl_dir, f))
 
-    # Shared folder: impl/foo.impl.jac
+    # Shared folder: impl/foo.impl.jac (or impl/foo.na.impl.jac)
     shared_impl = os.path.join(dir_path, "impl", f"{base_name}.impl.jac")
     if os.path.isfile(shared_impl):
         impls.append(shared_impl)
+
+    # For variant files, also check bare impl files when no bare head exists
+    if variant is not None:
+        bare_head = f"{bare_base}.jac"
+        if not os.path.isfile(bare_head):
+            # Same directory: foo.impl.jac
+            bare_impl = f"{bare_base}.impl.jac"
+            if os.path.isfile(bare_impl) and bare_impl not in impls:
+                impls.append(bare_impl)
+            # Module folder: foo.impl/*.impl.jac
+            bare_impl_dir = f"{bare_base}.impl"
+            if os.path.isdir(bare_impl_dir):
+                for f in sorted(os.listdir(bare_impl_dir)):
+                    fp = os.path.join(bare_impl_dir, f)
+                    if f.endswith(".impl.jac") and fp not in impls:
+                        impls.append(fp)
+            # Shared folder: impl/foo.impl.jac
+            bare_shared = os.path.join(dir_path, "impl", f"{bare_base_name}.impl.jac")
+            if os.path.isfile(bare_shared) and bare_shared not in impls:
+                impls.append(bare_shared)
 
     return impls
 

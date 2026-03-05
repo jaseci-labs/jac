@@ -20,35 +20,122 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
+# Cache jac0 transpiler hash for bootstrap cache invalidation
+import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
+
+_jac0_source_path = getattr(_jac0_mod, "__file__", "")
+_jac0_hash = (
+    hashlib.sha256(Path(_jac0_source_path).read_bytes()).digest()
+    if _jac0_source_path and os.path.isfile(_jac0_source_path)
+    else b""
+)
 
 # Inline logging config (previously in jaclang.jac0core.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 
 # ---------------------------------------------------------------------------
-# Bootstrap bytecode cache
+# Bootstrap bytecode cache (JIR format)
 #
 # jac0core .jac files are transpiled by jac0 on every invocation.  Caching
 # the resulting bytecode avoids ~200 ms of repeated work when the sources
-# haven't changed.  The cache lives next to the regular bytecode cache
-# (e.g. ~/.cache/jac/bootstrap/) and is keyed on a SHA-256 digest of all
-# source inputs plus the Python version.
+# haven't changed.  The cache lives at ~/.cache/jac/jir/bootstrap/ and uses
+# a minimal JIR file (FLAG_BOOTSTRAP set, no AST payload, SEC_BYTECODE only).
+# This is implemented in pure Python so it works before the JIR Jac modules
+# have been bootstrapped.
 # ---------------------------------------------------------------------------
+
+_BOOTSTRAP_JIR_MAGIC = b"JIR\x00"
+_BOOTSTRAP_JIR_FMT_VER = 8
+_BOOTSTRAP_JIR_HEADER_FMT = "<4sHHIIIIII"
+_BOOTSTRAP_JIR_HEADER_SIZE = 32
+_BOOTSTRAP_JIR_SECTIONS_MAGIC = b"JIRX"
+_BOOTSTRAP_SEC_BYTECODE = 0x02
+_BOOTSTRAP_SEC_TERMINATOR = 0xFF
+_BOOTSTRAP_FLAG_BOOTSTRAP = 0x04
 
 
 def _get_bootstrap_cache_dir() -> Path:
-    """Return the platform-appropriate bootstrap cache directory."""
+    """Return the platform-appropriate bootstrap JIR cache directory."""
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return base / "jac" / "cache" / "bootstrap"
+        return base / "jac" / "cache" / "jir" / "bootstrap"
     elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "jac" / "bootstrap"
+        return Path.home() / "Library" / "Caches" / "jac" / "jir" / "bootstrap"
     else:
         xdg = os.environ.get("XDG_CACHE_HOME")
         base = Path(xdg) if xdg else (Path.home() / ".cache")
-        return base / "jac" / "bootstrap"
+        return base / "jac" / "jir" / "bootstrap"
+
+
+def _write_bootstrap_jir(bytecode: bytes, source_hash: int) -> bytes:
+    """Build a minimal JIR with FLAG_BOOTSTRAP set and a SEC_BYTECODE section."""
+    import struct
+    import zlib
+
+    py_ver = (sys.version_info.major << 8) | sys.version_info.minor
+    header = struct.pack(
+        _BOOTSTRAP_JIR_HEADER_FMT,
+        _BOOTSTRAP_JIR_MAGIC,
+        _BOOTSTRAP_JIR_FMT_VER,
+        py_ver,
+        0,  # jaclang_version_hash (not available at bootstrap)
+        source_hash & 0xFFFFFFFF,
+        0,  # node_count
+        0,  # symbol_count
+        0,  # string_pool_size
+        _BOOTSTRAP_FLAG_BOOTSTRAP,
+    )
+    # Empty AST payload: a single varint 0x00 (empty string pool), compressed
+    empty_payload = zlib.compress(b"\x00", 1)
+    # TLV section
+    import struct as _struct
+
+    sec = (
+        _BOOTSTRAP_JIR_SECTIONS_MAGIC
+        + bytes([_BOOTSTRAP_SEC_BYTECODE])
+        + _struct.pack("<I", len(bytecode))
+        + bytecode
+        + bytes([_BOOTSTRAP_SEC_TERMINATOR])
+        + b"\x00\x00\x00\x00"
+    )
+    return header + empty_payload + sec
+
+
+def _read_bootstrap_jir(data: bytes) -> bytes | None:
+    """Extract SEC_BYTECODE from a bootstrap JIR file. Returns None on failure."""
+    import struct
+
+    if len(data) < _BOOTSTRAP_JIR_HEADER_SIZE:
+        return None
+    try:
+        magic, fmt_ver = struct.unpack_from("<4sH", data, 0)
+        if magic != _BOOTSTRAP_JIR_MAGIC or fmt_ver != _BOOTSTRAP_JIR_FMT_VER:
+            return None
+        # Find SECTIONS_MAGIC after the header
+        pos = data.find(_BOOTSTRAP_JIR_SECTIONS_MAGIC, _BOOTSTRAP_JIR_HEADER_SIZE)
+        if pos < 0:
+            return None
+        pos += len(_BOOTSTRAP_JIR_SECTIONS_MAGIC)
+        while pos < len(data):
+            sec_type = data[pos]
+            pos += 1
+            if sec_type == _BOOTSTRAP_SEC_TERMINATOR:
+                break
+            if pos + 4 > len(data):
+                break
+            (sec_len,) = struct.unpack_from("<I", data, pos)
+            pos += 4
+            if pos + sec_len > len(data):
+                break
+            if sec_type == _BOOTSTRAP_SEC_BYTECODE:
+                return data[pos : pos + sec_len]
+            pos += sec_len
+        return None
+    except Exception:
+        return None
 
 
 def _bootstrap_compile(
@@ -56,26 +143,32 @@ def _bootstrap_compile(
     jac_source: str,
     impl_sources: list[tuple[str, str]] | None = None,
 ) -> types.CodeType:
-    """Compile a bootstrap .jac file, using a disk cache when possible."""
-    # Build the hash key from all source inputs + Python version
+    """Compile a bootstrap .jac file, using a JIR disk cache when possible."""
+    import zlib
+
+    # Build the hash key from all source inputs + Python version + transpiler
     h = hashlib.sha256()
     h.update(sys.version.encode())
+    h.update(_jac0_hash)
     h.update(jac_source.encode())
     if impl_sources:
         for src, path in impl_sources:
             h.update(path.encode())
             h.update(src.encode())
     digest = h.hexdigest()[:16]
+    source_hash = zlib.crc32(jac_source.encode()) & 0xFFFFFFFF
 
-    # Derive a human-readable cache filename
+    # Derive a human-readable cache filename (.jir extension)
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    cache_file = _get_bootstrap_cache_dir() / f"{base_name}.{digest}.bc"
+    cache_file = _get_bootstrap_cache_dir() / f"{base_name}.{digest}.jir"
 
-    # Try loading from cache
+    # Try loading from JIR cache
     if cache_file.is_file():
         try:
             data = cache_file.read_bytes()
-            return marshal.loads(data)  # noqa: S302
+            bc = _read_bootstrap_jir(data)
+            if bc is not None:
+                return marshal.loads(bc)  # noqa: S302
         except Exception:
             cache_file.unlink(missing_ok=True)
 
@@ -83,10 +176,11 @@ def _bootstrap_compile(
     py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
     code = compile(py_source, file_path, "exec")
 
-    # Write to cache (best-effort)
+    # Write JIR cache (best-effort)
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_bytes(marshal.dumps(code))
+        jir_data = _write_bootstrap_jir(marshal.dumps(code), source_hash)
+        cache_file.write_bytes(jir_data)
     except OSError:
         pass
 
@@ -289,6 +383,29 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
+
+        # Auto-install native wrappers if native engine is available
+        if native_engine is not None:
+            layout = compiler.get_native_layout(file_path, program)
+            if layout is not None:
+                try:
+                    from jaclang.jac0core.native_marshal import (
+                        install_native_wrappers,
+                    )
+
+                    count = install_native_wrappers(module, native_engine, layout)
+                    if count > 0:
+                        import logging
+
+                        logging.getLogger(__name__).debug(
+                            f"Installed {count} native wrappers for {file_path}"
+                        )
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger(__name__).debug(
+                        f"Native wrapper install failed for {file_path}: {e}"
+                    )
 
     def get_code(self, fullname: str) -> object | None:
         """Get the code object for a module.

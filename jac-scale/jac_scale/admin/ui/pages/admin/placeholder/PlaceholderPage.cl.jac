@@ -88,17 +88,6 @@ cl {
             />;
     }
 
-    def:pub MetricsPage -> JsxElement {
-        return
-            <PlaceholderCard
-                title="Metrics"
-                message="Real-time metrics from /metrics endpoint coming soon"
-                action={<Button variant="secondary">
-                    Refresh
-                </Button>}
-            />;
-    }
-
     def:pub LogsPage -> JsxElement {
         return
             <PlaceholderCard title="Logs" message="Log viewer coming soon"/>;
@@ -183,7 +172,7 @@ cl {
                 <CardBody>
                     <TextArea
                         value={tomlConfig}
-                        onChange={lambda e: any  -> None { tomlConfig = e.target.value;}}
+                        onChange={lambda e: Any  -> None { tomlConfig = e.target.value;}}
                         placeholder="# TOML configuration will load here..."
                         rows={20}
                     />
@@ -241,13 +230,13 @@ cl {
                         <Input
                             label="SMTP Host"
                             value={smtpHost}
-                            onChange={lambda e: any  -> None { smtpHost = e.target.value;}}
+                            onChange={lambda e: Any  -> None { smtpHost = e.target.value;}}
                             placeholder="smtp.example.com"
                         />
                         <Input
                             label="SMTP Port"
                             value={smtpPort}
-                            onChange={lambda e: any  -> None { smtpPort = e.target.value;}}
+                            onChange={lambda e: Any  -> None { smtpPort = e.target.value;}}
                             placeholder="587"
                         />
                     </div>
@@ -363,7 +352,7 @@ cl {
                     <Input
                         label="Database URL"
                         value={dbUrl}
-                        onChange={lambda e: any  -> None { dbUrl = e.target.value;}}
+                        onChange={lambda e: Any  -> None { dbUrl = e.target.value;}}
                         placeholder="postgresql://user:pass@host:5432/db"
                     />
                     <div className="grid grid-cols-2 gap-4">
@@ -371,14 +360,14 @@ cl {
                             label="Pool Size"
                             type="number"
                             value={poolSize}
-                            onChange={lambda e: any  -> None { poolSize = e.target.value;}}
+                            onChange={lambda e: Any  -> None { poolSize = e.target.value;}}
                             placeholder="10"
                         />
                         <Input
                             label="Max Overflow"
                             type="number"
                             value={maxOverflow}
-                            onChange={lambda e: any  -> None { maxOverflow = e.target.value;}}
+                            onChange={lambda e: Any  -> None { maxOverflow = e.target.value;}}
                             placeholder="20"
                         />
                     </div>
@@ -411,21 +400,21 @@ cl {
                             label="Min Replicas"
                             type="number"
                             value={minReplicas}
-                            onChange={lambda e: any  -> None { minReplicas = e.target.value;}}
+                            onChange={lambda e: Any  -> None { minReplicas = e.target.value;}}
                             placeholder="1"
                         />
                         <Input
                             label="Max Replicas"
                             type="number"
                             value={maxReplicas}
-                            onChange={lambda e: any  -> None { maxReplicas = e.target.value;}}
+                            onChange={lambda e: Any  -> None { maxReplicas = e.target.value;}}
                             placeholder="10"
                         />
                         <Input
                             label="Target CPU %"
                             type="number"
                             value={targetCpu}
-                            onChange={lambda e: any  -> None { targetCpu = e.target.value;}}
+                            onChange={lambda e: Any  -> None { targetCpu = e.target.value;}}
                             placeholder="70"
                         />
                     </div>

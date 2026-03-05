@@ -384,7 +384,7 @@ cl {
 | Expression | `{expression}` |
 | Event handler | `onClick={lambda -> None { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
-| Conditional | `{condition ? <A /> : <B />}` |
+| Conditional | `{("A" if condition else "B")}` |
 | Children | `{props.children}` |
 | Import component | `import from "./File.cl.jac" { Component }` |
 

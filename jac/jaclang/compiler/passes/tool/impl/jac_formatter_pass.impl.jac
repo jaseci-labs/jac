@@ -148,12 +148,18 @@ Stops early on overflow or hard/literal lines.
 impl JacFormatPass._probe_fits(
     nd: doc.DocType, indent_level: int, width_remaining: int, *, max_steps: int = 2000
 ) -> bool {
+    cache_key = (id(nd), indent_level, width_remaining);
+    cached = self._probe_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
     work: deque[tuple[(object, int)]] = deque();
     work.append((nd, indent_level));
     steps = 0;
     remaining = width_remaining;
     while work {
         if (steps >= max_steps) {
+            self._probe_cache[cache_key] = False;
             return False;
         }
         steps += 1;
@@ -161,10 +167,12 @@ impl JacFormatPass._probe_fits(
         if isinstance(cur, doc.Text) {
             remaining -= len(cur.text);
             if (remaining <= 0) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
         } elif isinstance(cur, doc.Line) {
             if (cur.hard or cur.literal) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
             if cur.tight {
@@ -172,6 +180,7 @@ impl JacFormatPass._probe_fits(
             }
             remaining -= 1;
             if (remaining <= 0) {
+                self._probe_cache[cache_key] = False;
                 return False;
             }
         } elif isinstance(cur, doc.Concat) {
@@ -192,6 +201,7 @@ impl JacFormatPass._probe_fits(
             raise ValueError(f"Unknown DocType in probe: {type(cur)}") ;
         }
     }
+    self._probe_cache[cache_key] = True;
     return True;
 }
 
@@ -239,4 +249,5 @@ impl JacFormatPass._flat_first_line_width(nd: doc.DocType) -> int {
 impl JacFormatPass.pre_transform -> None {
     self.indent_size = 4;
     self.MAX_LINE_LENGTH = 88;
+    self._probe_cache: dict = {};
 }

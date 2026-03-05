@@ -118,6 +118,17 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "tutorial-osp.md",
              "Graphs & Walkers - OSP tutorial"
          ),
+         # --- Native Compilation ---
+         "jac://docs/native-pathway": (
+             "reference/language/native-pathway.md",
+             "native-pathway.md",
+             "Native Compilation - Native pathway reference"
+         ),
+         "jac://docs/tutorial-native-chess": (
+             "tutorials/native/chess.md",
+             "native-chess.md",
+             "Build a Chess Engine - Native compilation tutorial"
+         ),
          # --- AI Integration ---
          "jac://docs/byllm": (
              "reference/plugins/byllm.md",
@@ -213,7 +224,7 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "Code Organization - Project structure guide"
          ),
          "jac://docs/mcp": (
-             "reference/tools/mcp.md",
+             "quick-guide/mcp.md",
              "mcp.md",
              "MCP Server - Model Context Protocol reference"
          ),
@@ -275,7 +286,7 @@ impl ResourceProvider.index_resources -> None {
             "path": str(spec_path)
         };
     }
-    tokens_path = repo_root / "jac" / "jaclang" / "jac0core" / "parser" / "tokens.jac";
+    tokens_path = repo_root / "jac" / "jaclang" / "jac0core" / "parser" / "tokens.na.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
             "uri": "jac://grammar/tokens",
@@ -375,7 +386,7 @@ impl ResourceProvider._index_bundled_docs -> None {
         };
     }
     # Token definitions
-    tokens_path = docs_dir / "tokens.jac";
+    tokens_path = docs_dir / "tokens.na.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
             "uri": "jac://grammar/tokens",

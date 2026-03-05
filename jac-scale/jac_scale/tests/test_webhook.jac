@@ -19,6 +19,12 @@ import from typing { Any, cast }
 
 import from testcontainers.mongodb { MongoDbContainer }
 
+import from jac_scale.tests.scale_test_client {
+    ScaleTestClient,
+    make_client,
+    extract_data
+}
+
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -493,21 +499,28 @@ def run_webhook_revoked_api_key_test(base_url: str) -> None {
 
 # =========================================================================
 # Test class 1: Webhook tests WITHOUT MongoDB (file-based storage)
+# Uses ScaleTestClient (in-process, no subprocess)
 # =========================================================================
 glob wh_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      wh_test_file: Path = wh_fixtures_dir / "test_api.jac";
 
 test "webhook without mongo - endpoint exists" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_endpoint_exists_test(base_url);
+        response = client.get("/openapi.json");
+        assert response.status_code == 200;
+        schema = response.json();
+        paths = schema.get("paths", {});
+
+        assert "/webhook/PaymentReceived" in paths , (
+            f"Expected /webhook/PaymentReceived in paths: {list(paths.keys())}"
+        );
+        assert "/webhook/MinimalWebhook" in paths , (
+            f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -515,16 +528,22 @@ test "webhook without mongo - endpoint exists" {
 }
 
 test "webhook without mongo - normal walker not in webhook" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_normal_walker_not_in_webhook_test(base_url);
+        response = client.get("/openapi.json");
+        assert response.status_code == 200;
+        schema = response.json();
+        paths = schema.get("paths", {});
+
+        assert "/webhook/NormalPayment" not in paths , (
+            "NormalPayment should NOT have webhook endpoint but found in paths"
+        );
+        assert "/walker/NormalPayment" in paths or "/walker/{walker_name}" in paths , (
+            "NormalPayment should be accessible via /walker/ endpoint"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -532,16 +551,35 @@ test "webhook without mongo - normal walker not in webhook" {
 }
 
 test "webhook without mongo - normal walker accessible via walker endpoint" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_normal_walker_accessible_via_walker_test(base_url);
+        (_, token) = client.register_user(
+            f"normal_walker_user_{uuid.uuid4().hex[:8]}", "password123"
+        );
+
+        response = client.post(
+            "/walker/NormalPayment",
+            json={
+                "payment_id": "PAY-NORMAL-001",
+                "order_id": "ORD-NORMAL-001",
+                "amount": 50.00,
+                "currency": "EUR"
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        );
+
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        assert "reports" in data;
+        rpt = data["reports"][0];
+        assert rpt["status"] == "success";
+        assert rpt["payment_id"] == "PAY-NORMAL-001";
+        assert rpt["transport"] == "http";
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -549,16 +587,22 @@ test "webhook without mongo - normal walker accessible via walker endpoint" {
 }
 
 test "webhook without mongo - requires api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_requires_api_key_test(base_url);
+        payload = json.dumps({});
+
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={"Content-Type": "application/json"}
+        );
+
+        assert response.status_code in (401, 422) , (
+            f"Expected 401 or 422, got {response.status_code}: {response.text}"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -566,16 +610,25 @@ test "webhook without mongo - requires api key" {
 }
 
 test "webhook without mongo - invalid api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_invalid_api_key_test(base_url);
+        payload = json.dumps({});
+
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": "invalid_key_12345"
+            }
+        );
+
+        assert response.status_code == 401 , (
+            f"Expected 401, got {response.status_code}: {response.text}"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -583,16 +636,46 @@ test "webhook without mongo - invalid api key" {
 }
 
 test "webhook without mongo - minimal webhook with valid api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_minimal_webhook_with_valid_api_key_test(base_url);
+        (_, token) = client.register_user(
+            f"minimal_webhook_user_{uuid.uuid4().hex[:8]}", "password123"
+        );
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "minimal_webhook_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201 , (
+            f"Failed to create API key: {api_key_response.text}"
+        );
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+
+        payload = json.dumps({});
+        payload_bytes = payload.encode("utf-8");
+        signature = _generate_webhook_signature(payload_bytes, api_key);
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature
+            }
+        );
+
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        assert "reports" in data;
+        assert data["reports"][0]["status"] == "received";
+        assert data["reports"][0]["transport"] == "webhook";
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -600,16 +683,56 @@ test "webhook without mongo - minimal webhook with valid api key" {
 }
 
 test "webhook without mongo - payment received with fields" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_payment_received_test(base_url);
+        (_, token) = client.register_user(
+            f"payment_user_{uuid.uuid4().hex[:8]}", "password123"
+        );
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "payment_webhook_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+
+        payload = json.dumps(
+            {
+                "payment_id": "PAY-12345",
+                "order_id": "ORD-67890",
+                "amount": 99.99,
+                "currency": "USD"
+            }
+        );
+        payload_bytes = payload.encode("utf-8");
+        signature = _generate_webhook_signature(payload_bytes, api_key);
+
+        response = client.post(
+            "/webhook/PaymentReceived",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature
+            }
+        );
+
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        assert "reports" in data;
+        rpt = data["reports"][0];
+        assert rpt["status"] == "success";
+        assert rpt["payment_id"] == "PAY-12345";
+        assert rpt["order_id"] == "ORD-67890";
+        assert rpt["amount"] == 99.99;
+        assert rpt["currency"] == "USD";
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -617,16 +740,24 @@ test "webhook without mongo - payment received with fields" {
 }
 
 test "webhook without mongo - not accessible via walker endpoint" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_not_accessible_via_walker_test(base_url);
+        (_, token) = client.register_user(
+            f"webhook_path_user_{uuid.uuid4().hex[:8]}", "password123"
+        );
+
+        response = client.post(
+            "/walker/PaymentReceived",
+            json={"payment_id": "PAY-TEST", "order_id": "ORD-TEST", "amount": 10.00},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+
+        assert response.status_code in (400, 404, 405) , (
+            f"Expected 400/404/405, got {response.status_code}: {response.text}"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }
@@ -634,16 +765,62 @@ test "webhook without mongo - not accessible via walker endpoint" {
 }
 
 test "webhook without mongo - revoked api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    client = make_client();
     try {
-        run_webhook_revoked_api_key_test(base_url);
+        (_, token) = client.register_user(
+            f"webhook_revoke_user_{uuid.uuid4().hex[:8]}", "password123"
+        );
+
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "key_to_revoke", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        api_key = api_key_data["api_key"];
+        api_key_id = api_key_data["api_key_id"];
+
+        # Verify API key works with MinimalWebhook
+        payload = json.dumps({});
+        payload_bytes = payload.encode("utf-8");
+        signature = _generate_webhook_signature(payload_bytes, api_key);
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature
+            }
+        );
+        assert response.status_code == 200;
+
+        # Revoke the API key
+        revoke_response = client.delete(
+            f"/api-key/{api_key_id}", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert revoke_response.status_code == 200 , (
+            f"Failed to revoke key: {revoke_response.text}"
+        );
+
+        # Try to use revoked key
+        response = client.post(
+            "/webhook/MinimalWebhook",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature
+            }
+        );
+
+        assert response.status_code == 401 , (
+            f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
+        );
     } finally {
-        _stop_server(sp);
-        _cleanup_db_files(wh_fixtures_dir);
+        client.close();
         if original_mongodb_uri is not None {
             os.environ["MONGODB_URI"] = original_mongodb_uri;
         }

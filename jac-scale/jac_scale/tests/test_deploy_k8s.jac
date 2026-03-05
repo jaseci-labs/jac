@@ -200,13 +200,6 @@ test "deploy all in one" {
     cluster_role_name = f"{namespace}-{ksm_name}";
 
     test_secret_value = "test-secret-value-12345";
-    os.environ.update(
-        {
-            "APP_NAME": app_name,
-            "K8s_NAMESPACE": namespace,
-            "TEST_SECRET_KEY": test_secret_value
-        }
-    );
 
     test_dir = os.path.dirname(os.path.abspath(__file__));
     todo_app_path = os.path.join(
@@ -218,6 +211,10 @@ test "deploy all in one" {
     target_config["app_name"] = app_name;
     target_config["namespace"] = namespace;
     target_config["node_port"] = 30001;
+    target_config["redis_dashboard"] = True;
+    target_config["mongodb_dashboard"] = True;
+    target_config["redis_insight_node_port"] = 30032;
+    target_config["mongo_express_node_port"] = 30033;
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -234,7 +231,7 @@ test "deploy all in one" {
         "kubernetes", target_config, logger
     );
 
-    deployment_target.secrets = app_scale_config.get_secrets_config();
+    deployment_target.secrets = {"TEST_SECRET_KEY": test_secret_value};
 
     app_config = AppConfig(
         code_folder=todo_app_path, file_name="main.jac", build=False, experimental=True
@@ -308,6 +305,82 @@ test "deploy all in one" {
         name=f"{app_name}-redis-service", namespace=namespace
     );
     assert redis_service.spec.ports[0].port == 6379;
+
+    # Validate RedisInsight dashboard Deployment and Service
+    insight_name = f"{app_name}-redis-insight";
+    insight_deploy = apps_v1.read_namespaced_deployment(
+        name=insight_name, namespace=namespace
+    );
+    assert insight_deploy.metadata.name == insight_name;
+    assert insight_deploy.spec.replicas == 1;
+    insight_container = insight_deploy.spec.template.spec.containers[0];
+    assert insight_container.image == "redis/redisinsight:3.2.0";
+    ri_host_env = next(
+        (
+            e.value
+            for e in insight_container.env
+            if e.name == "RI_REDIS_HOST"
+        ),
+        None
+    );
+    ri_port_env = next(
+        (
+            e.value
+            for e in insight_container.env
+            if e.name == "RI_REDIS_PORT"
+        ),
+        None
+    );
+    assert ri_host_env == f"{app_name}-redis-service";
+    assert ri_port_env == "6379";
+    print(
+        f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured"
+    );
+
+    insight_service = core_v1.read_namespaced_service(
+        name=f"{insight_name}-service", namespace=namespace
+    );
+    assert insight_service.spec.type == "NodePort";
+    assert insight_service.spec.ports[0].node_port == 30032;
+    print(f"RedisInsight Service '{insight_name}-service' (NodePort:30032) exists");
+
+    # Validate mongo-express dashboard Deployment and Service
+    express_name = f"{app_name}-mongo-express";
+    express_deploy = apps_v1.read_namespaced_deployment(
+        name=express_name, namespace=namespace
+    );
+    assert express_deploy.metadata.name == express_name;
+    assert express_deploy.spec.replicas == 1;
+    express_container = express_deploy.spec.template.spec.containers[0];
+    assert express_container.image == 'mongo-express:1.0.2-20';
+    mongo_server_env = next(
+        (
+            e.value
+            for e in express_container.env
+            if e.name == "ME_CONFIG_MONGODB_SERVER"
+        ),
+        None
+    );
+    assert mongo_server_env == f"{app_name}-mongodb-service";
+    mongo_user_env = next(
+        (
+            e.value
+            for e in express_container.env
+            if e.name == "ME_CONFIG_MONGODB_ADMINUSERNAME"
+        ),
+        None
+    );
+    assert mongo_user_env == "admin";
+    print(
+        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials pre-configured"
+    );
+
+    express_service = core_v1.read_namespaced_service(
+        name=f"{express_name}-service", namespace=namespace
+    );
+    assert express_service.spec.type == "NodePort";
+    assert express_service.spec.ports[0].node_port == 30033;
+    print(f"mongo-express Service '{express_name}-service' (NodePort:30033) exists");
 
     # Validate Prometheus Deployment, Service, and ConfigMap
     prometheus_name = f"{app_name}-prometheus";
@@ -505,16 +578,16 @@ test "deploy all in one" {
     duplicate_namespace = "all-in-one-duplicate";
     duplicate_app_name = duplicate_namespace;
 
-    os.environ.update(
-        {"APP_NAME": duplicate_app_name, "K8s_NAMESPACE": duplicate_namespace}
-    );
-
     duplicate_target_config = app_scale_config.get_kubernetes_config();
     duplicate_target_config["app_name"] = duplicate_app_name;
     duplicate_target_config["namespace"] = duplicate_namespace;
     duplicate_target_config["node_port"] = target_config[
         "node_port"
     ];  # same port — must conflict
+    duplicate_target_config["redis_dashboard"] = True;
+    duplicate_target_config["mongodb_dashboard"] = True;
+    duplicate_target_config["redis_insight_node_port"] = 30032;  # same — must conflict
+    duplicate_target_config["mongo_express_node_port"] = 30033;  # same — must conflict
     duplicate_target_config["jaseci_repo_url"] = repo_url;
     duplicate_target_config["jaseci_branch"] = branch;
     duplicate_target_config["jaseci_commit"] = commit;
@@ -522,7 +595,6 @@ test "deploy all in one" {
     duplicate_target = DeploymentTargetFactory.create(
         "kubernetes", duplicate_target_config, logger
     );
-    duplicate_target.secrets = app_scale_config.get_secrets_config();
 
     conflict_result = duplicate_target.deploy(app_config);
     assert conflict_result.success is False , (
@@ -532,9 +604,6 @@ test "deploy all in one" {
         f"Expected NodePort conflict error, got: {conflict_result.message}"
     );
     print(f"Port conflict correctly detected: {conflict_result.message}");
-
-    # Restore env vars to point back at the original namespace for cleanup
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
 
     # Cleanup using new architecture
     deployment_target.destroy(app_name);
@@ -595,6 +664,40 @@ test "deploy all in one" {
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    # Verify RedisInsight dashboard cleanup
+    insight_name = f"{app_name}-redis-insight";
+    try {
+        apps_v1.read_namespaced_deployment(insight_name, namespace=namespace);
+        raise AssertionError("RedisInsight Deployment should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{insight_name}-service", namespace=namespace);
+        raise AssertionError("RedisInsight Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify mongo-express dashboard cleanup
+    express_name = f"{app_name}-mongo-express";
+    try {
+        apps_v1.read_namespaced_deployment(express_name, namespace=namespace);
+        raise AssertionError("mongo-express Deployment should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{express_name}-service", namespace=namespace);
+        raise AssertionError("mongo-express Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Dashboard (RedisInsight + mongo-express) cleanup verified");
 
     # Verify code-server cleanup
     try {
@@ -782,8 +885,6 @@ test "early exit" {
     namespace = "early-exit";
     app_name = namespace;
 
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
-
     test_dir = os.path.dirname(os.path.abspath(__file__));
     todo_app_path = os.path.join(test_dir, "../../examples/early-exit");
 
@@ -820,8 +921,6 @@ test "deployment target methods" {
 
     namespace = "test-methods";
     app_name = "test-methods-app";
-
-    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace});
 
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();

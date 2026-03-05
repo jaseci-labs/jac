@@ -8,13 +8,13 @@ import contextlib;
 
 import from pathlib { Path }
 
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 import jaclang;
 import from jaclang.langserve.rwlock { ReadWriteLock }
 import from jaclang.langserve.engine { JacLangServer }
-import from jaclang.vendor.pygls { uris }
-import from jaclang.vendor.pygls.workspace { Workspace }
+import from jaclang.lsp { uris }
+import from jaclang.lsp.server { Workspace }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
@@ -51,15 +51,15 @@ def teardown_test {
 def create_server(workspace_path: str | None = None) -> JacLangServer {
     lsp = JacLangServer();
     workspace_root = workspace_path if workspace_path is not None else FIXTURE_DIR;
-    workspace_val = Workspace(workspace_root, lsp);
+    workspace_val = Workspace(root_uri=uris.from_fs_path(workspace_root));
     lsp.lsp._workspace = workspace_val;
     _active_servers.append(lsp);
     return lsp;
 }
 
-test "rwlock concurrent readers and exclusive writer" {
-    """Verify multiple readers run concurrently, writers get exclusive access,
+"""Verify multiple readers run concurrently, writers get exclusive access,
     and writer priority prevents reader starvation of writers."""
+test "rwlock concurrent readers and exclusive writer" {
     setup_test();
     try {
         lock = ReadWriteLock();
@@ -177,9 +177,9 @@ test "rwlock concurrent readers and exclusive writer" {
     }
 }
 
-test "concurrent queries during type checking" {
-    """Verify that read operations (hover, outline, semantic tokens) can proceed
+"""Verify that read operations (hover, outline, semantic tokens) can proceed
     concurrently without deadlock while type checking updates the hub."""
+test "concurrent queries during type checking" {
     setup_test();
     try {
         lsp = create_server();
@@ -272,8 +272,8 @@ test "concurrent queries during type checking" {
     }
 }
 
+"""Verify shutdown completes without deadlock when the dispatcher is busy."""
 test "shutdown under active dispatch" {
-    """Verify shutdown completes without deadlock when the dispatcher is busy."""
     setup_test();
     try {
         lsp = create_server();

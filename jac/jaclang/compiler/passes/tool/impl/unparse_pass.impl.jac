@@ -58,7 +58,7 @@ impl UnparsePass.exit_name(nd: uni.Name) -> None {
 """String: handle f-string literal escaping."""
 impl UnparsePass.exit_string(nd: uni.String) -> None {
     if nd.parent and isinstance(nd.parent, uni.FString) {
-        escaped = nd.lit_value.replace("{", "{{").replace("}", "}}");
+        escaped = nd.value.replace("{", "{{").replace("}", "}}");
         nd.gen.jac = escaped.replace("#", "\\#");
     } else {
         nd.gen.jac = nd.value;

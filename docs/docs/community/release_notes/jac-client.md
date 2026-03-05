@@ -2,12 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.2 (Unreleased)
+## jac-client 0.3.4 (Unreleased)
+
+- **HMR Client Error Reporting**: Client-side runtime and module import errors now reported to terminal via Vite WebSocket.
+- Internal: updated jac.toml of all-in-one example to use redis dashboard and mongodb dashboard
+- 2 Minor refactors/changes.
+
+## jac-client 0.3.3 (Latest Release)
+
+## jac-client 0.3.2
 
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 - 1 small refactor/change
 
-## jac-client 0.3.1 (Latest Release)
+## jac-client 0.3.1
 
 - **Admin Portal UI Components**: Added reusable UI components for the jac-scale admin portal including buttons, modals, inputs, tables, and layout components built with jac-client.
 - **Custom Import Path Aliases via jac.toml**: Added support for configuring import path aliases in `[plugins.client.paths]`. Define aliases like `"@components/*" = "./components/*"` and they are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths` in tsconfig.json.

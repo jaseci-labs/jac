@@ -686,7 +686,11 @@ impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
     } else {
         self._check_module_freshness();
     }
-    return dict(self._functions);
+    return {
+        k: v
+        for (k, v) in self._functions.items()
+        if not v?.schedule_spec
+    };
 }
 
 """Get all walkers."""
@@ -696,7 +700,11 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     } else {
         self._check_module_freshness();
     }
-    return dict(self._walkers);
+    return {
+        k: v
+        for (k, v) in self._walkers.items()
+        if not v?.schedule_spec
+    };
 }
 
 """Get client-exportable functions."""
@@ -1182,6 +1190,7 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
+    import from jaclang.runtimelib.scheduler { Scheduler }
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
@@ -1202,9 +1211,11 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
+    self.scheduler = Scheduler.instance();
     # Only create real server if port > 0 (port=0 is test mode - no socket binding)
     if self.port > 0 {
         self.server = Jac.create_server(self, '0.0.0.0', self.port);
+        # Note: Jac.create_server updates self.port if a different port was used
     } else {
         self.server = None;
     }
@@ -1710,10 +1721,25 @@ impl JacAPIServer.print_endpoint_docs -> None {
 impl JacAPIServer.start(
     dev: bool = False,
     no_client: bool = False,
-    on_ready: Callable[[], None] | None = None
+    on_ready: Callable[[int], None] | None = None
 ) -> None {
     import from pathlib { Path }
     self.introspector.load();
+    # Register scheduled walkers and functions, start scheduler only if needed
+    for (name, walker_cls) in self.introspector._walkers.items() {
+        if walker_cls?.schedule_spec {
+            self.scheduler.register(name, walker_cls, walker_cls.schedule_spec, True);
+        }
+    }
+    for (name, func) in self.introspector._functions.items() {
+        if func?.schedule_spec {
+            self.scheduler.register(name, func, func.schedule_spec, False);
+        }
+    }
+    if self.scheduler.has_pending() {
+        console.print("Scheduler started");
+        self.scheduler.start();
+    }
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
     bundle_error = None;
     if not dev and not no_client {
@@ -1788,14 +1814,21 @@ impl JacAPIServer.start(
             );
             console.print(file=sys.stderr);
         }
-        # Call the ready callback (e.g., to print startup banner)
+        # Call the ready callback with actual port (e.g., to print startup banner)
+        # Try new signature (with port) first, fall back to old signature for cached code
         if on_ready {
-            on_ready();
+            try {
+                on_ready(self.port);
+            } except TypeError {
+                on_ready();
+            }
         }
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {
             console.print('\nShutting down server...');
+        } finally {
+            self.scheduler.stop();
         }
     }
 }

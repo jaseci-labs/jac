@@ -24,13 +24,9 @@ import from jaclang.compiler.primitives {
 }
 
 # --- Context ----------------------------------------------------------------
-class ESEmitCtx {
+obj ESEmitCtx {
     """ES emission context — carries the JS code generator."""
     has unparser: object;
-
-    def init(self, unparser: object) {
-        self.unparser = unparser;
-    }
 }
 
 # --- Helpers -----------------------------------------------------------------
@@ -1006,9 +1002,6 @@ class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_index(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        if len(args) == 1 {
-            return _mcall(target, "indexOf", args);
-        }
         return _rt("list", "index", [target] + args);
     }
 
@@ -1440,9 +1433,6 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
     }
 
     def emit_index(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
-        if len(args) == 1 {
-            return _mcall(target, "indexOf", args);
-        }
         return _rt("tuple", "index", [target] + args);
     }
 

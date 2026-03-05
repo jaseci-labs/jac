@@ -1,5 +1,10 @@
 """Tuple codegen and unpacking."""
-"""Generate tuple value: (a, b, c) -> struct with fields."""
+"""Generate tuple value: (a, b, c) -> struct value via insertvalue.
+
+Returns an LLVM struct value (not a pointer). When the tuple needs to be
+stored in a pointer-typed field, _coerce_type automatically boxes it via
+rc_alloc. This eliminates heap allocation for purely local tuples.
+"""
 impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     if not nd.values {
         return None;
@@ -23,36 +28,29 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         self.tuple_types[tuple_key] = struct_type;
     }
     struct_type = self.tuple_types[tuple_key];
-    # Allocate tuple struct on heap using GC_malloc
-    i8p = ir.IntType(8).as_pointer();
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
-    size = ir.Constant(ir.IntType(64), self._get_struct_size(struct_type));
-    raw_ptr = self.builder.call(gc_malloc, [size], name="tuple.raw");
-    tuple_ptr = self.builder.bitcast(
-        raw_ptr, struct_type.as_pointer(), name="tuple.ptr"
-    );
-    # Store each element
-    for (i, val) in enumerate(elem_vals) {
-        field_ptr = self.builder.gep(
-            tuple_ptr,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), i)],
-            name=f"tuple.{i}.ptr"
-        );
-        self.builder.store(val, field_ptr);
+    # Build value via insertvalue chain (no heap allocation)
+    val = ir.Constant(struct_type, ir.Undefined);
+    for (i, elem) in enumerate(elem_vals) {
+        val = self.builder.insert_value(val, elem, i, name=f"tuple.{i}");
     }
-    return tuple_ptr;
+    return val;
 }
 
-"""Unpack a tuple into multiple variables."""
+"""Unpack a tuple into multiple variables. Handles both value and pointer tuples."""
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
 ) -> None {
-    if not isinstance(tuple_val.type, ir.PointerType) {
-        return;
+    # Determine struct type from value or pointer
+    struct_type: (ir.LiteralStructType | None) = None;
+    is_value = False;
+    if isinstance(tuple_val.type, ir.LiteralStructType) {
+        struct_type = tuple_val.type;
+        is_value = True;
+    } elif isinstance(tuple_val.type, ir.PointerType)
+    and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
+        struct_type = tuple_val.type.pointee;
     }
-    # Get the struct type from the pointer
-    struct_type = tuple_val.type.pointee;
-    if not isinstance(struct_type, ir.LiteralStructType) {
+    if struct_type is None {
         return;
     }
     # Extract each element and assign to target
@@ -64,13 +62,18 @@ impl NaIRGenPass._codegen_tuple_unpack(
         if var_name is None {
             continue;
         }
-        # GEP to get element pointer
-        elem_ptr = self.builder.gep(
-            tuple_val,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), i)],
-            name=f"unpack.{i}.ptr"
-        );
-        elem_val = self.builder.load(elem_ptr, name=f"unpack.{i}");
+        if is_value {
+            # Value tuple: use extractvalue
+            elem_val = self.builder.extract_value(tuple_val, i, name=f"unpack.{i}");
+        } else {
+            # Pointer tuple: GEP + load
+            elem_ptr = self.builder.gep(
+                tuple_val,
+                [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), i)],
+                name=f"unpack.{i}.ptr"
+            );
+            elem_val = self.builder.load(elem_ptr, name=f"unpack.{i}");
+        }
         # Store in local variable
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];
@@ -100,7 +103,24 @@ impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     return total if total > 0 else 8;
 }
 
-"""Index into a tuple struct: tuple[i] -> element value."""
+"""Box a value tuple to a heap-allocated pointer (rc_alloc + store).
+
+Returns the value unchanged if it's already a pointer. Use this when
+a value tuple needs to be stored in a container or passed to a function
+that expects a pointer.
+"""
+impl NaIRGenPass._box_value_tuple(val: ir.Value) -> ir.Value {
+    if not isinstance(val.type, ir.LiteralStructType) {
+        return val;
+    }
+    size = ir.Constant(ir.IntType(64), self._get_struct_size(val.type));
+    raw = self.builder.call(self.rc_alloc_fn, [size], name="tuple.box");
+    ptr = self.builder.bitcast(raw, val.type.as_pointer(), name="tuple.box.ptr");
+    self.builder.store(val, ptr);
+    return ptr;
+}
+
+"""Index into a tuple: tuple[i] -> element value. Handles both value and pointer tuples."""
 impl NaIRGenPass._codegen_tuple_index(
     tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
 ) -> (ir.Value | None) {
@@ -110,18 +130,20 @@ impl NaIRGenPass._codegen_tuple_index(
         idx = idx_val.constant;
     }
     if idx is None {
-        # Dynamic indexing not supported for tuples - try to extract from name
         return None;
     }
     if idx < 0 or idx >= len(struct_type.elements) {
         return None;
     }
-    # GEP to get element pointer
+    # Value tuple: use extractvalue
+    if isinstance(tuple_val.type, ir.LiteralStructType) {
+        return self.builder.extract_value(tuple_val, idx, name=f"tuple.idx.{idx}");
+    }
+    # Pointer tuple: GEP + load
     elem_ptr = self.builder.gep(
         tuple_val,
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
         name=f"tuple.idx.{idx}.ptr"
     );
-    # Load and return the element
     return self.builder.load(elem_ptr, name=f"tuple.idx.{idx}");
 }

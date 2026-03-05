@@ -431,7 +431,7 @@ cl {
 
     # Handle liking a tweet - calls server walker directly
     # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> any {
+    async def like_tweet_action(tweet_id: str) -> Any {
         try {
             result = await like_tweet(tweet_id);
             print("Tweet liked:", result);
@@ -476,7 +476,7 @@ with entry {
 }
 
 # Match statement comment preservation
-def test_match_comments(x: int) {
+def test_match_comments(x: int) -> bool {
     match x {
         # comment before first case
         case 1:

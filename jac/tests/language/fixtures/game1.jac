@@ -2,7 +2,7 @@ import random;
 import from typing { Tuple }
 
 obj Button {
-    def is_pressed(pos: tuple, pressed: str) -> bool {
+    def is_pressed(pos: tuple, pressed: int) -> bool {
         return True;
     }
 }

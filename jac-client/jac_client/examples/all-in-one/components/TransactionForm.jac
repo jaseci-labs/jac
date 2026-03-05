@@ -14,7 +14,7 @@ cl {
         [clientName, setClientName] = useState("");
         budget = useBudgetContext();
 
-        def handleSubmit(e: any) -> None {
+        def handleSubmit(e: Any) -> None {
             e.preventDefault();
 
             # Validate inputs
@@ -104,7 +104,7 @@ cl {
                             id="description"
                             type="text"
                             value={description}
-                            onChange={lambda e: any  -> None { setDescription(
+                            onChange={lambda e: Any  -> None { setDescription(
                                 e.target.value
                             );}}
                             placeholder="Enter description..."
@@ -119,7 +119,7 @@ cl {
                             id="amount"
                             type="number"
                             value={amount}
-                            onChange={lambda e: any  -> None { setAmount(
+                            onChange={lambda e: Any  -> None { setAmount(
                                 e.target.value
                             );}}
                             placeholder="0.00"
@@ -135,7 +135,7 @@ cl {
                         <select
                             id="category"
                             value={category}
-                            onChange={lambda e: any  -> None { setCategory(
+                            onChange={lambda e: Any  -> None { setCategory(
                                 e.target.value
                             );}}
                             className="form-select"
@@ -155,7 +155,7 @@ cl {
                         <select
                             id="client"
                             value={clientName}
-                            onChange={lambda e: any  -> None { setClientName(
+                            onChange={lambda e: Any  -> None { setClientName(
                                 e.target.value
                             );}}
                             className="form-select"

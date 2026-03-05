@@ -52,9 +52,11 @@ impl InteropAnalysisPass._resolve_native_module(
     if (self.ir_in and self.ir_in.loc) {
         base_dir = os.path.dirname(self.ir_in.loc.mod_path);
     }
-    na_jac_path = os.path.join(base_dir, f"{module_name}.na.jac");
+    # Strip leading dots from relative imports (e.g., '.tokens' → 'tokens')
+    clean_name = module_name.lstrip('.');
+    na_jac_path = os.path.join(base_dir, f"{clean_name}.na.jac");
     if os.path.exists(na_jac_path) {
-        return f"{module_name}.na";
+        return f"{clean_name}.na";
     }
     return None;
 }
@@ -74,6 +76,7 @@ impl InteropAnalysisPass.enter_import(
         if module_name {
             native_path = self._resolve_native_module(module_name);
             if (native_path and nd.items) {
+                manifest = self.ir_in.gen.interop_manifest;
                 for item in nd.items {
                     if isinstance(item, uni.ModuleItem) {
                         func_name = getattr(item.name, 'value', str(item.name));
@@ -81,6 +84,32 @@ impl InteropAnalysisPass.enter_import(
                             native_path,
                             import_context
                         );
+                        # For native-to-native imports, create binding immediately
+                        # so NativeCompilePass can link the module. This avoids
+                        # relying on enter_func_call which may not visit annex bodies.
+                        # Check both explicit na {} context and .na.jac file context.
+                        is_native_ctx = (
+                            import_context == InteropContext.NATIVE
+                            or (
+                                self.ir_in
+                                and self.ir_in.loc
+                                and self.ir_in.loc.mod_path.endswith('.na.jac')
+                            )
+                        );
+                        if (is_native_ctx and func_name not in manifest.bindings) {
+                            binding = InteropBinding(
+                                name=func_name,
+                                source_context=InteropContext.NATIVE,
+                                callers={InteropContext.NATIVE},
+                                ret_type='int',
+                                param_types=[],
+                                param_names=[],
+                                ast_node=None,
+                                route=[InteropContext.NATIVE, InteropContext.NATIVE],
+                                source_module=native_path
+                            );
+                            manifest.bindings[func_name] = binding;
+                        }
                     }
                 }
             }

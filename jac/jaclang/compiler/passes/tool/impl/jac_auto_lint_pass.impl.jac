@@ -1358,7 +1358,11 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
         node_override=impl_node
     );
     import copy;
+    # Temporarily detach parent to prevent deepcopy from cloning the entire AST
+    saved_parent = decl.signature.parent;
+    decl.signature.parent = None;
     new_sig = copy.deepcopy(decl.signature);
+    decl.signature.parent = saved_parent;
     new_sig.parent = impl_node;
     old_spec = impl_node.spec;
     # Copy position info from old spec's tokens to new spec's tokens

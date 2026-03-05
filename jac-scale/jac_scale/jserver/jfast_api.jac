@@ -157,6 +157,9 @@ class JFastApiServer(JServer[FastAPI]) {
 
     def get_app(self: JFastApiServer) -> FastAPI;
     def run_server(
-        self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
+        self: JFastApiServer,
+        host: str = '0.0.0.0',
+        port: int = 8000,
+        max_retries: int = 10
     ) -> None;
 }

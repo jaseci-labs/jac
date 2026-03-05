@@ -16,7 +16,7 @@ cl def:pub app() -> JsxElement {
             <h1>Items</h1>
             <ul>
                 {items.map(
-                    lambda item: dict -> any { return <li>{item.name}</li>; }
+                    lambda item: dict -> Any { return <li>{item.name}</li>; }
                 )}
             </ul>
         </div>;

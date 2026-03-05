@@ -248,6 +248,64 @@ test "strings fstring mixed" {
     assert f(b"Alice", 30) == b"name=Alice, age=30";
 }
 
+test "strings str replace count arg respected" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_replace_first_only", ctypes.c_char_p, ctypes.c_char_p);
+    # only the first 'a' should be replaced; remaining 'a's must be untouched
+    assert f(b"aaa") == b"Xaa";
+    assert f(b"banana") == b"bXnana";
+}
+
+test "strings for-in-str join" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_for_in_join", ctypes.c_char_p, ctypes.c_char_p);
+    assert f(b"Hello") == b"Hello";
+    assert f(b"") == b"";
+}
+
+test "strings for-in-str count" {
+    (eng, _) = compile_native("strings.na.jac");
+    f = get_func(eng, "str_for_in_count", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"Hello") == 5;
+    assert f(b"") == 0;
+}
+
+# --- TestNativePrintMultiArgs ---
+test "print multi args compiles" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    assert eng is not None;
+}
+
+test "print multi args multiple args" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_multiple_args", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args mixed types" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_mixed_types", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args variables" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_variables", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args single arg" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_single_arg", ctypes.c_int64);
+    assert f() == 0;
+}
+
+test "print multi args many args" {
+    (eng, _) = compile_native("print_multi_args.na.jac");
+    f = get_func(eng, "test_many_args", ctypes.c_int64);
+    assert f() == 0;
+}
+
 # --- TestNativeObjects ---
 test "objects make point" {
     (eng, _) = compile_native("objects.na.jac");
@@ -277,6 +335,44 @@ test "objects none check" {
     assert f() == 1;
 }
 
+test "objects init called" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_called", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "objects init executed" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_executed", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "objects init no args" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_no_args", ctypes.c_int64);
+    assert f() == 99;
+}
+
+test "objects init positional" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_positional", ctypes.c_int64);
+    # KWInit(10, 20) → init adds 1 to each → x=11, y=21 → sum=32
+    assert f() == 32;
+}
+
+test "objects init side effects" {
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_init_side_effects", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "objects empty dict in struct ctor" {
+    # Container(entries={}) used to store null → segfault on first dict access.
+    (eng, _) = compile_native("objects.na.jac");
+    f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
+    assert f() == 30;
+}
+
 # --- TestNativeInheritance ---
 test "inheritance dog speak" {
     (eng, _) = compile_native("inheritance.na.jac");
@@ -301,6 +397,43 @@ test "inheritance polymorphic" {
     f = get_func(eng, "test_polymorphic", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 1;  # Dog.speak
     assert f(0) == 2;  # Cat.speak
+}
+
+# --- TestMultipleInheritance ---
+test "multi-inherit two parent fields" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_two_parent_fields", ctypes.c_int64);
+    assert f() == 151;
+}
+
+test "multi-inherit two parent methods" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_two_parent_methods", ctypes.c_int64);
+    assert f() == 192;
+}
+
+test "multi-inherit diamond field access" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_diamond_field_access", ctypes.c_int64);
+    assert f() == 130;
+}
+
+test "multi-inherit diamond single id" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_diamond_single_id", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "multi-inherit mro method resolution" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_mro_method_resolution", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "multi-inherit three mixins" {
+    (eng, _) = compile_native("multi_inherit.na.jac");
+    f = get_func(eng, "test_three_mixins", ctypes.c_int64);
+    assert f() == 10;
 }
 
 # --- TestNativeLists ---
@@ -1338,7 +1471,7 @@ test "multi module full multi module chain" {
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,
-        "__jac_interop_py_funcs__": getattr(ir.gen, "interop_py_funcs", {})
+        "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
     };
     buf = io.StringIO();
     with contextlib.redirect_stdout(buf) {
@@ -1348,14 +1481,59 @@ test "multi module full multi module chain" {
     assert output == "35";
 }
 
+# --- TestCrossModuleStructTypes ---
+test "cross module struct compile" {
+    # Importing a struct type from another .na.jac module compiles without errors.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module struct function call" {
+    # Imported function returning a struct and function accepting a struct work correctly.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    # make_point and get_x should be linked
+    make_point_addr = eng.get_function_address("make_point");
+    assert make_point_addr != 0 , "make_point not linked into engine";
+    get_x_addr = eng.get_function_address("get_x");
+    assert get_x_addr != 0 , "get_x not linked into engine";
+}
+
+test "cross module struct execution" {
+    # Call use_imported_point via ctypes to verify cross-module struct passing works.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    use_imported_point = get_func(
+        eng, "use_imported_point", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    result = use_imported_point(3, 4);
+    assert result == 3 , f"Expected 3, got {result}";
+    result2 = use_imported_point(7, 9);
+    assert result2 == 7 , f"Expected 7, got {result2}";
+}
+
 # --- TestNativeCacheMarker ---
-test "cache marker non native file caches empty llvmir" {
-    # Compiling a file without na blocks stores '' for llvm_ir in cache.
+test "cache marker non native file has no llvmir section in jir" {
+    # Compiling a file without na blocks should NOT write SEC_LLVM_IR into the JIR cache.
     import tempfile;
     import time;
     import shutil;
-    import from jaclang.jac0core.bccache { CacheKey, DiskBytecodeCache }
-    import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        read_sections,
+        SECTIONS_MAGIC,
+        HEADER_SIZE,
+        SEC_LLVM_IR
+    }
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False);
     tmp.write("glob x = 1;\n");
@@ -1368,22 +1546,28 @@ test "cache marker non native file caches empty llvmir" {
     os.utime(jac_file, (past, past));
 
     try {
-        cache = DiskBytecodeCache();
-        cache._cache_dir = Path(tempfile.mkdtemp());
-        jac_compiler = JacCompiler(bytecode_cache=cache);
-        jac_compiler.get_bytecode(jac_file, JacProgram());
+        import from jaclang.jac0core.compiler { JacCompiler }
+        prog = JacProgram();
+        JacCompiler().get_bytecode(jac_file, prog);
 
-        key = CacheKey.for_source(jac_file);
-        cached_ir = cache.get_llvmir(key);
-        assert cached_ir == "" , (
-            f"Non-native file should cache empty llvm_ir, got {cached_ir!r}"
+        cache_path = get_module_cache_path(jac_file);
+        assert cache_path.exists() , f"JIR cache file not created at {cache_path}";
+
+        data = cache_path.read_bytes();
+        magic_bytes = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        secs: dict = {};
+        if pos >= 0 {
+            secs = read_sections(data, pos + len(magic_bytes));
+        }
+        assert SEC_LLVM_IR not in secs , (
+            f"Non-native file should not have SEC_LLVM_IR in JIR cache"
         );
     } except Exception as e {
         os.unlink(jac_file);
         raise ;
     }
     os.unlink(jac_file);
-    shutil.rmtree(str(cache._cache_dir), ignore_errors=True);
 }
 
 # --- TestNativeLLVMIR ---
@@ -1457,4 +1641,641 @@ test "clib struct value-type coercion" {
     # ABI coercion instructions should be present (bitcast %Color* to i32*, then load)
     assert "struct.abi.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
     assert "struct.abi.unbox" in llvm_ir_str , "Missing struct ABI unbox load";
+}
+
+# --- TestRefCounting ---
+test "rc basic alloc" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_alloc_basic", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "rc object lifecycle" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_object_lifecycle", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "rc reassignment" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_reassign", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "rc list growth" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_list_growth", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "rc list of objects" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_list_of_objects", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "rc nested structure" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_nested_structure", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "rc string alloc" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_string_alloc", ctypes.c_int64);
+    assert f() == 11;
+}
+
+test "rc return transfer" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_return_transfer", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "rc dict growth" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_dict_growth", ctypes.c_int64);
+    assert f() == 20;
+}
+
+test "rc loop reassign" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_loop_reassign", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "rc set operations" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_set_operations", ctypes.c_int64);
+    assert f() == 5;
+}
+
+test "rc string reassign" {
+    (eng, _) = compile_native("refcount.na.jac");
+    f = get_func(eng, "test_string_reassign", ctypes.c_int64);
+    assert f() == 5;
+}
+
+# --- TestRefCountingStress ---
+test "rc stress many objects" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_many_objects", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
+}
+
+test "rc stress rapid reassign" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_rapid_reassign", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 999;
+}
+
+test "rc stress large list" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_large_list", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
+}
+
+test "rc stress string concat" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_string_concat_stress", ctypes.c_int64, ctypes.c_int64);
+    assert f(100) == 100;
+}
+
+test "rc stress large dict" {
+    (eng, _) = compile_native("rc_stress.na.jac");
+    f = get_func(eng, "test_large_dict", ctypes.c_int64, ctypes.c_int64);
+    assert f(1000) == 1000;
+}
+
+test "dicts items iteration sum" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
+    assert f() == 60;
+}
+
+# --- TestNativeEmptyGlobDict (regression: empty-dict-glob-var-init-null-ptr) ---
+test "dicts empty glob dict set and get" {
+    # glob x: dict[K,V] = {} previously left the global as null -> segfault on first access.
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "empty_glob_dict_set_get", ctypes.c_int64);
+    assert f() == 7;
+}
+
+# --- TestNativeDictDeleteRemove (regression: dict-delete-silently-dropped) ---
+test "dicts dict remove method" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_remove_method", ctypes.c_int64);
+    assert f() == 1;  # key must be absent after .remove()
+}
+
+test "dicts dict delete keyword" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_delete_keyword", ctypes.c_int64);
+    assert f() == 1;  # key must be absent after del d[k]
+}
+
+test "dicts dict.get found" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_get_found", ctypes.c_int64);
+    assert f() == 10 , f"Expected 10, got {f()}";
+}
+
+test "dicts dict.get not found" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_get_notfound", ctypes.c_int64);
+    assert f() == -99 , f"Expected -99, got {f()}";
+}
+
+test "dicts dict.get no default" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_get_no_default", ctypes.c_int64);
+    assert f() == 100 , f"Expected 100, got {f()}";
+}
+
+test "dicts global dict.get method" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "global_dict_get_method", ctypes.c_int64);
+    assert f() == 200 , f"Expected 200, got {f()}";
+}
+
+test "dicts global dict.get not found method" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "global_dict_get_notfound_method", ctypes.c_int64);
+    assert f() == -42 , f"Expected -42, got {f()}";
+}
+
+test "dicts for-in-dict param iteration" {
+    # for k in d where d is a dict parameter was always elided (body never ran).
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_param_iter_sum_fixture", ctypes.c_int64);
+    assert f() == 60;
+}
+
+test "dicts for-in-dict field access iteration" {
+    # for k in c.props where c is a struct with a dict field used to segfault
+    # because the AtomTrailer expression had no bare name to look up in var_dict_type.
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "dict_field_iter_sum_fixture", ctypes.c_int64);
+    assert f() == 60;
+}
+
+test "default params omitted trailing defaults" {
+    (eng, _) = compile_native("default_params.na.jac");
+    method_f = get_func(eng, "test_method_default_omitted", ctypes.c_int64);
+    assert method_f() == 22;  # 5 + 7 + 10 (offset default)
+    free_f = get_func(eng, "test_free_fn_default_omitted", ctypes.c_int64);
+    assert free_f() == 142;  # 42 + 100 (bias default)
+}
+
+# --- Auto-Promotion Tests ---
+glob CHESS_JAC = str(
+         Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
+     );
+
+"""Compile a regular .jac file with auto-promotion and return the engine."""
+def compile_auto_native(file_path: str) -> tuple {
+    prog = JacProgram();
+    prog._auto_promote_native = True;
+    prog._auto_promote_target = os.path.abspath(file_path);
+    ir = prog.compile(file_path=file_path);
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors: {errors}";
+    return (ir, prog);
+}
+
+test "auto promote chess.jac detects native compatible" {
+    (ir, _) = compile_auto_native(CHESS_JAC);
+    assert ir is not None;
+    assert ir.gen._auto_promoted_native , (
+        "chess.jac should be auto-promoted to native"
+    );
+    assert ir.gen.native_engine is not None , (
+        "Auto-promoted chess.jac should have a native engine"
+    );
+}
+
+test "auto promote chess.jac has entry and key functions" {
+    (ir, _) = compile_auto_native(CHESS_JAC);
+    eng = ir.gen.native_engine;
+    # jac_entry must exist
+    assert eng.get_function_address("jac_entry") != 0;
+    # Key game functions must be present
+    for func_name in [
+        "opposite_color",
+        "create_piece",
+        "Board.display",
+        "Game.is_checkmate",
+        "Game.find_king",
+        "Game.play"
+    ] {
+        assert eng.get_function_address(func_name) != 0 , (
+            f"{func_name} not found in auto-promoted native engine"
+        );
+    }
+}
+
+test "auto promote chess.jac runs via cli" {
+    # End-to-end: jac run --autonative chess.jac should execute natively.
+    stdin_data = "\n" * 20 + "quit\n";
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run", "--autonative", CHESS_JAC],
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        timeout=120
+    );
+    assert result.returncode == 0 , (
+        f"Auto-promoted chess crashed with exit code {result.returncode}.\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+    );
+    assert "Game ended." in result.stdout , (
+        f"Expected 'Game ended.' in output.\n"
+        f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
+    );
+    # Verify the native execution message appears (may be line-wrapped by Rich)
+    combined = " ".join((result.stdout + result.stderr).split());
+    assert "executed natively" in combined , (
+        f"Expected native execution message.\n" f"output tail: {combined[-500:]}"
+    );
+}
+
+# --- Native sys Module Tests ---
+test "sys argv via jac run autonative" {
+    # Test that sys.argv works when running via `jac run --autonative`
+    fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jaclang",
+            "run",
+            "--autonative",
+            fixture,
+            "hello",
+            "--test-flag",
+            "world"
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        f"sys_argv fixture crashed: exit={result.returncode}\n"
+        f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+    );
+    out = result.stdout;
+    # Should report correct argc (fixture path + 3 args = 4)
+    assert "argc: 4" in out , (f"Expected 'argc: 4' in output.\nstdout: {out}");
+    # Should find the --test-flag
+    assert "FLAG_FOUND" in out , (f"Expected 'FLAG_FOUND' in output.\nstdout: {out}");
+    # Should print each argument
+    assert "arg: hello" in out , (f"Expected 'arg: hello' in output.\nstdout: {out}");
+    assert "arg: world" in out , (f"Expected 'arg: world' in output.\nstdout: {out}");
+    assert "DONE" in out , (f"Expected 'DONE' in output.\nstdout: {out}");
+}
+
+test "sys argv via nacompile" {
+    # Test that sys.argv works when compiled to a standalone binary via nacompile
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "sys_argv_bin");
+        # Step 1: Compile to native binary
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        # Step 2: Run the binary with arguments
+        result = subprocess.run(
+            [out_bin, "hello", "--test-flag", "world"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        );
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        out = result.stdout;
+        # Should report correct argc (binary path + 3 args = 4)
+        assert "argc: 4" in out , (f"Expected 'argc: 4' in output.\nstdout: {out}");
+        # Should find the --test-flag
+        assert "FLAG_FOUND" in out , (
+            f"Expected 'FLAG_FOUND' in output.\nstdout: {out}"
+        );
+        # Should print each argument
+        assert "arg: hello" in out , (
+            f"Expected 'arg: hello' in output.\nstdout: {out}"
+        );
+        assert "arg: world" in out , (
+            f"Expected 'arg: world' in output.\nstdout: {out}"
+        );
+        assert "DONE" in out , (f"Expected 'DONE' in output.\nstdout: {out}");
+        # Step 3: Run with --exit-code flag to test sys.exit()
+        exit_result = subprocess.run(
+            [out_bin, "--exit-code", "1"], capture_output=True, text=True, timeout=10
+        );
+        assert exit_result.returncode == 1 , (
+            f"Expected exit code 1, got {exit_result.returncode}"
+        );
+        # DONE should NOT appear (sys.exit called before it)
+        assert "DONE" not in exit_result.stdout , (
+            f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
+        );
+    }
+}
+
+# --- TestNativeListBugs ---
+test "list_bugs pop local removes element" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    f = get_func(eng, "pop_and_len", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "list_bugs pop local returns last value" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    f = get_func(eng, "pop_value", ctypes.c_int64);
+    assert f() == 30;
+}
+
+test "list_bugs pop loop drains list" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    f = get_func(eng, "pop_loop", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "list_bugs pop global removes element" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "pop_global_len", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "list_bugs obj list field access" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    f = get_func(eng, "obj_list_field", ctypes.c_int64);
+    assert f() == 42;
+}
+
+test "list_bugs obj list two items" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    f = get_func(eng, "obj_list_two_items", ctypes.c_int64);
+    assert f() == 40;
+}
+
+test "list_bugs obj global list" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "obj_global_list", ctypes.c_int64);
+    assert f() == 100;
+}
+
+test "list_bugs reassign int list with empty literal" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "reassign_int_list", ctypes.c_int64);
+    assert f() == 99;
+}
+
+test "list_bugs reassign str list with empty literal" {
+    (eng, _) = compile_native("list_bugs.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "reassign_str_list", ctypes.c_int64);
+    assert f() == 1;
+}
+
+# --- String Enum Tests ---
+test "string_enums ordinal red" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "color_ordinal_red", ctypes.c_int64);
+    assert f() == 0 , f"Color.RED ordinal should be 0, got {f()}";
+}
+
+test "string_enums ordinal blue" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "color_ordinal_blue", ctypes.c_int64);
+    assert f() == 2 , f"Color.BLUE ordinal should be 2, got {f()}";
+}
+
+test "string_enums comparison" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "color_cmp", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 10 , f"color_cmp(RED=0) should be 10";
+    assert f(1) == 20 , f"color_cmp(GREEN=1) should be 20";
+    assert f(2) == 30 , f"color_cmp(BLUE=2) should be 30";
+}
+
+test "string_enums value access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "color_value", ctypes.c_char_p, ctypes.c_int64);
+    assert f(0) == b"red" , f"Color.RED.value should be 'red', got {f(0)}";
+    assert f(1) == b"green" , f"Color.GREEN.value should be 'green'";
+    assert f(2) == b"blue" , f"Color.BLUE.value should be 'blue'";
+}
+
+test "string_enums name access" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "color_name", ctypes.c_char_p, ctypes.c_int64);
+    assert f(0) == b"RED" , f"Color.RED.name should be 'RED', got {f(0)}";
+    assert f(1) == b"GREEN" , f"Color.GREEN.name should be 'GREEN'";
+    assert f(2) == b"BLUE" , f"Color.BLUE.name should be 'BLUE'";
+}
+
+test "string_enums direction value" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "direction_value", ctypes.c_char_p, ctypes.c_int64);
+    assert f(0) == b"N" , f"Direction.NORTH.value should be 'N'";
+    assert f(1) == b"S" , f"Direction.SOUTH.value should be 'S'";
+}
+
+test "string_enums int enum still works" {
+    (eng, _) = compile_native("string_enums.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "int_enum_still_works", ctypes.c_int64);
+    assert f() == 2 , f"Priority.HIGH should be 2, got {f()}";
+}
+
+# --- Cross-Module Enum Import Tests ---
+test "enum_import compiles" {
+    (eng, _) = compile_native("na_enum_import.na.jac");
+    assert eng is not None;
+}
+
+test "enum_import enum comparison" {
+    (eng, _) = compile_native("na_enum_import.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "use_imported_enum", ctypes.c_int64);
+    assert f() == 1 , f"TokenKind.KW_IF == TokenKind.KW_IF should return 1";
+}
+
+test "enum_import ordinal" {
+    (eng, _) = compile_native("na_enum_import.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "imported_enum_ordinals", ctypes.c_int64);
+    # TokenKind.EOF is the last member (ordinal 6)
+    assert f() == 6 , f"TokenKind.EOF ordinal should be 6, got {f()}";
+}
+
+test "enum_import value access" {
+    (eng, _) = compile_native("na_enum_import.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "imported_enum_value", ctypes.c_char_p);
+    assert f() == b"+" , f"TokenKind.PLUS.value should be '+', got {f()}";
+}
+
+test "enum_import cross module function call" {
+    (eng, _) = compile_native("na_enum_import.na.jac");
+    # Call both entry functions (imported module needs its globals initialized)
+    renamed_entry_addr = eng.get_function_address("__jac_entry_na_enum_export_na");
+    if renamed_entry_addr {
+        renamed_entry = ctypes.CFUNCTYPE(None)(renamed_entry_addr);
+        renamed_entry();
+    }
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "check_if_keyword", ctypes.c_int64);
+    r = f();
+    assert r == 3 , f"Expected 3 (KW_IF ordinal), got {r}";
+    f2 = get_func(eng, "check_else_keyword", ctypes.c_int64);
+    r2 = f2();
+    assert r2 == 4 , f"Expected 4 (KW_ELSE ordinal), got {r2}";
+    f3 = get_func(eng, "check_unknown_keyword", ctypes.c_int64);
+    r3 = f3();
+    assert r3 == -1 , f"Expected -1 (not found), got {r3}";
+}
+
+# --- Switch statement tests ---
+test "switch int match" {
+    (eng, _ir) = compile_native("switch_stmt.na.jac");
+    entry = get_func(eng, "jac_entry", None);
+    entry();
+    f = get_func(eng, "switch_int", ctypes.c_int64, ctypes.c_int64);
+    assert f(1) == 10 , f"switch_int(1) should be 10, got {f(1)}";
+    assert f(2) == 20 , f"switch_int(2) should be 20, got {f(2)}";
+    assert f(3) == 30 , f"switch_int(3) should be 30, got {f(3)}";
+    assert f(99) == -1 , f"switch_int(99) should be -1 (default), got {f(99)}";
+}
+
+test "switch enum" {
+    (eng, _ir) = compile_native("switch_stmt.na.jac");
+    entry = get_func(eng, "jac_entry", None);
+    entry();
+    f = get_func(eng, "switch_enum", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 100 , f"switch_enum(RED=0) should be 100, got {f(0)}";
+    assert f(1) == 200 , f"switch_enum(GREEN=1) should be 200, got {f(1)}";
+    assert f(2) == 300 , f"switch_enum(BLUE=2) should be 300, got {f(2)}";
+}
+
+test "switch string" {
+    (eng, _ir) = compile_native("switch_stmt.na.jac");
+    entry = get_func(eng, "jac_entry", None);
+    entry();
+    f = get_func(eng, "switch_str", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"(") == 1 , f"switch_str('(') should be 1, got {f(b'(')}";
+    assert f(b")") == 2 , f"switch_str(')') should be 2, got {f(b')')}";
+    assert f(b"{") == 3;
+    assert f(b"}") == 4;
+    assert f(b"x") == 0 , f"switch_str('x') should be 0 (default), got {f(b'x')}";
+}
+
+test "switch no default" {
+    (eng, _ir) = compile_native("switch_stmt.na.jac");
+    entry = get_func(eng, "jac_entry", None);
+    entry();
+    f = get_func(eng, "switch_no_default", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 100 , f"switch_no_default(10) should be 100, got {f(10)}";
+    assert f(20) == 200 , f"switch_no_default(20) should be 200, got {f(20)}";
+    assert f(99) == -1 , f"switch_no_default(99) should be -1 (unchanged), got {f(99)}";
+}
+
+# --- TestJIRBitcodeCaching ---
+test "jir bitcode cache round-trip" {
+    import struct;
+    import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        SECTIONS_MAGIC,
+        HEADER_SIZE,
+        read_sections,
+        SEC_NATIVE_OBJ
+    }
+
+    compiler = JacCompiler();
+    fixture = str(os.path.join(FIXTURES, "arithmetic.na.jac"));
+
+    # Step 1: Compile via get_bytecode to populate JIR cache
+    prog1 = JacProgram();
+    code1 = compiler.get_bytecode(fixture, prog1);
+    assert code1 is not None , "get_bytecode should return code object";
+
+    # Step 2: Verify SEC_NATIVE_OBJ section exists in the cached JIR file
+    cache_path = get_module_cache_path(fixture);
+    assert cache_path.exists() , f"JIR cache file should exist at {cache_path}";
+    jir_data = cache_path.read_bytes();
+    magic: bytes = SECTIONS_MAGIC;
+    pos = jir_data.find(magic, HEADER_SIZE);
+    assert pos >= 0 , "JIR file should contain SECTIONS_MAGIC";
+    secs = read_sections(jir_data, pos + len(magic));
+    assert SEC_NATIVE_OBJ in secs , f"JIR should contain SEC_NATIVE_OBJ, got sections: {list(
+        secs.keys()
+    )}";
+
+    # Step 3: Verify platform header in SEC_NATIVE_OBJ
+    sec_data = secs[SEC_NATIVE_OBJ];
+    assert len(sec_data) > 2 , "SEC_NATIVE_OBJ too short";
+    (triple_len, ) = struct.unpack_from('<H', sec_data, 0);
+    cached_triple = sec_data[2:2 + triple_len].decode('utf-8');
+    import llvmlite.binding as llvm;
+    assert cached_triple == llvm.get_default_triple() , (
+        f"Triple mismatch: {cached_triple} != {llvm.get_default_triple()}"
+    );
+    bitcode_size = len(sec_data) - 2 - triple_len;
+    assert bitcode_size > 0 , "Bitcode should not be empty";
+
+    # Step 4: Load from cache with a fresh compiler and call native function
+    compiler2 = JacCompiler();
+    prog2 = JacProgram();
+    code2 = compiler2.get_bytecode(fixture, prog2);
+    assert code2 is not None , "Cache reload should return code object";
+
+    # Step 5: Verify native engine was restored via get_native_interop_setup
+    (engine, _) = compiler2.get_native_interop_setup(fixture, prog2);
+    assert engine is not None , "Native engine should be restored from bitcode cache";
+    add = get_func(engine, "add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert add(17, 25) == 42 , f"add(17,25) via cached engine should be 42, got {add(
+        17, 25
+    )}";
 }

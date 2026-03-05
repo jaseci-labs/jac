@@ -1,4 +1,6 @@
-def star(func: Any) {
+import from typing { Callable }
+
+def star(func: Callable) -> Callable {
     def inner(x: Any) {
         print(("*" * 30));
         func(x);
@@ -7,7 +9,7 @@ def star(func: Any) {
     return inner;
 }
 
-def percent(func: Any) {
+def percent(func: Callable) -> Callable {
     def inner(y: Any) {
         print(("%" * 30));
         func(y);
@@ -16,7 +18,7 @@ def percent(func: Any) {
     return inner;
 }
 
-def percent2(func: Any) {
+def percent2(func: Callable) -> Callable {
     def inner(y: Any) {
         print(("-" * 30));
         func(y);

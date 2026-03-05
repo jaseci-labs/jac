@@ -1,30 +1,56 @@
 """Implementation of the nacompile command.
 
-Compiles a .na.jac file to a standalone ELF binary:
+Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
-2. Inject main() + _start as pure LLVM IR (zero assembly)
+2. Inject main() (+ _start on Linux) as pure LLVM IR (zero assembly)
 3. Emit object code via llvmlite
-4. Link into ELF executable via pure Python ELF linker
+4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS)
 """
 
 import os;
+import sys;
 
 import from jaclang.cli.console { console }
 
 
-"""Inject main() and _start into the LLVM IR.
+"""Inject main() and _start into the LLVM IR for ELF (Linux).
 
-main() calls jac_entry() and returns 0.
-_start is the ELF entry point, written in pure LLVM IR — no inline
-assembly. It calls main(0, null) then exit(). LLVM handles all
-architecture-specific code generation via emit_object().
-
-alignstack(16) is needed because _start is jumped to by the kernel
-(not called), so there's no return address on the stack and LLVM's
-default stack alignment assumption is wrong.
+main() stores argc/argv into globals, calls jac_entry(), and returns 0.
+_start is the ELF entry point. It uses the naked attribute with
+@llvm.stacksave() to read the raw stack pointer without a prologue,
+then loads argc and argv from the kernel-placed stack layout:
+[sp]=argc, [sp+8..]=argv array. No inline assembly needed.
 """
-def _inject_entry(llvm_ir_str: str) -> str {
-    ir = '\n; --- injected entry point ---\n' + 'declare void @exit(i32) noreturn\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() noreturn alignstack(16) {\n' + 'entry:\n' + '    %ret = call i32 @main(i32 0, ptr null)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n';
+def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
+    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    # Only declare exit() if sys.exit() didn't already declare it
+    # llvmlite quotes the name as @"exit", so check both forms
+    has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
+    exit_decl = "" if has_exit else 'declare void @exit(i32) noreturn\n\n';
+    ir = (
+        '\n; --- injected entry point ---\n' + globals_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
+    );
+    return llvm_ir_str + ir;
+}
+
+
+"""Inject main() into the LLVM IR for Mach-O (macOS).
+
+Only main() is needed — dyld handles entry via LC_MAIN, and the
+system CRT manages _start. No exit() declaration needed since
+returning from main() is handled by dyld.
+"""
+def _inject_entry_macho(llvm_ir_str: str) -> str {
+    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    ir = '\n; --- injected entry point ---\n' + globals_ir + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n';
     return llvm_ir_str + ir;
 }
 
@@ -32,8 +58,8 @@ def _inject_entry(llvm_ir_str: str) -> str {
 """Compile a .na.jac file to a standalone native binary."""
 impl nacompile(filename: str, output: str = "") -> int {
     # Validate input
-    if not filename.endswith(".na.jac") {
-        console.error("Input must be a .na.jac file.");
+    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+        console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
     if not os.path.exists(filename) {
@@ -41,12 +67,18 @@ impl nacompile(filename: str, output: str = "") -> int {
         return 1;
     }
 
+    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+
+    # Detect platform
+    is_macos = sys.platform == "darwin";
+
     # Determine output path
     if not output {
         output = os.path.basename(filename);
-        # Strip .na.jac extension
         if output.endswith(".na.jac") {
             output = output[:-7];
+        } elif output.endswith(".jac") {
+            output = output[:-4];
         }
     }
 
@@ -58,6 +90,10 @@ impl nacompile(filename: str, output: str = "") -> int {
 
     try {
         prog = JacProgram();
+        if auto_promote {
+            prog._auto_promote_native = True;
+            prog._auto_promote_target = os.path.abspath(filename);
+        }
         options = CompileOptions(skip_native_engine=True);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
@@ -68,13 +104,26 @@ impl nacompile(filename: str, output: str = "") -> int {
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
-        console.error("Native compilation produced no LLVM IR.");
+        if auto_promote and not (ir_module and ir_module.gen._auto_promoted_native) {
+            console.error(
+                "This .jac file is not compatible with native compilation.\n"
+                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  constructs not supported by the native backend.\n"
+                "  Use a .na.jac file or remove incompatible constructs."
+            );
+        } else {
+            console.error("Native compilation produced no LLVM IR.");
+        }
         if prog.errors_had {
             for err in prog.errors_had {
                 console.error(f"  {err}");
             }
         }
         return 1;
+    }
+
+    if auto_promote {
+        console.print("  Auto-promoted to native compilation.");
     }
 
     # Step 2: Check for Python/server interop (can't compile standalone)
@@ -111,34 +160,19 @@ impl nacompile(filename: str, output: str = "") -> int {
     triple = llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
-    # Step 4: Inject main() + _start (pure LLVM IR, zero assembly)
-    llvm_ir_str = _inject_entry(llvm_ir_str);
+    # Step 4: Inject entry point (platform-specific)
+    if is_macos {
+        llvm_ir_str = _inject_entry_macho(llvm_ir_str);
+    } else {
+        llvm_ir_str = _inject_entry_elf(llvm_ir_str, triple);
+    }
 
-    # Step 5: Determine needed libraries and handle GC fallback
-    # (must happen before parse_assembly so IR substitutions take effect)
-    import ctypes.util;
-    needed_libs: list[str] = ["libc.so.6"];
-
-    libgc_name = ctypes.util.find_library("gc");
-    gc_needed = "GC_malloc" in llvm_ir_str or "GC_add_roots" in llvm_ir_str;
-    if gc_needed and libgc_name {
-        needed_libs.append("libgc.so.1");
-    } elif gc_needed {
-        # libgc not available: rewrite GC calls to libc fallbacks at IR level.
-        # GC_malloc -> malloc, GC_add_roots -> noop stub (matching JIT fallback).
-        import re;
-        llvm_ir_str = llvm_ir_str.replace(
-            'declare i8* @"GC_malloc"(i64 %".1")', 'declare i8* @"malloc"(i64 %".1")'
-        );
-        llvm_ir_str = re.sub(
-            r'call i8\* @"GC_malloc"\(', 'call i8* @"malloc"(', llvm_ir_str
-        );
-        # Replace GC_add_roots with a no-op: remove calls and declaration
-        llvm_ir_str = re.sub(r'call void @"GC_add_roots"\([^)]*\)\n', '', llvm_ir_str);
-        llvm_ir_str = llvm_ir_str.replace(
-            'declare void @"GC_add_roots"(i8* %".1", i8* %".2")', ''
-        );
-        console.print("  Note: libgc not found, using malloc fallback.");
+    # Step 5: Determine needed libraries
+    # Note: libgc (Boehm GC) no longer needed — using reference counting
+    if is_macos {
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
+    } else {
+        needed_libs: list[str] = ["libc.so.6"];
     }
 
     # Step 6: Emit object code via llvmlite
@@ -151,27 +185,74 @@ impl nacompile(filename: str, output: str = "") -> int {
     }
 
     target = llvm.Target.from_default_triple();
-    target_machine = target.create_target_machine();
+    target_machine = target.create_target_machine(opt=2);
+
+    # Read native build settings from jac.toml [build.native] (env vars as fallback)
+    import from jaclang.project { get_config, NativeBuildConfig }
+    _native_cfg = NativeBuildConfig();
+    _jac_config = get_config();
+    if _jac_config {
+        _native_cfg = _jac_config.build.native;
+    }
+    _opt_level = int(os.environ.get("JAC_OPT_LEVEL", str(_native_cfg.opt_level)));
+    _dump_path = os.environ.get("JAC_DUMP_IR", _native_cfg.dump_ir);
+
+    # Run LLVM optimization pipeline before emitting object code.
+    # Internalize pass marks non-entry functions as internal so LLVM
+    # can aggressively inline them (jac_entry/main/_start are preserved).
+    if _opt_level > 0 {
+        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
+        pb = llvm.create_pass_builder(target_machine, pto);
+        opt_mpm = pb.getModulePassManager();
+        opt_mpm.add_internalize_pass();
+        opt_mpm.run(mod, pb);
+    }
+
+    # Debug: dump optimized IR
+    if _dump_path {
+        with open(_dump_path, "w") as _df {
+            _df.write(str(mod));
+        }
+    }
+
     obj_bytes = target_machine.emit_object(mod);
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
 
-    # Step 7: Link into ELF executable
-    import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+    # Step 7: Link into native executable (platform-specific)
+    if is_macos {
+        import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 
-    try {
-        success = ElfLinker.link(
-            obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
-        );
-    } except Exception as e {
-        console.error(f"ELF linking failed: {e}");
-        import traceback;
-        traceback.print_exc();
-        return 1;
-    }
+        try {
+            success = MachOLinker.link(
+                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+            );
+        } except Exception as e {
+            console.error(f"Mach-O linking failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
 
-    if not success {
-        console.error("ELF linking failed: could not parse object file.");
-        return 1;
+        if not success {
+            console.error("Mach-O linking failed: could not parse object file.");
+            return 1;
+        }
+    } else {
+        import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+        try {
+            success = ElfLinker.link(
+                obj_bytes=obj_bytes, output_path=output, needed_libs=needed_libs
+            );
+        } except Exception as e {
+            console.error(f"ELF linking failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        if not success {
+            console.error("ELF linking failed: could not parse object file.");
+            return 1;
+        }
     }
 
     file_size = os.path.getsize(output);

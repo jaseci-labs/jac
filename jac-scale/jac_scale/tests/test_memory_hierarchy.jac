@@ -64,7 +64,7 @@ def register_user(base_url: str, username: str, password: str = "password123") -
     res = requests.post(
         f"{base_url}/user/register",
         json={"username": username, "password": password},
-        timeout=5
+        timeout=2
     );
     assert res.status_code == 201 , f"Registration failed: {res.status_code} - {res.text}";
     data = cast(dict[str, Any], extract_transport_response_data(res.json()));
@@ -76,7 +76,7 @@ def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[st
         f"{base_url}{path}",
         json=payload,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=5
+        timeout=2
     );
     assert res.status_code == 200;
     return cast(dict[str, Any], extract_transport_response_data(res.json()));
@@ -207,7 +207,7 @@ test "read and write" {
         if server {
             server.terminate();
             with contextlib.suppress(Exception) {
-                server.wait(timeout=5);
+                server.wait(timeout=2);
             }
         }
 
@@ -226,6 +226,180 @@ test "read and write" {
 
         # Clean up data files
         data_dir = FIXTURES_DIR / ".jac" / "data";
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+test "data persists after server restart for mongo db" {
+    if not JAC_FILE.exists() {
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
+    }
+
+    # Clean up data files
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    # Start MongoDB container
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    mongo_uri = mongo_container.get_connection_url();
+    os.environ["MONGODB_URI"] = mongo_uri;
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+    try {
+        # Create task
+        res = requests.post(
+            f"{base_url}/walker/CreateTask",
+            json={"id": 100, "title": "Test persistence"},
+            timeout=2
+        );
+        assert res.status_code == 200;
+
+        # Verify task exists before restart
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks_before = response_data["reports"][0];
+        assert len(tasks_before) == 1 , "Should have 1 task before restart";
+        assert tasks_before[0]["id"] == 100 , f"Task id should be 100, got {tasks_before[
+            0
+        ]['id']}";
+        assert tasks_before[0]["title"] == "Test persistence" , f"Task title mismatch: {tasks_before[
+            0
+        ]['title']}";
+
+        # Restart server
+        server.terminate();
+        server.wait(timeout=2);
+        server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+        # Verify task persists after restart
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks_after = response_data["reports"][0];
+        assert len(tasks_after) == 1 , "Task should persist after restart";
+        assert tasks_after[0]["id"] == 100 , f"Task id should be 100 after restart, got {tasks_after[
+            0
+        ]['id']}";
+        assert tasks_after[0]["title"] == "Test persistence" , f"Task title mismatch after restart: {tasks_after[
+            0
+        ]['title']}";
+    } finally {
+        if server {
+            server.terminate();
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
+        }
+        mongo_container.stop();
+        time.sleep(0.5);
+        gc.collect();
+
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+test "data persists after server restart for sqlite" {
+    if not JAC_FILE.exists() {
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
+    }
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    # Ensure no MongoDB or Redis environment variables are set (SQLite-only mode)
+    env_backup = {};
+    for key in ["MONGODB_URI", "REDIS_URL"] {
+        if key in os.environ {
+            env_backup[key] = os.environ[key];
+            del os.environ[key];
+        }
+    }
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+    try {
+        # Create a task
+        res = requests.post(
+            f"{base_url}/walker/CreateTask",
+            json={"id": 401, "title": "Persist me across restart"},
+            timeout=2
+        );
+        assert res.status_code == 200 , f"Task creation failed: {res.status_code} - {res.text}";
+
+        # Verify task exists before restart
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks_before = response_data["reports"][0];
+        assert len(tasks_before) == 1 , f"Should have 1 task before restart, got {len(
+            tasks_before
+        )}";
+        assert tasks_before[0]["id"] == 401 , f"Task id should be 401, got {tasks_before[
+            0
+        ]['id']}";
+        assert tasks_before[0]["title"] == "Persist me across restart" , f"Task title mismatch: {tasks_before[
+            0
+        ]['title']}";
+
+        # Restart server
+        server.terminate();
+        server.wait(timeout=2);
+        server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+        # Verify task persists after restart
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
+        assert res.status_code == 200 , f"Post-restart request failed: {res.status_code}";
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks_after = response_data["reports"][0];
+        assert len(tasks_after) == 1 , f"Task should persist after SQLite restart, got {len(
+            tasks_after
+        )}";
+        assert tasks_after[0]["id"] == 401 , f"Task id should be 401 after restart, got {tasks_after[
+            0
+        ]['id']}";
+        assert tasks_after[0]["title"] == "Persist me across restart" , f"Task title mismatch after restart: {tasks_after[
+            0
+        ]['title']}";
+    } finally {
+        if server {
+            server.terminate();
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
+        }
+
+        # Restore environment variables
+        for (key, value) in env_backup.items() {
+            os.environ[key] = value;
+        }
+
+        time.sleep(0.5);
+        gc.collect();
+
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);

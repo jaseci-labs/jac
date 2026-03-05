@@ -41,9 +41,10 @@ impl check(
         # Print progress line
         print_file_progress(file_path, success, idx, total);
 
-        # Store only failed results
         if not success {
             failed_files += 1;
+        }
+        if not success or (warns > 0 and not nowarn) {
             failed_results.append(
                 {'path': file_path, 'errors': errors_list, 'warnings': warnings_list}
             );
@@ -60,6 +61,7 @@ impl check(
             return (False, 1, 0, [], []);
         }
         try {
+            console.print(f"  Checking {file_path}...");
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
@@ -121,10 +123,10 @@ impl check(
         }
     }
     # Print FAILURES section and summary
+    if print_errs and len(failed_results) > 0 {
+        print_failures(failed_results, nowarn);
+    }
     if failed_files > 0 {
-        if print_errs {
-            print_failures(failed_results, nowarn);
-        }
         print_failed_summary(failed_results);
     }
     # Print final summary line

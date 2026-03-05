@@ -23,12 +23,13 @@ impl start_cli -> None {
     registry = get_registry();
     parser = registry.finalize();
     # Handle implicit 'run' command for .jac files
+    # Scan past any leading flags (e.g. --autonative) to find a .jac/.py file
     raw_argv = sys.argv[1:];
-    if (
-        raw_argv
-        and not raw_argv[0].startswith('-')
-        and raw_argv[0].lower().endswith(('.jac', '.py'))
-    ) {
+    has_jac_file = any(
+        not tok.startswith('-') and tok.lower().endswith(('.jac', '.py'))
+        for tok in raw_argv
+    );
+    if has_jac_file and (not raw_argv or raw_argv[0] not in registry.commands) {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
     }
     # Extract script arguments before argparse parsing (Python-like behavior).
@@ -279,6 +280,7 @@ def _apply_config_defaults(config: object, args_dict: dict) -> None {
         ("cache", True, config.run.cache, "run", "cache"),
         ("main", True, config.run.main, "run", "main"),
         ("verbose", False, config.test.verbose, "test", "verbose"),
+        ("autonative", False, config.run.autonative, "run", "autonative"),
 
     ];
     for (arg_name, arg_default, config_value, section, key) in bridges {

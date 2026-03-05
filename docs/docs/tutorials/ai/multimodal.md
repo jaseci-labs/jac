@@ -330,4 +330,3 @@ with entry {
 
 - [Agentic AI](agentic.md) - Combine multimodal with tool calling
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation
-- [Examples Gallery](../examples/index.md) - More multimodal examples

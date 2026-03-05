@@ -2,15 +2,38 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.2 (Unreleased)
+## jac-scale 0.2.4 (Unreleased)
 
+- **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
+- [fix]Fix for internet facing aws load balancer
+- 2 Minor refactors/changes.
+- update jac-scale plugin documentation with missing features
+- APP_NAME, K8s_NAMESPACE, DOCKER_USERNAME, DOCKER_PASSWORD are no longer read from environment variables and must be configured via `jac.toml.
+
+- **Redis Cache Configuration with TTL Support**: Added configurable eviction policies and TTL support for Kubernetes Redis deployments via `jac.toml` (`redis_max_memory`, `redis_eviction_policy`, `redis_eviction_samples`, `redis_default_ttl`, `redis_enable_keyspace_notifications`); ConfigMap-based with automatic pod restart on change. Anchors stored in Redis L2 cache now respect the `redis_default_ttl` setting and will automatically expire after the configured duration (default: 0 = no expiration).
+- 1 small refactor/change.
+- **Fix: Redis deployment annotation null guard**: Fixed `'NoneType' object has no attribute 'get'` crash during `jac start --scale` when an existing Redis deployment has no annotations. Kubernetes returns `None` for the annotations field when none exist, so the config-hash check now guards against this.
+
+## jac-scale 0.2.3 (Latest Release)
+
+- **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
+- **Admin-Only Metrics Endpoint**: The `/metrics` Prometheus scrape endpoint now requires admin authentication. Unauthenticated requests receive a 403 Forbidden response. This prevents unauthorized access to server performance data.
+- **Admin Metrics Dashboard**: Added `/admin/metrics` endpoint that returns parsed Prometheus metrics as structured JSON with summary statistics (total requests, average latency, error rate, active requests). The admin dashboard monitoring page now displays metrics in a visual dashboard with HTTP traffic breakdown, system stats (GC, memory, CPU time), and real-time counters.
+- Set default maximum memory limit of k8s pods from unlimited to 12Gb
+- Automatically deploy Redis (RedisInsight) and MongoDB (MongoDB Dashboard) dashboards in Kubernetes when the redis_dashboard and mongodb_dashboard flags are enabled.
+- Set default maximum memory limit for jaseci app pod to None (unlimited)
+- 1 Minor refactor/change.
+
+## jac-scale 0.2.2
+
+- **Data Persists Across Server Restarts**: Graph nodes and edges created during a session now persist automatically in MongoDB. When you restart your `jac start` server, previously created data is restored and accessible - no manual save operations required.
 - **`jac status` Command**: New `jac status app.jac` command to check the live deployment status of all Kubernetes components (Jaseci App, Redis, MongoDB, Prometheus, Grafana). Displays a color-coded table with component health, pod readiness counts, and service URLs. Detects running, degraded, pending, restarting (crash-loop), and not-deployed states.
 - **Resource Tagging**: All Kubernetes resources created by jac-scale are now labeled with `managed: jac-scale`, enabling easy auditing and identification via `kubectl get all -l managed=jac-scale -A`.
 - k8s metrics dashboard in prometheus and grafana
 - Jac status command to check deployment status of each component of k8s
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
 
-## jac-scale 0.2.1 (Latest Release)
+## jac-scale 0.2.1
 
 - **Admin Portal**: Added a built-in `/admin` dashboard for user management and administration. Features include user CRUD operations (list, create, edit, delete), role-based access control with `admin`, `moderator`, and `user` roles, force password reset, and SSO account management view.
 - **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
@@ -21,6 +44,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - jac destroy command deletes non default namespace
 - **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
 - 1 Minor refactor
+- Internal: check whether redis,mongodb,grafana and prometheus are also restarted when checking deployment status
 
 ## jac-scale 0.2.0
 

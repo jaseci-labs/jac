@@ -149,10 +149,16 @@ def _print_deployment_status(status_data: dict) -> None {
         console.print("  [bold]Service URLs[/bold]");
         console.print(f"  [dim]{'─' * 48}[/dim]");
         if 'app' in urls {
-            console.print(f"  [bold]Application:[/bold]  {urls['app']}");
+            console.print(f"  [bold]Application:[/bold]   {urls['app']}");
         }
         if 'grafana' in urls {
-            console.print(f"  [bold]Grafana:[/bold]      {urls['grafana']}");
+            console.print(f"  [bold]Grafana:[/bold]       {urls['grafana']}");
+        }
+        if 'redis_insight' in urls {
+            console.print(f"  [bold]RedisInsight:[/bold]  {urls['redis_insight']}");
+        }
+        if 'mongo_express' in urls {
+            console.print(f"  [bold]Mongo Express:[/bold] {urls['mongo_express']}");
         }
         console.print();
     }
@@ -251,9 +257,8 @@ class JacCmd {
                 target_config = scale_config.get_kubernetes_config();  # Default for now
             }
 
-            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
-            namespace = os.getenv('K8s_NAMESPACE')
-            or target_config.get('namespace', 'default');
+            app_name = target_config.get('app_name', 'jaseci');
+            namespace = target_config.get('namespace', 'default');
 
             # Warn user and require confirmation before proceeding
             console.print(
@@ -324,7 +329,7 @@ class JacCmd {
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
-            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
+            app_name = target_config.get('app_name', 'jaseci');
 
             # Get and display status
             status_data = deployment_target.get_full_status(app_name);
@@ -346,7 +351,11 @@ class JacScalePlugin {
         return ctx;
     }
 
-    """Create the API server instance."""
+    """Create the API server instance.
+
+    Note: jac-scale doesn't bind the port until run_server is called.
+    Port fallback is handled in run_server.
+    """
     @hookimpl
     static def create_server(
         jac_server: JacServer, host: str, port: int

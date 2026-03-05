@@ -1,0 +1,19 @@
+name: "Feature Request"
+description: "Propose a new feature or enhancement for Jaseci."
+title: "[Feature]: "
+labels: ["Type: Feature"]
+assignees: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: "Feature Description"
+      placeholder: "Describe the feature, the problem it solves, and your proposed solution."
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: "Examples & References"
+      placeholder: "Add Jac code snippets, screenshots, or references to similar features in other tools."
