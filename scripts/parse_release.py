@@ -36,9 +36,36 @@ def parse_from_title(pr_title: str) -> list[dict]:
                     "tier": pkg_info.tier,
                     "version": version,
                     "submodules": pkg_info.submodules,
+                    "precompile": pkg_info.precompile,
+                    "precompile_path": pkg_info.precompile_path,
+                    "precompile_artifact": pkg_info.precompile_artifact,
+                    "extra_build_cmd": pkg_info.extra_build_cmd,
                 }
             )
     return releases
+
+
+PYTHON_VERSIONS = ["3.12", "3.13", "3.14"]
+
+
+def build_precompile_matrix(releases: list[dict]) -> dict:
+    """Build matrix for precompilation jobs (packages × python versions)."""
+    include = []
+    for r in releases:
+        if r["precompile"]:
+            for py_version in PYTHON_VERSIONS:
+                include.append(
+                    {
+                        "name": r["name"],
+                        "dir": r["dir"],
+                        "pypi": r["pypi"],
+                        "precompile_path": r["precompile_path"],
+                        "precompile_artifact": r["precompile_artifact"],
+                        "python_version": py_version,
+                        "submodules": r["submodules"],
+                    }
+                )
+    return {"include": include}
 
 
 def main() -> int:
@@ -52,6 +79,8 @@ def main() -> int:
         print("No packages found to release")
         set_output("has_releases", "false")
         set_output("matrix", json.dumps({"include": []}))
+        set_output("precompile_matrix", json.dumps({"include": []}))
+        set_output("has_precompile", "false")
         set_output("release_summary", "none")
         return 1
 
@@ -61,10 +90,18 @@ def main() -> int:
     print("Packages to release:")
     for r in releases:
         print(f"  - {r['pypi']} {r['version']} (tier {r['tier']})")
+        if r["precompile"]:
+            print("    (requires precompilation)")
+
+    # Build precompile matrix
+    precompile_matrix = build_precompile_matrix(releases)
+    has_precompile = len(precompile_matrix["include"]) > 0
 
     summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases)
     set_output("has_releases", "true")
     set_output("matrix", json.dumps({"include": releases}))
+    set_output("precompile_matrix", json.dumps(precompile_matrix))
+    set_output("has_precompile", str(has_precompile).lower())
     set_output("release_summary", summary)
     return 0
 
