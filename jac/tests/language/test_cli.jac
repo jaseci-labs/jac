@@ -1525,7 +1525,6 @@ test "jac cli check ignore with wildcards" {
 }
 
 test "jac check shows warnings for files with warnings only" {
-    """Test that files with only warnings (no errors) display warnings in output."""
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -1558,6 +1557,35 @@ test "jac check shows warnings for files with warnings only" {
 
     # File should appear in summary with warnings count
     assert "warnings_only.jac" in combined , "should show file path in output";
+}
+
+test "jac check nowarn flag suppresses warnings" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.check([fixture_path("warnings_only.jac")], nowarn=True);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # Should still exit with code 0
+    assert result == 0 , "check should exit with code 0 when warnings are suppressed";
+
+    # Should show PASSED status
+    assert "PASSED" in combined , "should show PASSED when warnings are suppressed";
+
+    # Should NOT show detailed warning messages
+    assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
 }
 
 test "lexer does not hang on unterminated jsx" {
