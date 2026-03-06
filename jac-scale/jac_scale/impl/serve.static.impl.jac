@@ -309,11 +309,11 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path / '.jac' / 'client' / 'dist' / file_path,
         base_path / '.jac' / 'client' / 'dist' / file_name
     ];
-        # The above last two lines
-        # .jac/client/dist/ — jac-client's Vite build output.
-        # Font packages (e.g. @fontsource-variable/outfit) emit .woff2/.ttf files here.
-        # CSS @font-face rules reference them with root-relative URLs (e.g. /assets/outfit.woff2),
-        # so serve_root_asset must include this path or those requests return 404.
+    # The above last two lines
+    # .jac/client/dist/ — jac-client's Vite build output.
+    # Font packages (e.g. @fontsource-variable/outfit) emit .woff2/.ttf files here.
+    # CSS @font-face rules reference them with root-relative URLs (e.g. /assets/outfit.woff2),
+    # so serve_root_asset must include this path or those requests return 404.
     for candidate_file in candidates {
         if (candidate_file.exists() and candidate_file.is_file()) {
             file_content = candidate_file.read_bytes();
