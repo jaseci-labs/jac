@@ -38,8 +38,45 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
-    # Unbounded TypeVars are not callable
+    # TypeVar handling - use bound type if available (Pyright: typeVar6)
     if isinstance(caller_type, types.TypeVarType) {
+        if caller_type.bound {
+            # Bounded TypeVar - check if bound type has __call__
+            bound_type = caller_type.bound;
+            if isinstance(bound_type, types.ClassType) {
+                # First check if bound type has __call__ method at all
+                call_member = self._lookup_class_member(bound_type, "__call__");
+                if call_member {
+                    # Bound type is callable - validate call arguments
+                    call_type = self.get_type_of_symbol(call_member.symbol);
+                    if isinstance(call_type, types.FunctionType) {
+                        # Validate arguments against the __call__ signature
+                        arg_param_match = self.match_args_to_params(
+                            expr.params, expr, call_type
+                        );
+                        if not arg_param_match.argument_errors {
+                            self.validate_arg_types(arg_param_match);
+                        }
+                        return call_type.return_type or types.UnknownType();
+                    }
+                    # Fallback to magic method call
+                    call_ret = self.get_type_of_magic_method_call(
+                        bound_type, "__call__", expr.params, expr
+                    );
+                    if call_ret {
+                        return call_ret;
+                    }
+                    return types.UnknownType();
+                }
+                # Bound type is not callable (no __call__ method)
+                self.add_diagnostic(
+                    expr,
+                    f'Type "{bound_type}" is not callable'
+                );
+                return types.UnknownType();
+            }
+        }
+        # Unbounded TypeVar - not callable
         self.add_diagnostic(
             expr,
             f'Type "{caller_type.name}" is not callable'
@@ -124,6 +161,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
         is_covariant = False;
         is_contravariant = False;
+        bound_type: types.TypeBase | None = None;
 
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
@@ -135,16 +173,23 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 );
             }
 
-            # Count positional constraint arguments and extract variance kwargs
+            # Count positional constraint arguments and extract variance/bound kwargs
             for i in range(1, len(expr.params)) {
                 arg = expr.params[i];
                 if isinstance(arg, uni.KWPair) {
-                    # Extract covariant= and contravariant= keyword args
+                    # Extract covariant=, contravariant=, and bound= keyword args
                     if isinstance(arg.key, uni.Name) {
                         if arg.key.value == "covariant" and isinstance(arg.value, uni.Bool) {
                             is_covariant = arg.value.value;
                         } elif arg.key.value == "contravariant" and isinstance(arg.value, uni.Bool) {
                             is_contravariant = arg.value.value;
+                        } elif arg.key.value == "bound" {
+                            # Parse bound type expression
+                            bound_type = self.get_type_of_expression(arg.value);
+                            # Convert to instance type if needed
+                            if isinstance(bound_type, types.ClassType) and bound_type.is_instantiable() {
+                                bound_type = bound_type.clone_as_instance();
+                            }
                         }
                     }
                     continue;
@@ -171,7 +216,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return types.TypeVarType(
             name=type_var_name,
             is_covariant=is_covariant,
-            is_contravariant=is_contravariant
+            is_contravariant=is_contravariant,
+            bound=bound_type
         );
     }
     if (

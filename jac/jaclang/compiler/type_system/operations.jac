@@ -48,7 +48,21 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          "i64": 64,
          "u64": 64
      },
-     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"};
+     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"},
+     # Augmented assignment operator to magic method mapping
+     AUGMENTED_OPERATOR_MAP: dict[str, str] = {
+         "ADD_EQ": "__iadd__", "SUB_EQ": "__isub__",
+         "MUL_EQ": "__imul__", "DIV_EQ": "__itruediv__",
+         "FLOOR_DIV_EQ": "__ifloordiv__", "MOD_EQ": "__imod__",
+         "POW_EQ": "__ipow__", "BW_AND_EQ": "__iand__",
+         "BW_OR_EQ": "__ior__", "BW_XOR_EQ": "__ixor__",
+         "LSHIFT_EQ": "__ilshift__", "RSHIFT_EQ": "__irshift__"
+     };
+
+"""Get the magic method name for an augmented assignment operator."""
+def get_augmented_op_magic(op_name: str) -> str {
+    return AUGMENTED_OPERATOR_MAP.get(op_name, "__iadd__");
+}
 
 """
 Apply numeric type promotion for arithmetic operations.
@@ -131,13 +145,30 @@ def get_type_of_binary_operation(
     left_type = evaluator.get_type_of_expression(expr.left);
     right_type = evaluator.get_type_of_expression(expr.right);
 
-    # Unbounded TypeVars don't support binary operations (Pyright: typeVar5)
+    # TypeVar binary operation handling (Pyright: typeVar5/6)
     # Check BEFORE is_any_type since TypeVar.is_any_type() returns True
     # EXCEPT for | operator which is used for union types (T | int)
     if isinstance(expr.op, uni.Token)
     and expr.op.name in BINARY_OPERATOR_MAP
     and expr.op.name != Tok.BW_OR {
         if isinstance(left_type, jtypes.TypeVarType) {
+            if left_type.bound and isinstance(left_type.bound, jtypes.ClassType) {
+                # Bounded TypeVar - use bound type for magic method lookup
+                (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+                result = evaluator.get_type_of_magic_method_call(
+                    left_type.bound, magic, [expr.right], None
+                );
+                if result {
+                    return result;
+                }
+                # Bound type doesn't support this operator
+                evaluator.add_diagnostic(
+                    expr,
+                    f'Operator "{magic}" not supported for type "{left_type.bound}"'
+                );
+                return jtypes.UnknownType();
+            }
+            # Unbounded TypeVar
             (magic, _) = BINARY_OPERATOR_MAP[expr.op.name];
             evaluator.add_diagnostic(
                 expr,
@@ -146,6 +177,23 @@ def get_type_of_binary_operation(
             return jtypes.UnknownType();
         }
         if isinstance(right_type, jtypes.TypeVarType) {
+            if right_type.bound and isinstance(right_type.bound, jtypes.ClassType) {
+                # Bounded TypeVar - use bound type for magic method lookup
+                (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+                result = evaluator.get_type_of_magic_method_call(
+                    right_type.bound, rmagic, [expr.left], None
+                );
+                if result {
+                    return result;
+                }
+                # Bound type doesn't support this operator
+                evaluator.add_diagnostic(
+                    expr,
+                    f'Operator "{rmagic}" not supported for type "{right_type.bound}"'
+                );
+                return jtypes.UnknownType();
+            }
+            # Unbounded TypeVar
             (_, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
             evaluator.add_diagnostic(
                 expr,

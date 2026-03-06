@@ -525,9 +525,41 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
+                    attr_name = expr.right.value;
+
+                    # Bounded TypeVar - use bound type for attribute lookup (Pyright: typeVar6)
+                    if base_type.bound {
+                        bound_type = base_type.bound;
+                        if isinstance(bound_type, types.ClassType) {
+                            if member := self._lookup_object_member(bound_type, attr_name) {
+                                self._set_symbol_to_expr(expr.right, member.symbol);
+                                return self.get_type_of_symbol(member.symbol);
+                            }
+                            # Attribute not found on bound type
+                            self.add_diagnostic(
+                                expr,
+                                "Cannot access attribute \"" + attr_name + "\" for type \"" + str(bound_type) + "\""
+                            );
+                            return types.UnknownType();
+                        } elif isinstance(bound_type, types.UnionType) {
+                            # Check all union members have the attribute
+                            for member_type in bound_type.types {
+                                if isinstance(member_type, types.ClassType) {
+                                    if not self._lookup_object_member(member_type, attr_name) {
+                                        self.add_diagnostic(
+                                            expr,
+                                            "Cannot access attribute \"" + attr_name + "\" for type \"" + str(member_type) + "\""
+                                        );
+                                    }
+                                }
+                            }
+                            # Return Unknown for now - could compute common type
+                            return types.UnknownType();
+                        }
+                    }
+
                     # Unbounded TypeVar - only universal object attributes are allowed
                     # Pyright: treats unbounded TypeVars as "object*"
-                    attr_name = expr.right.value;
                     universal_attrs = {"__class__", "__doc__", "__dict__", "__module__",
                                        "__sizeof__", "__str__", "__repr__", "__hash__",
                                        "__eq__", "__ne__", "__init__", "__new__"};
@@ -708,8 +740,27 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     # TODO: Validate the slice type arguments.
                     return self.get_type_of_expression(expr.target);
                 }
-                # Unbounded TypeVars are not subscriptable (Pyright: typeVar5)
+                # TypeVar subscript handling (Pyright: typeVar5/6)
                 if isinstance(base_type, types.TypeVarType) {
+                    if base_type.bound {
+                        # Bounded TypeVar - use bound type for __getitem__ lookup
+                        bound_type = base_type.bound;
+                        if isinstance(bound_type, types.ClassType) {
+                            result = self.get_type_of_magic_method_call(
+                                bound_type, "__getitem__", [expr.right], expr
+                            );
+                            if result {
+                                return result;
+                            }
+                            # Bound type is not subscriptable
+                            self.add_diagnostic(
+                                expr,
+                                f'Type "{bound_type}" is not subscriptable'
+                            );
+                            return types.UnknownType();
+                        }
+                    }
+                    # Unbounded TypeVar - not subscriptable
                     self.add_diagnostic(
                         expr,
                         f'Type "{base_type.name}" is not subscriptable'
@@ -732,8 +783,24 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         case uni.AwaitExpr():
             # Evaluate the awaited expression
             target_type = self.get_type_of_expression(expr.target);
-            # Unbounded TypeVars are not awaitable (Pyright: typeVar5)
+            # TypeVar await handling (Pyright: typeVar5/6)
             if isinstance(target_type, types.TypeVarType) {
+                if target_type.bound and isinstance(target_type.bound, types.ClassType) {
+                    # Bounded TypeVar - check if bound type has __await__
+                    result = self.get_type_of_magic_method_call(
+                        target_type.bound, "__await__", [], None
+                    );
+                    if result {
+                        return result;
+                    }
+                    # Bound type is not awaitable
+                    self.add_diagnostic(
+                        expr,
+                        f'Type "{target_type.bound}" is not awaitable'
+                    );
+                    return types.UnknownType();
+                }
+                # Unbounded TypeVar - not awaitable
                 self.add_diagnostic(
                     expr,
                     f'Type "{target_type.name}" is not awaitable'
@@ -807,9 +874,25 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
                     # `-x`, `~x` -> type of operand
                     operand_type = self.get_type_of_expression(expr.operand);
-                    # Unbounded TypeVars don't support unary operations (Pyright: typeVar5)
+                    op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                    # TypeVar unary operation handling (Pyright: typeVar5/6)
                     if isinstance(operand_type, types.TypeVarType) {
-                        op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                        if operand_type.bound and isinstance(operand_type.bound, types.ClassType) {
+                            # Bounded TypeVar - use bound type for magic method lookup
+                            result = self.get_type_of_magic_method_call(
+                                operand_type.bound, op_name, [], None
+                            );
+                            if result {
+                                return result;
+                            }
+                            # Bound type doesn't support this operator
+                            self.add_diagnostic(
+                                expr,
+                                f'Operator "{op_name}" not supported for type "{operand_type.bound}"'
+                            );
+                            return types.UnknownType();
+                        }
+                        # Unbounded TypeVar
                         self.add_diagnostic(
                             expr,
                             f'Operator "{op_name}" not supported for type "{operand_type.name}"'
