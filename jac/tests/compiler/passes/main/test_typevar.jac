@@ -30,3 +30,29 @@ test "typevar1_validation_errors" {
     assert 'requires at least two constrained types' in all_errors,
         "Expected single constraint error for TypeVar('T5', str)";
 }
+
+"""Test TypeVar scope validation (Pyright: validateTypeVarUsage, enforceClassTypeVarScope)."""
+test "typevar3_scope_validation" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar3.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should match Pyright's 12 errors exactly
+    assert len(program.errors_had) == 12,
+        f"Expected 12 errors, got {len(program.errors_had)}";
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # "already in use by outer scope" errors (declaration-site)
+    assert 'TypeVar "_T" is already in use by an outer scope' in all_errors,
+        "Expected outer scope error for InnerClass1(Generic[_T])";
+    assert 'TypeVar "AnyStr" is already in use by an outer scope' in all_errors,
+        "Expected outer scope error for InnerClass2(Generic[_S, AnyStr])";
+
+    # "has no meaning in this context" errors (use-site)
+    assert 'Type variable "_S" has no meaning in this context' in all_errors,
+        "Expected scope error for _S used in OuterClass without being in Generic[]";
+    assert 'Type variable "_T" has no meaning in this context' in all_errors,
+        "Expected scope error for _T used in nested non-generic class";
+}
