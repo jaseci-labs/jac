@@ -2,9 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.11.4 (Unreleased)
+## jaclang 0.12.1 (Unreleased)
 
-- 26 small refactors/changes.
+## jaclang 0.12.0 (Latest Release)
+
+- 27 small refactors/changes.
 - **Fix: Formatter Semicolon & Decorator Spacing**: Fixed spacing bugs in the formatter where `@` decorators produced `@ decorator` instead of `@decorator`, and statement semicolons produced `raise ;` instead of `raise;`.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.
@@ -46,7 +48,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 - **New: `jacpretty` version 2.0**: Jacpretty Library Version 2 implementation.
 
-## jaclang 0.11.3 (Latest Release)
+## jaclang 0.11.3
 
 - **Static Analysis Pass: Unused Variables, Undefined Names, Unreachable Code**: Added a new `StaticAnalysisPass` to the type-check pipeline that detects three classes of issues: (1) variables defined but never referenced, (2) name references that fail to resolve, and (3) code following `return`/`raise`/`break`/`continue` statements. All diagnostics surface as warnings in both `jac check` output and LSP (IDE squiggles). The pass runs after `TypeCheckPass` and respects conventional skip patterns (`_`-prefixed names, `has` fields, imported symbols, abstract ability parameters, archetype/ability definitions).
 - **Overload Resolution: `lookup_all()` Symbol Table Method**: Added `UniScopeNode.lookup_all(name, deep)` which returns the primary symbol plus all overloads for a given name. The type evaluator and `ClassType.lookup_member_symbol` now use this centralized method instead of directly accessing the internal `names_in_scope_overload` dict, improving encapsulation and consistency of overload handling.

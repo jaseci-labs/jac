@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.6 (Unreleased)
+## jac-super 0.1.7 (Unreleased)
+
+## jac-super 0.1.6 (Latest Release)
 
 - 1 small refactor/change.
 
-## jac-super 0.1.5 (Latest Release)
+## jac-super 0.1.5
 
 ## jac-super 0.1.4
 
