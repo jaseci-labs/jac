@@ -1932,7 +1932,6 @@ test "module_level_overload" {
     );
 
     assert_error_pretty_found(
-        """Cannot assign <class float> to <class int>""",
-        user_errors[0].pretty_print()
+        """Cannot assign <class float> to <class int>""", user_errors[0].pretty_print()
     );
 }

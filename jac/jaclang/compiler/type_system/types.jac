@@ -125,10 +125,10 @@ obj ModuleType(TypeBase) {
         symbol_table: SymbolTable = None,
         # Module source flags (similar to Pyright's SourceFileInfo)
         # These are computed once when the module is loaded based on file path.
-        is_stub_file: bool = False,        # True if .pyi file
-        is_stdlib_stub: bool = False,      # True if from vendor/typeshed/stdlib/
-        is_typing_stub: bool = False,      # True if typing.pyi or typing_extensions.pyi
-        is_builtin_stub: bool = False;     # True if builtins.pyi, abc.pyi, etc.
+        is_stub_file: bool = False,  # True if .pyi file
+        is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
+        is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
+        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;

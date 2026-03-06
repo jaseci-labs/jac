@@ -1371,7 +1371,9 @@ impl TypeEvaluator._assign_class(
     # Uses is_from_stdlib_stub flag set when class was created (production-grade approach).
     if not is_protocol {
         class_name = dest_type.shared.class_name;
-        if (dest_type.shared.is_from_stdlib_stub or dest_type.shared.is_builtin_class)
+        if (
+            dest_type.shared.is_from_stdlib_stub or dest_type.shared.is_builtin_class
+        )
         and (class_name.startswith('Supports') or class_name.startswith('_Supports')) {
             is_protocol = True;
         }
@@ -1380,7 +1382,10 @@ impl TypeEvaluator._assign_class(
     if not is_protocol {
         for mro_cls in dest_type.shared.mro {
             if isinstance(mro_cls, types.ClassType) and mro_cls.shared {
-                if (mro_cls.shared.is_builtin_class or mro_cls.shared.is_from_stdlib_stub)
+                if (
+                    mro_cls.shared.is_builtin_class
+                    or mro_cls.shared.is_from_stdlib_stub
+                )
                 and mro_cls.shared.class_name in ('Protocol', '_SpecialForm') {
                     is_protocol = True;
                     break;
