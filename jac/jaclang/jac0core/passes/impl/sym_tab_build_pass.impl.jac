@@ -22,7 +22,7 @@ impl SymTabBuildPass.pop_scope(self: SymTabBuildPass) -> UniScopeNode {
 }
 
 """Return current scope."""
-@ property
+@property
 impl SymTabBuildPass.cur_scope(self: SymTabBuildPass) -> UniScopeNode {
     return self.cur_sym_tab[-1];
 }

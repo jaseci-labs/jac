@@ -87,7 +87,7 @@ impl BaseTransform.post_transform(self: BaseTransform) -> None {
 }
 
 """Transform interface."""
-@ abstractmethod
+@abstractmethod
 impl BaseTransform.transform(self: BaseTransform, ir_in: T_in) -> T_out {
     ;
 }
@@ -110,7 +110,7 @@ impl Transform.init(
     super.init(ir_in, prog, cancel_token);
 }
 
-"""Pass Error."""
+"""Log a compilation error."""
 impl Transform.log_error(
     self: Transform, msg: str, node_override: (UniNode | None) = None
 ) -> None {
@@ -123,7 +123,7 @@ impl Transform.log_error(
     self.prog.errors_had.append(alrt);
 }
 
-"""Pass Error."""
+"""Log a compilation warning."""
 impl Transform.log_warning(
     self: Transform, msg: str, node_override: (UniNode | None) = None
 ) -> None {

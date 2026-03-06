@@ -470,7 +470,7 @@ def printgraph_symtab_tree(nd: UniScopeNode) -> str {
     id_map = {};
     last_id_used = 0;
     def gen_node_id(nd: SymbolTree) -> int {
-        nonlocal last_id_used ;
+        nonlocal last_id_used;
         if (id(nd) not in id_map) {
             id_map[id(nd)] = last_id_used;
             last_id_used += 1;

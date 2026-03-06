@@ -70,7 +70,8 @@ obj PrefetchedTypes {
         walker_class: TypeBase | None = None,
         jsx_element_class: TypeBase | None = None,
         # Prefetched enum base class
-        enum_class: TypeBase | None = None;
+        enum_class: TypeBase | None = None,
+        set_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -184,6 +185,8 @@ obj TypeEvaluator {
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
+    def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
     # --- Special form handling (Callable, Union, etc.) ---
     # Returns the prefetched special form type if the name AND type match.
     # Verifies both name and that type is _SpecialForm to avoid conflicts

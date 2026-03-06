@@ -68,7 +68,7 @@ impl RouteScanner._scan_directory(
                         f"Layout collision: '{layout_key}' has layouts from both "
                         f"'{self._layouts[layout_key].file_path}' and '{entry}'. "
                         f"Remove one of them."
-                    ) ;
+                    );
                 }
                 component_name = self._file_to_component_name(entry);
                 layout_entry = RouteEntry(
@@ -166,7 +166,7 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
                 f"Route collision: '{route.path}' is defined by both "
                 f"'{seen[route.path]}' and '{route.file_path}'. "
                 f"Remove one of them."
-            ) ;
+            );
         }
         seen[route.path] = route.file_path;
     }

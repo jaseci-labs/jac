@@ -5,40 +5,9 @@ Direct implementations - no delegation.
 
 import os;
 import from jaclang.cli.console { console }
-
-glob _runtime_initialized = False;
-
-"""Initialize Jac runtime once on first use."""
-def _ensure_jac_runtime -> None {
-    global _runtime_initialized;
-    if not _runtime_initialized {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        Jac.setup();
-        _runtime_initialized = True;
-    }
-}
-
-"""Create JacRuntime and return the base path, module name, and runtime state."""
-def _proc_file(filename: str) -> tuple {
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    (base, mod) = os.path.split(filename);
-    base = base or './';
-    if filename.endswith('.jac') {
-        mod = mod[:-4];
-    } elif filename.endswith('.py') {
-        mod = mod[:-3];
-    } else {
-        console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
-        `exit(1);
-    }
-    # Only set base path if not already set (allows tests to override)
-    if not Jac.base_path_dir {
-        Jac.set_base_path(base);
-    }
-    # Tools run in system context (no user authentication)
-    mach = Jac.create_j_context(user_root=None);
-    Jac.set_context(mach);
-    return (base, mod, mach);
+import from jaclang.cli.commands.cli_helpers {
+    ensure_jac_runtime as _ensure_jac_runtime,
+    proc_file as _proc_file
 }
 
 """Run the specified AST tool with optional arguments."""

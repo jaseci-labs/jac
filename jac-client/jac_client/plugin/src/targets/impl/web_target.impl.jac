@@ -65,7 +65,7 @@ impl WebTarget.start(
     # Serve the dist directory (use bundler.output_dir to avoid path duplication)
     dist_dir = bundler.output_dir;
     if not dist_dir.exists() {
-        raise RuntimeError(f"Build output not found: {dist_dir}") ;
+        raise RuntimeError(f"Build output not found: {dist_dir}");
     }
     import os;
     os.chdir(dist_dir);
@@ -104,20 +104,20 @@ impl WebTarget.build(
     Jac.jac_import(target=mod, base_path=base, lng='jac');
     if Jac.program.errors_had {
         errors = '\n'.join(str(e) for e in Jac.program.errors_had);
-        raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}") ;
+        raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
     }
     loaded_mod = Jac.loaded_modules.get(mod);
     if not loaded_mod {
-        raise RuntimeError(f"Module '{mod}' not found after import") ;
+        raise RuntimeError(f"Module '{mod}' not found after import");
     }
     if not isinstance(loaded_mod, types.ModuleType) {
-        raise RuntimeError(f"Module '{mod}' is not a valid module type") ;
+        raise RuntimeError(f"Module '{mod}' is not a valid module type");
     }
     builder = JacClient.get_client_bundle_builder();
     builder.build(loaded_mod, force=True);
     bundle_path = bundler.find_bundle();
     if not bundle_path {
-        raise RuntimeError("Web build failed: bundle not found") ;
+        raise RuntimeError("Web build failed: bundle not found");
     }
     _generate_index_html(
         bundle_path=bundle_path,

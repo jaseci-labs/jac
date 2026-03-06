@@ -22,8 +22,8 @@ with entry {
 }
 
 with entry {
-    a = {"a": "apple", "b": "ball", "c": "cat"};
-    y = {** a, "d": "dog", "e": "elephant"};
+    a2 = {"a": "apple", "b": "ball", "c": "cat"};
+    y = {** a2, "d": "dog", "e": "elephant"};
     print(y);
 }
 # Use before def error would be nice

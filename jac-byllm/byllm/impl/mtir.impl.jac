@@ -161,7 +161,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if is_streaming and return_type is not str {
         raise ConfigurationError(
             "Streaming responses are only supported for str return types."
-        ) ;
+        );
     }
     if len(tools) > 0 {
         finish_tool = Tool.make_finish_tool(return_type or str);
@@ -217,13 +217,13 @@ impl MTRuntime.parse_response(response: str) -> object {
             json_dict = json.loads(response);
             return json_to_instance(json_dict, self.resp_type);
         } except OutputConversionError {
-            raise ;
+            raise;
         } except Exception as e {
             err = OutputConversionError(
                 f"Failed to convert LLM output to '{self.resp_type.__name__}': {e}"
             );
             err.raw_output = response;
-            raise err ;
+            raise err;
         }
     }
     return response;

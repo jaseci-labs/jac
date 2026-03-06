@@ -40,7 +40,7 @@ def _import_sidecar_main -> types.ModuleType {
     """
     spec = importlib.util.spec_from_file_location("sidecar_main", _sidecar_main_path);
     if not spec or not spec.loader {
-        raise ImportError("Could not load sidecar main.py module") ;
+        raise ImportError("Could not load sidecar main.py module");
     }
     assert spec is not None , f"Could not create ModuleSpec for {_sidecar_main_path}";
     assert spec.loader is not None , f"ModuleSpec has no loader for {_sidecar_main_path}";

@@ -490,7 +490,7 @@ test "sidecar module runs directly" {
                         f"STDERR:\n{stderr.decode()}"
                     );
                 }
-                raise ;
+                raise;
             }
 
             print(f"[DEBUG] Sidecar is accepting connections on port {port}");
@@ -695,7 +695,7 @@ test "desktop dev mode starts" {
                         f"Desktop dev process exited early (code {dev_process.returncode})"
                     );
                 }
-                raise ;
+                raise;
             }
 
             # Give Tauri a moment to initialize

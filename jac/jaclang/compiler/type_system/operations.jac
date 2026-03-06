@@ -138,7 +138,7 @@ def get_type_of_binary_operation(
         (expr.op in (Tok.KW_IS, Tok.KW_ISN, Tok.KW_IN, Tok.KW_NIN))
         and (evaluator.prefetch.bool_class is not None)
     ) {
-        evaluator._convert_to_instance(evaluator.prefetch.bool_class);
+        return evaluator._convert_to_instance(evaluator.prefetch.bool_class);
     }
 
     # Magic method lookup for other binary operations

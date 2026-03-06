@@ -29,7 +29,7 @@ obj DockerHubRegistry(ImageRegistry) {
                 path=code_folder, tag=repository_name, dockerfile='Dockerfile', rm=True
             );
         } except BuildError as e {
-            raise RuntimeError(f"Failed to build Docker image: {e}") from e ;
+            raise RuntimeError(f"Failed to build Docker image: {e}") from e;
         }
 
         return repository_name;
@@ -44,7 +44,7 @@ obj DockerHubRegistry(ImageRegistry) {
             );
             docker_client.images.push(image_name);
         } except APIError as e {
-            raise RuntimeError(f"Failed to push Docker image: {e}") from e ;
+            raise RuntimeError(f"Failed to push Docker image: {e}") from e;
         }
     }
 

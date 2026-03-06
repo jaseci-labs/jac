@@ -382,7 +382,7 @@ class JacWalker {
                     if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
                         next.append(anchor);
                     } else {
-                        raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.') ;
+                        raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.');
                     }
                 }
             }
@@ -394,7 +394,7 @@ class JacWalker {
             wanch.next = wanch.next[:insert_loc] + next + wanch.next[insert_loc:];
             return (len(wanch.next) > before_len);
         } else {
-            raise TypeError('Invalid walker object') ;
+            raise TypeError('Invalid walker object');
         }
     }
 
@@ -855,7 +855,7 @@ class JacWalker {
             ) {
                 return collect_targets(`walker, t);
             } else {
-                raise TypeError('Invalid target object') ;
+                raise TypeError('Invalid target object');
             }
         }
         if isinstance(op1, WalkerArchetype) {
@@ -863,7 +863,7 @@ class JacWalker {
         } elif isinstance(op2, WalkerArchetype) {
             (warch, targ) = (op2, op1);
         } else {
-            raise TypeError('Invalid walker object') ;
+            raise TypeError('Invalid walker object');
         }
         `walker: WalkerAnchor = warch.__jac__;
         loc: (NodeAnchor | EdgeAnchor) = assign(`walker, targ);
@@ -1251,7 +1251,7 @@ system,
                     }
                 }
                 if (not spec or not spec.origin) {
-                    raise ImportError(f"Cannot find module {module_name}") ;
+                    raise ImportError(f"Cannot find module {module_name}");
                 }
                 if (('__main__' in sys.modules) and not reload_module) {
                     module = sys.modules['__main__'];
@@ -1293,7 +1293,7 @@ system,
                     } else {
                         raise ImportError(
                             f"Cannot import name '{item_name}' from '{module_name}'"
-                        ) ;
+                        );
                     }
                 }
                 return `tuple(imported_items) if not absorb else (module, );
@@ -1629,7 +1629,7 @@ system,
                     if hasattr(`edge, fld) {
                         setattr(`edge, fld, val);
                     } else {
-                        raise ValueError(f"Invalid attribute: {fld}") ;
+                        raise ValueError(f"Invalid attribute: {fld}");
                     }
                 }
             }
@@ -1802,13 +1802,13 @@ class JacAPIServer {
                 if e.errno in (98, 10048) or "Address already in use" in str(e) {
                     current_port += 1;
                 } else {
-                    raise ;
+                    raise;
                 }
             }
         }
         raise OSError(
             f"Could not find an available port after trying {port}-{current_port}"
-        ) ;
+        );
     }
 
     """Render HTML page for client function."""
@@ -1825,7 +1825,7 @@ class JacAPIServer {
             or `set(introspector.get_client_functions().keys())
         );
         if (function_name not in available_exports) {
-            raise ValueError(f"Client function '{function_name}' not found") ;
+            raise ValueError(f"Client function '{function_name}' not found");
         }
         bundle_hash = introspector.ensure_bundle();
         arg_order = `list(
@@ -1911,7 +1911,7 @@ class JacResponseBuilder {
         file_path: Path,
         content_type: (str | None) = None
     ) -> None {
-        raise NotImplementedError('send_static_file method is not implemented') ;
+        raise NotImplementedError('send_static_file method is not implemented');
     }
 }
 
@@ -2023,7 +2023,7 @@ allowed
     static def by_operator(lhs: Any, rhs: Any) -> Any {
         raise NotImplementedError(
             "The 'by' operator is not yet implemented. This feature is reserved for future use."
-        ) ;
+        );
     }
 
     """Return the default LLM model for use with 'by llm()' syntax.
@@ -2053,7 +2053,7 @@ allowed
     """Add MTIR to the node's MTIR map."""
     static def add_mtir_to_map(scope: str, mtir: Info) -> None {
         if (JacRuntime.program is None) {
-            raise AttributeError('JacRuntime.program is not initialized') ;
+            raise AttributeError('JacRuntime.program is not initialized');
         }
         JacRuntime.program.mtir_map[scope] = mtir;
     }
@@ -2061,10 +2061,10 @@ allowed
     """Get MTIR from the node's MTIR map."""
     static def get_mtir_from_map(scope: str) -> (Info | None) {
         if (JacRuntime.program is None) {
-            raise AttributeError('JacRuntime.program is not initialized') ;
+            raise AttributeError('JacRuntime.program is not initialized');
         }
         if (scope not in JacRuntime.program.mtir_map) {
-            raise KeyError(f"MTIR not found for scope {scope}") ;
+            raise KeyError(f"MTIR not found for scope {scope}");
         }
         return JacRuntime.program.mtir_map[scope];
     }
@@ -2278,7 +2278,7 @@ code.
             node_instance = node_class(**attributes);
             return node_instance;
         } else {
-            raise ValueError(f"Node {node_name} not found.") ;
+            raise ValueError(f"Node {node_name} not found.");
         }
     }
 
@@ -2299,7 +2299,7 @@ code.
             walker_instance = walker_class(**attributes);
             return walker_instance;
         } else {
-            raise ValueError(f"Walker {walker_name} not found.") ;
+            raise ValueError(f"Walker {walker_name} not found.");
         }
     }
 

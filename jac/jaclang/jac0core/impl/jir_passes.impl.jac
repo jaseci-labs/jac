@@ -102,7 +102,7 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     cls_name = type(ir_node).__name__;
     type_idx = NAME_TO_IDX.get(cls_name);
     if type_idx is None {
-        raise ValueError(f"Unknown node type: {cls_name}") ;
+        raise ValueError(f"Unknown node type: {cls_name}");
     }
 
     spec = IDX_TO_SPEC[type_idx];

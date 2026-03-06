@@ -1,4 +1,4 @@
-def foo(param: int, **kwargs: int) -> int {
+def foo(param: int, **kwargs: int) -> tuple {
     return (param + kwargs['bar'], 'from_foo');
 }
 

@@ -143,6 +143,24 @@ test "streaming with react" {
     assert "Test passed!" in stdout_value;
 }
 
+test "logging stream no tools" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("logging_stream_no_tools", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "NO_TOOLS_PASS" in stdout_value;
+}
+
+test "logging stream react" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("logging_stream_react", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "REACT_LOGGING_PASS" in stdout_value;
+}
+
 test "by expr" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

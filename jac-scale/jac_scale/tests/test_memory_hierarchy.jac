@@ -113,12 +113,12 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     (stdout, stderr) = server.communicate(timeout=2);
     raise RuntimeError(
         f"jac start failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-    ) ;
+    );
 }
 
 test "read and write" {
     if not JAC_FILE.exists() {
-        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
     # Clean up data files from previous runs
@@ -235,7 +235,7 @@ test "read and write" {
 
 test "data persists after server restart for mongo db" {
     if not JAC_FILE.exists() {
-        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
     # Clean up data files
@@ -316,7 +316,7 @@ test "data persists after server restart for mongo db" {
 
 test "data persists after server restart for sqlite" {
     if not JAC_FILE.exists() {
-        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}") ;
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
     data_dir = FIXTURES_DIR / ".jac" / "data";

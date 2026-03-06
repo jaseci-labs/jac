@@ -284,12 +284,12 @@ def read_file_with_encoding(file_path: str) -> str {
         } except Exception as e {
             raise OSError(
                 f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            ) ;
+            );
         }
     }
     raise OSError(
         f"Could not read file {file_path} with any encoding. Report this issue:https://github.com/jaseci-labs/jaseci/issues"
-    ) ;
+    );
 }
 
 """Return a short, readable type name for annotations."""

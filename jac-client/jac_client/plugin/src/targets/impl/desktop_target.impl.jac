@@ -39,7 +39,7 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
         try {
             project_dir.mkdir(parents=True, exist_ok=True);
         } except Exception as e {
-            raise RuntimeError(f"Failed to create project directory: {e}") ;
+            raise RuntimeError(f"Failed to create project directory: {e}");
         }
     }
     # Create src-tauri directory structure IMMEDIATELY (before imports or any other operations)
@@ -50,7 +50,7 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
         (tauri_dir / "binaries").mkdir(exist_ok=True);
         console.print(f"  ✔ Created {tauri_dir}", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to create src-tauri directory: {e}") ;
+        raise RuntimeError(f"Failed to create src-tauri directory: {e}");
     }
     # Wrap rest of setup in try-finally to ensure directory exists even if exceptions occur
     try {
@@ -740,7 +740,7 @@ def _add_desktop_config(
     # Read existing jac.toml
     jac_toml_path = project_dir / "jac.toml";
     if not jac_toml_path.exists() {
-        raise RuntimeError("jac.toml not found") ;
+        raise RuntimeError("jac.toml not found");
     }
 
     # Read current content
@@ -1525,9 +1525,7 @@ impl DesktopTarget.build(
     # Check if setup has been run
     tauri_dir = project_dir / "src-tauri";
     if not tauri_dir.exists() {
-        raise RuntimeError(
-            "Desktop target not set up. Run 'jac setup desktop' first."
-        ) ;
+        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.");
     }
     # Bake TOML base_url into the bundle; otherwise sidecar discovers port at runtime.
     toml_base_url = _get_toml_api_base_url(project_dir);
@@ -1722,9 +1720,7 @@ def _update_tauri_config_for_build(
 
     config_path = tauri_dir / "tauri.conf.json";
     if not config_path.exists() {
-        raise RuntimeError(
-            "tauri.conf.json not found. Run 'jac setup desktop' first."
-        ) ;
+        raise RuntimeError("tauri.conf.json not found. Run 'jac setup desktop' first.");
     }
 
     # Read existing config
@@ -1994,7 +1990,7 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
             console.error(
                 "Bun is required for this project. Install manually: https://bun.sh"
             );
-            raise RuntimeError("Bun is required") from None ;
+            raise RuntimeError("Bun is required") from None;
         }
         # Use bun run tauri build
         build_cmd = ["bun", "run", "tauri", "build"];
@@ -2028,7 +2024,7 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     }
 
     if not bundle_dir.exists() {
-        raise RuntimeError(f"Build completed but bundle not found at: {bundle_dir}") ;
+        raise RuntimeError(f"Build completed but bundle not found at: {bundle_dir}");
     }
 
     # Find the actual bundle file (varies by platform)
@@ -2145,9 +2141,7 @@ impl DesktopTarget.dev(
     # Check if setup has been run
     tauri_dir = project_dir / "src-tauri";
     if not tauri_dir.exists() {
-        raise RuntimeError(
-            "Desktop target not set up. Run 'jac setup desktop' first."
-        ) ;
+        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.");
     }
     # Step 1: Update tauri.conf.json for dev mode
     console.print("  Configuring Tauri for dev mode...", style="muted");
@@ -2199,7 +2193,7 @@ impl DesktopTarget.dev(
         port=vite_port, suppress_initial_output=True
     );
     if not vite_process {
-        raise RuntimeError("Failed to start Vite dev server") ;
+        raise RuntimeError("Failed to start Vite dev server");
     }
     console.print(
         f"  ✔ Web dev server running on http://localhost:{vite_port}", style="success"
@@ -2267,9 +2261,7 @@ def _update_tauri_config_for_dev(tauri_dir: Path) -> None {
 
     config_path = tauri_dir / "tauri.conf.json";
     if not config_path.exists() {
-        raise RuntimeError(
-            "tauri.conf.json not found. Run 'jac setup desktop' first."
-        ) ;
+        raise RuntimeError("tauri.conf.json not found. Run 'jac setup desktop' first.");
     }
 
     # Read existing config
@@ -2335,7 +2327,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
         raise RuntimeError(
             "Rust/Cargo not found. Install Rust from https://rustup.rs/\n"
             "Or run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-        ) ;
+        );
     }
 
     # Check if build tools (gcc/cc) are available
@@ -2351,7 +2343,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
             "  Ubuntu/Debian: sudo apt-get install build-essential\n"
             "  Fedora: sudo dnf install gcc gcc-c++\n"
             "  Arch: sudo pacman -S base-devel"
-        ) ;
+        );
     }
 
     # Check if tauri CLI is available via cargo
@@ -2371,7 +2363,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
             "Tauri CLI not installed. Install it first:\n"
             "  cargo install tauri-cli\n"
             "  Or: bun add -g @tauri-apps/cli"
-        ) ;
+        );
     }
 
     # Check if package.json has tauri scripts
@@ -2396,7 +2388,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
             console.error(
                 "Bun is required for this project. Install manually: https://bun.sh"
             );
-            raise RuntimeError("Bun is required") from None ;
+            raise RuntimeError("Bun is required") from None;
         }
         # Use bun run tauri dev
         dev_cmd = ["bun", "run", "tauri", "dev"];
@@ -2420,7 +2412,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
         return process;
     } except Exception as e {
         console.error(f"  Failed to start Tauri: {e}");
-        raise ;
+        raise;
     }
 }
 
@@ -2468,9 +2460,7 @@ impl DesktopTarget.start(
     # Check if setup has been run
     tauri_dir = project_dir / "src-tauri";
     if not tauri_dir.exists() {
-        raise RuntimeError(
-            "Desktop target not set up. Run 'jac setup desktop' first."
-        ) ;
+        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.");
     }
     # Step 1: Build web bundle with explicit backend URL for desktop webview.
     toml_base_url = _get_toml_api_base_url(project_dir);
