@@ -208,7 +208,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
         }
 
-        if not self.evaluator.assign_type(right_type, left_type) {
+        # Augmented assignment TypeVar check (Pyright: typeVar5)
+        # e.g., a += 3 where a is TypeVar is an error
+        if nd.aug_op and isinstance(left_type, types.TypeVarType) {
+            self.log_error(
+                f'Operator "{nd.aug_op.name}" not supported for type "{left_type.name}"',
+                nd
+            );
+        } elif not self.evaluator.assign_type(right_type, left_type) {
             self.log_error(f"Cannot assign {right_type} to {left_type}");
         }
     } else {
@@ -498,13 +505,20 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     # Check that the collection is iterable
     collection_type = self.evaluator.get_type_of_expression(nd.collection);
     if not isinstance(collection_type, types.UnknownType) {
-        iter_result = self.evaluator.get_type_of_magic_method_call(
-            collection_type, "__iter__", [], nd.collection
-        );
-        if iter_result is None {
+        # Unbounded TypeVars are not iterable (Pyright: typeVar5)
+        if isinstance(collection_type, types.TypeVarType) {
             self.log_error(
-                f"Type {collection_type} is not iterable (no __iter__ method)", nd
+                f'Type "{collection_type.name}" is not iterable', nd
             );
+        } else {
+            iter_result = self.evaluator.get_type_of_magic_method_call(
+                collection_type, "__iter__", [], nd.collection
+            );
+            if iter_result is None {
+                self.log_error(
+                    f"Type {collection_type} is not iterable (no __iter__ method)", nd
+                );
+            }
         }
     }
 }

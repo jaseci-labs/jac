@@ -78,3 +78,46 @@ test "typevar4_variance_validation" {
     assert "Contravariant type variable cannot be used in return type" in all_errors,
         "Expected contravariant return error";
 }
+
+"""Test unbounded TypeVar operation validation (Pyright: typeVar5)."""
+test "typevar5_unbounded_operations" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar5.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # 18 errors: 9 per function (attribute, call, subscript, attribute, binary,
+    # unary, augmented assignment, await, iteration)
+    assert len(program.errors_had) == 18,
+        f"Expected 18 errors, got {len(program.errors_had)}";
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Attribute access errors
+    assert 'Cannot access attribute "temp" for type "_T1"' in all_errors,
+        "Expected attribute access error for a.temp";
+
+    # Not callable errors
+    assert 'Type "_T1" is not callable' in all_errors,
+        "Expected callable error for a(3)";
+
+    # Not subscriptable errors
+    assert 'Type "_T1" is not subscriptable' in all_errors,
+        "Expected subscript error for a[0]";
+
+    # Binary operator errors
+    assert 'Operator "__add__' in all_errors and 'not supported for type' in all_errors,
+        "Expected binary op error for a + 1";
+
+    # Unary operator errors
+    assert 'Operator "__neg__' in all_errors and 'not supported for type' in all_errors,
+        "Expected unary op error for -a";
+
+    # Await errors
+    assert 'Type "_T1" is not awaitable' in all_errors,
+        "Expected await error for await a";
+
+    # Iteration errors
+    assert 'Type "_T1" is not iterable' in all_errors,
+        "Expected iteration error for for _ in a";
+}

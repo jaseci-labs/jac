@@ -37,6 +37,16 @@ a diagnostic and sets argumentErrors to true.
 """
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
+
+    # Unbounded TypeVars are not callable
+    if isinstance(caller_type, types.TypeVarType) {
+        self.add_diagnostic(
+            expr,
+            f'Type "{caller_type.name}" is not callable'
+        );
+        return types.UnknownType();
+    }
+
     is_unbound_call = self._is_unbound_method_call(expr);
     if isinstance(caller_type, types.FunctionType) {
         arg_param_match = self.match_args_to_params(
