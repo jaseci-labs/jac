@@ -208,14 +208,28 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
         }
 
-        # Augmented assignment TypeVar check (Pyright: typeVar5/6)
-        # e.g., a += 3 where a is TypeVar is an error (unless bound supports it)
+        # Augmented assignment TypeVar check (Pyright: typeVar5/6/7)
+        # e.g., a += 3 where a is TypeVar is an error (unless bound/constraints support it)
         if nd.aug_op and isinstance(left_type, types.TypeVarType) {
-            if left_type.bound and isinstance(left_type.bound, types.ClassType) {
+            import from jaclang.compiler.type_system { operations }
+            op_name = operations.get_augmented_op_magic(nd.aug_op.name);
+            # Constrained TypeVar - check all constraint types
+            if left_type.constraints {
+                for constraint_type in left_type.constraints {
+                    if isinstance(constraint_type, types.ClassType) {
+                        result = self.evaluator.get_type_of_magic_method_call(
+                            constraint_type, op_name, [nd.value], None
+                        );
+                        if result is None {
+                            self.log_error(
+                                f'Operator "{nd.aug_op.name}" not supported for type "{constraint_type}"',
+                                nd
+                            );
+                        }
+                    }
+                }
+            } elif left_type.bound and isinstance(left_type.bound, types.ClassType) {
                 # Bounded TypeVar - check if bound supports __iadd__ (etc)
-                # Use operations module to check via magic method lookup
-                import from jaclang.compiler.type_system { operations }
-                op_name = operations.get_augmented_op_magic(nd.aug_op.name);
                 result = self.evaluator.get_type_of_magic_method_call(
                     left_type.bound, op_name, [nd.value], nd
                 );
@@ -522,9 +536,23 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     # Check that the collection is iterable
     collection_type = self.evaluator.get_type_of_expression(nd.collection);
     if not isinstance(collection_type, types.UnknownType) {
-        # TypeVar iteration handling (Pyright: typeVar5/6)
+        # TypeVar iteration handling (Pyright: typeVar5/6/7)
         if isinstance(collection_type, types.TypeVarType) {
-            if collection_type.bound and isinstance(collection_type.bound, types.ClassType) {
+            # Constrained TypeVar - check all constraint types
+            if collection_type.constraints {
+                for constraint_type in collection_type.constraints {
+                    if isinstance(constraint_type, types.ClassType) {
+                        iter_result = self.evaluator.get_type_of_magic_method_call(
+                            constraint_type, "__iter__", [], None
+                        );
+                        if iter_result is None {
+                            self.log_error(
+                                f'Type "{constraint_type}" is not iterable', nd
+                            );
+                        }
+                    }
+                }
+            } elif collection_type.bound and isinstance(collection_type.bound, types.ClassType) {
                 # Bounded TypeVar - check if bound type has __iter__
                 iter_result = self.evaluator.get_type_of_magic_method_call(
                     collection_type.bound, "__iter__", [], nd.collection

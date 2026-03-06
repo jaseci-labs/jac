@@ -38,8 +38,34 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
-    # TypeVar handling - use bound type if available (Pyright: typeVar6)
+    # TypeVar handling - use bound/constraints if available (Pyright: typeVar6/7)
     if isinstance(caller_type, types.TypeVarType) {
+        # Constrained TypeVar - check all constraint types
+        if caller_type.constraints {
+            for constraint_type in caller_type.constraints {
+                if isinstance(constraint_type, types.ClassType) {
+                    call_member = self._lookup_class_member(constraint_type, "__call__");
+                    if call_member {
+                        # Validate call arguments against this constraint's __call__
+                        call_type = self.get_type_of_symbol(call_member.symbol);
+                        if isinstance(call_type, types.FunctionType) {
+                            arg_param_match = self.match_args_to_params(
+                                expr.params, expr, call_type
+                            );
+                            if not arg_param_match.argument_errors {
+                                self.validate_arg_types(arg_param_match);
+                            }
+                        }
+                    } else {
+                        self.add_diagnostic(
+                            expr,
+                            f'Type "{constraint_type}" is not callable'
+                        );
+                    }
+                }
+            }
+            return types.UnknownType();
+        }
         if caller_type.bound {
             # Bounded TypeVar - check if bound type has __call__
             bound_type = caller_type.bound;
@@ -162,6 +188,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         is_covariant = False;
         is_contravariant = False;
         bound_type: types.TypeBase | None = None;
+        constraint_types: list[types.TypeBase] = [];
 
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
@@ -194,6 +221,12 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                     }
                     continue;
                 }
+                # Collect constraint types (positional args after the name)
+                constraint_type = self.get_type_of_expression(arg);
+                if isinstance(constraint_type, types.ClassType) and constraint_type.is_instantiable() {
+                    constraint_type = constraint_type.clone_as_instance();
+                }
+                constraint_types.append(constraint_type);
                 constraint_count += 1;
                 if first_constraint_arg is None {
                     first_constraint_arg = arg;
@@ -217,7 +250,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             name=type_var_name,
             is_covariant=is_covariant,
             is_contravariant=is_contravariant,
-            bound=bound_type
+            bound=bound_type,
+            constraints=constraint_types if constraint_types else None
         );
     }
     if (

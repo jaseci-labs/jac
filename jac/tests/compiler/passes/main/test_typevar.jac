@@ -121,3 +121,65 @@ test "typevar5_unbounded_operations" {
     assert 'Type "_T1" is not iterable' in all_errors,
         "Expected iteration error for for _ in a";
 }
+
+"""Test bounded TypeVar operation validation (Pyright: typeVar6)."""
+test "typevar6_bounded_operations" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar6.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # 21 errors total (includes false positives from _ variable)
+    assert len(program.errors_had) == 21,
+        f"Expected 21 errors, got {len(program.errors_had)}";
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Key TypeVar-related errors to verify (bound=Foo checks)
+    expected_patterns = [
+        'Cannot access attribute "var2" for type "<class Foo>"',
+        'Type "<class Foo>" is not subscriptable',
+        '__add__ not supported for type <class Foo>',
+        '__neg__ not supported for type <class Foo>',
+        'Type "<class Foo>" is not awaitable',
+        'Type "<class Foo>" is not iterable',
+        'Cannot access attribute "do_other_stuff" for type "<class Foo>"'
+    ];
+
+    for pattern in expected_patterns {
+        assert pattern in all_errors, f"Expected error: {pattern}";
+    }
+}
+
+"""Test constrained TypeVar operation validation (Pyright: typeVar7)."""
+test "typevar7_constrained_operations" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # 51 errors (one per constraint type that fails, plus some false positives)
+    assert len(program.errors_had) == 51,
+        f"Expected 51 errors, got {len(program.errors_had)}";
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Key TypeVar-related errors to verify (constraints check each type)
+    expected_patterns = [
+        'Cannot access attribute "var2" for type "<class Foo>"',
+        'Type "<class Foo>" is not subscriptable',
+        'Type "<class Bar>" is not subscriptable',
+        '__neg__ not supported for type <class Foo>',
+        '__neg__ not supported for type <class Bar>',
+        'Type "<class Foo>" is not awaitable',
+        'Type "<class Bar>" is not awaitable',
+        'Type "<class Foo>" is not iterable',
+        'Type "<class Bar>" is not iterable',
+        'Cannot access attribute "var2" for type "<class str>"',
+        'Type "<class str>" is not callable'
+    ];
+
+    for pattern in expected_patterns {
+        assert pattern in all_errors, f"Expected error: {pattern}";
+    }
+}
