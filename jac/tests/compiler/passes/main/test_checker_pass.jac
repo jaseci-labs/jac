@@ -1905,3 +1905,33 @@ test "literal_string_type_checking" {
         user_errors[1].pretty_print()
     );
 }
+
+"""Test module-level function overload resolution.
+
+Module-level functions like math.floor have multiple @overload signatures.
+The type checker must collect all overloads and try each one when checking
+argument compatibility. This ensures that math.floor(3.7) resolves to the
+_SupportsFloatOrIndex overload (returning int) rather than failing on the
+_SupportsFloor protocol overload.
+"""
+test "module_level_overload" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_module_level_overload.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+
+    # Expect 1 error: assigning math.sin(float) -> float to int
+    assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}: " + "\n".join(
+        [err.pretty_print() for err in user_errors]
+    );
+
+    assert_error_pretty_found(
+        """Cannot assign <class float> to <class int>""", user_errors[0].pretty_print()
+    );
+}

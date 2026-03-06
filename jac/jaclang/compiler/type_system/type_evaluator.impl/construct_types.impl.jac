@@ -209,10 +209,13 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    is_builtin_class = node_.find_parent_of_type(uni.Module) in [
-        self.builtins_module,
-        self.typing_module
-    ];
+    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+    parent_module = node_.find_parent_of_type(uni.Module);
+    mod_flags = type_utils.compute_module_source_flags(
+        parent_module.loc.mod_path if parent_module and parent_module.loc else ""
+    );
+    is_builtin_class = mod_flags.is_builtin_stub;
+    is_from_stdlib_stub = mod_flags.is_stdlib_stub;
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
@@ -253,6 +256,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             type_params=type_params,
             base_classes=base_classes,
             is_builtin_class=is_builtin_class,
+            is_from_stdlib_stub=is_from_stdlib_stub,
             is_data_class=is_data_class,
             is_namedtuple=is_namedtuple,
             is_enum_class=is_enum_class,
@@ -293,13 +297,19 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
     );
     # Build member dictionary (RED=1, GREEN=2, etc.) with validation
     enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
+    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+    parent_module = node_.find_parent_of_type(uni.Module);
+    mod_flags = type_utils.compute_module_source_flags(
+        parent_module.loc.mod_path if parent_module and parent_module.loc else ""
+    );
     cls_type = types.ClassType(
         shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=None,
             base_classes=base_classes,
-            is_builtin_class=node_.find_parent_of_type(uni.Module) == self.builtins_module,
+            is_builtin_class=mod_flags.is_builtin_stub,
+            is_from_stdlib_stub=mod_flags.is_stdlib_stub,
             is_data_class=False,
             is_enum_class=True,
             enum_value_type=enum_value_type,

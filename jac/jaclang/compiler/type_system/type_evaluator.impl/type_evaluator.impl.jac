@@ -300,6 +300,34 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             expr.right.type = special_form;
                             return special_form;
                         }
+                        # Check for function overloads in module-level functions
+                        # (e.g., math.floor has multiple @overload signatures).
+                        # This mirrors the overload collection done for Name expressions
+                        # and is required for proper type checking of overloaded functions.
+                        if isinstance(sym_type, types.FunctionType) {
+                            overloaded_fns: list[types.FunctionType] = [sym_type];
+                            # Look up all symbols with the same name to find overloads
+                            all_syms = base_type.symbol_table.lookup_all(
+                                expr.right.value, deep=False
+                            );
+                            for overload_symbol in all_syms {
+                                if overload_symbol == sym {
+                                    continue;
+                                }
+                                overload_type = self.get_type_of_symbol(overload_symbol);
+                                if isinstance(overload_type, types.FunctionType) {
+                                    overloaded_fns.append(overload_type);
+                                }
+                            }
+                            if len(overloaded_fns) > 1 {
+                                overloaded_ty = types.OverloadedType(
+                                    overloads=overloaded_fns
+                                );
+                                sym.add_use(expr.right);
+                                expr.right.type = overloaded_ty;
+                                return overloaded_ty;
+                            }
+                        }
                         # Not a special form, return the resolved type
                         sym.add_use(expr.right);
                         expr.right.type = sym_type;
@@ -1533,26 +1561,70 @@ impl TypeEvaluator._assign_class(
         return True;
     }
     # Check if dest_type is a protocol and src_type implements it.
+    # Protocol detection: A class is a protocol if:
+    # 1. It has the prefetched Protocol class as a base class (exact match)
+    # 2. OR it has a BUILTIN base class named 'Protocol' or '_SpecialForm'
+    # 3. OR it's from stdlib stubs with protocol naming convention (Supports*, _Supports*)
+    # 4. OR its MRO contains a BUILTIN Protocol/_SpecialForm class
+    is_protocol = False;
+    # Check 1: Direct Protocol/_SpecialForm base class from builtins
     for base_cls in dest_type.shared.base_classes {
         if not isinstance(base_cls, types.ClassType) or base_cls.shared is None {
             continue;
         }
+        # Exact match with prefetched Protocol class
         if base_cls.shared == self.prefetch.protocol_class.shared {
-            if type_utils.class_implements_protocol(src_type, dest_type, self) {
-                return True;
-            }
-            # For synthetic types like LiteralString that share symbol_table with
-            # their base class, also check if any MRO class implements the protocol.
-            for mro_cls in src_type.shared.mro {
-                if mro_cls.shared != src_type.shared {
-                    if type_utils.class_implements_protocol(mro_cls, dest_type, self) {
-                        return True;
-                    }
+            is_protocol = True;
+            break;
+        }
+        # Check for BUILTIN Protocol/_SpecialForm base class only
+        if base_cls.shared.is_builtin_class
+        and base_cls.shared.class_name in ('Protocol', '_SpecialForm') {
+            is_protocol = True;
+            break;
+        }
+    }
+    # Check 2: Protocol naming convention for STDLIB classes only
+    # Classes like _SupportsFloor, _SupportsTrunc, SupportsFloat from stdlib stubs.
+    # User-defined classes with these names are NOT treated as protocols.
+    # Uses is_from_stdlib_stub flag set when class was created (production-grade approach).
+    if not is_protocol {
+        class_name = dest_type.shared.class_name;
+        if (
+            dest_type.shared.is_from_stdlib_stub or dest_type.shared.is_builtin_class
+        )
+        and (class_name.startswith('Supports') or class_name.startswith('_Supports')) {
+            is_protocol = True;
+        }
+    }
+    # Check 3: Check MRO for Protocol/_SpecialForm from stdlib (handles inheritance)
+    if not is_protocol {
+        for mro_cls in dest_type.shared.mro {
+            if isinstance(mro_cls, types.ClassType) and mro_cls.shared {
+                if (
+                    mro_cls.shared.is_builtin_class
+                    or mro_cls.shared.is_from_stdlib_stub
+                )
+                and mro_cls.shared.class_name in ('Protocol', '_SpecialForm') {
+                    is_protocol = True;
+                    break;
                 }
             }
-            # TODO: The dest_class can have other base classes as well, do this
-            # Recursively.
-            break;
+        }
+    }
+
+    if is_protocol {
+        if type_utils.class_implements_protocol(src_type, dest_type, self) {
+            return True;
+        }
+        # For synthetic types like LiteralString that share symbol_table with
+        # their base class, also check if any MRO class implements the protocol.
+        for mro_cls in src_type.shared.mro {
+            if mro_cls.shared != src_type.shared {
+                if type_utils.class_implements_protocol(mro_cls, dest_type, self) {
+                    return True;
+                }
+            }
         }
     }
     return False;
