@@ -1,0 +1,499 @@
+name: Publish Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  # ============================================================================
+  # Parse release info from merged PR
+  # ============================================================================
+  parse-release:
+    if: |
+      github.repository == 'Jaseci-Labs/jaseci' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      has_releases: ${{ steps.parse.outputs.has_releases }}
+      has_precompile: ${{ steps.parse.outputs.has_precompile }}
+      matrix: ${{ steps.parse.outputs.matrix }}
+      precompile_matrix: ${{ steps.parse.outputs.precompile_matrix }}
+      release_summary: ${{ steps.parse.outputs.release_summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Parse release info
+        id: parse
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python scripts/parse_release.py --pr-title "$PR_TITLE"
+
+  # ============================================================================
+  # Approval gate - ONE click to approve all publishing
+  # ============================================================================
+  approve-release:
+    needs: parse-release
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    timeout-minutes: 60
+    steps:
+      - name: Approval granted
+        env:
+          SUMMARY: ${{ needs.parse-release.outputs.release_summary }}
+        run: |
+          echo "Release approved: $SUMMARY"
+          echo "Proceeding with publish..."
+
+  # ============================================================================
+  # Precompile bytecode for packages that need it (parallel matrix)
+  # Each package × Python version combination runs in parallel
+  # ============================================================================
+  precompile:
+    needs: [parse-release, approve-release]
+    if: needs.parse-release.outputs.has_precompile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.precompile_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: ${{ matrix.submodules }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install jaclang
+        run: pip install -e ./jac
+
+      - name: Install package (if not jaclang)
+        if: matrix.name != 'jaclang'
+        run: pip install -e ./${{ matrix.dir }}
+
+      - name: Precompile bytecode
+        run: jac run jac/scripts/precompile_bytecode.jac ./${{ matrix.dir }}
+
+      - name: Upload precompiled artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.precompile_artifact }}-${{ matrix.python_version }}
+          path: ${{ matrix.precompile_path }}/
+          retention-days: 1
+
+  # ============================================================================
+  # Build packages (with precompiled artifacts if needed)
+  # ============================================================================
+  build:
+    needs: [parse-release, approve-release, precompile]
+    # Run even if precompile was skipped (for packages that don't need it)
+    if: |
+      always() &&
+      needs.parse-release.outputs.has_releases == 'true' &&
+      needs.approve-release.result == 'success' &&
+      (needs.precompile.result == 'success' || needs.precompile.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: ${{ matrix.submodules }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      # Download precompiled artifacts for packages that need them
+      - name: Download precompiled artifacts
+        if: matrix.precompile == true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: ${{ matrix.precompile_path }}/
+          pattern: ${{ matrix.precompile_artifact }}-*
+          merge-multiple: true
+
+      # Install jaclang for packages that need extra build commands
+      - name: Install jaclang (for build commands)
+        if: matrix.extra_build_cmd != ''
+        run: pip install -e ./jac
+
+      # Install the package itself for extra build commands
+      - name: Install package (for build commands)
+        if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
+        run: pip install -e ./${{ matrix.dir }}
+
+      # Run extra build commands (e.g., bundle_docs for jac-mcp)
+      - name: Run extra build commands
+        if: matrix.extra_build_cmd != ''
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.extra_build_cmd }}
+
+      # Build the package with attestations
+      - name: Build package
+        uses: hynek/build-and-inspect-python-package@efb823f52190ad02594531168b7a2d5790e66516 # v2.13.0
+        with:
+          path: ${{ matrix.dir }}
+          attest-build-provenance-github: "true"
+          upload-name-suffix: -${{ matrix.pypi }}
+
+  # ============================================================================
+  # Publish Tier 1: jaclang (base package)
+  # ============================================================================
+  publish-tier1:
+    needs: [parse-release, build]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Check if tier 1
+        id: check
+        run: |
+          if [[ "${{ matrix.tier }}" != "1" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download package
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Packages-${{ matrix.pypi }}
+          path: dist
+
+      - name: Publish to PyPI
+        if: steps.check.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        with:
+          attestations: true
+
+  wait-tier1:
+    needs: [parse-release, publish-tier1]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Wait for tier 1 on PyPI
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 1
+
+  # ============================================================================
+  # Publish Tier 2: packages depending on jaclang
+  # ============================================================================
+  publish-tier2:
+    needs: [parse-release, build, wait-tier1]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Check if tier 2
+        id: check
+        run: |
+          if [[ "${{ matrix.tier }}" != "2" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download package
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Packages-${{ matrix.pypi }}
+          path: dist
+
+      - name: Publish to PyPI
+        if: steps.check.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        with:
+          attestations: true
+
+  wait-tier2:
+    needs: [parse-release, publish-tier2]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Wait for tier 2 on PyPI
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 2
+
+  # ============================================================================
+  # Publish Tier 3: jaseci meta-package
+  # ============================================================================
+  publish-tier3:
+    needs: [parse-release, build, wait-tier2]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
+    steps:
+      - name: Check if tier 3
+        id: check
+        run: |
+          if [[ "${{ matrix.tier }}" != "3" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download package
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Packages-${{ matrix.pypi }}
+          path: dist
+
+      - name: Publish to PyPI
+        if: steps.check.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        with:
+          attestations: true
+
+  # ============================================================================
+  # Push tags after successful publish
+  # ============================================================================
+  push-tags:
+    needs: [parse-release, publish-tier1, publish-tier2, publish-tier3]
+    if: |
+      always() &&
+      needs.parse-release.outputs.has_releases == 'true' &&
+      (needs.publish-tier1.result == 'success' || needs.publish-tier2.result == 'success' || needs.publish-tier3.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      jaseci_version: ${{ steps.tags.outputs.jaseci_version }}
+      jaseci_release_tag: ${{ steps.tags.outputs.jaseci_release_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push tags
+        id: tags
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+          TIER1_RESULT: ${{ needs.publish-tier1.result }}
+          TIER2_RESULT: ${{ needs.publish-tier2.result }}
+          TIER3_RESULT: ${{ needs.publish-tier3.result }}
+        run: |
+          echo "$MATRIX" | jq -c '.include[]' | while read -r pkg; do
+            pypi_name=$(echo "$pkg" | jq -r '.pypi')
+            version=$(echo "$pkg" | jq -r '.version')
+            tier=$(echo "$pkg" | jq -r '.tier')
+
+            case "$tier" in
+              1) result="$TIER1_RESULT" ;;
+              2) result="$TIER2_RESULT" ;;
+              3) result="$TIER3_RESULT" ;;
+            esac
+
+            if [[ "$result" == "success" ]]; then
+              tag="${pypi_name}-v${version}"
+              echo "Creating tag: $tag"
+              git tag --annotate --message="Release ${pypi_name} ${version}" "$tag" "$GITHUB_SHA"
+              git push origin "$tag"
+
+              # For jaseci, also create v{version} tag for backwards compatibility
+              # This is the primary release tag used for GitHub releases and standalone binaries
+              if [[ "$pypi_name" == "jaseci" ]]; then
+                vtag="v${version}"
+                echo "Creating primary release tag: $vtag"
+                git tag --annotate --message="Jaseci ${version}" "$vtag" "$GITHUB_SHA"
+                git push origin "$vtag"
+                echo "jaseci_version=$version" >> "$GITHUB_OUTPUT"
+                echo "jaseci_release_tag=$vtag" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "Skipping tag for $pypi_name (tier $tier result: $result)"
+            fi
+          done
+
+  # ============================================================================
+  # Create GitHub Release
+  # ============================================================================
+  create-github-release:
+    needs: [parse-release, push-tags]
+    if: always() && needs.push-tags.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          pattern: Packages-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+          RELEASE_SUMMARY: ${{ needs.parse-release.outputs.release_summary }}
+          JASECI_RELEASE_TAG: ${{ needs.push-tags.outputs.jaseci_release_tag }}
+        run: |
+          # Use jaseci's v{version} tag if jaseci was released, otherwise first package's tag
+          if [[ -n "$JASECI_RELEASE_TAG" ]]; then
+            PRIMARY_TAG="$JASECI_RELEASE_TAG"
+          else
+            PRIMARY_TAG=$(echo "$MATRIX" | jq -r '.include[0] | "\(.pypi)-v\(.version)"')
+          fi
+
+          # Build release notes
+          {
+            echo "## Packages Released"
+            echo ""
+            while read -r pkg; do
+              pypi_name=$(echo "$pkg" | jq -r '.pypi')
+              version=$(echo "$pkg" | jq -r '.version')
+              echo "- **${pypi_name}** ${version} ([PyPI](https://pypi.org/project/${pypi_name}/${version}/))"
+            done < <(echo "$MATRIX" | jq -c '.include[]')
+          } > release_notes.md
+
+          # Create release
+          gh release create "$PRIMARY_TAG" \
+            --verify-tag \
+            --title "Release: $RELEASE_SUMMARY" \
+            --notes-file release_notes.md \
+            dist/*
+
+  # ============================================================================
+  # Build standalone binaries (triggered when jaseci is released)
+  # ============================================================================
+  build-standalone-binaries:
+    needs: [parse-release, push-tags, create-github-release]
+    if: |
+      always() &&
+      needs.push-tags.result == 'success' &&
+      needs.push-tags.outputs.jaseci_version != ''
+    uses: ./.github/workflows/build-standalone.yml
+    with:
+      jaseci_version: ${{ needs.push-tags.outputs.jaseci_version }}
+      release_tag: ${{ needs.push-tags.outputs.jaseci_release_tag }}
+    permissions:
+      contents: write
+
+  # ============================================================================
+  # Summary
+  # ============================================================================
+  summary:
+    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, push-tags, create-github-release, build-standalone-binaries]
+    if: always() && needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Release Summary
+        env:
+          SUMMARY: ${{ needs.parse-release.outputs.release_summary }}
+          PRECOMPILE: ${{ needs.precompile.result }}
+          BUILD: ${{ needs.build.result }}
+          TIER1: ${{ needs.publish-tier1.result }}
+          TIER2: ${{ needs.publish-tier2.result }}
+          TIER3: ${{ needs.publish-tier3.result }}
+          TAGS: ${{ needs.push-tags.result }}
+          RELEASE: ${{ needs.create-github-release.result }}
+          STANDALONE: ${{ needs.build-standalone-binaries.result }}
+          JASECI_VERSION: ${{ needs.push-tags.outputs.jaseci_version }}
+        run: |
+          {
+            echo "## Release Summary: $SUMMARY"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Precompile | $PRECOMPILE |"
+            echo "| Build | $BUILD |"
+            echo "| Publish Tier 1 (jaclang) | $TIER1 |"
+            echo "| Publish Tier 2 (plugins) | $TIER2 |"
+            echo "| Publish Tier 3 (jaseci) | $TIER3 |"
+            echo "| Push Tags | $TAGS |"
+            echo "| GitHub Release | $RELEASE |"
+            if [[ -n "$JASECI_VERSION" ]]; then
+              echo "| Standalone Binaries | $STANDALONE |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$TIER1" == "failure" || "$TIER2" == "failure" || "$TIER3" == "failure" ]]; then
+            echo "::error::Some packages failed to publish"
+            exit 1
+          fi
+
+          echo "All packages published successfully!" >> "$GITHUB_STEP_SUMMARY"

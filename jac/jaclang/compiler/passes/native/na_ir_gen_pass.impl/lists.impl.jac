@@ -27,29 +27,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    # Allocate list struct via rc_alloc (RC-managed)
-    null_ptr = ir.Constant(list_ptr_type, None);
-    size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
-    struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
-    list_ptr = b.bitcast(raw, list_ptr_type, name="list");
-    # len = 0
-    len_p = b.gep(list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
-    b.store(ir.Constant(i64, 0), len_p);
-    # cap = 8
-    cap_p = b.gep(list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
-    b.store(ir.Constant(i64, 8), cap_p);
-    # Allocate data: 8 * sizeof(elem) via plain malloc (internal, not RC-managed)
-    elem_null = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_size = b.ptrtoint(elem_gep, i64, name="elem.size");
-    data_bytes = b.mul(ir.Constant(i64, 8), elem_size, name="data.bytes");
-    data_raw = b.call(malloc_fn, [data_bytes], name="data.raw");
-    data = b.bitcast(data_raw, elem_type.as_pointer(), name="data");
-    data_p = b.gep(
-        list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr"
-    );
-    b.store(data, data_p);
+    (list_ptr, _) = self._emit_rc_alloc_container(b, list_ptr_type, [elem_type]);
     b.ret(list_ptr);
     # --- __list_append_T: append an element, growing if needed ---
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
@@ -73,25 +51,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     b.cbranch(need_grow, grow_bb, store_bb);
     # Grow block
     b.position_at_end(grow_bb);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_p2);
-    elem_null2 = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep2 = b.gep(elem_null2, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_sz = b.ptrtoint(elem_gep2, i64, name="elem.size");
-    new_bytes = b.mul(new_cap, elem_sz, name="new.bytes");
-    new_data_raw = b.call(malloc_fn, [new_bytes], name="new.data.raw");
-    new_data = b.bitcast(new_data_raw, elem_type.as_pointer(), name="new.data");
     data_p_g = b.gep(
         l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.g"
     );
-    old_data = b.load(data_p_g, name="old.data");
-    old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
-    old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
-    new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
-    b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    # Free old data array (plain malloc'd, not RC-managed)
-    b.call(free_fn, [old_i8]);
-    b.store(new_data, data_p_g);
+    self._emit_grow_array(b, data_p_g, elem_type, cur_len, cap_p2, cur_cap);
     b.branch(store_bb);
     # Store block
     b.position_at_end(store_bb);
@@ -160,63 +123,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     );
     release_fn.linkage = "private";
     release_fn.args[0].name = "list";
-    entry_bb = release_fn.append_basic_block("entry");
-    dec_bb = release_fn.append_basic_block("dec");
-    free_bb = release_fn.append_basic_block("do_free");
-    done_bb = release_fn.append_basic_block("done");
-    b = ir.IRBuilder(entry_bb);
-    # Null check
-    is_null = b.icmp_unsigned(
-        "==", release_fn.args[0], ir.Constant(list_ptr_type, None), name="is.null"
-    );
-    b.cbranch(is_null, done_bb, dec_bb);
-    # Decrement refcount
-    b = ir.IRBuilder(dec_bb);
-    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
-    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
-    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
-    old_rc = b.load(rc_ptr_r, name="old.rc");
-    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
-    b.store(new_rc, rc_ptr_r);
-    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
-    b.cbranch(is_zero, free_bb, done_bb);
+    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, list_ptr_type);
     # Free block: release elements if pointer, free data, free struct
-    b = ir.IRBuilder(free_bb);
-    is_ptr_elem = isinstance(elem_type, ir.PointerType);
-    if is_ptr_elem {
-        # Loop over data[0..len-1] and rc_release_simple each element
-        len_p_r = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
-            name="len.ptr.r"
-        );
-        cur_len_r = b.load(len_p_r, name="len.r");
-        data_p_r = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-            name="data.ptr.r"
-        );
-        data_r = b.load(data_p_r, name="data.r");
-        # Loop: i = 0; while i < len { release(data[i]); i++ }
-        loop_alloca = b.alloca(i64, name="loop.i");
-        b.store(ir.Constant(i64, 0), loop_alloca);
-        loop_cond_bb = release_fn.append_basic_block("loop.cond");
-        loop_body_bb = release_fn.append_basic_block("loop.body");
-        loop_end_bb = release_fn.append_basic_block("loop.end");
-        b.branch(loop_cond_bb);
-        b = ir.IRBuilder(loop_cond_bb);
-        loop_i = b.load(loop_alloca, name="i");
-        cmp = b.icmp_unsigned("<", loop_i, cur_len_r, name="cmp");
-        b.cbranch(cmp, loop_body_bb, loop_end_bb);
-        b = ir.IRBuilder(loop_body_bb);
-        elem_ptr = b.gep(data_r, [b.load(loop_alloca, name="i2")], name="elem.ptr");
-        elem_val = b.load(elem_ptr, name="elem.val");
-        elem_cast = b.bitcast(elem_val, i8_ptr, name="elem.cast");
-        b.call(self.rc_release_simple_fn, [elem_cast]);
-        inc_i = b.add(b.load(loop_alloca, name="i3"), ir.Constant(i64, 1), name="inc");
-        b.store(inc_i, loop_alloca);
-        b.branch(loop_cond_bb);
-        b = ir.IRBuilder(loop_end_bb);
+    if isinstance(elem_type, ir.PointerType) {
+        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
     }
     # Free data array (plain malloc'd)
     data_p_f = b.gep(

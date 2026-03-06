@@ -24,6 +24,11 @@ class PackageInfo(NamedTuple):
     release_notes: str = ""  # Path to release notes markdown (empty for meta-packages)
     notes_display: str = ""  # Display name in release notes
     submodules: bool = False  # Whether to checkout git submodules for this package
+    # Precompilation settings for packages with .jac files
+    precompile: bool = False  # Whether package needs bytecode precompilation
+    precompile_path: str = ""  # Path to _precompiled dir (relative to repo root)
+    precompile_artifact: str = ""  # Artifact name prefix for precompiled bytecode
+    extra_build_cmd: str = ""  # Extra command to run before build (e.g., bundle_docs)
 
 
 # Package registry - single source of truth for all release scripts
@@ -35,6 +40,9 @@ PACKAGES: dict[str, PackageInfo] = {
         release_notes="docs/docs/community/release_notes/jaclang.md",
         notes_display="jaclang",
         submodules=True,
+        precompile=True,
+        precompile_path="jac/jaclang/_precompiled",
+        precompile_artifact="precompiled-jaclang",
     ),
     "jac-byllm": PackageInfo(
         dir="jac-byllm",
@@ -42,6 +50,9 @@ PACKAGES: dict[str, PackageInfo] = {
         tier=2,
         release_notes="docs/docs/community/release_notes/byllm.md",
         notes_display="byllm",
+        precompile=True,
+        precompile_path="jac-byllm/byllm/_precompiled",
+        precompile_artifact="precompiled-byllm",
     ),
     "jac-client": PackageInfo(
         dir="jac-client",
@@ -49,6 +60,9 @@ PACKAGES: dict[str, PackageInfo] = {
         tier=2,
         release_notes="docs/docs/community/release_notes/jac-client.md",
         notes_display="jac-client",
+        precompile=True,
+        precompile_path="jac-client/jac_client/_precompiled",
+        precompile_artifact="precompiled-client",
     ),
     "jac-scale": PackageInfo(
         dir="jac-scale",
@@ -56,6 +70,9 @@ PACKAGES: dict[str, PackageInfo] = {
         tier=2,
         release_notes="docs/docs/community/release_notes/jac-scale.md",
         notes_display="jac-scale",
+        precompile=True,
+        precompile_path="jac-scale/jac_scale/_precompiled",
+        precompile_artifact="precompiled-scale",
     ),
     "jac-super": PackageInfo(
         dir="jac-super",
@@ -63,6 +80,9 @@ PACKAGES: dict[str, PackageInfo] = {
         tier=2,
         release_notes="docs/docs/community/release_notes/jac-super.md",
         notes_display="jac-super",
+        precompile=True,
+        precompile_path="jac-super/jac_super/_precompiled",
+        precompile_artifact="precompiled-super",
     ),
     "jac-mcp": PackageInfo(
         dir="jac-mcp",
@@ -70,6 +90,10 @@ PACKAGES: dict[str, PackageInfo] = {
         tier=2,
         release_notes="docs/docs/community/release_notes/jac-mcp.md",
         notes_display="jac-mcp",
+        precompile=True,
+        precompile_path="jac-mcp/jac_mcp/_precompiled",
+        precompile_artifact="precompiled-mcp",
+        extra_build_cmd="jac run scripts/bundle_docs.jac",
     ),
     "jaseci": PackageInfo(
         dir="jaseci-package",

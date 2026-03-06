@@ -93,4 +93,6 @@ def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
 ) -> (Symbol | None);
 
-def class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool;
+def class_implements_protocol(
+    cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
+) -> bool;

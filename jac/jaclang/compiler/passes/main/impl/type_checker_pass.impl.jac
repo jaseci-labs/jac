@@ -139,8 +139,12 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             target.type = left_type;
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
+            # Individual element types are inferred by _eval_unpacking_names.
+            # Skip whole-expression assign_type check since the LHS container
+            # type (tuple/list) is not directly comparable to the RHS iterable.
             self._eval_unpacking_names(target);
-            left_type = self.evaluator.get_type_of_expression(target);
+            self.evaluator.get_type_of_expression(nd.value);
+            return;
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }

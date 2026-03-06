@@ -2,23 +2,50 @@
 
 This checks if a class has all the methods required by a protocol,
 including methods inherited from base classes via MRO.
+When an evaluator is provided, method signatures are compared using
+resolved types (via get_type_of_ability and _assign_callable), which
+handles complex types like generics, unions, and aliases correctly.
 """
-impl class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
+impl class_implements_protocol(
+    cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
+) -> bool {
     proto_ast: uni.Archetype = proto.shared.symbol_table;
-    # FIXME: For now I'm only checking if method names are equal
-    # However we need to check the full signature compatibility.
-    proto_method_names = {method.sym_name for method in proto_ast.get_methods()};
+    proto_methods = {method.sym_name: method for method in proto_ast.get_methods()};
 
-    # Collect method names from the class and all its MRO classes
-    cls_method_names: set[str] = set();
+    # Collect methods from the class and all its MRO classes (first found wins)
+    cls_methods: dict[str, Any] = {};
     for mro_cls in cls.shared.mro {
         if isinstance(mro_cls.shared.symbol_table, uni.Archetype) {
-            cls_method_names.update(
-                method.sym_name for method in mro_cls.shared.symbol_table.get_methods()
-            );
+            for method in mro_cls.shared.symbol_table.get_methods() {
+                if method.sym_name not in cls_methods {
+                    cls_methods[method.sym_name] = method;
+                }
+            }
         }
     }
-    return proto_method_names.issubset(cls_method_names);
+
+    # Check all protocol methods exist AND have compatible signatures
+    for (name, proto_method) in proto_methods.items() {
+        if name not in cls_methods {
+            return False;
+        }
+        cls_method = cls_methods[name];
+        # When evaluator is available, use resolved types for signature comparison.
+        # This is the proper approach: resolve each method to a FunctionType and
+        # compare using _assign_callable (which handles parameter contravariance
+        # and return type covariance correctly).
+        if evaluator is not None {
+            proto_func_type = evaluator.get_type_of_ability(proto_method);
+            cls_func_type = evaluator.get_type_of_ability(cls_method);
+            if isinstance(proto_func_type, types.FunctionType)
+            and isinstance(cls_func_type, types.FunctionType) {
+                if not evaluator._assign_callable(cls_func_type, proto_func_type) {
+                    return False;
+                }
+            }
+        }
+    }
+    return True;
 }
 
 """Lookup a symbol in the symbol table."""
@@ -250,19 +277,66 @@ impl compute_mro_linearization(cls: types.ClassType) -> None {
     if cls.shared.mro {
         return;
     }
-    cls.shared.mro.append(cls);
+    # Ensure base classes have their MRO computed first
     for base in cls.shared.base_classes {
         if isinstance(base, types.ClassType) {
             compute_mro_linearization(base);
         }
     }
+    # C3 linearization: merge base MROs + direct base list
+    linearizations: list[list[types.ClassType]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, types.ClassType) {
-            for mro_cls in base.shared.mro {
-                if (mro_cls not in cls.shared.mro) {
-                    cls.shared.mro.append(mro_cls);
-                }
-            }
+            linearizations.append(base.shared.mro[:]);
         }
     }
+    base_list: list[types.ClassType] = [];
+    for base in cls.shared.base_classes {
+        if isinstance(base, types.ClassType) {
+            base_list.append(base);
+        }
+    }
+    if base_list {
+        linearizations.append(base_list);
+    }
+    result: list[types.ClassType] = [cls];
+    while linearizations {
+        # Find a good head: not in the tail of any linearization
+        candidate: (types.ClassType | None) = None;
+        for lin in linearizations {
+            if not lin {
+                continue;
+            }
+            head = lin[0];
+            in_tail = False;
+            for other_lin in linearizations {
+                if head in other_lin[1:] {
+                    in_tail = True;
+                    break;
+                }
+            }
+            if not in_tail {
+                candidate = head;
+                break;
+            }
+        }
+        if candidate is None {
+            break;  # Inconsistent hierarchy
+        }
+        result.append(candidate);
+        # Remove candidate from all lists
+        new_linearizations: list[list[types.ClassType]] = [];
+        for lin in linearizations {
+            new_lin = [
+                c
+                for c in lin
+                if c is not candidate
+            ];
+            if new_lin {
+                new_linearizations.append(new_lin);
+            }
+        }
+        linearizations = new_linearizations;
+    }
+    cls.shared.mro = result;
 }

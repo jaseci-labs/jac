@@ -5,6 +5,17 @@ impl UnparsePass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) ->
     super.init(ir_in, prog, cancel_token);
 }
 
+"""Join child nodes' gen.jac values with a separator."""
+def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
+    return sep.join(
+        [
+            k.gen.jac
+            for k in nd.kid
+            if k and k.gen.jac
+        ]
+    );
+}
+
 """Comma-separated join of nodes' gen.jac values."""
 impl UnparsePass._comma_sep(nodes: list) -> str {
     return ", ".join(
@@ -1041,24 +1052,12 @@ impl UnparsePass.exit_index_slice(nd: uni.IndexSlice) -> None {
 
 """EdgeRefTrailer: join kid list (complex edge syntax)."""
 impl UnparsePass.exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """EdgeOpRef: join kid list (complex edge syntax)."""
 impl UnparsePass.exit_edge_op_ref(nd: uni.EdgeOpRef) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """DisconnectOp: delete edge_spec."""
@@ -1068,13 +1067,7 @@ impl UnparsePass.exit_disconnect_op(nd: uni.DisconnectOp) -> None {
 
 """ConnectOp: join kid list (complex edge direction syntax)."""
 impl UnparsePass.exit_connect_op(nd: uni.ConnectOp) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """FilterCompr: produce (?:Type, cmp1, cmp2) or edge-inner Type:cmp syntax."""
@@ -1110,25 +1103,13 @@ impl UnparsePass.exit_filter_compr(nd: uni.FilterCompr) -> None {
 
 """AssignCompr: join kid list."""
 impl UnparsePass.exit_assign_compr(nd: uni.AssignCompr) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
     # ── JSX ──────────────────────────────────────────────────────────────
 }
 
 """JsxElement: join kid list (complex JSX syntax)."""
 impl UnparsePass.exit_jsx_element(nd: uni.JsxElement) -> None {
-    nd.gen.jac = "".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd, sep="");
 }
 
 """JsxElementName."""
@@ -1162,13 +1143,7 @@ impl UnparsePass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
 
 """JsxText: join kid list."""
 impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
-    nd.gen.jac = "".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd, sep="");
 }
 
 """JsxExpression."""
