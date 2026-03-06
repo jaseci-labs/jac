@@ -56,3 +56,25 @@ test "typevar3_scope_validation" {
     assert 'Type variable "_T" has no meaning in this context' in all_errors,
         "Expected scope error for _T used in nested non-generic class";
 }
+
+"""Test TypeVar variance validation (Pyright: covariant/contravariant checks)."""
+test "typevar4_variance_validation" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar4.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # 5 errors: covariant in param, contravariant in returns (explicit + inferred)
+    assert len(program.errors_had) == 5,
+        f"Expected 5 errors, got {len(program.errors_had)}";
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Covariant in parameter error
+    assert "Covariant type variable cannot be used in parameter type" in all_errors,
+        "Expected covariant param error for func2(a: _T_co)";
+
+    # Contravariant in return errors
+    assert "Contravariant type variable cannot be used in return type" in all_errors,
+        "Expected contravariant return error";
+}
