@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.11.4 (Unreleased)
+## jaclang 0.12.1 (Unreleased)
+
+## jaclang 0.12.0 (Latest Release)
 
 - 26 small refactors/changes.
 - **Fix: Formatter Semicolon & Decorator Spacing**: Fixed spacing bugs in the formatter where `@` decorators produced `@ decorator` instead of `@decorator`, and statement semicolons produced `raise ;` instead of `raise;`.
@@ -45,7 +47,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **CType Struct Contract for `obj`**: Formalized `obj` archetypes as CType-compatible structs with a strict layout contract. All `obj` fields must use layout-compatible types: primitives (`int`, `float`, `bool`, `str`, `bytes`, fixed-width `i8`–`u64`, `f32`, `f64`), other `obj` types (as pointers), enums, typed collections (`list[T]`, `dict[K,V]`, `set[T]`), optional types (`T | None`), or function pointer signatures. The layout pass now validates field types at compile time with warnings for non-compatible types (e.g., `Any`, untyped fields). Added function pointer type resolution in the native LLVM backend (`FuncSignature` → `ir.FunctionType.as_pointer()`), extended `NativeFieldInfo` with function pointer metadata (`is_func_ptr`, `func_param_types`, `func_ret_type`), and updated the zero-copy ctypes marshalling layer to wrap function pointer fields as callable `CFUNCTYPE` objects on access.
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 
-## jaclang 0.11.3 (Latest Release)
+## jaclang 0.11.3
 
 - **Static Analysis Pass: Unused Variables, Undefined Names, Unreachable Code**: Added a new `StaticAnalysisPass` to the type-check pipeline that detects three classes of issues: (1) variables defined but never referenced, (2) name references that fail to resolve, and (3) code following `return`/`raise`/`break`/`continue` statements. All diagnostics surface as warnings in both `jac check` output and LSP (IDE squiggles). The pass runs after `TypeCheckPass` and respects conventional skip patterns (`_`-prefixed names, `has` fields, imported symbols, abstract ability parameters, archetype/ability definitions).
 - **Overload Resolution: `lookup_all()` Symbol Table Method**: Added `UniScopeNode.lookup_all(name, deep)` which returns the primary symbol plus all overloads for a given name. The type evaluator and `ClassType.lookup_member_symbol` now use this centralized method instead of directly accessing the internal `names_in_scope_overload` dict, improving encapsulation and consistency of overload handling.
