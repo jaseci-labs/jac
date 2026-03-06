@@ -118,9 +118,16 @@ def enter(
         Arg.create(
             "dev",
             typ=bool,
-            default=False,
-            help="Enable HMR (Hot Module Replacement) mode",
+            default=True,
+            help="Enable HMR (Hot Module Replacement) mode (default)",
             short="d"
+        ),
+        Arg.create(
+            "prod",
+            typ=bool,
+            default=False,
+            help="Production mode: no HMR, minified JS, no sourcemaps",
+            short="P"
         ),
         Arg.create(
             "api_port",
@@ -143,12 +150,12 @@ def enter(
 
     ],
     examples=[
-        ("jac start", "Start server with default main.jac"),
-        ("jac start app.jac", "Start server with specific file"),
-        ("jac start --port 3000", "Start main.jac on port 3000"),
+        ("jac start", "Start dev server with HMR (default)"),
+        ("jac start app.jac", "Start dev server with specific file"),
+        ("jac start --prod", "Start in production mode (no HMR, minified)"),
+        ("jac start --port 3000", "Start on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start --dev", "Start with hot module replacement"),
-        ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
+        ("jac start app.jac --no-client", "Start without client bundling"),
         ("jac start --profile prod", "Start with production profile"),
 
     ],
@@ -159,7 +166,8 @@ def start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    dev: bool = False,
+    dev: bool = True,
+    prod: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int;

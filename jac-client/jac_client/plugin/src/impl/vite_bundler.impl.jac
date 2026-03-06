@@ -325,6 +325,8 @@ impl ViteBundler._generate_vite_config_content(
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
+    # Check if production mode is enabled via env var
+    prod_mode = os.environ.get(PROD_MODE_ENV_VAR, "") == "1";
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();
@@ -499,6 +501,9 @@ export default defineConfig({{
         build_overrides_str = self._format_config_object(build_config, indent=2)
             if (isinstance(build_config, dict) and build_config)
             else '';
+        # Production mode: disable sourcemaps and enable minification
+        sourcemap_setting = "false" if prod_mode else "true";
+        minify_setting = "    minify: 'esbuild',\n" if prod_mode else "";
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
             if (isinstance(server_config, dict) and server_config)
@@ -582,8 +587,8 @@ export default defineConfig({{
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
   envDir: projectRoot, // Load .env files from project root
     build: {{
-    sourcemap: true, // Enable source maps for better error messages
-{build_overrides_str}
+    sourcemap: {sourcemap_setting},
+{minify_setting}{build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
       output: {{

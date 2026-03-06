@@ -2,7 +2,7 @@
 import types;
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.vite_bundler { ViteBundler }
+import from jac_client.plugin.src.vite_bundler { ViteBundler, PROD_MODE_ENV_VAR }
 
 glob VITE_DEV_SERVER_PORT = 5173,
      DEFAULT_FUNCTION_NAME = "app";
@@ -83,12 +83,16 @@ impl WebTarget.start(
 
 """Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
-    entry_file: Path, project_dir: Path, platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None, prod: bool = False
 ) -> Path {
     import os;
     import shutil;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jac_client.plugin.client { JacClient }
+    # Set production mode env var for downstream components (ViteBundler, etc.)
+    if prod {
+        os.environ[PROD_MODE_ENV_VAR] = "1";
+    }
     bundler = ViteBundler(project_dir=project_dir);
     # Clean dist directory for fresh build
     dist_dir = bundler.output_dir;
@@ -96,36 +100,40 @@ impl WebTarget.build(
         shutil.rmtree(dist_dir);
     }
     dist_dir.mkdir(parents=True, exist_ok=True);
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if entry_file.name.endswith('.jac') {
-        mod = mod[:-4];
+    try {
+        (base, mod) = os.path.split(str(entry_file));
+        base = base or "./";
+        if entry_file.name.endswith('.jac') {
+            mod = mod[:-4];
+        }
+        Jac.jac_import(target=mod, base_path=base, lng='jac');
+        if Jac.program.errors_had {
+            errors = '\n'.join(str(e) for e in Jac.program.errors_had);
+            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+        }
+        loaded_mod = Jac.loaded_modules.get(mod);
+        if not loaded_mod {
+            raise RuntimeError(f"Module '{mod}' not found after import");
+        }
+        if not isinstance(loaded_mod, types.ModuleType) {
+            raise RuntimeError(f"Module '{mod}' is not a valid module type");
+        }
+        builder = JacClient.get_client_bundle_builder();
+        builder.build(loaded_mod, force=True);
+        bundle_path = bundler.find_bundle();
+        if not bundle_path {
+            raise RuntimeError("Web build failed: bundle not found");
+        }
+        _generate_index_html(
+            bundle_path=bundle_path,
+            bundler=bundler,
+            loaded_mod=loaded_mod,
+            project_dir=project_dir
+        );
+        return bundle_path;
+    } finally {
+        os.environ.pop(PROD_MODE_ENV_VAR, None);
     }
-    Jac.jac_import(target=mod, base_path=base, lng='jac');
-    if Jac.program.errors_had {
-        errors = '\n'.join(str(e) for e in Jac.program.errors_had);
-        raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
-    }
-    loaded_mod = Jac.loaded_modules.get(mod);
-    if not loaded_mod {
-        raise RuntimeError(f"Module '{mod}' not found after import");
-    }
-    if not isinstance(loaded_mod, types.ModuleType) {
-        raise RuntimeError(f"Module '{mod}' is not a valid module type");
-    }
-    builder = JacClient.get_client_bundle_builder();
-    builder.build(loaded_mod, force=True);
-    bundle_path = bundler.find_bundle();
-    if not bundle_path {
-        raise RuntimeError("Web build failed: bundle not found");
-    }
-    _generate_index_html(
-        bundle_path=bundle_path,
-        bundler=bundler,
-        loaded_mod=loaded_mod,
-        project_dir=project_dir
-    );
-    return bundle_path;
 }
 
 """Get the first client export function name from a loaded module."""

@@ -253,7 +253,8 @@ impl start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    dev: bool = False,
+    dev: bool = True,
+    prod: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int {
@@ -276,6 +277,10 @@ impl start(
     }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
+    # Production mode overrides dev mode
+    if prod {
+        dev = False;
+    }
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     # Load the Jac module (actual compilation/bundling happens in server.start())

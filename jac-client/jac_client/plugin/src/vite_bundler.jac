@@ -12,6 +12,7 @@ import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__),
      API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
+     PROD_MODE_ENV_VAR = "JAC_CLIENT_PROD_MODE",
      JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__",
      VITE_READY_TIMEOUT_SECONDS = 60,  # Max time to wait for Vite to be ready
      VITE_READY_PATTERNS = ['ready in', 'local:'],

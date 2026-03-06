@@ -52,10 +52,18 @@ with entry {
             choices=["windows", "macos", "linux", "all"],
             short="p"  # Use -p for platform
         ),
+        Arg.create(
+            "prod",
+            typ=bool,
+            default=False,
+            help="Production build: minified JS, no sourcemaps",
+            short="P"
+        ),
 
     ],
     examples=[
-        ("jac build", "Build web target (default)"),
+        ("jac build", "Build with sourcemaps (default)"),
+        ("jac build --prod", "Production build (minified, no sourcemaps)"),
         ("jac build main.jac", "Build specific file"),
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
         ("jac build --client desktop", "Build desktop app"),
@@ -66,7 +74,7 @@ with entry {
     source="jac-client"
 )
 def build(
-    filename: str = "main.jac", target: str = "web", platform: str | None = None
+    filename: str = "main.jac", client: str = "web", platform: str | None = None, prod: bool = False
 ) -> int {
     # This will be handled by the pre_hook
     return 0;
@@ -295,6 +303,7 @@ def _handle_build_target(ctx: HookContext) -> None {
 
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
+    prod = ctx.get_arg("prod", False);
 
     # Get config and project_dir first (needed for factory)
     config = get_config();
@@ -352,7 +361,7 @@ def _handle_build_target(ctx: HookContext) -> None {
         }
 
         # Polymorphic call - each target handles its own build logic
-        bundle_path = target.build(entry_path, project_dir, platform);
+        bundle_path = target.build(entry_path, project_dir, platform, prod);
 
         console.success(f"Build complete: {bundle_path}");
         ctx.set_data("cancel_execution", True);
@@ -423,7 +432,7 @@ def _handle_start_target(ctx: HookContext) -> None {
     (config, entry_path, project_dir) = start_ctx;
 
     # Warn about debug mode in production
-    dev_mode = ctx.get_arg("dev", False);
+    dev_mode = ctx.get_arg("dev", True);
     if not dev_mode and is_debug_mode(config) {
         console.warning(
             "Debug mode is enabled. For production, consider setting debug=false in [plugins.client] section of jac.toml"

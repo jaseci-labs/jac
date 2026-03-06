@@ -51,7 +51,8 @@ class ClientTarget {
         self: ClientTarget,
         entry_file: Path,
         project_dir: Path,
-        platform: Optional[str] = None
+        platform: Optional[str] = None,
+        prod: bool = False
     ) -> Path abs;
 
     """Start dev server for the target."""

@@ -1518,7 +1518,7 @@ def _check_and_install_tauri_cli -> None {
 Uses super().build() to get the web bundle, then adds sidecar and Tauri wrapping.
 """
 impl DesktopTarget.build(
-    entry_file: Path, project_dir: Path, platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None, prod: bool = False
 ) -> Path {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
@@ -1535,7 +1535,7 @@ impl DesktopTarget.build(
     # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
     try {
-        web_bundle_path = super.build(entry_file, project_dir, platform);
+        web_bundle_path = super.build(entry_file, project_dir, platform, prod);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }

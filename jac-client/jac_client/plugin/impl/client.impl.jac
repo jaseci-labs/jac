@@ -76,11 +76,14 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
     }
     output_dir = client_dir / 'dist';
     runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
+    # Check if production mode is enabled via env var
+    import os;
+    prod_mode = os.environ.get(PROD_MODE_ENV_VAR, "") == "1";
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
         vite_package_json=package_json_path,
         vite_output_dir=output_dir,
-        vite_minify=False
+        vite_minify=prod_mode
     );
 }
 
