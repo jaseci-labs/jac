@@ -79,6 +79,18 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
 """Handle the function call node."""
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
     self.evaluator.get_type_of_expression(nd);
+
+    # Validate TypeVar usage in runtime context (e.g., list[T]())
+    # Pyright: Type variable "T" has no meaning in this context
+    if isinstance(nd.target, uni.AtomTrailer) and not nd.target.is_attr {
+        if isinstance(nd.target.right, uni.IndexSlice) {
+            for slice in nd.target.right.slices {
+                if slice.start {
+                    self.evaluator.validate_typevar_in_type_expr(slice.start);
+                }
+            }
+        }
+    }
 }
 
 """Handle the binary expression node."""
@@ -534,6 +546,18 @@ impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None
                 );
             }
         }
+    }
+}
+
+"""Validate TypeVar scope in type annotations.
+
+Pyright: validateTypeVarUsage - TypeVars must be used in a valid scope.
+A SubTag wraps type annotations (e.g., `x: int`, `has name: str`).
+This validates all TypeVar usages including nested ones like `list[T]`.
+"""
+impl TypeCheckPass.exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> None {
+    if isinstance(nd.tag, uni.Expr) {
+        self.evaluator.validate_typevar_in_type_expr(nd.tag);
     }
 }
 

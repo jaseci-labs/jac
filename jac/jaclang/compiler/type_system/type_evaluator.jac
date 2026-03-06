@@ -242,6 +242,16 @@ obj TypeEvaluator {
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
+
+    # -------------------------------------------------------------------------
+    # TypeVar scope validation (Pyright: validateTypeVarUsage)
+    # -------------------------------------------------------------------------
+    def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
+    def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;
+    def _get_enclosing_class_type_params(node: uni.UniNode) -> list[types.TypeVarType];
+    def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
+    def _get_outer_scope_type_params(node: uni.UniNode) -> list[types.TypeVarType];
+
     # -------------------------------------------------------------------------
     # Type narrowing support
     #

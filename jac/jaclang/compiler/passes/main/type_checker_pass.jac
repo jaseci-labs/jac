@@ -44,6 +44,7 @@ class TypeCheckPass(UniPass) {
     def exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None;
     def exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> None;
     def exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None;
+    def exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> None;
     def _eval_unpacking_names(self: TypeCheckPass, container: uni.Expr) -> None;
     def _body_always_returns(
         self: TypeCheckPass, body: list[uni.CodeBlockStmt]
