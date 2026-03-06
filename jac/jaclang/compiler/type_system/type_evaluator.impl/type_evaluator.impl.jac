@@ -135,12 +135,122 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return self._convert_to_instance(self.prefetch.set_class);
             }
 
+        # Comprehension handlers (SetCompr/GenCompr before ListCompr since they inherit from it)
+        case uni.SetCompr():
+            if self.prefetch and self.prefetch.set_class {
+                set_inst = self._convert_to_instance(self.prefetch.set_class);
+                for compr in expr.compr {
+                    self.get_type_of_expression(compr.collection);
+                    if isinstance(compr.target, uni.Name) {
+                        self.get_type_of_expression(compr.target);
+                    }
+                }
+                self.get_type_of_expression(expr.out_expr);
+                return set_inst;
+            }
+
+        case uni.GenCompr():
+            if self.prefetch and self.prefetch.list_class {
+                list_inst = self._convert_to_instance(self.prefetch.list_class);
+                for compr in expr.compr {
+                    self.get_type_of_expression(compr.collection);
+                    if isinstance(compr.target, uni.Name) {
+                        self.get_type_of_expression(compr.target);
+                    }
+                }
+                elem_type = self.get_type_of_expression(expr.out_expr);
+                if isinstance(list_inst, types.ClassType)
+                and not isinstance(elem_type, types.UnknownType) {
+                    list_inst.private.type_args = [elem_type];
+                }
+                return list_inst;
+            }
+
+        case uni.ListCompr():
+            if self.prefetch and self.prefetch.list_class {
+                list_inst = self._convert_to_instance(self.prefetch.list_class);
+                for compr in expr.compr {
+                    self.get_type_of_expression(compr.collection);
+                    if isinstance(compr.target, uni.Name) {
+                        self.get_type_of_expression(compr.target);
+                    }
+                    if compr.conditional {
+                        for cond in compr.conditional {
+                            self.get_type_of_expression(cond);
+                        }
+                    }
+                }
+                elem_type = self.get_type_of_expression(expr.out_expr);
+                if isinstance(list_inst, types.ClassType)
+                and not isinstance(elem_type, types.UnknownType) {
+                    list_inst.private.type_args = [elem_type];
+                }
+                return list_inst;
+            }
+
+        case uni.DictCompr():
+            if self.prefetch and self.prefetch.dict_class {
+                dict_inst = self._convert_to_instance(self.prefetch.dict_class);
+                for compr in expr.compr {
+                    self.get_type_of_expression(compr.collection);
+                    if isinstance(compr.target, uni.Name) {
+                        self.get_type_of_expression(compr.target);
+                    } elif isinstance(compr.target, (uni.TupleVal, uni.ListVal)) {
+                        for v in compr.target.values {
+                            if isinstance(v, uni.Name) {
+                                self.get_type_of_expression(v);
+                            }
+                        }
+                    }
+                }
+                return dict_inst;
+            }
+
+        case uni.LambdaExpr():
+            return_type: TypeBase = types.UnknownType();
+            parameters: list[types.Parameter] = [];
+            if isinstance(expr.signature, uni.FuncSignature) {
+                if isinstance(expr.signature.return_type, uni.Expr) {
+                    return_type = self._convert_to_instance(
+                        self.get_type_of_expression(expr.signature.return_type)
+                    );
+                }
+                for param in expr.signature.get_parameters() {
+                    param_type: TypeBase | None = None;
+                    if param.type_tag {
+                        param_type = self._convert_to_instance(
+                            self.get_type_of_expression(param.type_tag.tag)
+                        );
+                    }
+                    parameters.append(
+                        types.Parameter(
+                            name=param.name.value,
+                            category=types.ParameterCategory.Positional,
+                            param_type=param_type,
+                            default_value=param.value,
+                        )
+                    );
+                }
+            }
+            if isinstance(expr.body, uni.Expr) {
+                body_type = self.get_type_of_expression(expr.body);
+                if isinstance(return_type, types.UnknownType) {
+                    return_type = body_type;
+                }
+            }
+            return types.FunctionType(
+                func_name="<lambda>", return_type=return_type, parameters=parameters,
+            );
+
         case uni.JsxElement():
             if self.prefetch and self.prefetch.jsx_element_class {
                 return self._convert_to_instance(self.prefetch.jsx_element_class);
             }
 
-        # TODO: Boolean literals.
+        case uni.Bool():
+            if self.prefetch and self.prefetch.bool_class {
+                return self._convert_to_instance(self.prefetch.bool_class);
+            }
 
         # ----------------------------------------------------------------------
         # End of prefetched types
@@ -1028,6 +1138,12 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 return types.UnknownType();
             }
 
+            # ---- Handle except clause variable: except ValueError as e ----
+            if isinstance(node_.parent, uni.Except) and node_.parent.ex_type {
+                ex_type = self.get_type_of_expression(node_.parent.ex_type);
+                return self._convert_to_instance(ex_type);
+            }
+
             if isinstance(node_.parent, uni.ModulePath) {
                 return self.get_type_of_module(node_.parent);
             }
@@ -1194,10 +1310,6 @@ impl TypeEvaluator._assign_class(
         return True;
     }
     # Integers can be used where floats are expected.
-    # Sets can be used where frozensets are expected (frozenset accepts any iterable).
-    if src_type.is_builtin("set") and dest_type.is_builtin("frozenset") {
-        return True;
-    }
     if src_type.is_builtin("int") and dest_type.is_builtin("float") {
         return True;
     }

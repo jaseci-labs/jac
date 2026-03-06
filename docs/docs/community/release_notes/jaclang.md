@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- **Fix: `jac format --lintfix` File Deletion on Parse Errors**: Fixed a critical bug where `jac format --lintfix` would completely wipe out file contents when encountering parse errors. The formatter now preserves the original file when parse/lex errors are present, while still allowing files with type errors (but valid syntax) to be formatted normally. Added a safety check in `format_single_file()` that prevents writing empty formatted output to disk.
+
 ## jaclang 0.12.0 (Latest Release)
 
 - 27 small refactors/changes.
@@ -47,6 +49,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **CType Struct Contract for `obj`**: Formalized `obj` archetypes as CType-compatible structs with a strict layout contract. All `obj` fields must use layout-compatible types: primitives (`int`, `float`, `bool`, `str`, `bytes`, fixed-width `i8`–`u64`, `f32`, `f64`), other `obj` types (as pointers), enums, typed collections (`list[T]`, `dict[K,V]`, `set[T]`), optional types (`T | None`), or function pointer signatures. The layout pass now validates field types at compile time with warnings for non-compatible types (e.g., `Any`, untyped fields). Added function pointer type resolution in the native LLVM backend (`FuncSignature` → `ir.FunctionType.as_pointer()`), extended `NativeFieldInfo` with function pointer metadata (`is_func_ptr`, `func_param_types`, `func_ret_type`), and updated the zero-copy ctypes marshalling layer to wrap function pointer fields as callable `CFUNCTYPE` objects on access.
 - **Fix: jac-check wanings not printing to CLI**: `jac-check` was not printing warnings fixed by minor if statement/for loop changes.
 - **New: `jacpretty` version 2.0**: Jacpretty Library Version 2 implementation.
+- **Type Checker Soundness Fixes (9 more shortcomings)**: Removed unsound `set`→`frozenset` implicit coercion. Added iterability checks for destructuring RHS (`(a, b) = 5` now errors) and for-loop collections (`for x in 42` now errors). Added type inference for list/set/dict/generator comprehensions, lambda expressions, and `bool` literals (all previously returned `UnknownType`). Added exception type narrowing in `except` clauses so the bound variable carries the declared exception type. Added `raise` statement validation to reject non-exception types. Added context manager protocol checking in `with` statements (verifies `__enter__` exists). Added missing-return detection for functions with non-`None` return type annotations that may implicitly return `None`.
 
 ## jaclang 0.11.3
 
