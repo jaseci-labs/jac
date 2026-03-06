@@ -295,8 +295,9 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path = base_path_dir;
     }
     file_name = Path(file_path).name;
+
+    # Project-level folders take priority to avoid shadowing user files
     candidates = [
-        # Project-level folders take priority to avoid shadowing user files
         base_path / 'dist' / file_path,
         base_path / 'dist' / file_name,
         base_path / 'assets' / file_path,
@@ -305,13 +306,14 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path / 'src' / file_path,
         base_path / 'src' / file_name,
         (base_path / file_path),
+        base_path / '.jac' / 'client' / 'dist' / file_path,
+        base_path / '.jac' / 'client' / 'dist' / file_name
+    ];
+        # The above last two lines
         # .jac/client/dist/ — jac-client's Vite build output.
         # Font packages (e.g. @fontsource-variable/outfit) emit .woff2/.ttf files here.
         # CSS @font-face rules reference them with root-relative URLs (e.g. /assets/outfit.woff2),
         # so serve_root_asset must include this path or those requests return 404.
-        base_path / '.jac' / 'client' / 'dist' / file_path,
-        base_path / '.jac' / 'client' / 'dist' / file_name
-    ];
     for candidate_file in candidates {
         if (candidate_file.exists() and candidate_file.is_file()) {
             file_content = candidate_file.read_bytes();
