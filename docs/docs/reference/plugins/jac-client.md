@@ -1181,11 +1181,12 @@ cl {
 | Command | Description |
 |---------|-------------|
 | `jac create myapp --use client` | Create new full-stack project |
-| `jac start` | Start dev server |
-| `jac start --dev` | Dev server with HMR |
+| `jac start` | Start dev server with HMR (default) |
+| `jac start --prod` | Start in production mode (minified, no sourcemaps) |
 | `jac start --client pwa` | Start PWA (builds then serves) |
 | `jac start --client desktop` | Start desktop app in dev mode |
-| `jac build` | Build for production (web) |
+| `jac build` | Build with source maps (default) |
+| `jac build --prod` | Production build (minified, no sourcemaps) |
 | `jac build --client desktop` | Build desktop app |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
@@ -1210,7 +1211,7 @@ For private packages from custom registries, see [NPM Registry Configuration](#n
 Build a Jac application for a specific target.
 
 ```bash
-jac build [filename] [--client TARGET] [-p PLATFORM]
+jac build [filename] [--client TARGET] [-p PLATFORM] [--prod]
 ```
 
 | Option | Description | Default |
@@ -1218,18 +1219,22 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | `filename` | Path to .jac file | `main.jac` |
 | `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
 | `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--prod, -P` | Production build (minified JS, no sourcemaps) | `false` |
 
 **Examples:**
 
 ```bash
-# Build web target (default)
+# Build web target with source maps (default)
 jac build
+
+# Production build (minified, no sourcemaps)
+jac build --prod
 
 # Build specific file
 jac build main.jac
 
-# Build PWA with offline support
-jac build --client pwa
+# Build PWA for production
+jac build --client pwa --prod
 
 # Build desktop app for current platform
 jac build --client desktop

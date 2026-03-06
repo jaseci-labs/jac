@@ -92,11 +92,3 @@ class ViteBundler {
         self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
     ) -> Any;
 }
-# Env var used to pass API base URL through deep call chains
-# (e.g., DesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
-
-# Vite dev server configuration
-
-# Patterns to detect Vite server ready state
-
-# Patterns to filter from Vite output (we print our own URLs)
