@@ -139,20 +139,13 @@ class Style {
     }
 }
 
-glob RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]");
-
-# Regex matching tokens that rich's ReprHighlighter would colour:
-# group 1 = number
-# group 2 = single-quoted string
-# group 3 = double-quoted string
-# group 4 = tag_name (the word right after <, e.g. 'class' in <class list>)
-# group 5 = tag_contents (rest of <tag_name ... > content)
-glob RE_HIGHLIGHT = re.compile(
-    r"(?<![\w\x1b])(\-?[0-9]+\.?[0-9]*(?:e[\-\+]?\d+)?)(?![\w])"
-    r"|(\x27[^\x27\\]*(?:\\.[^\x27\\]*)*\x27)"
-    r"|(\x22[^\x22\\]*(?:\\.[^\x22\\]*)*\x22)"
-    r"|<([-\w.:|]*)([\w\W]*?)>"
-);
+glob RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
+     RE_HIGHLIGHT = re.compile(
+         r"(?<![\w\x1b])(\-?[0-9]+\.?[0-9]*(?:e[\-\+]?\d+)?)(?![\w])"
+         r"|(\x27[^\x27\\]*(?:\\.[^\x27\\]*)*\x27)"
+         r"|(\x22[^\x22\\]*(?:\\.[^\x22\\]*)*\x22)"
+         r"|<([-\w.:|]*)([\w\W]*?)>"
+     );
 
 def _highlight_text(text: str, base_style: str = "") -> str {
     """Highlight numbers, quoted strings, and <tag> content like rich's
@@ -309,12 +302,20 @@ class Console {
             text = str(`obj);
             if (self.is_terminal and not self._no_color) {
                 if markup {
-                    text = self._render_markup_with_theme(text, resolved_style, highlight);
+                    text = self._render_markup_with_theme(
+                        text, resolved_style, highlight
+                    );
                 } else {
                     # No markup tags: apply highlight then wrap in base style
-                    text = _highlight_text(text, resolved_style) if highlight else (
-                        Style(resolved_style).render(text) if resolved_style else text
-                    );
+                    text = _highlight_text(text, resolved_style)
+                        if highlight
+                        else (
+                            Style(resolved_style).render(
+                                text
+                            )
+                                if resolved_style
+                                else text
+                        );
                 }
             }
             parts.append(text);
@@ -336,8 +337,9 @@ class Console {
                 txt = markup[pos:m.start()].replace("\x00", "[").replace("\x01", "]");
                 combined_style = " ".join(self._resolve_style(s) for s in stack);
                 result.append(
-                    _highlight_text(txt, combined_style) if highlight
-                    else (Style(combined_style).render(txt) if stack else txt)
+                    _highlight_text(txt, combined_style)
+                        if highlight
+                        else (Style(combined_style).render(txt) if stack else txt)
                 );
             }
             if (m.group(1) and stack) {
@@ -351,17 +353,16 @@ class Console {
             txt = markup[pos:].replace("\x00", "[").replace("\x01", "]");
             combined_style = " ".join(self._resolve_style(s) for s in stack);
             result.append(
-                _highlight_text(txt, combined_style) if highlight
-                else (Style(combined_style).render(txt) if stack else txt)
+                _highlight_text(txt, combined_style)
+                    if highlight
+                    else (Style(combined_style).render(txt) if stack else txt)
             );
         }
         return "".join(result);
     }
 
     """Return a status context manager with spinner animation."""
-    def status(
-        self: Console, status: str, *, spinner: str = "dots"
-    ) -> object {
+    def status(self: Console, status: str, *, spinner: str = "dots") -> object {
         return _StatusContext(self, status, spinner);
     }
 
@@ -400,7 +401,6 @@ def print(*objects: Any, **kwargs: Any) -> None {
 }
 
 class Theme {
-    """Theme class for storing named style mappings."""
     with entry {
         __slots__ = ["styles"];
     }
@@ -417,7 +417,6 @@ class Theme {
 
 class Panel {
     """Panel class for drawing bordered boxes around content."""
-
     def init(
         self: Panel,
         content: str,
@@ -473,7 +472,6 @@ class Panel {
 
 class Table {
     """Table class for creating formatted tables."""
-
     def init(
         self: Table,
         *,
@@ -545,10 +543,7 @@ class _StatusContext {
     has _thread: Thread | None;
 
     def init(
-        self: _StatusContext,
-        console: Console,
-        status: str,
-        spinner: str = "dots"
+        self: _StatusContext, console: Console, status: str, spinner: str = "dots"
     ) -> object {
         (self.console, self.status, self.spinner, self._stop_event) = (
             console,
@@ -596,12 +591,18 @@ class _StatusContext {
 }
 
 glob __all__ = [
-    "Console",
-    "Style",
-    "Theme",
-    "Panel",
-    "Table",
-    "print",
-    "render_markup",
-    "get_console"
-];
+         "Console",
+         "Style",
+         "Theme",
+         "Panel",
+         "Table",
+         "print",
+         "render_markup",
+         "get_console"
+     ];
+# Regex matching tokens that rich's ReprHighlighter would colour:
+# group 1 = number
+# group 2 = single-quoted string
+# group 3 = double-quoted string
+# group 4 = tag_name (the word right after <, e.g. 'class' in <class list>)
+# group 5 = tag_contents (rest of <tag_name ... > content)
