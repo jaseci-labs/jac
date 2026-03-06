@@ -1,103 +1,23 @@
 """Unified release script for the jaseci monorepo.
 
+Bumps package versions, syncs internal dependencies, updates release notes,
+and outputs metadata for the GitHub Actions workflow to create a release PR.
+
 Usage:
     python scripts/release.py --jaclang patch --jac-client minor
     python scripts/release.py --jaclang patch --dry-run
 
-Each package flag accepts: skip (default), patch, minor, major
-Omit a package flag to skip it.
-
-This script:
-  1. Reads the current version from each package's pyproject.toml
-  2. Computes the new version based on the bump type
-  3. Updates pyproject.toml with the new version
-  4. Syncs internal dependency versions in dependent packages
-  5. Updates the release notes markdown file
-  6. Outputs metadata for the GitHub Actions workflow
+Each package flag accepts: skip (default), patch, minor, major.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
 from pathlib import Path
 
 import tomlkit
-
-# ---------------------------------------------------------------------------
-# Package registry
-# ---------------------------------------------------------------------------
-
-PACKAGES: dict[str, dict[str, str]] = {
-    "jaclang": {
-        "dir": "jac",
-        "pyproject": "jac/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/jaclang.md",
-        "pypi_name": "jaclang",
-        "notes_display": "jaclang",
-    },
-    "jac-byllm": {
-        "dir": "jac-byllm",
-        "pyproject": "jac-byllm/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/byllm.md",
-        "pypi_name": "byllm",
-        "notes_display": "byllm",
-    },
-    "jac-client": {
-        "dir": "jac-client",
-        "pyproject": "jac-client/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/jac-client.md",
-        "pypi_name": "jac-client",
-        "notes_display": "jac-client",
-    },
-    "jac-scale": {
-        "dir": "jac-scale",
-        "pyproject": "jac-scale/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/jac-scale.md",
-        "pypi_name": "jac-scale",
-        "notes_display": "jac-scale",
-    },
-    "jac-super": {
-        "dir": "jac-super",
-        "pyproject": "jac-super/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/jac-super.md",
-        "pypi_name": "jac-super",
-        "notes_display": "jac-super",
-    },
-    "jac-mcp": {
-        "dir": "jac-mcp",
-        "pyproject": "jac-mcp/pyproject.toml",
-        "release_notes": "docs/docs/community/release_notes/jac-mcp.md",
-        "pypi_name": "jac-mcp",
-        "notes_display": "jac-mcp",
-    },
-    "jaseci": {
-        "dir": "jaseci-package",
-        "pyproject": "jaseci-package/pyproject.toml",
-        "release_notes": "",  # Meta package - no release notes
-        "pypi_name": "jaseci",
-        "notes_display": "jaseci",
-    },
-}
-
-# Internal dependency graph: pypi_name -> list of pypi_names it depends on
-INTERNAL_DEPS: dict[str, list[str]] = {
-    "jaclang": [],
-    "byllm": ["jaclang"],
-    "jac-client": ["jaclang"],
-    "jac-scale": ["jaclang"],
-    "jac-super": ["jaclang"],
-    "jac-mcp": ["jaclang"],
-    "jaseci": ["jaclang", "byllm", "jac-client", "jac-scale", "jac-super", "jac-mcp"],
-}
-
-# Reverse map: pypi_name -> list of package keys that depend on it
-DEPENDENTS: dict[str, list[str]] = {}
-for _pkg_key, _pkg_info in PACKAGES.items():
-    for _dep in INTERNAL_DEPS.get(_pkg_info["pypi_name"], []):
-        DEPENDENTS.setdefault(_dep, []).append(_pkg_key)
-
+from release_utils import DEPENDENTS, PACKAGES, bump_version, set_output
 
 # ---------------------------------------------------------------------------
 # Version helpers
@@ -108,28 +28,6 @@ def read_version(pyproject_path: Path) -> str:
     """Read the version string from a pyproject.toml file."""
     data = tomlkit.loads(pyproject_path.read_text())
     return str(data["project"]["version"])  # type: ignore[index]
-
-
-def bump_version(current: str, bump_type: str) -> str:
-    """Compute the next version given a bump type."""
-    parts = current.split(".")
-    if len(parts) != 3:
-        raise ValueError(f"Expected semver X.Y.Z, got: {current}")
-    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-
-    if bump_type == "patch":
-        patch += 1
-    elif bump_type == "minor":
-        minor += 1
-        patch = 0
-    elif bump_type == "major":
-        major += 1
-        minor = 0
-        patch = 0
-    else:
-        raise ValueError(f"Unknown bump type: {bump_type}")
-
-    return f"{major}.{minor}.{patch}"
 
 
 # ---------------------------------------------------------------------------
@@ -190,12 +88,11 @@ def sync_dependents(
         if dep_key not in releasing_packages:
             continue
         dep_info = PACKAGES[dep_key]
-        dep_pyproject = repo_root / dep_info["pyproject"]
+        pyproject_rel = f"{dep_info.dir}/pyproject.toml"
+        dep_pyproject = repo_root / pyproject_rel
         if update_dependency_version(dep_pyproject, pkg_pypi_name, new_version):
-            modified.append(dep_info["pyproject"])
-            print(
-                f"  Updated {pkg_pypi_name}>={new_version} in {dep_info['pyproject']}"
-            )
+            modified.append(pyproject_rel)
+            print(f"  Updated {pkg_pypi_name}>={new_version} in {pyproject_rel}")
     return modified
 
 
@@ -243,31 +140,6 @@ def update_release_notes(
 
 
 # ---------------------------------------------------------------------------
-# GitHub Actions output
-# ---------------------------------------------------------------------------
-
-
-def set_output(name: str, value: str) -> None:
-    """Write a key=value pair to $GITHUB_OUTPUT (or print if not in CI)."""
-    github_output = os.environ.get("GITHUB_OUTPUT")
-    if github_output:
-        with Path(github_output).open("a") as f:
-            # Handle multiline values using GitHub Actions heredoc syntax.
-            # Format: name<<DELIMITER\nvalue\nDELIMITER\n
-            # A random UUID is used as delimiter to avoid conflicts with value content.
-            # See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
-            if "\n" in value:
-                import uuid
-
-                delimiter = uuid.uuid4().hex
-                f.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
-            else:
-                f.write(f"{name}={value}\n")
-    else:
-        print(f"  [output] {name}={value}")
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -297,7 +169,7 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parent.parent
 
     # Collect packages to release (those not set to "skip")
-    releases: list[dict[str, str]] = []
+    releases: list[dict] = []
     for pkg_name, pkg_info in PACKAGES.items():
         # Convert hyphens to underscores for attribute access
         attr_name = pkg_name.replace("-", "_")
@@ -307,7 +179,11 @@ def main() -> None:
                 {
                     "name": pkg_name,
                     "bump": bump_type,
-                    **pkg_info,
+                    "dir": pkg_info.dir,
+                    "pyproject": f"{pkg_info.dir}/pyproject.toml",
+                    "release_notes": pkg_info.release_notes,
+                    "pypi_name": pkg_info.pypi,
+                    "notes_display": pkg_info.notes_display,
                 }
             )
 
@@ -348,8 +224,9 @@ def main() -> None:
             for dep_key in DEPENDENTS.get(rel["pypi_name"], []):
                 if dep_key in releasing_packages:
                     dep_info = PACKAGES[dep_key]
+                    dep_pyproject = f"{dep_info.dir}/pyproject.toml"
                     print(
-                        f"[dry-run] Would update {dep_info['pyproject']} -> {rel['pypi_name']}>={new_version}"
+                        f"[dry-run] Would update {dep_pyproject} -> {rel['pypi_name']}>={new_version}"
                     )
             if rel["release_notes"]:
                 print(f"[dry-run] Would update {rel['release_notes']}")

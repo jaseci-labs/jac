@@ -794,14 +794,14 @@ impl ModuleIntrospector.introspect_walker(
 """Ensure client bundle is available and return hash."""
 impl ModuleIntrospector.ensure_bundle -> str {
     if not self._module {
-        raise RuntimeError('Module not loaded') ;
+        raise RuntimeError('Module not loaded');
     }
     if self._bundle {
         return self._bundle.hash;
     }
     # Don't retry if we already have a cached error
     if self._bundle_error {
-        raise ClientBundleError(self._bundle_error) ;
+        raise ClientBundleError(self._bundle_error);
     }
     try {
         self._bundle = self._bundle_builder.build(self._module);
@@ -810,7 +810,7 @@ impl ModuleIntrospector.ensure_bundle -> str {
     } except Exception as exc {
         self._bundle = None;
         self._bundle_error = str(exc);
-        raise ClientBundleError(self._bundle_error) ;
+        raise ClientBundleError(self._bundle_error);
     }
 }
 

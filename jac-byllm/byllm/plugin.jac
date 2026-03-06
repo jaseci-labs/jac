@@ -118,7 +118,7 @@ class JacRuntime {
         }
         raise NotImplementedError(
             "The 'by' operator requires visitable nodes on the left and an LLM model on the right."
-        ) ;
+        );
     }
 
     """Return a configured Model from jac.toml for the builtin llm."""

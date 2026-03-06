@@ -3,41 +3,69 @@
 This checks if a class has all the methods required by a protocol,
 including methods inherited from base classes via MRO.
 
-Uses symbol table lookup instead of get_methods() to properly handle
-stub file classes where AST parent relationships may not be set correctly.
+Uses symbol table lookup to properly handle stub file classes where AST
+parent relationships may not be set correctly. When an evaluator is provided,
+method signatures are compared using resolved types (via get_type_of_ability
+and _assign_callable), which handles complex types like generics, unions, and
+aliases correctly.
 """
-impl class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
-    # Get protocol method names from symbol table (more reliable than get_methods())
-    # This handles stub file classes where is_method may not work correctly.
-    proto_method_names: set[str] = set();
+impl class_implements_protocol(
+    cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
+) -> bool {
+    # Get protocol methods from symbol table (handles stubs where get_methods() may fail)
+    proto_methods: dict[str, Any] = {};
     proto_symtab = proto.shared.symbol_table;
     if isinstance(proto_symtab, uni.UniScopeNode) {
         for (name, sym) in proto_symtab.names_in_scope.items() {
             # Include methods (Ability nodes) but skip special attributes
             if sym.decl and isinstance(sym.decl.name_of, uni.Ability) {
-                proto_method_names.add(name);
+                proto_methods[name] = sym.decl.name_of;
             }
         }
     }
 
     # If no protocol methods found, protocol is trivially satisfied
-    if not proto_method_names {
+    if not proto_methods {
         return True;
     }
 
-    # Collect method names from the class and all its MRO classes using symbol table
-    cls_method_names: set[str] = set();
+    # Collect methods from the class and all its MRO classes (first found wins)
+    cls_methods: dict[str, Any] = {};
     for mro_cls in cls.shared.mro {
         mro_symtab = mro_cls.shared.symbol_table;
         if isinstance(mro_symtab, uni.UniScopeNode) {
             for (name, sym) in mro_symtab.names_in_scope.items() {
                 if sym.decl and isinstance(sym.decl.name_of, uni.Ability) {
-                    cls_method_names.add(name);
+                    if name not in cls_methods {
+                        cls_methods[name] = sym.decl.name_of;
+                    }
                 }
             }
         }
     }
-    return proto_method_names.issubset(cls_method_names);
+
+    # Check all protocol methods exist AND have compatible signatures
+    for (name, proto_method) in proto_methods.items() {
+        if name not in cls_methods {
+            return False;
+        }
+        cls_method = cls_methods[name];
+        # When evaluator is available, use resolved types for signature comparison.
+        # This is the proper approach: resolve each method to a FunctionType and
+        # compare using _assign_callable (which handles parameter contravariance
+        # and return type covariance correctly).
+        if evaluator is not None {
+            proto_func_type = evaluator.get_type_of_ability(proto_method);
+            cls_func_type = evaluator.get_type_of_ability(cls_method);
+            if isinstance(proto_func_type, types.FunctionType)
+            and isinstance(cls_func_type, types.FunctionType) {
+                if not evaluator._assign_callable(cls_func_type, proto_func_type) {
+                    return False;
+                }
+            }
+        }
+    }
+    return True;
 }
 
 """Lookup a symbol in the symbol table."""
@@ -168,7 +196,7 @@ impl ParamAssignmentTracker.match_positional_argument(
                 return param;
             }
         }
-        raise Exception('Too many positional arguments') ;
+        raise Exception('Too many positional arguments');
     }
 }
 
@@ -185,7 +213,7 @@ impl ParamAssignmentTracker.match_named_argument(
         }
         raise Exception(
             f"Named argument '{arg.key.sym_name}' does not match any parameter"
-        ) ;
+        );
     }
 }
 
@@ -232,14 +260,14 @@ impl ParamAssignmentTracker.lookup_named_parameter(
             self.matched_params.add(param);
             raise Exception(
                 f"Positional only parameter '{param.name}' cannot be matched with a named argument"
-            ) ;
+            );
         }
         if (param.param_kind not in (types.ParamKind.NORMAL, types.ParamKind.KWONLY)) {
             continue;
         }
         if (param.name == param_name) {
             if (param in self.matched_params) {
-                raise Exception(f"Parameter '{param.name}' already matched") ;
+                raise Exception(f"Parameter '{param.name}' already matched");
             }
             self.matched_params.add(param);
             return param;
@@ -269,21 +297,68 @@ impl compute_mro_linearization(cls: types.ClassType) -> None {
     if cls.shared.mro {
         return;
     }
-    cls.shared.mro.append(cls);
+    # Ensure base classes have their MRO computed first
     for base in cls.shared.base_classes {
         if isinstance(base, types.ClassType) {
             compute_mro_linearization(base);
         }
     }
+    # C3 linearization: merge base MROs + direct base list
+    linearizations: list[list[types.ClassType]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, types.ClassType) {
-            for mro_cls in base.shared.mro {
-                if (mro_cls not in cls.shared.mro) {
-                    cls.shared.mro.append(mro_cls);
-                }
-            }
+            linearizations.append(base.shared.mro[:]);
         }
     }
+    base_list: list[types.ClassType] = [];
+    for base in cls.shared.base_classes {
+        if isinstance(base, types.ClassType) {
+            base_list.append(base);
+        }
+    }
+    if base_list {
+        linearizations.append(base_list);
+    }
+    result: list[types.ClassType] = [cls];
+    while linearizations {
+        # Find a good head: not in the tail of any linearization
+        candidate: (types.ClassType | None) = None;
+        for lin in linearizations {
+            if not lin {
+                continue;
+            }
+            head = lin[0];
+            in_tail = False;
+            for other_lin in linearizations {
+                if head in other_lin[1:] {
+                    in_tail = True;
+                    break;
+                }
+            }
+            if not in_tail {
+                candidate = head;
+                break;
+            }
+        }
+        if candidate is None {
+            break;  # Inconsistent hierarchy
+        }
+        result.append(candidate);
+        # Remove candidate from all lists
+        new_linearizations: list[list[types.ClassType]] = [];
+        for lin in linearizations {
+            new_lin = [
+                c
+                for c in lin
+                if c is not candidate
+            ];
+            if new_lin {
+                new_linearizations.append(new_lin);
+            }
+        }
+        linearizations = new_linearizations;
+    }
+    cls.shared.mro = result;
 }
 
 """

@@ -53,7 +53,7 @@ class LocalStorage(Storage) {
     ) -> (bytes | None) {
         src_path = self._resolve_path(source);
         if not src_path.exists() {
-            raise FileNotFoundError(f"File not found: {source}") ;
+            raise FileNotFoundError(f"File not found: {source}");
         }
         if destination is None {
             with open(src_path, "rb") as f {
@@ -109,7 +109,7 @@ class LocalStorage(Storage) {
     override def get_metadata(self: LocalStorage, path: str) -> dict[str, Any] {
         file_path = self._resolve_path(path);
         if not file_path.exists() {
-            raise FileNotFoundError(f"File not found: {path}") ;
+            raise FileNotFoundError(f"File not found: {path}");
         }
         stat = file_path.stat();
         return {

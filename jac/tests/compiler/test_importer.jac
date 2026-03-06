@@ -27,7 +27,8 @@ import from jaclang.jac0core.jir {
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
+     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+     _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_importer_");
 
 test "import basic python" {
     sys.modules.pop("fixtures", None);
@@ -194,7 +195,9 @@ test "python dash m jac package" {
 }
 
 test "compiler separates internal from user modules" {
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp_file {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp_file {
         tmp_file.write('with entry { "hello" :> print; }\n');
         user_file = tmp_file.name;
     }
@@ -233,7 +236,9 @@ test "compiler separates internal from user modules" {
 }
 
 test "get bytecode uses JIR cache on second call" {
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
         tmp.write("glob x = 1;\n");
         tmp.flush();
         jac_file = tmp.name;

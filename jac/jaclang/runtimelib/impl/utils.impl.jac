@@ -165,7 +165,7 @@ impl traverse_graph(
                 } elif other_nd {
                     node_depths[other_nd] = min((cur_depth + 1), (node_depths[nd] + 1));
                 } else {
-                    raise ValueError('Edge is detached from node in graph') ;
+                    raise ValueError('Edge is detached from node in graph');
                 }
             }
             if (

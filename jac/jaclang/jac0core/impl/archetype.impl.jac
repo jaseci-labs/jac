@@ -153,13 +153,13 @@ impl Anchor.__getattr__(self: Anchor, name: str) -> object {
         if not self.is_populated() {
             raise ValueError(
                 f"{self.__class__.__name__} [{self.id}] is not a validreference!"
-            ) ;
+            );
         }
         return getattr(self, name);
     }
     raise AttributeError(
         f"'{self.__class__.__name__} object has not attribute {name}'"
-    ) ;
+    );
 }
 
 """Serialize Anchor."""
@@ -267,7 +267,7 @@ impl EdgeAnchor.__getstate__(self: EdgeAnchor) -> dict[(str, object)] {
 }
 
 """Create default anchor."""
-@ cached_property
+@cached_property
 impl Archetype.__jac__(self: Archetype) -> Anchor {
     return Anchor(archetype=self);
 }
@@ -300,7 +300,7 @@ impl GenericEdge.__repr__(self: GenericEdge) -> str {
 }
 
 """Create default anchor."""
-@ cached_property
+@cached_property
 impl Root.__jac__(self: Root) -> NodeAnchor {
     return NodeAnchor(archetype=self, persistent=True, edges=[]);
 }
@@ -311,7 +311,7 @@ impl Root.__repr__(self: Root) -> str {
 }
 
 """Get function parameter annotations."""
-@ cached_property
+@cached_property
 impl ObjectSpatialFunction.trigger(
     self: ObjectSpatialFunction
 ) -> (type | UnionType | tuple[((type | UnionType), ...)] | None) {

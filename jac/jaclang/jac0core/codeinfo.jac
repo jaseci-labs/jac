@@ -54,7 +54,10 @@ obj NativeFieldInfo {
     has name: str,
         llvm_type: str,
         index: int,
-        enum_type: (str | None) = None;
+        enum_type: (str | None) = None,
+        is_func_ptr: bool = False,
+        func_param_types: (list[str] | None) = None,
+        func_ret_type: (str | None) = None;
 }
 
 """Layout info for a native struct (for ctypes auto-generation)."""

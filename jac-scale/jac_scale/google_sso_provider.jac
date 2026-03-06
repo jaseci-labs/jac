@@ -39,7 +39,7 @@ obj GoogleSSOProvider(SSOProvider) {
     """
     async def initiate_auth(operation: str) -> Response {
         if not self._google_sso {
-            raise RuntimeError("GoogleSSO not initialized") ;
+            raise RuntimeError("GoogleSSO not initialized");
         }
 
         with self._google_sso {
@@ -60,7 +60,7 @@ obj GoogleSSOProvider(SSOProvider) {
     """
     async def handle_callback(request: Request) -> SSOUserInfo {
         if not self._google_sso {
-            raise RuntimeError("GoogleSSO not initialized") ;
+            raise RuntimeError("GoogleSSO not initialized");
         }
 
         with self._google_sso {

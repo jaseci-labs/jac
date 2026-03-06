@@ -25,11 +25,11 @@ class UtilityFactory {
             import from jac_scale.utilities.loggers.standard_logger { StandardLogger }
             return StandardLogger(config=config or {});
         } elif logger_type == 'cloudwatch' {
-            raise NotImplementedError("CloudWatch logger not yet implemented") ;
+            raise NotImplementedError("CloudWatch logger not yet implemented");
         } elif logger_type == 'elasticsearch' {
-            raise NotImplementedError("Elasticsearch logger not yet implemented") ;
+            raise NotImplementedError("Elasticsearch logger not yet implemented");
         } else {
-            raise ValueError(f"Unsupported logger type: {logger_type}") ;
+            raise ValueError(f"Unsupported logger type: {logger_type}");
         }
     }
 
@@ -58,7 +58,7 @@ class UtilityFactory {
         } elif metrics_type == 'none' {
             return NoOpMetricsCollector();
         } else {
-            raise ValueError(f"Unsupported metrics type: {metrics_type}") ;
+            raise ValueError(f"Unsupported metrics type: {metrics_type}");
         }
     }
 }

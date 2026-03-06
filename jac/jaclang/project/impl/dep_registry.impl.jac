@@ -8,7 +8,7 @@ impl DependencyRegistry.register(dep_type_info: dict[str, Any]) -> None {
     import from jaclang.project.dep_registry { DependencyType }
     name = dep_type_info.get("name");
     if not name {
-        raise ValueError("Dependency type must have a 'name' field") ;
+        raise ValueError("Dependency type must have a 'name' field");
     }
     # Create DependencyType from the dict
     dep_type = DependencyType(
@@ -22,10 +22,10 @@ impl DependencyRegistry.register(dep_type_info: dict[str, Any]) -> None {
     );
     # Validate required handlers
     if dep_type.install_handler is None {
-        raise ValueError(f"Dependency type '{name}' must have an 'install_handler'") ;
+        raise ValueError(f"Dependency type '{name}' must have an 'install_handler'");
     }
     if dep_type.remove_handler is None {
-        raise ValueError(f"Dependency type '{name}' must have a 'remove_handler'") ;
+        raise ValueError(f"Dependency type '{name}' must have a 'remove_handler'");
     }
     # Register the type
     self._types[name] = dep_type;

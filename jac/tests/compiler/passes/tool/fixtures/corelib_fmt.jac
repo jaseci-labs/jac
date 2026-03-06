@@ -355,14 +355,14 @@ impl WalkerAnchor.disengage_now{
 
 impl NodeAnchor.__call__(walk: object) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance") ;
+        raise TypeError("Argument must be a Walker instance");
     }
     walk(self);
 }
 
 impl EdgeAnchor.__call__(walk: EdgeInterface) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance") ;
+        raise TypeError("Argument must be a Walker instance");
     }
     walk(self.__jac__.target);
 }

@@ -12,6 +12,14 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 
+"""Set of primitive type names that have a known, fixed-size native layout.
+
+obj fields must resolve to one of these, another obj, an enum, a typed
+collection (list[T], dict[K,V], set[T]) where element types are also
+layout-compatible, or a callable with explicit signature (function pointer).
+"""
+glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {"int","float","bool","str","bytes","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64",};
+
 """Per-field layout descriptor."""
 obj FieldInfo {
     has name: str,
@@ -19,7 +27,8 @@ obj FieldInfo {
         type_tag: str,
         type_node: (uni.UniNode | None) = None,
         default_expr: (uni.UniNode | None) = None,
-        owner: str = "";
+        owner: str = "",
+        is_func_ptr: bool = False;
 }
 
 """Per-method descriptor for vtable layout."""
@@ -88,4 +97,12 @@ obj LayoutPass(UniPass) {
     def _build_vtable_layout(
         arch_name: str, arch_map: dict[str, uni.Archetype]
     ) -> None;
+    # Field type validation for obj archetypes (CType struct contract)
+    def _validate_obj_fields(
+        arch: uni.Archetype, arch_map: dict[str, uni.Archetype]
+    ) -> None;
+
+    def _is_layout_compatible_type(
+        type_node: (uni.UniNode | None), arch_map: dict[str, uni.Archetype]
+    ) -> bool;
 }

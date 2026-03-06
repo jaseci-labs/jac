@@ -38,7 +38,7 @@ impl ViteClientBundleBuilder._get_compiler(
         if (not self.vite_package_json or not self.vite_package_json.exists()) {
             raise ClientBundleError(
                 'Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder'
-            ) ;
+            );
         }
         compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])] = cast(
             Callable[([Path], tuple[(str, (ModuleType | None))])], self._compile_to_js

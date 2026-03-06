@@ -49,12 +49,12 @@ impl load_template_from_directory(
 ) -> ProjectTemplate {
     template_dir = Path(template_dir);
     if not template_dir.is_dir() {
-        raise ValueError(f"Template directory not found: {template_dir}") ;
+        raise ValueError(f"Template directory not found: {template_dir}");
     }
     # Load jac.toml
     jac_toml_path = template_dir / "jac.toml";
     if not jac_toml_path.exists() {
-        raise ValueError(f"No jac.toml found in {template_dir}") ;
+        raise ValueError(f"No jac.toml found in {template_dir}");
     }
     with open(jac_toml_path, "rb") as f {
         jac_config = tomllib.load(f);
@@ -62,17 +62,17 @@ impl load_template_from_directory(
     # Extract template metadata from [jacpack] section
     jacpackk_section = jac_config.get("jacpack", {});
     if not jacpackk_section {
-        raise ValueError(f"jac.toml must have [jacpack] section to be packable") ;
+        raise ValueError(f"jac.toml must have [jacpack] section to be packable");
     }
     name = jacpackk_section.get("name");
     if not name {
-        raise ValueError("jac.toml [jacpack] must have name field") ;
+        raise ValueError("jac.toml [jacpack] must have name field");
     }
     description = jacpackk_section.get("description", "");
     if not description {
         raise ValueError(
             f"jac.toml [jacpack] for '{name}' must have description field"
-        ) ;
+        );
     }
     # Build config from jac.toml (everything except [jacpack] section)
     config: dict[str, Any] = {};
@@ -155,19 +155,19 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     template_dir = Path(template_dir);
     output_path = Path(output_path);
     if not template_dir.is_dir() {
-        raise ValueError(f"Template directory not found: {template_dir}") ;
+        raise ValueError(f"Template directory not found: {template_dir}");
     }
     # Load jac.toml to get template metadata
     jac_toml_path = template_dir / "jac.toml";
     if not jac_toml_path.exists() {
-        raise ValueError(f"No jac.toml found in {template_dir}") ;
+        raise ValueError(f"No jac.toml found in {template_dir}");
     }
     with open(jac_toml_path, "rb") as f {
         jac_config = tomllib.load(f);
     }
     jacpackk_section = jac_config.get("jacpack", {});
     if not jacpackk_section {
-        raise ValueError(f"jac.toml must have [jacpack] section to be packable") ;
+        raise ValueError(f"jac.toml must have [jacpack] section to be packable");
     }
     # Load template (without resolving hook - we'll store it as string)
     template = load_template_from_directory(template_dir, post_create_hook=None);
@@ -201,7 +201,7 @@ impl load_template_from_json(
 ) -> ProjectTemplate {
     json_path = Path(json_path);
     if not json_path.exists() {
-        raise ValueError(f"Template JSON not found: {json_path}") ;
+        raise ValueError(f"Template JSON not found: {json_path}");
     }
     with open(json_path, "r") as f {
         data = json.load(f);
@@ -240,7 +240,7 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
             # Assume last component is function name
             parts = hook_path.rsplit(".", 1);
             if len(parts) != 2 {
-                raise ValueError(f"Invalid hook path format: {hook_path}") ;
+                raise ValueError(f"Invalid hook path format: {hook_path}");
             }
             module_path = parts[0];
             func_name = parts[1];
@@ -250,7 +250,7 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
         hook = getattr(module, func_name);
 
         if not callable(hook) {
-            raise ValueError(f"Hook '{hook_path}' is not callable") ;
+            raise ValueError(f"Hook '{hook_path}' is not callable");
         }
 
         return hook;

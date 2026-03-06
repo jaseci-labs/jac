@@ -53,7 +53,7 @@ class UniPass(Transform[uni.Module, uni.Module]) {
             }
         } elif len(nd.kid) {
             if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(nd)) ;
+                raise ValueError("Node has no sub_node_tab. " + str(nd));
             } else {
                 for i in nd.kid {
                     if isinstance(i, typ) {

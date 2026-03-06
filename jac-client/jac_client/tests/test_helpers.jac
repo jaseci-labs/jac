@@ -57,5 +57,5 @@ def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None {
             }
         }
     }
-    raise TimeoutError(f"Timed out waiting for {host}:{port}") ;
+    raise TimeoutError(f"Timed out waiting for {host}:{port}");
 }
