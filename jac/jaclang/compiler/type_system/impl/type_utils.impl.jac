@@ -395,6 +395,12 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
         flags.is_typing_stub = True;
     }
 
+    # Check if it's specifically typing_extensions (not typing)
+    # Similar to Pyright: _isTypingExtensionsStubFile
+    if normalized_path.endswith("typing_extensions.pyi") {
+        flags.is_typing_extensions_stub = True;
+    }
+
     # Check if it's a builtin stub (core Python stubs)
     # Similar to Pyright's _isBuiltInStubFile list
     if (

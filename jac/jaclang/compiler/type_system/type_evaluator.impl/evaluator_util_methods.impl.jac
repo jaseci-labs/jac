@@ -288,15 +288,51 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
     return sym;
 }
 
-"""Set symbol and type for a module item node and its alias if present."""
+"""Set symbol and type for a module item node and its alias if present.
+
+When importing from typing_extensions, re-exported symbols (like TypeVar from typing)
+need to be marked with is_from_typing_extensions=True for compatibility checks.
+This follows Pyright's approach of tracking effective module origin at import time.
+"""
 impl TypeEvaluator._set_module_item_symbol_and_type(
-    node_: uni.ModuleItem, sym: uni.Symbol
+    node_: uni.ModuleItem, sym: uni.Symbol, source_module: (types.ModuleType | None) = None
 ) -> TypeBase {
     node_.name.sym = sym;
     if node_.alias {
         node_.alias.sym = sym;
     }
-    node_.name.type = self.get_type_of_symbol(sym);
+    sym_type = self.get_type_of_symbol(sym);
+
+    # Handle typing_extensions re-exports (Pyright: TypingExtensionClass flag)
+    # When importing TypeVar/TypeVarTuple/ParamSpec from typing_extensions,
+    # but the underlying class comes from typing, mark it appropriately.
+    if (
+        source_module is not None
+        and source_module.is_typing_extensions_stub
+        and isinstance(sym_type, types.ClassType)
+        and sym_type.shared
+        and sym_type.shared.class_name in ("TypeVar", "TypeVarTuple", "ParamSpec")
+        and sym_type.shared.is_builtin_class
+        and not sym_type.shared.is_from_typing_extensions
+    ) {
+        # Clone with is_from_typing_extensions=True
+        sym_type = types.ClassType(
+            shared=types.ClassType.ClassDetailsShared(
+                class_name=sym_type.shared.class_name,
+                symbol_table=sym_type.shared.symbol_table,
+                mro=sym_type.shared.mro,
+                type_params=sym_type.shared.type_params,
+                base_classes=sym_type.shared.base_classes,
+                is_builtin_class=True,
+                is_from_stdlib_stub=True,
+                is_from_typing_extensions=True,
+            ),
+            private=sym_type.private,
+            flags=sym_type.flags,
+        );
+    }
+
+    node_.name.type = sym_type;
     return node_.name.type;
 }
 

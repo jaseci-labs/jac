@@ -166,8 +166,17 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         );
         return types.UnknownType();
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
+    # Check if this is a TypeVar call (from typing or typing_extensions)
+    # The is_from_typing_extensions flag is already set on ClassType when loaded from module
+    is_typevar_call = False;
+    is_from_typing_extensions = False;
+    if isinstance(caller_type, types.ClassType) and caller_type.shared {
+        if caller_type.shared.class_name == "TypeVar" and caller_type.shared.is_builtin_class {
+            is_typevar_call = True;
+            is_from_typing_extensions = caller_type.shared.is_from_typing_extensions;
+        }
+    }
+    if is_typevar_call {
         # Pyright: createTypeVarType() - Extract TypeVar name and validate constraints
         type_var_name = "";
         first_constraint_arg: uni.Expr | None = None;
@@ -251,7 +260,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             is_covariant=is_covariant,
             is_contravariant=is_contravariant,
             bound=bound_type,
-            constraints=constraint_types if constraint_types else None
+            constraints=constraint_types if constraint_types else None,
+            is_from_typing_extensions=is_from_typing_extensions
         );
     }
     if (

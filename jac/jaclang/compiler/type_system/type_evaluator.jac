@@ -171,7 +171,7 @@ obj TypeEvaluator {
     # Helper functions
     # -----------------------------------------------------------------------------
     def _set_module_item_symbol_and_type(
-        node_: uni.ModuleItem, sym: uni.Symbol
+        node_: uni.ModuleItem, sym: uni.Symbol, source_module: (types.ModuleType | None) = None
     ) -> TypeBase;
 
     def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;

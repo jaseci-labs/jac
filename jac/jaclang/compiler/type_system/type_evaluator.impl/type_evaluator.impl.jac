@@ -330,6 +330,43 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         }
                         # Not a special form, return the resolved type
                         sym.add_use(expr.right);
+                        # typing vs typing_extensions runtime compatibility (Pyright: TypingExtensionClass)
+                        #
+                        # In Python < 3.13, typing.TypeVar and typing_extensions.TypeVar are
+                        # DIFFERENT runtime classes. This causes runtime errors:
+                        #
+                        #   def func(tv: typing.TypeVar): ...
+                        #   T = typing_extensions.TypeVar("T")
+                        #   func(T)  # Runtime error! isinstance(T, typing.TypeVar) is False
+                        #
+                        # Since typing_extensions re-exports TypeVar from typing, we need to
+                        # track the ACCESS context (te.TypeVar) not the definition (typing.pyi).
+                        if (
+                            isinstance(sym_type, types.ClassType)
+                            and sym_type.shared
+                            and sym_type.shared.class_name in ("TypeVar", "TypeVarTuple", "ParamSpec")
+                            and sym_type.shared.is_builtin_class
+                            and not sym_type.shared.is_from_typing_extensions
+                            and base_type.is_typing_extensions_stub
+                        ) {
+                            # Clone with is_from_typing_extensions=True
+                            te_class = types.ClassType(
+                                shared=types.ClassType.ClassDetailsShared(
+                                    class_name=sym_type.shared.class_name,
+                                    symbol_table=sym_type.shared.symbol_table,
+                                    mro=sym_type.shared.mro,
+                                    type_params=sym_type.shared.type_params,
+                                    base_classes=sym_type.shared.base_classes,
+                                    is_builtin_class=True,
+                                    is_from_stdlib_stub=True,
+                                    is_from_typing_extensions=True,
+                                ),
+                                private=sym_type.private,
+                                flags=sym_type.flags,
+                            );
+                            expr.right.type = te_class;
+                            return te_class;
+                        }
                         expr.right.type = sym_type;
                         return sym_type;
                     }
@@ -554,6 +591,31 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
                     attr_name = expr.right.value;
+
+                    # Check if this is the TypeVar symbol itself (T1) vs a value typed with it (a: T1)
+                    # TypeVar symbols have runtime attributes: __name__, __bound__, __constraints__, etc.
+                    # Pyright: typeVar8 - distinguish TypeVar object from TypeVar type parameter
+                    is_typevar_symbol = False;
+                    if isinstance(expr.target, uni.Name) and expr.target.sym {
+                        decl = expr.target.sym.decl;
+                        # If declaration is not a parameter, it's likely the TypeVar symbol
+                        if decl and not decl.find_parent_of_type(uni.ParamVar) {
+                            is_typevar_symbol = True;
+                        }
+                    }
+
+                    if is_typevar_symbol {
+                        # TypeVar symbol (e.g., T1 = TypeVar("T1")) has runtime attributes
+                        typevar_attrs = {"__name__", "__bound__", "__constraints__",
+                                        "__covariant__", "__contravariant__"};
+                        if attr_name in typevar_attrs {
+                            # Return str for __name__, type | None for __bound__, etc.
+                            if attr_name == "__name__" {
+                                return self._convert_to_instance(self.prefetch.str_class);
+                            }
+                            return types.UnknownType();
+                        }
+                    }
 
                     # Constrained TypeVar - check all constraint types (Pyright: typeVar7)
                     if base_type.constraints {
@@ -1552,6 +1614,24 @@ impl TypeEvaluator._assign_class(
         }
         return True;
     }
+    # Check typing vs typing_extensions compatibility (Pyright: TypingExtensionClass flag)
+    # Classes with the same name from typing modules need special handling:
+    # - Same module (both typing or both typing_extensions) → compatible
+    # - Different modules → NOT compatible
+    if (
+        src_type.shared.class_name == dest_type.shared.class_name
+        and src_type.shared.is_builtin_class
+        and dest_type.shared.is_builtin_class
+        and src_type.shared.class_name in ("TypeVar", "TypeVarTuple", "ParamSpec")
+    ) {
+        if src_type.shared.is_from_typing_extensions == dest_type.shared.is_from_typing_extensions {
+            # Same module origin - compatible
+            return True;
+        } else {
+            # Different module origin - NOT compatible
+            return False;
+        }
+    }
     # Check if src class is a subclass of dest class.
     if self.is_sub_class(dest_type, src_type) {
         return True;
@@ -1881,6 +1961,26 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
                     return self._assign_callable(src_type, call_type);
                 }
             }
+        }
+    }
+    # TypeVarType (e.g., T2) assigned to ClassType(TypeVar) - check module compatibility
+    # This handles func3(T2) where func3 expects typing.TypeVar but T2 is from typing_extensions
+    if isinstance(src_type, types.TypeVarType) and isinstance(dest_type, types.ClassType) {
+        if (
+            self.prefetch
+            and self.prefetch.type_var_class
+            and dest_type.shared.class_name == "TypeVar"
+            and dest_type.shared.is_builtin_class
+        ) {
+            # Check if both TypeVars come from the same module (typing vs typing_extensions)
+            dest_is_typing_extensions = dest_type.shared.is_from_typing_extensions;
+            src_is_typing_extensions = src_type.is_from_typing_extensions;
+            if dest_is_typing_extensions != src_is_typing_extensions {
+                # Mismatched modules - typing.TypeVar vs typing_extensions.TypeVar
+                return False;
+            }
+            # Same module - compatible
+            return True;
         }
     }
     # Everything is assignable to object, Any, Unknown, or TypeVar.

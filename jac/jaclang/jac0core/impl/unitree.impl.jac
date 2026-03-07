@@ -382,12 +382,9 @@ impl UniScopeNode.lookup(
     if (name in self.names_in_scope) {
         return self.names_in_scope[name];
     }
-    if (
-        (deep and self.parent_scope)
-        and (sym := self.parent_scope.lookup(name, deep, incl_inner_scope))
-    ) {
-        return sym;
-    }
+    # Check inner scopes BEFORE parent scope to match Python semantics
+    # where if/else blocks don't create new scopes - their variables
+    # are at the enclosing function/module scope level.
     if incl_inner_scope {
         for kid in self.kid_scope {
             if isinstance(kid, UniScopeNode.get_python_scoping_nodes()) {
@@ -397,6 +394,12 @@ impl UniScopeNode.lookup(
                 return sym;
             }
         }
+    }
+    if (
+        (deep and self.parent_scope)
+        and (sym := self.parent_scope.lookup(name, deep, incl_inner_scope))
+    ) {
+        return sym;
     }
     # If not found and we're in/under an ImplDef, check the declaration's symbol table
     impl_def: ImplDef | None = (

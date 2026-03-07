@@ -39,7 +39,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         if sym := type_utils.lookup_symtab(
                             mod, node_.name.value, self.builtins_module
                         ) {
-                            return self._set_module_item_symbol_and_type(node_, sym);
+                            # Pass source module for typing_extensions re-export handling
+                            source_mod = from_mod_type if isinstance(from_mod_type, types.ModuleType) else None;
+                            return self._set_module_item_symbol_and_type(node_, sym, source_mod);
                         }
                         continue;
                     }
@@ -51,6 +53,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         is_stub_file=flags.is_stub_file,
                         is_stdlib_stub=flags.is_stdlib_stub,
                         is_typing_stub=flags.is_typing_stub,
+                        is_typing_extensions_stub=flags.is_typing_extensions_stub,
                         is_builtin_stub=flags.is_builtin_stub,
                     );
 
@@ -69,7 +72,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             if sym := type_utils.lookup_symtab(
                 mod_type.symbol_table, node_.name.value, self.builtins_module
             ) {
-                return self._set_module_item_symbol_and_type(node_, sym);
+                # Pass source module for typing_extensions re-export handling
+                return self._set_module_item_symbol_and_type(node_, sym, mod_type);
             }
         }
     }
@@ -84,7 +88,9 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         }
         path_list = node_.resolve_relative_path_list();
         for (idx, npath) in enumerate(node_.path) {
-            mod_path = path_list[idx];
+            # For relative imports (level > 0), path_list includes base directories
+            # from the dots. Skip them to align with node_.path indices.
+            mod_path = path_list[idx + node_.level];
 
             if mod_path in self._module_type_cache {
                 npath.type = self._module_type_cache[mod_path];
@@ -111,6 +117,7 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 is_stub_file=flags.is_stub_file,
                 is_stdlib_stub=flags.is_stdlib_stub,
                 is_typing_stub=flags.is_typing_stub,
+                is_typing_extensions_stub=flags.is_typing_extensions_stub,
                 is_builtin_stub=flags.is_builtin_stub,
             );
             npath.type = mod_type;

@@ -216,6 +216,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     );
     is_builtin_class = mod_flags.is_builtin_stub;
     is_from_stdlib_stub = mod_flags.is_stdlib_stub;
+    is_from_typing_extensions = mod_flags.is_typing_extensions_stub;
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
@@ -257,6 +258,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             base_classes=base_classes,
             is_builtin_class=is_builtin_class,
             is_from_stdlib_stub=is_from_stdlib_stub,
+            is_from_typing_extensions=is_from_typing_extensions,
             is_data_class=is_data_class,
             is_namedtuple=is_namedtuple,
             is_enum_class=is_enum_class,

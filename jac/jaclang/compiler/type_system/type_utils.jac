@@ -107,6 +107,7 @@ obj ModuleSourceFlags {
     has is_stub_file: bool = False,  # True if .pyi file
         is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
         is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
+        is_typing_extensions_stub: bool = False,  # True if typing_extensions.pyi only
         is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
 }
 

@@ -128,6 +128,7 @@ obj ModuleType(TypeBase) {
         is_stub_file: bool = False,  # True if .pyi file
         is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
         is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
+        is_typing_extensions_stub: bool = False,  # True if typing_extensions.pyi only
         is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
 
     with entry {
@@ -148,7 +149,10 @@ obj TypeVarType(TypeBase) {
         is_covariant: bool = False,
         is_contravariant: bool = False,
         bound: (TypeBase | None) = None,
-        constraints: (list[TypeBase] | None) = None;
+        constraints: (list[TypeBase] | None) = None,
+        # Tracks if this TypeVar was created from typing_extensions module
+        # Used for typing vs typing_extensions compatibility checks (Pyright: TypingExtensionClass)
+        is_from_typing_extensions: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
@@ -181,6 +185,7 @@ Holds the shared details of class type.
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_from_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
+            is_from_typing_extensions: bool = False,  # True if from typing_extensions.pyi
             is_data_class: bool = False,
             is_namedtuple: bool = False,
             is_root_class: bool = False,
