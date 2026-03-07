@@ -63,6 +63,12 @@ def fetch_mtir(func: Callable) -> Info | None {
 
 """Jac's with_llm feature."""
 class JacRuntime {
+    """Register byLLM CLI commands (test-gen)."""
+    @hookimpl
+    static def create_cmd -> None {
+        import byllm.commands.test_gen;
+    }
+
     """Call JacLLM and return the result."""
     @hookimpl
     static def get_mtir(caller: Callable, args: dict, call_params: dict) -> object {
