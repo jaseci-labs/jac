@@ -166,17 +166,28 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         );
         return types.UnknownType();
     }
-    # Check if this is a TypeVar call (from typing or typing_extensions)
-    # The is_from_typing_extensions flag is already set on ClassType when loaded from module
+    # Check if this is a TypeVar/TypeVarTuple/ParamSpec call (from typing or typing_extensions)
+    # Pyright: createTypeVarType() handles all three variants with flags
     is_typevar_call = False;
+    is_typevartuple_call = False;
+    is_paramspec_call = False;
     is_from_typing_extensions = False;
     if isinstance(caller_type, types.ClassType) and caller_type.shared {
-        if caller_type.shared.class_name == "TypeVar" and caller_type.shared.is_builtin_class {
-            is_typevar_call = True;
-            is_from_typing_extensions = caller_type.shared.is_from_typing_extensions;
+        if caller_type.shared.is_builtin_class {
+            class_name = caller_type.shared.class_name;
+            if class_name == "TypeVar" {
+                is_typevar_call = True;
+                is_from_typing_extensions = caller_type.shared.is_from_typing_extensions;
+            } elif class_name == "TypeVarTuple" {
+                is_typevartuple_call = True;
+                is_from_typing_extensions = caller_type.shared.is_from_typing_extensions;
+            } elif class_name == "ParamSpec" {
+                is_paramspec_call = True;
+                is_from_typing_extensions = caller_type.shared.is_from_typing_extensions;
+            }
         }
     }
-    if is_typevar_call {
+    if is_typevar_call or is_typevartuple_call or is_paramspec_call {
         # Pyright: createTypeVarType() - Extract TypeVar name and validate constraints
         type_var_name = "";
         first_constraint_arg: uni.Expr | None = None;
@@ -199,17 +210,22 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         bound_type: types.TypeBase | None = None;
         constraint_types: list[types.TypeBase] = [];
 
+        # Determine the type name for error messages
+        type_kind_name = "TypeVar" if is_typevar_call else ("TypeVarTuple" if is_typevartuple_call else "ParamSpec");
+
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
             type_var_name = _get_string_lit_value(first_arg) or "";
             if not type_var_name {
                 # Pyright: typeVarFirstArg
                 self.add_diagnostic(
-                    first_arg, "TypeVar() requires a string literal as the first argument"
+                    first_arg, f"{type_kind_name}() requires a string literal as the first argument"
                 );
             }
 
             # Count positional constraint arguments and extract variance/bound kwargs
+            # TypeVarTuple only takes name, no other params
+            # ParamSpec can have bound, covariant, contravariant but no constraints
             for i in range(1, len(expr.params)) {
                 arg = expr.params[i];
                 if isinstance(arg, uni.KWPair) {
@@ -230,20 +246,22 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                     }
                     continue;
                 }
-                # Collect constraint types (positional args after the name)
-                constraint_type = self.get_type_of_expression(arg);
-                if isinstance(constraint_type, types.ClassType) and constraint_type.is_instantiable() {
-                    constraint_type = constraint_type.clone_as_instance();
-                }
-                constraint_types.append(constraint_type);
-                constraint_count += 1;
-                if first_constraint_arg is None {
-                    first_constraint_arg = arg;
+                # Collect constraint types (positional args after the name) - only for TypeVar
+                if is_typevar_call {
+                    constraint_type = self.get_type_of_expression(arg);
+                    if isinstance(constraint_type, types.ClassType) and constraint_type.is_instantiable() {
+                        constraint_type = constraint_type.clone_as_instance();
+                    }
+                    constraint_types.append(constraint_type);
+                    constraint_count += 1;
+                    if first_constraint_arg is None {
+                        first_constraint_arg = arg;
+                    }
                 }
             }
 
-            # Pyright: typeVarSingleConstraint
-            if constraint_count == 1 and first_constraint_arg {
+            # Pyright: typeVarSingleConstraint - only applies to TypeVar
+            if is_typevar_call and constraint_count == 1 and first_constraint_arg {
                 self.add_diagnostic(
                     first_constraint_arg,
                     "TypeVar requires at least two constrained types"
@@ -252,7 +270,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         } else {
             # Pyright: typeVarFirstArg
             self.add_diagnostic(
-                expr, "TypeVar() requires a string literal as the first argument"
+                expr, f"{type_kind_name}() requires a string literal as the first argument"
             );
         }
         return types.TypeVarType(
@@ -261,6 +279,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             is_contravariant=is_contravariant,
             bound=bound_type,
             constraints=constraint_types if constraint_types else None,
+            is_type_var_tuple=is_typevartuple_call,
+            is_param_spec=is_paramspec_call,
             is_from_typing_extensions=is_from_typing_extensions
         );
     }

@@ -209,3 +209,4 @@ test "typevar8_symbol_vs_parameter" {
         assert pattern in all_errors, f"Expected error: {pattern}";
     }
 }
+

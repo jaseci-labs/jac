@@ -150,6 +150,10 @@ obj TypeVarType(TypeBase) {
         is_contravariant: bool = False,
         bound: (TypeBase | None) = None,
         constraints: (list[TypeBase] | None) = None,
+        # Pyright: isTypeVarTuple - True when this represents a TypeVarTuple (PEP 646)
+        is_type_var_tuple: bool = False,
+        # Pyright: isParamSpec - True when this represents a ParamSpec (PEP 612)
+        is_param_spec: bool = False,
         # Tracks if this TypeVar was created from typing_extensions module
         # Used for typing vs typing_extensions compatibility checks (Pyright: TypingExtensionClass)
         is_from_typing_extensions: bool = False;
