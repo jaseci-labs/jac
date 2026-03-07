@@ -212,7 +212,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         # e.g., a += 3 where a is TypeVar is an error (unless bound/constraints support it)
         if nd.aug_op and isinstance(left_type, types.TypeVarType) {
             import from jaclang.compiler.type_system { operations }
-            op_name = operations.get_augmented_op_magic(nd.aug_op.name);
+            op_name = operations.AUG_OPERATOR_MAP.get(nd.aug_op.name, "__iadd__");
             # Constrained TypeVar - check all constraint types
             if left_type.constraints {
                 for constraint_type in left_type.constraints {
