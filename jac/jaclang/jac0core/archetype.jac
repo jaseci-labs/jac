@@ -62,7 +62,9 @@ glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
 obj ObjectSpatialDestination {
     has direction: EdgeDir,
         `edge: (Callable[([Archetype], bool)] | None) = None,
-        nd: (Callable[([Archetype], bool)] | None) = None;
+        nd: (Callable[([Archetype], bool)] | None) = None,
+        node_type_name: (str | None) = None,
+        edge_type_name: (str | None) = None;
 
     def edge_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
@@ -90,25 +92,33 @@ obj ObjectSpatialPath {
         self: ObjectSpatialPath,
         direction: EdgeDir,
         `edge: ObjectSpatialFilter,
-        nd: ObjectSpatialFilter
+        nd: ObjectSpatialFilter,
+        nd_type: (str | None) = None,
+        edge_type: (str | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_out(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        nd_type: (str | None) = None,
+        edge_type: (str | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_in(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        nd_type: (str | None) = None,
+        edge_type: (str | None) = None
     ) -> ObjectSpatialPath;
 
     def edge_any(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        nd: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None,
+        nd_type: (str | None) = None,
+        edge_type: (str | None) = None
     ) -> ObjectSpatialPath;
 
     def set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath;

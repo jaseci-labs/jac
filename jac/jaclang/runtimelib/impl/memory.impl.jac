@@ -183,6 +183,40 @@ impl SqliteMemory._ensure_connection -> None {
         )
     """
     );
+    # Topology tables for GT layer (graph topology index)
+    self.__conn__.execute(
+        """
+        CREATE TABLE IF NOT EXISTS node_topology (
+            node_id   TEXT NOT NULL,
+            node_type TEXT NOT NULL,
+            root_id   TEXT,
+            PRIMARY KEY (node_id, node_type)
+        )
+        """
+    );
+    self.__conn__.execute(
+        "CREATE INDEX IF NOT EXISTS idx_nt_type ON node_topology (node_type)"
+    );
+    self.__conn__.execute(
+        "CREATE INDEX IF NOT EXISTS idx_nt_root ON node_topology (root_id, node_type)"
+    );
+    self.__conn__.execute(
+        """
+        CREATE TABLE IF NOT EXISTS edge_topology (
+            edge_id     TEXT PRIMARY KEY,
+            source_id   TEXT NOT NULL,
+            target_id   TEXT NOT NULL,
+            edge_type   TEXT NOT NULL,
+            target_type TEXT NOT NULL
+        )
+        """
+    );
+    self.__conn__.execute(
+        "CREATE INDEX IF NOT EXISTS idx_et_source ON edge_topology (source_id, edge_type, target_type)"
+    );
+    self.__conn__.execute(
+        "CREATE INDEX IF NOT EXISTS idx_et_target ON edge_topology (target_id, edge_type)"
+    );
     self.__conn__.commit();
 }
 

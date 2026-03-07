@@ -300,9 +300,71 @@ class JacNode {
     static def edges_to_nodes(
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
+        import os;
+        from jaclang.runtimelib.am_index import (
+            am_query,
+            am_populate_from_gt,
+            gt_query_targets,
+            _get_sqlite
+        );
+        DEGREE_THRESHOLD: int = int(
+            os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
+        );
+        INDEX_ENABLED: bool = os.environ.get(
+            'JAC_INDEX_ENABLED', 'true'
+        ).lower() not in ('0', 'false', 'no');
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
+        ctx = JacRuntimeInterface.get_context();
+        _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
         for nd in origin {
             nanch = nd.__jac__;
+            # --- AM/GT fast path (only when SQLite persistence is active) ---
+            target_type_name = destination.node_type_name;
+            edge_type_name = destination.edge_type_name;
+            use_index = (
+                INDEX_ENABLED
+                and _sqlite_active
+                and nanch.is_populated()
+                and target_type_name is not None
+                and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
+                and len(nanch.edges) > DEGREE_THRESHOLD
+            );
+            if use_index {
+                target_ids = am_query(nanch.id, target_type_name);
+                if target_ids is None {
+                    # AM miss — query GT
+                    gt_ids = gt_query_targets(
+                        ctx.mem, nanch.id, edge_type_name, target_type_name
+                    );
+                    if gt_ids is not None {
+                        am_populate_from_gt(
+                            nanch.id,
+                            [(tid, target_type_name) for tid in gt_ids]
+                        );
+                        target_ids = gt_ids;
+                    }
+                }
+                if target_ids is not None {
+                    from uuid import UUID;
+                    for id_str in target_ids {
+                        try {
+                            uid = UUID(id_str);
+                        } except ValueError {
+                            continue;
+                        }
+                        target = ctx.mem.get(uid);
+                        if (
+                            target
+                            and target.archetype
+                            and JacRuntimeInterface.check_read_access(target)
+                        ) {
+                            nodes[target] = target.archetype;
+                        }
+                    }
+                    continue;  # skip edge-list loop for this node
+                }
+            }
+            # --- Existing edge-list loop (fallback) ---
             for anchor in nanch.edges {
                 if (
                     (source := anchor.source)
@@ -340,6 +402,13 @@ class JacNode {
                 nd.edges.pop(idx);
                 break;
             }
+        }
+        # AM + GT invalidation hooks (only when SQLite persistence is active)
+        from jaclang.runtimelib.am_index import am_invalidate, _gt_delete_edge, _get_sqlite;
+        _mem = JacRuntimeInterface.get_context().mem;
+        if _get_sqlite(_mem) is not None {
+            am_invalidate(nd.id);
+            _gt_delete_edge(mem=_mem, edge_id=`edge.id);
         }
     }
 }
@@ -1624,6 +1693,16 @@ system,
             );
             source.edges.append(eanch);
             target.edges.append(eanch);
+            # AM + GT write hooks (only when SQLite persistence is active)
+            from jaclang.runtimelib.am_index import am_put, _gt_write_edge, _get_sqlite;
+            _mem = JacRuntimeInterface.get_context().mem;
+            if _get_sqlite(_mem) is not None {
+                am_put(source.id, target.id, target.archetype);
+                if is_undirected {
+                    am_put(target.id, source.id, source.archetype);
+                }
+                _gt_write_edge(mem=_mem, eanch=eanch, source=source, target=target);
+            }
             if conn_assign {
                 for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {
                     if hasattr(`edge, fld) {

@@ -2981,6 +2981,25 @@ impl PyastGenPass.exit_edge_ref_trailer(
                     )
                 )
             );
+            # Emit edge_type= when the edge filter is a simple typed FilterCompr
+            if (
+                isinstance(cur.filter_cond, uni.FilterCompr)
+                and cur.filter_cond.f_type
+            ) {
+                edge_type_py = cur.filter_cond.f_type.gen.py_ast[0];
+                if isinstance(edge_type_py, ast3.Name) {
+                    keywords.append(
+                        self.sync(
+                            ast3.keyword(
+                                arg='edge_type',
+                                value=self.sync(
+                                    ast3.Constant(value=edge_type_py.id)
+                                )
+                            )
+                        )
+                    );
+                }
+            }
         }
         if (chomp and not isinstance(chomp[0], uni.EdgeOpRef)) {
             filt = chomp.pop(0);
@@ -2991,6 +3010,22 @@ impl PyastGenPass.exit_edge_ref_trailer(
                     )
                 )
             );
+            # Emit nd_type= when the node filter is a simple typed FilterCompr
+            if (isinstance(filt, uni.FilterCompr) and filt.f_type) {
+                nd_type_py = filt.f_type.gen.py_ast[0];
+                if isinstance(nd_type_py, ast3.Name) {
+                    keywords.append(
+                        self.sync(
+                            ast3.keyword(
+                                arg='nd_type',
+                                value=self.sync(
+                                    ast3.Constant(value=nd_type_py.id)
+                                )
+                            )
+                        )
+                    );
+                }
+            }
         }
         pynode = self.sync(
             ast3.Call(
