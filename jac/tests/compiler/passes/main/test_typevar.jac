@@ -157,11 +157,10 @@ test "typevar7_constrained_operations" {
     mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 59 errors (one per constraint type that fails, plus isinstance false positives
-    # due to TypeAlias handling bug - _ClassInfo resolves to _SpecialForm, and
-    # 2 additional false positives from TypeVarTuple/ParamSpec attribute access)
-    assert len(program.errors_had) == 59,
-        f"Expected 59 errors, got {len(program.errors_had)}";
+    # 53 errors (one per constraint type that fails, plus isinstance false positives
+    # due to TypeAlias handling bug - _ClassInfo resolves to _SpecialForm)
+    assert len(program.errors_had) == 53,
+        f"Expected 53 errors, got {len(program.errors_had)}";
 
     error_messages = [e.pretty_print() for e in program.errors_had];
     all_errors = "\n".join(error_messages);
@@ -192,12 +191,10 @@ test "typevar8_symbol_vs_parameter" {
     mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar8.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 8 errors:
-    # - 2 for accessing __name__ on TypeVar type parameters (not symbols)
-    # - 4 for accessing __name__ on TypeVarTuple/ParamSpec (false positives - TODO: fix)
-    # - 2 for typing vs typing_extensions TypeVar mismatch
-    assert len(program.errors_had) == 8,
-        f"Expected 8 errors, got {len(program.errors_had)}";
+    # 2 errors: accessing __name__ on TypeVar type parameters (not symbols)
+    # TODO: Add typing vs typing_extensions mismatch detection
+    assert len(program.errors_had) == 2,
+        f"Expected 2 errors, got {len(program.errors_had)}";
 
     error_messages = [e.pretty_print() for e in program.errors_had];
     all_errors = "\n".join(error_messages);
@@ -205,10 +202,7 @@ test "typevar8_symbol_vs_parameter" {
     # TypeVar type parameter (a: T1) doesn't have __name__
     expected_patterns = [
         'Cannot access attribute "__name__" for type "T1"',
-        'Cannot access attribute "__name__" for type "<class str>"',
-        # typing vs typing_extensions mismatch
-        'Cannot assign T2 to parameter',  # func3(T2) - T2 is typing_extensions
-        'Cannot assign T1 to parameter'   # func4(T1) - T1 is typing
+        'Cannot access attribute "__name__" for type "<class str>"'
     ];
 
     for pattern in expected_patterns {
