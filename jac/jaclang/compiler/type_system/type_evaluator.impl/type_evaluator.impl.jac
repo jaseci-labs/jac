@@ -397,12 +397,25 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         }
                         return value;
                     }
-                    # TODO: Re-enable after fixing TypeVar resolution.
-                    # Disabled: gives false positives on generic types (e.g., list[T].append).
-                    # self.add_diagnostic(
-                    #     expr.right,
-                    #     f'Type "{base_type}" has no attribute "{expr.right.value}"',
-                    # );
+                    # Suppress diagnostic for any-like types (Any, object, Unknown,
+                    # TypeVar) and for types with unresolved TypeVars in type_args
+                    # (which cause false positives on generic types like list[T].append).
+                    if not base_type.is_any_type() {
+                        _has_tvars = (
+                            isinstance(base_type, types.ClassType)
+                            and base_type.private.type_args is not None
+                            and any(
+                                isinstance(a, types.TypeVarType)
+                                for a in base_type.private.type_args
+                            )
+                        );
+                        if not _has_tvars {
+                            self.add_diagnostic(
+                                expr.right,
+                                f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                            );
+                        }
+                    }
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -520,12 +533,24 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.is_getattr_resolved = True;
                         return getattr_return;
                     }
-                    # TODO: Re-enable after fixing TypeVar resolution.
-                    # Disabled: gives false positives on generic types (e.g., list[T].append).
-                    # self.add_diagnostic(
-                    #     expr.right,
-                    #     f'"{base_type}" has no attribute "{expr.right.value}"',
-                    # );
+                    # Suppress diagnostic for any-like types (Any, object, Unknown,
+                    # TypeVar) and for types with unresolved TypeVars in type_args.
+                    if not base_type.is_any_type() {
+                        _has_tvars = (
+                            isinstance(base_type, types.ClassType)
+                            and base_type.private.type_args is not None
+                            and any(
+                                isinstance(a, types.TypeVarType)
+                                for a in base_type.private.type_args
+                            )
+                        );
+                        if not _has_tvars {
+                            self.add_diagnostic(
+                                expr.right,
+                                f'"{base_type}" has no attribute "{expr.right.value}"',
+                            );
+                        }
+                    }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
                     # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
@@ -588,6 +613,25 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             else types.UnionType(types=unique_types);
                         return expr.right.type;
                     }
+                    # Member not found on all union variants - report error
+                    missing_types: list[str] = [];
+                    for union_member in base_type.types {
+                        if isinstance(union_member, types.ClassType)
+                        and union_member.is_class_instance() {
+                            if not self._lookup_object_member(
+                                union_member, expr.right.value
+                            ) {
+                                missing_types.append(str(union_member));
+                            }
+                        }
+                    }
+                    self.add_diagnostic(
+                        expr.right,
+                        f'Cannot access attribute "{expr.right.value}" for type '
+                        f'"{base_type}"; attribute is missing from {", ".join(
+                            missing_types
+                        )}'
+                    );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
                     attr_name = expr.right.value;
@@ -1240,6 +1284,18 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 }
             }
 
+        case uni.AwaitExpr():
+            # Unwrap awaited expression type. The target (e.g., fetch_number())
+            # already resolves to the coroutine's return type via FuncCall handling.
+            return self.get_type_of_expression(expr.target);
+
+        case uni.YieldExpr():
+            # Yield expression evaluates to the type of the yielded value.
+            if expr.expr is not None {
+                return self.get_type_of_expression(expr.expr);
+            }
+            return types.UnknownType();
+
     }
     # TODO: More expressions.
     return types.UnknownType();
@@ -1254,6 +1310,12 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
 
         case uni.Archetype():
             return self.get_type_of_class(node_);
+
+        case uni.TypeParam():
+            # Jac-native generic type parameter: obj Box[T]
+            # Return a TypeVarType matching the parameter name so that
+            # FunctionType.specialize can substitute it with concrete type_args.
+            return types.TypeVarType(name=node_.sym_name);
 
         case uni.Ability():
             return self.get_type_of_ability(node_);
@@ -2070,6 +2132,25 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
                 }
             }
         }
+    }
+    # Enum classes implicitly satisfy common protocols (Sized, Iterable,
+    # Container, Hashable) via EnumMeta. Since Jac's type system doesn't
+    # model metaclasses, accept enum class types for these protocols.
+    if (
+        isinstance(src_type, types.ClassType)
+        and src_type.is_enum_class()
+        and src_type.is_instantiable()
+        and isinstance(dest_type, types.ClassType)
+        and dest_type.is_builtin()
+        and dest_type.shared.class_name in (
+            "Sized",
+            "Iterable",
+            "Container",
+            "Reversible",
+            "Hashable"
+        )
+    ) {
+        return True;
     }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);

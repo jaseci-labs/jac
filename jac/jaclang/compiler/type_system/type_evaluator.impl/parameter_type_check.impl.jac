@@ -466,6 +466,10 @@ impl TypeEvaluator._get_method_with_overloads(
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);
+    # Replace generic T with actual type for the base method too (e.g. T -> int for Foo[int]).
+    if isinstance(method_ty, types.FunctionType) {
+        method_ty = method_ty.specialize(caller_type);
+    }
     overloaded_fns: list[types.FunctionType] = [method_ty];
     for overload in method_member.overloads {
         overload_member_ty = self.get_type_of_symbol(overload);

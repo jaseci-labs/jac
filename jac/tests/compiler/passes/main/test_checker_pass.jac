@@ -1124,8 +1124,16 @@ test "union_member_access" {
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac")
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    # TODO: test_union_uncommon_member should error when attribute errors are enabled
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 1 , f"Expected 1 error, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert_error_pretty_found(
+        """
+        return x.legs;  # <-- Error: Bird doesn't have .legs
+                 ^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
 }
 
 test "list_indexing" {
@@ -1707,10 +1715,9 @@ test "compound_and_narrowing" {
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_and_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # All positive cases should pass. E1 (attribute error after if block) is not
-    # reported because "has no attribute" errors are disabled in the type evaluator.
-    # TODO: Re-enable when attribute error reporting is fixed for generics.
-    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+    # E1 (attribute error after if block) is correctly reported: after narrowing
+    # expires, Animal type doesn't have the narrowed-only attribute.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (E1: attribute after narrowing), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -1831,9 +1838,12 @@ test "getattr_support" {
         if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
     ];
 
-    # Expect 1 error: assigning str to int (proves __getattr__ return type is enforced)
-    assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}";
+    # Expect 2 errors:
+    # 1. assigning str to int (proves __getattr__ return type is enforced)
+    # 2. NoGetAttr.nonexistent (correct: class has no __getattr__ and no such attribute)
+    assert len(user_errors) == 2 , f"Expected 2 errors, got {len(user_errors)}";
     assert "Cannot assign" in user_errors[0].pretty_print();
+    assert "has no attribute" in user_errors[1].pretty_print();
 }
 
 """Test NamedTuple type checking: constructor accepts positional arguments for fields."""

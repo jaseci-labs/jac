@@ -350,6 +350,24 @@ impl TypeEvaluator._extract_type_params(
     outer_type_params = self._get_outer_scope_type_params(node_);
     outer_names = {tp.name for tp in outer_type_params};
 
+    # Handle Jac-native generic syntax: obj Box[T], obj Pair[A, B]
+    # The type_params field on the Archetype node holds TypeParam AST nodes.
+    if node_.type_params {
+        for tp in node_.type_params {
+            tv = types.TypeVarType(name=tp.sym_name);
+            # Validate: TypeVar not already in use by outer scope
+            if tv.name in outer_names {
+                self.add_diagnostic(
+                    tp,
+                    f'TypeVar "{tv.name}" is already in use by an outer scope'
+                );
+            }
+            type_params.append(tv);
+        }
+        return type_params;
+    }
+
+    # Handle Python-style generics: obj Box(Generic[T])
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr
