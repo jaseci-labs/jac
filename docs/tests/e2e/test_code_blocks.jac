@@ -17,18 +17,16 @@ import time;
 import from subprocess { Popen, DEVNULL, run }
 import from playwright.sync_api { sync_playwright }
 
-glob HEADLESS: bool = not os.environ.get("HEADED", "");
-glob MONACO_TIMEOUT: int = 30_000;
-glob PYODIDE_TIMEOUT: int = 120_000;
-
-glob DOCS_DIR: str = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-);
-glob SITE_DIR: str = os.path.join(DOCS_DIR, "site");
-glob TEST_PAGE_PATH: str = os.path.join(SITE_DIR, "_test.html");
-glob PAGE: str = "/_test.html";
-
-glob TEST_HTML: str = """<!DOCTYPE html>
+glob HEADLESS: bool = not os.environ.get("HEADED", ""),
+     MONACO_TIMEOUT: int = 30_000,
+     PYODIDE_TIMEOUT: int = 120_000,
+     DOCS_DIR: str = os.path.abspath(
+         os.path.join(os.path.dirname(__file__), "..", "..")
+     ),
+     SITE_DIR: str = os.path.join(DOCS_DIR, "site"),
+     TEST_PAGE_PATH: str = os.path.join(SITE_DIR, "_test.html"),
+     PAGE: str = "/_test.html",
+     TEST_HTML: str = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -75,9 +73,8 @@ with entry { this is invalid ||| }
     <script src="/js/run-code.js"></script>
 </body>
 </html>
-""";
-
-glob SERVER_SCRIPT: str = """
+""",
+     SERVER_SCRIPT: str = """
 import http.server, sys
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -94,7 +91,6 @@ http.server.ThreadingHTTPServer(('127.0.0.1', int(sys.argv[2])), H).serve_foreve
 """;
 
 # -- Helpers -------------------------------------------------------------------
-
 def _get_free_port -> int {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     s.bind(("127.0.0.1", 0));
@@ -127,7 +123,8 @@ def _start_server -> tuple {
     port = _get_free_port();
     server = Popen(
         ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
-        stdout=DEVNULL, stderr=DEVNULL
+        stdout=DEVNULL,
+        stderr=DEVNULL
     );
     _wait_for_port(port);
     return (server, f"http://127.0.0.1:{port}");
@@ -184,8 +181,10 @@ def _click_graph(page: Any, block_id: str) -> None {
 
 # -- Rendering tests (fast, no Pyodide) ----------------------------------------
 
-test "rendering: plain block has run only" {
+"""Plain block should show run button only, no graph button."""
+test "rendering: plain block buttons" {
     def check(page: Any, resp: Any) -> None {
+        _scroll_to(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
         );
@@ -194,7 +193,8 @@ test "rendering: plain block has run only" {
     _with_page(check);
 }
 
-test "rendering: run-dot block has run and graph" {
+"""Run-dot block should show both run and graph buttons."""
+test "rendering: run-dot block buttons" {
     def check(page: Any, resp: Any) -> None {
         _scroll_to(page, "#block-run-dot");
         page.wait_for_selector(
@@ -205,31 +205,17 @@ test "rendering: run-dot block has run and graph" {
     _with_page(check);
 }
 
-test "rendering: monaco editor loads" {
+"""Monaco editor should load and contain the source code."""
+test "rendering: monaco editor with code" {
     def check(page: Any, resp: Any) -> None {
+        _scroll_to(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
         );
-    }
-    _with_page(check);
-}
-
-test "rendering: editor shows code" {
-    def check(page: Any, resp: Any) -> None {
-        _scroll_to(page, "#block-plain");
         page.wait_for_function(
             "typeof monaco !== 'undefined' && "
             "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
             timeout=MONACO_TIMEOUT
-        );
-    }
-    _with_page(check);
-}
-
-test "rendering: output hidden before run" {
-    def check(page: Any, resp: Any) -> None {
-        page.wait_for_selector(
-            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
         );
         assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
     }
@@ -238,16 +224,11 @@ test "rendering: output hidden before run" {
 
 # -- Header tests (SharedArrayBuffer) -----------------------------------------
 
+"""Server must send COOP/COEP headers for SharedArrayBuffer support."""
 test "headers: cross-origin isolation" {
     def check(page: Any, resp: Any) -> None {
         assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
         assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
-    }
-    _with_page(check);
-}
-
-test "headers: SharedArrayBuffer available" {
-    def check(page: Any, resp: Any) -> None {
         assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
     }
     _with_page(check);
@@ -255,9 +236,13 @@ test "headers: SharedArrayBuffer available" {
 
 # -- Execution tests (slow, needs Pyodide CDN) --------------------------------
 
+"""Clicking run should execute code and show correct output."""
 test "execution: run produces output" {
     def check(page: Any, resp: Any) -> None {
         _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
         page.wait_for_function(
             "document.querySelector('#block-plain .code-output')"
             "?.textContent?.includes('Good Enough')",
@@ -267,16 +252,7 @@ test "execution: run produces output" {
     _with_page(check);
 }
 
-test "execution: output pane appears" {
-    def check(page: Any, resp: Any) -> None {
-        _click_run(page, "#block-plain");
-        page.wait_for_selector(
-            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
-        );
-    }
-    _with_page(check);
-}
-
+"""Run button should be disabled while code is executing."""
 test "execution: button disabled during run" {
     def check(page: Any, resp: Any) -> None {
         _click_run(page, "#block-plain");
@@ -288,6 +264,7 @@ test "execution: button disabled during run" {
     _with_page(check);
 }
 
+"""Invalid code should produce an error message in output."""
 test "execution: syntax error shows error" {
     def check(page: Any, resp: Any) -> None {
         _click_run(page, "#block-error");
@@ -300,6 +277,7 @@ test "execution: syntax error shows error" {
     _with_page(check);
 }
 
+"""Graph button should render an SVG visualization."""
 test "execution: graph renders svg" {
     def check(page: Any, resp: Any) -> None {
         _click_graph(page, "#block-run-dot");
@@ -308,12 +286,14 @@ test "execution: graph renders svg" {
         );
         page.wait_for_selector(
             "#block-run-dot .graph-container .viz-viewport svg",
-            state="visible", timeout=10_000
+            state="visible",
+            timeout=10_000
         );
     }
     _with_page(check);
 }
 
+"""Graph output should contain valid DOT with expected node data."""
 test "execution: graph dot format" {
     def check(page: Any, resp: Any) -> None {
         page.evaluate(
@@ -325,9 +305,9 @@ test "execution: graph dot format" {
             "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
         );
         dot = page.evaluate("window.__capturedDot");
-        assert "digraph" in dot, "DOT output must be a directed graph";
-        assert "->" in dot, "DOT output must contain edges";
-        assert "Colombo" in dot, "DOT output must contain City node data";
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
     }
     _with_page(check);
 }

@@ -94,9 +94,7 @@ def should_exclude(path: str) -> bool:
     """Check if file/directory should be excluded."""
     if os.path.basename(path) in EXCLUDE_DIRS:
         return True
-    if os.path.splitext(path)[1] in EXCLUDE_EXTS:
-        return True
-    return False
+    return os.path.splitext(path)[1] in EXCLUDE_EXTS
 
 
 def create_playground_zip() -> None:
