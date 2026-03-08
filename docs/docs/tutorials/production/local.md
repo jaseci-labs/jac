@@ -1,6 +1,8 @@
 # Local API Server
 
-Run your Jac walkers as a production-ready HTTP API server.
+During development, `jac run` executes your program and exits. But production applications need to stay running and respond to HTTP requests from browsers, mobile apps, or other services. The `jac start` command transforms your Jac application into a persistent API server -- every walker and function marked with `:pub` or `:priv` access modifiers automatically becomes a REST endpoint, complete with authentication, JSON serialization, and API documentation.
+
+This means you go from "Jac program that runs locally" to "HTTP API server that clients can call" with a single command change -- no Flask routes, no Express middleware, no API framework needed.
 
 > **Prerequisites**
 >
@@ -11,7 +13,7 @@ Run your Jac walkers as a production-ready HTTP API server.
 
 ## Overview
 
-The `jac start` command turns your walkers into REST API endpoints automatically:
+The `jac start` command turns your walkers and functions into REST API endpoints automatically:
 
 ```mermaid
 graph LR

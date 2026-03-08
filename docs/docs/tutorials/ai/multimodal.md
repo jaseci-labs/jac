@@ -1,6 +1,8 @@
 # Multimodal AI
 
-Work with images and videos in byLLM.
+Modern vision-capable LLMs (like GPT-4o and Gemini) can understand images and videos alongside text. byLLM integrates this capability through the `Image` and `Video` types -- you pass them as parameters to any `by llm()` function, and the LLM "sees" the visual content when generating its response.
+
+This enables powerful use cases: extracting structured data from photos (receipts, documents, diagrams), classifying images, describing scenes, analyzing video content, and combining visual understanding with text processing. All the structured output patterns from the previous tutorial (enums, objects, lists) work with multimodal inputs, so you can extract typed data directly from images.
 
 > **Prerequisites**
 >

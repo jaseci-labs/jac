@@ -1,6 +1,10 @@
 # byLLM Quickstart
 
-Build your first AI-integrated function in Jac.
+byLLM is Jac's AI integration framework that lets you delegate function implementations to large language models. Instead of writing the logic yourself, you declare a function's signature -- its name, parameter names and types, and return type -- and end it with `by llm()`. The compiler uses these semantics to construct a prompt, calls the LLM at runtime, and validates the response against your declared return type.
+
+This is what Jac calls **Meaning-Typed Programming (MTP)**: the idea that a well-named function signature already describes what the function should do, and an LLM can infer the implementation from that meaning. It works because `translate_to_spanish(text: str) -> str` already tells the LLM everything it needs to know.
+
+In this tutorial, you'll set up byLLM, write your first AI-powered function, explore different model providers, and learn how to test AI functions with mocks.
 
 > **Prerequisites**
 >

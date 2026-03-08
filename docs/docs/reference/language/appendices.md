@@ -1,5 +1,7 @@
 # Appendices
 
+Use these appendices when you need to look up a specific keyword, operator, or syntax rule. You'll also find a migration guide for Python developers and a provider configuration reference for byLLM.
+
 **In this part:**
 
 - [Appendix A: Complete Keyword Reference](#appendix-a-complete-keyword-reference) - All keywords

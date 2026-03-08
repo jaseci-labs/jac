@@ -1,19 +1,8 @@
 """Function/ability declaration and codegen for native compilation."""
 """Walk the module and declare all native functions."""
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                self._maybe_declare_ability(inner);
-            }
-        } elif isinstance(stmt, uni.Ability) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                self._maybe_declare_ability(stmt);
-            }
-        }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        self._maybe_declare_ability(stmt);
     }
 }
 
@@ -152,11 +141,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         }
     }
     # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
-    body = (nd).body;
-    if isinstance(body, (list, tuple)) {
+    body = ModuleCodegenPass.unwrap_body(nd);
+    if body is not None {
         self._codegen_body(body);
-    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
-        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {

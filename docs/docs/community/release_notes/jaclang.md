@@ -4,12 +4,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
-- 1 small refactors/changes.
+- **Compiler Warns on `@classmethod`/`@staticmethod` in `obj` Definitions**: Using `@classmethod` or `@staticmethod` inside `obj`, `node`, `edge`, or `walker` now emits a warning. Use the `static` keyword instead, or switch to `class` for Python-specific decorator features. Compilation warnings are now also surfaced during `jac run`.
+- 2 small refactors/changes.
 - **Fix: Union Type Member Access Errors**: `x.attr` on a union type now errors when the attribute is missing from any variant (previously silently returned `UnknownType`). Reports which variant(s) lack the attribute.
 - **Fix: Module-Level Overload Resolution**: `math.floor()`, `math.ceil()` and other module-level overloaded functions now correctly resolve all `@overload` signatures instead of only the first.
 - **Stdlib Protocol Detection**: Added Pyright-style `ModuleSourceFlags` for production-grade stdlib type detection. Protocol types like `_SupportsFloor` and `_SupportsTrunc` are now properly recognized, enabling `math.floor(3.7)` and `math.trunc(4.9)` to type-check correctly.
 
 - **Fix: `jac format --lintfix` File Deletion on Parse Errors**: Fixed a critical bug where `jac format --lintfix` would completely wipe out file contents when encountering parse errors. The formatter now preserves the original file when parse/lex errors are present, while still allowing files with type errors (but valid syntax) to be formatted normally. Added a safety check in `format_single_file()` that prevents writing empty formatted output to disk.
+- **Style: Remove Bold from CLI Console Output**: Removed bold styling from all console output methods (success, error, warning, info, headers, tables, etc.) in the base jacpretty console, keeping only color.
+- **Fix: Raw ANSI Codes in Error Output**: Fixed `[0;31m` escape fragments appearing as literal text in terminal error messages. `pretty_print(colors=True)` was injecting raw ANSI codes that conflicted with the Rich-based console from jac-super. Error formatting now delegates all styling to the console layer.
 
 ## jaclang 0.12.0 (Latest Release)
 
