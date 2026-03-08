@@ -72,7 +72,7 @@ with entry {
 
 ### Basic Functions
 
-```jac
+<div class="code-block" markdown>
 def greet(name: str) -> str {
     return f"Hello, {name}!";
 }
@@ -83,12 +83,11 @@ def add(a: int, b: int) -> int {
 
 with entry {
     message = greet("World");
-    print(message);  # Hello, World!
-
+    print(message);
     result = add(5, 3);
-    print(result);  # 8
+    print(result);
 }
-```
+</div>
 
 ### Default Parameters
 
