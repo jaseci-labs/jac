@@ -180,7 +180,6 @@ def _click_graph(page: Any, block_id: str) -> None {
 }
 
 # -- Rendering tests (fast, no Pyodide) ----------------------------------------
-
 """Plain block should show run button only, no graph button."""
 test "rendering: plain block buttons" {
     def check(page: Any, resp: Any) -> None {
@@ -223,7 +222,6 @@ test "rendering: monaco editor with code" {
 }
 
 # -- Header tests (SharedArrayBuffer) -----------------------------------------
-
 """Server must send COOP/COEP headers for SharedArrayBuffer support."""
 test "headers: cross-origin isolation" {
     def check(page: Any, resp: Any) -> None {
@@ -235,7 +233,6 @@ test "headers: cross-origin isolation" {
 }
 
 # -- Execution tests (slow, needs Pyodide CDN) --------------------------------
-
 """Clicking run should execute code and show correct output."""
 test "execution: run produces output" {
     def check(page: Any, resp: Any) -> None {
