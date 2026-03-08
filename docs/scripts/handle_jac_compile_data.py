@@ -30,7 +30,9 @@ def precompile_jaclang() -> None:
 
     Precompiles the entire jaclang source, same as PyPI release builds.
     """
-    jac_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "jac"))
+    jac_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "jac")
+    )
     script_path = os.path.join(jac_root, "scripts", "precompile_bytecode.jac")
 
     if not os.path.exists(script_path):
@@ -46,7 +48,9 @@ def precompile_jaclang() -> None:
         )
         print("Precompilation complete.")
     except subprocess.CalledProcessError as e:
-        print(f"Warning: Precompilation failed: {e}. Playground will use on-the-fly compilation.")
+        print(
+            f"Warning: Precompilation failed: {e}. Playground will use on-the-fly compilation."
+        )
     except FileNotFoundError:
         print("Warning: 'jac' command not found. Skipping precompilation.")
 
@@ -112,8 +116,7 @@ def create_playground_zip() -> None:
     files_added = 0
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(jaclang_dir):
-            dirs[:] = [d for d in dirs
-                       if not should_exclude(os.path.join(root, d))]
+            dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d))]
 
             for file in files:
                 file_path = os.path.join(root, file)
