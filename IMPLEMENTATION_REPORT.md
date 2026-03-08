@@ -5,11 +5,11 @@
 1. [Problem Statement](#1-problem-statement)
 2. [Solution Architecture](#2-solution-architecture)
 3. [Implementation — File by File](#3-implementation--file-by-file)
-   - [3.1 am_index.py (new)](#31-am_indexpy-new)
+   - [3.1 am_index.jac (new)](#31-am_indexjac-new)
    - [3.2 memory.impl.jac (modified)](#32-memoryimpljac-modified)
    - [3.3 archetype.jac (modified)](#33-archetypejac-modified)
    - [3.4 archetype.impl.jac (modified)](#34-archetypeimpljac-modified)
-   - [3.5 pyast_gen_pass.impl.jac (modified)](#35-pyast_gen_passimpljac-modified)
+   - [3.5 pyast_gen_pass.impl.jac (unchanged)](#35-pyast_gen_passimpljac-pre-existing-code--not-modified)
    - [3.6 runtime.jac (modified)](#36-runtimejac-modified)
 4. [Activation Guard — jac run vs jac start](#4-activation-guard--jac-run-vs-jac-start)
 5. [Test Suite](#5-test-suite)
@@ -28,7 +28,7 @@
 When a Jac walker executes a type-filtered traversal:
 
 ```jac
-results = [here-->](?:TargetNode);
+results = [-->(?:TargetNode)];
 ```
 
 The pre-existing runtime resolves this through `edges_to_nodes()` using an edge-list loop:
@@ -64,7 +64,7 @@ The runtime has no per-type index over the graph topology. Every filtered traver
 ### Three-Tier Resolution
 
 ```
-Walker requests: [here-->](?:TargetNode)
+Walker requests: [-->(?:TargetNode)]
                           │
               use_index condition met?
          (SQLite active + typed filter + degree > threshold)
@@ -161,77 +161,84 @@ The fast path activates only when **all** of the following are true:
 
 ## 3. Implementation — File by File
 
-### 3.1 `am_index.py` (new)
+### 3.1 `am_index.jac` (new)
 
-**Location:** `jac/jaclang/runtimelib/am_index.py`
+**Location:** `jac/jaclang/runtimelib/am_index.jac`
 
-Pure Python module — no Jac compilation required. Provides the process-level AM singleton and all GT helpers.
+Jac module (compiled to Python). Provides the process-level AM singleton and all GT helpers. Implementation lives in `jac/jaclang/runtimelib/impl/am_index.impl.jac`.
 
 #### Key functions
 
-```python
+API surface (Jac declarations in `am_index.jac`, implementations in `am_index.impl.jac`):
+
+```jac
 # Process-level singleton
-am_index: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+glob am_index: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list));
 
-def get_type_mro(obj: object) -> list[str]:
-    """Walk type(obj).__mro__, collect user-defined Jac class names.
-    Stops at any class whose module starts with 'jaclang' or at 'object'.
-    Used for MRO fan-out when indexing a new node."""
+# Test-visible counters (zero overhead in production)
+glob _stats: dict[str, int] = {'am_hits': 0, 'am_misses': 0, 'gt_hits': 0, 'gt_misses': 0};
 
-def am_put(source_id: UUID, target_id: UUID, target_arch: object) -> None:
-    """Index a new edge in AM under all MRO types of the target archetype.
-    Thread-safe per source_id via per-source locks."""
+def reset_stats -> None;
+    # Reset all performance counters to zero. Used in tests.
 
-def am_invalidate(source_id: UUID) -> None:
-    """Remove all AM entries for a given source node.
-    Called from remove_edge(). Entire bucket is dropped — repopulated lazily
-    from GT on the next traversal."""
+def get_type_mro(obj: object) -> list[str];
+    # Walk type(obj).__mro__, collect user-defined Jac class names.
+    # Stops at any class whose module starts with 'jaclang' or at 'object'.
+    # Used for MRO fan-out when indexing a new node.
 
-def am_query(source_id: UUID, target_type: str) -> list[str] | None:
-    """Return target UUID strings for a (source, type) pair.
-    Returns None if the source bucket is absent (AM miss → fall back to GT).
-    Returns [] if source is known but has no targets of this type."""
+def am_put(source_id: UUID, target_id: UUID, target_arch: object) -> None;
+    # Index a new edge in AM under all MRO types of the target archetype.
+    # Thread-safe per source_id via per-source locks (_locks dict).
 
-def am_populate_from_gt(source_id: UUID, gt_rows: list[tuple[str, str]]) -> None:
-    """Populate AM from GT query results: [(target_id_str, target_type_str), ...]
-    Called after GT query so subsequent traversals from the same source hit AM."""
+def am_invalidate(source_id: UUID) -> None;
+    # Remove all AM entries for a given source node.
+    # Called from remove_edge(). Entire bucket dropped — repopulated lazily from GT.
 
-def am_clear() -> None:
-    """Wipe the entire AM index. Used in testing and rebuild scenarios."""
+def am_query(source_id: UUID, target_type: str) -> (list[str] | None);
+    # Return target UUID strings for (source, type).
+    # Returns None if source bucket absent (AM miss → fall back to GT).
+    # Returns [] if source is known but has no targets of this type.
 
-def _get_sqlite(mem: object) -> object | None:
-    """Resolve SqliteMemory from a mem object.
-    Handles bare SqliteMemory and TieredMemory whose .l3 is SqliteMemory.
-    Returns None for in-memory-only or jac-scale MongoDB configurations."""
+def am_populate_from_gt(source_id: UUID, gt_rows: list[tuple[str, str]]) -> None;
+    # Populate AM from GT query results: [(target_id_str, target_type_str), ...]
+    # Called after GT query so subsequent traversals from the same source hit AM.
 
-def _gt_write_edge(mem, eanch, source, target) -> None:
-    """Write edge to GT topology tables (node_topology + edge_topology).
-    Called from build_edge() after source.edges.append(eanch).
-    No-ops if SQLite is not available."""
+def am_clear -> None;
+    # Wipe the entire AM index and lock registry.
 
-def _gt_delete_edge(mem, edge_id: UUID) -> None:
-    """Delete edge row from edge_topology.
-    Called from remove_edge(). Does not touch node_topology rows."""
+def _get_sqlite(mem: object) -> (object | None);
+    # Resolve SqliteMemory from a mem object.
+    # Handles bare SqliteMemory and TieredMemory whose .l3 is SqliteMemory.
+    # Returns None for in-memory-only or jac-scale (MongoDB) configurations.
 
-def gt_query_targets(mem, source_id, edge_type, target_type) -> list[str] | None:
-    """Return matching target UUIDs from edge_topology via one SQL SELECT.
-    Returns None if GT is not available."""
+def _gt_write_edge(mem: object, eanch: object, source: object, target: object) -> None;
+    # Write edge to GT topology tables (node_topology + edge_topology).
+    # Inserts target under all MRO types in node_topology.
+    # Called from build_edge(). No-ops if SQLite is not available.
 
-def rebuild_gt(mem: object) -> None:
-    """Two-pass reconstruction of topology tables from the anchors blob store.
-    Pass 1: NodeAnchors → node_topology + node_id→type map.
-    Pass 2: EdgeAnchors + type map → edge_topology.
-    Safe to call on a live server (INSERT OR IGNORE / INSERT OR REPLACE)."""
+def _gt_delete_edge(mem: object, edge_id: UUID) -> None;
+    # Delete edge row from edge_topology.
+    # Called from remove_edge(). Does not touch node_topology rows.
 
-def rebuild_topology_index(mem: object) -> dict[str, str]:
-    """Public API: rebuild GT from anchor store, then warm AM from GT.
-    Returns summary dict: {'gt': 'rebuilt', 'am': 'warmed (N edges)'}"""
+def gt_query_targets(
+    mem: object, source_id: UUID,
+    edge_type: (str | None), target_type: (str | None)
+) -> (list[str] | None);
+    # Return matching target UUIDs from the topology index.
+    # When target_type is set: JOINs edge_topology with node_topology to support
+    #   MRO-based parent-type queries (e.g. 'BaseContent' returns PostNode + CommentNode).
+    # When target_type is None: simple SELECT from edge_topology (no JOIN).
+    # Returns None if GT is not available.
 
-# Test-visible counters (zero overhead in production — branch not taken)
-_stats: dict[str, int] = {
-    "am_hits": 0, "am_misses": 0, "gt_hits": 0, "gt_misses": 0
-}
-def reset_stats() -> None: ...
+def rebuild_gt(mem: object) -> None;
+    # Two-pass reconstruction of topology tables from the anchors blob store.
+    # Pass 1: NodeAnchors → node_topology + node_id→type map.
+    # Pass 2: EdgeAnchors + type map → edge_topology.
+    # Safe to call on a live server (INSERT OR IGNORE / INSERT OR REPLACE).
+
+def rebuild_topology_index(mem: object) -> dict[str, str];
+    # Public API: rebuild GT from anchor store, then warm AM from GT.
+    # Returns: {'gt': 'rebuilt', 'am': 'warmed (N edges)'}
 ```
 
 #### Thread safety
@@ -338,14 +345,14 @@ impl ObjectSpatialPath.append(
 
 ---
 
-### 3.5 `pyast_gen_pass.impl.jac` (modified)
+### 3.5 `pyast_gen_pass.impl.jac` (pre-existing code — not modified)
 
 **Location:** `jac/jaclang/jac0core/passes/impl/pyast_gen_pass.impl.jac`
 
-In `exit_edge_ref_trailer`, the compiler pass that builds `edge_out/in/any(...)` call keyword arguments was extended to emit `nd_type=` and `edge_type=` string literals at compile time:
+This file was **not modified** as part of this implementation. The existing compiler code at `exit_edge_ref_trailer` (around lines 3004–3028) already emits `nd_type=` and `edge_type=` keyword arguments for the inside-chain `FilterCompr` path:
 
 ```jac
-# For node filter (?:TypeName):
+# Pre-existing: For [-->(?:TypeName)] inside-chain filter:
 if filt and isinstance(filt, uni.FilterCompr) {
     if isinstance(filt.f_type, ast3.Name) {
         keywords.append(
@@ -354,7 +361,7 @@ if filt and isinstance(filt, uni.FilterCompr) {
     }
 }
 
-# For edge filter -[EdgeType]->:
+# Pre-existing: For -[EdgeType]-> edge filter:
 if cur.filter_cond and isinstance(cur.filter_cond, uni.FilterCompr) {
     if isinstance(cur.filter_cond.f_type, ast3.Name) {
         keywords.append(
@@ -364,11 +371,20 @@ if cur.filter_cond and isinstance(cur.filter_cond, uni.FilterCompr) {
 }
 ```
 
-This means `[here-->](?:TargetNode)` compiles to:
+**Important distinction — two filter syntaxes produce different code:**
+
+| Syntax | Code path | `nd_type=` emitted? | Index activates? |
+|--------|-----------|---------------------|-----------------|
+| `[-->(?:TargetNode)]` | `exit_edge_ref_trailer` (inside-chain) | **Yes** | **Yes** |
+| `[here-->](?:TargetNode)` | `exit_atom_trailer` (post-filter) | No | No |
+
+The implementation uses `[-->(?:TargetNode)]` (filter inside the traversal brackets) to ensure `nd_type=` is baked in at compile time and reaches `ObjectSpatialDestination.node_type_name`. The alternative `[here-->](?:TargetNode)` syntax applies the filter as a separate post-traversal operation and does not carry type information into the runtime.
+
+`[-->(?:TargetNode)]` compiles to:
 
 ```python
 # Generated Python (simplified)
-OPath().edge_out(nd_type="TargetNode", nd=lambda i: isinstance(i, TargetNode)).append(...)
+refs(OPath(here).edge_out(nd=lambda i: isinstance(i, TargetNode), nd_type="TargetNode"))
 ```
 
 The string `"TargetNode"` is baked in at compile time with zero runtime overhead.
@@ -506,26 +522,23 @@ stats after traversal (all 0): {'am_hits': 0, 'am_misses': 0, 'gt_hits': 0, 'gt_
 
 ## 5. Test Suite
 
-**Location:** `jac/tests/runtimelib/test_graph_index.py`
+**Location:** `jac/tests/runtimelib/test_graph_index.jac`
 
-18 tests across 5 groups. All pass in 0.17s.
+17 tests across 5 groups, written in Jac. All pass.
 
 ### Infrastructure
 
-Tests use `without_plugins()` to bypass jac-scale and get the base `ExecutionContext` with an isolated SQLite database per test:
+Tests use `without_plugins()` to bypass jac-scale and get the base `ExecutionContext` with an isolated SQLite database per test. Each test gets a fresh `tempfile.mkdtemp()`. The DB lands at `tmp_dir/.jac/data/main.db`.
 
-```python
-def build_graph(tmp_dir, node_counts):
-    with without_plugins():
-        JacRuntime.base_path_dir = tmp_dir    # isolated DB per test
-        ctx = Jac.create_j_context(None)
-        JacRuntime.set_context(ctx)
-        ...
-        ctx.close()
-        JacRuntime.exec_ctx = None
-```
+Walker filter syntax uses `[-->(?:NodeType)]` (inside-chain filter) throughout to ensure `node_type_name` reaches the runtime and the index activates.
 
-Each test gets a fresh `tempfile.mkdtemp()` from the `tmp_dir` fixture. The DB lands at `tmp_dir/.jac/data/main.db`.
+```jac
+walker QueryTargets {
+    has results: list = [];
+    can query with Root entry {
+        self.results = [-->(?:TargetNode)];
+    }
+}
 
 ### Group 1 — GT Table Correctness (T1.1–T1.4)
 
@@ -573,8 +586,8 @@ Each test gets a fresh `tempfile.mkdtemp()` from the `tmp_dir` fixture. The DB l
 ### Running the tests
 
 ```bash
-conda run -n jac python -m pytest jac/tests/runtimelib/test_graph_index.py -v
-# 18 passed in 0.17s
+conda run -n jac python -m pytest jac/tests/runtimelib/ -v -k test_graph_index
+# 17 passed
 ```
 
 ---
@@ -644,38 +657,58 @@ Total SQLite fetches: `target_count = fan_out × selectivity`
 
 ## 7. Benchmark Results
 
-### Raw numbers
+Results from `benchmarking/graph-query-bench/bench_integrated.py` — real SQLite I/O, L1 cache cleared before each iteration (cold traversal worst-case), 6 timed iterations per scenario (1 warm-up discarded).
+
+### Scenario 1 — Single-hop `[-->(?:TargetNode)]`
 
 | Fan-out | Selectivity | Target nodes | Index avg (ms) | Local avg (ms) | Speedup | Fetches saved |
 |---------|-------------|-------------|----------------|----------------|---------|---------------|
-| 50      | 10%         | 5           | 0.166          | 2.142          | **12.9×** | 45 / 50 |
-| 50      | 50%         | 25          | 0.548          | 2.262          | **4.1×**  | 25 / 50 |
-| 50      | 90%         | 45          | 0.977          | 2.283          | **2.3×**  | 5 / 50  |
-| 200     | 10%         | 20          | 0.487          | 7.735          | **15.9×** | 180 / 200 |
-| 200     | 50%         | 100         | 2.090          | 8.168          | **3.9×**  | 100 / 200 |
-| 500     | 10%         | 50          | 1.123          | 19.274         | **17.2×** | 450 / 500 |
-| 500     | 50%         | 250         | 5.715          | 25.815         | **4.5×**  | 250 / 500 |
+| 50      | 10%         | 5           | 0.152          | 1.883          | **12.4×** | 45 / 50   |
+| 50      | 50%         | 25          | 0.574          | 2.180          | **3.8×**  | 25 / 50   |
+| 50      | 90%         | 45          | 0.972          | 2.127          | **2.2×**  | 5 / 50    |
+| 200     | 10%         | 20          | 0.486          | 7.599          | **15.6×** | 180 / 200 |
+| 200     | 50%         | 100         | 2.169          | 8.052          | **3.7×**  | 100 / 200 |
+| 500     | 10%         | 50          | 1.154          | 18.862         | **16.3×** | 450 / 500 |
+| 500     | 50%         | 250         | 5.488          | 19.857         | **3.6×**  | 250 / 500 |
+
+### Scenario 2 — Inheritance `[-->(?:BaseContent)]` (PostNode + CommentNode as subclasses)
+
+MRO fan-out: at seed time, each `PostNode`/`CommentNode` is indexed under both its direct type and `BaseContent`. The GT query JOINs `edge_topology` with `node_topology` to find matching nodes without inspecting pickle blobs.
+
+| Fan-out | Selectivity | Matching nodes | Index avg (ms) | Local avg (ms) | Speedup |
+|---------|-------------|---------------|----------------|----------------|---------|
+| 50      | 20%         | 10            | 0.185          | 1.901          | **10.3×** |
+| 50      | 100%        | 50            | 0.993          | 2.214          | **2.2×**  |
+| 200     | 20%         | 40            | 0.689          | 7.721          | **11.2×** |
+| 500     | 20%         | 100           | 1.632          | 18.648         | **10.2×** |
+
+### Scenario 3 — Wildcard `[-->]` (no type filter — index must NOT activate)
+
+| Fan-out | Index avg (ms) | Local avg (ms) | Speedup |
+|---------|----------------|----------------|---------|
+| 50      | 2.134          | 2.141          | **1.0×** |
+| 200     | 7.843          | 7.798          | **1.0×** |
+
+Wildcard traversals (`destination.node_type_name = None`) correctly bypass the index — zero overhead, identical throughput to the edge-list loop.
 
 ### Worst-case for the index: 90% selectivity, fan=50
 
-Even when 90% of neighbors match (only 5 are skipped), the index is 2.3× faster. This is because:
-1. The GT SQL query (`SELECT target_id WHERE source_id=? AND target_type=?`) returns 45 UUIDs in one round-trip — cheaper than 50 separate anchor fetches
-2. The edge-list loop iterates all 50 edge stubs and fetches each anchor before applying the type filter
+Even when 90% of neighbors match (only 5 are skipped), the index is 2.2× faster. The GT SQL query returns 45 UUIDs in one round-trip — still cheaper than 50 individual anchor fetches.
 
 ### Best case for the index: 10% selectivity, large fan-out
 
-At fan=500, 10% selectivity: **17.2× speedup**. 450 of 500 SQLite fetches are eliminated. The index cost is dominated by the 50 matching anchor fetches, not the GT query overhead.
+At fan=500, 10% selectivity: **16.3× speedup**. 450 of 500 SQLite fetches are eliminated. The index cost is dominated by the 50 matching anchor fetches, not the GT query overhead.
 
 ### Index overhead breakdown (fan=500, 10% selectivity)
 
 ```
-Index path total:        1.123 ms
-  └── GT SQL SELECT:   ~0.10 ms   (one query, constant regardless of fan-out)
-  └── 50 anchor fetches: ~1.02 ms (50 × 0.02ms per SQLite fetch)
+Index path total:         1.154 ms
+  └── GT SQL SELECT:    ~0.10 ms   (one query, constant regardless of fan-out)
+  └── 50 anchor fetches: ~1.05 ms (50 × 0.021ms per SQLite fetch)
 
-Local path total:       19.274 ms
-  └── 500 anchor fetches: ~18ms   (500 × 0.036ms per SQLite fetch)
-  └── Edge stub iteration: ~1.2ms
+Local path total:        18.862 ms
+  └── 500 anchor fetches: ~17ms   (500 × 0.034ms per SQLite fetch)
+  └── Edge stub iteration: ~1.8ms
 ```
 
 ---
@@ -689,8 +722,8 @@ speedup ≈ fan_out / (selectivity × fan_out + GT_overhead_in_fetch_units)
          ≈ 1 / selectivity    (when GT_overhead << matching_fetches)
 ```
 
-At 10% selectivity: speedup ≈ 1/0.10 = 10× (observed: 12.9–17.2×, extra gain from eliminating edge-list iteration)
-At 50% selectivity: speedup ≈ 1/0.50 = 2× (observed: 3.9–4.5×, same extra gain)
+At 10% selectivity: speedup ≈ 1/0.10 = 10× (observed: 12.4–16.3×, extra gain from eliminating edge-list iteration)
+At 50% selectivity: speedup ≈ 1/0.50 = 2× (observed: 3.6–3.8×, same extra gain)
 
 ### Why the standalone sidecar benchmark showed higher numbers (229×)
 
@@ -782,23 +815,26 @@ print(_stats)
 
 | File | Change type | Description |
 |------|------------|-------------|
-| `jac/jaclang/runtimelib/am_index.py` | **New** | AM singleton, GT helpers, rebuild utilities, stats counters |
+| `jac/jaclang/runtimelib/am_index.jac` | **New** | AM singleton, GT helpers, rebuild utilities, stats counters |
 | `jac/jaclang/runtimelib/impl/memory.impl.jac` | Modified | Added topology table DDL + indexes in `SqliteMemory._ensure_connection()` |
+| `jac/jaclang/runtimelib/impl/am_index.impl.jac` | Modified | `gt_query_targets` — JOIN with `node_topology` to support MRO parent-type queries (e.g., `(?:BaseContent)` returns `PostNode` + `CommentNode`) |
 | `jac/jaclang/jac0core/archetype.jac` | Modified | Added `node_type_name`, `edge_type_name` fields to `ObjectSpatialDestination`; updated `edge_out/in/any` signatures |
 | `jac/jaclang/jac0core/impl/archetype.impl.jac` | Modified | `ObjectSpatialPath.append()` propagates `nd_type` and `edge_type` onto destination |
-| `jac/jaclang/jac0core/passes/impl/pyast_gen_pass.impl.jac` | Modified | Emit `nd_type=` and `edge_type=` string literals at compile time from `FilterCompr` nodes |
+| `jac/jaclang/jac0core/passes/impl/pyast_gen_pass.impl.jac` | Unchanged | Pre-existing `exit_edge_ref_trailer` code already emits `nd_type=` for `[-->(?:T)]` inside-chain filters — no changes needed |
 | `jac/jaclang/jac0core/runtime.jac` | Modified | AM/GT write hooks in `build_edge()`, invalidation hooks in `remove_edge()`, fast path in `edges_to_nodes()` — all guarded by `_get_sqlite()` check |
-| `jac/tests/runtimelib/test_graph_index.py` | **New** | 18 tests across 5 groups: GT correctness, AM correctness, fetch reduction, mutation consistency, schema |
+| `jac/tests/runtimelib/test_graph_index.jac` | **New** | 17 tests across 5 groups: GT correctness, AM correctness, fetch reduction, mutation consistency, schema |
+| `benchmarking/graph-query-bench/bench_integrated.py` | **New** | Integrated benchmark with real SQLite I/O, cold L1 cache, 3 scenarios (single-hop, inheritance, wildcard) |
 
 ### Lines of code
 
 | File | Lines added |
 |------|------------|
-| `am_index.py` | 390 |
-| `test_graph_index.py` | 790 |
+| `am_index.jac` | 390 |
+| `test_graph_index.jac` | ~700 |
+| `bench_integrated.py` | 236 |
 | `runtime.jac` (changes) | +35 / -10 |
 | `memory.impl.jac` (changes) | +20 |
+| `am_index.impl.jac` (changes) | +15 |
 | `archetype.jac` (changes) | +5 |
 | `archetype.impl.jac` (changes) | +8 |
-| `pyast_gen_pass.impl.jac` (changes) | +20 |
-| **Total new** | **~1,268 lines** |
+| **Total new** | **~1,409 lines** |

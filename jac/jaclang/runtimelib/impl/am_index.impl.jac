@@ -125,7 +125,11 @@ impl _gt_write_edge(
     mem: object, eanch: object, source: object, target: object
 ) -> None {
     sqlite = _get_sqlite(mem);
-    if sqlite is None or sqlite.__conn__ is None {
+    if sqlite is None {
+        return;
+    }
+    sqlite._ensure_connection();
+    if sqlite.__conn__ is None {
         return;
     }
     edge_type = type(eanch.archetype).__name__;
@@ -154,7 +158,11 @@ impl _gt_write_edge(
 
 impl _gt_delete_edge(mem: object, edge_id: UUID) -> None {
     sqlite = _get_sqlite(mem);
-    if sqlite is None or sqlite.__conn__ is None {
+    if sqlite is None {
+        return;
+    }
+    sqlite._ensure_connection();
+    if sqlite.__conn__ is None {
         return;
     }
     sqlite.__conn__.execute(
@@ -187,17 +195,34 @@ impl gt_query_targets(
     }
 
     params: list[object] = [str(source_id)];
-    where = ['source_id = ?'];
-    if edge_type {
-        where.append('edge_type = ?');
-        params.append(edge_type);
-    }
+
     if target_type {
-        where.append('target_type = ?');
+        # Join with node_topology to support MRO-based type queries
+        # (e.g. querying 'BaseContent' returns PostNode + CommentNode targets)
+        where = [
+            'et.source_id = ?',
+            'nt.node_type = ?'
+        ];
         params.append(target_type);
+        if edge_type {
+            where.append('et.edge_type = ?');
+            params.append(edge_type);
+        }
+        sql = (
+            'SELECT DISTINCT et.target_id '
+            'FROM edge_topology et '
+            'JOIN node_topology nt ON et.target_id = nt.node_id '
+            'WHERE ' + ' AND '.join(where)
+        );
+    } else {
+        where = ['source_id = ?'];
+        if edge_type {
+            where.append('edge_type = ?');
+            params.append(edge_type);
+        }
+        sql = 'SELECT target_id FROM edge_topology WHERE ' + ' AND '.join(where);
     }
 
-    sql = 'SELECT target_id FROM edge_topology WHERE ' + ' AND '.join(where);
     try {
         cur = sqlite.__conn__.execute(sql, params);
         rows = [row[0] for row in cur.fetchall()];
