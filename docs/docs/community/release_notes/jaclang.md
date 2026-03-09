@@ -5,19 +5,23 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.12.1 (Unreleased)
 
 - **Dev Mode Now Default for `jac start`**: The `--dev` flag now defaults to `True`, enabling Hot Module Replacement (HMR) by default. Added a new `--prod` flag to explicitly run in production mode (no HMR, minified output, no sourcemaps). Use `jac start --prod` for production deployments.
+- **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
+- 3 small refactors/changes.
+- **Fix: HMR Recursive recompilation**: Fixed client-side code recursive recompilation process, preventing cyclic recompilation, and ensuring that all dependencies are up to date.
 - **Fix: HTTP Server Authentication for Imported `:pub` Functions**: Fixed server incorrectly requiring authentication (401) for imported `:pub` functions. The server now inspects source file ASTs to determine access levels for imported function endpoints, matching the existing behavior for imported walkers.
 - **Compiler Warns on `@classmethod`/`@staticmethod` in `obj` Definitions**: Using `@classmethod` or `@staticmethod` inside `obj`, `node`, `edge`, or `walker` now emits a warning. Use the `static` keyword instead, or switch to `class` for Python-specific decorator features. Compilation warnings are now also surfaced during `jac run`.
-- 2 small refactors/changes.
 - **Fix: Union Type Member Access Errors**: `x.attr` on a union type now errors when the attribute is missing from any variant (previously silently returned `UnknownType`). Reports which variant(s) lack the attribute.
 - **Fix: Module-Level Overload Resolution**: `math.floor()`, `math.ceil()` and other module-level overloaded functions now correctly resolve all `@overload` signatures instead of only the first.
 - **Stdlib Protocol Detection**: Added Pyright-style `ModuleSourceFlags` for production-grade stdlib type detection. Protocol types like `_SupportsFloor` and `_SupportsTrunc` are now properly recognized, enabling `math.floor(3.7)` and `math.trunc(4.9)` to type-check correctly.
 - **Fix: `jac format --lintfix` File Deletion on Parse Errors**: Fixed a critical bug where `jac format --lintfix` would completely wipe out file contents when encountering parse errors. The formatter now preserves the original file when parse/lex errors are present, while still allowing files with type errors (but valid syntax) to be formatted normally. Added a safety check in `format_single_file()` that prevents writing empty formatted output to disk.
 - **Style: Remove Bold from CLI Console Output**: Removed bold styling from all console output methods (success, error, warning, info, headers, tables, etc.) in the base jacpretty console, keeping only color.
 - **Fix: Raw ANSI Codes in Error Output**: Fixed `[0;31m` escape fragments appearing as literal text in terminal error messages. `pretty_print(colors=True)` was injecting raw ANSI codes that conflicted with the Rich-based console from jac-super. Error formatting now delegates all styling to the console layer.
+- **Native: Function Pointer Support for C FFI Callbacks**: Jac `def` functions can now be passed as raw function pointers to C library calls in native code, enabling callback-based C APIs (e.g. libuv timers, async I/O) to be driven directly from Jac.
 
 ## jaclang 0.12.0 (Latest Release)
 
 - 27 small refactors/changes.
+
 - **Fix: Formatter Semicolon & Decorator Spacing**: Fixed spacing bugs in the formatter where `@` decorators produced `@ decorator` instead of `@decorator`, and statement semicolons produced `raise ;` instead of `raise;`.
 - **Fix: Type Checker Validates Args Against Parameterless `init`**: The type checker now correctly reports an error when arguments are passed to a constructor whose `init` takes no parameters. Named args raise `Named argument does not match any parameter` and extra positional args raise `Too many positional arguments`. Calling with no args (`MyObj()`) remains valid.
 - **Automatic Port Fallback for `jac start`**: When starting the built-in HTTP server, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. The `on_ready` callback signature updated to `Callable[[int], None]` to pass the actual bound port.

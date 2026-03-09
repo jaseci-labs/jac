@@ -469,6 +469,39 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     if func is None {
+        # ── Indirect call via function-pointer local variable ────────────────
+        # If the callee name resolves to a local variable whose loaded type is
+        # a pointer to FunctionType (i.e., a Callable parameter), build an
+        # indirect call instead of giving up.
+        if func_name in self.local_vars {
+            _alloca = self.local_vars[func_name];
+            _loaded = self.builder.load(_alloca, name=f"fptr.{func_name}");
+            if (
+                isinstance(_loaded.type, ir.PointerType)
+                and isinstance(_loaded.type.pointee, ir.FunctionType)
+            ) {
+                _fn_type = _loaded.type.pointee;
+                _iargs: list[ir.Value] = [];
+                _iparams = nd.params or [];
+                for _ip in _iparams {
+                    _iv = self._codegen_expr(_ip);
+                    if _iv is not None {
+                        _iargs.append(_iv);
+                    }
+                }
+                _icoerced: list[ir.Value] = [];
+                for (_ii, _ia) in enumerate(_iargs) {
+                    if _ii < len(_fn_type.args) {
+                        _icoerced.append(self._coerce_type(_ia, _fn_type.args[_ii]));
+                    } else {
+                        _icoerced.append(_ia);
+                    }
+                }
+                return self.builder.call(
+                    _loaded, _icoerced, name=f"icall.{func_name}"
+                );
+            }
+        }
         return None;
     }
     # Propagate return type hint for for-loop element resolution

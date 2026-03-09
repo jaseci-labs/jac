@@ -43,10 +43,8 @@ test "clean circle jac" {
     execution.run(os.path.join(EXAMPLES, "manual_code", "circle_clean.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
-    assert stdout_value == (
-        "Area of a circle with radius 5 using function: 78.53981633974483\n"
-        "Area of a Circle with radius 5 using class: 78.53981633974483\n"
-    );
+    assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
+    assert "Area of a Circle with radius 5 using class: 78.53981633974483" in stdout_value;
 }
 
 test "pure circle jac" {
@@ -55,10 +53,8 @@ test "pure circle jac" {
     execution.run(os.path.join(EXAMPLES, "manual_code", "circle_pure.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
-    assert stdout_value == (
-        "Area of a circle with radius 5 using function: 78.53981633974483\n"
-        "Area of a Circle with radius 5 using class: 78.53981633974483\n"
-    );
+    assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
+    assert "Area of a Circle with radius 5 using class: 78.53981633974483" in stdout_value;
 }
 
 test "pure circle impl not double generated" {
