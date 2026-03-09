@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- **Fix: jacpretty Crash on Hex-like Patterns**: Fixed `ValueError` crash when `render_markup` encounters strings like `#2000"}` in JSON data. Added input validation for `rgb()`, `color()`, and hex color parsing.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
 - 3 small refactors/changes.
 - **Fix: HMR Recursive recompilation**: Fixed client-side code recursive recompilation process, preventing cyclic recompilation, and ensuring that all dependencies are up to date.
