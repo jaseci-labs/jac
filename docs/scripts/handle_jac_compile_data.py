@@ -30,7 +30,7 @@ EXCLUDE_SUBDIRS = {
 
 def fetch_pypi_jaclang() -> str:
     """Install jaclang from PyPI into a temp dir to get pre-compiled .jir files."""
-    
+
     tmp_dir = tempfile.mkdtemp(prefix="jaclang_pypi_")
     print("Installing jaclang from PyPI (for pre-compiled .jir files)...")
     subprocess.run(
