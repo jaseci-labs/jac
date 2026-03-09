@@ -32,7 +32,7 @@ class DeploymentTarget {
     Args:
         app_name: Name of the application to destroy
     """
-    def destroy(self: DeploymentTarget, app_name: str) -> None;
+    def destroy(self: DeploymentTarget, app_name: str, component: str = "") -> None;
 
     """Get the status of a deployed application.
 
