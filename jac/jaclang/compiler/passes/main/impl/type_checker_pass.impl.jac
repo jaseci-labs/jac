@@ -485,10 +485,18 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
     }
 }
 
-"""Set type on class fields (has vars) for hover info."""
+"""Set type on class fields (has vars) and validate initializer type."""
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     if (sym := nd.sym) {
         nd.type = self.evaluator.get_type_of_symbol(sym);
+        # If there's an initializer, check that its type is compatible
+        # with the declared type (e.g., bad1: int = unknown_val;).
+        if nd.value is not None and nd.type is not None {
+            right_type = self.evaluator.get_type_of_expression(nd.value);
+            if not self.evaluator.assign_type(right_type, nd.type) {
+                self.log_error(f"Cannot assign {right_type} to {nd.type}", nd);
+            }
+        }
     }
 }
 

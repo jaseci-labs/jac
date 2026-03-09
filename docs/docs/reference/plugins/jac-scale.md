@@ -1,6 +1,8 @@
 # jac-scale Reference
 
-Complete reference for jac-scale, the cloud-native deployment and scaling plugin for Jac.
+jac-scale generates REST endpoints from your Jac walkers and functions. Running `jac start` with this plugin turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
+
+For production, the `--scale` flag automates Docker image builds and Kubernetes deployment -- generating Dockerfiles, manifests, and service configurations from your code. This reference covers server startup options, endpoint generation, authentication, database persistence, Kubernetes deployment, and the CLI flags for each mode.
 
 ---
 
@@ -1052,6 +1054,12 @@ On the first `jac start app.jac --scale`, jac-scale automatically deploys Redis 
 |----------|---------|-------------|
 | `mongodb_enabled` | `true` | Auto-provision MongoDB StatefulSet |
 | `redis_enabled` | `true` | Auto-provision Redis Deployment |
+| `mongodb_root_username` | `admin` | MongoDB root username - stored as a K8s Secret, injected via `secretKeyRef` |
+| `mongodb_root_password` | `password` | MongoDB root password - stored as a K8s Secret, injected via `secretKeyRef` |
+| `redis_username` | `admin` | Redis auth username - stored as a K8s Secret, injected via `secretKeyRef` |
+| `redis_password` | `password` | Redis auth password - stored as a K8s Secret, injected via `secretKeyRef` |
+
+Credentials are never hardcoded in pod specs. They are stored as Kubernetes `Secret` resources (`{app}-mongodb-secret`, `{app}-redis-secret`) and referenced via `valueFrom.secretKeyRef` - `kubectl describe pod` shows the secret name and key, not the actual value.
 
 **To disable (use an external database instead):**
 

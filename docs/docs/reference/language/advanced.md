@@ -9,7 +9,12 @@
 
 ---
 
-Jac extends Python's comprehension syntax with **filter** (`?`) and **assign** (`=`) operators that work on collections of nodes or objects. These provide concise ways to query and modify groups of items.
+Jac includes Python's familiar list, dict, set, and generator comprehensions -- and extends them with two powerful operators designed for working with collections of graph nodes and objects:
+
+- **Filter comprehensions** (`?`) -- query a collection by attribute conditions or type, returning only the matching elements. This replaces verbose `for`/`if` filtering with a concise inline syntax. For example, `people(?age >= 18)` returns all people whose age is 18 or above.
+- **Assign comprehensions** (`=`) -- bulk-update attributes on every item in a collection. Instead of writing a loop to set a field on each element, `people(=verified=True)` sets `verified` to `True` on all items in one expression.
+
+These operators are especially useful during graph traversal, where you often need to filter connected nodes by type or attribute and then update them. They chain naturally: `people(?age >= 18)(=can_vote=True)` filters *then* assigns in a single expression.
 
 > **Related:**
 >
@@ -18,6 +23,8 @@ Jac extends Python's comprehension syntax with **filter** (`?`) and **assign** (
 > - [Testing](../testing.md) - Test blocks, assertions, CLI commands
 
 ## Standard Comprehensions
+
+Jac supports all four Python comprehension forms -- list, dict, set, and generator -- with identical semantics. If you know Python comprehensions, these work exactly as you'd expect, just wrapped in braces and terminated with semicolons.
 
 ```jac
 def example() {
@@ -41,7 +48,9 @@ def example() {
 
 ## Filter Comprehensions
 
-Filter collections with `?condition`:
+Filter comprehensions use the `?` operator to select elements from a collection based on attribute conditions. The syntax is `collection(?attr op value)` -- the condition references attributes directly by name, without needing a lambda or loop variable. Multiple conditions are separated by commas and are ANDed together.
+
+This is particularly powerful with graph traversals. Instead of fetching all connected nodes and then filtering in a separate loop, you can write `[-->](?status == "active")` to get only the active connections in one expression.
 
 ```jac
 node Person {
@@ -68,7 +77,7 @@ def example(people: list[Person], employees: list[Employee]) {
 
 ## Typed Filter Comprehensions
 
-Filter by type with filter syntax:
+When a graph has multiple node types connected to the same parent, typed filter comprehensions let you select by type using the `?:Type` syntax. This is the graph-aware equivalent of `isinstance` filtering -- `[-->](?:Person)` returns only `Person` nodes from all outgoing connections. You can combine type filters with attribute conditions: `[-->](?:Person, age > 21)` filters by both type and attribute in one expression.
 
 ```jac
 node Dog {
@@ -93,7 +102,7 @@ def example(animals: list) {
 
 ## Assign Comprehensions
 
-Modify all items with `=attr=value`:
+Assign comprehensions bulk-update attributes on every item in a collection using the `=attr=value` syntax. This eliminates the need for `for` loops that exist solely to set a field on each element. The real power comes from chaining with filter comprehensions: `people(?age >= 18)(=can_vote=True)` first selects adults, then sets `can_vote` on each one -- a pattern that would otherwise require a multi-line loop with a conditional.
 
 ```jac
 node Person {

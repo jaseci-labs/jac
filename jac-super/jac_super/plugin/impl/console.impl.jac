@@ -18,13 +18,13 @@ obj JacSuperConsole(BaseJacConsole) {
     with entry {
         JAC_THEME = Theme(
             {
-                'success': 'bold green',
-                'error': 'bold red',
-                'warning': 'bold yellow',
-                'info': 'bold cyan',
+                'success': 'green',
+                'error': 'red',
+                'warning': 'yellow',
+                'info': 'cyan',
                 'url': 'underline green',
                 'muted': 'dim white',
-                'highlight': 'bold cyan',
+                'highlight': 'cyan',
                 'time': 'yellow'
             }
         );
@@ -88,9 +88,9 @@ obj JacSuperConsole(BaseJacConsole) {
     """Override print_header to use Rich styling."""
     def print_header(title: str, version: (str | None) = None) -> None {
         if version {
-            self._console.print(f"{title} v{version}", style='bold cyan');
+            self._console.print(f"{title} v{version}", style='cyan');
         } else {
-            self._console.print(f"{title}", style='bold cyan');
+            self._console.print(f"{title}", style='cyan');
         }
     }
 
@@ -123,7 +123,7 @@ obj JacSuperConsole(BaseJacConsole) {
     def print_table(
         headers: list[str], rows: list[list[str]], title: (str | None) = None
     ) -> None {
-        table = Table(title=title, show_header=True, header_style='bold cyan');
+        table = Table(title=title, show_header=True, header_style='cyan');
         for header in headers {
             table.add_column(header);
         }

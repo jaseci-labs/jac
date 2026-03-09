@@ -1,6 +1,8 @@
 # jac-client Reference
 
-Complete reference for jac-client, the full-stack web development plugin for Jac.
+jac-client adds client-side compilation to Jac so you can write React-style UI components using `cl { }` blocks or `.cl.jac` files. The compiler separates your code automatically -- server-side logic compiles to Python, while client-side components compile to JavaScript with React as the rendering engine.
+
+You also get project scaffolding (`jac create --use client`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
 ---
 
