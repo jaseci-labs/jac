@@ -58,6 +58,13 @@ glob registry = get_registry();
             help="Print generated tests to stdout without writing to disk",
             short="d"
         ),
+        Arg.create(
+            "max_retries",
+            typ=int,
+            default=3,
+            help="Max LLM attempts per function (per-attempt validation rounds) and post-gen fix rounds",
+            short="r"
+        ),
     ],
     examples=[
         ("jac test-gen mymodule.jac", "Generate tests for all by llm() functions"),
@@ -80,15 +87,33 @@ def test_gen(
     model: str = "openai/gpt-4o",
     temperature: float = 0.2,
     force: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    max_retries: int = 3
 ) -> int;
 
-"""Run `jac test <source_path>` and return a dict mapping spec name -> error text for failures."""
-def _run_jac_tests(source_path: str) -> dict[str, str] {
-    import re;
+"""Run `jac check <path>` on the generated file and return error text, or None if clean."""
+def _run_jac_check(path: str) -> str | None {
     import subprocess;
     proc = subprocess.run(
-        ["jac", "test", source_path],
+        ["jac", "check", path],
+        capture_output=True,
+        text=True
+    );
+    if proc.returncode == 0 {
+        return None;
+    }
+    return (proc.stdout + "\n" + proc.stderr).strip() or "jac check failed (no output)";
+}
+
+"""Run `jac test <path>` and return a dict mapping spec name -> error text for failures."""
+def _run_jac_tests(path: str) -> dict[str, str] {
+    import re;
+    import subprocess;
+    # Purge the cache first so the freshly-written file is compiled from source,
+    # not served from a stale JIR that may have passed an earlier (buggy) version.
+    subprocess.run(["jac", "purge"], capture_output=True, text=True);
+    proc = subprocess.run(
+        ["jac", "test", path],
         capture_output=True,
         text=True
     );
@@ -119,7 +144,8 @@ impl test_gen(
     model: str = "openai/gpt-4o",
     temperature: float = 0.2,
     force: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    max_retries: int = 3
 ) -> int {
     import from pathlib { Path }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -127,6 +153,11 @@ impl test_gen(
     import from byllm.test_gen.spec_extractor { extract_specs }
     import from byllm.test_gen.code_generator { generate_tests_for_spec }
     import from byllm.test_gen.output_writer { write_test_file, read_existing_hashes }
+
+    console.warning(
+        "⚠ BETA: jac test-gen is an experimental feature. "
+        "Generated tests may require manual review before use in CI."
+    );
 
     source_path = Path(filepath).resolve();
     if not source_path.exists() {
@@ -137,6 +168,8 @@ impl test_gen(
         console.error(f"Expected a .jac file, got: {filepath}");
         return 1;
     }
+    import os;
+    src_dir: str = os.path.dirname(source_path);
 
     # Determine output path
     if output {
@@ -200,7 +233,7 @@ impl test_gen(
             continue;
         }
         console.info(f"  Generating test for: {spec.name}");
-        result = generate_tests_for_spec(spec, model_name=model, temperature=temperature);
+        result = generate_tests_for_spec(spec, model_name=model, temperature=temperature, source_dir=src_dir, max_retries=max_retries);
         results.append(result);
         if result.error {
             console.warning(f"  ! {spec.name}: {result.error}");
@@ -239,14 +272,46 @@ impl test_gen(
         return 1;
     }
 
-    # --- Post-generation: run tests and fix failures (up to 2 retry rounds) ---
-    max_fix_rounds: int = 2;
+    # --- Post-generation: validate and fix (up to max_retries rounds) ---
+    # Round 1: jac check (full-file compilation — catches syntax errors, wrong keywords, etc.)
+    # Round 2+: jac test  (runtime assertion failures)
+    max_fix_rounds = max_retries;
     spec_by_name = {s.name: s for s in specs};
     result_by_name = {r.spec.name: r for r in results if r.test_code is not None};
 
     for round_num in range(max_fix_rounds) {
-        console.info(f"\nRunning generated tests (fix round {round_num + 1}/{max_fix_rounds})...");
-        test_failures = _run_jac_tests(str(source_path));
+        # Step 1: full-file syntax/type check
+        console.info(f"\nRunning jac check on generated file (round {round_num + 1}/{max_fix_rounds})...");
+        check_error = _run_jac_check(output_path);
+        if check_error {
+            console.warning(f"jac check failed — re-generating all tests with error feedback...");
+            fixed_any = False;
+            for spec_name in list(result_by_name.keys()) {
+                if spec_name in spec_by_name {
+                    console.info(f"  Re-generating: {spec_name}");
+                    fix_result = generate_tests_for_spec(
+                        spec_by_name[spec_name],
+                        model_name=model,
+                        temperature=temperature,
+                        source_dir=src_dir,
+                        max_retries=max_retries,
+                        error_feedback=f"jac check on the generated file failed:\n{check_error}\n\nFix ALL syntax errors (use # for comments, not //; no `let` or `var`; test names must be quoted strings)."
+                    );
+                    result_by_name[spec_name] = fix_result;
+                    fixed_any = True;
+                }
+            }
+            if fixed_any {
+                all_results = list(result_by_name.values());
+                write_test_file(all_results, str(source_path), output_path);
+                console.info(f"  Re-wrote {output_path} with fixes.");
+            }
+            continue;
+        }
+
+        # Step 2: runtime test execution
+        console.info("jac check passed. Running jac test...");
+        test_failures = _run_jac_tests(output_path);
         if not test_failures {
             console.success("All tests passed.");
             break;
@@ -255,21 +320,19 @@ impl test_gen(
         console.warning(f"{len(test_failures)} test(s) failed — attempting to fix...");
 
         # Match failure test function names back to spec names
-        # Test function names look like: test_<spec_name_spaces_as_underscores>...
         fixed_any = False;
         for (fail_fn_name, error_text) in test_failures.items() {
-            # Find the spec whose name appears in the test function name
-            matched_spec = None;
             if fail_fn_name == "__all__" {
-                # Fallback: try all specs that generated code
-                for spec_name in result_by_name.keys() {
-                    matched_spec = spec_by_name.get(spec_name);
-                    if matched_spec {
+                # Fallback: re-generate all
+                for spec_name in list(result_by_name.keys()) {
+                    if spec_name in spec_by_name {
                         console.info(f"  Re-generating: {spec_name}");
                         fix_result = generate_tests_for_spec(
-                            matched_spec,
+                            spec_by_name[spec_name],
                             model_name=model,
                             temperature=temperature,
+                            source_dir=src_dir,
+                            max_retries=max_retries,
                             error_feedback=error_text
                         );
                         result_by_name[spec_name] = fix_result;
@@ -277,22 +340,25 @@ impl test_gen(
                     }
                 }
             } else {
+                matched_name: str | None = None;
                 for spec_name in result_by_name.keys() {
                     normalized = spec_name.lower().replace(" ", "_");
                     if normalized in fail_fn_name.lower() {
-                        matched_spec = spec_by_name.get(spec_name);
+                        matched_name = spec_name;
                         break;
                     }
                 }
-                if matched_spec {
-                    console.info(f"  Re-generating: {matched_spec.name} (test failure: {fail_fn_name})");
+                if matched_name is not None and matched_name in spec_by_name {
+                    console.info(f"  Re-generating: {matched_name} (test failure: {fail_fn_name})");
                     fix_result = generate_tests_for_spec(
-                        matched_spec,
+                        spec_by_name[matched_name],
                         model_name=model,
                         temperature=temperature,
+                        source_dir=src_dir,
+                        max_retries=max_retries,
                         error_feedback=error_text
                     );
-                    result_by_name[matched_spec.name] = fix_result;
+                    result_by_name[matched_name] = fix_result;
                     fixed_any = True;
                 } else {
                     console.warning(f"  Could not match failed test '{fail_fn_name}' to any spec — skipping");

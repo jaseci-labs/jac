@@ -6,6 +6,7 @@ import from jaclang.jac0core.mtp {
     FunctionInfo, MethodInfo, ClassInfo, EnumInfo, FieldInfo, ParamInfo,
     type_to_str
 }
+
 """Recursively resolve a type_info value into (type_str, ClassSpec|EnumSpec|None).
 
 Handles:
@@ -100,7 +101,7 @@ impl FunctionSpec.spec_hash -> str {
         "return_type_str": self.return_type_str,
         "return_type_detail": _detail_sig(self.return_type_detail),
     };
-    raw = json.dumps(payload, sort_keys=True, default=list).encode();
+    raw = json.dumps(payload, sort_keys=True).encode();
     return hashlib.sha256(raw).hexdigest()[:16];
 }
 
@@ -139,9 +140,16 @@ impl extract_specs(mtir_map: dict) -> list[FunctionSpec] {
         parts = key.rsplit(".", 1);
         name = parts[-1] if len(parts) > 1 else key;
 
+        # Detect methods: MethodInfo has a parent_class attribute
+        parent_class: str | None = None;
+        if isinstance(info, MethodInfo) and info.parent_class {
+            parent_class = info.parent_class.name;
+        }
+
         specs.append(FunctionSpec(
             qualified_key=key,
             name=name,
+            parent_class=parent_class,
             semstr=info.semstr,
             params=params,
             return_type_str=return_type_str,

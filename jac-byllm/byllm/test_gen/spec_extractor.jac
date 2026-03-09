@@ -37,6 +37,7 @@ obj ParamSpec {
 obj FunctionSpec {
     has qualified_key: str,             # e.g. "llm_semstrings.generate_password"
         name: str,                      # e.g. "generate_password"
+        parent_class: str | None,       # e.g. "LevelManager" if this is a method, else None
         semstr: str | None,
         params: list[ParamSpec],
         return_type_str: str,           # human-readable via type_to_str()

@@ -1,256 +1,300 @@
-"""Implementation of the LLM-based test block generator with jac-mcp tool integration.
+"""Implementation of the byLLM-based test block generator.
 
-The generator runs an agentic loop:
-  1. Send spec prompt + jac-mcp tool definitions to the LLM
-  2. If the model calls validate_jac or check_syntax, execute via CompilerBridge
-  3. Repeat until the model produces a final test block (no tool calls)
-  4. Apply local validation (no imports, no by llm())
-  5. Return TestGenResult
-
-Tools are backed by jac-mcp's ToolProvider which calls CompilerBridge directly
-(no MCP server process needed).
+validate_jac and check_syntax are thin wrappers over jac-mcp's CompilerBridge.
+generate_tests_for_spec converts a FunctionSpec into the string parameters that
+generate_test_block() (a by llm() function) consumes.
 """
 
 import re;
 import json;
-import litellm;
 import from loguru { logger }
-import from byllm.test_gen.spec_extractor { FunctionSpec }
-import from byllm.test_gen.prompt_builder { build_test_gen_prompt }
-
-glob _MAX_ITERATIONS: int = 6;
-
-"""Tool schemas passed to the LLM so it can validate the Jac code it writes."""
-glob _JAC_TOOLS: list = [
-    {
-        "type": "function",
-        "function": {
-            "name": "validate_jac",
-            "description": (
-                "Validate Jac test code with full type checking. "
-                "You MUST call this after drafting a test block to confirm it compiles. "
-                "Returns {valid: bool, errors: [...], warnings: [...]}. "
-                "If errors are returned, fix the code and call validate_jac again."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "The Jac test block code to validate"
-                    }
-                },
-                "required": ["code"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_syntax",
-            "description": "Quick parse-only syntax check (faster, no type checking). Use as a first pass before validate_jac.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "Jac source code to check"
-                    }
-                },
-                "required": ["code"]
-            }
-        }
-    },
-];
-
-"""Call a jac-mcp tool by name using ToolProvider (backed by CompilerBridge)."""
-def _call_jac_tool(name: str, arguments: dict) -> str {
-    import from jac_mcp.tools { ToolProvider }
-    result = ToolProvider().call_tool(name, arguments);
-    return json.dumps(result, indent=2);
+import from byllm.test_gen.spec_extractor {
+    FunctionSpec, ClassSpec, EnumSpec, FieldSpec, ParamSpec
 }
 
-"""Build the assistant message dict from a litellm response message."""
-def _assistant_message(msg: object) -> dict {
-    d: dict = {"role": "assistant"};
-    if msg.content {
-        d["content"] = msg.content;
-    }
-    if msg.tool_calls {
-        tc_list: list = [];
-        for tc in msg.tool_calls {
-            tc_list.append({
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments
-                }
-            });
-        }
-        d["tool_calls"] = tc_list;
-    }
-    return d;
-}
+"""Check for known Jac anti-patterns that validate_jac may not catch in snippets.
 
-"""Extract the test block (and any leading import lines) from raw LLM output.
-
-Finds the first `test "..." { ... }` block using a balanced-brace scanner so
-nested braces inside assertions are handled correctly.  Any `import` statements
-on lines immediately before the test keyword (within the same code-fence section)
-are prepended so the model can bring in stdlib modules (re, math, etc.).
-
-Returns None if no valid test block is found.
+Returns a human-readable error string if any issue is found, else None.
 """
-def _extract_test_block(raw: str) -> str | None {
-    # Strip markdown code fences if present
-    fence_m = re.search(r"```(?:jac)?\n(.*?)```", raw, re.DOTALL);
-    body = fence_m.group(1) if fence_m else raw;
-
-    m = re.search(r'test\s+"[^"]*"\s*\{', body);
-    if m is None {
-        return None;
+def _check_jac_syntax(code: str) -> str | None {
+    errors: list[str] = [];
+    # // is not a comment in Jac (it's floor-division); catches JS-style comments
+    if re.search(r"//", code) {
+        errors.append("Contains `//` — NOT a Jac comment. Use `#` for comments.");
     }
-
-    # Collect import lines that appear before the test block in the same section
-    before = body[:m.start()];
-    import_lines: list[str] = [];
-    for line in before.splitlines() {
-        stripped = line.strip();
-        if stripped.startswith("import ") or stripped.startswith("import from ") {
-            import_lines.append(stripped);
-        }
+    # `let` is not a keyword in Jac
+    if re.search(r"\blet\b", code) {
+        errors.append("Contains `let` — NOT valid Jac. Write `name = value;` without `let`.");
     }
-
-    brace_start = body.index("{", m.start());
-    depth = 0;
-    for i in range(brace_start, len(body)) {
-        ch = body[i];
-        if ch == "{" {
-            depth += 1;
-        } elif ch == "}" {
-            depth -= 1;
-            if depth == 0 {
-                test_block = body[m.start():i + 1];
-                if import_lines {
-                    return "\n".join(import_lines) + "\n" + test_block;
-                }
-                return test_block;
-            }
-        }
+    # `var` is not a keyword in Jac
+    if re.search(r"\bvar\b", code) {
+        errors.append("Contains `var` — NOT valid Jac. Write `name = value;` without `var`.");
+    }
+    # `null` is not valid Jac — use `None`
+    if re.search(r"\bnull\b", code) {
+        errors.append("Contains `null` — NOT valid Jac. Use `None` instead.");
+    }
+    # Test name must be a quoted string literal
+    if re.search(r'\btest\s+[^"\'{]', code) {
+        errors.append("Test name must be a quoted string: `test \"name\" {` not `test name {`.");
+    }
+    if errors {
+        return "\n".join(errors);
     }
     return None;
 }
 
-"""Validate the extracted test block for obvious problems.
+"""Validate Jac code via jac-mcp CompilerBridge (full type check)."""
+impl validate_jac(code: str) -> str {
+    import from jac_mcp.tools { ToolProvider }
+    result = ToolProvider().call_tool("validate_jac", {"code": code});
+    return json.dumps(result);
+}
 
-Returns (is_valid, warning_message | None).
+"""Quick parse-only syntax check via jac-mcp CompilerBridge."""
+impl check_syntax(code: str) -> str {
+    import from jac_mcp.tools { ToolProvider }
+    result = ToolProvider().call_tool("check_syntax", {"code": code});
+    return json.dumps(result);
+}
+
+"""Format a single field as a line for fields_spec, tagging semstrs as assertion targets."""
+def _field_line(f: FieldSpec) -> str {
+    if f.semstr {
+        return f"  {f.name}: {f.type_str}\n    [ASSERT THIS] {f.semstr}";
+    }
+    return f"  {f.name}: {f.type_str}";
+}
+
+"""Format parameters into a human-readable string for the parameters argument."""
+def _fmt_params(params: list[ParamSpec]) -> str {
+    if not params {
+        return "(none)";
+    }
+    lines: list[str] = [];
+    for p in params {
+        sem = f" — {p.semstr}" if p.semstr else "";
+        lines.append(f"  {p.name}: {p.type_str}{sem}");
+        if isinstance(p.nested, ClassSpec) {
+            ctor_args = ", ".join(f"{f.name}=..." for f in p.nested.fields);
+            lines.append(f"    (construct as: {p.nested.name}({ctor_args}))");
+            for f in p.nested.fields {
+                lines.append("  " + _field_line(f));
+            }
+        } elif isinstance(p.nested, EnumSpec) {
+            members = ", ".join(m[0] for m in p.nested.members);
+            lines.append(f"    (enum values: {members})");
+        }
+    }
+    return "\n".join(lines);
+}
+
+"""Format return type detail into the fields_spec string."""
+def _fmt_fields(spec: FunctionSpec) -> str {
+    detail = spec.return_type_detail;
+    if isinstance(detail, ClassSpec) {
+        lines: list[str] = [f"Object type: {detail.name}"];
+        if detail.semstr {
+            lines.append(f"  Class description: {detail.semstr}");
+        }
+        for f in detail.fields {
+            lines.append(_field_line(f));
+        }
+        return "\n".join(lines);
+    }
+    if isinstance(detail, EnumSpec) {
+        lines: list[str] = [f"Enum type: {detail.name}"];
+        if detail.semstr {
+            lines.append(f"  {detail.semstr}");
+        }
+        for (mname, msem) in detail.members {
+            msem_str = f" — {msem}" if msem else "";
+            lines.append(f"  {mname}{msem_str}");
+        }
+        return "\n".join(lines);
+    }
+    return "(primitive — assert the value directly from the semantic description)";
+}
+
+"""Write code to a temp .jac file and run `jac check --parse-only`.
+
+Returns compiler error text on failure, or None if the code is syntactically valid.
+Parse-only mode catches all syntax errors (missing semicolons, wrong assignment
+syntax, bad object literals, etc.) without requiring type context.
 """
-def _validate_test_block(code: str) -> tuple[bool, str | None] {
-    if "by llm(" in code {
-        return (False, "Generated test contains by llm() — tests must not call LLMs in assertions");
+def _jac_check_snippet(code: str, source_dir: str = "") -> str | None {
+    import os;
+    import tempfile;
+    import subprocess;
+    content = f"import re;\n\n{code}\n";
+    fd = None;
+    tmp_path = None;
+    try {
+        (fd, tmp_path) = tempfile.mkstemp(suffix=".jac", dir=source_dir or None);
+        os.write(fd, content.encode());
+        os.close(fd);
+        fd = None;
+        proc = subprocess.run(
+            ["jac", "check", "-p", tmp_path],
+            capture_output=True,
+            text=True
+        );
+        if proc.returncode == 0 {
+            return None;
+        }
+        return (proc.stdout + "\n" + proc.stderr).strip() or "jac check --parse-only failed";
+    } finally {
+        if fd is not None {
+            os.close(fd);
+        }
+        if tmp_path is not None and os.path.exists(tmp_path) {
+            os.unlink(tmp_path);
+        }
     }
-    if "assert " not in code {
-        return (True, "Warning: generated test contains no assert statements");
-    }
-    return (True, None);
 }
 
 impl generate_tests_for_spec(
     spec: FunctionSpec,
     model_name: str = "openai/gpt-4o",
     temperature: float = 0.2,
-    error_feedback: str | None = None
+    error_feedback: str | None = None,
+    source_dir: str = "",
+    max_retries: int = 3
 ) -> TestGenResult {
-    (system_prompt, user_prompt) = build_test_gen_prompt(spec);
+    import from byllm.llm { Model }
+    import from byllm.plugin { JacRuntime }
 
     logger.debug(f"[test-gen] Generating test for: {spec.qualified_key} using {model_name}");
 
-    messages: list = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt},
-    ];
+    # Temporarily patch the global LLM to use the requested model + temperature.
+    orig_model = getattr(JacRuntime, "_cached_default_llm", None);
+    JacRuntime._cached_default_llm = Model(model_name=model_name)(temperature=temperature);
 
-    # If we have runtime error feedback from a previous test run, append it so the
-    # model knows what to fix before it even starts drafting.
-    if error_feedback {
-        messages.append({
-            "role": "user",
-            "content": (
-                "A previous version of this test was generated and ran, but FAILED with this error:\n\n"
-                f"{error_feedback}\n\n"
-                "Fix the test so this error does not occur. "
-                "Use check_syntax / validate_jac tools to verify before submitting."
-            ),
-        });
-    }
+    try {
+        feedback: str | None = error_feedback;
 
-    for iteration in range(_MAX_ITERATIONS) {
-        try {
-            response = litellm.completion(
-                model=model_name,
-                messages=messages,
-                temperature=temperature,
-                tools=_JAC_TOOLS,
-                tool_choice="auto",
-            );
-        } except Exception as e {
-            return TestGenResult(spec=spec, test_code=None, error=f"LLM call failed: {e}");
-        }
-
-        choice = response.choices[0];
-        msg = choice.message;
-
-        # Append the assistant turn to the conversation
-        messages.append(_assistant_message(msg));
-
-        # If the model made tool calls, execute them and continue the loop
-        if msg.tool_calls {
-            for tc in msg.tool_calls {
-                tool_name = tc.function.name;
-                try {
-                    args = json.loads(tc.function.arguments or "{}");
-                } except Exception {
-                    args = {};
+        for attempt in range(max_retries) {
+            # --- Generate ---
+            try {
+                param_sig = ", ".join(p.name for p in spec.params);
+                if spec.parent_class {
+                    fn_name_hint = (
+                        f"{spec.name} (method on {spec.parent_class} — "
+                        f"first write `receiver = {spec.parent_class}();` then call EXACTLY: "
+                        f"receiver.{spec.name}({param_sig}) "
+                        f"with ONLY these {len(spec.params)} argument(s) — no extras)"
+                    );
+                } else {
+                    fn_name_hint = (
+                        f"{spec.name} (call EXACTLY as: {spec.name}({param_sig}) "
+                        f"with ONLY these {len(spec.params)} argument(s) — no extras)"
+                    );
                 }
-                logger.debug(f"[test-gen] Tool call: {tool_name}");
-                result_str = _call_jac_tool(tool_name, args);
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": tool_name,
-                    "content": result_str,
-                });
+                result: JacTestBlock = generate_test_block(
+                    function_name=fn_name_hint,
+                    semantic_description=spec.semstr,
+                    parameters=_fmt_params(spec.params),
+                    return_type=spec.return_type_str,
+                    fields_spec=_fmt_fields(spec),
+                    error_feedback=feedback
+                );
+            } except Exception as e {
+                return TestGenResult(spec=spec, test_code=None, error=f"LLM call failed: {e}");
             }
-            continue;
+
+            code = result.code if result else None;
+            if not code {
+                feedback = "Returned an empty test block. Write a non-empty test block.";
+                continue;
+            }
+
+            if "by llm(" in code {
+                feedback = "The test block must not contain `by llm()` calls. Remove them and rewrite.";
+                continue;
+            }
+
+            # --- Step 1: deterministic anti-pattern check ---
+            # Catches JS/TS patterns (// comments, let, var, unquoted test name) that
+            # validate_jac may silently accept when validating a snippet in isolation.
+            syntax_err = _check_jac_syntax(code);
+            if syntax_err {
+                logger.warning(
+                    f"[test-gen] {spec.name}: anti-pattern check failed (attempt {attempt + 1}/"
+                    f"{max_retries}): {syntax_err}"
+                );
+                feedback = (
+                    f"The code violates Jac syntax rules:\n{syntax_err}\n\n"
+                    "Fix ALL issues before returning. See the syntax rules in the code field description."
+                );
+                continue;
+            }
+
+            # --- Step 2: parse-only jac check on a temp file ---
+            # Catches syntax errors (missing semicolons, wrong assignment syntax, bad object
+            # literals, etc.) that validate_jac misses when validating a standalone snippet.
+            parse_err = _jac_check_snippet(code, source_dir=source_dir);
+            if parse_err {
+                logger.warning(
+                    f"[test-gen] {spec.name}: jac check -p failed (attempt {attempt + 1}/"
+                    f"{max_retries}):\n{parse_err}"
+                );
+                feedback = (
+                    f"jac check (parse-only) rejected the code with syntax errors:\n{parse_err}\n\n"
+                    "Fix ALL syntax errors. Remember:\n"
+                    "- Assign with `=`: write `name = \"Albert Einstein\";` not `name: \"Albert Einstein\"`\n"
+                    "- Every statement ends with `;`\n"
+                    "- Object instantiation is `Person(full_name=..., dod=...)` not `Person { ... }`\n"
+                    "- Use `re.match(r\"\\d{2}/\\d{2}/\\d{4}\", result.field)` not `regex_match(...)`"
+                );
+                continue;
+            }
+
+            # Check format-constrained fields are asserted with re.match, not ==
+            if isinstance(spec.return_type_detail, ClassSpec) and re.search(r"==\s*['\"][\d/\-:T]+['\"]", code) {
+                format_fields = [
+                    f.name for f in spec.return_type_detail.fields
+                    if f.semstr and ("format" in f.semstr.lower() or "/" in f.semstr or "-" in f.semstr)
+                ];
+                if format_fields {
+                    feedback = (
+                        f"You used `==` to assert an exact date/format value for field(s): {format_fields}. "
+                        "For [ASSERT THIS] fields with a format constraint (e.g. MM/DD/YYYY), "
+                        "ALWAYS use re.match() to check the structure — never assert an exact value. "
+                        "Also use a real famous person (e.g. 'Albert Einstein') so the LLM returns known biographical data."
+                    );
+                    continue;
+                }
+            }
+
+            # --- Step 3: full compiler validation ---
+            # Call validate_jac directly — do not rely on the model having used it voluntarily.
+            val_result = json.loads(validate_jac(code));
+            if not val_result.get("valid", False) {
+                errors = val_result.get("errors", []);
+                error_text = "\n".join(str(e) for e in errors);
+                logger.warning(
+                    f"[test-gen] {spec.name}: validate_jac failed (attempt {attempt + 1}/"
+                    f"{max_retries}):\n{error_text}"
+                );
+                feedback = f"validate_jac rejected the code:\n{error_text}";
+                continue;
+            }
+
+            # Validation passed
+            if "assert " not in code {
+                logger.warning(f"[test-gen] {spec.name}: generated test has no assert statements");
+            }
+            logger.debug(f"[test-gen] Successfully generated test for: {spec.qualified_key}");
+            return TestGenResult(spec=spec, test_code=code, error=None);
         }
 
-        # No tool calls — model has produced its final answer
-        raw = msg.content or "";
-        test_block = _extract_test_block(raw);
-        if test_block is None {
-            return TestGenResult(
-                spec=spec,
-                test_code=None,
-                error=f"Could not extract test block from LLM response. Raw output:\n{raw[:500]}"
-            );
-        }
-
-        (valid, warn_msg) = _validate_test_block(test_block);
-        if not valid {
-            return TestGenResult(spec=spec, test_code=None, error=warn_msg);
-        }
-        if warn_msg {
-            logger.warning(f"[test-gen] {spec.name}: {warn_msg}");
-        }
-
-        logger.debug(f"[test-gen] Successfully generated test for: {spec.qualified_key}");
-        return TestGenResult(spec=spec, test_code=test_block, error=None);
+        return TestGenResult(
+            spec=spec,
+            test_code=None,
+            error=f"Failed to produce a valid test after {max_retries} attempts. "
+                  f"Last feedback: {feedback}"
+        );
+    } finally {
+        JacRuntime._cached_default_llm = orig_model;
     }
-
-    return TestGenResult(
-        spec=spec,
-        test_code=None,
-        error=f"Max iterations ({_MAX_ITERATIONS}) reached without a valid test block"
-    );
 }
