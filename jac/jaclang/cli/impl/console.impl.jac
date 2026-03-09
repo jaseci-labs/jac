@@ -100,7 +100,7 @@ impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
 """Print a success message with a green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
-    _print(f"[bold green]{prefix}[/] {message}");
+    _print(f"[green]{prefix}[/] {message}");
 }
 
 """Print an error message in red with optional hint.
@@ -114,7 +114,7 @@ impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
-    _stderr().print(f"[bold red]{prefix} Error:[/] {message}");
+    _stderr().print(f"[red]{prefix} Error:[/] {message}");
     if hint {
         hint_prefix = '💡' if self.use_emoji else 'HINT:';
         _stderr().print(f"[dim]{hint_prefix} {hint}[/]");
@@ -124,13 +124,13 @@ impl JacConsole.error(
 """Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
-    _print(f"[bold yellow]{prefix}[/] {message}");
+    _print(f"[yellow]{prefix}[/] {message}");
 }
 
 """Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
-    _print(f"[bold cyan]{prefix}[/] {message}");
+    _print(f"[cyan]{prefix}[/] {message}");
 }
 
 """Print a header with optional version.
@@ -143,9 +143,9 @@ impl JacConsole.print_header(title: str, version: str | None = None) -> None {
     stdout = _stdout();
     stdout.rule();
     if version {
-        _print(f"[bold bright_white]{title}[/]  [dim]v{version}[/]");
+        _print(f"[bright_white]{title}[/]  [dim]v{version}[/]");
     } else {
-        _print(f"[bold bright_white]{title}[/]");
+        _print(f"[bright_white]{title}[/]");
     }
     stdout.rule();
 }
@@ -161,7 +161,7 @@ impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
     for (label, url) in items {
         padded_label = f"{label}:".ljust(10);
         _print(
-            f"  [bold cyan]{symbol}[/]  [dim]{padded_label}[/] [bright_blue underline]{url}[/]"
+            f"  [cyan]{symbol}[/]  [dim]{padded_label}[/] [bright_blue underline]{url}[/]"
         );
     }
 }
@@ -173,9 +173,9 @@ Args:
     title: Box title (default: "Next Steps")
 """
 impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') -> None {
-    _print(f"\n[bold bright_white]{title}:[/]");
+    _print(f"\n[bright_white]{title}:[/]");
     for (i, step) in enumerate(steps, 1) {
-        _print(f"  [bold cyan]{i}.[/] {step}");
+        _print(f"  [cyan]{i}.[/] {step}");
     }
     _print();
 }
@@ -191,12 +191,12 @@ impl JacConsole.print_list(
     items: list[str], style: str = 'success', symbol: str = '✔'
 ) -> None {
     color_map = {
-        'success': 'bold green',
-        'warning': 'bold yellow',
-        'error': 'bold red',
-        'info': 'bold cyan'
+        'success': 'green',
+        'warning': 'yellow',
+        'error': 'red',
+        'info': 'cyan'
     };
-    color = color_map.get(style, 'bold green');
+    color = color_map.get(style, 'green');
     for item in items {
         _print(f"  [{color}]{symbol}[/] {item}");
     }
@@ -213,7 +213,7 @@ impl JacConsole.print_table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
     if title {
-        _print(f"\n[bold bright_white]{title}:[/]");
+        _print(f"\n[bright_white]{title}:[/]");
     }
     # Calculate column widths
     col_widths: list[int] = [len(h) for h in headers];
@@ -226,7 +226,7 @@ impl JacConsole.print_table(
     }
     # Print header row
     header_parts = [
-        f"[bold bright_white]{h.ljust(w)}[/]" for (h, w) in zip(headers, col_widths)
+        f"[bright_white]{h.ljust(w)}[/]" for (h, w) in zip(headers, col_widths)
     ];
     _print(' [dim]|[/] '.join(header_parts));
     separator = '-' * (sum(col_widths) + (len(col_widths) - 1) * 3);
@@ -256,7 +256,7 @@ impl JacConsole.spinner(text: str) -> object {
     try {
         yield None;
     } finally {
-        _print(f" [bold green]done[/]");
+        _print(f" [green]done[/]");
     }
 }
 
@@ -268,9 +268,9 @@ Args:
 impl JacConsole.print_elapsed_time(seconds: float) -> None {
     if seconds < 1 {
         ms = seconds * 1000;
-        _print(f"  [dim]Done in[/] [bold green]{ms:.0f}ms[/]");
+        _print(f"  [dim]Done in[/] [green]{ms:.0f}ms[/]");
     } else {
-        _print(f"  [dim]Done in[/] [bold green]{seconds:.1f}s[/]");
+        _print(f"  [dim]Done in[/] [green]{seconds:.1f}s[/]");
     }
 }
 
@@ -300,7 +300,7 @@ Args:
 """
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
     watch_emoji = '👀 ' if self.use_emoji else '';
-    _print(f"[bold cyan]{watch_emoji}Watching for changes...[/]");
+    _print(f"[cyan]{watch_emoji}Watching for changes...[/]");
     _print(
         f"   [dim]Monitoring:[/] [bright_white]{pattern}[/] [dim]({count} files)[/]"
     );

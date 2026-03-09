@@ -447,8 +447,30 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             mongo_result = mongo_provider.deploy({});
             self.env_list.append(
-                {'name': 'MONGODB_URI', 'value': mongo_result['connection_string']}
+                {
+                    'name': 'MONGODB_URI',
+                    'valueFrom': {
+                        'secretKeyRef': {
+                            'name': mongo_result['secret_name'],
+                            'key': 'connection-string'
+                        }
+                    }
+                }
             );
+            try {
+                core_v1.read_namespaced_secret(
+                    name=mongo_result['secret']['metadata']['name'],
+                    namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    core_v1.create_namespaced_secret(
+                        namespace=namespace, body=mongo_result['secret']
+                    );
+                } else {
+                    raise;
+                }
+            }
             try {
                 apps_v1.read_namespaced_stateful_set(
                     name=mongodb_name, namespace=namespace
@@ -531,8 +553,30 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             redis_result = redis_provider.deploy({});
             self.env_list.append(
-                {'name': 'REDIS_URL', 'value': redis_result['connection_string']}
+                {
+                    'name': 'REDIS_URL',
+                    'valueFrom': {
+                        'secretKeyRef': {
+                            'name': redis_result['secret_name'],
+                            'key': 'connection-string'
+                        }
+                    }
+                }
             );
+            try {
+                core_v1.read_namespaced_secret(
+                    name=redis_result['secret']['metadata']['name'],
+                    namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    core_v1.create_namespaced_secret(
+                        namespace=namespace, body=redis_result['secret']
+                    );
+                } else {
+                    raise;
+                }
+            }
             config_updated = False;
             try {
                 existing_cm = core_v1.read_namespaced_config_map(
@@ -1279,6 +1323,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 namespace,
                 'Service'
             );
+            delete_if_exists(
+                core_v1.delete_namespaced_secret,
+                f"{mongodb_name}-secret",
+                namespace,
+                'Secret'
+            );
             express_name = f"{app_name}-mongo-express";
             delete_if_exists(
                 apps_v1.delete_namespaced_deployment,
@@ -1307,6 +1357,18 @@ obj KubernetesTarget(DeploymentTarget) {
                 f"{redis_name}-service",
                 namespace,
                 'Service'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_config_map,
+                f"{redis_name}-config",
+                namespace,
+                'ConfigMap'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_secret,
+                f"{redis_name}-secret",
+                namespace,
+                'Secret'
             );
             insight_name = f"{app_name}-redis-insight";
             delete_if_exists(

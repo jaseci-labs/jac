@@ -2,14 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.4 (Unreleased)
+## jac-client 0.3.5 (Unreleased)
+
+## jac-client 0.3.4 (Latest Release)
 
 - **Production Build Mode**: Added `--prod` flag to `jac start` and `jac build` commands for production-optimized builds. Production mode disables source maps and enables JavaScript minification via esbuild, reducing bundle size for deployment. Use `jac start --prod` for production server or `jac build --prod` for optimized static builds. The `-P` short flag is available for both commands.
 - **HMR Client Error Reporting**: Client-side runtime and module import errors now reported to terminal via Vite WebSocket.
 - Internal: updated jac.toml of all-in-one example to use redis dashboard and mongodb dashboard
 - 3 Minor refactors/changes.
 
-## jac-client 0.3.3 (Latest Release)
+## jac-client 0.3.3
 
 ## jac-client 0.3.2
 

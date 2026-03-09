@@ -527,13 +527,13 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    assert len(program.errors_had) == 1;
+    assert len(program.errors_had) == 4;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[0].pretty_print()
+        program.errors_had[3].pretty_print()
     );
 }
 
@@ -542,7 +542,7 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 8;
 }
 
 test "cyclic_symbol" {
@@ -558,7 +558,7 @@ test "get_type_of_iife_expression" {
     program = JacProgram();
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 1;
 }
 
 test "generics" {
@@ -1027,7 +1027,7 @@ test "function_overload_decorator" {
         os.path.join(CHECKER_FIXTURES, "checker_function_overload.jac")
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    assert len(program.errors_had) == 2;
 
     error_messages = [err.pretty_print() for err in program.errors_had];
 
@@ -1124,15 +1124,23 @@ test "union_member_access" {
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac")
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    # TODO: test_union_uncommon_member should error when attribute errors are enabled
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert_error_pretty_found(
+        """
+        return x.legs;  # <-- Error: Bird doesn't have .legs
+                 ^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
 }
 
 test "list_indexing" {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 1;
 }
 
 test "range_function" {
@@ -1438,7 +1446,9 @@ test "enum_type_checking" {
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
-        "impl_shape_name_err: int = ShapeType.SQUARE.name"
+        "impl_shape_name_err: int = ShapeType.SQUARE.name",
+        "func_ok: str = process_color(Color.BLUE)",
+        "func_wrong_type: str = process_color"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
@@ -1707,10 +1717,9 @@ test "compound_and_narrowing" {
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_and_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # All positive cases should pass. E1 (attribute error after if block) is not
-    # reported because "has no attribute" errors are disabled in the type evaluator.
-    # TODO: Re-enable when attribute error reporting is fixed for generics.
-    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+    # E1 (attribute error after if block) is correctly reported: after narrowing
+    # expires, Animal type doesn't have the narrowed-only attribute.
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -1762,8 +1771,8 @@ test "impl_imports_from_parent" {
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
-    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+    # Should have 3 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 
@@ -1831,9 +1840,12 @@ test "getattr_support" {
         if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
     ];
 
-    # Expect 1 error: assigning str to int (proves __getattr__ return type is enforced)
-    assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}";
+    # Expect 2 errors:
+    # 1. assigning str to int (proves __getattr__ return type is enforced)
+    # 2. NoGetAttr.nonexistent (correct: class has no __getattr__ and no such attribute)
+    assert len(user_errors) == 2 , f"Expected 2 errors, got {len(user_errors)}";
     assert "Cannot assign" in user_errors[0].pretty_print();
+    assert "has no attribute" in user_errors[1].pretty_print();
 }
 
 """Test NamedTuple type checking: constructor accepts positional arguments for fields."""
@@ -1903,5 +1915,35 @@ test "literal_string_type_checking" {
     assert_error_pretty_found(
         """Cannot assign Literal["wrong"] to parameter 'n' of type <class int>""",
         user_errors[1].pretty_print()
+    );
+}
+
+"""Test module-level function overload resolution.
+
+Module-level functions like math.floor have multiple @overload signatures.
+The type checker must collect all overloads and try each one when checking
+argument compatibility. This ensures that math.floor(3.7) resolves to the
+_SupportsFloatOrIndex overload (returning int) rather than failing on the
+_SupportsFloor protocol overload.
+"""
+test "module_level_overload" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_module_level_overload.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+
+    # Expect 1 error: assigning math.sin(float) -> float to int
+    assert len(user_errors) == 1 , f"Expected 1 error, got {len(user_errors)}: " + "\n".join(
+        [err.pretty_print() for err in user_errors]
+    );
+
+    assert_error_pretty_found(
+        """Cannot assign <class float> to <class int>""", user_errors[0].pretty_print()
     );
 }

@@ -22,11 +22,13 @@ import from jaclang.langserve.server { formatting }
 import from jaclang.lsp.uris { from_fs_path }
 import from jaclang.lsp.server { Workspace }
 
+glob _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_lsp_");
+
 # --- Utility functions inlined from utils.py ---
 """Create a temporary Jac file with optional initial content and return its path."""
 def create_temp_jac_file(initial_content: str = "") -> str {
     with tempfile.NamedTemporaryFile(
-        delete=False, suffix=".jac", mode="w", encoding="utf-8"
+        delete=False, suffix=".jac", mode="w", encoding="utf-8", dir=_test_tmp_dir
     ) as tmp {
         tmp.write(initial_content);
         return tmp.name;
@@ -195,133 +197,96 @@ glob CIRCLE_TEMPLATE = "circle_template.jac",
      EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15;
 
 # --- Tests ---
-test "open valid file no diagnostics" {
+# Consolidated: open, open-with-error, and formatting use one server
+test "open save and formatting" {
     test_file = create_test_file(CIRCLE_TEMPLATE);
+    test_file_err = create_test_file(CIRCLE_TEMPLATE, "error");
     (uri, ls) = create_ls_with_workspace(test_file.path);
     test_file.uri = uri;
+    uri_err = from_fs_path(test_file_err.path);
+    if uri_err {
+        test_file_err.uri = uri_err;
+    }
     helper = LanguageServerTestHelper(ls=ls, test_file=test_file);
+    helper_err = LanguageServerTestHelper(ls=ls, test_file=test_file_err);
 
     try {
+        # --- open valid file, no diagnostics ---
         helper.open_document();
         helper.assert_no_diagnostics();
-    } finally {
-        ls.shutdown();
-        test_file.cleanup();
-    }
-}
 
-test "open with syntax error" {
-    test_file = create_test_file(CIRCLE_TEMPLATE, "error");
-    (uri, ls) = create_ls_with_workspace(test_file.path);
-    if uri {
-        test_file.uri = uri;
-    }
-    helper = LanguageServerTestHelper(ls=ls, test_file=test_file);
-
-    try {
-        helper.open_document();
-        helper.assert_has_diagnostics(count=1, message_contains="Unexpected token");
-
-        diagnostics = helper.get_diagnostics();
+        # --- open file with syntax error ---
+        helper_err.open_document();
+        helper_err.assert_has_diagnostics(count=1, message_contains="Unexpected token");
+        diagnostics = helper_err.get_diagnostics();
         assert str(diagnostics[0].range) == "57:0-57:5";
-    } finally {
-        ls.shutdown();
-        test_file.cleanup();
-    }
-}
 
-test "did open and simple syntax error" {
-    test_file = create_test_file(CIRCLE_TEMPLATE);
-    (uri, ls) = create_ls_with_workspace(test_file.path);
-    test_file.uri = uri;
-    helper = LanguageServerTestHelper(ls=ls, test_file=test_file);
-
-    try {
-        # Open valid file
-        print("Opening valid file...");
-        helper.open_document();
-        helper.assert_no_diagnostics();
-
-        # Introduce syntax error
-        broken_code = load_jac_template(get_template_path(CIRCLE_TEMPLATE), "error");
-        helper.change_document(broken_code);
-        helper.assert_has_diagnostics(count=1);
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR);
-    } finally {
-        ls.shutdown();
-        test_file.cleanup();
-    }
-}
-
-test "did save" {
-    test_file = create_test_file(CIRCLE_TEMPLATE);
-    (uri, ls) = create_ls_with_workspace(test_file.path);
-    if uri {
-        test_file.uri = uri;
-    }
-    helper = LanguageServerTestHelper(ls=ls, test_file=test_file);
-
-    try {
-        helper.open_document();
+        # --- save valid file ---
         helper.save_document();
         helper.assert_no_diagnostics();
 
-        # Save with syntax error
+        # --- save with syntax error ---
         broken_code = load_jac_template(get_template_path(CIRCLE_TEMPLATE), "error");
         helper.save_document(broken_code);
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR);
         helper.assert_has_diagnostics(count=1, message_contains="Unexpected token");
+
+        # --- formatting ---
+        fmt_file = create_test_file(CIRCLE_TEMPLATE);
+        fmt_uri = from_fs_path(fmt_file.path);
+        fmt_params = DocumentFormattingParams(
+            text_document=TextDocumentIdentifier(uri=fmt_uri or ""),
+            options=FormattingOptions(tab_size=4, insert_spaces=True)
+        );
+        edits = formatting(ls, fmt_params);
+        assert isinstance(edits, list);
+        assert len(edits) > 0;
+        assert isinstance(edits[0], TextEdit);
+        assert len(edits[0].new_text) > 100;
+        fmt_file.cleanup();
     } finally {
         ls.shutdown();
         test_file.cleanup();
+        test_file_err.cleanup();
     }
 }
 
-test "did change" {
+# Consolidated: did-open-with-change and did-change use one server
+test "did open and did change" {
     test_file = create_test_file(CIRCLE_TEMPLATE);
+    test_file2 = create_test_file(CIRCLE_TEMPLATE);
     (uri, ls) = create_ls_with_workspace(test_file.path);
-    if uri {
-        test_file.uri = uri;
-    }
+    test_file.uri = uri;
+    uri2 = from_fs_path(test_file2.path);
+    test_file2.uri = uri2;
     helper = LanguageServerTestHelper(ls=ls, test_file=test_file);
+    helper2 = LanguageServerTestHelper(ls=ls, test_file=test_file2);
 
     try {
+        # --- did open then introduce syntax error ---
         helper.open_document();
-
-        # Change without error
-        helper.change_document("\n" + test_file.code);
         helper.assert_no_diagnostics();
 
-        # Change with syntax error
-        helper.change_document("\nerror" + test_file.code);
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT);
-        helper.assert_has_diagnostics(
+        broken_code = load_jac_template(get_template_path(CIRCLE_TEMPLATE), "error");
+        helper.change_document(broken_code);
+        helper.assert_has_diagnostics(count=1);
+        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR);
+
+        # --- did change: valid change then error change ---
+        helper2.open_document();
+
+        helper2.change_document("\n" + test_file2.code);
+        helper2.assert_no_diagnostics();
+
+        helper2.change_document("\nerror" + test_file2.code);
+        helper2.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT);
+        helper2.assert_has_diagnostics(
             count=1, message_contains="Unexpected token 'error'"
         );
     } finally {
         ls.shutdown();
         test_file.cleanup();
-    }
-}
-
-test "vsce formatting" {
-    test_file = create_test_file(CIRCLE_TEMPLATE);
-    (uri, ls) = create_ls_with_workspace(test_file.path);
-
-    try {
-        fmt_params = DocumentFormattingParams(
-            text_document=TextDocumentIdentifier(uri=uri or ""),
-            options=FormattingOptions(tab_size=4, insert_spaces=True)
-        );
-        edits = formatting(ls, fmt_params);
-
-        assert isinstance(edits, list);
-        assert len(edits) > 0;
-        assert isinstance(edits[0], TextEdit);
-        assert len(edits[0].new_text) > 100;
-    } finally {
-        ls.shutdown();
-        test_file.cleanup();
+        test_file2.cleanup();
     }
 }
 

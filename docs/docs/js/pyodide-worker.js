@@ -43,6 +43,7 @@ self.onmessage = async (event) => {
 
         // install required packages via micropip
         await pyodide.loadPackage("micropip");
+        await pyodide.loadPackage("sqlite3");
         await pyodide.runPythonAsync(`
 import micropip
 await micropip.install('pluggy')
@@ -50,7 +51,9 @@ await micropip.install('pluggy')
 
         await loadPythonResources(pyodide);
         await pyodide.runPythonAsync(`
-from jaclang.cli.cli import run, serve, dot
+from jaclang.cli.commands import execution, tools
+`);
+        await pyodide.runPythonAsync(`
 from js import postMessage, Atomics, Int32Array, Uint8Array, shared_buf
 import builtins
 import sys
@@ -111,9 +114,9 @@ builtins.input = pyodide_input
 
     try {
         const jacCode = JSON.stringify(code);
-        const cliCommand = type === "serve" ? "serve" : type === "dot" ? "dot" : "run";
+        const cliCommand = type === "serve" ? "start" : type === "dot" ? "dot" : "run";
         const output = await pyodide.runPythonAsync(`
-from jaclang.cli.cli import run, serve, dot
+from jaclang.cli.commands import execution, tools
 import sys, json, os
 import tempfile
 
@@ -132,8 +135,8 @@ with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_
     temp_jac_path = temp_jac.name
 
 try:
-    if "${cliCommand}" == "serve":
-        serve(temp_jac_path)
+    if "${cliCommand}" == "start":
+        execution.start(temp_jac_path)
 
     elif "${cliCommand}" == "dot":
         dot_path = "/home/pyodide/temp.dot"
@@ -144,7 +147,7 @@ try:
             except Exception as e:
                 print(f"Warning: Could not remove old DOT file: {e}", file=sys.stderr)
 
-        dot(temp_jac_path, saveto=dot_path)
+        tools.dot(temp_jac_path, saveto=dot_path)
 
         if os.path.exists(dot_path):
             with open(dot_path, "r") as f:
@@ -157,7 +160,7 @@ try:
             print("Error: DOT file not found after generation.", file=sys.stderr)
 
     else:
-        run(temp_jac_path)
+        execution.run(temp_jac_path)
 
 except SystemExit:
     # The Jac compiler may call SystemExit on fatal errors (e.g., syntax errors).

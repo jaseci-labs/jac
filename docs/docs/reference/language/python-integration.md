@@ -6,7 +6,7 @@
 
 ## **Jac Supersets Python**
 
-Jac supersets Python and JavaScript, providing full compatibility with both the PyPI and npm ecosystems. Developers can leverage their existing knowledge while accessing new capabilities for graph-based and object-spatial programming.
+Jac supersets Python and JavaScript, giving you full compatibility with both the PyPI and npm ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
 
 ### **How it Works: Transpilation to Native Python**
 

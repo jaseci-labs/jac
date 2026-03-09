@@ -174,45 +174,24 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self._register_globals(self.ir_in);
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
-    for stmt in self.ir_in.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if (
-                    isinstance(inner, uni.Ability)
-                    and isinstance(inner, uni.ContextAwareNode)
-                    and inner.code_context == CodeContext.NATIVE
-                    and inner.signature is not None
-                    and isinstance(inner.signature, uni.FuncSignature)
-                ) {
-                    self._codegen_ability(inner);
-                } elif (
-                    isinstance(inner, uni.ModuleCode)
-                    and isinstance(inner, uni.ContextAwareNode)
-                    and inner.code_context == CodeContext.NATIVE
-                ) {
-                    self._codegen_entry(inner);
-                }
-            }
-        } elif isinstance(stmt, uni.Ability) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-                and stmt.signature is not None
-                and isinstance(stmt.signature, uni.FuncSignature)
-            ) {
-                self._codegen_ability(stmt);
-            }
+    for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
+        if (
+            isinstance(stmt, uni.Ability)
+            and stmt.signature is not None
+            and isinstance(stmt.signature, uni.FuncSignature)
+        ) {
+            self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                self._codegen_entry(stmt);
-            }
+            self._codegen_entry(stmt);
         }
     }
     # Store LLVM module on AST
     if self.has_native_code {
+        # Ensure __jac_glob_init is always defined, even for modules that have
+        # no `with entry` block.
+        if "__jac_glob_init" not in self.func_symtab {
+            self._emit_glob_init_func();
+        }
         self.ir_in.gen.llvm_ir = self.llvm_module;
         # Debug: dump IR to file
         import os;
@@ -504,18 +483,11 @@ and access their fields.
 impl NaIRGenPass._register_imported_struct_types -> None {
     import os;
     # Collect imports from top-level and inside na {} blocks
-    imports: list = [];
-    for stmt in self.ir_in.body {
-        if isinstance(stmt, uni.Import) {
-            imports.append(stmt);
-        } elif isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.Import) {
-                    imports.append(inner);
-                }
-            }
-        }
-    }
+    imports = [
+        s
+        for s in ModuleCodegenPass.iter_context_stmts(self.ir_in)
+        if isinstance(s, uni.Import)
+    ];
     # Track already-processed modules to avoid duplicates
     processed_modules: set[str] = set();
     for imp in imports {
@@ -564,46 +536,36 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
         # Walk the imported module for archetypes, enums, globals, functions
         self._walk_imported_module(imported_mod);
+        # Track path so _codegen_entry can emit __jac_glob_init_<safe_name>() calls
+        if not self?._imported_na_paths {
+            self._imported_na_paths: list = [];
+        }
+        if resolved_path not in self._imported_na_paths {
+            self._imported_na_paths.append(resolved_path);
+        }
     }
 }
 
 """Walk an imported module's AST and register all type declarations."""
 impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
-    for imp_stmt in imported_mod.body {
-        if isinstance(imp_stmt, uni.NativeBlock) {
-            for inner in imp_stmt.body {
-                if isinstance(inner, uni.Archetype) {
-                    self._register_imported_archetype(inner);
-                }
-                if isinstance(inner, uni.Enum) {
-                    self._codegen_enum(inner);
-                }
-                if isinstance(inner, uni.GlobalVars) {
-                    self._register_imported_globals(inner);
-                }
-                if isinstance(inner, uni.Ability) {
-                    self._forward_declare_imported_ability(inner);
-                }
-            }
-        } else {
-            # Top-level definitions: register unless explicitly CLIENT context.
-            # Imported modules may be plain .jac (SERVER context) or .na.jac (NATIVE);
-            # both need their types/enums registered for native compilation.
-            is_client = (
-                isinstance(imp_stmt, uni.ContextAwareNode)
-                and imp_stmt.code_context == CodeContext.CLIENT
-            );
-            if not is_client {
-                if isinstance(imp_stmt, uni.Archetype) {
-                    self._register_imported_archetype(imp_stmt);
-                } elif isinstance(imp_stmt, uni.Enum) {
-                    self._codegen_enum(imp_stmt);
-                } elif isinstance(imp_stmt, uni.GlobalVars) {
-                    self._register_imported_globals(imp_stmt);
-                } elif isinstance(imp_stmt, uni.Ability) {
-                    self._forward_declare_imported_ability(imp_stmt);
-                }
-            }
+    # Flatten all blocks; skip only CLIENT-context statements.
+    # Imported modules may be plain .jac (SERVER) or .na.jac (NATIVE);
+    # both need their types/enums registered for native compilation.
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) {
+            self._register_imported_archetype(stmt);
+        } elif isinstance(stmt, uni.Enum) {
+            self._codegen_enum(stmt);
+        } elif isinstance(stmt, uni.GlobalVars) {
+            self._register_imported_globals(stmt);
+        } elif isinstance(stmt, uni.Ability) {
+            self._forward_declare_imported_ability(stmt);
         }
     }
 }
@@ -687,18 +649,11 @@ extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
     # Collect imports from top-level and inside na {} blocks
-    imports: list = [];
-    for stmt in module.body {
-        if isinstance(stmt, uni.Import) {
-            imports.append(stmt);
-        } elif isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.Import) {
-                    imports.append(inner);
-                }
-            }
-        }
-    }
+    imports = [
+        s
+        for s in ModuleCodegenPass.iter_context_stmts(module)
+        if isinstance(s, uni.Import)
+    ];
     for stmt in imports {
         # Recognize `import sys;` for native sys module support
         if not stmt.clib_decls {

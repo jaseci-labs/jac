@@ -18,13 +18,29 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
+     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+     _js_compile_cache: dict[str, str] = {},
+     _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_js_");
+
+def write_temp_jac(code: str) -> str {
+    """Write code to a temp .jac file in a dedicated directory (avoids /tmp scan)."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write(code);
+        return tmp.name;
+    }
+}
 
 def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     """Compile a Jac fixture to JavaScript and return the emitted source."""
     fixture_path = fixture_name;
     if not Path(fixture_path).exists() and fixture_dir {
         fixture_path = os.path.join(fixture_dir, fixture_name);
+    }
+    cache_key = os.path.abspath(fixture_path);
+    if cache_key in _js_compile_cache {
+        return _js_compile_cache[cache_key];
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True);
@@ -40,7 +56,9 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     es_ast = es_ir.gen.es_ast;
     assert isinstance(es_ast, EsNode) , "es_ast should be an EsNode";
 
-    return es_to_js(es_ast);
+    result = es_to_js(es_ast);
+    _js_compile_cache[cache_key] = result;
+    return result;
 }
 
 def assert_balanced_syntax(js_code: str, fixture_name: str) -> None {
@@ -265,10 +283,7 @@ test "cl only js command outputs js" {
 }
 
 test "empty file generates minimal js" {
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write("\"\"\"Empty file for smoke testing.\"\"\"\n");
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac("\"\"\"Empty file for smoke testing.\"\"\"\n");
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -282,11 +297,7 @@ test "empty file generates minimal js" {
 test "type to typeof transformation" {
     jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ncl def check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -422,11 +433,7 @@ test "hyphenated package imports generate correct js" {
 test "relative imports include js extension" {
     jac_code = "\"\"\"Test relative imports with .js extension.\"\"\"\n\ncl {\n# Single dot relative import\nimport from .utils { MessageFormatter }\n\n# Double dot relative import\nimport from ..lib { formatter }\n\n# Triple dot relative import\nimport from ...config { settings }\n\n# Module name with dots (should still get .js)\nimport from .components.Button { Button }\n\n# Using imported functions\ndef test_usage() {\n    fmt = MessageFormatter();\n    return fmt.format(\"test\");\n}\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -487,11 +494,7 @@ test "side effect imports generate correct js" {
 test "fstring simple variable interpolation" {
     jac_code = "\"\"\"Test f-string with simple variables.\"\"\"\n\ncl def greet_user(name: str, age: int) -> str {\n    return f\"Hello, {name}! You are {age} years old.\";\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -511,11 +514,7 @@ test "fstring simple variable interpolation" {
 test "fstring with expressions" {
     jac_code = "\"\"\"Test f-string with expressions.\"\"\"\n\ncl def calculate_message(x: int, y: int) -> str {\n    return f\"The sum of {x} and {y} is {x + y}\";\n}\n\ncl def conditional_message(score: int) -> str {\n    return f\"Score: {score}, Status: {score >= 60}\";\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -573,11 +572,7 @@ test "fstring advanced fixture template literals" {
 test "fstring edge cases" {
     jac_code = "\"\"\"Test f-string edge cases.\"\"\"\n\ncl def test_edge_cases() -> dict {\n    name = \"Alice\";\n    value = 42;\n\n    # Text only (no interpolation)\n    text_only = f\"This is just plain text\";\n\n    # Expression only (no static text)\n    expr_only = f\"{value}\";\n\n    # Multiple consecutive expressions\n    consecutive = f\"{name}{value}\";\n\n    # Mixed with spaces\n    mixed = f\"Name: {name}, Value: {value}\";\n\n    return {\"text\": text_only, \"expr\": expr_only, \"cons\": consecutive, \"mixed\": mixed};\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -604,11 +599,7 @@ test "fstring edge cases" {
 test "fstring no concatenation operators" {
     jac_code = "\"\"\"Test that f-strings use template literals, not concatenation.\"\"\"\n\ncl def format_message(user: str, count: int) -> str {\n    return f\"User {user} has {count} items\";\n}\n";
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(jac_code);
-        tmp.flush();
-        temp_path = tmp.name;
-    }
+    temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
