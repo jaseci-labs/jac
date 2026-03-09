@@ -1,6 +1,8 @@
 # byLLM Reference
 
-Complete reference for byLLM, the AI integration framework implementing Meaning-Typed Programming (MTP).
+byLLM lets you delegate function implementations to large language models. You declare a function signature -- its name, parameter names, and types -- append `by llm`, and the LLM infers the behavior at runtime. byLLM handles prompt construction, model communication, response parsing, and type validation, so your Jac type annotations act as an enforced output schema.
+
+This approach is called **Meaning-Typed Programming (MTP)**: well-named function signatures already describe what a function should do, and byLLM makes that intent executable. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
 
 ---
 
@@ -414,7 +416,9 @@ Parameters passed to `by llm()` at call time:
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
+| `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
+| `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 
 !!! warning "Deprecated: `method` parameter"
     The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
@@ -440,6 +444,11 @@ def personalized_greeting(name: str) -> str by llm(
 
 # With streaming
 def generate_essay(topic: str) -> str by llm(stream=True);
+
+# With streaming + logging (yields StreamEvent objects)
+def smart_answer(question: str) -> str by llm(
+    tools=[search_db], stream=True, logging=True
+);
 ```
 
 ---
@@ -562,7 +571,11 @@ obj Calculator {
 
 ## Streaming
 
-For real-time token output:
+byLLM supports three streaming modes, each building on the previous:
+
+### Basic Streaming
+
+Stream the final answer token by token:
 
 ```jac
 def generate_story(topic: str) -> str by llm(stream=True);
@@ -575,10 +588,140 @@ with entry {
 }
 ```
 
-**Limitations:**
+The function returns a generator that yields raw string tokens as they arrive from the LLM.
+
+### Streaming with Tools
+
+Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:
+
+```jac
+def get_weather(city: str) -> str {
+    return f"Weather in {city}: Sunny, 22°C";
+}
+
+def answer(question: str) -> str by llm(
+    tools=[get_weather], stream=True
+);
+
+with entry {
+    for token in answer("What's the weather in Tokyo?") {
+        print(token, end="", flush=True);
+    }
+    print();
+}
+```
+
+!!! note
+    With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is streamed. For visibility into intermediate steps, add `logging=True`.
+
+### Streaming with Logging (`StreamEvent`)
+
+Add `logging=True` alongside `stream=True` to get `StreamEvent` objects that expose every intermediate step -- tool calls, tool results, reasoning thoughts -- in real time:
+
+```jac
+import from byllm.lib { StreamEvent }
+
+def get_weather(city: str) -> str {
+    return f"Weather in {city}: Sunny, 22°C";
+}
+
+def get_population(city: str) -> str {
+    return "37.4 million (metro)";
+}
+
+def answer(question: str) -> str by llm(
+    tools=[get_weather, get_population],
+    stream=True,
+    logging=True
+);
+
+with entry {
+    for event in answer("What's the weather and population of Tokyo?") {
+        if event.event_type == "tool_call" {
+            print(f"Calling {event.data['tool']}({event.data['args']})");
+        } elif event.event_type == "tool_result" {
+            print(f"Result: {event.data['result']}");
+        } elif event.event_type == "chunk" {
+            print(event.data["content"], end="", flush=True);
+        } elif event.event_type == "steps_done" {
+            print(f"--- {event.data['iterations']} step(s) done ---");
+        } elif event.event_type == "usage" {
+            print(f"\nTokens used: {event.data['total']}");
+        }
+    }
+}
+```
+
+**Output:**
+
+```
+Calling get_weather({'city': 'Tokyo'})
+Result: Weather in Tokyo: Sunny, 22°C
+Calling get_population({'city': 'Tokyo'})
+Result: 37.4 million (metro)
+--- 2 step(s) done ---
+The weather in Tokyo is sunny at 22°C, and its population is 37.4 million...
+Tokens used: {'prompt_tokens': 850, 'completion_tokens': 45, ...}
+```
+
+With `logging=True`, the user sees the first `tool_call` event after just one LLM call (~1-2s), instead of waiting for all ReAct iterations to finish (~3-4s).
+
+### `StreamEvent` Reference
+
+`StreamEvent` has two fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | str | The type of event (see table below) |
+| `data` | dict | Event-specific payload |
+
+**Event Types:**
+
+| `event_type` | When emitted | `data` fields |
+|-------------|--------------|---------------|
+| `tool_call` | LLM decided to call a tool | `tool` (str), `args` (dict), `call_id` (str), `iteration` (int) |
+| `tool_result` | Tool finished executing | `tool` (str), `result` (str, truncated), `call_id` (str), `iteration` (int) |
+| `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
+| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), optionally `reason` (str) |
+| `chunk` | One token of the final streamed answer | `content` (str) |
+| `usage` | All LLM calls complete (always the last event) | `total` (dict), `per_call` (list[dict]) |
+
+**Importing `StreamEvent`:**
+
+=== "Jac"
+    ```jac
+    import from byllm.lib { StreamEvent }
+    ```
+
+=== "Python"
+    ```python
+    from byllm.lib import StreamEvent
+    ```
+
+### Usage Tracking
+
+The final `StreamEvent` in every `logging=True` stream is a `usage` event containing aggregated token counts across all LLM calls in that invocation:
+
+```jac
+with entry {
+    for event in my_function("input") {
+        if event.event_type == "usage" {
+            # Aggregated totals across all LLM calls
+            print(event.data["total"]);
+            # e.g. {"prompt_tokens": 1200, "completion_tokens": 85, "total_tokens": 1285}
+
+            # Per-call breakdown (one dict per LLM call in the ReAct loop)
+            for call_usage in event.data["per_call"] {
+                print(call_usage);
+            }
+        }
+    }
+}
+```
+
+### Streaming Limitations
 
 - Only supports `str` return type
-- Tool calling not supported in streaming mode
 
 ---
 

@@ -1,8 +1,7 @@
-"""Tests that expose bugs and soundness issues in the Jac type checker.
+"""Regression tests for previously-identified bugs and soundness issues in the Jac type checker.
 
-Each test documents the expected behavior vs the actual (buggy) behavior.
-Tests are written to FAIL under the current implementation, exposing the bug.
-Once a bug is fixed, the corresponding test should pass.
+Each test documents behavior that was buggy and has since been fixed.
+They now serve as regression guards to prevent re-introduction of these bugs.
 
 Bug index:
   #1  - 'is'/'in' operators return UnknownType (missing return)

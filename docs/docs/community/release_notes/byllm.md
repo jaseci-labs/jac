@@ -2,7 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.4 (Unreleased)
+## byllm 0.5.5 (Unreleased)
+
+- Small refactors/formatting fixes.
+
+## byllm 0.5.4 (Latest Release)
 
 - 2 small refactors/changes.
 - **Add: Explicit LLM exceptions**: Introduced `jac-byllm/byllm/exceptions.jac` to define clear exception types for LLM and tooling failures (improves diagnosability and retry logic).
@@ -11,8 +15,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `JSONDecodeError` when gpt-4o returns text alongside a tool call**: Fixed a crash where `parse_response` was called before `tool_calls_list` was extracted from the LLM message. `gpt-4o` sometimes returns a brief plain-text string alongside a tool call (e.g. `"I'll handle that."`), which bypassed the empty-string guard and caused `json.loads` to fail with `Expecting value: line 1 column 1`. The fix extracts `tool_calls_list` first and skips `parse_response` entirely when tool calls are present, the typed output comes from `finish_tool`, not from the message content field.
 - **Fix: `JSONDecodeError` / `AttributeError` when gpt-4o ignores `finish_tool` on follow-up turns**: `gpt-4o` does not reliably follow the `INSTRUCTION_TOOL` system prompt on multi-turn conversations and sometimes responds with plain conversational text instead of calling `finish_tool`. This caused two cascading failures: `json.loads` crashed on the plain-text response, and even if it didn't, `invoke` would break out of the ReAct loop returning a raw `str` where a structured type was expected. Fixed with two complementary changes: (1) `parse_response` now wraps `json.loads` in `try/except Exception` and returns the raw string on failure rather than crashing; (2) the `invoke` ReAct loop detects the no-tool-call / structured-type mismatch, appends a correction message, and re-invokes with only `finish_tool` available, recovering the typed result without an extra round-trip in the happy path.
 - **Fix: `NameError: name 'logger' is not defined` when a tool raises an exception**: `tool.impl.jac` called `logger.exception(...)` in the `Tool.__call__` error handler, but `logger` was not imported in `types.jac` (the module that owns the `Tool` type). Added `import logging` and `glob logger = logging.getLogger(__name__)` to `types.jac` so tool failures are logged correctly instead of raising a secondary `NameError`.
+- **Add: Structured streaming event system (`StreamEvent`)**: Introduced a `StreamEvent` type in `byllm/types.jac` representing unified streaming output events (thoughts, tool calls, tool results, and answer chunks). `BaseLLM.invoke` now detects when logging is enabled with streaming and routes calls to a new `_invoke_streaming` method that yields `StreamEvent` objects for all intermediate steps and final answer tokens. The final-answer streaming step clears all tools so the LLM produces plain text rather than re-invoking `finish_tool`. `StreamEvent` is exported via `byllm/lib.jac` and `byllm/llm.jac` and `_invoke_streaming` is added to the `BaseLLM` public interface. This enables more granular, structured streaming output useful for debugging and UI integration.
 
-## byllm 0.5.3 (Latest Release)
+## byllm 0.5.3
 
 ## byllm 0.5.2
 

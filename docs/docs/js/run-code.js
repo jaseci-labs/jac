@@ -42,12 +42,10 @@ function executeJacCodeInWorker(code, inputHandler, commandType = "run") {
             }
 
             if (message.type === "streaming_output") {
-                // Handle real-time output streaming
                 const event = new CustomEvent('jacOutputUpdate', {
                     detail: { output: message.output, stream: message.stream }
                 });
                 document.dispatchEvent(event);
-                // handle DOT graph output
             } else if (message.type === "dot") {
                 const event = new CustomEvent('jacDotOutput', { detail: { dot: message.dot }});
                 document.dispatchEvent(event);
@@ -55,15 +53,12 @@ function executeJacCodeInWorker(code, inputHandler, commandType = "run") {
                 pyodideWorker.removeEventListener("message", handleMessage);
                 resolve("");
             } else if (message.type === "input_request") {
-                console.log("Input requested");
                 try {
                     const userInput = await inputHandler(message.prompt || "Enter input:");
-
                     const enc = new TextEncoder();
                     const bytes = enc.encode(userInput);
                     const n = Math.min(bytes.length, dataBytes.length);
                     dataBytes.set(bytes.subarray(0, n), 0);
-
                     Atomics.store(ctrl, 1, n);
                     Atomics.store(ctrl, 0, 1);
                     Atomics.notify(ctrl, 0, 1);
@@ -77,7 +72,6 @@ function executeJacCodeInWorker(code, inputHandler, commandType = "run") {
             }
         };
         pyodideWorker.addEventListener("message", handleMessage);
-        console.log("Sending code to worker:", commandType);
         pyodideWorker.postMessage({ type: commandType, code });
     });
 }
@@ -107,42 +101,48 @@ function loadMonacoEditor() {
             resolve();
         }, reject);
     });
-    console.log("Loading Monaco Editor...");
     return monacoLoadPromise;
 }
+
+// SVG icons
+const ICONS = {
+    run: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+    serve: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+    graph: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="5" y2="16.5"/><line x1="12" y1="7.5" x2="19" y2="16.5"/></svg>',
+};
 
 // Setup Code Block with Monaco Editor
 async function setupCodeBlock(div) {
     if (div._monacoInitialized) return;
-
     div._monacoInitialized = true;
     const originalCode = div.textContent.trim();
 
-    div.innerHTML = `
-        <div class="jac-code-loading" style="padding: 10px; font-style: italic; color: gray;">
-            Loading editor...
-        </div>
-    `;
+    div.innerHTML = `<div class="jcb-loading"><div class="jcb-loading-bar"></div></div>`;
 
     await loadMonacoEditor();
 
     div.innerHTML = `
-    <div class="jac-code" style="border: 1px solid #ccc;"></div>
-    <div class="button-container" style="display: flex; gap: 8px;">
-        <button class="md-button md-button--primary run-code-btn">Run</button>
-        <button class="md-button md-button--primary serve-code-btn" style="background: linear-gradient(90deg, #0288d1 0%, #03a9f4 100%);">Serve</button>
-        <button class="md-button md-button--primary dot-code-btn" style="background: linear-gradient(90deg, #b859e0ff 0%, #df76f1ff 100%);">Graph</button>
+    <div class="jcb-editor-wrap">
+        <div class="jac-code"></div>
+        <div class="jcb-progress" style="display:none;"></div>
     </div>
-    <div class="input-dialog" style="display: none; background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%); border: 1px solid #4a90e2; padding: 12px; margin: 8px 0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2);">
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <div class="input-prompt" style="color: #ffffff; font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 500; white-space: nowrap; min-width: fit-content;"></div>
-            <input type="text" class="user-input" style="flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.08); border: 1px solid #444; color: #ffffff; border-radius: 6px; font-family: 'Consolas', monospace; font-size: 13px; transition: all 0.2s ease; outline: none;" placeholder="Enter input...">
-            <button class="submit-input" style="padding: 8px 14px; background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(74, 144, 226, 0.3); white-space: nowrap;">Submit</button>
-            <button class="cancel-input" style="padding: 8px 14px; background: linear-gradient(135deg, #666 0%, #555 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;">Cancel</button>
+    <div class="jcb-actions">
+        <button class="jcb-btn jcb-btn--run run-code-btn">${ICONS.run} Run</button>
+        <button class="jcb-btn jcb-btn--serve serve-code-btn">${ICONS.serve} Serve</button>
+        <button class="jcb-btn jcb-btn--graph dot-code-btn">${ICONS.graph} Graph</button>
+    </div>
+    <div class="jcb-output-wrap" style="display:none;">
+        <pre class="code-output"></pre>
+    </div>
+    <div class="jcb-input-dialog" style="display:none;">
+        <div class="jcb-input-row">
+            <div class="input-prompt"></div>
+            <input type="text" class="user-input" placeholder="Enter input...">
+            <button class="jcb-input-submit submit-input">Submit</button>
+            <button class="jcb-input-cancel cancel-input">Cancel</button>
         </div>
     </div>
-    <pre class="code-output" style="display:none; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 10px;"></pre>
-    <div class="graph-container" style="display:none; margin-top:12px; border-radius:8px; overflow:auto; background:#ffffff; padding:4px; height:340px; max-height:800px;"></div>
+    <div class="graph-container" style="display:none;"></div>
     `;
 
     const container = div.querySelector(".jac-code");
@@ -150,8 +150,10 @@ async function setupCodeBlock(div) {
     const serveButton = div.querySelector(".serve-code-btn");
     const dotButton = div.querySelector(".dot-code-btn");
     const graphContainer = div.querySelector(".graph-container");
+    const outputWrap = div.querySelector(".jcb-output-wrap");
     const outputBlock = div.querySelector(".code-output");
-    const inputDialog = div.querySelector(".input-dialog");
+    const progressBar = div.querySelector(".jcb-progress");
+    const inputDialog = div.querySelector(".jcb-input-dialog");
     const inputPrompt = div.querySelector(".input-prompt");
     const userInput = div.querySelector(".user-input");
     const submitButton = div.querySelector(".submit-input");
@@ -162,18 +164,18 @@ async function setupCodeBlock(div) {
     dotButton.style.display = 'none';
     if (div.classList.contains('serve-only')) {
         runButton.style.display = 'none';
-        serveButton.style.display = 'inline-block';
+        serveButton.style.display = 'inline-flex';
     } else if (div.classList.contains('run-serve')) {
-        serveButton.style.display = 'inline-block';
+        serveButton.style.display = 'inline-flex';
     } else if (div.classList.contains('run-dot')) {
-        dotButton.style.display = 'inline-block';
+        dotButton.style.display = 'inline-flex';
     } else if (div.classList.contains('serve-dot')) {
         runButton.style.display = 'none';
-        serveButton.style.display = 'inline-block';
-        dotButton.style.display = 'inline-block';
+        serveButton.style.display = 'inline-flex';
+        dotButton.style.display = 'inline-flex';
     } else if (div.classList.contains('run-dot-serve')) {
-        dotButton.style.display = 'inline-block';
-        serveButton.style.display = 'inline-block';
+        dotButton.style.display = 'inline-flex';
+        serveButton.style.display = 'inline-flex';
     }
 
     const editor = monaco.editor.create(container, {
@@ -181,21 +183,18 @@ async function setupCodeBlock(div) {
         language: 'jac',
         theme: 'jac-theme',
         scrollBeyondLastLine: false,
-        scrollbar: {
-            vertical: 'hidden',
-            handleMouseWheel: false,
-        },
-        minimap: {
-            enabled: false
-        },
+        scrollbar: { vertical: 'hidden', handleMouseWheel: false },
+        minimap: { enabled: false },
         automaticLayout: true,
-        padding: {
-            top: 10,
-            bottom: 10
-        }
+        padding: { top: 10, bottom: 10 },
+        fontSize: 13.5,
+        lineHeight: 20,
+        renderLineHighlight: 'none',
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        overviewRulerBorder: false,
     });
 
-    // Update editor height based on content
     function updateEditorHeight() {
         const lineCount = editor.getModel().getLineCount();
         const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -206,7 +205,24 @@ async function setupCodeBlock(div) {
     updateEditorHeight();
     editor.onDidChangeModelContent(updateEditorHeight);
 
-    // Custom input handler function
+    // State helpers
+    function setRunning() {
+        progressBar.style.display = "block";
+        div.classList.add("jcb-running");
+        runButton.disabled = true;
+        serveButton.disabled = true;
+        dotButton.disabled = true;
+    }
+
+    function setIdle() {
+        progressBar.style.display = "none";
+        div.classList.remove("jcb-running");
+        runButton.disabled = false;
+        serveButton.disabled = false;
+        dotButton.disabled = false;
+    }
+
+    // Input handler
     function createInputHandler() {
         return function(prompt) {
             return new Promise((resolve, reject) => {
@@ -218,7 +234,6 @@ async function setupCodeBlock(div) {
                 const handleSubmit = () => {
                     const value = userInput.value;
                     inputDialog.style.display = "none";
-                    // Add the input to output for visibility
                     outputBlock.textContent += `${prompt}${value}\n`;
                     outputBlock.scrollTop = outputBlock.scrollHeight;
                     resolve(value);
@@ -232,13 +247,8 @@ async function setupCodeBlock(div) {
                 };
 
                 const handleKeyPress = (e) => {
-                    if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleSubmit();
-                    } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        handleCancel();
-                    }
+                    if (e.key === "Enter") { e.preventDefault(); handleSubmit(); }
+                    else if (e.key === "Escape") { e.preventDefault(); handleCancel(); }
                 };
 
                 const cleanup = () => {
@@ -255,10 +265,9 @@ async function setupCodeBlock(div) {
     }
 
     function decodeHtmlEntities(str) {
-    // handles &amp;, &#x27;, etc.
-    const txt = document.createElement("textarea");
-    txt.innerHTML = str;
-    return txt.value;
+        const txt = document.createElement("textarea");
+        txt.innerHTML = str;
+        return txt.value;
     }
 
     function renderDotToGraph(dotText) {
@@ -269,23 +278,19 @@ async function setupCodeBlock(div) {
         const viz = new Viz();
         viz.renderSVGElement(decoded)
             .then(svgEl => {
-                // reset container
                 graphContainer.innerHTML = "";
                 graphContainer.style.display = "block";
                 graphContainer.style.position = graphContainer.style.position || "relative";
 
-                // ensure SVG is measurable
                 svgEl.style.display = "block";
                 svgEl.style.maxWidth = "none";
                 svgEl.style.maxHeight = "none";
 
-                // temporary measure
                 const measureWrap = document.createElement("div");
                 measureWrap.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;";
                 measureWrap.appendChild(svgEl);
                 graphContainer.appendChild(measureWrap);
 
-                // determine intrinsic svg size
                 let svgW = NaN, svgH = NaN;
                 const vb = svgEl.getAttribute("viewBox");
                 if (vb) {
@@ -306,23 +311,18 @@ async function setupCodeBlock(div) {
                 if (!isFinite(svgW) || svgW <= 0) svgW = 800;
                 if (!isFinite(svgH) || svgH <= 0) svgH = 600;
 
-                // container visible area
                 const containerW = Math.max(100, graphContainer.clientWidth || 800);
                 const containerH = Math.max(100, graphContainer.clientHeight || 400);
-
-                // compute fit scale so SVG fills available without cropping
                 const fitScale = Math.min(containerW / svgW, containerH / svgH);
                 const displayW = Math.max(1, Math.round(svgW * fitScale));
                 const displayH = Math.max(1, Math.round(svgH * fitScale));
 
-                // set SVG attributes so it fits perfectly
                 svgEl.setAttribute("width", displayW);
                 svgEl.setAttribute("height", displayH);
                 svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
                 svgEl.style.display = "block";
                 svgEl.style.transformOrigin = "0 0";
 
-                // build wrapper and controls
                 const wrapper = document.createElement("div");
                 wrapper.className = "viz-viewport";
                 wrapper.appendChild(svgEl);
@@ -338,7 +338,6 @@ async function setupCodeBlock(div) {
                 graphContainer.appendChild(wrapper);
                 graphContainer.appendChild(controls);
 
-                // pan/zoom state (transforms applied to svg)
                 let scale = 1, translate = { x: 0, y: 0 }, isPanning = false, start = {}, startT = {};
                 const setTransform = () => svgEl.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${scale})`;
 
@@ -367,14 +366,12 @@ async function setupCodeBlock(div) {
 
                 resetBtn.addEventListener("click", (e) => { e.stopPropagation(); scale = 1; translate = { x: 0, y: 0 }; setTransform(); });
 
-                // attach interactions
                 wrapper.addEventListener("wheel", onWheel, { passive: false });
                 wrapper.addEventListener("pointerdown", onPointerDown);
                 wrapper.addEventListener("pointermove", onPointerMove);
                 wrapper.addEventListener("pointerup", onPointerUp);
                 wrapper.addEventListener("pointercancel", onPointerUp);
 
-                // initial transform (SVG already sized to fit; transforms start neutral)
                 setTransform();
             })
             .catch(err => {
@@ -384,34 +381,22 @@ async function setupCodeBlock(div) {
             });
     }
 
-    function createButtonHandler(commandType, initialMessage = "") {
+    function createButtonHandler(commandType) {
         return async () => {
-            outputBlock.style.display = "block";
-            outputBlock.textContent = initialMessage;
+            outputBlock.textContent = "";
+            outputWrap.style.display = "block";
             inputDialog.style.display = "none";
-
-            // clear any previous graph immediately so repeated clicks look fresh
             try { graphContainer.innerHTML = ""; graphContainer.style.display = "none"; } catch (e) { /* ignore */ }
 
-            // disable buttons while this invocation runs to avoid concurrent runs
-            runButton.disabled = true;
-            serveButton.disabled = true;
-            dotButton.disabled = true;
+            setRunning();
 
             if (!pyodideReady) {
-                const loadingMsg = "Loading Jac runner...";
-                outputBlock.textContent += loadingMsg + (initialMessage ? "\n" : "");
                 await initPyodideWorker();
-                outputBlock.textContent = outputBlock.textContent.replace(loadingMsg + (initialMessage ? "\n" : ""), "");
             }
 
             const outputHandler = (event) => {
-                const { output, stream } = event.detail;
-                console.log("Raw output received: ", output);
-                if (output === ">>> Graph content saved to /home/pyodide/temp.dot") {
-                    return;  // filter out this line
-                }
-                console.log("Filtered output: ", output);
+                const { output } = event.detail;
+                if (output === ">>> Graph content saved to /home/pyodide/temp.dot") return;
                 outputBlock.textContent += output;
                 outputBlock.scrollTop = outputBlock.scrollHeight;
             };
@@ -434,49 +419,14 @@ async function setupCodeBlock(div) {
                 document.removeEventListener('jacDotOutput', dotHandler);
                 document.removeEventListener('jacOutputUpdate', outputHandler);
                 inputDialog.style.display = "none";
-                // re-enable buttons
-                runButton.disabled = false;
-                serveButton.disabled = false;
-                dotButton.disabled = false;
+                setIdle();
             }
         };
     }
 
     runButton.addEventListener("click", createButtonHandler("run"));
-    serveButton.addEventListener("click", createButtonHandler("serve", "Starting serve mode...\n"));
-    dotButton.addEventListener("click", createButtonHandler("dot", "Generating graph...\n"));
-
-    userInput.addEventListener('focus', () => {
-        userInput.style.borderColor = '#4a90e2';
-        userInput.style.boxShadow = '0 0 0 2px rgba(74, 144, 226, 0.15)';
-        userInput.style.background = 'rgba(255,255,255,0.12)';
-    });
-
-    userInput.addEventListener('blur', () => {
-        userInput.style.borderColor = '#444';
-        userInput.style.boxShadow = 'none';
-        userInput.style.background = 'rgba(255,255,255,0.08)';
-    });
-
-    submitButton.addEventListener('mouseenter', () => {
-        submitButton.style.transform = 'translateY(-1px)';
-        submitButton.style.boxShadow = '0 4px 12px rgba(74, 144, 226, 0.4)';
-    });
-
-    submitButton.addEventListener('mouseleave', () => {
-        submitButton.style.transform = 'translateY(0)';
-        submitButton.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.3)';
-    });
-
-    cancelButton.addEventListener('mouseenter', () => {
-        cancelButton.style.transform = 'translateY(-1px)';
-        cancelButton.style.background = 'linear-gradient(135deg, #777 0%, #666 100%)';
-    });
-
-    cancelButton.addEventListener('mouseleave', () => {
-        cancelButton.style.transform = 'translateY(0)';
-        cancelButton.style.background = 'linear-gradient(135deg, #666 0%, #555 100%)';
-    });
+    serveButton.addEventListener("click", createButtonHandler("serve"));
+    dotButton.addEventListener("click", createButtonHandler("dot"));
 }
 
 // Lazy load code blocks using Intersection Observer
@@ -497,7 +447,6 @@ const lazyObserver = new IntersectionObserver((entries) => {
     threshold: 0.1
 });
 
-// Observe all uninitialized code blocks
 function observeUninitializedCodeBlocks() {
     document.querySelectorAll('.code-block').forEach((block) => {
         if (!initializedBlocks.has(block)) {
@@ -515,13 +464,11 @@ domObserver.observe(document.body, {
     subtree: true
 });
 
-// Initialize on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", async () => {
     observeUninitializedCodeBlocks();
     initPyodideWorker();
 });
 
-// Add nav link mutation observer for playground links
 document.addEventListener("DOMContentLoaded", function () {
     const observer = new MutationObserver(() => {
         const links = document.querySelectorAll("nav a[href='/playground/']");
@@ -530,6 +477,5 @@ document.addEventListener("DOMContentLoaded", function () {
             link.setAttribute("rel", "noopener");
         });
     });
-
     observer.observe(document.body, { childList: true, subtree: true });
 });

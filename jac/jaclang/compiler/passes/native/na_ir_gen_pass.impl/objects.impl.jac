@@ -1,29 +1,12 @@
 """Archetype (object) codegen: structs, fields, methods, instantiation."""
 """Pre-register archetype names as opaque struct types for global type resolution."""
 impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.Archetype) {
-                    aname = inner.name.value if inner.name else None;
-                    if aname is not None and aname not in self.struct_types {
-                        struct_type = self.llvm_module.context.get_identified_type(
-                            aname
-                        );
-                        self.struct_types[aname] = struct_type;
-                    }
-                }
-            }
-        } elif isinstance(stmt, uni.Archetype) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                aname = stmt.name.value if stmt.name else None;
-                if aname is not None and aname not in self.struct_types {
-                    struct_type = self.llvm_module.context.get_identified_type(aname);
-                    self.struct_types[aname] = struct_type;
-                }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Archetype) {
+            aname = stmt.name.value if stmt.name else None;
+            if aname is not None and aname not in self.struct_types {
+                struct_type = self.llvm_module.context.get_identified_type(aname);
+                self.struct_types[aname] = struct_type;
             }
         }
     }
@@ -33,26 +16,12 @@ impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
 impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     # Collect all archetype nodes, deduplicating forward declarations
     arch_map: dict[(str, uni.Archetype)] = {};
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.Archetype) {
-                    aname = inner.name.value if inner.name else "unknown";
-                    # Full definition overrides forward declaration
-                    if aname not in arch_map or inner.body is not None {
-                        arch_map[aname] = inner;
-                    }
-                }
-            }
-        } elif isinstance(stmt, uni.Archetype) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                aname = stmt.name.value if stmt.name else "unknown";
-                if aname not in arch_map or stmt.body is not None {
-                    arch_map[aname] = stmt;
-                }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Archetype) {
+            aname = stmt.name.value if stmt.name else "unknown";
+            # Full definition overrides forward declaration
+            if aname not in arch_map or stmt.body is not None {
+                arch_map[aname] = stmt;
             }
         }
     }
@@ -544,11 +513,9 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         }
     }
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
-    body = method.body;
-    if isinstance(body, (list, tuple)) {
+    body = ModuleCodegenPass.unwrap_body(method);
+    if body is not None {
         self._codegen_body(body);
-    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
-        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
@@ -614,12 +581,10 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
             }
         }
     }
-    # Generate body — handle both list bodies and ImplDef wrapper nodes
-    body = method.body;
-    if isinstance(body, (list, tuple)) {
+    # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
+    body = ModuleCodegenPass.unwrap_body(method);
+    if body is not None {
         self._codegen_body(body);
-    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
-        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {

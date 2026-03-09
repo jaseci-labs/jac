@@ -295,6 +295,40 @@ test "deploy all in one" {
     );
     assert mongodb_service.spec.ports[0].port == 27017;
 
+    # Validate MongoDB secret exists with correct credential keys
+    mongodb_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-mongodb-secret", namespace=namespace
+    );
+    assert mongodb_secret.metadata.name == f"{app_name}-mongodb-secret";
+    assert "username" in mongodb_secret.data;
+    assert "password" in mongodb_secret.data;
+    assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
+    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+
+    # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
+    mongo_user_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_USERNAME"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_user_value is None;
+    mongo_pass_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_pass_value is None;
+    print(
+        "MongoDB StatefulSet uses secretKeyRef for root credentials (env values are None)"
+    );
+
     # Validate Redis Deployment and Service
     redis_deploy = apps_v1.read_namespaced_deployment(
         name=f"{app_name}-redis", namespace=namespace
@@ -305,6 +339,29 @@ test "deploy all in one" {
         name=f"{app_name}-redis-service", namespace=namespace
     );
     assert redis_service.spec.ports[0].port == 6379;
+
+    # Validate Redis secret exists with correct credential keys
+    redis_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-redis-secret", namespace=namespace
+    );
+    assert redis_secret.metadata.name == f"{app_name}-redis-secret";
+    assert "username" in redis_secret.data;
+    assert "password" in redis_secret.data;
+    assert base64.b64decode(redis_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(redis_secret.data["password"]).decode() == "password";
+    print(f"Redis Secret '{app_name}-redis-secret' exists with correct credentials");
+
+    # Validate Redis Deployment uses secretKeyRef (env value is None when secretKeyRef is used)
+    redis_pass_value = next(
+        (
+            e.value
+            for e in redis_deploy.spec.template.spec.containers[0].env
+            if e.name == "REDIS_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert redis_pass_value is None;
+    print("Redis Deployment uses secretKeyRef for password (env value is None)");
 
     # Validate RedisInsight dashboard Deployment and Service
     insight_name = f"{app_name}-redis-insight";
@@ -362,17 +419,26 @@ test "deploy all in one" {
         None
     );
     assert mongo_server_env == f"{app_name}-mongodb-service";
-    mongo_user_env = next(
+    mongo_admin_user_value = next(
         (
             e.value
             for e in express_container.env
             if e.name == "ME_CONFIG_MONGODB_ADMINUSERNAME"
         ),
-        None
+        "NOT_FOUND"
     );
-    assert mongo_user_env == "admin";
+    assert mongo_admin_user_value is None;
+    mongo_admin_pass_value = next(
+        (
+            e.value
+            for e in express_container.env
+            if e.name == "ME_CONFIG_MONGODB_ADMINPASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_admin_pass_value is None;
     print(
-        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials pre-configured"
+        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials via secretKeyRef"
     );
 
     express_service = core_v1.read_namespaced_service(
@@ -650,6 +716,15 @@ test "deploy all in one" {
     }
 
     try {
+        core_v1.read_namespaced_secret(
+            f"{app_name}-mongodb-secret", namespace=namespace
+        );
+        raise AssertionError("MongoDB Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
         apps_v1.read_namespaced_deployment(f"{app_name}-redis", namespace=namespace);
         raise AssertionError("Redis Deployment should have been deleted");
     } except ApiException as e {
@@ -664,6 +739,15 @@ test "deploy all in one" {
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    try {
+        core_v1.read_namespaced_secret(f"{app_name}-redis-secret", namespace=namespace);
+        raise AssertionError("Redis Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("MongoDB and Redis secrets cleanup verified");
 
     # Verify RedisInsight dashboard cleanup
     insight_name = f"{app_name}-redis-insight";

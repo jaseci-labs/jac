@@ -304,6 +304,18 @@ impl TypeEvaluator._extract_type_params(
     node_: uni.Archetype
 ) -> list[types.TypeVarType] {
     type_params: list[types.TypeVarType] = [];
+
+    # Handle Jac-native generic syntax: obj Box[T], obj Pair[A, B]
+    # The type_params field on the Archetype node holds TypeParam AST nodes.
+    if node_.type_params {
+        for tp in node_.type_params {
+            tv = types.TypeVarType(name=tp.sym_name);
+            type_params.append(tv);
+        }
+        return type_params;
+    }
+
+    # Handle Python-style generics: obj Box(Generic[T])
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr

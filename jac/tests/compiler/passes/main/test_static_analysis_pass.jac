@@ -70,3 +70,33 @@ test "all reachable code produces no unreachable warnings" {
     ];
     assert len(unreachable_warnings) == 0 , f"Expected no unreachable warnings, got: {unreachable_warnings}";
 }
+
+test "classmethod and staticmethod on obj produce warnings" {
+    file_path = os.path.join(FIXTURES, "classmethod_on_obj.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    assert any("@classmethod" in w and "'obj'" in w for w in warning_msgs) , f"Expected @classmethod warning for obj, got: {warning_msgs}";
+    assert any("@staticmethod" in w and "'obj'" in w for w in warning_msgs) , f"Expected @staticmethod warning for obj, got: {warning_msgs}";
+}
+
+test "classmethod and staticmethod on class produce no warnings" {
+    file_path = os.path.join(FIXTURES, "classmethod_on_class.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    decorator_warnings = [
+        w
+        for w in warning_msgs
+        if "@classmethod" in w or "@staticmethod" in w
+    ];
+    assert len(decorator_warnings) == 0 , f"Expected no decorator warnings for class, got: {decorator_warnings}";
+}
+
+test "classmethod on node warns with correct archetype name" {
+    file_path = os.path.join(FIXTURES, "classmethod_on_node.jac");
+    prog = JacProgram();
+    prog.compile(file_path);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    assert any("@classmethod" in w and "'node'" in w for w in warning_msgs) , f"Expected @classmethod warning mentioning 'node', got: {warning_msgs}";
+}

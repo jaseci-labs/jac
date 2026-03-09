@@ -191,6 +191,15 @@ impl NativeCompilePass._compile_and_link_native_imports(
             imported_llvm_str = imported_llvm_str.replace(
                 "@jac_entry", f"@{entry_rename}"
             );
+            # Rename __jac_glob_init to __jac_glob_init_<safe_name> so each
+            # imported module's initializer has a unique symbol after linking.
+            glob_init_rename = f"__jac_glob_init_{safe_name}";
+            imported_llvm_str = imported_llvm_str.replace(
+                '@"__jac_glob_init"', f'@"{glob_init_rename}"'
+            );
+            imported_llvm_str = imported_llvm_str.replace(
+                "@__jac_glob_init", f"@{glob_init_rename}"
+            );
             imported_mod = llvm.parse_assembly(imported_llvm_str);
 
             # Collect exported function names BEFORE linking, because

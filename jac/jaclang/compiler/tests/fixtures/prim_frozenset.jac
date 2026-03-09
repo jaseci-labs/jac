@@ -156,8 +156,8 @@ cl def frozenset_cl() -> dict {
 
 na {
     def frozenset_na() -> dict[str, any] {
-        a: frozenset[int] = {1, 2, 3, 4};
-        b: frozenset[int] = {3, 4, 5, 6};
+        a: frozenset[int] = frozenset({1, 2, 3, 4});
+        b: frozenset[int] = frozenset({3, 4, 5, 6});
 
         u: frozenset[int] = a | b;
         i: frozenset[int] = a & b;
@@ -170,9 +170,9 @@ na {
         sd2: frozenset[int] = a.symmetric_difference(b);
         cp: frozenset[int] = a.copy();
 
-        c1: frozenset[int] = {1, 2, 3};
-        c2: frozenset[int] = {1, 2, 3};
-        c3: frozenset[int] = {1, 2};
+        c1: frozenset[int] = frozenset({1, 2, 3});
+        c2: frozenset[int] = frozenset({1, 2, 3});
+        c3: frozenset[int] = frozenset({1, 2});
 
         return {
             "u_len": len(u), "u_has_1": 1 if 1 in u else 0, "u_has_5": 1 if 5 in u else 0,

@@ -143,6 +143,34 @@ impl Foo.my_method(val: int) -> int {
 }
 ```
 
+### 5b. `self` is implicit in `obj` method signatures
+
+In `obj` (and `node`, `edge`, `walker`) methods, `self` is automatically available -- do NOT include it as a parameter. Adding `self` explicitly will cause errors.
+
+WRONG:
+
+```
+obj Foo {
+    has x: int = 0;
+    def get_x(self) -> int {
+        return self.x;
+    }
+}
+```
+
+RIGHT:
+
+```jac
+obj Foo {
+    has x: int = 0;
+    def get_x() -> int {
+        return self.x;
+    }
+}
+```
+
+Note: `self` is still used *inside* the method body to access instance members -- it's just not declared in the parameter list.
+
 ### 6. Constructor is `def init`, not `def __init__`
 
 WRONG:

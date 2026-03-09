@@ -96,3 +96,18 @@ def lookup_symtab(
 def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
 ) -> bool;
+
+"""
+Module source flags computed from file path.
+
+Similar to Pyright's SourceFileInfo flags (_isStubFile, _isTypingStubFile, etc.).
+These flags are computed once when a module is loaded and stored on ModuleType.
+"""
+obj ModuleSourceFlags {
+    has is_stub_file: bool = False,  # True if .pyi file
+        is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
+        is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
+        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
+}
+
+def compute_module_source_flags(file_path: str) -> ModuleSourceFlags;

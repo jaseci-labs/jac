@@ -163,20 +163,43 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         redis_port = 6379;
         redis_service_name = f"{redis_name}-service";
         redis_config_name = f"{redis_name}-config";
+        redis_secret_name = f"{redis_name}-secret";
 
         # Get configuration values
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
+        k8s_config = scale_config.get_kubernetes_config();
         redis_default_ttl = db_config.get('redis_default_ttl', 0);
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
+        redis_username = k8s_config.get('redis_username', 'admin');
+        redis_password = k8s_config.get('redis_password', 'password');
+        connection_string = f"redis://{redis_username}:{redis_password}@{redis_service_name}:{redis_port}/0";
 
         # Load and generate Redis configuration
         redis_conf_content = self._load_redis_config();
         config_hash = self._calculate_config_hash(redis_conf_content);
 
         logger.debug(f"Redis config hash: {config_hash}");
+
+        redis_secret = {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {
+                'name': redis_secret_name,
+                'labels': {
+                    'app': redis_name,
+                    'component': 'cache',
+                    'managed-by': 'jac-scale'
+                }
+            },
+            'stringData': {
+                'username': redis_username,
+                'password': redis_password,
+                'connection-string': connection_string
+            }
+        };
 
         # Create ConfigMap for redis.conf
         redis_configmap = {
@@ -229,7 +252,31 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                                 'ports': [
                                     {'containerPort': redis_port, 'name': 'redis'}
                                 ],
-                                'command': ['redis-server', '/etc/redis/redis.conf'],
+                                'command': [
+                                    'sh',
+                                    '-c',
+                                    'redis-server /etc/redis/redis.conf --requirepass "$REDIS_PASSWORD"'
+                                ],
+                                'env': [
+                                    {
+                                        'name': 'REDIS_USERNAME',
+                                        'valueFrom': {
+                                            'secretKeyRef': {
+                                                'name': redis_secret_name,
+                                                'key': 'username'
+                                            }
+                                        }
+                                    },
+                                    {
+                                        'name': 'REDIS_PASSWORD',
+                                        'valueFrom': {
+                                            'secretKeyRef': {
+                                                'name': redis_secret_name,
+                                                'key': 'password'
+                                            }
+                                        }
+                                    }
+                                ],
                                 'volumeMounts': [
                                     {
                                         'name': 'redis-config',
@@ -249,7 +296,13 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                                     'failureThreshold': 3
                                 },
                                 'readinessProbe': {
-                                    'exec': {'command': ['redis-cli', 'ping']},
+                                    'exec': {
+                                        'command': [
+                                            'sh',
+                                            '-c',
+                                            'redis-cli -a "$REDIS_PASSWORD" ping'
+                                        ]
+                                    },
                                     'initialDelaySeconds': 5,
                                     'periodSeconds': 5,
                                     'timeoutSeconds': 3,
@@ -293,18 +346,20 @@ obj KubernetesRedisProvider(DatabaseProvider) {
             }
         };
 
-        self.connection_string = f"redis://{redis_service_name}:{redis_port}/0";
+        self.connection_string = connection_string;
 
         logger.info(
             f"Prepared Redis deployment: {redis_name} "
-            f"(connection: {self.connection_string}, config hash: {config_hash})"
+            f"(connection: redis://{redis_service_name}:{redis_port}/0, config hash: {config_hash})"
         );
 
         return {
+            'secret': redis_secret,
             'configmap': redis_configmap,
             'deployment': redis_deployment,
             'service': redis_service,
             'connection_string': self.connection_string,
+            'secret_name': redis_secret_name,
             'service_name': redis_service_name,
             'config_hash': config_hash,
             'default_ttl': redis_default_ttl,
@@ -314,9 +369,12 @@ obj KubernetesRedisProvider(DatabaseProvider) {
 
     def get_connection_string -> str {
         if not self.connection_string {
-            # Generate default connection string
+            scale_config = get_scale_config();
+            k8s_config = scale_config.get_kubernetes_config();
+            redis_username = k8s_config.get('redis_username', 'admin');
+            redis_password = k8s_config.get('redis_password', 'password');
             service_name = f"{self.app_name}-redis-service";
-            self.connection_string = f"redis://{service_name}:6379/0";
+            self.connection_string = f"redis://{redis_username}:{redis_password}@{service_name}:6379/0";
         }
         return self.connection_string;
     }
