@@ -1,6 +1,6 @@
 # Routing
 
-Build multi-page applications with client-side routing.
+When your application grows beyond a single view, you need routing -- the ability to map URLs to different pages or views within your app. Jac-client supports client-side routing (the browser URL changes but the page doesn't fully reload) with two approaches: file-based routing that uses directory conventions (like Next.js) and manual routing using explicit route declarations (like React Router).
 
 > **Prerequisites**
 >

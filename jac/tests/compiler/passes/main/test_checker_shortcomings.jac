@@ -1,8 +1,8 @@
-"""Tests exposing known shortcomings in the Jac type checker.
+"""Regression tests for previously-identified shortcomings in the Jac type checker.
 
-These tests document incomplete type checking behavior that should
-be addressed in future improvements. Each test is expected to FAIL
-under the current implementation, confirming the shortcoming exists.
+These tests document type checking behavior that was incomplete and has
+since been addressed. They now serve as regression guards to prevent
+re-introduction of these shortcomings.
 
 Shortcoming index:
   #22 - No type checking on destructuring RHS (non-iterable accepted)

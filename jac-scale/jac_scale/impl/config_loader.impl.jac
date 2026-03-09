@@ -56,6 +56,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'mongo_express_password': 'admin',
             'redis_insight_username': 'admin',
             'redis_insight_password': 'admin',
+            'mongodb_root_username': 'admin',
+            'mongodb_root_password': 'password',
+            'redis_username': 'admin',
+            'redis_password': 'password',
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,

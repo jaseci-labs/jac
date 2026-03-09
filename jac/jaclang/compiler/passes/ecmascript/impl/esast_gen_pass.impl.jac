@@ -2322,9 +2322,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Get the body statements
-    inner = (
-        nd.body.body if isinstance(nd.body, uni.ImplDef) else self._get_body_inner(nd)
-    );
+    inner = self.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
     # Determine if this is entry or exit
     is_entry = nd.signature.event.name == Tok.KW_ENTRY;
@@ -2589,9 +2587,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             }
         }
     }
-    inner = (
-        nd.body.body if isinstance(nd.body, uni.ImplDef) else self._get_body_inner(nd)
-    );
+    inner = self.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(nd, body_stmts);
     block = self.sync_loc(
@@ -2645,9 +2641,7 @@ impl EsastGenPass.exit_enum(nd: uni.Enum) -> None {
         }
     }
     properties: list[(es.Property | es.SpreadElement)] = [];
-    inner = (
-        nd.body.body if isinstance(nd.body, uni.ImplDef) else self._get_body_inner(nd)
-    );
+    inner = self.unwrap_body(nd);
     if inner {
         for stmt in inner {
             if isinstance(stmt, uni.Assignment) {
@@ -2711,9 +2705,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     }
     body_stmts: list[es.MethodDefinition | es.PropertyDefinition | es.StaticBlock] = [];
     has_members: list[uni.ArchHas] = [];
-    inner = (
-        nd.body.body if isinstance(nd.body, uni.ImplDef) else self._get_body_inner(nd)
-    );
+    inner = self.unwrap_body(nd);
     if inner {
         for stmt in inner {
             if isinstance(stmt, uni.ArchHas) {

@@ -1,6 +1,10 @@
 # Agentic AI
 
-Build AI agents that can use tools and reason through problems.
+The previous tutorials showed LLMs generating text and extracting structured data. But what happens when the LLM needs information it doesn't have -- like the current time, a database record, or today's weather? That's where **tool calling** comes in.
+
+byLLM lets you pass regular Jac functions as "tools" to a `by llm()` call. The LLM can then decide *when* to call these tools, *what arguments* to pass, and *how to use the results* in its response. This transforms the LLM from a passive text generator into an active agent that can interact with your application's data and services.
+
+This tutorial covers basic tool calling, multi-tool orchestration, the ReAct reasoning pattern, method-based tools on objects, combining agents with graph walkers, and building a complete agent with a knowledge base.
 
 > **Prerequisites**
 >
@@ -11,7 +15,7 @@ Build AI agents that can use tools and reason through problems.
 
 ## What is Agentic AI?
 
-Regular LLMs can only generate text. **Agentic AI** can:
+Regular LLMs can only generate text -- they have no ability to look up data, call APIs, or interact with external systems. **Agentic AI** bridges this gap by giving the LLM access to tools (functions you define) and the autonomy to use them. An agentic LLM can:
 
 - Use **tools** (functions you define)
 - **Reason** about which tools to use
@@ -127,7 +131,7 @@ with entry {
 
 ## ReAct Pattern
 
-**ReAct** (Reason + Act) lets the LLM think step-by-step:
+**ReAct** (Reason + Act) is a prompting pattern where the LLM alternates between *thinking* about what to do next and *acting* by calling tools. With multiple tools available, the LLM chains together a sequence of reasoning steps and tool calls to solve problems that require multiple pieces of information. byLLM implements this automatically when you provide multiple tools -- the LLM reasons about which tools to call, in what order, and how to combine their results:
 
 ```jac
 """Search the web for information."""
@@ -298,7 +302,7 @@ with entry {
 
 ## Context Injection
 
-Provide additional context to the LLM:
+Sometimes the LLM needs background knowledge that isn't available through tools -- company policies, product details, user preferences, or domain-specific rules. The `incl_info` parameter lets you inject this context directly into the LLM prompt alongside the function's semantic information. The LLM sees this context as authoritative background and uses it when generating responses:
 
 ```jac
 glob company_info = """

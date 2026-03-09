@@ -56,7 +56,11 @@ obj KubernetesConfig(BaseConfig) {
         mongo_express_username: str = 'admin',
         mongo_express_password: str = 'admin',
         redis_insight_username: str = 'admin',
-        redis_insight_password: str = 'admin';
+        redis_insight_password: str = 'admin',
+        mongodb_root_username: str = 'admin',
+        mongodb_root_password: str = 'password',
+        redis_username: str = 'admin',
+        redis_password: str = 'password';
 
     override def to_dict -> dict[str, Any] {
         base = super.to_dict();
@@ -116,7 +120,11 @@ obj KubernetesConfig(BaseConfig) {
                 'mongo_express_username': self.mongo_express_username,
                 'mongo_express_password': self.mongo_express_password,
                 'redis_insight_username': self.redis_insight_username,
-                'redis_insight_password': self.redis_insight_password
+                'redis_insight_password': self.redis_insight_password,
+                'mongodb_root_username': self.mongodb_root_username,
+                'mongodb_root_password': self.mongodb_root_password,
+                'redis_username': self.redis_username,
+                'redis_password': self.redis_password
             }
         );
         return base;
@@ -177,7 +185,11 @@ obj KubernetesConfig(BaseConfig) {
             mongo_express_username=config.get('mongo_express_username', 'admin'),
             mongo_express_password=config.get('mongo_express_password', 'admin'),
             redis_insight_username=config.get('redis_insight_username', 'admin'),
-            redis_insight_password=config.get('redis_insight_password', 'admin')
+            redis_insight_password=config.get('redis_insight_password', 'admin'),
+            mongodb_root_username=config.get('mongodb_root_username', 'admin'),
+            mongodb_root_password=config.get('mongodb_root_password', 'password'),
+            redis_username=config.get('redis_username', 'admin'),
+            redis_password=config.get('redis_password', 'password')
         );
     }
 }

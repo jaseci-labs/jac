@@ -7,11 +7,6 @@ glob ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 
 """Common functionality shared across AST generation passes."""
 class BaseAstGenPass[T](UniPass) {
-    """Return the list of body statements regardless of ImplDef wrapping."""
-    def _get_body_inner(
-        self: BaseAstGenPass, nd: uni.Archetype | uni.Enum | uni.Ability
-    ) -> (Sequence | None);
-
     """Concatenate impl/test bodies with the main module body."""
     def _merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -> list;
 
