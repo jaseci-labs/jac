@@ -245,7 +245,7 @@ test "execution: run produces output" {
             timeout=PYODIDE_TIMEOUT
         );
         output = page.text_content("#block-plain .code-output");
-        assert "Good Enough" in output, f"Expected 'Good Enough' in output, got: {output}";
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
     }
     _with_page(check);
 }
@@ -271,7 +271,7 @@ test "execution: syntax error shows error" {
             timeout=PYODIDE_TIMEOUT
         );
         output = page.text_content("#block-error .code-output");
-        assert "error" in output.lower(), f"Expected 'error' in output, got: {output}";
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
     }
     _with_page(check);
 }
