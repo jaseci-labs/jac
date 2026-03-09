@@ -240,8 +240,8 @@ obj KubernetesTarget(DeploymentTarget) {
         # Install requirements
         commands.append('jac install');
 
-        # Start the application
-        commands.append(f"jac start {app_config.file_name}");
+        # Start the application in production mode
+        commands.append(f"jac start --prod {app_config.file_name}");
 
         # Join all commands
         full_command = ' && '.join(commands);
