@@ -359,19 +359,53 @@ impl ModuleIntrospector._extract_access_levels -> None {
     self._function_access = {};
     self._walker_access = {};
 
-    # AST cache to avoid repeated hub lookups / compilations
-    ast_cache: dict[str, (uni.Module | None)] = {};
-
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
-        if mod_path in ast_cache {
-            return ast_cache[mod_path];
-        }
         ast = Jac.program.mod.hub.get(mod_path);
         if not ast {
             ast = Jac.program.compile(mod_path);
         }
-        ast_cache[mod_path] = ast;
         return ast;
+    }
+
+    def is_public(node: (uni.AstAccessNode | None)) -> bool {
+        return node is not None
+        and node.access is not None
+        and node.access.tag.name == Tok.KW_PUB;
+    }
+
+    def _process_import(
+        item: uni.Import, func_access: dict[str, bool], walker_access: dict[str, bool]
+    ) {
+        imported_names: list[str] = [
+            imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
+            for imp_item in item.items
+            if isinstance(imp_item, uni.ModuleItem)
+        ];
+        if not imported_names {
+            return;
+        }
+        try {
+            source_file = item.from_loc.resolve_relative_path();
+            if not source_file.endswith(('.jac', '.cl.jac')) {
+                return;
+            }
+        } except Exception {
+            return;
+        }
+        source_ast = get_module_ast(source_file);
+        for name in imported_names {
+            if name in func_access or name in walker_access {
+                continue;
+            }
+            sym = source_ast.lookup(name) if source_ast else None;
+            is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
+            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode) if sym else None;
+            if is_walker {
+                walker_access[name] = not is_public(decl_node);
+            } else {
+                func_access[name] = not is_public(decl_node);
+            }
+        }
     }
 
     # Get main module AST
@@ -386,66 +420,17 @@ impl ModuleIntrospector._extract_access_levels -> None {
 
     # Single pass over module body: direct definitions + imports
     for item in mod_ast.body {
-        # --- Direct function definitions ---
         if isinstance(item, uni.Ability) and item.name_ref is not None {
-            is_pub = item.access and item.access.tag.name == Tok.KW_PUB;
-            self._function_access[item.name_ref.sym_name] = not is_pub;
-            # --- Direct walker/archetype definitions ---
+            self._function_access[item.name_ref.sym_name] = not is_public(item);
         } elif isinstance(item, uni.Archetype)
         and item.sym_category == SymbolType.WALKER_ARCH {
-            arch_name = item.name.sym_name;
-            is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-            self._walker_access[arch_name] = not is_pub;
-            # --- Imported items from .jac modules ---
+            self._walker_access[item.name.sym_name] = not is_public(item);
         } elif isinstance(item, uni.Import) and item.is_jac and item.from_loc {
-            # Collect imported names
-            imported_names: list[str] = [
-                imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
-                for imp_item in item.items
-                if isinstance(imp_item, uni.ModuleItem)
-            ];
-            if not imported_names {
-                continue;
-            }
-            # Resolve source path
-            try {
-                source_file = item.from_loc.resolve_relative_path();
-                if not source_file.endswith(('.jac', '.cl.jac')) {
-                    continue;
-                }
-            } except Exception {
-                continue;
-            }
-            # Get source module AST and use symbol table for both type and access
-            source_ast = get_module_ast(source_file);
-            for name in imported_names {
-                if name in self._function_access or name in self._walker_access {
-                    continue;
-                }
-                # Determine type and access level via symbol table lookup
-                sym = source_ast.lookup(name) if source_ast else None;
-                is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
-                # check the declaring AST node's access attribute directly
-                decl_node = sym.decl.find_parent_of_type(
-                    uni.AstAccessNode
-                )
-                    if sym
-                    else None;
-                is_explicitly_pub = (
-                    decl_node is not None
-                    and decl_node.access is not None
-                    and decl_node.access.tag.name == Tok.KW_PUB
-                );
-                requires_auth = not is_explicitly_pub;
-                if is_walker {
-                    self._walker_access[name] = requires_auth;
-                } else {
-                    self._function_access[name] = requires_auth;
-                }
-            }
+            _process_import(item, self._function_access, self._walker_access);
         }
     }
 }
+
 
 """Analyze walker and function bodies to classify as reader or writer.
 
