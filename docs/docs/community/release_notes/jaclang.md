@@ -4,8 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- 3 small refactors/changes.
 - **Compiler Warns on `@classmethod`/`@staticmethod` in `obj` Definitions**: Using `@classmethod` or `@staticmethod` inside `obj`, `node`, `edge`, or `walker` now emits a warning. Use the `static` keyword instead, or switch to `class` for Python-specific decorator features. Compilation warnings are now also surfaced during `jac run`.
-- 2 small refactors/changes.
 - **Fix: Union Type Member Access Errors**: `x.attr` on a union type now errors when the attribute is missing from any variant (previously silently returned `UnknownType`). Reports which variant(s) lack the attribute.
 - **Fix: Module-Level Overload Resolution**: `math.floor()`, `math.ceil()` and other module-level overloaded functions now correctly resolve all `@overload` signatures instead of only the first.
 - **Stdlib Protocol Detection**: Added Pyright-style `ModuleSourceFlags` for production-grade stdlib type detection. Protocol types like `_SupportsFloor` and `_SupportsTrunc` are now properly recognized, enabling `math.floor(3.7)` and `math.trunc(4.9)` to type-check correctly.
