@@ -132,19 +132,19 @@ impl JFastApiServer.run_server(
             or "address already in use" in str(e) {
                 current_port += 1;
             } else {
-                raise ;
+                raise;
             }
         } except OSError as e {
             if e.errno in (98, 10048) or "Address already in use" in str(e) {
                 current_port += 1;
             } else {
-                raise ;
+                raise;
             }
         }
     }
     raise OSError(
         f"Could not find an available port after trying {port}-{current_port}"
-    ) ;
+    );
 }
 
 """Get the underlying FastAPI application instance."""
@@ -351,7 +351,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
                 return async_endpoint_wrapper;
@@ -375,7 +375,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
                 return sync_endpoint_wrapper;
@@ -396,7 +396,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
             } else {
@@ -412,7 +412,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
             }
@@ -433,7 +433,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
             } else {
@@ -449,7 +449,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         return result;
                     } except Exception as e {
-                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                        raise e from HTTPException(status_code=500, detail=str(e));
                     }
                 }
             }

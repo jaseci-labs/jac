@@ -164,7 +164,7 @@ impl Scheduler._parse_cron_next(
 ) -> datetime.datetime {
     fields = cron.strip().split();
     if len(fields) != 5 {
-        raise ValueError(f"Cron must have 5 fields, got: {cron}") ;
+        raise ValueError(f"Cron must have 5 fields, got: {cron}");
     }
     (f_min, f_hour, f_day, f_month, f_weekday) = fields;
     candidate = now.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1);
@@ -181,7 +181,7 @@ impl Scheduler._parse_cron_next(
         }
         candidate = candidate + datetime.timedelta(minutes=1);
     }
-    raise ValueError(f"No matching time found for cron: {cron}") ;
+    raise ValueError(f"No matching time found for cron: {cron}");
 }
 
 """Check if a cron field matches a value."""

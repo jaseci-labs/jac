@@ -312,7 +312,7 @@ def _npm_install_handler(
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     # Add to config (core JacConfig handles this)
@@ -327,7 +327,7 @@ def _npm_install_handler(
 """Install all npm packages from jac.toml."""
 def _npm_install_all_handler(config: JacConfig) -> None {
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     _regenerate_and_install(Path(str(config.project_root)));
@@ -338,7 +338,7 @@ def _npm_remove_handler(
     config: JacConfig, package_name: str, is_dev: bool = False
 ) -> None {
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     project_dir: Path = Path(str(config.project_root));
@@ -347,7 +347,7 @@ def _npm_remove_handler(
     result = config.remove_dependency(package_name, dev=is_dev, dep_type="npm");
     if not result {
         deps_key = "dev-dependencies" if is_dev else "dependencies";
-        raise RuntimeError(f'Package "{package_name}" not found in {deps_key}') ;
+        raise RuntimeError(f'Package "{package_name}" not found in {deps_key}');
     }
 
     config.save();
@@ -365,7 +365,7 @@ def _regenerate_and_install(project_dir: Path) -> None {
     if not ensure_bun_available() {
         raise RuntimeError(
             "Bun is required. Install manually: https://bun.sh"
-        ) from None ;
+        ) from None;
     }
 
     bundler = ViteBundler(project_dir);
@@ -393,7 +393,7 @@ def _regenerate_and_install(project_dir: Path) -> None {
         # Run bun install
         subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
     } except subprocess.CalledProcessError as e {
-        raise RuntimeError(f"Failed to install packages: {e}") from e ;
+        raise RuntimeError(f"Failed to install packages: {e}") from e;
     } finally {
         # Clean up temporary package.json
         if build_package_json.exists() {

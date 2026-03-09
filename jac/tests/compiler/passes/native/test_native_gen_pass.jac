@@ -1565,7 +1565,7 @@ test "cache marker non native file has no llvmir section in jir" {
         );
     } except Exception as e {
         os.unlink(jac_file);
-        raise ;
+        raise;
     }
     os.unlink(jac_file);
 }
@@ -2278,4 +2278,147 @@ test "jir bitcode cache round-trip" {
     assert add(17, 25) == 42 , f"add(17,25) via cached engine should be 42, got {add(
         17, 25
     )}";
+}
+
+# --- CType struct contract: layout metadata and field types ---
+test "struct layout exports correct field types" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    assert layout is not None , "Native layout should be exported";
+    assert "AllFields" in layout.structs , "AllFields struct should be in layout";
+    af = layout.structs["AllFields"];
+    field_map = {f.name: f for f in af.fields};
+    assert field_map["x"].llvm_type == "i64";
+    assert field_map["y"].llvm_type == "f64";
+    assert field_map["name"].llvm_type == "i8*";
+    assert field_map["flag"].llvm_type == "i1";
+    assert field_map["items"].llvm_type.startswith("List.");
+}
+
+test "struct layout tracks field indices correctly" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    af = layout.structs["AllFields"];
+    indices = [f.index for f in af.fields];
+    # Indices should be consecutive starting from 0
+    assert indices == list(range(len(af.fields)));
+}
+
+test "optional field compiles to pointer type" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    assert "MaybePoint" in layout.structs;
+    mp = layout.structs["MaybePoint"];
+    field_map = {f.name: f for f in mp.fields};
+    assert field_map["x"].llvm_type == "i64";
+    assert field_map["y"].llvm_type == "i64";
+    # label is str|None → still i8* (pointers are nullable)
+    assert field_map["label"].llvm_type == "i8*";
+}
+
+test "all_fields struct round-trip via ctypes" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    make = get_func(
+        eng,
+        "make_all_fields",
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_double,
+        ctypes.c_char_p
+    );
+    get_x = get_func(eng, "get_all_fields_x", ctypes.c_int64, ctypes.c_void_p);
+    ptr = make(42, 3.14, b"hello");
+    assert ptr != 0;
+    assert get_x(ptr) == 42;
+}
+
+test "all_fields bool field round-trip" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    make = get_func(
+        eng,
+        "make_all_fields",
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_double,
+        ctypes.c_char_p
+    );
+    get_flag = get_func(eng, "get_all_fields_flag", ctypes.c_bool, ctypes.c_void_p);
+    ptr = make(1, 2.0, b"test");
+    assert get_flag(ptr) == True;
+}
+
+test "maybe_point struct round-trip" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    make = get_func(
+        eng, "make_maybe_point", ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64
+    );
+    get_x = get_func(eng, "get_maybe_x", ctypes.c_int64, ctypes.c_void_p);
+    ptr = make(10, 20);
+    assert ptr != 0;
+    assert get_x(ptr) == 10;
+}
+
+test "NativeFieldInfo func_ptr defaults to False" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    af = layout.structs["AllFields"];
+    for f in af.fields {
+        assert f.is_func_ptr == False , f"Field {f.name} should not be func_ptr";
+        assert f.func_param_types is None;
+        assert f.func_ret_type is None;
+    }
+}
+
+test "function layout exports param and return types" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    assert "add" in layout.functions;
+    add_layout = layout.functions["add"];
+    assert add_layout.param_types == ["i64", "i64"];
+    assert add_layout.ret_type == "i64";
+}
+
+test "layout exports all expected functions" {
+    (eng, ir) = compile_native("func_ptr_fields.na.jac");
+    layout = ir.gen.native_layout;
+    expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
+    assert expected == set(layout.functions.keys());
+}
+
+# --- TestCrossModuleGlobInit ---
+test "cross module glob init compiles without errors" {
+    # Importing a module with a glob list initializer must compile cleanly.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "cross_module_glob_init.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module glob init: imported glob is non-null on first access" {
+    # Before the fix, _TABLE in the library module stayed null after import,
+    # causing table_len() to return garbage and table_push() to segfault.
+    # After the fix, jac_entry calls __jac_glob_init_cross_module_glob_init_lib_na
+    # so the list is properly allocated before any code touches it.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    # Call jac_entry to trigger __jac_glob_init for both this module and the import.
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    result = run_test();
+    # Encoded: initial_len*10000 + after_one*100 + after_two = 0*10000 + 1*100 + 2 = 102
+    assert result == 102 , f"Expected 102 (0 items, then 1, then 2), got {result}";
+}
+
+test "cross module glob init: pushed values are readable" {
+    # Verify table_get(0) and table_get(1) return the values pushed by run_test.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    run_test();  # populate: push(42), push(99)
+    get_first = get_func(eng, "get_first", ctypes.c_int64);
+    get_second = get_func(eng, "get_second", ctypes.c_int64);
+    assert get_first() == 42 , f"Expected 42, got {get_first()}";
+    assert get_second() == 99 , f"Expected 99, got {get_second()}";
 }

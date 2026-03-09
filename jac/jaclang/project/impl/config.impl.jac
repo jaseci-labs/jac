@@ -25,11 +25,9 @@ impl interpolate_env_vars(value: str) -> str {
         if operator == ":-" {
             return operand;
         } elif operator == ":?" {
-            raise ValueError(
-                f"Environment variable {var_name} is required: {operand}"
-            ) ;
+            raise ValueError(f"Environment variable {var_name} is required: {operand}");
         } else {
-            raise ValueError(f"Environment variable {var_name} is not set") ;
+            raise ValueError(f"Environment variable {var_name} is not set");
         }
     }
     return re.sub(pattern, replace_env_var, value);
@@ -112,7 +110,7 @@ impl JacConfig.discover(
 impl JacConfig.load(toml_path: Path) -> JacConfig {
     import tomllib;
     if not toml_path.exists() {
-        raise FileNotFoundError(f"Configuration file not found: {toml_path}") ;
+        raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
     with open(toml_path, "rb") as f {
         data = tomllib.load(f);
@@ -490,7 +488,7 @@ impl JacConfig.is_valid -> bool {
 
 impl JacConfig.save -> None {
     if self.toml_path is None {
-        raise ValueError("No toml_path set, cannot save configuration") ;
+        raise ValueError("No toml_path set, cannot save configuration");
     }
     # Load existing data or start fresh
     if self.toml_path.exists() {

@@ -76,6 +76,11 @@ The server definitions are visible to the `cl` block. When the client calls `add
 
 Codespaces are similar to namespaces, but instead of organizing names, they organize where code executes. Interop between them -- function calls, spawn calls, type sharing -- is handled by the compiler and runtime.
 
+!!! note "`obj` vs `class` -- choosing the right archetype"
+    Cross-codespace interop requires the compiler to fully understand your type's structure. Jac's `obj` is designed for this: it enforces strict, declarative semantics -- fields declared with `has`, auto-generated constructors, no runtime monkey-patching -- so the same definition can compile to Python, JavaScript, or native code.
+
+    If you need Python-specific class features like metaclasses, `@classmethod`, `@property`, or other decorator-heavy patterns, use a regular Python `class`. Those features are inherently tied to the Python runtime and cannot cross codespace boundaries. Jac provides the `static` keyword for static methods and fields, which covers the most common use case.
+
 ---
 
 ## 2. How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?

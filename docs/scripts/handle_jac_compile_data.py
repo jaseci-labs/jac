@@ -20,6 +20,40 @@ AST_TOOL = AstTool()
 EXAMPLE_SOURCE_FOLDER = "../jac/examples"
 EXAMPLE_TARGET_FOLDER = "docs/assets/examples"
 
+# Directory basenames to exclude
+EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
+EXCLUDE_EXTS = {".pyc", ".pyo", ".pyi"}
+
+
+def precompile_jaclang() -> None:
+    """Run the jaclang precompilation script to generate .jir bytecode.
+
+    Precompiles the entire jaclang source, same as PyPI release builds.
+    """
+    jac_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "jac")
+    )
+    script_path = os.path.join(jac_root, "scripts", "precompile_bytecode.jac")
+
+    if not os.path.exists(script_path):
+        print(f"Warning: Precompile script not found at {script_path}. Skipping.")
+        return
+
+    print("Precompiling jaclang bytecode for playground...")
+    try:
+        subprocess.run(
+            ["jac", "run", "scripts/precompile_bytecode.jac", "."],
+            check=True,
+            cwd=jac_root,
+        )
+        print("Precompilation complete.")
+    except subprocess.CalledProcessError as e:
+        print(
+            f"Warning: Precompilation failed: {e}. Playground will use on-the-fly compilation."
+        )
+    except FileNotFoundError:
+        print("Warning: 'jac' command not found. Skipping precompilation.")
+
 
 def pre_build_hook(**kwargs: dict) -> None:
     """Run pre-build tasks for preparing files.
@@ -30,6 +64,7 @@ def pre_build_hook(**kwargs: dict) -> None:
     if os.path.exists(PLAYGROUND_ZIP_PATH):
         print(f"Removing existing zip file: {PLAYGROUND_ZIP_PATH}")
         os.remove(PLAYGROUND_ZIP_PATH)
+    precompile_jaclang()
     create_playground_zip()
     print("Jaclang zip file created successfully.")
 
@@ -55,50 +90,64 @@ def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
     return time_diff_minutes > minutes
 
 
+def should_exclude(path: str) -> bool:
+    """Check if file/directory should be excluded."""
+    if os.path.basename(path) in EXCLUDE_DIRS:
+        return True
+    return os.path.splitext(path)[1] in EXCLUDE_EXTS
+
+
 def create_playground_zip() -> None:
-    """Create a zip file containing the jaclang folder.
+    """Create a zip from the jaclang source with precompiled .jir files.
 
-    The zip file is created in the EXTRACTED_FOLDER directory.
+    Uses the source repo at ../jac/jaclang, which should be precompiled
+    before calling this function.
     """
-    print("Creating final zip...")
+    jaclang_dir = os.path.abspath(TARGET_FOLDER)
+    print(f"Creating zip from source at: {jaclang_dir}")
 
-    if not os.path.exists(TARGET_FOLDER):
-        raise FileNotFoundError(f"Folder not found: {TARGET_FOLDER}")
+    if not os.path.exists(jaclang_dir):
+        raise FileNotFoundError(f"Folder not found: {jaclang_dir}")
 
     os.makedirs(EXTRACTED_FOLDER, exist_ok=True)
 
-    # Files/directories to exclude for faster zipping
-    exclude_patterns = {
-        ".pyi",  # Type stub files (4427 files!)
-        ".pyc",  # Compiled Python
-        "__pycache__",  # Cache directories
-        ".git",
-        ".pytest_cache",
-        "tests",  # Test files may not be needed for playground
-    }
-
-    def should_exclude(path: str) -> bool:
-        """Check if file/directory should be excluded."""
-        return any(
-            pattern in path or path.endswith(pattern) for pattern in exclude_patterns
-        )
-
     files_added = 0
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(TARGET_FOLDER):
-            # Remove excluded directories from traversal
+        for root, dirs, files in os.walk(jaclang_dir):
             dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d))]
 
             for file in files:
                 file_path = os.path.join(root, file)
                 if not should_exclude(file_path):
                     arcname = os.path.join(
-                        ZIP_FOLDER_NAME, os.path.relpath(file_path, TARGET_FOLDER)
+                        ZIP_FOLDER_NAME, os.path.relpath(file_path, jaclang_dir)
                     )
                     zipf.write(file_path, arcname)
                     files_added += 1
 
-    print(f"Zip saved to: {PLAYGROUND_ZIP_PATH} ({files_added} files)")
+    # Verify and report
+    with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "r") as zf:
+        names = zf.namelist()
+        native = [n for n in names if "/passes/native/" in n]
+        typeshed = [n for n in names if "/typeshed/" in n]
+        pyi_files = [n for n in names if n.endswith(".pyi")]
+        jir_files = [n for n in names if n.endswith(".jir")]
+
+        if native or typeshed or pyi_files:
+            issues = []
+            if native:
+                issues.append(f"{len(native)} native codegen files")
+            if typeshed:
+                issues.append(f"{len(typeshed)} typeshed files")
+            if pyi_files:
+                issues.append(f"{len(pyi_files)} .pyi stub files")
+            print(f"  WARNING: Zip contains unnecessary files: {', '.join(issues)}")
+        else:
+            print("  Verified: zip is clean (no native/typeshed/pyi files)")
+
+        zip_size = os.path.getsize(PLAYGROUND_ZIP_PATH) / 1024 / 1024
+        print(f"  Precompiled .jir files: {len(jir_files)}")
+        print(f"  Total files: {len(names)}, Size: {zip_size:.1f} MB")
 
 
 def get_top_contributors() -> str:

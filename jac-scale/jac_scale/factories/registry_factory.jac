@@ -22,11 +22,11 @@ class ImageRegistryFactory {
             import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
             return DockerHubRegistry(config=config);
         } elif registry_type == 'ecr' {
-            raise NotImplementedError("AWS ECR registry not yet implemented") ;
+            raise NotImplementedError("AWS ECR registry not yet implemented");
         } elif registry_type == 'gcr' {
-            raise NotImplementedError("GCP GCR registry not yet implemented") ;
+            raise NotImplementedError("GCP GCR registry not yet implemented");
         } else {
-            raise ValueError(f"Unsupported image registry type: {registry_type}") ;
+            raise ValueError(f"Unsupported image registry type: {registry_type}");
         }
     }
 }

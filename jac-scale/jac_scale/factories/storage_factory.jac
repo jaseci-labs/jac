@@ -41,7 +41,7 @@ class StorageFactory {
                 create_dirs=cfg.get("create_dirs", True)
             );
         }
-        raise ValueError(f"Unsupported storage type: {storage_type}") ;
+        raise ValueError(f"Unsupported storage type: {storage_type}");
     }
 
     static def get_default(

@@ -62,10 +62,13 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
             continue;
         }
         for f in d.iterdir() {
-            if (not f.is_file() or not f.name.endswith(suffix)) {
+            if not f.name.endswith(suffix) {
                 continue;
             }
             if ((d != mod_folder) and not f.name.startswith(f"{base}.")) {
+                continue;
+            }
+            if not f.is_file() {
                 continue;
             }
             # Determine the annex file's variant context.

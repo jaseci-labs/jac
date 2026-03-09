@@ -109,7 +109,7 @@ impl DeclImplMatchPass.connect_impls(
         ) {
             raise self.ice(
                 f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
-            ) ;
+            );
         }
         self.validate_params_match(sym, decl_node.name_of);
         valid_decl.body = sym.decl.name_of;

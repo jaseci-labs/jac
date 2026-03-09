@@ -106,7 +106,19 @@ obj MockToolCall {
 """Result of the completion from the LLM."""
 obj CompletionResult {
     has output: object,
-        tool_calls: list[ToolCall];
+        tool_calls: list[ToolCall],
+        usage: dict = {};
+}
+
+"""Unified event type for streaming output from by llm() calls.
+
+Yielded by invoke() when logging=True is set in call_params.
+All intermediate steps (thoughts, tool calls, results) and final
+answer chunks share this single type.
+"""
+obj StreamEvent {
+    has event_type: str,
+        data: dict;
 }
 
 # -----------------------------------------------------------------------------

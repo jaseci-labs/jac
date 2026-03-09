@@ -17,7 +17,7 @@ def kvstore(
     } elif db_type_enum == DatabaseType.REDIS {
         client = get_redis_client(uri=uri);
     } else {
-        raise ValueError(f'Unsupported database type: {db_type}') ;
+        raise ValueError(f'Unsupported database type: {db_type}');
     }
 
     return Db(client=client, db_name=db_name, db_type=db_type_enum);

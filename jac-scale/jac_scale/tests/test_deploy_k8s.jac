@@ -152,7 +152,7 @@ def _get_git_config -> tuple[str, str, str] {
         return (repo_url, branch, commit);
     } except subprocess.CalledProcessError as e {
         print(f"Error getting git config: {e}");
-        raise ;
+        raise;
     }
 }
 
@@ -295,6 +295,40 @@ test "deploy all in one" {
     );
     assert mongodb_service.spec.ports[0].port == 27017;
 
+    # Validate MongoDB secret exists with correct credential keys
+    mongodb_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-mongodb-secret", namespace=namespace
+    );
+    assert mongodb_secret.metadata.name == f"{app_name}-mongodb-secret";
+    assert "username" in mongodb_secret.data;
+    assert "password" in mongodb_secret.data;
+    assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
+    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+
+    # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
+    mongo_user_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_USERNAME"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_user_value is None;
+    mongo_pass_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_pass_value is None;
+    print(
+        "MongoDB StatefulSet uses secretKeyRef for root credentials (env values are None)"
+    );
+
     # Validate Redis Deployment and Service
     redis_deploy = apps_v1.read_namespaced_deployment(
         name=f"{app_name}-redis", namespace=namespace
@@ -305,6 +339,29 @@ test "deploy all in one" {
         name=f"{app_name}-redis-service", namespace=namespace
     );
     assert redis_service.spec.ports[0].port == 6379;
+
+    # Validate Redis secret exists with correct credential keys
+    redis_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-redis-secret", namespace=namespace
+    );
+    assert redis_secret.metadata.name == f"{app_name}-redis-secret";
+    assert "username" in redis_secret.data;
+    assert "password" in redis_secret.data;
+    assert base64.b64decode(redis_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(redis_secret.data["password"]).decode() == "password";
+    print(f"Redis Secret '{app_name}-redis-secret' exists with correct credentials");
+
+    # Validate Redis Deployment uses secretKeyRef (env value is None when secretKeyRef is used)
+    redis_pass_value = next(
+        (
+            e.value
+            for e in redis_deploy.spec.template.spec.containers[0].env
+            if e.name == "REDIS_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert redis_pass_value is None;
+    print("Redis Deployment uses secretKeyRef for password (env value is None)");
 
     # Validate RedisInsight dashboard Deployment and Service
     insight_name = f"{app_name}-redis-insight";
@@ -362,17 +419,26 @@ test "deploy all in one" {
         None
     );
     assert mongo_server_env == f"{app_name}-mongodb-service";
-    mongo_user_env = next(
+    mongo_admin_user_value = next(
         (
             e.value
             for e in express_container.env
             if e.name == "ME_CONFIG_MONGODB_ADMINUSERNAME"
         ),
-        None
+        "NOT_FOUND"
     );
-    assert mongo_user_env == "admin";
+    assert mongo_admin_user_value is None;
+    mongo_admin_pass_value = next(
+        (
+            e.value
+            for e in express_container.env
+            if e.name == "ME_CONFIG_MONGODB_ADMINPASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_admin_pass_value is None;
     print(
-        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials pre-configured"
+        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials via secretKeyRef"
     );
 
     express_service = core_v1.read_namespaced_service(
@@ -611,14 +677,14 @@ test "deploy all in one" {
     # Verify cleanup - resources should no longer exist
     try {
         apps_v1.read_namespaced_deployment(app_name, namespace=namespace);
-        raise AssertionError("Deployment should have been deleted") ;
+        raise AssertionError("Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{app_name}-service", namespace=namespace);
-        raise AssertionError("Service should have been deleted") ;
+        raise AssertionError("Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -628,14 +694,14 @@ test "deploy all in one" {
         autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
             name=f"{app_name}-hpa", namespace=namespace
         );
-        raise AssertionError("HPA should have been deleted") ;
+        raise AssertionError("HPA should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
-        raise AssertionError("MongoDB StatefulSet should have been deleted") ;
+        raise AssertionError("MongoDB StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -644,14 +710,23 @@ test "deploy all in one" {
         core_v1.read_namespaced_service(
             f"{app_name}-mongodb-service", namespace=namespace
         );
-        raise AssertionError("MongoDB Service should have been deleted") ;
+        raise AssertionError("MongoDB Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_secret(
+            f"{app_name}-mongodb-secret", namespace=namespace
+        );
+        raise AssertionError("MongoDB Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         apps_v1.read_namespaced_deployment(f"{app_name}-redis", namespace=namespace);
-        raise AssertionError("Redis Deployment should have been deleted") ;
+        raise AssertionError("Redis Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -660,23 +735,32 @@ test "deploy all in one" {
         core_v1.read_namespaced_service(
             f"{app_name}-redis-service", namespace=namespace
         );
-        raise AssertionError("Redis Service should have been deleted") ;
+        raise AssertionError("Redis Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    try {
+        core_v1.read_namespaced_secret(f"{app_name}-redis-secret", namespace=namespace);
+        raise AssertionError("Redis Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("MongoDB and Redis secrets cleanup verified");
 
     # Verify RedisInsight dashboard cleanup
     insight_name = f"{app_name}-redis-insight";
     try {
         apps_v1.read_namespaced_deployment(insight_name, namespace=namespace);
-        raise AssertionError("RedisInsight Deployment should have been deleted") ;
+        raise AssertionError("RedisInsight Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{insight_name}-service", namespace=namespace);
-        raise AssertionError("RedisInsight Service should have been deleted") ;
+        raise AssertionError("RedisInsight Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -685,14 +769,14 @@ test "deploy all in one" {
     express_name = f"{app_name}-mongo-express";
     try {
         apps_v1.read_namespaced_deployment(express_name, namespace=namespace);
-        raise AssertionError("mongo-express Deployment should have been deleted") ;
+        raise AssertionError("mongo-express Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{express_name}-service", namespace=namespace);
-        raise AssertionError("mongo-express Service should have been deleted") ;
+        raise AssertionError("mongo-express Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -704,14 +788,14 @@ test "deploy all in one" {
         apps_v1.read_namespaced_deployment(
             f"{app_name}-code-server", namespace=namespace
         );
-        raise AssertionError("Code-server Deployment should have been deleted") ;
+        raise AssertionError("Code-server Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{app_name}-code-server", namespace=namespace);
-        raise AssertionError("Code-server Service should have been deleted") ;
+        raise AssertionError("Code-server Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -720,7 +804,7 @@ test "deploy all in one" {
     prometheus_name = f"{app_name}-prometheus";
     try {
         apps_v1.read_namespaced_deployment(prometheus_name, namespace=namespace);
-        raise AssertionError("Prometheus Deployment should have been deleted") ;
+        raise AssertionError("Prometheus Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -729,7 +813,7 @@ test "deploy all in one" {
         core_v1.read_namespaced_service(
             f"{prometheus_name}-service", namespace=namespace
         );
-        raise AssertionError("Prometheus Service should have been deleted") ;
+        raise AssertionError("Prometheus Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -738,7 +822,7 @@ test "deploy all in one" {
         core_v1.read_namespaced_config_map(
             name=f"{prometheus_name}-config", namespace=namespace
         );
-        raise AssertionError("Prometheus ConfigMap should have been deleted") ;
+        raise AssertionError("Prometheus ConfigMap should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -746,14 +830,14 @@ test "deploy all in one" {
     # Verify kube-state-metrics cleanup
     try {
         apps_v1.read_namespaced_deployment(ksm_name, namespace=namespace);
-        raise AssertionError("kube-state-metrics Deployment should have been deleted") ;
+        raise AssertionError("kube-state-metrics Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{ksm_name}-service", namespace=namespace);
-        raise AssertionError("kube-state-metrics Service should have been deleted") ;
+        raise AssertionError("kube-state-metrics Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -764,16 +848,14 @@ test "deploy all in one" {
         );
         raise AssertionError(
             "kube-state-metrics ServiceAccount should have been deleted"
-        ) ;
+        );
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         rbac_v1.read_cluster_role(name=cluster_role_name);
-        raise AssertionError(
-            "kube-state-metrics ClusterRole should have been deleted"
-        ) ;
+        raise AssertionError("kube-state-metrics ClusterRole should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -782,7 +864,7 @@ test "deploy all in one" {
         rbac_v1.read_cluster_role_binding(name=cluster_role_name);
         raise AssertionError(
             "kube-state-metrics ClusterRoleBinding should have been deleted"
-        ) ;
+        );
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -790,14 +872,14 @@ test "deploy all in one" {
     # Verify node-exporter cleanup
     try {
         apps_v1.read_namespaced_daemon_set(ne_name, namespace=namespace);
-        raise AssertionError("node-exporter DaemonSet should have been deleted") ;
+        raise AssertionError("node-exporter DaemonSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{ne_name}-service", namespace=namespace);
-        raise AssertionError("node-exporter Service should have been deleted") ;
+        raise AssertionError("node-exporter Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -808,21 +890,21 @@ test "deploy all in one" {
     grafana_name = f"{app_name}-grafana";
     try {
         apps_v1.read_namespaced_deployment(grafana_name, namespace=namespace);
-        raise AssertionError("Grafana Deployment should have been deleted") ;
+        raise AssertionError("Grafana Deployment should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service(f"{grafana_name}-service", namespace=namespace);
-        raise AssertionError("Grafana Service should have been deleted") ;
+        raise AssertionError("Grafana Service should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_secret(f"{grafana_name}-secret", namespace=namespace);
-        raise AssertionError("Grafana Secret should have been deleted") ;
+        raise AssertionError("Grafana Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -836,7 +918,7 @@ test "deploy all in one" {
             core_v1.read_namespaced_config_map(name=cm_name, namespace=namespace);
             raise AssertionError(
                 f"Grafana ConfigMap '{cm_name}' should have been deleted"
-            ) ;
+            );
         } except ApiException as e {
             assert e.status == 404 , f"Expected 404 for '{cm_name}', got {e.status}";
         }
@@ -847,7 +929,7 @@ test "deploy all in one" {
     # Verify K8s Secret cleanup
     try {
         core_v1.read_namespaced_secret(f"{app_name}-secrets", namespace=namespace);
-        raise AssertionError("K8s Secret should have been deleted") ;
+        raise AssertionError("K8s Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -868,7 +950,7 @@ test "deploy all in one" {
     # Verify namespace was deleted (since it is not 'default')
     try {
         core_v1.read_namespace(name=namespace);
-        raise AssertionError("Namespace should have been deleted") ;
+        raise AssertionError("Namespace should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404 for namespace, got {e.status}";
     }

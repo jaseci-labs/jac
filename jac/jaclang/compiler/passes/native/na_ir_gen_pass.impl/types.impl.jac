@@ -256,6 +256,10 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             }
         }
     }
+    # Handle FuncSignature → function pointer type
+    if isinstance(type_expr, uni.FuncSignature) {
+        return self._resolve_func_ptr_type(type_expr);
+    }
     # Try structured type
     if isinstance(type_expr, uni.Expr) and type_expr.type {
         type_str = str(type_expr.type);
@@ -264,6 +268,35 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
     }
     return ir.IntType(64);
+}
+
+"""Resolve a FuncSignature to an LLVM function pointer type.
+
+Builds ir.FunctionType from the signature's parameter and return types,
+then returns a pointer to that function type.
+"""
+impl NaIRGenPass._resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type {
+    # Resolve return type
+    ret_type: ir.Type = ir.VoidType();
+    if sig.return_type is not None {
+        resolved_ret = self._resolve_jac_type(sig.return_type);
+        if not isinstance(resolved_ret, ir.VoidType) {
+            ret_type = resolved_ret;
+        }
+    }
+    # Resolve parameter types
+    param_types: list[ir.Type] = [];
+    all_params = sig.get_parameters();
+    for param in all_params {
+        if param.type_tag and param.type_tag.tag {
+            ptype = self._resolve_jac_type(param.type_tag.tag);
+        } else {
+            ptype = ir.IntType(64);  # default to i64 for untyped params
+        }
+        param_types.append(ptype);
+    }
+    fn_type = ir.FunctionType(ret_type, param_types);
+    return fn_type.as_pointer();
 }
 
 """Resolve a type for C library declarations -- clib structs use value types, not pointers."""

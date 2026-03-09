@@ -40,7 +40,7 @@ impl TargetRegistry.`has(name: str) -> bool {
 """Set the default target."""
 impl TargetRegistry.set_default(name: str) -> None {
     if name not in self._targets {
-        raise ValueError(f"ClientTarget '{name}' is not registered") ;
+        raise ValueError(f"ClientTarget '{name}' is not registered");
     }
     if self._default_target {
         prev_target = self._targets.get(self._default_target);
@@ -94,7 +94,7 @@ impl TargetFactory.create_by_type(
         target.project_dir = project_dir;
     } else {
         # This shouldn't happen if TargetType enum is exhaustive
-        raise ValueError(f"Unhandled target type: {target_type}") ;
+        raise ValueError(f"Unhandled target type: {target_type}");
     }
     self._cached_targets[cache_key] = target;
     return target;

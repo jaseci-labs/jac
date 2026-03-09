@@ -29,6 +29,20 @@ glob logger = logging.getLogger(__name__),
          "void": None
      };
 
+"""Build a ctypes CFUNCTYPE from NativeFieldInfo function pointer metadata."""
+def _build_cfunctype(finfo: Any) -> type {
+    ret_ct = LLVM_TO_CTYPES.get(finfo.func_ret_type);
+    if ret_ct is None {
+        ret_ct = ctypes.c_void_p if finfo.func_ret_type != "void" else None;
+    }
+    param_cts: list = [];
+    for pt in (finfo.func_param_types or []) {
+        pct = LLVM_TO_CTYPES.get(pt, ctypes.c_void_p);
+        param_cts.append(pct);
+    }
+    return ctypes.CFUNCTYPE(ret_ct, *param_cts);
+}
+
 
 """Matches LLVM List.{elem} struct: {i64 len, i64 cap, elem* data}."""
 class NativeList(ctypes.Structure) {
@@ -76,7 +90,7 @@ obj NativeStructView {
         try {
             raw = getattr(native, name);
         } except AttributeError {
-            raise AttributeError(f"'{self.struct_name}' has no field '{name}'") ;
+            raise AttributeError(f"'{self.struct_name}' has no field '{name}'");
         }
         return self._resolve(name, raw);
     }
@@ -87,6 +101,14 @@ obj NativeStructView {
             return raw;
         }
         lt = finfo.llvm_type;
+        # Function pointer: wrap raw address as callable ctypes function
+        if finfo.is_func_ptr {
+            if (raw is None or raw == 0) {
+                return None;
+            }
+            fn_type = _build_cfunctype(finfo);
+            return fn_type(raw);
+        }
         # String: decode from raw pointer on demand
         if lt == "i8*" {
             if (raw is None or raw == 0) {
@@ -220,7 +242,7 @@ obj NativeListView {
             index += self._count;
         }
         if (index < 0 or index >= self._count) {
-            raise IndexError(f"list index {index} out of range") ;
+            raise IndexError(f"list index {index} out of range");
         }
         raw = self._arr[index];
         if self.elem_key == "i64" {
@@ -275,10 +297,15 @@ def build_ctypes_classes(layout: Any) -> dict {
     for (name, struct_layout) in layout.structs.items() {
         fields: list = [];
         for f in struct_layout.fields {
-            ct = LLVM_TO_CTYPES.get(f.llvm_type);
-            if (ct is None or f.llvm_type == "i8*") {
-                # All pointers as c_void_p -- no auto-copy for strings
+            if f.is_func_ptr {
+                # Function pointer fields stored as c_void_p; resolved on access
                 ct = ctypes.c_void_p;
+            } else {
+                ct = LLVM_TO_CTYPES.get(f.llvm_type);
+                if (ct is None or f.llvm_type == "i8*") {
+                    # All pointers as c_void_p -- no auto-copy for strings
+                    ct = ctypes.c_void_p;
+                }
             }
             fields.append((f.name, ct));
         }
@@ -332,6 +359,14 @@ def marshal_value(
     func_layout: Any = None,
     layout: Any = None
 ) -> Any {
+    # Function pointer fields
+    if (field_info and field_info.is_func_ptr) {
+        if (raw is None or raw == 0) {
+            return None;
+        }
+        fn_type = _build_cfunctype(field_info);
+        return fn_type(raw);
+    }
     # Simple scalars
     if llvm_type in ("i64", "i32", "i16", "i8") {
         val = int(raw);

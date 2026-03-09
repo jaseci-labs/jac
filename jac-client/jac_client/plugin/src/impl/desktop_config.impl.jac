@@ -63,7 +63,7 @@ impl DesktopConfig._get_jac_config(self: DesktopConfig) -> JacConfig {
         if self._jac_config is None {
             raise RuntimeError(
                 "No jac.toml found. Run 'jac create' to create a project."
-            ) ;
+            );
         }
     }
     return self._jac_config;
@@ -134,13 +134,13 @@ impl DesktopConfig.validate(self: DesktopConfig) -> None {
     if not name {
         raise ValueError(
             "Desktop configuration error: 'name' is required in [desktop] section"
-        ) ;
+        );
     }
     identifier = config.get('identifier', '');
     if not identifier {
         raise ValueError(
             "Desktop configuration error: 'identifier' is required in [desktop] section"
-        ) ;
+        );
     }
     # Validate identifier format (should be reverse domain notation)
     if not _is_valid_identifier(identifier) {
@@ -157,12 +157,12 @@ impl DesktopConfig.validate(self: DesktopConfig) -> None {
     if min_width > width {
         raise ValueError(
             f"Desktop configuration error: window.min_width ({min_width}) cannot be greater than window.width ({width})"
-        ) ;
+        );
     }
     if min_height > height {
         raise ValueError(
             f"Desktop configuration error: window.min_height ({min_height}) cannot be greater than window.height ({height})"
-        ) ;
+        );
     }
 }
 

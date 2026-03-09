@@ -1,6 +1,8 @@
 # Kubernetes Deployment
 
-Deploy your Jac application to Kubernetes with a single command.
+Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
+
+This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
 
 > **Prerequisites**
 >

@@ -27,7 +27,7 @@ impl _type_to_schema(
         raise ConfigurationError(
             f"Untyped {ty.__name__} is not supported for schema generation. "
             f"Use {ty.__name__}[T, ...] instead."
-        ) ;
+        );
     }
     # Handle primitive types
     if ty is type(None) {
@@ -96,7 +96,7 @@ impl _type_to_schema(
         }
         raise ConfigurationError(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
-        ) ;
+        );
     }
     # Handle annotated dictionaries
     if get_origin(ty) is dict {
@@ -162,7 +162,7 @@ impl _type_to_schema(
                     } elif member_type_str != enum_type {
                         raise ConfigurationError(
                             f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
-                        ) ;
+                        );
                     }
                 }
 
@@ -184,7 +184,7 @@ impl _type_to_schema(
                 raise ConfigurationError(
                     f"Enum {ty.__name__} has unsupported type {enum_type}. "
                     "Only int and str enums are supported for schema generation."
-                ) ;
+                );
             }
             # Build description
             names_str = ", ".join(enum_names);
@@ -225,7 +225,7 @@ impl _type_to_schema(
             } elif type(member.value) is not enum_type {
                 raise ConfigurationError(
                     f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
-                ) ;
+                );
             }
             enum_type = enum_type or int;
         }
@@ -235,7 +235,7 @@ impl _type_to_schema(
             raise ConfigurationError(
                 f"Enum {ty.__name__} has unsupported type {enum_type}. "
                 "Only int and str enums are supported for schema generation."
-            ) ;
+            );
         }
         return {
             "description": semstr + enum_desc,
@@ -273,7 +273,7 @@ impl _type_to_schema(
     }
     raise ConfigurationError(
         f"Unsupported type for schema generation: {ty}. Only primitive types, dataclasses, and Union types are supported."
-    ) ;
+    );
 }
 
 """Get a string name for a type, handling Union types specially."""
@@ -291,7 +291,7 @@ impl _name_of_type(ty: type, info: Info = None) -> str {
 """Convert a dictionary type to a schema with key-value array structure."""
 impl _convert_dict_to_schema(ty_dict: type) -> dict {
     if get_origin(ty_dict) is not dict {
-        raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.") ;
+        raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.");
     }
     (key_type, value_type) = get_args(ty_dict);
     return {

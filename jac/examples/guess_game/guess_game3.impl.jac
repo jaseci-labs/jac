@@ -1,5 +1,5 @@
 impl Game.play{
-    raise NotImplementedError("Subclasses must implement this method.") ;
+    raise NotImplementedError("Subclasses must implement this method.");
 }
 
 impl GuessTheNumberGame.play{

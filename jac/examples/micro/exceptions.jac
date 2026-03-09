@@ -6,7 +6,7 @@ def divide_numbers(a: float, b: float) -> float {
     } except ZeroDivisionError as e {
         print("Error: Cannot divide by zero!", e);
         result = None;
-        raise ;  # Re-raise the exception
+        raise;  # Re-raise the exception
     } finally {
         print("Division operation completed.");
     }

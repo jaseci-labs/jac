@@ -3,14 +3,14 @@
 Compiles Jac AST nodes in NATIVE context to LLVM IR using llvmlite.
 All code in na {} or .na.jac is guaranteed to compile to native LLVM IR.
 
-Derives from Transform (not UniPass) because LLVM IR generation uses
-manual tree-walking rather than the visitor pattern — instructions must
-be emitted into specific basic blocks in order for control flow.
+Derives from ModuleCodegenPass (not UniPass) because LLVM IR generation
+uses manual tree-walking rather than the visitor pattern — instructions
+must be emitted into specific basic blocks in order for control flow.
 """
 
 import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 
 """Compile na-context Jac AST to LLVM IR using llvmlite.
@@ -18,7 +18,7 @@ import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 Uses manual tree-walking for function bodies to properly handle
 control flow basic blocks (if/else, while loops).
 """
-obj NaIRGenPass(Transform) {
+obj NaIRGenPass(ModuleCodegenPass) {
     def init(
         ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
     ) -> None;
@@ -55,6 +55,7 @@ obj NaIRGenPass(Transform) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
@@ -110,6 +111,41 @@ obj NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
+    # Shared container helpers (used by lists, dicts, sets)
+    def _emit_key_comparison(
+        b: ir.IRBuilder,
+        key_type: ir.Type,
+        stored_val: ir.Value,
+        search_val: ir.Value,
+        key_size: int = 0
+    ) -> ir.Value;
+
+    def _emit_rc_alloc_container(
+        b: ir.IRBuilder,
+        container_ptr_type: ir.Type,
+        data_types: list,
+        initial_cap: int = 8
+    ) -> tuple;
+
+    def _emit_grow_array(
+        b: ir.IRBuilder,
+        arr_ptr: ir.Value,
+        elem_type: ir.Type,
+        cur_len: ir.Value,
+        cap_ptr: ir.Value,
+        cur_cap: ir.Value
+    ) -> ir.Value;
+
+    def _emit_rc_destructor_preamble(
+        release_fn: ir.Function, ptr_type: ir.Type
+    ) -> tuple;
+
+    def _emit_rc_release_elem_loop(
+        b: ir.IRBuilder,
+        release_fn: ir.Function,
+        container_arg: ir.Value,
+        data_field_idx: int
+    ) -> ir.IRBuilder;
     # Phase 4: Lists
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
@@ -324,4 +360,6 @@ obj NaIRGenPass(Transform) {
     def _emit_scope_cleanup(skip_var: (str | None) = None) -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
+    def _emit_glob_init_func -> None;
+    def post_transform -> None;
 }

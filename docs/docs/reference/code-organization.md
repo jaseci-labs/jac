@@ -455,6 +455,84 @@ Work through this decision tree from top to bottom, and you will arrive at the a
 
 ---
 
+## Packages and `__init__.jac`
+
+A **package** in Jac is simply a directory that contains `.jac` files. Unlike Python, Jac does **not** require an `__init__.jac` file to recognize a directory as a package -- any directory containing `.jac` files is automatically treated as an importable package.
+
+### Implicit packages (no `__init__.jac`)
+
+Most packages in the Jac compiler use this approach. As long as a directory contains `.jac` files, you can import from it directly:
+
+```
+myapp/
+├── main.jac
+└── utils/              # No __init__.jac needed
+    ├── math_utils.jac
+    └── string_utils.jac
+```
+
+```jac
+import from utils.math_utils { add, multiply }
+import from utils.string_utils { greet }
+```
+
+This is the recommended default -- don't create an `__init__.jac` unless you have a reason to.
+
+### Explicit packages (with `__init__.jac`)
+
+An `__init__.jac` file is useful when you want to:
+
+- **Re-export** symbols from submodules to create a clean public API
+- **Run initialization code** when the package is first imported
+- **Define package-level constants** or globals
+
+```
+mathlib/
+├── __init__.jac         # Re-exports for convenience
+├── operations.jac
+├── constants.jac
+└── calculator.jac
+```
+
+**`mathlib/__init__.jac`:**
+
+<!-- jac-skip -->
+```jac
+import from .operations { add, subtract, multiply, divide }
+import from .constants { PI, E, GOLDEN_RATIO }
+import from .calculator { Calculator }
+```
+
+This lets consumers import directly from the package:
+
+<!-- jac-skip -->
+```jac
+import from mathlib { add, PI, Calculator }
+```
+
+Instead of reaching into submodules:
+
+<!-- jac-skip -->
+```jac
+import from mathlib.operations { add }
+import from mathlib.constants { PI }
+import from mathlib.calculator { Calculator }
+```
+
+### When to use `__init__.jac`
+
+| Scenario | `__init__.jac` needed? |
+|----------|----------------------|
+| Directory with `.jac` files, imported by submodule path | No |
+| Package that re-exports a curated public API | Yes |
+| Package with initialization logic or globals | Yes |
+| Most internal packages in a project | No |
+
+!!! tip "Start without it"
+    Begin without an `__init__.jac`. If you later find yourself wanting a cleaner import API for consumers, add one then. This keeps your project lean and avoids unnecessary boilerplate.
+
+---
+
 ## Best Practices
 
 Let us conclude with a set of best practices distilled from the compiler codebase. These guidelines will help you get the most out of Jac's `impl` system regardless of which pattern you choose.
