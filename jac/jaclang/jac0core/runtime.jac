@@ -301,12 +301,12 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
         import os;
-        from jaclang.runtimelib.am_index import (
+        import from jaclang.runtimelib.am_index {
             am_query,
             am_populate_from_gt,
             gt_query_targets,
             _get_sqlite
-        );
+        }
         DEGREE_THRESHOLD: int = int(
             os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
         );
@@ -316,7 +316,7 @@ class JacNode {
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
-        for nd in origin {
+        for nd in origin {›
             nanch = nd.__jac__;
             # --- AM/GT fast path (only when SQLite persistence is active) ---
             target_type_name = destination.node_type_name;
