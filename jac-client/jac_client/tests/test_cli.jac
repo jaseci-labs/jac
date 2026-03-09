@@ -1118,9 +1118,8 @@ test "start dev with client does initial compilation" {
             if process.stderr {
                 process.stderr.close();
             }
-            assert found_watchdog , (
-                f"Expected watchdog auto-install message in output, but got: {output}"
-            );
+            # Watchdog message is only shown if watchdog wasn't already installed
+            # So we only require the compilation message
             assert found_compilation , (
                 f"Expected 'Initial client compilation completed' in output, but got: {output}"
             );
@@ -1137,8 +1136,8 @@ test "vite config generation" {
         try {
             os.chdir(temp_dir);
 
-            # Create a basic jac.toml for the project
-            toml_content = '\n[plugins.client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n\n[plugins.client.vite.build]\nminify = "esbuild"\n';
+            # Create a basic jac.toml for the project (dev mode - no minification)
+            toml_content = '\n[plugins.client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);

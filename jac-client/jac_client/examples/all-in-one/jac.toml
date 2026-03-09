@@ -20,6 +20,9 @@ author = "Jaseci"
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
+[plugins.client.vite.build]
+minify = false
+
 [plugins.client.vite.define]
 "globalThis.APP_BUILD_TIME" = "2024-01-01T00:00:00Z"
 "globalThis.FEATURE_ENABLED" = true

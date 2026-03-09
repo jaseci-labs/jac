@@ -22,7 +22,6 @@ import from .test_helpers {
     get_jac_command,
     wait_for_port
 }
-
 def _wait_for_endpoint(
     url: str,
     timeout: float = 120.0,
@@ -174,10 +173,10 @@ test "all in one app endpoints" {
             server_port = get_free_port();
             try {
                 print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                    f"[DEBUG] Starting server with 'jac start --prod main.jac -p {server_port}'"
                 );
                 server = Popen(
-                    ["jac", "start", "main.jac", "-p", str(server_port)],
+                    ["jac", "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     stdout=PIPE,
                     stderr=STDOUT,
@@ -834,10 +833,10 @@ test "default client app renders" {
             server_port = get_free_port();
             try {
                 print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                    f"[DEBUG] Starting server with 'jac start --prod main.jac -p {server_port}'"
                 );
                 server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    [*jac_cmd, "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     env=env,
                 );
@@ -1072,10 +1071,10 @@ test "configurable api base url in bundle" {
             server_port = get_free_port();
             try {
                 print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                    f"[DEBUG] Starting server with 'jac start --prod main.jac -p {server_port}'"
                 );
                 server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    [*jac_cmd, "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     env=env,
                 );
@@ -1345,10 +1344,10 @@ test "no profile omits profile settings" {
             try {
                 print(
                     f"[DEBUG] Starting server with "
-                    f"'jac start main.jac -p {server_port}' (no profile)"
+                    f"'jac start --prod main.jac -p {server_port}' (no profile)"
                 );
                 server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    [*jac_cmd, "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     env=env,
                 );
@@ -1445,10 +1444,10 @@ test "vite env and define config" {
             env = get_env_with_npm();
             try {
                 print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                    f"[DEBUG] Starting server with 'jac start --prod main.jac -p {server_port}'"
                 );
                 server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    [*jac_cmd, "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     env=env,
                 );
@@ -1849,10 +1848,10 @@ test "diagnostics syntax error in console" {
             try {
                 print(
                     f"[DEBUG] Starting server with "
-                    f"'jac start main.jac -p {server_port}'"
+                    f"'jac start --prod main.jac -p {server_port}'"
                 );
                 server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    [*jac_cmd, "start", "--prod", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                     stdout=PIPE,
                     stderr=STDOUT,
