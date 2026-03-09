@@ -108,9 +108,10 @@ impl FunctionSpec.spec_hash -> str {
 impl extract_specs(mtir_map: dict) -> list[FunctionSpec] {
     specs: list[FunctionSpec] = [];
     for (key, info) in mtir_map.items() {
-        # Only process FunctionInfo entries (all MTIR map entries are by llm() functions)
-        # MethodInfo is a subclass of FunctionInfo; we include top-level methods too
-        # but skip entries flagged as pure tools (by_call=True means called as a tool)
+        # Only process FunctionInfo entries. MTIR captures ALL `by <expr>()` abilities
+        # regardless of model name (by llm(), by my_model(), by models["x"](), etc.)
+        # MethodInfo is a subclass of FunctionInfo; we include those too.
+        # Skip entries flagged as pure tools (by_call=True means called as a tool, not tested directly).
         if not isinstance(info, FunctionInfo) {
             continue;
         }

@@ -1,7 +1,7 @@
-"""test-gen command: generate deterministic spec-driven tests for by llm() functions.
+"""test-gen command: generate deterministic spec-driven tests for by <model>() GenAI abilities.
 
 Registered as a byLLM plugin CLI command. Compiles a .jac file, extracts MTIR
-specs for all by llm() functions, calls a configurable LLM to generate deterministic
+specs for all by <model>() GenAI abilities, calls a configurable LLM to generate deterministic
 Jac test blocks, and writes the result to a committed .jac file.
 
 Usage:
@@ -15,10 +15,10 @@ import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Generate deterministic Jac test blocks for all by llm() functions in a .jac file."""
+"""Generate deterministic Jac test blocks for all by <model>() GenAI abilities in a .jac file."""
 @registry.command(
     name="test-gen",
-    help="Generate deterministic spec-driven tests for by llm() functions",
+    help="Generate deterministic spec-driven tests for by <model>() GenAI abilities",
     args=[
         Arg.create(
             "filepath",
@@ -67,7 +67,7 @@ glob registry = get_registry();
         ),
     ],
     examples=[
-        ("jac test-gen mymodule.jac", "Generate tests for all by llm() functions"),
+        ("jac test-gen mymodule.jac", "Generate tests for all by <model>() GenAI abilities"),
         (
             "jac test-gen mymodule.jac --model openai/gpt-4o",
             "Use a specific generator model"
@@ -194,7 +194,7 @@ impl test_gen(
 
     mtir_map = Jac.program.mtir_map if Jac.program else {};
     if not mtir_map {
-        console.warning("No MTIR entries found — no by llm() functions detected in the file.");
+        console.warning("No MTIR entries found — no by <model>() GenAI abilities detected in the file.");
         return 0;
     }
 
@@ -210,11 +210,11 @@ impl test_gen(
     # Extract specs from MTIR
     specs = extract_specs(file_mtir);
     if not specs {
-        console.warning("No by llm() functions found to generate tests for.");
+        console.warning("No by <model>() GenAI abilities found to generate tests for.");
         return 0;
     }
 
-    console.info(f"Found {len(specs)} by llm() function(s): {', '.join(s.name for s in specs)}");
+    console.info(f"Found {len(specs)} GenAI ability/abilities: {', '.join(s.name for s in specs)}");
 
     # Load existing hashes for incremental regeneration
     existing_hashes: dict[str, str] = {};
