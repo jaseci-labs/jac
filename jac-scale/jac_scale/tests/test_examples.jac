@@ -82,6 +82,7 @@ obj JacScaleTestRunner {
         cmd = [
             str(jac_executable),
             "start",
+            "--prod",
             str(self.example_file),
             "--port",
             str(self.port)

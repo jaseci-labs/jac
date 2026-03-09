@@ -117,7 +117,7 @@ def _start_server(
 ) -> subprocess.Popen {
     jac_executable = Path(sys.executable).parent / "jac";
 
-    cmd = [str(jac_executable), "start", test_file.name, "--port", str(port)];
+    cmd = [str(jac_executable), "start", "--prod", test_file.name, "--port", str(port)];
 
     proc_env = os.environ.copy();
     if env {
