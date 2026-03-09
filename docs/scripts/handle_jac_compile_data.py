@@ -97,10 +97,7 @@ def should_exclude(path: str, jaclang_dir: str) -> bool:
     if os.path.splitext(path)[1] in EXCLUDE_EXTS:
         return True
     rel = os.path.relpath(path, jaclang_dir)
-    for ex in EXCLUDE_SUBDIRS:
-        if rel == ex or rel.startswith(ex + os.sep):
-            return True
-    return False
+    return any(rel == ex or rel.startswith(ex + os.sep) for ex in EXCLUDE_SUBDIRS)
 
 
 def create_playground_zip(jaclang_dir: str) -> None:
