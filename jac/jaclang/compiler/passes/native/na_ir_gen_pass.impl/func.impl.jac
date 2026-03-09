@@ -1,19 +1,8 @@
 """Function/ability declaration and codegen for native compilation."""
 """Walk the module and declare all native functions."""
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                self._maybe_declare_ability(inner);
-            }
-        } elif isinstance(stmt, uni.Ability) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                self._maybe_declare_ability(stmt);
-            }
-        }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        self._maybe_declare_ability(stmt);
     }
 }
 
@@ -152,11 +141,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         }
     }
     # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
-    body = (nd).body;
-    if isinstance(body, (list, tuple)) {
+    body = ModuleCodegenPass.unwrap_body(nd);
+    if body is not None {
         self._codegen_body(body);
-    } elif body is not None and body?.body and isinstance(body.body, (list, tuple)) {
-        self._codegen_body(body.body);
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
@@ -174,20 +161,24 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 }
 
 # ─── Body / Statement Codegen ─────────────────────────────────
-"""Generate jac_entry() function for with entry { ... } blocks."""
-impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
-    i64 = ir.IntType(64);
-    # Create jac_entry function: void jac_entry()
+"""Emit __jac_glob_init() — a standalone void function containing all
+non-const glob initializers (list = [] / dict = {} defaults).
+
+Always emitted so that importing modules can declare and call
+__jac_glob_init_<safe_name>() to trigger initialization before using
+any exported globals.  Called from _codegen_entry (when `with entry`
+exists) and from post_transform (when no `with entry` is present).
+"""
+impl NaIRGenPass._emit_glob_init_func -> None {
+    # Save outer builder context (may be None when called from post_transform)
+    saved_builder = self.builder;
+    saved_locals = self.local_vars if self?.local_vars else {};
+    # Emit void __jac_glob_init()
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="jac_entry");
-    self.func_symtab["jac_entry"] = func;
-    # Create entry block
+    func = ir.Function(self.llvm_module, fnty, name="__jac_glob_init");
     block = func.append_basic_block(name="entry");
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    # Initialize global variables that have complex initializers (dicts, lists, etc.)
     if self?._global_init_nodes and self._global_init_nodes {
         for init_tuple in self._global_init_nodes {
             var_name = init_tuple[0];
@@ -195,7 +186,6 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             var_type = init_tuple[2];
             init_val = self._codegen_expr(init_node);
             # For empty dict literals ({}) _codegen_dict_val returns None.
-            # Fall back to calling helpers["new"] for the matching dict type.
             if init_val is None and isinstance(var_type, ir.PointerType) {
                 for (dict_key, dtype) in self.dict_types.items() {
                     if var_type == dtype.as_pointer() {
@@ -210,7 +200,6 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
                 }
             }
             # For empty list literals ([]) _codegen_list_val may return None.
-            # Fall back to calling helpers["new"] for the matching list elem type.
             if init_val is None and isinstance(var_type, ir.PointerType) {
                 for (elem_key, ltype) in self.list_types.items() {
                     if var_type == ltype.as_pointer() {
@@ -232,6 +221,61 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
                 }
             }
         }
+    }
+    self.builder.ret_void();
+    self.func_symtab["__jac_glob_init"] = func;
+    # Restore outer builder context
+    self.builder = saved_builder;
+    self.local_vars = saved_locals;
+}
+
+"""Generate jac_entry() function for with entry { ... } blocks."""
+impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
+    i64 = ir.IntType(64);
+    import re;
+    # Create jac_entry function: void jac_entry()
+    fnty = ir.FunctionType(ir.VoidType(), []);
+    func = ir.Function(self.llvm_module, fnty, name="jac_entry");
+    self.func_symtab["jac_entry"] = func;
+    # Create entry block
+    block = func.append_basic_block(name="entry");
+    self.builder = ir.IRBuilder(block);
+    self.local_vars = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
+    # Emit __jac_glob_init() (current module) and call it first.
+    # This initialises all list/dict globs declared in THIS module before any
+    # imported module's code can observe them.
+    self._emit_glob_init_func();
+    glob_init_fn = self.func_symtab.get("__jac_glob_init");
+    if glob_init_fn is not None {
+        self.builder.call(glob_init_fn, []);
+    }
+    # Call __jac_glob_init_<safe_name>() for every imported .na.jac module.
+    # We use the interop manifest's native_cross_module_imports to get the exact
+    # same source_module strings that na_compile_pass uses when renaming
+    # __jac_glob_init → __jac_glob_init_<safe_name> inside the linked IR.
+    # This guarantees the declaration here and the definition after linking share
+    # the same symbol name.
+    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+    _cross_imports = _manifest.native_cross_module_imports if _manifest else [];
+    _seen_init_mods: set = set();
+    for _imp_binding in _cross_imports {
+        _source_mod = _imp_binding.source_module;
+        if _source_mod is None or _source_mod in _seen_init_mods {
+            continue;
+        }
+        _seen_init_mods.add(_source_mod);
+        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', _source_mod);
+        init_name = f"__jac_glob_init_{safe_name}";
+        # Declare (or reuse) the external init function
+        imp_init_fn = self.func_symtab.get(init_name);
+        if imp_init_fn is None {
+            imp_init_fnty = ir.FunctionType(ir.VoidType(), []);
+            imp_init_fn = ir.Function(self.llvm_module, imp_init_fnty, name=init_name);
+            self.func_symtab[init_name] = imp_init_fn;
+        }
+        self.builder.call(imp_init_fn, []);
     }
     # Generate body statements
     if (nd).body {

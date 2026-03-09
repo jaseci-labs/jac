@@ -9,7 +9,7 @@ impl UniPass.init(
 ) -> None {
     self.term_signal = False;
     self.prune_signal = False;
-    Transform.init(self, ir_in, prog, cancel_token=cancel_token);
+    ModuleCodegenPass.init(self, ir_in, prog, cancel_token=cancel_token);
 }
 
 """Run once before pass."""

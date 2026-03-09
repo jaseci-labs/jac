@@ -295,6 +295,40 @@ test "deploy all in one" {
     );
     assert mongodb_service.spec.ports[0].port == 27017;
 
+    # Validate MongoDB secret exists with correct credential keys
+    mongodb_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-mongodb-secret", namespace=namespace
+    );
+    assert mongodb_secret.metadata.name == f"{app_name}-mongodb-secret";
+    assert "username" in mongodb_secret.data;
+    assert "password" in mongodb_secret.data;
+    assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
+    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+
+    # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
+    mongo_user_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_USERNAME"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_user_value is None;
+    mongo_pass_value = next(
+        (
+            e.value
+            for e in mongodb_stateful.spec.template.spec.containers[0].env
+            if e.name == "MONGO_INITDB_ROOT_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_pass_value is None;
+    print(
+        "MongoDB StatefulSet uses secretKeyRef for root credentials (env values are None)"
+    );
+
     # Validate Redis Deployment and Service
     redis_deploy = apps_v1.read_namespaced_deployment(
         name=f"{app_name}-redis", namespace=namespace
@@ -305,6 +339,29 @@ test "deploy all in one" {
         name=f"{app_name}-redis-service", namespace=namespace
     );
     assert redis_service.spec.ports[0].port == 6379;
+
+    # Validate Redis secret exists with correct credential keys
+    redis_secret = core_v1.read_namespaced_secret(
+        name=f"{app_name}-redis-secret", namespace=namespace
+    );
+    assert redis_secret.metadata.name == f"{app_name}-redis-secret";
+    assert "username" in redis_secret.data;
+    assert "password" in redis_secret.data;
+    assert base64.b64decode(redis_secret.data["username"]).decode() == "admin";
+    assert base64.b64decode(redis_secret.data["password"]).decode() == "password";
+    print(f"Redis Secret '{app_name}-redis-secret' exists with correct credentials");
+
+    # Validate Redis Deployment uses secretKeyRef (env value is None when secretKeyRef is used)
+    redis_pass_value = next(
+        (
+            e.value
+            for e in redis_deploy.spec.template.spec.containers[0].env
+            if e.name == "REDIS_PASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert redis_pass_value is None;
+    print("Redis Deployment uses secretKeyRef for password (env value is None)");
 
     # Validate RedisInsight dashboard Deployment and Service
     insight_name = f"{app_name}-redis-insight";
@@ -362,17 +419,26 @@ test "deploy all in one" {
         None
     );
     assert mongo_server_env == f"{app_name}-mongodb-service";
-    mongo_user_env = next(
+    mongo_admin_user_value = next(
         (
             e.value
             for e in express_container.env
             if e.name == "ME_CONFIG_MONGODB_ADMINUSERNAME"
         ),
-        None
+        "NOT_FOUND"
     );
-    assert mongo_user_env == "admin";
+    assert mongo_admin_user_value is None;
+    mongo_admin_pass_value = next(
+        (
+            e.value
+            for e in express_container.env
+            if e.name == "ME_CONFIG_MONGODB_ADMINPASSWORD"
+        ),
+        "NOT_FOUND"
+    );
+    assert mongo_admin_pass_value is None;
     print(
-        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials pre-configured"
+        f"mongo-express Deployment '{express_name}' exists with MongoDB credentials via secretKeyRef"
     );
 
     express_service = core_v1.read_namespaced_service(
@@ -605,34 +671,202 @@ test "deploy all in one" {
     );
     print(f"Port conflict correctly detected: {conflict_result.message}");
 
-    # Cleanup using new architecture
-    deployment_target.destroy(app_name);
+    # --- Component destroy: application ---
+    # Destroy only the application component and verify HPA, Deployment, Service,
+    # Secret, code-server, and PVCs are all removed while cache and database remain intact.
+    deployment_target.destroy(app_name, "application");
+    print("Application component destroy called");
 
-    # Verify cleanup - resources should no longer exist
+    # Verify HPA is gone
+    autoscaling_v2 = client.AutoscalingV2Api();
     try {
-        apps_v1.read_namespaced_deployment(app_name, namespace=namespace);
-        raise AssertionError("Deployment should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        core_v1.read_namespaced_service(f"{app_name}-service", namespace=namespace);
-        raise AssertionError("Service should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        autoscaling_v2 = client.AutoscalingV2Api();
         autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
             name=f"{app_name}-hpa", namespace=namespace
         );
-        raise AssertionError("HPA should have been deleted");
+        raise AssertionError(
+            "HPA should have been deleted by application component destroy"
+        );
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
+    # Verify main Deployment is gone
+    try {
+        apps_v1.read_namespaced_deployment(app_name, namespace=namespace);
+        raise AssertionError(
+            "App Deployment should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify main Service is gone
+    try {
+        core_v1.read_namespaced_service(f"{app_name}-service", namespace=namespace);
+        raise AssertionError(
+            "App Service should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Secret is gone
+    try {
+        core_v1.read_namespaced_secret(f"{app_name}-secrets", namespace=namespace);
+        raise AssertionError(
+            "K8s Secret should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify code-server Deployment is gone
+    try {
+        apps_v1.read_namespaced_deployment(
+            f"{app_name}-code-server", namespace=namespace
+        );
+        raise AssertionError(
+            "Code-server Deployment should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify code-server Service is gone
+    try {
+        core_v1.read_namespaced_service(f"{app_name}-code-server", namespace=namespace);
+        raise AssertionError(
+            "Code-server Service should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify code PVC is gone (the billable-storage bug fix)
+    # PVC may briefly be in Terminating state while the pvc-protection finalizer
+    # is cleared after code-server pods finish terminating — poll up to 60s.
+    pvc_deleted = False;
+    for _ in range(30) {
+        try {
+            core_v1.read_namespaced_persistent_volume_claim(
+                name=f"{app_name}-code-pvc", namespace=namespace
+            );
+            time.sleep(2);
+        } except ApiException as e {
+            assert e.status == 404 , f"Expected 404, got {e.status}";
+            pvc_deleted = True;
+            break;
+        }
+    }
+    assert pvc_deleted , "code-pvc should have been deleted within 60s of application component destroy";
+
+    print(
+        "Application component (HPA + Deployment + Service + Secret + code-server + PVCs) removed"
+    );
+
+    # Verify cache and database are still running
+    try {
+        core_v1.read_namespaced_secret(
+            f"{app_name}-mongodb-secret", namespace=namespace
+        );
+    } except ApiException as e {
+        raise AssertionError(
+            f"MongoDB Secret should still exist after application destroy, got {e.status}"
+        );
+    }
+
+    try {
+        apps_v1.read_namespaced_deployment(f"{app_name}-redis", namespace=namespace);
+    } except ApiException as e {
+        raise AssertionError(
+            f"Redis deployment should still exist after application destroy, got {e.status}"
+        );
+    }
+
+    try {
+        apps_v1.read_namespaced_stateful_set(
+            f"{app_name}-mongodb", namespace=namespace
+        );
+    } except ApiException as e {
+        raise AssertionError(
+            f"MongoDB StatefulSet should still exist after application destroy, got {e.status}"
+        );
+    }
+
+    print(
+        "Cache and database components confirmed still running after application destroy"
+    );
+
+    # --- Component destroy: cache ---
+    # Destroy only the cache stack and verify all three resources (Deployment,
+    # Service, ConfigMap) are removed while the database remains intact.
+    deployment_target.destroy(app_name, "cache");
+    print("Cache component destroy called");
+
+    # Verify Redis Deployment is gone
+    try {
+        core_v1.read_namespaced_secret(f"{app_name}-redis-secret", namespace=namespace);
+        raise AssertionError("Redis Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Redis secret cleanup verified");
+
+    # Verify RedisInsight dashboard cleanup
+    insight_name = f"{app_name}-redis-insight";
+    try {
+        apps_v1.read_namespaced_deployment(f"{app_name}-redis", namespace=namespace);
+        raise AssertionError(
+            "Redis Deployment should have been deleted by cache component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Redis Service is gone
+    try {
+        core_v1.read_namespaced_service(
+            f"{app_name}-redis-service", namespace=namespace
+        );
+        raise AssertionError(
+            "Redis Service should have been deleted by cache component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Redis ConfigMap is gone (the orphaned-ConfigMap bug fix)
+    try {
+        core_v1.read_namespaced_config_map(
+            f"{app_name}-redis-config", namespace=namespace
+        );
+        raise AssertionError(
+            "Redis ConfigMap should have been deleted by cache component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Cache component (Redis Deployment + Service + ConfigMap) removed");
+
+    # Verify database is still running
+    try {
+        apps_v1.read_namespaced_stateful_set(
+            f"{app_name}-mongodb", namespace=namespace
+        );
+    } except ApiException as e {
+        raise AssertionError(
+            f"MongoDB StatefulSet should still exist after cache destroy, got {e.status}"
+        );
+    }
+
+    print("Database component confirmed still running after cache destroy");
+
+    # --- Full cleanup ---
+    deployment_target.destroy(app_name);
+
+    # Verify database cleanup (first destroyed by full destroy)
     try {
         apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
         raise AssertionError("MongoDB StatefulSet should have been deleted");
@@ -650,17 +884,10 @@ test "deploy all in one" {
     }
 
     try {
-        apps_v1.read_namespaced_deployment(f"{app_name}-redis", namespace=namespace);
-        raise AssertionError("Redis Deployment should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        core_v1.read_namespaced_service(
-            f"{app_name}-redis-service", namespace=namespace
+        core_v1.read_namespaced_secret(
+            f"{app_name}-mongodb-secret", namespace=namespace
         );
-        raise AssertionError("Redis Service should have been deleted");
+        raise AssertionError("MongoDB Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -677,6 +904,24 @@ test "deploy all in one" {
     try {
         core_v1.read_namespaced_service(f"{insight_name}-service", namespace=namespace);
         raise AssertionError("RedisInsight Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(
+            f"{insight_name}-nginx-config", namespace=namespace
+        );
+        raise AssertionError(
+            "RedisInsight nginx-config ConfigMap should have been deleted"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_secret(f"{insight_name}-auth", namespace=namespace);
+        raise AssertionError("RedisInsight auth Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
@@ -699,24 +944,7 @@ test "deploy all in one" {
 
     print("Dashboard (RedisInsight + mongo-express) cleanup verified");
 
-    # Verify code-server cleanup
-    try {
-        apps_v1.read_namespaced_deployment(
-            f"{app_name}-code-server", namespace=namespace
-        );
-        raise AssertionError("Code-server Deployment should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        core_v1.read_namespaced_service(f"{app_name}-code-server", namespace=namespace);
-        raise AssertionError("Code-server Service should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    # Verify Prometheus cleanup
+    # Verify monitoring stack cleanup
     prometheus_name = f"{app_name}-prometheus";
     try {
         apps_v1.read_namespaced_deployment(prometheus_name, namespace=namespace);
@@ -736,14 +964,13 @@ test "deploy all in one" {
 
     try {
         core_v1.read_namespaced_config_map(
-            name=f"{prometheus_name}-config", namespace=namespace
+            f"{prometheus_name}-config", namespace=namespace
         );
         raise AssertionError("Prometheus ConfigMap should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    # Verify kube-state-metrics cleanup
     try {
         apps_v1.read_namespaced_deployment(ksm_name, namespace=namespace);
         raise AssertionError("kube-state-metrics Deployment should have been deleted");
@@ -758,51 +985,6 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    try {
-        core_v1.read_namespaced_service_account(
-            name=f"{ksm_name}-sa", namespace=namespace
-        );
-        raise AssertionError(
-            "kube-state-metrics ServiceAccount should have been deleted"
-        );
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        rbac_v1.read_cluster_role(name=cluster_role_name);
-        raise AssertionError("kube-state-metrics ClusterRole should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        rbac_v1.read_cluster_role_binding(name=cluster_role_name);
-        raise AssertionError(
-            "kube-state-metrics ClusterRoleBinding should have been deleted"
-        );
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    # Verify node-exporter cleanup
-    try {
-        apps_v1.read_namespaced_daemon_set(ne_name, namespace=namespace);
-        raise AssertionError("node-exporter DaemonSet should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    try {
-        core_v1.read_namespaced_service(f"{ne_name}-service", namespace=namespace);
-        raise AssertionError("node-exporter Service should have been deleted");
-    } except ApiException as e {
-        assert e.status == 404 , f"Expected 404, got {e.status}";
-    }
-
-    print("K8s metrics stack (kube-state-metrics + node-exporter) cleanup verified");
-
-    # Verify Grafana cleanup
     grafana_name = f"{app_name}-grafana";
     try {
         apps_v1.read_namespaced_deployment(grafana_name, namespace=namespace);
@@ -840,28 +1022,50 @@ test "deploy all in one" {
         }
     }
 
-    print("Monitoring stack (Prometheus + Grafana) cleanup verified");
-
-    # Verify K8s Secret cleanup
     try {
-        core_v1.read_namespaced_secret(f"{app_name}-secrets", namespace=namespace);
-        raise AssertionError("K8s Secret should have been deleted");
+        core_v1.read_namespaced_service_account(
+            name=f"{ksm_name}-sa", namespace=namespace
+        );
+        raise AssertionError(
+            "kube-state-metrics ServiceAccount should have been deleted"
+        );
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    # Verify PVC cleanup
     try {
-        pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace=namespace);
-        for pvc in pvcs.items {
-            assert not pvc.metadata.name.startswith(app_name) , (
-                f"PVC '{pvc.metadata.name}' should have been deleted"
-            );
-        }
+        rbac_v1.read_cluster_role(name=cluster_role_name);
+        raise AssertionError("kube-state-metrics ClusterRole should have been deleted");
     } except ApiException as e {
-        # Namespace already deleted - PVCs are gone too
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=cluster_role_name);
+        raise AssertionError(
+            "kube-state-metrics ClusterRoleBinding should have been deleted"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        apps_v1.read_namespaced_daemon_set(ne_name, namespace=namespace);
+        raise AssertionError("node-exporter DaemonSet should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{ne_name}-service", namespace=namespace);
+        raise AssertionError("node-exporter Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print(
+        "Monitoring component (Prometheus + Grafana + kube-state-metrics + node-exporter) cleanup verified"
+    );
 
     # Verify namespace was deleted (since it is not 'default')
     try {

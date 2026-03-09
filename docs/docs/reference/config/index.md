@@ -1,6 +1,8 @@
 # Configuration Reference
 
-The `jac.toml` file is the central configuration for Jac projects. It defines project metadata, dependencies, command defaults, and plugin settings.
+The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures plugins (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
+
+You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
 ## Creating a Project
 

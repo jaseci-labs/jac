@@ -1,6 +1,8 @@
 # Walker Response Patterns
 
-This reference explains how walker responses work and the common patterns for handling them.
+Walkers traverse a graph, visiting nodes and executing logic at each step. But how do you get data *out* of a walker after it finishes? That's what the `report` statement is for -- it's the primary mechanism for walkers to communicate results back to the code that spawned them.
+
+This reference covers the `report` mechanism and the common patterns for structuring walker responses. Choosing the right pattern matters because it affects how your client code (whether a `with entry` block, an API endpoint, or another walker) consumes the results.
 
 > **Related:**
 >
@@ -12,7 +14,7 @@ This reference explains how walker responses work and the common patterns for ha
 
 ## The `.reports` Array
 
-Every time a walker executes a `report` statement, the value is appended to a `.reports` array. When you spawn a walker, you receive this array in the response.
+Every time a walker executes a `report` statement, the value is appended to a `.reports` array on the response object. When you spawn a walker with `root spawn MyWalker()`, the returned object contains this array, giving you access to everything the walker reported during its traversal. Think of `report` as the walker's "return channel" -- except that a walker can report multiple times as it moves through the graph, accumulating results along the way.
 
 !!! note
     The `report` statement also prints each reported value to stdout as a side effect. This means you will see the reported values printed to the console in addition to them being collected in `.reports`.

@@ -211,6 +211,30 @@ test "jac cli alert based err" {
     assert "Error" in stdout_value;
 }
 
+test "jac cli error output has no raw ansi codes" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    sys.stderr = captured_output;
+    try {
+        execution.run(
+            os.path.join(
+                JAC_ROOT, "tests", "compiler", "fixtures", "new_keyword_err.jac"
+            )
+        );
+    } finally {
+        sys.stdout = sys.__stdout__;
+        sys.stderr = sys.__stderr__;
+    }
+    output = captured_output.getvalue();
+    # Ensure the error was actually reported
+    assert "The 'new' keyword is not supported in Jac" in output;
+    # Raw ANSI escape codes (\x1b[) must not appear in error output.
+    # The console layer handles styling; pretty_print should not inject raw codes.
+    assert "\x1b[" not in output , f"Raw ANSI escape codes found in error output:\n{repr(
+        output[:500]
+    )}";
+}
+
 test "jac cli alert based runtime err" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

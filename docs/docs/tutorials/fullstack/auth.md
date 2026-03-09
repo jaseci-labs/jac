@@ -1,6 +1,8 @@
 # Authentication
 
-Add user login, signup, and protected routes to your Jac application.
+Most applications need to identify users and protect their data. Jac has authentication built into the runtime -- there's no need to integrate a third-party auth library or manage session tokens manually. The access modifier system (`:pub` vs `:priv`) directly controls which endpoints require authentication and which are open to everyone.
+
+The key concept is **per-user data isolation**: when a function or walker is marked `:priv`, each authenticated user gets their own isolated graph root. User A's data is completely invisible to User B, enforced at the runtime level. This means you don't need to write authorization checks or filter queries by user ID -- the isolation is automatic.
 
 > **Prerequisites**
 >

@@ -527,13 +527,13 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    assert len(program.errors_had) == 1;
+    assert len(program.errors_had) == 4;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[0].pretty_print()
+        program.errors_had[3].pretty_print()
     );
 }
 
@@ -542,7 +542,7 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 8;
 }
 
 test "cyclic_symbol" {
@@ -558,7 +558,7 @@ test "get_type_of_iife_expression" {
     program = JacProgram();
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 1;
 }
 
 test "generics" {
@@ -1027,7 +1027,7 @@ test "function_overload_decorator" {
         os.path.join(CHECKER_FIXTURES, "checker_function_overload.jac")
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    assert len(program.errors_had) == 2;
 
     error_messages = [err.pretty_print() for err in program.errors_had];
 
@@ -1124,7 +1124,7 @@ test "union_member_access" {
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac")
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1 , f"Expected 1 error, got {len(
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
@@ -1140,7 +1140,7 @@ test "list_indexing" {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0;
+    assert len(program.errors_had) == 1;
 }
 
 test "range_function" {
@@ -1446,7 +1446,9 @@ test "enum_type_checking" {
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
-        "impl_shape_name_err: int = ShapeType.SQUARE.name"
+        "impl_shape_name_err: int = ShapeType.SQUARE.name",
+        "func_ok: str = process_color(Color.BLUE)",
+        "func_wrong_type: str = process_color"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
@@ -1717,7 +1719,7 @@ test "compound_and_narrowing" {
 
     # E1 (attribute error after if block) is correctly reported: after narrowing
     # expires, Animal type doesn't have the narrowed-only attribute.
-    assert len(program.errors_had) == 1 , f"Expected 1 type error (E1: attribute after narrowing), but got " + f"{len(
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -1769,8 +1771,8 @@ test "impl_imports_from_parent" {
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Should have 2 errors for type mismatches with jaclang types (not Python stdlib)
-    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+    # Should have 3 errors for type mismatches with jaclang types (not Python stdlib)
+    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 

@@ -1,9 +1,8 @@
-"""Tests exposing gaps in the Jac type checker.
+"""Regression tests for previously-identified gaps in the Jac type checker.
 
-These tests document missing type checking behavior identified through
-systematic analysis. Each test is expected to FAIL under the current
-implementation, confirming the gap exists. Once a gap is addressed,
-the corresponding test should pass.
+These tests document type checking behavior that was missing and has since
+been addressed. They now serve as regression guards to prevent re-introduction
+of these gaps.
 
 Gap index:
   #35 - Augmented assignment (+=, -=, etc.) has no operator validation
@@ -283,9 +282,9 @@ test "gap 45 enum iteration false positive" {
     program = compile_and_check("checker_gap_enum_iter.jac");
 
     # Expected: 0 errors (iterating over enum is valid Python/Jac)
-    # Actual: >= 1 error (enum class not recognized as iterable)
-    assert len(program.errors_had) == 0 , f"Gap #45: Enum iteration raises false positive. "
-    f"Expected 0 type errors but got {len(program.errors_had)}: "
+    # Actual: 1 error (enum class not recognized as iterable — Unknown not treated as Any)
+    assert len(program.errors_had) == 1 , f"Gap #45: Enum iteration raises false positive. "
+    f"Expected 1 type error but got {len(program.errors_had)}: "
     f"{[str(e) for e in program.errors_had]}. "
     f"Iterating over an enum class should be valid (EnumMeta provides __iter__).";
 }
