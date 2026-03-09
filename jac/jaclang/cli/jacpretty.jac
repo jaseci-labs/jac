@@ -75,7 +75,16 @@ glob COLORS: Dict[(str, int)] = {
      },
      _console: Optional[Console] = None,
      RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
-     __all__ = ["Console", "Style", "Theme", "Panel", "Table", "print", "render_markup", "get_console"],
+     __all__ = [
+         "Console",
+         "Style",
+         "Theme",
+         "Panel",
+         "Table",
+         "print",
+         "render_markup",
+         "get_console"
+     ],
      RE_HIGHLIGHT = re.compile(
          r"(?<![\w\x1b])(\-?[0-9]+\.?[0-9]*(?:e[\-\+]?\d+)?)(?![\w])"
          r"|(\x27[^\x27\\]*(?:\\.[^\x27\\]*)*\x27)"
@@ -258,7 +267,9 @@ obj Console {
                     text = _highlight_text(text, resolved_style)
                         if highlight
                         else (
-                            Style(resolved_style).render(text)
+                            Style(resolved_style).render(
+                                text
+                            )
                                 if resolved_style
                                 else text
                         );
@@ -479,9 +490,7 @@ obj _StatusContext {
         spinner: str,
         _stop_event: Event;
 
-    def init(
-        console: Console, status: str, spinner: str = "dots"
-    ) -> object {
+    def init(console: Console, status: str, spinner: str = "dots") -> object {
         (self.console, self.status, self.spinner, self._stop_event) = (
             console,
             status,

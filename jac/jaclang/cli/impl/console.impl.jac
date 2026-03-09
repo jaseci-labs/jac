@@ -9,17 +9,17 @@ import from jaclang.cli.jacpretty { Console as _PrettyConsole, Panel, Table, The
 # Theme
 # ===============================================================================
 glob _JAC_THEME = Theme(
-    {
-        'success': 'green',
-        'error': 'red',
-        'warning': 'yellow',
-        'info': 'cyan',
-        'url': 'underline bright_blue',
-        'muted': 'dim',
-        'highlight': 'cyan',
-        'time': 'yellow'
-    }
-);
+         {
+             'success': 'green',
+             'error': 'red',
+             'warning': 'yellow',
+             'info': 'cyan',
+             'url': 'underline bright_blue',
+             'muted': 'dim',
+             'highlight': 'cyan',
+             'time': 'yellow'
+         }
+     );
 
 # ===============================================================================
 # Internal jacpretty Console Factories (persistent, theme-aware)
@@ -198,7 +198,9 @@ impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> Non
     timestamp = datetime.now().strftime('%H:%M:%S');
     emoji_map = {'changed': '⚡', 'created': '✨', 'deleted': '🗑️'};
     emoji = emoji_map.get(action, '📝') if self.use_emoji else action.upper();
-    _print(f"[time][{timestamp}][/] {emoji} [highlight]{action.capitalize()}:[/] {filepath}");
+    _print(
+        f"[time][{timestamp}][/] {emoji} [highlight]{action.capitalize()}:[/] {filepath}"
+    );
 }
 
 """Print file watching status."""
