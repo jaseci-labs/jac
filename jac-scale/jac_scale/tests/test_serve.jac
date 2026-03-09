@@ -122,6 +122,7 @@ def _start_server(
     cmd = [
         str(jac_executable),
         "start",
+        "--prod",
         test_file.name if not extra_args else str(test_file),
         "--port",
         str(port)
