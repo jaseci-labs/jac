@@ -1248,12 +1248,13 @@ test "profile config applies to server" {
             try {
                 print(
                     f"[DEBUG] Starting server with "
-                    f"'jac start main.jac -p {server_port} --profile prod'"
+                    f"'jac start --prod main.jac -p {server_port} --profile prod'"
                 );
                 server = Popen(
                     [
                         *jac_cmd,
                         "start",
+                        "--prod",
                         "main.jac",
                         "-p",
                         str(server_port),
@@ -1686,12 +1687,13 @@ test "pwa build generates manifest and service worker" {
             try {
                 print(
                     f"[DEBUG] Starting server with "
-                    f"'jac start --client pwa main.jac -p {server_port}'"
+                    f"'jac start --prod --client pwa main.jac -p {server_port}'"
                 );
                 server = Popen(
                     [
                         *jac_cmd,
                         "start",
+                        "--prod",
                         "--client",
                         "pwa",
                         "main.jac",

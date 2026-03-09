@@ -433,6 +433,10 @@ def _handle_start_target(ctx: HookContext) -> None {
 
     # Warn about debug mode in production
     dev_mode = ctx.get_arg("dev", True);
+    # Production mode overrides dev mode
+    if ctx.get_arg("prod", False) {
+        dev_mode = False;
+    }
     if not dev_mode and is_debug_mode(config) {
         console.warning(
             "Debug mode is enabled. For production, consider setting debug=false in [plugins.client] section of jac.toml"
