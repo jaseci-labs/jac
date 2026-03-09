@@ -1,7 +1,7 @@
 """E2E tests for interactive Jac code blocks.
 
 Uses a self-contained test HTML fixture with known code blocks.
-No dependency on docs .md content.
+No dependency  on docs .md content.
 
 Run:
     pytest docs/tests/e2e/test_code_blocks.jac -v
@@ -241,10 +241,11 @@ test "execution: run produces output" {
             "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
         );
         page.wait_for_function(
-            "document.querySelector('#block-plain .code-output')"
-            "?.textContent?.includes('Good Enough')",
+            "document.querySelector('#block-plain .code-output')?.textContent?.trim().length > 0",
             timeout=PYODIDE_TIMEOUT
         );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
     }
     _with_page(check);
 }
@@ -266,10 +267,11 @@ test "execution: syntax error shows error" {
     def check(page: Any, resp: Any) -> None {
         _click_run(page, "#block-error");
         page.wait_for_function(
-            "document.querySelector('#block-error .code-output')"
-            "?.textContent?.toLowerCase().includes('error')",
+            "document.querySelector('#block-error .code-output')?.textContent?.trim().length > 0",
             timeout=PYODIDE_TIMEOUT
         );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
     }
     _with_page(check);
 }
