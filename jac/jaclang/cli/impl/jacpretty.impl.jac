@@ -27,6 +27,51 @@ impl _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]] {
     return None;
 }
 
+impl _highlight_text(text: str, base_style: str = "") -> str {
+    base = Style(base_style) if base_style else None;
+    base_code = base._parse() if base else "";
+    (parts, pos) = ([], 0);
+    for m in RE_HIGHLIGHT.finditer(text) {
+        if (m.start() > pos) {
+            chunk = text[pos:m.start()];
+            parts.append(base.render(chunk) if base else chunk);
+        }
+        if m.group(1) {
+            # Number → bold cyan
+            parts.append(Style("bold cyan").render(m.group(1)));
+        } elif (m.group(2) or m.group(3)) {
+            # Quoted string → bold green
+            parts.append(Style("bold green").render(m.group(0)));
+        } else {
+            # <tag_name contents> pattern
+            # '<' stays in base colour
+            parts.append(base.render("<") if base else "<");
+            # tag_name → bold bright_magenta
+            tag_name = m.group(4);
+            if tag_name {
+                parts.append(Style("bold bright_magenta").render(tag_name));
+            }
+            # tag_contents → reset to default terminal colour
+            tag_contents = m.group(5);
+            if tag_contents {
+                parts.append(f"\x1b[0m{tag_contents}");
+                # Re-apply base style so the closing > and any following text stay in base
+                if base_code {
+                    parts.append(f"\x1b[{base_code}m");
+                }
+            }
+            # '>' stays in base colour
+            parts.append(base.render(">") if base else ">");
+        }
+        pos = m.end();
+    }
+    if (pos < len(text)) {
+        chunk = text[pos:];
+        parts.append(base.render(chunk) if base else chunk);
+    }
+    return "".join(parts);
+}
+
 impl render_markup(markup: str, base_style: str = "") -> str {
     markup = markup.replace("\\[", "\x00").replace("\\]", "\x01");
     (result, stack, pos) = ([], [base_style] if base_style else [], 0);
