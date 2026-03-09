@@ -355,31 +355,12 @@ impl ModuleIntrospector._extract_access_levels -> None {
         return;
     }
     import jaclang.jac0core.unitree as uni;
-    import from jaclang.jac0core.constructs { WalkerArchetype }
-    import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
     self._function_access = {};
     self._walker_access = {};
 
-    # Build access-level map from a module AST: {name: requires_auth}
-    # Covers both Ability (functions) and Archetype (walkers) in one pass.
-    def build_access_map(mod_ast: uni.Module) -> dict[str, bool] {
-        access: dict[str, bool] = {};
-        for item in mod_ast.body {
-            if isinstance(item, uni.Ability) and item.name_ref is not None {
-                is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-                access[item.name_ref.sym_name] = not is_pub;
-            } elif isinstance(item, uni.Archetype) {
-                is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-                access[item.name.sym_name] = not is_pub;
-            }
-        }
-        return access;
-    }
-
     # AST cache to avoid repeated hub lookups / compilations
     ast_cache: dict[str, (uni.Module | None)] = {};
-    # Derived access-map cache (one dict lookup per source module)
-    access_map_cache: dict[str, dict[str, bool]] = {};
 
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
         if mod_path in ast_cache {
@@ -391,23 +372,6 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         ast_cache[mod_path] = ast;
         return ast;
-    }
-
-    def get_access_map(mod_path: str) -> (dict[str, bool] | None) {
-        if mod_path in access_map_cache {
-            return access_map_cache[mod_path];
-        }
-        try {
-            ast = get_module_ast(mod_path);
-        } except Exception {
-            return None;
-        }
-        if not ast {
-            return None;
-        }
-        m = build_access_map(ast);
-        access_map_cache[mod_path] = m;
-        return m;
     }
 
     # Get main module AST
@@ -427,26 +391,19 @@ impl ModuleIntrospector._extract_access_levels -> None {
             is_pub = item.access and item.access.tag.name == Tok.KW_PUB;
             self._function_access[item.name_ref.sym_name] = not is_pub;
             # --- Direct walker/archetype definitions ---
-        } elif isinstance(item, uni.Archetype) {
+        } elif isinstance(item, uni.Archetype)
+        and item.sym_category == SymbolType.WALKER_ARCH {
             arch_name = item.name.sym_name;
-            cls = getattr(self._module, arch_name, None);
-            if isinstance(cls, type) and issubclass(cls, WalkerArchetype) {
-                is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
-                self._walker_access[arch_name] = not is_pub;
-            }
+            is_pub = item.access is not None and item.access.tag.name == Tok.KW_PUB;
+            self._walker_access[arch_name] = not is_pub;
             # --- Imported items from .jac modules ---
         } elif isinstance(item, uni.Import) and item.is_jac and item.from_loc {
             # Collect imported names
-            imported_names: list[str] = [];
-            for imp_item in item.items {
-                if isinstance(imp_item, uni.ModuleItem) {
-                    imported_names.append(
-                        imp_item.alias.sym_name
-                            if imp_item.alias
-                            else imp_item.name.value
-                    );
-                }
-            }
+            imported_names: list[str] = [
+                imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
+                for imp_item in item.items
+                if isinstance(imp_item, uni.ModuleItem)
+            ];
             if not imported_names {
                 continue;
             }
@@ -459,16 +416,27 @@ impl ModuleIntrospector._extract_access_levels -> None {
             } except Exception {
                 continue;
             }
-            # Get pre-built access map for source module
-            source_access = get_access_map(source_file);
+            # Get source module AST and use symbol table for both type and access
+            source_ast = get_module_ast(source_file);
             for name in imported_names {
                 if name in self._function_access or name in self._walker_access {
                     continue;
                 }
-                # Determine whether this name is a walker or function
-                cls = getattr(self._module, name, None);
-                is_walker = isinstance(cls, type) and issubclass(cls, WalkerArchetype);
-                requires_auth = source_access.get(name, True) if source_access else True;
+                # Determine type and access level via symbol table lookup
+                sym = source_ast.lookup(name) if source_ast else None;
+                is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
+                # check the declaring AST node's access attribute directly
+                decl_node = sym.decl.find_parent_of_type(
+                    uni.AstAccessNode
+                )
+                    if sym
+                    else None;
+                is_explicitly_pub = (
+                    decl_node is not None
+                    and decl_node.access is not None
+                    and decl_node.access.tag.name == Tok.KW_PUB
+                );
+                requires_auth = not is_explicitly_pub;
                 if is_walker {
                     self._walker_access[name] = requires_auth;
                 } else {
