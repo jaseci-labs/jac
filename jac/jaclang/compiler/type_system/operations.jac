@@ -48,7 +48,37 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          "i64": 64,
          "u64": 64
      },
-     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"};
+     FLOAT_LIKE_NAMES: set[str] = {"f32","f64"},
+     AUG_OPERATOR_MAP: dict[str, str] = {
+         Tok.ADD_EQ: '__iadd__',
+         Tok.SUB_EQ: '__isub__',
+         Tok.MUL_EQ: '__imul__',
+         Tok.DIV_EQ: '__itruediv__',
+         Tok.FLOOR_DIV_EQ: '__ifloordiv__',
+         Tok.MOD_EQ: '__imod__',
+         Tok.STAR_POW_EQ: '__ipow__',
+         Tok.LSHIFT_EQ: '__ilshift__',
+         Tok.RSHIFT_EQ: '__irshift__',
+         Tok.BW_AND_EQ: '__iand__',
+         Tok.BW_OR_EQ: '__ior__',
+         Tok.BW_XOR_EQ: '__ixor__',
+         Tok.MATMUL_EQ: '__imatmul__'
+     },
+     AUG_TO_BINARY_MAP: dict[str, str] = {
+         Tok.ADD_EQ: Tok.PLUS,
+         Tok.SUB_EQ: Tok.MINUS,
+         Tok.MUL_EQ: Tok.STAR_MUL,
+         Tok.DIV_EQ: Tok.DIV,
+         Tok.FLOOR_DIV_EQ: Tok.FLOOR_DIV,
+         Tok.MOD_EQ: Tok.MOD,
+         Tok.STAR_POW_EQ: Tok.STAR_POW,
+         Tok.LSHIFT_EQ: Tok.LSHIFT,
+         Tok.RSHIFT_EQ: Tok.RSHIFT,
+         Tok.BW_AND_EQ: Tok.BW_AND,
+         Tok.BW_OR_EQ: Tok.BW_OR,
+         Tok.BW_XOR_EQ: Tok.BW_XOR,
+         Tok.MATMUL_EQ: Tok.DECOR_OP
+     };
 
 """
 Apply numeric type promotion for arithmetic operations.
@@ -138,7 +168,7 @@ def get_type_of_binary_operation(
         (expr.op in (Tok.KW_IS, Tok.KW_ISN, Tok.KW_IN, Tok.KW_NIN))
         and (evaluator.prefetch.bool_class is not None)
     ) {
-        evaluator._convert_to_instance(evaluator.prefetch.bool_class);
+        return evaluator._convert_to_instance(evaluator.prefetch.bool_class);
     }
 
     # Magic method lookup for other binary operations
@@ -325,3 +355,7 @@ def get_type_of_binary_operation(
 # Arithmetic operators that support numeric type promotion (int -> float)
 
 # Fixed-width integer type names and their bit widths for promotion
+
+# Maps augmented assignment operator tokens to in-place magic methods
+
+# Maps augmented op tokens to their base binary op tokens

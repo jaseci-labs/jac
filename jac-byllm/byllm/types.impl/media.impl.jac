@@ -3,7 +3,7 @@
 #-------------------------------------------------------------------------------
 """Convert the content to a dictionary. Subclasses must implement."""
 impl Media.to_dict -> list[dict] {
-    raise NotImplementedError("Subclasses must implement this method.") ;
+    raise NotImplementedError("Subclasses must implement this method.");
 }
 
 #-------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ impl Image.postinit -> None {
         }
         # Treat as local file path
         if not os.path.exists(s) {
-            raise ValueError(f"Image file does not exist: {s}") ;
+            raise ValueError(f"Image file does not exist: {s}");
         }
         image = open_image(s);
         fmt = image.format or "PNG";
@@ -122,7 +122,7 @@ impl Image.postinit -> None {
     raise TypeError(
         "Unsupported Image input type. Provide a URL/path string, data URL, bytes, "
         "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
-    ) ;
+    );
 }
 
 """Map a PIL format name to a MIME type with sensible fallbacks."""
@@ -166,7 +166,7 @@ impl Image.to_dict -> list[dict] {
 """Validate that the video path exists."""
 impl Video.postinit -> None {
     if not os.path.exists(self.path) {
-        raise ValueError(f"Video file does not exist: {self.path}") ;
+        raise ValueError(f"Video file does not exist: {self.path}");
     }
 }
 
@@ -178,7 +178,7 @@ impl Video.load_frames -> None {
         raise ImportError(
             "OpenCV is required to process video files. "
             "Install `pip install byllm[video]` for video capabilities."
-        ) ;
+        );
     }
     self._base64frames = [];
     video = cv2.VideoCapture(self.path);
@@ -191,7 +191,7 @@ impl Video.load_frames -> None {
         video.set(cv2.CAP_PROP_POS_FRAMES, curr_frame);
         (success, frame) = video.read();
         if not success {
-            raise ValueError("Failed to read video frame.") ;
+            raise ValueError("Failed to read video frame.");
         }
         (_, buffer) = cv2.imencode(".jpg", frame);
         self._base64frames.append(base64.b64encode(buffer).decode("utf-8"));

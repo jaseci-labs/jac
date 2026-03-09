@@ -163,7 +163,7 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> N
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8');
         console.print("  ✔ Generated manifest.json", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate manifest.json: {e}") ;
+        raise RuntimeError(f"Failed to generate manifest.json: {e}");
     }
 }
 
@@ -252,7 +252,7 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict) -> None {
         sw_path.write_text(sw_content, encoding='utf-8');
         console.print("  ✔ Generated sw.js (service worker)", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate service worker: {e}") ;
+        raise RuntimeError(f"Failed to generate service worker: {e}");
     }
 }
 
@@ -315,7 +315,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             console.print("  ✔ Updated index.html with PWA support", style="success");
         }
     } except Exception as e {
-        raise RuntimeError(f"Failed to update index.html for PWA: {e}") ;
+        raise RuntimeError(f"Failed to update index.html for PWA: {e}");
     }
 }
 

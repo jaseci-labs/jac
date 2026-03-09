@@ -334,6 +334,11 @@ Jac uses `obj` instead of `class` to define types (though `class` is also suppor
 
 Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
 
+!!! note "When to use `obj` vs `class`"
+    Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
+
+    If you need Python-specific class machinery like metaclasses, `@classmethod`, or `@property` decorators, use a Python `class` instead. Jac provides the `static` keyword for static methods and fields, covering the most common use case for `@classmethod` and `@staticmethod`.
+
 ```jac
 obj Person {
     has name: str;

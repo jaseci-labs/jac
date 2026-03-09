@@ -101,7 +101,7 @@ with entry {
 
     # Test 8: IIFE with multiple operations
     result8 = (
-        def process_data(data: list) -> int {
+        def process_data(data: list) -> float {
             sum = 0;
             count = 0;
             for item in data {

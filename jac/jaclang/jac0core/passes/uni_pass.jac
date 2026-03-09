@@ -2,7 +2,7 @@
 import from threading { Event }
 import from typing { TYPE_CHECKING, TypeVar }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 
 with entry {
     if TYPE_CHECKING {
@@ -12,7 +12,7 @@ with entry {
 
 glob T = TypeVar('T', bound=uni.UniNode);
 """Abstract class for IR passes."""
-class UniPass(Transform[uni.Module, uni.Module]) {
+class UniPass(ModuleCodegenPass) {
     """Initialize parser."""
     def init(
         self: UniPass,
@@ -53,7 +53,7 @@ class UniPass(Transform[uni.Module, uni.Module]) {
             }
         } elif len(nd.kid) {
             if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(nd)) ;
+                raise ValueError("Node has no sub_node_tab. " + str(nd));
             } else {
                 for i in nd.kid {
                     if isinstance(i, typ) {

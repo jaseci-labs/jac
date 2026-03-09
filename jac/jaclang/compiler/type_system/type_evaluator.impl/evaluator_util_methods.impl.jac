@@ -135,6 +135,33 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     return jtype;
 }
 
+"""Check if a type is already represented in a list (using shared identity for ClassType)."""
+impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
+    for existing in type_list {
+        if isinstance(ty, types.ClassType) and isinstance(existing, types.ClassType) {
+            if ty.shared == existing.shared {
+                return True;
+            }
+        } elif ty is existing {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Flatten union types and collect unique types into result list."""
+impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None {
+    if isinstance(ty, types.UnionType) {
+        for member in ty.types {
+            self._collect_unique_types(member, result);
+        }
+    } else {
+        if not self._type_in_list(ty, result) {
+            result.append(ty);
+        }
+    }
+}
+
 impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {
     # If the symbol is from a module item, we need to resolve it to the actual symbol.
     # Check if mod_item.name is a Name and has a sym attribute before accessing it
@@ -277,6 +304,18 @@ impl TypeEvaluator._extract_type_params(
     node_: uni.Archetype
 ) -> list[types.TypeVarType] {
     type_params: list[types.TypeVarType] = [];
+
+    # Handle Jac-native generic syntax: obj Box[T], obj Pair[A, B]
+    # The type_params field on the Archetype node holds TypeParam AST nodes.
+    if node_.type_params {
+        for tp in node_.type_params {
+            tv = types.TypeVarType(name=tp.sym_name);
+            type_params.append(tv);
+        }
+        return type_params;
+    }
+
+    # Handle Python-style generics: obj Box(Generic[T])
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr

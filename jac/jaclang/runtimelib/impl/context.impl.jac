@@ -35,7 +35,7 @@ impl ExecutionContext._get_anchor(anchor_id: str) -> NodeAnchor {
     # TieredMemory handles L1/L3 lookup with read-through caching
     anchor = self.mem.get(id);
     if not isinstance(anchor, NodeAnchor) {
-        raise ValueError(f"Invalid anchor id {anchor_id} !") ;
+        raise ValueError(f"Invalid anchor id {anchor_id} !");
     }
     return anchor;
 }

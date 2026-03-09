@@ -278,6 +278,30 @@ def dict_delete_keyword() -> int {
     return 0;
 }
 
+# ===================== Dict .get() Method Tests =====================
+def dict_get_found() -> int {
+    d: dict[str, int] = {"a": 10, "b": 20};
+    return d.get("a", -1);
+}
+
+def dict_get_notfound() -> int {
+    d: dict[str, int] = {"a": 10, "b": 20};
+    return d.get("z", -99);
+}
+
+def dict_get_no_default() -> int {
+    d: dict[int, int] = {1: 100, 2: 200};
+    return d.get(1);
+}
+
+def global_dict_get_method() -> int {
+    return LOOKUP.get(1, -1);
+}
+
+def global_dict_get_notfound_method() -> int {
+    return LOOKUP.get(99, -42);
+}
+
 with entry {
     _init_done = 1;
 }

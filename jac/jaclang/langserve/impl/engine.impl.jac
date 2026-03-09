@@ -502,7 +502,7 @@ impl JacLangServer.get_completion_items_of(
 }
 
 """Return the type of an AST node if it has one."""
-impl JacLangServer.get_node_type(n: uni.AstNode) -> Optional[TypeBase] {
+impl JacLangServer.get_node_type(n: uni.UniNode) -> Optional[TypeBase] {
     if isinstance(n, uni.Expr) {
         typ = self.get_type_evaluator().get_type_of_expression(n);
         self.debug("found type " + str(typ) + " for expr " + str(n));
@@ -512,7 +512,7 @@ impl JacLangServer.get_node_type(n: uni.AstNode) -> Optional[TypeBase] {
     return None;
 }
 
-impl JacLangServer.get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList {
+impl JacLangServer.get_completion_of_node(nd: uni.UniNode) -> lspt.CompletionList {
     if (node_type := self.get_node_type(nd)) {
         self.debug("found type " + str(node_type));
         return self.get_completion_items_of(node_type);
@@ -526,7 +526,7 @@ impl JacLangServer.get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionLis
 
 impl JacLangServer.get_node_at_position(
     file_path: str, line: int, col: int
-) -> Optional[uni.AstNode] {
+) -> Optional[uni.UniNode] {
     if (ast := self.get_ast_of_file(file_path)) {
         for ast_node in ast._in_mod_nodes {
             if not isinstance(ast_node, uni.Token) {
@@ -540,7 +540,7 @@ impl JacLangServer.get_node_at_position(
     return None;
 }
 
-impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
+impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.UniNode] {
     with self._state_lock.read_lock() {
         if file_path in self.mod.hub {
             return self.mod.hub[file_path];
@@ -636,7 +636,7 @@ impl JacLangServer.debug(msg: str) -> None {
 
 impl JacLangServer.get_token_at_position(
     file_path: str, position: lspt.Position
-) -> Optional[uni.AstNode] {
+) -> Optional[uni.UniNode] {
     fs_path = uris.to_fs_path(file_path);
     with self._state_lock.read_lock() {
         if fs_path not in self.mod.hub {

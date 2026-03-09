@@ -13,6 +13,7 @@ import from jaclang.jac0core.jir {
     SEC_MTIR,
     SEC_LLVM_IR,
     SEC_INTEROP,
+    SEC_NATIVE_OBJ,
     FLAG_PRECOMPILED,
     get_module_cache_path,
     is_module_cache_valid,
@@ -251,32 +252,44 @@ def _recalculate_parents(nd: uni.UniNode) -> None {
     }
 }
 
-"""Coerce a .cl.jac module to client context."""
-def _coerce_client_module(module: uni.Module) -> None {
+"""Coerce a module to a specific code context by unfolding its target block type.
+
+Unfolds elements from `unfold_type` blocks, keeps `skip_types` blocks as-is,
+and sets `context` on all remaining ContextAwareNode elements.
+"""
+def _coerce_module(
+    module: uni.Module,
+    unfold_type: type,
+    skip_types: tuple,
+    context: CodeContext,
+    skip_token: (Tok | None) = None
+) -> None {
     elements: list[uni.ElementStmt] = [];
     for stmt in module.body {
-        if isinstance(stmt, uni.ClientBlock) {
+        if isinstance(stmt, unfold_type) {
             elements.extend(stmt.body);
-        } elif isinstance(stmt, uni.ServerBlock) {
+        } elif isinstance(stmt, skip_types) {
             elements.append(stmt);
         } elif isinstance(stmt, uni.ElementStmt) {
             elements.append(stmt);
         }
     }
     for elem in elements {
-        if isinstance(elem, uni.ServerBlock) {
+        if isinstance(elem, skip_types) {
             continue;
         }
         if isinstance(elem, uni.ContextAwareNode) {
-            context_token = elem._source_context_token();
-            if (context_token is not None and context_token.name == Tok.KW_SERVER) {
-                continue;
+            if skip_token is not None {
+                context_token = elem._source_context_token();
+                if (context_token is not None and context_token.name == skip_token) {
+                    continue;
+                }
             }
-            elem.code_context = CodeContext.CLIENT;
+            elem.code_context = context;
             if (isinstance(elem, uni.ModuleCode) and elem.body) {
                 for inner in elem.body {
                     if isinstance(inner, uni.ContextAwareNode) {
-                        inner.code_context = CodeContext.CLIENT;
+                        inner.code_context = context;
                     }
                 }
             }
@@ -290,80 +303,37 @@ def _coerce_client_module(module: uni.Module) -> None {
     new_kid.extend(module.body);
     module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
     _recalculate_parents(module);
+}
+
+"""Coerce a .cl.jac module to client context."""
+def _coerce_client_module(module: uni.Module) -> None {
+    _coerce_module(
+        module,
+        unfold_type=uni.ClientBlock,
+        skip_types=(uni.ServerBlock, ),
+        context=CodeContext.CLIENT,
+        skip_token=Tok.KW_SERVER
+    );
 }
 
 """Coerce a .sv.jac module to server context."""
 def _coerce_server_module(module: uni.Module) -> None {
-    elements: list[uni.ElementStmt] = [];
-    for stmt in module.body {
-        if isinstance(stmt, uni.ServerBlock) {
-            elements.extend(stmt.body);
-        } elif isinstance(stmt, uni.ClientBlock) {
-            elements.append(stmt);
-        } elif isinstance(stmt, uni.ElementStmt) {
-            elements.append(stmt);
-        }
-    }
-    for elem in elements {
-        if isinstance(elem, uni.ClientBlock) {
-            continue;
-        }
-        if isinstance(elem, uni.ContextAwareNode) {
-            elem.code_context = CodeContext.SERVER;
-            if (isinstance(elem, uni.ModuleCode) and elem.body) {
-                for inner in elem.body {
-                    if isinstance(inner, uni.ContextAwareNode) {
-                        inner.code_context = CodeContext.SERVER;
-                    }
-                }
-            }
-        }
-    }
-    module.body = elements;
-    new_kid: list[uni.UniNode] = [];
-    if module.doc {
-        new_kid.append(module.doc);
-    }
-    new_kid.extend(module.body);
-    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
-    _recalculate_parents(module);
+    _coerce_module(
+        module,
+        unfold_type=uni.ServerBlock,
+        skip_types=(uni.ClientBlock, ),
+        context=CodeContext.SERVER
+    );
 }
 
 """Coerce a .na.jac module to native context."""
 def _coerce_native_module(module: uni.Module) -> None {
-    elements: list[uni.ElementStmt] = [];
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            elements.extend(stmt.body);
-        } elif isinstance(stmt, (uni.ServerBlock, uni.ClientBlock)) {
-            elements.append(stmt);
-        } elif isinstance(stmt, uni.ElementStmt) {
-            elements.append(stmt);
-        }
-    }
-    for elem in elements {
-        if isinstance(elem, (uni.ServerBlock, uni.ClientBlock)) {
-            continue;
-        }
-        if isinstance(elem, uni.ContextAwareNode) {
-            elem.code_context = CodeContext.NATIVE;
-            if (isinstance(elem, uni.ModuleCode) and elem.body) {
-                for inner in elem.body {
-                    if isinstance(inner, uni.ContextAwareNode) {
-                        inner.code_context = CodeContext.NATIVE;
-                    }
-                }
-            }
-        }
-    }
-    module.body = elements;
-    new_kid: list[uni.UniNode] = [];
-    if module.doc {
-        new_kid.append(module.doc);
-    }
-    new_kid.extend(module.body);
-    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
-    _recalculate_parents(module);
+    _coerce_module(
+        module,
+        unfold_type=uni.NativeBlock,
+        skip_types=(uni.ServerBlock, uni.ClientBlock),
+        context=CodeContext.NATIVE
+    );
 }
 
 """Jac Compiler singleton.
@@ -419,6 +389,10 @@ obj JacCompiler {
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))] {
         actual_program = self._resolve_program(full_target, target_program);
+        if (full_target in actual_program._native_cache) {
+            gen = actual_program._native_cache[full_target];
+            return (gen.native_engine, gen.interop_py_funcs);
+        }
         if (full_target in actual_program.mod.hub) {
             mod = actual_program.mod.hub[full_target];
             native_engine = mod.gen.native_engine;
@@ -426,6 +400,22 @@ obj JacCompiler {
             return (native_engine, interop_py_funcs);
         }
         return (None, None);
+    }
+
+    """Get native module layout metadata for auto-marshalling."""
+    def get_native_layout(
+        full_target: str, target_program: JacProgram
+    ) -> (object | None) {
+        actual_program = self._resolve_program(full_target, target_program);
+        if (full_target in actual_program._native_cache) {
+            gen = actual_program._native_cache[full_target];
+            return getattr(gen, 'native_layout', None);
+        }
+        if (full_target in actual_program.mod.hub) {
+            mod = actual_program.mod.hub[full_target];
+            return getattr(mod.gen, 'native_layout', None);
+        }
+        return None;
     }
 
     """Get bytecode using 2-tier cache: in-memory -> JIR -> compile.
@@ -509,11 +499,23 @@ obj JacCompiler {
                         actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
                     );
                 }
-                llvm_ir = result.gen.llvm_ir;
-                if llvm_ir is not None {
-                    sections[SEC_LLVM_IR] = zlib.compress(
-                        str(llvm_ir).encode('utf-8'), 6
-                    );
+                # Prefer post-optimization bitcode (SEC_NATIVE_OBJ) over
+                # text IR (SEC_LLVM_IR). Bitcode is faster to parse and
+                # preserves optimization work done by NativeCompilePass.
+                native_bc = result.gen.native_bitcode;
+                if native_bc is not None {
+                    import struct as _struct;
+                    import llvmlite.binding as _llvm;
+                    triple = _llvm.get_default_triple().encode('utf-8');
+                    hdr = _struct.pack('<H', len(triple)) + triple;
+                    sections[SEC_NATIVE_OBJ] = hdr + native_bc;
+                } else {
+                    llvm_ir = result.gen.llvm_ir;
+                    if llvm_ir is not None {
+                        sections[SEC_LLVM_IR] = zlib.compress(
+                            str(llvm_ir).encode('utf-8'), 6
+                        );
+                    }
                 }
                 interop_dict = self._build_interop_dict(result);
                 if interop_dict {
@@ -569,16 +571,12 @@ obj JacCompiler {
             target_machine = target.create_target_machine();
             engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
             import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
-            """Minimal stub to hold native compilation artifacts.""";
-            obj _NativeModuleStub {
-                has gen: CodeGenTarget = CodeGenTarget();
-            }
-            stub_mod = _NativeModuleStub();
-            stub_mod.gen.native_engine = engine;
+            gen = CodeGenTarget();
+            gen.native_engine = engine;
             py_func_table: dict = {};
             callbacks_list: list = [];
-            stub_mod.gen.interop_py_funcs = py_func_table;
-            stub_mod.gen._interop_callbacks = callbacks_list;
+            gen.interop_py_funcs = py_func_table;
+            gen._interop_callbacks = callbacks_list;
             if cached_interop {
                 import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
                 import from jaclang.jac0core.interop_bridge { register_py_callbacks }
@@ -595,18 +593,93 @@ obj JacCompiler {
                     );
                     manifest.bindings[name] = binding;
                 }
-                stub_mod.gen.interop_manifest = manifest;
+                gen.interop_manifest = manifest;
                 if manifest.native_imports {
                     register_py_callbacks(manifest, py_func_table, callbacks_list);
                 }
             }
-            target_program.mod.hub[full_target] = stub_mod;
+            target_program._native_cache[full_target] = gen;
         } except Exception as e {
             import logging;
             logging.getLogger(__name__).debug(
                 f"Failed to load native module from cache: {e}"
             );
         }
+    }
+
+    """Load native module from cached post-optimization bitcode.
+
+        Parses the SEC_NATIVE_OBJ section which contains a platform header
+        followed by LLVM bitcode. Bitcode parsing is faster than text IR
+        parsing and the bitcode is already optimized.
+        """
+    def _load_native_from_bitcode(
+        full_target: str,
+        target_program: JacProgram,
+        section_data: bytes,
+        cached_interop: (dict | None)
+    ) -> None {
+        import struct as _struct;
+        import llvmlite.binding as llvm;
+        llvm.initialize_native_target();
+        llvm.initialize_native_asmprinter();
+        # Parse platform header: [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
+        if len(section_data) < 2 {
+            raise ValueError("SEC_NATIVE_OBJ section too short");
+        }
+        (triple_len, ) = _struct.unpack_from('<H', section_data, 0);
+        if len(section_data) < 2 + triple_len {
+            raise ValueError("SEC_NATIVE_OBJ triple truncated");
+        }
+        cached_triple = section_data[2:2 + triple_len].decode('utf-8');
+        current_triple = llvm.get_default_triple();
+        if cached_triple != current_triple {
+            raise ValueError(
+                f"Platform mismatch: cached={cached_triple}, current={current_triple}"
+            );
+        }
+        bitcode = section_data[2 + triple_len:];
+        # Load shared libraries for symbol resolution
+        import ctypes;
+        import ctypes.util;
+        libc_name = ctypes.util.find_library('c');
+        if libc_name {
+            llvm.load_library_permanently(libc_name);
+        }
+        # Parse bitcode and create engine (no optimization needed — already done)
+        llvm_mod = llvm.parse_bitcode(bitcode);
+        target = llvm.Target.from_default_triple();
+        target_machine = target.create_target_machine();
+        engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
+        import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
+        gen = CodeGenTarget();
+        gen.native_engine = engine;
+        py_func_table: dict = {};
+        callbacks_list: list = [];
+        gen.interop_py_funcs = py_func_table;
+        gen._interop_callbacks = callbacks_list;
+        if cached_interop {
+            import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+            import from jaclang.jac0core.interop_bridge { register_py_callbacks }
+            manifest = InteropManifest();
+            for (name, data) in cached_interop.get('bindings', {}).items() {
+                binding = InteropBinding(
+                    name=name,
+                    source_context=InteropContext(data['source_context']),
+                    callers={InteropContext(c) for c in data.get('callers', [])},
+                    ret_type=data.get('ret_type', 'int'),
+                    param_types=data.get('param_types', []),
+                    param_names=data.get('param_names', []),
+                    source_module=data.get('source_module')
+                );
+                manifest.bindings[name] = binding;
+            }
+            gen.interop_manifest = manifest;
+            if manifest.native_imports {
+                register_py_callbacks(manifest, py_func_table, callbacks_list);
+            }
+        }
+        target_program._native_cache[full_target] = gen;
     }
 
     """Restore side-effects (MTIR, native) from decoded JIR sections."""
@@ -623,19 +696,38 @@ obj JacCompiler {
                 ;
             }
         }
+        # Try fast path: post-optimization bitcode (SEC_NATIVE_OBJ)
+        native_obj_bytes = secs.get(SEC_NATIVE_OBJ);
+        if native_obj_bytes is not None {
+            try {
+                import json;
+                cached_interop: (dict | None) = None;
+                interop_bytes = secs.get(SEC_INTEROP);
+                if interop_bytes is not None {
+                    cached_interop = json.loads(interop_bytes.decode('utf-8'));
+                }
+                self._load_native_from_bitcode(
+                    full_target, actual_program, native_obj_bytes, cached_interop
+                );
+                return;
+            } except Exception {
+                ;
+            }
+        }
+        # Fallback: text IR (SEC_LLVM_IR)
         llvm_bytes = secs.get(SEC_LLVM_IR);
         if llvm_bytes is not None {
             try {
                 import zlib;
                 import json;
                 cached_ir = zlib.decompress(llvm_bytes).decode('utf-8');
-                cached_interop: (dict | None) = None;
-                interop_bytes = secs.get(SEC_INTEROP);
-                if interop_bytes is not None {
-                    cached_interop = json.loads(interop_bytes.decode('utf-8'));
+                cached_interop2: (dict | None) = None;
+                interop_bytes2 = secs.get(SEC_INTEROP);
+                if interop_bytes2 is not None {
+                    cached_interop2 = json.loads(interop_bytes2.decode('utf-8'));
                 }
                 self._load_native_from_cache(
-                    full_target, actual_program, cached_ir, cached_interop
+                    full_target, actual_program, cached_ir, cached_interop2
                 );
             } except Exception {
                 ;
@@ -873,48 +965,75 @@ obj JacCompiler {
         }
     }
 
-    """Format a Jac file."""
-    static def jac_file_formatter(
-        file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
+    """Parse a Jac file/string and optionally load annexes for tooling passes.
+
+    Shared scaffold for jac_file_formatter, jac_str_formatter, and jac_file_linter.
+    Returns (prog, current_mod) or (prog, None) if parse errors occurred.
+    """
+    static def _prepare_tool_program(
+        source_str: str,
+        file_path: str,
+        load_impl_annexes: bool = False,
+        load_test_annexes: bool = False
+    ) -> tuple[JacProgram, (uni.Module | None)] {
         import from jaclang.jac0core.program { JacProgram }
         import from jaclang.jac0core.parser { parse as rd_parse }
-        import from jaclang.jac0core.bccache { discover_annex_files }
         prog = JacProgram();
-        source_str = read_file_with_encoding(file_path);
         (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
         _recalculate_parents(current_mod);
         if len(parse_errors) > 0 or len(lex_errors) > 0 {
             prog.errors_had.extend(parse_errors);
             prog.errors_had.extend(lex_errors);
             prog.mod = uni.ProgramModule(main_mod=current_mod);
-            return prog;
+            return (prog, None);
         }
         # Parse-only annex loading: just parse .impl.jac/.test.jac files
         # without running SymTabBuildPass or any compilation passes.
         # This avoids cascading import resolution that would compile the
         # entire dependency graph for each formatted file.
-        if auto_lint {
-            for annex_path in discover_annex_files(file_path, '.impl.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
-                    _recalculate_parents(annex_mod);
-                    current_mod.impl_mod.append(annex_mod);
-                } except Exception {
-                    ;
+        if load_impl_annexes or load_test_annexes {
+            import from jaclang.jac0core.bccache { discover_annex_files }
+            if load_impl_annexes {
+                for annex_path in discover_annex_files(file_path, '.impl.jac') {
+                    try {
+                        annex_src = read_file_with_encoding(annex_path);
+                        (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                        _recalculate_parents(annex_mod);
+                        current_mod.impl_mod.append(annex_mod);
+                    } except Exception {
+                        ;
+                    }
                 }
             }
-            for annex_path in discover_annex_files(file_path, '.test.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
-                    _recalculate_parents(annex_mod);
-                    current_mod.test_mod.append(annex_mod);
-                } except Exception {
-                    ;
+            if load_test_annexes {
+                for annex_path in discover_annex_files(file_path, '.test.jac') {
+                    try {
+                        annex_src = read_file_with_encoding(annex_path);
+                        (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                        _recalculate_parents(annex_mod);
+                        current_mod.test_mod.append(annex_mod);
+                    } except Exception {
+                        ;
+                    }
                 }
             }
+        }
+        return (prog, current_mod);
+    }
+
+    """Format a Jac file."""
+    static def jac_file_formatter(
+        file_path: str, auto_lint: bool = False
+    ) -> JacProgram {
+        source_str = read_file_with_encoding(file_path);
+        (prog, current_mod) = JacCompiler._prepare_tool_program(
+            source_str,
+            file_path,
+            load_impl_annexes=auto_lint,
+            load_test_annexes=auto_lint
+        );
+        if current_mod is None {
+            return prog;
         }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
@@ -927,15 +1046,8 @@ obj JacCompiler {
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
-        import from jaclang.jac0core.program { JacProgram }
-        import from jaclang.jac0core.parser { parse as rd_parse }
-        prog = JacProgram();
-        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
-        _recalculate_parents(current_mod);
-        if len(parse_errors) > 0 or len(lex_errors) > 0 {
-            prog.errors_had.extend(parse_errors);
-            prog.errors_had.extend(lex_errors);
-            prog.mod = uni.ProgramModule(main_mod=current_mod);
+        (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
+        if current_mod is None {
             return prog;
         }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
@@ -947,23 +1059,12 @@ obj JacCompiler {
 
     """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram {
-        import from jaclang.jac0core.program { JacProgram }
-        import from jaclang.jac0core.parser { parse as rd_parse }
-        import from jaclang.jac0core.bccache { discover_annex_files }
-        prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
-        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
-        _recalculate_parents(current_mod);
-        # Parse-only annex loading (same as jac_file_formatter)
-        for annex_path in discover_annex_files(file_path, '.impl.jac') {
-            try {
-                annex_src = read_file_with_encoding(annex_path);
-                (annex_mod, _, _) = rd_parse(annex_src, annex_path);
-                _recalculate_parents(annex_mod);
-                current_mod.impl_mod.append(annex_mod);
-            } except Exception {
-                ;
-            }
+        (prog, current_mod) = JacCompiler._prepare_tool_program(
+            source_str, file_path, load_impl_annexes=True
+        );
+        if current_mod is None {
+            return prog;
         }
         for pass_cls in get_lint_sched() {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;

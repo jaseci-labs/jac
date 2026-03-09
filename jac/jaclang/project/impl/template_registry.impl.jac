@@ -25,15 +25,15 @@ impl TemplateRegistry.register(template_info: dict[str, Any]) -> None {
     import from jaclang.project.template_registry { ProjectTemplate }
     name = template_info.get("name");
     if not name {
-        raise ValueError("Template must have a 'name' field") ;
+        raise ValueError("Template must have a 'name' field");
     }
     description = template_info.get("description", "");
     if not description {
-        raise ValueError(f"Template '{name}' must have a 'description' field") ;
+        raise ValueError(f"Template '{name}' must have a 'description' field");
     }
     config = template_info.get("config");
     if not config {
-        raise ValueError(f"Template '{name}' must have a 'config' field") ;
+        raise ValueError(f"Template '{name}' must have a 'config' field");
     }
     # Create ProjectTemplate from the dict
     template = ProjectTemplate(
@@ -60,7 +60,7 @@ impl TemplateRegistry.get_default -> ProjectTemplate {
     import from jaclang.project.template_registry { ProjectTemplate }
     default_tmpl = self._templates.get("default");
     if default_tmpl is None {
-        raise RuntimeError("Default template not registered") ;
+        raise RuntimeError("Default template not registered");
     }
     return default_tmpl;
 }

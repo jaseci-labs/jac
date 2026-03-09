@@ -1,20 +1,9 @@
 """Global variable and enum registration for native compilation."""
 """Walk the module and register all native global variables."""
 impl NaIRGenPass._register_globals(module: uni.Module) -> None {
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.GlobalVars) {
-                    self._codegen_global_vars(inner);
-                }
-            }
-        } elif isinstance(stmt, uni.GlobalVars) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                self._codegen_global_vars(stmt);
-            }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.GlobalVars) {
+            self._codegen_global_vars(stmt);
         }
     }
 }
@@ -55,6 +44,15 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
+            # Track list element types for global lists
+            if isinstance(var_type, ir.PointerType) {
+                for (ename, ltype) in self.list_types.items() {
+                    if var_type == ltype.as_pointer() {
+                        self.var_list_elem_type[var_name] = ename;
+                        break;
+                    }
+                }
+            }
             # Track dict types for global dicts
             if isinstance(var_type, ir.PointerType) {
                 for (dict_key, dtype) in self.dict_types.items() {
@@ -131,20 +129,9 @@ impl NaIRGenPass._codegen_const_expr(
 
 """Walk the module and register all native enum types."""
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
-    for stmt in module.body {
-        if isinstance(stmt, uni.NativeBlock) {
-            for inner in stmt.body {
-                if isinstance(inner, uni.Enum) {
-                    self._codegen_enum(inner);
-                }
-            }
-        } elif isinstance(stmt, uni.Enum) {
-            if (
-                isinstance(stmt, uni.ContextAwareNode)
-                and stmt.code_context == CodeContext.NATIVE
-            ) {
-                self._codegen_enum(stmt);
-            }
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Enum) {
+            self._codegen_enum(stmt);
         }
     }
 }

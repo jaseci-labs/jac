@@ -52,9 +52,9 @@ def _wait_for_endpoint(
                 time.sleep(poll_interval);
             } elif exc.code == 500 {
                 exc.close();
-                raise ;
+                raise;
             } else {
-                raise ;
+                raise;
             }
         } except URLError as exc {
             last_err = exc;
@@ -69,7 +69,7 @@ def _wait_for_endpoint(
 
     raise TimeoutError(
         f"Timed out waiting for {url} to become available. Last error: {last_err}"
-    ) ;
+    );
 }
 
 test "all in one app endpoints" {

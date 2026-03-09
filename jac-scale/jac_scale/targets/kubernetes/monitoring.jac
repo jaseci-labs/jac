@@ -96,7 +96,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=prometheus_configmap
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -162,7 +162,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=prometheus_deployment
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -191,7 +191,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=prometheus_service
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -236,7 +236,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=sa_body
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -302,7 +302,7 @@ obj MonitoringDeployer {
             if e.status == 404 {
                 rbac_v1.create_cluster_role(body=cluster_role_body);
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -329,7 +329,7 @@ obj MonitoringDeployer {
             if e.status == 404 {
                 rbac_v1.create_cluster_role_binding(body=crb_body);
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -381,7 +381,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=ksm_deployment
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -417,7 +417,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=ksm_service
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -492,7 +492,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=ne_daemonset
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -526,7 +526,7 @@ obj MonitoringDeployer {
             if e.status == 404 {
                 core_v1.create_namespaced_service(namespace=namespace, body=ne_service);
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -576,7 +576,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_secret
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -618,7 +618,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_ds_configmap
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -660,7 +660,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_provider_configmap
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -957,7 +957,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_dashboard_configmap
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -1029,7 +1029,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_deployment
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -1087,7 +1087,7 @@ obj MonitoringDeployer {
                     namespace=namespace, body=grafana_service
                 );
             } else {
-                raise ;
+                raise;
             }
         }
 
@@ -1146,7 +1146,7 @@ obj MonitoringDeployer {
             );
         } except ApiException as e {
             if e.status != 404 {
-                raise ;
+                raise;
             }
         }
 
@@ -1166,7 +1166,7 @@ obj MonitoringDeployer {
             );
         } except ApiException as e {
             if e.status != 404 {
-                raise ;
+                raise;
             }
         }
         # ClusterRole and ClusterRoleBinding are cluster-scoped (no namespace param)
@@ -1175,14 +1175,14 @@ obj MonitoringDeployer {
             rbac_v1.delete_cluster_role(name=cluster_role_name);
         } except ApiException as e {
             if e.status != 404 {
-                raise ;
+                raise;
             }
         }
         try {
             rbac_v1.delete_cluster_role_binding(name=cluster_role_binding_name);
         } except ApiException as e {
             if e.status != 404 {
-                raise ;
+                raise;
             }
         }
         # node-exporter resources (DaemonSet)
@@ -1190,7 +1190,7 @@ obj MonitoringDeployer {
             apps_v1.delete_namespaced_daemon_set(name=ne_name, namespace=namespace);
         } except ApiException as e {
             if e.status != 404 {
-                raise ;
+                raise;
             }
         }
         delete_if_exists(
@@ -1219,7 +1219,7 @@ obj MonitoringDeployer {
                 core_v1.delete_namespaced_config_map(name=cm_name, namespace=namespace);
             } except ApiException as e {
                 if e.status != 404 {
-                    raise ;
+                    raise;
                 }
             }
         }

@@ -43,7 +43,7 @@ impl create_hpa(
         );
     } except ApiException as e {
         if (e.status != 409) {
-            raise ;
+            raise;
         }
     }
 }

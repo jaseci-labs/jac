@@ -34,6 +34,12 @@ impl LayoutPass.before_pass -> None {
             self._build_vtable_layout(name, arch_map);
         }
     }
+    # Step 6: Validate obj field types (CType struct contract)
+    for name in topo_order {
+        if name in arch_map {
+            self._validate_obj_fields(arch_map[name], arch_map);
+        }
+    }
     # Store registry on module (using setattr to avoid modifying CodeGenTarget)
     module.gen.layout_registry = self.registry;
 }
@@ -272,13 +278,15 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
             type_node = var.type_tag.tag;
             type_tag = var.type_tag.tag?.unparse() or str(var.type_tag.tag);
         }
+        is_fn_ptr = type_node is not None and isinstance(type_node, uni.FuncSignature);
         new_field = FieldInfo(
             name=fname,
             index=current_idx,
             type_tag=type_tag,
             type_node=type_node,
             default_expr=var.value,
-            owner=aname
+            owner=aname,
+            is_func_ptr=is_fn_ptr
         );
         fields.append(new_field);
         field_index[fname] = current_idx;
@@ -415,6 +423,144 @@ impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
             return True;
         }
         current = primary;
+    }
+    return False;
+}
+
+# --- CType struct contract: field type validation for obj archetypes ---
+"""Validate that all fields on an obj archetype use layout-compatible types.
+
+Layout-compatible types are:
+  - Primitive types (int, float, bool, str, bytes, i8..u64, f32, f64)
+  - Other obj archetypes (reference types, stored as pointers)
+  - Enum types (stored as i64 ordinals)
+  - Typed collections: list[T], dict[K,V], set[T] where T/K/V are layout-compatible
+  - Callable types with explicit signatures (function pointers)
+  - Optional types (T | None) where T is layout-compatible
+  - tuple types of layout-compatible elements
+
+Rejects: Any, untyped fields, dynamic types, class archetypes.
+"""
+impl LayoutPass._validate_obj_fields(
+    arch: uni.Archetype, arch_map: dict[str, uni.Archetype]
+) -> None {
+    # Only validate obj archetypes (not class, node, edge, walker)
+    if arch.arch_type {
+        tok_name = arch.arch_type.name;
+        if tok_name != Tok.KW_OBJECT.value {
+            return;
+        }
+    }
+    aname = arch.name.value if arch.name else "unknown";
+    for var in arch.get_has_vars() {
+        fname = var.name.value if var.name else "field";
+        # All obj fields MUST have a type annotation
+        if not var.type_tag or not var.type_tag.tag {
+            self.log_warning(
+                f"obj '{aname}' field '{fname}' has no type annotation. "
+                f"All obj fields require explicit types for CType struct layout."
+            );
+            continue;
+        }
+        type_node = var.type_tag.tag;
+        if not self._is_layout_compatible_type(type_node, arch_map) {
+            type_str = type_node?.unparse() or str(type_node);
+            self.log_warning(
+                f"obj '{aname}' field '{fname}' has type '{type_str}' which is not "
+                f"layout-compatible. obj fields must use primitive types, other obj "
+                f"types, enums, typed collections, or callable signatures."
+            );
+        }
+    }
+}
+
+"""Check if a type AST node represents a layout-compatible type."""
+impl LayoutPass._is_layout_compatible_type(
+    type_node: (uni.UniNode | None), arch_map: dict[str, uni.Archetype]
+) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { LAYOUT_COMPATIBLE_PRIMITIVES }
+    if type_node is None {
+        return False;
+    }
+    # Callable / function signature → function pointer
+    if isinstance(type_node, uni.FuncSignature) {
+        return True;
+    }
+    # Name node: check primitives, known archetypes, enums
+    if isinstance(type_node, uni.Name) {
+        tname = type_node.value;
+        if tname in LAYOUT_COMPATIBLE_PRIMITIVES {
+            return True;
+        }
+        if tname == "None" {
+            return True;
+        }
+        # Known archetype (obj) → pointer type
+        if tname in arch_map {
+            return True;
+        }
+        # Enum types are layout-compatible (stored as i64)
+        # Check if the name resolves to an Enum in the module
+        if tname in self.registry.layouts {
+            return True;
+        }
+        # Reject 'Any', 'any', 'object', and other dynamic types
+        return False;
+    }
+    # BuiltinType node
+    if uni?.BuiltinType and isinstance(type_node, uni.BuiltinType) {
+        tname = type_node.value;
+        return tname in LAYOUT_COMPATIBLE_PRIMITIVES;
+    }
+    # Union types: T | None (optional) - both sides must be layout-compatible
+    if isinstance(type_node, uni.BinaryExpr) {
+        op_val = getattr(type_node.op, 'value', '');
+        if op_val == "|" {
+            return (
+                self._is_layout_compatible_type(type_node.left, arch_map)
+                and self._is_layout_compatible_type(type_node.right, arch_map)
+            );
+        }
+    }
+    # Parameterized types: list[T], dict[K,V], set[T], tuple[T, ...]
+    if isinstance(type_node, uni.AtomTrailer) and not type_node.is_attr {
+        target_name: (str | None) = None;
+        if isinstance(type_node.target, uni.Name) {
+            target_name = type_node.target.value;
+        }
+        if target_name in {"list","dict","set","frozenset","tuple"} {
+            # Validate element types
+            if type_node?.right and type_node.right?.slices {
+                for sl in type_node.right.slices {
+                    elem = sl.start if sl?.start else sl;
+                    if isinstance(elem, uni.TupleVal) and elem.values {
+                        for tv in elem.values {
+                            if not self._is_layout_compatible_type(tv, arch_map) {
+                                return False;
+                            }
+                        }
+                    } else {
+                        if not self._is_layout_compatible_type(elem, arch_map) {
+                            return False;
+                        }
+                    }
+                }
+            }
+            return True;
+        }
+    }
+    # Token with .value matching a type name (fallback)
+    if type_node?.value and isinstance(getattr(type_node, "value", None), str) {
+        tname = type_node.value;
+        if tname in LAYOUT_COMPATIBLE_PRIMITIVES {
+            return True;
+        }
+        if tname in arch_map {
+            return True;
+        }
+        if tname in self.registry.layouts {
+            return True;
+        }
     }
     return False;
 }

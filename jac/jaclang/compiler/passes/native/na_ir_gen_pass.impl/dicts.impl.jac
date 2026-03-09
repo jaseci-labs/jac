@@ -81,40 +81,9 @@ impl NaIRGenPass._emit_dict_helpers(
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    # Allocate dict struct via rc_alloc (RC-managed)
-    null_ptr = ir.Constant(dict_ptr_type, None);
-    size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
-    struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
-    dict_ptr = b.bitcast(raw, dict_ptr_type, name="dict");
-    # len = 0
-    len_p = b.gep(dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
-    b.store(ir.Constant(i64, 0), len_p);
-    # cap = 8
-    cap_p = b.gep(dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
-    b.store(ir.Constant(i64, 8), cap_p);
-    # Allocate keys: 8 * sizeof(key) via plain malloc (internal, not RC-managed)
-    key_null = ir.Constant(key_type.as_pointer(), None);
-    key_gep = b.gep(key_null, [ir.Constant(i32, 1)], name="key.sizeof");
-    key_size = b.ptrtoint(key_gep, i64, name="key.size");
-    keys_bytes = b.mul(ir.Constant(i64, 8), key_size, name="keys.bytes");
-    keys_raw = b.call(malloc_fn, [keys_bytes], name="keys.raw");
-    keys = b.bitcast(keys_raw, key_type.as_pointer(), name="keys");
-    keys_p = b.gep(
-        dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
+    (dict_ptr, _, _) = self._emit_rc_alloc_container(
+        b, dict_ptr_type, [key_type, val_type]
     );
-    b.store(keys, keys_p);
-    # Allocate vals: 8 * sizeof(val) via plain malloc (internal, not RC-managed)
-    val_null = ir.Constant(val_type.as_pointer(), None);
-    val_gep = b.gep(val_null, [ir.Constant(i32, 1)], name="val.sizeof");
-    val_size = b.ptrtoint(val_gep, i64, name="val.size");
-    vals_bytes = b.mul(ir.Constant(i64, 8), val_size, name="vals.bytes");
-    vals_raw = b.call(malloc_fn, [vals_bytes], name="vals.raw");
-    vals = b.bitcast(vals_raw, val_type.as_pointer(), name="vals");
-    vals_p = b.gep(
-        dict_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="vals.ptr"
-    );
-    b.store(vals, vals_p);
     b.ret(dict_ptr);
     # --- __dict_set: set key=value (linear search, grow if needed) ---
     set_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type, key_type, val_type]);
@@ -159,36 +128,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_body = b.load(idx_alloca, name="idx.body");
     key_ptr = b.gep(keys_arr, [idx_body], name="key.ptr");
     key_val = b.load(key_ptr, name="key.val");
-    # Compare keys - use strcmp for string keys (i8*), memcmp for tuples
-    if isinstance(key_type, ir.IntType) {
-        key_eq = b.icmp_signed("==", key_val, k_arg, name="key.eq");
-    } elif key_type == i8_ptr {
-        # String comparison using strcmp
-        strcmp_fn = self._get_or_declare_extern(
-            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
-        );
-        cmp_result = b.call(strcmp_fn, [key_val, k_arg], name="strcmp");
-        key_eq = b.icmp_signed(
-            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
-        # Struct/tuple pointer - use memcmp for content comparison
-        memcmp_fn = self._get_or_declare_extern(
-            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
-        );
-        key_i8 = b.bitcast(key_val, i8_ptr, name="key.i8");
-        arg_i8 = b.bitcast(k_arg, i8_ptr, name="arg.i8");
-        cmp_result = b.call(
-            memcmp_fn, [key_i8, arg_i8, ir.Constant(i64, _key_sz)], name="memcmp"
-        );
-        key_eq = b.icmp_signed(
-            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) {
-        key_eq = b.icmp_unsigned("==", key_val, k_arg, name="key.eq");
-    } else {
-        key_eq = b.icmp_signed("==", key_val, k_arg, name="key.eq");
-    }
+    key_eq = self._emit_key_comparison(b, key_type, key_val, k_arg, _key_sz);
     b.cbranch(key_eq, found_bb, incr_bb);
     # Increment block
     b.position_at_end(incr_bb);
@@ -207,36 +147,23 @@ impl NaIRGenPass._emit_dict_helpers(
     cur_cap = b.load(cap_p2, name="cap");
     need_grow = b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
     b.cbranch(need_grow, grow_bb, append_bb);
-    # Grow block
+    # Grow block: grow both keys and vals arrays
     b.position_at_end(grow_bb);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_p2);
-    # Reallocate keys
-    key_null2 = ir.Constant(key_type.as_pointer(), None);
-    key_gep2 = b.gep(key_null2, [ir.Constant(i32, 1)], name="key.sizeof");
-    key_sz = b.ptrtoint(key_gep2, i64, name="key.size");
-    new_keys_bytes = b.mul(new_cap, key_sz, name="new.keys.bytes");
-    new_keys_raw = b.call(malloc_fn, [new_keys_bytes], name="new.keys.raw");
-    new_keys = b.bitcast(new_keys_raw, key_type.as_pointer(), name="new.keys");
-    old_keys_bytes = b.mul(cur_len, key_sz, name="old.keys.bytes");
-    old_keys_i8 = b.bitcast(keys_arr, i8_ptr, name="old.keys.i8");
-    new_keys_i8 = b.bitcast(new_keys, i8_ptr, name="new.keys.i8");
-    b.call(memcpy_fn, [new_keys_i8, old_keys_i8, old_keys_bytes]);
-    # Free old keys array (plain malloc'd, not RC-managed)
-    b.call(free_fn, [old_keys_i8]);
-    b.store(new_keys, keys_p2);
-    # Reallocate vals
+    self._emit_grow_array(b, keys_p2, key_type, cur_len, cap_p2, cur_cap);
+    # Reload cap after first grow (cap_p2 was updated)
+    new_cap = b.load(cap_p2, name="new.cap.reload");
+    # Grow vals — pass new_cap directly via a manual grow since cap is already doubled
     val_null2 = ir.Constant(val_type.as_pointer(), None);
     val_gep2 = b.gep(val_null2, [ir.Constant(i32, 1)], name="val.sizeof");
     val_sz = b.ptrtoint(val_gep2, i64, name="val.size");
     new_vals_bytes = b.mul(new_cap, val_sz, name="new.vals.bytes");
     new_vals_raw = b.call(malloc_fn, [new_vals_bytes], name="new.vals.raw");
     new_vals = b.bitcast(new_vals_raw, val_type.as_pointer(), name="new.vals");
+    old_vals = b.load(vals_p2, name="old.vals");
     old_vals_bytes = b.mul(cur_len, val_sz, name="old.vals.bytes");
-    old_vals_i8 = b.bitcast(vals_arr, i8_ptr, name="old.vals.i8");
+    old_vals_i8 = b.bitcast(old_vals, i8_ptr, name="old.vals.i8");
     new_vals_i8 = b.bitcast(new_vals, i8_ptr, name="new.vals.i8");
     b.call(memcpy_fn, [new_vals_i8, old_vals_i8, old_vals_bytes]);
-    # Free old vals array (plain malloc'd, not RC-managed)
     b.call(free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
@@ -293,35 +220,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bg = b.load(idx_alloca_g, name="idx.body");
     key_ptr_g = b.gep(keys_g, [idx_bg], name="key.ptr");
     key_val_g = b.load(key_ptr_g, name="key.val");
-    # Use strcmp for string keys, memcmp for tuples
-    if isinstance(key_type, ir.IntType) {
-        key_eq_g = b.icmp_signed("==", key_val_g, k_arg_g, name="key.eq");
-    } elif key_type == i8_ptr {
-        strcmp_fn = self._get_or_declare_extern(
-            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
-        );
-        cmp_result_g = b.call(strcmp_fn, [key_val_g, k_arg_g], name="strcmp");
-        key_eq_g = b.icmp_signed(
-            "==", cmp_result_g, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
-        # Struct/tuple pointer - use memcmp for content comparison
-        memcmp_fn = self._get_or_declare_extern(
-            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
-        );
-        key_i8_g = b.bitcast(key_val_g, i8_ptr, name="key.i8");
-        arg_i8_g = b.bitcast(k_arg_g, i8_ptr, name="arg.i8");
-        cmp_result_g = b.call(
-            memcmp_fn, [key_i8_g, arg_i8_g, ir.Constant(i64, _key_sz)], name="memcmp"
-        );
-        key_eq_g = b.icmp_signed(
-            "==", cmp_result_g, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) {
-        key_eq_g = b.icmp_unsigned("==", key_val_g, k_arg_g, name="key.eq");
-    } else {
-        key_eq_g = b.icmp_signed("==", key_val_g, k_arg_g, name="key.eq");
-    }
+    key_eq_g = self._emit_key_comparison(b, key_type, key_val_g, k_arg_g, _key_sz);
     b.cbranch(key_eq_g, found_g, incr_g);
     # Increment block - only reached when not found
     b.position_at_end(incr_g);
@@ -395,35 +294,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bc = b.load(idx_alloca_c, name="idx.body");
     key_ptr_c = b.gep(keys_c, [idx_bc], name="key.ptr");
     key_val_c = b.load(key_ptr_c, name="key.val");
-    # Use strcmp for string keys, memcmp for tuples
-    if isinstance(key_type, ir.IntType) {
-        key_eq_c = b.icmp_signed("==", key_val_c, k_arg_c, name="key.eq");
-    } elif key_type == i8_ptr {
-        strcmp_fn = self._get_or_declare_extern(
-            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
-        );
-        cmp_result_c = b.call(strcmp_fn, [key_val_c, k_arg_c], name="strcmp");
-        key_eq_c = b.icmp_signed(
-            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) and _key_sz > 0 {
-        # Struct/tuple pointer - use memcmp for content comparison
-        memcmp_fn = self._get_or_declare_extern(
-            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
-        );
-        key_i8_c = b.bitcast(key_val_c, i8_ptr, name="key.i8");
-        arg_i8_c = b.bitcast(k_arg_c, i8_ptr, name="arg.i8");
-        cmp_result_c = b.call(
-            memcmp_fn, [key_i8_c, arg_i8_c, ir.Constant(i64, _key_sz)], name="memcmp"
-        );
-        key_eq_c = b.icmp_signed(
-            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="key.eq"
-        );
-    } elif isinstance(key_type, ir.PointerType) {
-        key_eq_c = b.icmp_unsigned("==", key_val_c, k_arg_c, name="key.eq");
-    } else {
-        key_eq_c = b.icmp_signed("==", key_val_c, k_arg_c, name="key.eq");
-    }
+    key_eq_c = self._emit_key_comparison(b, key_type, key_val_c, k_arg_c, _key_sz);
     b.cbranch(key_eq_c, found_c, loop_cond_c);
     b.position_before(b.block.terminator);
     next_idx_c = b.add(idx_bc, ir.Constant(i64, 1), name="next.idx");
@@ -483,96 +354,14 @@ impl NaIRGenPass._emit_dict_helpers(
     );
     release_fn.linkage = "private";
     release_fn.args[0].name = "dict";
-    entry_bb = release_fn.append_basic_block("entry");
-    dec_bb = release_fn.append_basic_block("dec");
-    free_bb = release_fn.append_basic_block("do_free");
-    done_bb = release_fn.append_basic_block("done");
-    b = ir.IRBuilder(entry_bb);
-    is_null = b.icmp_unsigned(
-        "==", release_fn.args[0], ir.Constant(dict_ptr_type, None), name="is.null"
-    );
-    b.cbranch(is_null, done_bb, dec_bb);
-    b = ir.IRBuilder(dec_bb);
-    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
-    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
-    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
-    old_rc = b.load(rc_ptr_r, name="old.rc");
-    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
-    b.store(new_rc, rc_ptr_r);
-    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
-    b.cbranch(is_zero, free_bb, done_bb);
-    b = ir.IRBuilder(free_bb);
-    # Release pointer-typed keys if applicable
+    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, dict_ptr_type);
+    # Release pointer-typed keys if applicable (field index 2)
     if isinstance(key_type, ir.PointerType) {
-        len_p_dk = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
-            name="len.ptr.dk"
-        );
-        cur_len_dk = b.load(len_p_dk, name="len.dk");
-        keys_p_dk = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-            name="keys.ptr.dk"
-        );
-        keys_dk = b.load(keys_p_dk, name="keys.dk");
-        loop_alloca_k = b.alloca(i64, name="loop.k");
-        b.store(ir.Constant(i64, 0), loop_alloca_k);
-        lcond_k = release_fn.append_basic_block("loop.cond.k");
-        lbody_k = release_fn.append_basic_block("loop.body.k");
-        lend_k = release_fn.append_basic_block("loop.end.k");
-        b.branch(lcond_k);
-        b = ir.IRBuilder(lcond_k);
-        ki = b.load(loop_alloca_k, name="ki");
-        b.cbranch(b.icmp_unsigned("<", ki, cur_len_dk, name="kcmp"), lbody_k, lend_k);
-        b = ir.IRBuilder(lbody_k);
-        kp = b.gep(keys_dk, [b.load(loop_alloca_k, name="ki2")], name="k.ptr");
-        kv = b.load(kp, name="k.val");
-        b.call(self.rc_release_simple_fn, [b.bitcast(kv, i8_ptr, name="k.cast")]);
-        b.store(
-            b.add(
-                b.load(loop_alloca_k, name="ki3"), ir.Constant(i64, 1), name="kinc"
-            ),
-            loop_alloca_k
-        );
-        b.branch(lcond_k);
-        b = ir.IRBuilder(lend_k);
+        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
     }
-    # Release pointer-typed vals if applicable
+    # Release pointer-typed vals if applicable (field index 3)
     if isinstance(val_type, ir.PointerType) {
-        len_p_dv = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
-            name="len.ptr.dv"
-        );
-        cur_len_dv = b.load(len_p_dv, name="len.dv");
-        vals_p_dv = b.gep(
-            release_fn.args[0],
-            [ir.Constant(i32, 0), ir.Constant(i32, 3)],
-            name="vals.ptr.dv"
-        );
-        vals_dv = b.load(vals_p_dv, name="vals.dv");
-        loop_alloca_v = b.alloca(i64, name="loop.v");
-        b.store(ir.Constant(i64, 0), loop_alloca_v);
-        lcond_v = release_fn.append_basic_block("loop.cond.v");
-        lbody_v = release_fn.append_basic_block("loop.body.v");
-        lend_v = release_fn.append_basic_block("loop.end.v");
-        b.branch(lcond_v);
-        b = ir.IRBuilder(lcond_v);
-        vi = b.load(loop_alloca_v, name="vi");
-        b.cbranch(b.icmp_unsigned("<", vi, cur_len_dv, name="vcmp"), lbody_v, lend_v);
-        b = ir.IRBuilder(lbody_v);
-        vp = b.gep(vals_dv, [b.load(loop_alloca_v, name="vi2")], name="v.ptr");
-        vv = b.load(vp, name="v.val");
-        b.call(self.rc_release_simple_fn, [b.bitcast(vv, i8_ptr, name="v.cast")]);
-        b.store(
-            b.add(
-                b.load(loop_alloca_v, name="vi3"), ir.Constant(i64, 1), name="vinc"
-            ),
-            loop_alloca_v
-        );
-        b.branch(lcond_v);
-        b = ir.IRBuilder(lend_v);
+        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 3);
     }
     # Free keys array
     keys_p_f = b.gep(

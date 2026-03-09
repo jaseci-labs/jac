@@ -7,7 +7,7 @@ def get_wikipedia_summary(title: str) -> str {
         options = wikipedia.search(title, results=5, suggestion=True);
         raise Exception(
             f"Could not get summary for {title}. Similar titles: {options}"
-        ) ;
+        );
     }
 }
 

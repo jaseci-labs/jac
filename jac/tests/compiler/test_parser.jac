@@ -495,6 +495,31 @@ def parser_file_test(rel_path: str) -> None {
     }
 }
 
+test "decorated test blocks" {
+    # Single decorator on test
+    source = '@my_dec\ntest "decorated" { assert True; }';
+    mod = JacProgram().parse_str(source, "test.jac");
+    t = mod.body[0];
+    assert isinstance(t, uni.Test);
+    assert t.decorators is not None;
+    assert len(t.decorators) == 1;
+    assert t.description is not None;
+
+    # Multiple decorators on test
+    source = '@dec1\n@dec2(42)\ntest "multi" { assert True; }';
+    mod = JacProgram().parse_str(source, "test.jac");
+    t = mod.body[0];
+    assert isinstance(t, uni.Test);
+    assert len(t.decorators) == 2;
+
+    # No decorator still works
+    source = 'test "plain" { assert True; }';
+    mod = JacProgram().parse_str(source, "test.jac");
+    t = mod.body[0];
+    assert isinstance(t, uni.Test);
+    assert not t.decorators;
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem

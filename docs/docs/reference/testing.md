@@ -1,6 +1,11 @@
 # Testing Reference
 
-Complete reference for writing and running tests in Jac.
+Jac has first-class support for testing built directly into the language. Instead of importing a test framework or following naming conventions, you write `test "description" { ... }` blocks right alongside your code. These blocks are ignored during normal execution (`jac run`) and only run when you invoke `jac test`.
+
+Tests in Jac use the standard `assert` statement for all checks. Each test block runs in its own isolated context, so state created in one test (including graph nodes connected to `root`) doesn't leak into another. This isolation means you can test walkers, graph operations, and node behaviors without worrying about test ordering or cleanup -- each test gets a fresh graph.
+
+!!! tip "Graph state and tests"
+    If you encounter `NodeAnchor` errors when re-running tests, clear stale persisted state with `jac clean --all` before retrying. The local storage persists graph data between runs, but test isolation resets the in-memory graph for each test block.
 
 ---
 

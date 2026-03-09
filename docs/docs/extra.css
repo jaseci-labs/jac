@@ -33,87 +33,237 @@
     color: #ffab40 !important;
 }
 
+/* ── Jac Code Block Component ── */
 .code-block {
-    margin: 1em 0;
-    padding: 1em;
-    background: #282c34;
-    color: #abb2bf;
-    border-radius: 4px;
+    margin: 1.2em 0;
+    padding: 0;
+    background: #0d1117;
+    color: #c9d1d9;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.code-block.jcb-running {
+    border-color: #f0883e;
+}
 
-.code-block .run-code-btn,
-.code-block .dot-code-btn,
-.code-block .serve-code-btn {
-    margin-top: 0.5em;
-    padding: 0.4em 1.2em;
-    background: linear-gradient(90deg, #ff9800 0%, #ffab40 100%);
-    color: #1e1e1e;
-    border: none;
+/* Loading placeholder */
+.jcb-loading {
+    height: 3px;
+    overflow: hidden;
+}
+
+.jcb-loading-bar {
+    height: 100%;
+    width: 40%;
+    background: #f0883e;
     border-radius: 3px;
-    font-weight: 600;
-    font-size: 1em;
+    animation: jcb-slide 1s ease-in-out infinite;
+}
+
+@keyframes jcb-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+/* Editor wrapper */
+.jcb-editor-wrap {
+    position: relative;
+}
+
+.jcb-editor-wrap .jac-code {
+    border: none !important;
+}
+
+/* Thin progress bar below editor */
+.jcb-progress {
+    height: 2px;
+    width: 100%;
+    background: #161b22;
+    position: relative;
+    overflow: hidden;
+}
+
+.jcb-progress::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, #f0883e, transparent);
+    animation: jcb-slide 1.2s ease-in-out infinite;
+}
+
+/* Action buttons row */
+.jcb-actions {
+    display: flex;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #010409;
+    border-top: 1px solid #21262d;
+}
+
+.jcb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    border: 1px solid #30363d;
+    border-radius: 6px;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    transition: all 0.12s ease;
     outline: none;
-    letter-spacing: 0.03em;
+    line-height: 18px;
+    background: transparent;
+    color: #c9d1d9;
 }
 
-.code-block .run-code-btn:hover,
-.code-block .run-code-btn:focus {
-    background: linear-gradient(90deg, #ffa726 0%, #ffd180 100%);
-    color: #111;
-    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
+.jcb-btn:hover:not(:disabled) {
+    background: #21262d;
+    border-color: #8b949e;
+    color: #f0f6fc;
 }
 
-.code-block .serve-code-btn:hover,
-.code-block .serve-code-btn:focus {
-    background: linear-gradient(90deg, #29b6f6 0%, #4fc3f7 100%);
-    color: #111;
-    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
+.jcb-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
 }
 
-.code-block .dot-code-btn:hover,
-.code-block .dot-code-btn:focus {
-    background: linear-gradient(90deg, #b859e0ff 0%, #df76f1ff 100%);
-    color: #111;
-    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
+/* Color accents on hover */
+.jcb-btn--run:hover:not(:disabled) {
+    color: #3fb950;
+    border-color: #238636;
+    background: rgba(35, 134, 42, 0.1);
 }
 
-.code-block .run-code-btn:active {
-    background: #ff9800;
-    color: #fff;
+.jcb-btn--serve:hover:not(:disabled) {
+    color: #58a6ff;
+    border-color: #1f6feb;
+    background: rgba(31, 111, 235, 0.1);
 }
 
-.code-block .serve-code-btn:active {
-    background: #0288d1;
-    color: #fff;
+.jcb-btn--graph:hover:not(:disabled) {
+    color: #bc8cff;
+    border-color: #8957e5;
+    background: rgba(137, 87, 229, 0.1);
 }
 
-.code-block .dot-code-btn:active {
-    background: #7b1fa2;
-    color: #fff;
+/* Running state button highlight */
+.jcb-running .jcb-btn--run,
+.jcb-running .jcb-btn--serve,
+.jcb-running .jcb-btn--graph {
+    border-color: #30363d;
+}
+
+/* Output area */
+.jcb-output-wrap {
+    border-top: 1px solid #21262d;
 }
 
 .code-block .code-output {
-    margin-top: 0.5em;
-    background: #1e1e1e;
-    color: #98c379;
-    padding: 0.5em;
-    border-radius: 4px;
-    font-family: monospace;
-    max-height: 1000px;
+    margin: 0;
+    background: #010409;
+    color: #7ee787;
+    padding: 10px 14px;
+    font-family: 'Fira Mono', 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    max-height: 400px;
     overflow: auto;
-    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s;
-    font-size: 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-radius: 0;
+    border: none;
 }
 
-.code-block .code-output[style*="display: none"] {
-    max-height: 0;
-    padding: 0;
-    overflow: hidden;
-    margin-top: 0;
+.code-block .code-output:empty::before {
+    content: " ";
+    display: block;
+    height: 1.5em;
+}
+
+/* Input dialog */
+.jcb-input-dialog {
+    padding: 10px 14px;
+    background: #0d1117;
+    border-top: 1px solid #21262d;
+}
+
+.jcb-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.jcb-input-dialog .input-prompt {
+    color: #c9d1d9;
+    font-family: 'Fira Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.jcb-input-dialog .user-input {
+    flex: 1;
+    padding: 5px 10px;
+    background: #010409;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    border-radius: 6px;
+    font-family: 'Fira Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.jcb-input-dialog .user-input:focus {
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+.jcb-input-submit,
+.jcb-input-cancel {
+    padding: 5px 14px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    background: transparent;
+    color: #c9d1d9;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.jcb-input-submit:hover {
+    color: #3fb950;
+    border-color: #238636;
+    background: rgba(35, 134, 42, 0.1);
+}
+
+.jcb-input-cancel:hover {
+    color: #f85149;
+    border-color: #da3633;
+    background: rgba(218, 54, 51, 0.1);
+}
+
+/* Graph container */
+.code-block .graph-container {
+    margin: 0;
+    border-top: 1px solid #21262d;
+    border-radius: 0;
+    overflow: auto;
+    background: #ffffff;
+    padding: 4px;
+    height: 340px;
+    max-height: 800px;
 }
 
 body,

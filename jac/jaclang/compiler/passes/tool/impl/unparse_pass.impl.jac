@@ -5,6 +5,17 @@ impl UnparsePass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) ->
     super.init(ir_in, prog, cancel_token);
 }
 
+"""Join child nodes' gen.jac values with a separator."""
+def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
+    return sep.join(
+        [
+            k.gen.jac
+            for k in nd.kid
+            if k and k.gen.jac
+        ]
+    );
+}
+
 """Comma-separated join of nodes' gen.jac values."""
 impl UnparsePass._comma_sep(nodes: list) -> str {
     return ", ".join(
@@ -175,6 +186,10 @@ impl UnparsePass.exit_test(nd: uni.Test) -> None {
     if nd.doc {
         parts.append(nd.doc.gen.jac);
     }
+    if nd.decorators {
+        decs = " @".join([d.gen.jac for d in nd.decorators]);
+        parts.append("@" + decs);
+    }
     parts.append("test");
     if nd.description {
         parts.append(nd.description.gen.jac);
@@ -339,7 +354,7 @@ impl UnparsePass.exit_impl_def(nd: uni.ImplDef) -> None {
 """SemDef definition."""
 impl UnparsePass.exit_sem_def(nd: uni.SemDef) -> None {
     target_str = ".".join([t.gen.jac for t in nd.target]);
-    nd.gen.jac = "sem " + target_str + " = " + nd.value.gen.jac + " ;";
+    nd.gen.jac = "sem " + target_str + " = " + nd.value.gen.jac + ";";
 }
 
 """Enum definition."""
@@ -565,7 +580,7 @@ impl UnparsePass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     if nd.expr {
         result = nd.expr.gen.jac;
     }
-    nd.gen.jac = result + " ;";
+    nd.gen.jac = result + ";";
 }
 
 """TryStmt: try { body }."""
@@ -686,8 +701,7 @@ impl UnparsePass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         parts.append("from");
         parts.append(nd.from_target.gen.jac);
     }
-    parts.append(";");
-    nd.gen.jac = " ".join(parts);
+    nd.gen.jac = " ".join(parts) + ";";
 }
 
 """AssertStmt: assert expr [, msg] ;"""
@@ -697,23 +711,22 @@ impl UnparsePass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
         parts.append(",");
         parts.append(nd.error_msg.gen.jac);
     }
-    parts.append(";");
-    nd.gen.jac = " ".join(parts);
+    nd.gen.jac = " ".join(parts) + ";";
 }
 
 """CtrlStmt: break/continue ;"""
 impl UnparsePass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
-    nd.gen.jac = str(nd.ctrl.value) + " ;";
+    nd.gen.jac = str(nd.ctrl.value) + ";";
 }
 
 """DeleteStmt: delete targets ;"""
 impl UnparsePass.exit_delete_stmt(nd: uni.DeleteStmt) -> None {
-    nd.gen.jac = "delete " + nd.target.gen.jac + " ;";
+    nd.gen.jac = "delete " + nd.target.gen.jac + ";";
 }
 
 """ReportStmt: report expr ;"""
 impl UnparsePass.exit_report_stmt(nd: uni.ReportStmt) -> None {
-    nd.gen.jac = "report " + nd.expr.gen.jac + " ;";
+    nd.gen.jac = "report " + nd.expr.gen.jac + ";";
 }
 
 """ReturnStmt: return [expr] ;"""
@@ -753,12 +766,12 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
 
 """GlobalStmt: global names ;"""
 impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    nd.gen.jac = "global " + self._comma_sep(nd.target) + " ;";
+    nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
 }
 
 """NonLocalStmt: nonlocal names ;"""
 impl UnparsePass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + " ;";
+    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + ";";
     # ── Assignments ──────────────────────────────────────────────────────
 }
 
@@ -786,7 +799,7 @@ impl UnparsePass.exit_assignment(nd: uni.Assignment) -> None {
         isinstance(nd.parent, uni.IterForStmt)
         and (nd == nd.parent.iter or nd == nd.parent.count_by)
     ) {
-        result = result + " ;";
+        result = result + ";";
     }
     nd.gen.jac = result;
     # ── Expressions ──────────────────────────────────────────────────────
@@ -1039,24 +1052,12 @@ impl UnparsePass.exit_index_slice(nd: uni.IndexSlice) -> None {
 
 """EdgeRefTrailer: join kid list (complex edge syntax)."""
 impl UnparsePass.exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """EdgeOpRef: join kid list (complex edge syntax)."""
 impl UnparsePass.exit_edge_op_ref(nd: uni.EdgeOpRef) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """DisconnectOp: delete edge_spec."""
@@ -1066,13 +1067,7 @@ impl UnparsePass.exit_disconnect_op(nd: uni.DisconnectOp) -> None {
 
 """ConnectOp: join kid list (complex edge direction syntax)."""
 impl UnparsePass.exit_connect_op(nd: uni.ConnectOp) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
 }
 
 """FilterCompr: produce (?:Type, cmp1, cmp2) or edge-inner Type:cmp syntax."""
@@ -1108,25 +1103,13 @@ impl UnparsePass.exit_filter_compr(nd: uni.FilterCompr) -> None {
 
 """AssignCompr: join kid list."""
 impl UnparsePass.exit_assign_compr(nd: uni.AssignCompr) -> None {
-    nd.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd);
     # ── JSX ──────────────────────────────────────────────────────────────
 }
 
 """JsxElement: join kid list (complex JSX syntax)."""
 impl UnparsePass.exit_jsx_element(nd: uni.JsxElement) -> None {
-    nd.gen.jac = "".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd, sep="");
 }
 
 """JsxElementName."""
@@ -1160,13 +1143,7 @@ impl UnparsePass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
 
 """JsxText: join kid list."""
 impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
-    nd.gen.jac = "".join(
-        [
-            k.gen.jac
-            for k in nd.kid
-            if k and k.gen.jac
-        ]
-    );
+    nd.gen.jac = _join_kids(nd, sep="");
 }
 
 """JsxExpression."""

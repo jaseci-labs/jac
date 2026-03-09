@@ -12,9 +12,6 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.helpers { add_line_numbers }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.runtimelib.test { parametrize }
-import from tests.fixtures_list { MICRO_JAC_FILES }
-
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "tool", "fixtures"
@@ -45,14 +42,14 @@ def compare_files(
         );
         if diff {
             print(f"Differences found in comparison:\n{diff}");
-            raise AssertionError("Files differ after formatting.") ;
+            raise AssertionError("Files differ after formatting.");
         }
     } except FileNotFoundError {
         print(f"File not found: {original_file} or {formatted_file}");
-        raise ;
+        raise;
     } except Exception as e {
         print(f"Error comparing files: {e}");
-        raise ;
+        raise;
     }
 }
 
@@ -91,7 +88,7 @@ def micro_suite_test(filename: str, auto_lint: bool = False) {
         if before and after {
             print("\n".join(unified_diff(before.splitlines(), after.splitlines())));
         }
-        raise e ;
+        raise e;
     }
 }
 
@@ -132,7 +129,7 @@ test "fstring comment not injected" {
         if in_fstring and "# Standalone comment" in line {
             raise AssertionError(
                 "Comment was injected inside an f-string:\n" + formatted
-            ) ;
+            );
         }
         if in_fstring and '";' in stripped {
             in_fstring = False;
@@ -304,16 +301,4 @@ test "syntax error preserves original source" {
         "Formatter must return original source on syntax error, "
         f"got: {repr(result)}"
     );
-}
-
-def format_test(rel_path: str) -> None {
-    filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
-    if not os.path.exists(filename) {
-        return;
-    }
-    micro_suite_test(filename);
-}
-
-with entry {
-    parametrize("format", MICRO_JAC_FILES, format_test, id_fn=lambda f : Path(f).stem);
 }

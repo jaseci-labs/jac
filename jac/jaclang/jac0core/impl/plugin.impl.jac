@@ -205,12 +205,12 @@ impl PluginManager.load_setuptools_entrypoints(group: str) -> int {
     return count;
 }
 
-@ property
+@property
 impl _DistFacade.project_name -> str {
     return self._dist.metadata['Name'];
 }
 
-@ property
+@property
 impl _DistFacade.version -> str {
     return self._dist.metadata.get('Version', '0.0.0');
 }

@@ -104,7 +104,7 @@ obj JacScaleTestRunner {
                 raise RuntimeError(
                     f"Server process terminated unexpectedly.\n"
                     f"STDOUT: {stdout}\nSTDERR: {stderr}"
-                ) ;
+                );
             }
 
             try {
@@ -123,7 +123,7 @@ obj JacScaleTestRunner {
             (stdout, stderr) = self.server_process.communicate(timeout=5);
             raise RuntimeError(
                 f"Server failed to become ready.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-            ) ;
+            );
         }
     }
 

@@ -44,7 +44,7 @@ impl JacTestClient.from_file(
 ) -> JacTestClient {
     resolved_path = Path(jac_file).resolve();
     if not resolved_path.exists() {
-        raise FileNotFoundError(f"Jac file not found: {jac_file}") ;
+        raise FileNotFoundError(f"Jac file not found: {jac_file}");
     }
     effective_base_path = base_path or str(resolved_path.parent);
     return JacTestClient(_jac_file=str(resolved_path), _base_path=effective_base_path);
@@ -237,7 +237,7 @@ impl JacTestClient._execute_request(
     } elif method == "OPTIONS" {
         handler.do_OPTIONS();
     } else {
-        raise ValueError(f"Unsupported method: {method}") ;
+        raise ValueError(f"Unsupported method: {method}");
     }
     # Parse response
     return self._parse_response(wfile.getvalue());

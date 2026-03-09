@@ -6,7 +6,7 @@ impl PackageInstaller.list_packages(
     if not self.config_file.exists() {
         raise ClientBundleError(
             f'jac.toml not found at {self.config_file}. Run "jac init" first.'
-        ) ;
+        );
     }
     config = self.config_loader.load();
     package_config = config.get('package', {});
@@ -23,13 +23,13 @@ impl PackageInstaller.uninstall_package(
     if not self.config_file.exists() {
         raise ClientBundleError(
             f'jac.toml not found at {self.config_file}. Run "jac init" first.'
-        ) ;
+        );
     }
     # Remove the dependency using JacClientConfig
     result = self.config_loader.remove_dependency(package_name, is_dev);
     if not result {
         deps_key = 'dev-dependencies' if is_dev else 'dependencies';
-        raise ClientBundleError(f'Package "{package_name}" not found in {deps_key}') ;
+        raise ClientBundleError(f'Package "{package_name}" not found in {deps_key}');
     }
     # Save the updated config
     self.config_loader.save();
@@ -45,7 +45,7 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
     if not ensure_bun_available() {
         raise ClientBundleError(
             'Bun is required. Install manually: https://bun.sh'
-        ) from None ;
+        ) from None;
     }
     # Regenerate package.json from updated jac.toml
     bundler = ViteBundler(self.project_dir);
@@ -59,7 +59,7 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
             ['bun', 'install'], cwd=self.project_dir, check=False, text=True
         );
         if result.returncode != 0 {
-            raise ClientBundleError('Failed to install packages (see output above)') ;
+            raise ClientBundleError('Failed to install packages (see output above)');
         }
         console.print("\n  ✔ Packages installed");
     } finally {
@@ -73,7 +73,7 @@ impl PackageInstaller.install_all(self: PackageInstaller) -> None {
     if not self.config_file.exists() {
         raise ClientBundleError(
             f'jac.toml not found at {self.config_file}. Run "jac init" first.'
-        ) ;
+        );
     }
     self._regenerate_and_install();
 }
@@ -88,7 +88,7 @@ impl PackageInstaller.install_package(
     if not self.config_file.exists() {
         raise ClientBundleError(
             f'jac.toml not found at {self.config_file}. Run "jac init" first.'
-        ) ;
+        );
     }
     # Add package with version (default to latest if not specified)
     package_version = version or 'latest';

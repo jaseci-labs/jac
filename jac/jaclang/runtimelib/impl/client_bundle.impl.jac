@@ -13,7 +13,7 @@ impl ClientBundleBuilder.build(
     if not module?.__file__ {
         raise ClientBundleError(
             f"Module '{module.__name__}' has no __file__ attribute"
-        ) ;
+        );
     }
     module_path = module.__file__.replace('.py', '.jac');
     source_path = Path(module_path).resolve();
@@ -242,7 +242,7 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module]
         formatted = '\n'.join(str(err) for err in new_errors);
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
-        ) ;
+        );
     }
     return ((mod.gen.js or ''), mod);
 }

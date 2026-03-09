@@ -330,7 +330,6 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     struct_ptr_type = struct_type.as_pointer();
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
     # Create the destructor function
     release_fnty = ir.FunctionType(ir.VoidType(), [struct_ptr_type]);
     release_fn = ir.Function(
@@ -338,28 +337,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     );
     release_fn.linkage = "private";
     release_fn.args[0].name = "obj";
-    entry_bb = release_fn.append_basic_block("entry");
-    dec_bb = release_fn.append_basic_block("dec");
-    free_bb = release_fn.append_basic_block("do_free");
-    done_bb = release_fn.append_basic_block("done");
-    b = ir.IRBuilder(entry_bb);
-    # Null check
-    is_null = b.icmp_unsigned(
-        "==", release_fn.args[0], ir.Constant(struct_ptr_type, None), name="is.null"
-    );
-    b.cbranch(is_null, done_bb, dec_bb);
-    # Decrement refcount
-    b = ir.IRBuilder(dec_bb);
-    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
-    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
-    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
-    old_rc = b.load(rc_ptr_r, name="old.rc");
-    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
-    b.store(new_rc, rc_ptr_r);
-    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
-    b.cbranch(is_zero, free_bb, done_bb);
-    # Free block: release pointer-typed fields, then free struct
-    b = ir.IRBuilder(free_bb);
+    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
     for (fname, ftype) in field_types.items() {
         if isinstance(ftype, ir.PointerType) {
             idx = field_indices.get(fname, -1);

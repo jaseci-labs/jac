@@ -72,7 +72,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def _do_type_check(file_uri: str) -> None;
     def get_token_at_position(
         file_path: str, position: lspt.Position
-    ) -> Optional[uni.AstNode];
+    ) -> Optional[uni.UniNode];
 
     def debug(msg: str) -> None;
     def wait_till_idle_sync(file_uri: str) -> None;
@@ -80,13 +80,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
         file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
     ) -> lspt.CompletionList;
 
-    def get_ast_of_file(file_path: str) -> Optional[uni.AstNode];
+    def get_ast_of_file(file_path: str) -> Optional[uni.UniNode];
     def get_node_at_position(
         file_path: str, line: int, col: int
-    ) -> Optional[uni.AstNode];
+    ) -> Optional[uni.UniNode];
 
-    def get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList;
-    def get_node_type(n: uni.AstNode) -> Optional[TypeBase];
+    def get_completion_of_node(nd: uni.UniNode) -> lspt.CompletionList;
+    def get_node_type(n: uni.UniNode) -> Optional[TypeBase];
     def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;

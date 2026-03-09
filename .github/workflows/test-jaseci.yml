@@ -111,6 +111,14 @@ jobs:
     - name: Run documentation validation tests
       run: pytest -q -x docs/tests/test_validate_md_files.jac
 
+    - name: Install Playwright
+      run: |
+        pip install playwright
+        playwright install chromium --with-deps
+
+    - name: Run E2E code block tests
+      run: pytest docs/tests/e2e/test_code_blocks.jac -v
+
   test-mcp:
     runs-on: ubuntu-latest
     steps:
