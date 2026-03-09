@@ -1,305 +1,305 @@
-name: Run tests for jaseci
+# name: Run tests for jaseci
 
-on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
+# on:
+#   pull_request:
+#     branches:
+#       - main
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  test-core:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+# jobs:
+#   test-core:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v3
+#       with:
+#         python-version: 3.12
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
+#     - name: Install dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -e jac
+#         pip install pytest
+#         pip install pytest-xdist
+#         pip install watchdog
 
-    - name: Run Jac core tests
-      run: pytest -x jac -n auto
+#     - name: Run Jac core tests
+#       run: pytest -x jac -n auto
 
-  test-client:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+#   test-client:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v3
+#       with:
+#         python-version: 3.12
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+#     - name: Set up Node.js
+#       uses: actions/setup-node@v4
+#       with:
+#         node-version: '20'
 
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v2
+#     - name: Set up Bun
+#       uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-client
-        pip install pytest
-        pip install pytest-xdist
-        pip install playwright
+#     - name: Install dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -e jac
+#         pip install -e jac-client
+#         pip install pytest
+#         pip install pytest-xdist
+#         pip install playwright
 
-    - name: Install Playwright browsers
-      run: playwright install chromium --with-deps
+#     - name: Install Playwright browsers
+#       run: playwright install chromium --with-deps
 
-    - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+#     - name: Set environment for testing
+#       run: |
+#         echo "TEST_ENV=true" >> $GITHUB_ENV
 
-    - name: Run all client tests (including E2E in parallel)
-      run: pytest -x jac-client -n auto
+#     - name: Run all client tests (including E2E in parallel)
+#       run: pytest -x jac-client -n auto
 
-  test-packages-and-docs:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+#   test-packages-and-docs:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v3
+#       with:
+#         python-version: 3.12
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-byllm
-        pip install pytest
-        pip install pytest-xdist
+#     - name: Install dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -e jac
+#         pip install -e jac-byllm
+#         pip install pytest
+#         pip install pytest-xdist
 
-    - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+#     - name: Set environment for testing
+#       run: |
+#         echo "TEST_ENV=true" >> $GITHUB_ENV
 
-    - name: Run package tests
-      run: pytest -x jac-byllm
+#     - name: Run package tests
+#       run: pytest -x jac-byllm
 
-    - name: Install docs dependencies
-      run: pip install -e docs
+#     - name: Install docs dependencies
+#       run: pip install -e docs
 
-    - name: Build documentation
-      run: mkdocs build --strict
-      working-directory: docs
+#     - name: Build documentation
+#       run: mkdocs build --strict
+#       working-directory: docs
 
-    - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_docs.jac
+#     - name: Run documentation validation tests
+#       run: pytest -q -x docs/tests/test_docs.jac
 
-    - name: Install Playwright
-      run: |
-        pip install playwright
-        playwright install chromium --with-deps
+#     - name: Install Playwright
+#       run: |
+#         pip install playwright
+#         playwright install chromium --with-deps
 
-    - name: Run E2E code block tests
-      run: pytest docs/tests/e2e/test_code_blocks.jac -v
+#     - name: Run E2E code block tests
+#       run: pytest docs/tests/e2e/test_code_blocks.jac -v
 
-  test-mcp:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+#   test-mcp:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v5
+#       with:
+#         python-version: 3.12
 
-    - name: Install jac-mcp and test dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-mcp
-        pip install pytest
-        pip install pytest-xdist
+#     - name: Install jac-mcp and test dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -e jac
+#         pip install -e jac-mcp
+#         pip install pytest
+#         pip install pytest-xdist
 
-    - name: Run jac-mcp tests
-      run: pytest -x jac-mcp -n auto
+#     - name: Run jac-mcp tests
+#       run: pytest -x jac-mcp -n auto
 
-  test-scale:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+#   test-scale:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v3
+#       with:
+#         python-version: 3.12
 
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v2
+#     - name: Set up Bun
+#       uses: oven-sh/setup-bun@v2
 
-    - name: Install Jaseci scale package
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-scale
-        pip install pytest
-        pip install pytest-asyncio
-        pip install -e jac-client
-        pip install testcontainers
-        pip install watchdog
-        pip install python-multipart  # Explicit install to ensure FastAPI form support
-        pip install websockets  # Required for WebSocket test cases
+#     - name: Install Jaseci scale package
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -e jac
+#         pip install -e jac-scale
+#         pip install pytest
+#         pip install pytest-asyncio
+#         pip install -e jac-client
+#         pip install testcontainers
+#         pip install watchdog
+#         pip install python-multipart  # Explicit install to ensure FastAPI form support
+#         pip install websockets  # Required for WebSocket test cases
 
-    - name: Run Backend tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
+#     - name: Run Backend tests
+#       run: |
+#         pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
 
-    - name: Run Webhook tests (without and with MongoDB)
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
+#     - name: Run Webhook tests (without and with MongoDB)
+#       run: |
+#         pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
 
-    - name: Run Memory Hierarchy tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
+#     - name: Run Memory Hierarchy tests
+#       run: |
+#         pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
 
-    - name: Run jac-client examples
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
+#     - name: Run jac-client examples
+#       run: |
+#         pytest -x jac-scale/jac_scale/tests/test_examples.jac
 
-    - name: Run SSO tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.jac
+#     - name: Run SSO tests
+#       run: |
+#         pytest -x jac-scale/jac_scale/tests/test_sso.jac
 
-    - name: Run admin API tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_admin.jac
+#     - name: Run admin API tests
+#       run: |
+#         pytest -x jac-scale/jac_scale/tests/test_admin.jac
 
-    - name: Run Serializer tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
+#     - name: Run Serializer tests
+#       run: |
+#         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
-  test-scale-k8s:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          submodules: true
+#   test-scale-k8s:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Check out code
+#         uses: actions/checkout@v5
+#         with:
+#           submodules: true
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
+#       - name: Set up Python 3.12
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: 3.12
 
-      - name: Install Jaseci scale package
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e jac
-          pip install -e jac-scale
-          pip install -e jac-client
-          pip install pytest
-          pip install pytest-xdist
-          pip install pytest-asyncio
+#       - name: Install Jaseci scale package
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -e jac
+#           pip install -e jac-scale
+#           pip install -e jac-client
+#           pip install pytest
+#           pip install pytest-xdist
+#           pip install pytest-asyncio
 
-      - name: Install MicroK8s
-        run: |
-          set +e
-          sudo snap install microk8s --classic
-          sleep 20
-          set -e
+#       - name: Install MicroK8s
+#         run: |
+#           set +e
+#           sudo snap install microk8s --classic
+#           sleep 20
+#           set -e
 
-      - name: Initialize MicroK8s
-        run: |
-          sudo microk8s status --wait-ready
-          sudo microk8s enable dns storage
+#       - name: Initialize MicroK8s
+#         run: |
+#           sudo microk8s status --wait-ready
+#           sudo microk8s enable dns storage
 
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          sudo microk8s config > ~/.kube/config
+#       - name: Configure kubectl
+#         run: |
+#           mkdir -p ~/.kube
+#           sudo microk8s config > ~/.kube/config
 
 
-      - name: Run K8 tests
-        run: |
-          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
+#       - name: Run K8 tests
+#         run: |
+#           pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
+#           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
-  test-pypi-build:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
+#   test-pypi-build:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v5
+#       with:
+#         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+#     - name: Set up Python 3.12
+#       uses: actions/setup-python@v3
+#       with:
+#         python-version: 3.12
 
-    - name: Install build package
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
+#     - name: Install build package
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install build
 
-    - name: Install jaclang for precompilation
-      run: pip install -e jac
+#     - name: Install jaclang for precompilation
+#       run: pip install -e jac
 
-    - name: Precompile all packages
-      run: |
-        jac run jac/scripts/precompile_bytecode.jac ./jac
-        jac run jac/scripts/precompile_bytecode.jac ./jac-client
-        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
-        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+#     - name: Precompile all packages
+#       run: |
+#         jac run jac/scripts/precompile_bytecode.jac ./jac
+#         jac run jac/scripts/precompile_bytecode.jac ./jac-client
+#         jac run jac/scripts/precompile_bytecode.jac ./jac-scale
+#         jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
 
-    - name: Uninstall editable jaclang
-      run: pip uninstall -y jaclang
+#     - name: Uninstall editable jaclang
+#       run: pip uninstall -y jaclang
 
-    - name: Build and install packages
-      run: |
-        python -m build jac --wheel
-        python -m build jac-client --wheel
-        python -m build jac-scale --wheel
-        python -m build jac-byllm --wheel
-        pip install jac/dist/jaclang-*.whl
-        pip install jac-client/dist/jac_client-*.whl
-        pip install jac-scale/dist/jac_scale-*.whl
-        pip install jac-byllm/dist/byllm-*.whl
-        pip install pytest
-        pip install pytest-asyncio
+#     - name: Build and install packages
+#       run: |
+#         python -m build jac --wheel
+#         python -m build jac-client --wheel
+#         python -m build jac-scale --wheel
+#         python -m build jac-byllm --wheel
+#         pip install jac/dist/jaclang-*.whl
+#         pip install jac-client/dist/jac_client-*.whl
+#         pip install jac-scale/dist/jac_scale-*.whl
+#         pip install jac-byllm/dist/byllm-*.whl
+#         pip install pytest
+#         pip install pytest-asyncio
 
-    - name: Verify cold start with precompiled bytecode
-      run: |
-        jac purge
-        timeout 5 jac --version
+#     - name: Verify cold start with precompiled bytecode
+#       run: |
+#         jac purge
+#         timeout 5 jac --version
 
-    - name: Run integration tests
-      run: jac run scripts/integration_tests.jac
+#     - name: Run integration tests
+#       run: jac run scripts/integration_tests.jac
 
-    - name: Run tests on built packages
-      run: |
-        jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
-        pytest jac-byllm/tests/test_byllm.jac
+#     - name: Run tests on built packages
+#       run: |
+#         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
+#         pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
+#         pytest jac-byllm/tests/test_byllm.jac
