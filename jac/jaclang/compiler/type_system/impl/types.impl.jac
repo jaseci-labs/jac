@@ -102,6 +102,10 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ty = class_type.private.type_args[idx];
             ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
             param.param_type = ty;
+        } elif idx != -1 {
+            # TypeVar found in class type params but no matching type_arg
+            # (bare generic like list without [int]). Degrade to Unknown.
+            param.param_type = UnknownType();
         }
     }
     if (clone.return_type and isinstance(clone.return_type, TypeVarType)) {
@@ -110,6 +114,9 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ty = class_type.private.type_args[idx];
             ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
             clone.return_type = ty;
+        } elif idx != -1 {
+            # TypeVar found but unresolved — degrade to Unknown.
+            clone.return_type = UnknownType();
         }
     }
     return clone;
@@ -389,10 +396,10 @@ impl TypeBase.category -> TypeCategory {
     return self.CATEGORY;
 }
 
-"""Return true if this type is UnknownType, AnyType, TypeVarType, or object."""
+"""Return true if this type is AnyType, TypeVarType, or object."""
 impl TypeBase.is_any_type -> bool {
-    # Check for UnknownType, AnyType, or TypeVarType using category
-    if self.category in (TypeCategory.Unknown, TypeCategory.Any, TypeCategory.TypeVar) {
+    # Check for AnyType or TypeVarType using category
+    if self.category in (TypeCategory.Any, TypeCategory.TypeVar) {
         return True;
     }
     # Check for object type

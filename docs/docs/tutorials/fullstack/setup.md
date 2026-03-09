@@ -1,6 +1,10 @@
 # Full-Stack Project Setup
 
-Create a Jac project with frontend and backend in one codebase.
+Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: code inside `cl { }` blocks compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
+
+This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
+
+In this tutorial, you'll set up a full-stack project, understand the file structure, and get the development server running.
 
 > **Prerequisites**
 >

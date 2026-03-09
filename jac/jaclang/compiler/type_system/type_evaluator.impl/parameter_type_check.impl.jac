@@ -8,7 +8,6 @@ impl TypeEvaluator.validate_arg_types(
         if param is None or param.param_type is None {
             continue;
         }
-
         if isinstance(arg, uni.KWPair) {
             arg_type = self.get_type_of_expression(arg.value);
         } else {

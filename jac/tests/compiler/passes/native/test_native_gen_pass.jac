@@ -2384,3 +2384,41 @@ test "layout exports all expected functions" {
     expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
     assert expected == set(layout.functions.keys());
 }
+
+# --- TestCrossModuleGlobInit ---
+test "cross module glob init compiles without errors" {
+    # Importing a module with a glob list initializer must compile cleanly.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "cross_module_glob_init.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module glob init: imported glob is non-null on first access" {
+    # Before the fix, _TABLE in the library module stayed null after import,
+    # causing table_len() to return garbage and table_push() to segfault.
+    # After the fix, jac_entry calls __jac_glob_init_cross_module_glob_init_lib_na
+    # so the list is properly allocated before any code touches it.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    # Call jac_entry to trigger __jac_glob_init for both this module and the import.
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    result = run_test();
+    # Encoded: initial_len*10000 + after_one*100 + after_two = 0*10000 + 1*100 + 2 = 102
+    assert result == 102 , f"Expected 102 (0 items, then 1, then 2), got {result}";
+}
+
+test "cross module glob init: pushed values are readable" {
+    # Verify table_get(0) and table_get(1) return the values pushed by run_test.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    run_test();  # populate: push(42), push(99)
+    get_first = get_func(eng, "get_first", ctypes.c_int64);
+    get_second = get_func(eng, "get_second", ctypes.c_int64);
+    assert get_first() == 42 , f"Expected 42, got {get_first()}";
+    assert get_second() == 99 , f"Expected 99, got {get_second()}";
+}

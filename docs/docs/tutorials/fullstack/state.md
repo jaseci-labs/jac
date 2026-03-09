@@ -1,6 +1,8 @@
 # State Management
 
-Manage reactive state with hooks and the `has` keyword.
+Interactive applications need to track and respond to changing data -- a counter incrementing, a list of items growing, a form being filled out. In Jac's client-side code, state management uses the `has` keyword inside component functions to declare reactive variables. When a `has` variable changes, the component automatically re-renders to reflect the new value, just like React's `useState` hook.
+
+This tutorial covers declaring reactive state, handling user input, sharing state between components, and managing complex state with effects and derived values.
 
 > **Prerequisites**
 >
@@ -11,7 +13,7 @@ Manage reactive state with hooks and the `has` keyword.
 
 ## Reactive State with `has`
 
-Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`):
+Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`). Declaring `has count: int = 0;` inside a component function creates a stateful variable that persists across re-renders and triggers a UI update whenever its value changes:
 
 ```jac
 cl {

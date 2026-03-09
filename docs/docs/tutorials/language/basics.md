@@ -1,6 +1,8 @@
 # Jac Basics
 
-Learn Jac syntax and fundamentals, especially if you're coming from Python.
+This tutorial covers the core syntax and concepts you need to start writing Jac programs. If you're coming from Python, most things will look familiar -- Jac is a superset of Python, so your existing knowledge applies directly. The key differences are syntactic (braces instead of indentation, semicolons to end statements) and conceptual (graph-native types, the `has` keyword for fields, `with entry` for entry points).
+
+By the end of this tutorial, you'll be comfortable writing functions, objects, control flow, imports, and simple graph operations in Jac.
 
 > **Prerequisites**
 >
@@ -12,7 +14,7 @@ Learn Jac syntax and fundamentals, especially if you're coming from Python.
 
 ## Jac is a Superset of Python
 
-Jac supersets Python with new paradigms -- familiar Python concepts all apply. The main syntactic differences from Python are:
+Jac supersets Python with new paradigms -- familiar Python concepts all apply. The relationship is similar to TypeScript and JavaScript: everything valid in the base language works, and the superset adds new capabilities on top. The main syntactic differences from Python are:
 
 | Python | Jac |
 |--------|-----|
@@ -25,6 +27,10 @@ Jac supersets Python with new paradigms -- familiar Python concepts all apply. T
 ---
 
 ## Variables and Types
+
+Jac supports all the same primitive types as Python (`str`, `int`, `float`, `bool`) and the same collection types (`list`, `dict`, `set`, `tuple`). Type annotations are optional but recommended -- they enable better IDE support, catch errors during `jac check`, and make your code self-documenting.
+
+The `with entry { }` block is Jac's equivalent of Python's `if __name__ == "__main__":` -- it defines the program's entry point and runs when you execute the file with `jac run`.
 
 ### Basic Variables
 
@@ -70,9 +76,11 @@ with entry {
 
 ## Functions
 
+Functions in Jac use `def` just like Python, with the body enclosed in braces instead of an indented block. Return type annotations use `-> Type` syntax. Jac also has a `can` keyword for event-triggered abilities on nodes and walkers (covered later in the [OSP tutorial](osp.md)), but for regular standalone functions and methods on objects, use `def`.
+
 ### Basic Functions
 
-```jac
+<div class="code-block" markdown>
 def greet(name: str) -> str {
     return f"Hello, {name}!";
 }
@@ -83,12 +91,11 @@ def add(a: int, b: int) -> int {
 
 with entry {
     message = greet("World");
-    print(message);  # Hello, World!
-
+    print(message);
     result = add(5, 3);
-    print(result);  # 8
+    print(result);
 }
-```
+</div>
 
 ### Default Parameters
 
@@ -216,6 +223,8 @@ with entry {
 ---
 
 ## Objects (Classes)
+
+Jac uses `obj` instead of Python's `class`. Fields are declared with `has` (replacing Python's `__init__` boilerplate), and constructors are auto-generated from `has` declarations. This means you get dataclass-like convenience by default -- named fields, automatic `__init__`, and default values -- without extra decorators. Methods use `def` with implicit `self`, just like Python.
 
 ### Basic Object Definition
 
@@ -378,7 +387,7 @@ with entry {
 
 ## Global Variables
 
-Use `glob` for module-level variables:
+The `glob` keyword declares module-level variables that are accessible from any function in the file. This is Jac's equivalent of Python's module-level variables, but made explicit with a keyword so you can immediately distinguish global state from local variables when reading code.
 
 ```jac
 glob config: dict = {
@@ -424,7 +433,7 @@ You'll learn more about `can` in the [OSP tutorial](osp.md).
 
 ## Access Modifiers
 
-Jac supports access modifiers on functions:
+When you deploy a Jac application as a server (with `jac start`), access modifiers control which functions and walkers become HTTP endpoints and how authentication is handled. This is one of Jac's most distinctive features: instead of manually defining API routes with decorators (like Flask's `@app.route`), you simply annotate your functions with `:pub` or `:priv` and the framework automatically generates REST endpoints with the right authentication behavior.
 
 ```jac
 # Public endpoint -- auto-generates an HTTP API
@@ -450,7 +459,7 @@ These modifiers also apply to walkers (`walker:pub`, `walker:priv`).
 
 ## Preview: Nodes and Graphs
 
-Jac extends objects with **graph-aware types**. A quick preview before the [OSP tutorial](osp.md):
+Jac's most distinctive feature is its graph-native type system. Beyond regular objects (`obj`), Jac provides `node`, `edge`, and `walker` types that live in an in-memory graph. Nodes hold data, edges define relationships between them, and walkers traverse the graph executing logic at each step. Here's a quick preview before the full [OSP tutorial](osp.md):
 
 ```jac
 # A node is like an object that can live in a graph

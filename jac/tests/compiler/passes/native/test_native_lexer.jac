@@ -292,14 +292,14 @@ test "native tokenize returns correct tokens" {
     assert eng is not None;
     assert layout is not None;
 
-    # Call imported tokens module entry (init KEYWORDS dict) then lexer entry
-    tokens_entry_addr = eng.get_function_address("__jac_entry_tokens_na");
-    if tokens_entry_addr {
-        ct.CFUNCTYPE(None)(tokens_entry_addr)();
+    # Init globals: tokens module first (KEYWORDS dict), then lexer module
+    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
+    if tokens_glob_addr {
+        ct.CFUNCTYPE(None)(tokens_glob_addr)();
     }
-    entry_addr = eng.get_function_address("jac_entry");
-    if entry_addr {
-        ct.CFUNCTYPE(None)(entry_addr)();
+    glob_init_addr = eng.get_function_address("__jac_glob_init");
+    if glob_init_addr {
+        ct.CFUNCTYPE(None)(glob_init_addr)();
     }
 
     ct_classes = build_ctypes_classes(layout);
@@ -344,13 +344,13 @@ test "native tokenize matches python lexer" {
     layout = ir.gen.native_layout;
     assert eng is not None;
 
-    tokens_entry_addr = eng.get_function_address("__jac_entry_tokens_na");
-    if tokens_entry_addr {
-        ct.CFUNCTYPE(None)(tokens_entry_addr)();
+    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
+    if tokens_glob_addr {
+        ct.CFUNCTYPE(None)(tokens_glob_addr)();
     }
-    entry_addr = eng.get_function_address("jac_entry");
-    if entry_addr {
-        ct.CFUNCTYPE(None)(entry_addr)();
+    glob_init_addr = eng.get_function_address("__jac_glob_init");
+    if glob_init_addr {
+        ct.CFUNCTYPE(None)(glob_init_addr)();
     }
 
     ct_classes = build_ctypes_classes(layout);
@@ -396,13 +396,13 @@ test "native tokenize performance" {
     eng = ir.gen.native_engine;
     layout = ir.gen.native_layout;
 
-    tokens_entry_addr = eng.get_function_address("__jac_entry_tokens_na");
-    if tokens_entry_addr {
-        ct.CFUNCTYPE(None)(tokens_entry_addr)();
+    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
+    if tokens_glob_addr {
+        ct.CFUNCTYPE(None)(tokens_glob_addr)();
     }
-    entry_addr = eng.get_function_address("jac_entry");
-    if entry_addr {
-        ct.CFUNCTYPE(None)(entry_addr)();
+    glob_init_addr = eng.get_function_address("__jac_glob_init");
+    if glob_init_addr {
+        ct.CFUNCTYPE(None)(glob_init_addr)();
     }
 
     ct_classes = build_ctypes_classes(layout);

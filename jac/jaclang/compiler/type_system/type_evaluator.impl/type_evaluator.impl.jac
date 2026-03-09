@@ -144,8 +144,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     if isinstance(compr.target, uni.Name) {
                         self.get_type_of_expression(compr.target);
                     }
+                    if compr.conditional {
+                        for cond in compr.conditional {
+                            self.get_type_of_expression(cond);
+                        }
+                    }
                 }
-                self.get_type_of_expression(expr.out_expr);
+                elem_type = self.get_type_of_expression(expr.out_expr);
+                if isinstance(set_inst, types.ClassType)
+                and not isinstance(elem_type, types.UnknownType) {
+                    set_inst.private.type_args = [elem_type];
+                }
                 return set_inst;
             }
 
@@ -201,6 +210,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 self.get_type_of_expression(v);
                             }
                         }
+                    }
+                    if compr.conditional {
+                        for cond in compr.conditional {
+                            self.get_type_of_expression(cond);
+                        }
+                    }
+                }
+                if isinstance(expr.kv_pair, uni.KVPair) {
+                    key_type = self.get_type_of_expression(expr.kv_pair.key);
+                    val_type = self.get_type_of_expression(expr.kv_pair.value);
+                    if isinstance(dict_inst, types.ClassType)
+                    and not isinstance(key_type, types.UnknownType)
+                    and not isinstance(val_type, types.UnknownType) {
+                        dict_inst.private.type_args = [key_type, val_type];
                     }
                 }
                 return dict_inst;
@@ -277,6 +300,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             }
 
             if expr.is_attr {  # <expr>.member
+                # Unknown base type: attribute access cannot be validated.
+                if isinstance(base_type, types.UnknownType) {
+                    assert isinstance(expr.right, uni.Name);
+                    self.add_diagnostic(
+                        expr.right,
+                        f'Type is Unknown, cannot access attribute "{expr.right.value}"',
+                    );
+                    return types.UnknownType();
+                }
                 # Check for full expr narrowing: `if c.field is not None: use(c.field)`
                 # We still do member lookup below for IDE features (symbol, go-to-def)
                 full_narrowed: TypeBase | None = None;
@@ -756,8 +788,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     return self.get_type_of_expression(expr.target);
                 }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
+                # Extract the actual index expression from IndexSlice.
+                # IndexSlice wraps the subscript value in slices[0].start,
+                # and get_type_of_expression has no handler for IndexSlice
+                # (it would return Unknown). Pass the inner expression instead.
+                subscript_arg: uni.Expr = expr.right;
+                if (
+                    isinstance(expr.right, uni.IndexSlice)
+                    and not expr.right.is_range
+                    and expr.right.slices
+                ) {
+                    subscript_arg = expr.right.slices[0].start;
+                }
                 return self.get_type_of_magic_method_call(
-                    base_type, "__getitem__", [expr.right], expr
+                    base_type, "__getitem__", [subscript_arg], expr
                 )
                 or types.UnknownType();
             }
@@ -1569,12 +1613,8 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     return None;
 }
 
-"""Check if a type is Any, object, Unknown, or TypeVar."""
+"""Check if a type is Any, object, or TypeVar."""
 impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
-    # Check for UnknownType
-    if isinstance(ty, types.UnknownType) {
-        return True;
-    }
     # Check for TypeVarType
     if isinstance(ty, types.TypeVarType) {
         return True;
@@ -1600,6 +1640,12 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
 """Assign the source type to the destination type."""
 impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
+        return True;
+    }
+    # Unknown destination: the declared type couldn't be resolved (e.g.
+    # recursive type alias _ClassInfo, unresolved stub). Accept any
+    # source — this is not the caller's fault.
+    if isinstance(dest_type, types.UnknownType) {
         return True;
     }
     # Literal type assignability rules (similar to Pyright's literalValue handling)
@@ -1726,7 +1772,7 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
-    # Everything is assignable to object, Any, Unknown, or TypeVar.
+    # Everything is assignable to object, Any, or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
     }
