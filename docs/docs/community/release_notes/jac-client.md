@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.1
 
+- **Form Handling:** Introduced `jacForm` hook for comprehensive form state management, `JacSchema` for type-safe form validation with custom rules and cross-field logic.
 - **Admin Portal UI Components**: Added reusable UI components for the jac-scale admin portal including buttons, modals, inputs, tables, and layout components built with jac-client.
 - **Custom Import Path Aliases via jac.toml**: Added support for configuring import path aliases in `[plugins.client.paths]`. Define aliases like `"@components/*" = "./components/*"` and they are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths` in tsconfig.json.
 - **NPM Scoped Registry & Auth Support via jac.toml**: Added support for configuring custom npm registries and authentication tokens directly in `jac.toml` under `[plugins.client.npm]`.
@@ -28,7 +29,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).
 - **Automatic Endpoint Caching**: The client runtime now automatically caches responses from reader endpoints (walkers and server functions) and invalidates caches when writer endpoints are called, using compiler-provided `endpoint_effects` metadata. Includes an LRU cache (500 entries, 60s TTL), request deduplication for concurrent identical calls, and automatic cache clearing on auth state changes. No manual `jacInvalidate()` or cache annotations needed.
 - **HMR Server-Side Reloading Refactor**: Improved HMR functionality with better handling of `.impl.jac` files and optimized caching to avoid unnecessary recompilations during development
-
 - 3 minor refactor/change.
 
 ## jac-client 0.2.19

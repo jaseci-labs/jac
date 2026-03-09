@@ -1259,7 +1259,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         ) -> None {
             username = self._authenticate();
             if not username {
-                username = '__guest__';
+                username = Con.GUEST.value;
                 if not server.user_manager.user_exists(username) {
                     server.user_manager.create_user(username, '__no_password__');
                 }
@@ -1559,7 +1559,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     username = self._authenticate();
                     if not username {
-                        username = '__guest__';
+                        username = Con.GUEST.value;
                         if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
@@ -1585,7 +1585,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     username = self._authenticate();
                     if not username {
-                        username = '__guest__';
+                        username = Con.GUEST.value;
                         if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'

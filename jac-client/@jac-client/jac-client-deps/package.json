@@ -1,11 +1,14 @@
 {
   "name": "jac-client-node",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "description": "Default dependencies for Jac-client",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
-    "react-error-boundary": "^5.0.0"
+    "react-error-boundary": "^5.0.0",
+    "react-hook-form": "^7.71.0",
+    "zod": "^4.3.6",
+    "@hookform/resolvers": "^5.2.2"
   }
 }

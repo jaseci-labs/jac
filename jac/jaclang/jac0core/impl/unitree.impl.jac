@@ -710,6 +710,11 @@ impl UniCFGNode.postinit -> None {
     self.affected_symbols = set();
 }
 
+"""Initialize ConditionalNode (CFG branch point with true/false targets)."""
+impl ConditionalNode.postinit -> None {
+    UniCFGNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -717,8 +722,12 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt))
-        and not isinstance(nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
+        and not isinstance(
+            nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
     ) {
@@ -733,7 +742,9 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -981,6 +992,7 @@ impl Test.postinit -> None {
         sym_category=SymbolType.TEST
     );
     UniScopeNode._init_scope(self, name=self.sym_name);
+    CodeBlockStmt.postinit(self);
     ContextAwareNode.postinit(self);
 }
 
@@ -1731,6 +1743,7 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
+    ConditionalNode.postinit(self);
 }
 
 
@@ -2037,6 +2050,7 @@ impl MatchStmt.postinit -> None {
 
 impl MatchCase.postinit -> None {
     UniNode.postinit(self);
+    CodeBlockStmt.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 
@@ -2049,6 +2063,7 @@ impl SwitchStmt.postinit -> None {
 
 impl SwitchCase.postinit -> None {
     UniNode.postinit(self);
+    CodeBlockStmt.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 

@@ -369,6 +369,15 @@ obj UniCFGNode(UniNode) {
     def get_tail -> UniCFGNode;
 }
 
+"""A CFG node that branches on a condition with true/false targets.
+Used by BoolExpr (short-circuit) and IfElseExpr (ternary)."""
+obj ConditionalNode(UniCFGNode) {
+    has sc_true_target: (UniCFGNode | None) = None,
+        sc_false_target: (UniCFGNode | None) = None;
+
+    def postinit -> None;
+}
+
 """Expression is a combination of values, variables operators and fuctions that
 are evaluated to produce a value.
 
@@ -607,7 +616,7 @@ obj GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
 }
 
 """Test node type for Jac Ast."""
-obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
+obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, CodeBlockStmt, UniScopeNode) {
     with entry {
         TEST_COUNT = 0;
     }
@@ -1093,7 +1102,7 @@ obj CompareExpr(Expr) {
 }
 
 """BoolExpr node type for Jac Ast."""
-obj BoolExpr(Expr) {
+obj BoolExpr(Expr, ConditionalNode) {
     has op: Token,
         values: list[Expr];
 
@@ -1402,7 +1411,7 @@ obj MatchStmt(CodeBlockStmt) {
 }
 
 """MatchCase node type for Jac Ast."""
-obj MatchCase(UniScopeNode) {
+obj MatchCase(CodeBlockStmt, UniScopeNode) {
     has pattern: MatchPattern,
         guard: (Expr | None),
         body: list[CodeBlockStmt];
@@ -1419,7 +1428,7 @@ obj SwitchStmt(CodeBlockStmt) {
 }
 
 """SwitchCase node type for Jac Ast."""
-obj SwitchCase(UniScopeNode) {
+obj SwitchCase(CodeBlockStmt, UniScopeNode) {
     has pattern: (MatchPattern | None),
         body: list[CodeBlockStmt];
 

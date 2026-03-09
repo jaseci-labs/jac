@@ -207,7 +207,7 @@ impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
     def callback(page_name: str, **kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
-                page_name, kwargs, '__guest__'
+                page_name, kwargs, Con.GUEST.value
             );
             return HTMLResponse(content=render_payload['html']);
         } except ValueError as exc {
@@ -230,7 +230,7 @@ impl JacAPIServerStatic.render_base_route_callback(
     def callback(**kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
-                app_name, kwargs, '__guest__'
+                app_name, kwargs, Con.GUEST.value
             );
             return HTMLResponse(content=render_payload['html']);
         } except ValueError as exc {
@@ -263,7 +263,7 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         if (not file_ext and base_route_app and not file_path.startswith(api_prefixes)) {
             try {
                 render_payload = self.introspector.render_page(
-                    base_route_app, {}, '__guest__'
+                    base_route_app, {}, Con.GUEST.value
                 );
                 return HTMLResponse(content=render_payload['html']);
             } except ValueError {
@@ -877,7 +877,7 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
     }
     username = self.user_manager.validate_jwt_token(token) if token else None;
     # Fall back to __guest__ (super root) when no auth provided
-    username = username or '__guest__';
+    username = username or Con.GUEST.value;
     # Get user's root node and collect graph data
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
