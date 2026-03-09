@@ -175,7 +175,7 @@ obj Console {
 
     @property
     def width -> int {
-        if self._width {
+        if (self._width is not None) {
             return self._width;
         }
         try {
