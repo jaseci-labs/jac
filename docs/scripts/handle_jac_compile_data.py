@@ -114,7 +114,11 @@ def create_playground_zip(jaclang_dir: str) -> None:
 
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(jaclang_dir):
-            dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d), jaclang_dir)]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not should_exclude(os.path.join(root, d), jaclang_dir)
+            ]
 
             for file in files:
                 file_path = os.path.join(root, file)
