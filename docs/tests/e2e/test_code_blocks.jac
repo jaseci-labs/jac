@@ -1,7 +1,7 @@
 """E2E tests for interactive Jac code blocks.
 
 Uses a self-contained test HTML fixture with known code blocks.
-No dependency on docs .md content.
+No dependency  on docs .md content.
 
 Run:
     pytest docs/tests/e2e/test_code_blocks.jac -v
