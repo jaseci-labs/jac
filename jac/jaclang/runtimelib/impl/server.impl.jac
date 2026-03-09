@@ -355,29 +355,10 @@ impl ModuleIntrospector._extract_access_levels -> None {
         return;
     }
     import jaclang.jac0core.unitree as uni;
-    import from jaclang.jac0core.constructs { WalkerArchetype }
-    import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
     self._function_access = {};
     self._walker_access = {};
-    # Helper to check if an archetype AST node is explicitly public
-    def is_archetype_public(arch_ast: uni.Archetype) -> bool {
-        return arch_ast.access is not None and arch_ast.access.tag.name == Tok.KW_PUB;
-    }
-    # Helper to find walker access level from a module AST
-    def find_walker_access_in_ast(
-        mod_ast: uni.Module, walker_name: str
-    ) -> (bool | None) {
-        for item in mod_ast.body {
-            if isinstance(item, uni.Archetype) and item.name.sym_name == walker_name {
-                return not is_archetype_public(
-                    item
-                );  # True = auth required, False = public
 
-            }
-        }
-        return None;
-    }
-    # Helper to get AST for a module path
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
         ast = Jac.program.mod.hub.get(mod_path);
         if not ast {
@@ -385,6 +366,48 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         return ast;
     }
+
+    def is_public(node: (uni.AstAccessNode | None)) -> bool {
+        return node is not None
+        and node.access is not None
+        and node.access.tag.name == Tok.KW_PUB;
+    }
+
+    def _process_import(
+        item: uni.Import, func_access: dict[str, bool], walker_access: dict[str, bool]
+    ) {
+        imported_names: list[str] = [
+            imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
+            for imp_item in item.items
+            if isinstance(imp_item, uni.ModuleItem)
+        ];
+        if not imported_names {
+            return;
+        }
+        try {
+            source_file = item.from_loc.resolve_relative_path();
+            if not source_file.endswith(('.jac', '.cl.jac')) {
+                return;
+            }
+        } except Exception {
+            return;
+        }
+        source_ast = get_module_ast(source_file);
+        for name in imported_names {
+            if name in func_access or name in walker_access {
+                continue;
+            }
+            sym = source_ast.lookup(name) if source_ast else None;
+            is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
+            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode) if sym else None;
+            if is_walker {
+                walker_access[name] = not is_public(decl_node);
+            } else {
+                func_access[name] = not is_public(decl_node);
+            }
+        }
+    }
+
     # Get main module AST
     mod_path = getattr(self._module, '__file__', None);
     if not mod_path {
@@ -394,55 +417,20 @@ impl ModuleIntrospector._extract_access_levels -> None {
     if not mod_ast {
         return;
     }
-    # Process direct definitions in main module
+
+    # Single pass over module body: direct definitions + imports
     for item in mod_ast.body {
         if isinstance(item, uni.Ability) and item.name_ref is not None {
-            func_name = item.name_ref.sym_name;
-            is_explicitly_public = item.access and item.access.tag.name == Tok.KW_PUB;
-            self._function_access[func_name] = not is_explicitly_public;
-        } elif isinstance(item, uni.Archetype) {
-            arch_name = item.name.sym_name;
-            if hasattr(self._module, arch_name) {
-                cls = getattr(self._module, arch_name);
-                if isinstance(cls, type) and issubclass(cls, WalkerArchetype) {
-                    self._walker_access[arch_name] = not is_archetype_public(item);
-                }
-            }
-        }
-    }
-    # Process imported walkers - look up their source module's AST
-    for (name, cls) in inspect.getmembers(self._module) {
-        if (
-            isinstance(cls, type)
-            and issubclass(cls, WalkerArchetype)
-            and cls is not WalkerArchetype
-            and name not in self._walker_access  # Not already processed as direct definition
-        ) {
-            # Get the source file where this walker class is defined
-            try {
-                source_file = inspect.getfile(cls);
-            } except (TypeError, OSError) {
-                # Can't determine source file, default to requiring auth
-                self._walker_access[name] = True;
-                continue;
-            }
-            # Try to get the AST from the source module
-            source_ast = get_module_ast(source_file);
-            if source_ast {
-                access_level = find_walker_access_in_ast(source_ast, name);
-                if access_level is not None {
-                    self._walker_access[name] = access_level;
-                } else {
-                    # Walker not found in AST, default to requiring auth (secure by default)
-                    self._walker_access[name] = True;
-                }
-            } else {
-                # Can't get AST, default to requiring auth (secure by default)
-                self._walker_access[name] = True;
-            }
+            self._function_access[item.name_ref.sym_name] = not is_public(item);
+        } elif isinstance(item, uni.Archetype)
+        and item.sym_category == SymbolType.WALKER_ARCH {
+            self._walker_access[item.name.sym_name] = not is_public(item);
+        } elif isinstance(item, uni.Import) and item.is_jac and item.from_loc {
+            _process_import(item, self._function_access, self._walker_access);
         }
     }
 }
+
 
 """Analyze walker and function bodies to classify as reader or writer.
 
