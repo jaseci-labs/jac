@@ -1764,7 +1764,14 @@ test "server startup - port fallback integration" {
 
         # Try to start second server on same port - should fallback to next port
         jac_executable = Path(sys.executable).parent / "jac";
-        cmd = [str(jac_executable), "start", "--prod", sv_test_file.name, "--port", str(port1)];
+        cmd = [
+            str(jac_executable),
+            "start",
+            "--prod",
+            sv_test_file.name,
+            "--port",
+            str(port1)
+        ];
 
         sp2 = subprocess.Popen(
             cmd,

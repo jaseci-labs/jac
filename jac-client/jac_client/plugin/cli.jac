@@ -74,7 +74,10 @@ with entry {
     source="jac-client"
 )
 def build(
-    filename: str = "main.jac", client: str = "web", platform: str | None = None, prod: bool = False
+    filename: str = "main.jac",
+    client: str = "web",
+    platform: str | None = None,
+    prod: bool = False
 ) -> int {
     # This will be handled by the pre_hook
     return 0;

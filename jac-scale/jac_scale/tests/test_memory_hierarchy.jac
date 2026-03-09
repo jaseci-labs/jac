@@ -85,7 +85,14 @@ def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[st
 """Start jac server and wait for it to become ready."""
 def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
     jac_executable = Path(sys.executable).parent / "jac";
-    cmd = [str(jac_executable), "start", "--prod", str(jac_file.name), "--port", str(port)];
+    cmd = [
+        str(jac_executable),
+        "start",
+        "--prod",
+        str(jac_file.name),
+        "--port",
+        str(port)
+    ];
 
     env = os.environ.copy();
 

@@ -101,7 +101,9 @@ def _start_running_server -> tuple {
 
     server_port = get_free_port();
     server = Popen(
-        [*jac_cmd, "start", "--prod", "-p", str(server_port)], cwd=project_path, env=env,
+        [*jac_cmd, "start", "--prod", "-p", str(server_port)],
+        cwd=project_path,
+        env=env,
     );
 
     wait_for_port("127.0.0.1", server_port, timeout=90.0);

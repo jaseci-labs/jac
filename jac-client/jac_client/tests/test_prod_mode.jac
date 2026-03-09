@@ -141,9 +141,7 @@ test "web target imports prod mode env var" {
     assert (
         "import from jac_client.plugin.src.vite_bundler { ViteBundler, PROD_MODE_ENV_VAR }" in content
         or "PROD_MODE_ENV_VAR }" in content
-    ) , (
-        "web_target.impl.jac should import PROD_MODE_ENV_VAR from vite_bundler"
-    );
+    ) , ("web_target.impl.jac should import PROD_MODE_ENV_VAR from vite_bundler");
 
     print("[DEBUG] web_target.impl.jac import verification passed!");
 }
@@ -159,9 +157,7 @@ test "client jac imports prod mode env var" {
     assert (
         "import from .src.vite_bundler { ViteBundler, PROD_MODE_ENV_VAR }" in content
         or "PROD_MODE_ENV_VAR }" in content
-    ) , (
-        "client.jac should import PROD_MODE_ENV_VAR from vite_bundler"
-    );
+    ) , ("client.jac should import PROD_MODE_ENV_VAR from vite_bundler");
 
     print("[DEBUG] client.jac import verification passed!");
 }
@@ -183,9 +179,7 @@ test "env var cleanup pattern in web target build" {
     }
     build_section = content[build_start:next_section];
 
-    assert "try {" in build_section , (
-        "WebTarget.build() should use try block"
-    );
+    assert "try {" in build_section , ("WebTarget.build() should use try block");
     assert "} finally {" in build_section , (
         "WebTarget.build() should use finally block for env var cleanup"
     );
@@ -222,9 +216,7 @@ test "env var set only when prod true" {
     env_set_pos = build_section.index('os.environ[PROD_MODE_ENV_VAR] = "1"');
     try_pos = build_section.index("try {");
     # The env var should be set before the try block
-    assert env_set_pos < try_pos , (
-        "Env var should be set before the try block"
-    );
+    assert env_set_pos < try_pos , ("Env var should be set before the try block");
 
     print("[DEBUG] Env var set condition verification passed!");
 }
@@ -264,13 +256,9 @@ test "build command has prod flag" {
     content = _cli_jac_path.read_text();
 
     # Find the build command registration
-    assert 'name="build"' in content , (
-        "cli.jac should register the build command"
-    );
+    assert 'name="build"' in content , ("cli.jac should register the build command");
     # Check for prod arg
-    assert '"prod"' in content , (
-        "build command should have a prod argument"
-    );
+    assert '"prod"' in content , ("build command should have a prod argument");
     # Check for the help text
     assert "Production build" in content or "minified" in content , (
         "prod flag should have descriptive help text"
@@ -347,9 +335,7 @@ test "vite config has conditional minify" {
         "Vite config should have minify_setting variable"
     );
     # Should be conditional on prod_mode
-    assert "esbuild" in content , (
-        "minify should use esbuild in prod mode"
-    );
+    assert "esbuild" in content , ("minify should use esbuild in prod mode");
     assert "if prod_mode else" in content , (
         "minify should be conditional on prod_mode"
     );
@@ -364,7 +350,9 @@ test "execution impl has prod override logic" {
     print("[DEBUG] Starting test_execution_impl_has_prod_override_logic");
 
     if not _execution_impl_path.exists() {
-        print(f"[DEBUG] Skipping - execution.impl.jac not found at {_execution_impl_path}");
+        print(
+            f"[DEBUG] Skipping - execution.impl.jac not found at {_execution_impl_path}"
+        );
         return;
     }
 
@@ -376,12 +364,8 @@ test "execution impl has prod override logic" {
     );
 
     # Should handle prod overriding dev
-    assert "if prod" in content , (
-        "start impl should check prod flag"
-    );
-    assert "dev = False" in content , (
-        "prod=True should set dev=False"
-    );
+    assert "if prod" in content , ("start impl should check prod flag");
+    assert "dev = False" in content , ("prod=True should set dev=False");
 
     print("[DEBUG] Prod override logic verification passed!");
 }
@@ -429,9 +413,7 @@ test "dev defaults to true in start command" {
         "start command should have dev argument"
     );
     # Look for the default value
-    assert "default=True" in content , (
-        "dev argument should default to True"
-    );
+    assert "default=True" in content , ("dev argument should default to True");
 
     print("[DEBUG] Dev default value verification passed!");
 }
@@ -455,13 +437,9 @@ test "prod defaults to false in start command" {
     }
     start_section = content[start_idx:next_cmd];
 
-    assert '"prod"' in start_section , (
-        "start command should have prod argument"
-    );
+    assert '"prod"' in start_section , ("start command should have prod argument");
     # Check that somewhere in the prod arg definition, default=False
-    assert "default=False" in start_section , (
-        "prod argument should default to False"
-    );
+    assert "default=False" in start_section , ("prod argument should default to False");
 
     print("[DEBUG] Prod default value verification passed!");
 }
@@ -482,9 +460,7 @@ test "prod defaults to false in build command" {
     }
     build_section = content[build_idx:next_cmd];
 
-    assert '"prod"' in build_section , (
-        "build command should have prod argument"
-    );
+    assert '"prod"' in build_section , ("build command should have prod argument");
     assert "default=False" in build_section , (
         "prod argument should default to False in build command"
     );

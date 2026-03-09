@@ -20,7 +20,10 @@ obj DesktopTarget(WebTarget) {
 
     """Build desktop app - build web bundle first, then wrap with Tauri."""
     override def build(
-        entry_file: Path, project_dir: Path, platform: Optional[str] = None, prod: bool = False
+        entry_file: Path,
+        project_dir: Path,
+        platform: Optional[str] = None,
+        prod: bool = False
     ) -> Path;
 
     """Start desktop dev server - start web dev server and launch tauri dev."""

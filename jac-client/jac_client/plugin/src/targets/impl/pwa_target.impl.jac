@@ -401,7 +401,10 @@ background_color = "#ffffff"
 Uses super().build() to get the web bundle, then adds PWA artifacts.
 """
 impl PWATarget.build(
-    entry_file: Path, project_dir: Path, platform: Optional[str] = None, prod: bool = False
+    entry_file: Path,
+    project_dir: Path,
+    platform: Optional[str] = None,
+    prod: bool = False
 ) -> Path {
     console.print("\n📱 Building PWA target", style="bold");
     # Use inherited WebTarget.build() via super()

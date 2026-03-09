@@ -19,7 +19,10 @@ obj WebTarget(ClientTarget) {
 
     """Build web bundle using existing Vite pipeline."""
     override def build(
-        entry_file: Path, project_dir: Path, platform: Optional[str] = None, prod: bool = False
+        entry_file: Path,
+        project_dir: Path,
+        platform: Optional[str] = None,
+        prod: bool = False
     ) -> Path;
 
     """Start web dev server."""

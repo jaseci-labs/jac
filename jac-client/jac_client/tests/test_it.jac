@@ -22,6 +22,7 @@ import from .test_helpers {
     get_jac_command,
     wait_for_port
 }
+
 def _wait_for_endpoint(
     url: str,
     timeout: float = 120.0,
