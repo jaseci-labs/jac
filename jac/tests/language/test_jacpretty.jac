@@ -2,7 +2,15 @@
 
 import io;
 import os;
-import from jaclang.cli.jacpretty { Style, Console, Theme, Panel, Table, render_markup, _parse_color }
+import from jaclang.cli.jacpretty {
+    Style,
+    Console,
+    Theme,
+    Panel,
+    Table,
+    render_markup,
+    _parse_color
+}
 
 # Helper to create test console
 def make_console(
