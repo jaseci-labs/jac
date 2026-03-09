@@ -1521,6 +1521,64 @@ test "cross module struct execution" {
     assert result2 == 7 , f"Expected 7, got {result2}";
 }
 
+# --- TestCrossModuleGlobalLinkage ---
+# Regression tests for: global-internal-linkage-breaks-cross-module
+# Before fix: module globals were emitted with LLVM `internal` linkage. The
+# linker renamed the definition (e.g. @MAGIC -> @MAGIC.467) when another module
+# declared it as `external`, leaving the external reference permanently null.
+# Any read then caused a null-pointer segfault (exit 134).
+# After fix: globals use default (public) linkage; the symbol resolves correctly.
+test "cross module global linkage compile" {
+    # Importing a module that directly reads globals from another .na.jac module
+    # must compile and JIT without errors.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module global direct read" {
+    # read_magic() directly accesses the imported MAGIC global.
+    # With internal linkage this segfaulted; with public linkage it must return 42.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    read_magic = get_func(eng, "read_magic", ctypes.c_int64);
+    result = read_magic();
+    assert result == 42 , f"Expected MAGIC==42, got {result}";
+}
+
+test "cross module global via function" {
+    # read_magic_via_func() delegates to get_magic() from the exporting module.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    assert not prog.errors_had;
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    read_via_func = get_func(eng, "read_magic_via_func", ctypes.c_int64);
+    result = read_via_func();
+    assert result == 42 , f"Expected 42 via get_magic(), got {result}";
+}
+
+test "cross module global arithmetic" {
+    # sum_globals() reads both MAGIC and BASE from the exporting module and adds
+    # them; read_base_plus(n) delegates to add_base(n).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    assert not prog.errors_had;
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    sum_g = get_func(eng, "sum_globals", ctypes.c_int64);
+    result = sum_g();
+    assert result == 142 , f"Expected MAGIC+BASE==142, got {result}";
+    add_b = get_func(eng, "read_base_plus", ctypes.c_int64, ctypes.c_int64);
+    result2 = add_b(5);
+    assert result2 == 105 , f"Expected BASE+5==105, got {result2}";
+}
+
 # --- TestNativeCacheMarker ---
 test "cache marker non native file has no llvmir section in jir" {
     # Compiling a file without na blocks should NOT write SEC_LLVM_IR into the JIR cache.
@@ -2383,4 +2441,90 @@ test "layout exports all expected functions" {
     layout = ir.gen.native_layout;
     expected = {"add","mul","negate","identity","make_all_fields","get_all_fields_x","get_all_fields_flag","make_maybe_point","get_maybe_x"};
     assert expected == set(layout.functions.keys());
+}
+
+# --- Jac-to-Jac function pointer tests (Callable[[...], ret] type annotation) ---
+test "fnptr apply2 with add" {
+    (eng, _) = compile_native("fnptr_jac.na.jac");
+    apply2 = get_func(
+        eng, "apply2", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    add_addr = eng.get_function_address("add");
+    assert apply2(add_addr, 3, 4) == 7;
+    assert apply2(add_addr, 0, 0) == 0;
+    assert apply2(add_addr, -1, 1) == 0;
+}
+
+test "fnptr apply2 with mul" {
+    (eng, _) = compile_native("fnptr_jac.na.jac");
+    apply2 = get_func(
+        eng, "apply2", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    mul_addr = eng.get_function_address("mul");
+    assert apply2(mul_addr, 3, 4) == 12;
+    assert apply2(mul_addr, 0, 99) == 0;
+    assert apply2(mul_addr, -2, 5) == -10;
+}
+
+test "fnptr apply1 with negate" {
+    (eng, _) = compile_native("fnptr_jac.na.jac");
+    apply1 = get_func(eng, "apply1", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    neg_addr = eng.get_function_address("negate");
+    assert apply1(neg_addr, 5) == -5;
+    assert apply1(neg_addr, 0) == 0;
+    assert apply1(neg_addr, -3) == 3;
+}
+
+test "fnptr call_via_local stores and calls pointer" {
+    (eng, _) = compile_native("fnptr_jac.na.jac");
+    call_via_local = get_func(
+        eng,
+        "call_via_local",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    add_addr = eng.get_function_address("add");
+    mul_addr = eng.get_function_address("mul");
+    assert call_via_local(add_addr, 6, 7) == 13;
+    assert call_via_local(mul_addr, 6, 7) == 42;
+}
+
+# --- TestCrossModuleGlobInit ---
+test "cross module glob init compiles without errors" {
+    # Importing a module with a glob list initializer must compile cleanly.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "cross_module_glob_init.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "cross module glob init: imported glob is non-null on first access" {
+    # Before the fix, _TABLE in the library module stayed null after import,
+    # causing table_len() to return garbage and table_push() to segfault.
+    # After the fix, jac_entry calls __jac_glob_init_cross_module_glob_init_lib_na
+    # so the list is properly allocated before any code touches it.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    # Call jac_entry to trigger __jac_glob_init for both this module and the import.
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    result = run_test();
+    # Encoded: initial_len*10000 + after_one*100 + after_two = 0*10000 + 1*100 + 2 = 102
+    assert result == 102 , f"Expected 102 (0 items, then 1, then 2), got {result}";
+}
+
+test "cross module glob init: pushed values are readable" {
+    # Verify table_get(0) and table_get(1) return the values pushed by run_test.
+    (eng, _) = compile_native("cross_module_glob_init.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
+    run_test();  # populate: push(42), push(99)
+    get_first = get_func(eng, "get_first", ctypes.c_int64);
+    get_second = get_func(eng, "get_second", ctypes.c_int64);
+    assert get_first() == 42 , f"Expected 42, got {get_first()}";
+    assert get_second() == 99 , f"Expected 99, got {get_second()}";
 }

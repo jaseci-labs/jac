@@ -3,14 +3,14 @@
 Compiles Jac AST nodes in NATIVE context to LLVM IR using llvmlite.
 All code in na {} or .na.jac is guaranteed to compile to native LLVM IR.
 
-Derives from Transform (not UniPass) because LLVM IR generation uses
-manual tree-walking rather than the visitor pattern — instructions must
-be emitted into specific basic blocks in order for control flow.
+Derives from ModuleCodegenPass (not UniPass) because LLVM IR generation
+uses manual tree-walking rather than the visitor pattern — instructions
+must be emitted into specific basic blocks in order for control flow.
 """
 
 import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 
 """Compile na-context Jac AST to LLVM IR using llvmlite.
@@ -18,7 +18,7 @@ import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 Uses manual tree-walking for function bodies to properly handle
 control flow basic blocks (if/else, while loops).
 """
-obj NaIRGenPass(Transform) {
+obj NaIRGenPass(ModuleCodegenPass) {
     def init(
         ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
     ) -> None;
@@ -55,6 +55,7 @@ obj NaIRGenPass(Transform) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_callable_type(slice: uni.IndexSlice) -> ir.Type;
     def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
@@ -360,4 +361,6 @@ obj NaIRGenPass(Transform) {
     def _emit_scope_cleanup(skip_var: (str | None) = None) -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
+    def _emit_glob_init_func -> None;
+    def post_transform -> None;
 }

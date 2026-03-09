@@ -797,3 +797,39 @@ test "client impl file reloads base cl.jac file" {
         assert "Click Me" not in content2 , "Old label should not be in updated JS";
     }
 }
+
+# --- TestHMRRecursiveDependency ---
+test "dependency compiled when imported file recompiled" {
+    """When app.cl.jac imports Button.cl.jac, recompiling app should also generate Button.js."""
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        # Button component in components/
+        btn_file = unique_dir / "Button.cl.jac";
+        btn_file.write_text(
+            "cl {\n"
+            "    def Button() {\n"
+            "        return <button>Click</button>;\n"
+            "    }\n"
+            "}\n"
+        );
+        # App imports Button
+        app_file = unique_dir / "app.cl.jac";
+        app_file.write_text(
+            "cl import from .Button { Button }\n"
+            "cl {\n"
+            "    def App() {\n"
+            "        return <div><Button /></div>;\n"
+            "    }\n"
+            "}\n"
+        );
+        watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
+        reloader = HotReloader(
+            base_path=str(unique_dir), module_name="app", watcher=watcher
+        );
+        # Compile app - should recursively compile Button as a dependency
+        reloader._recompile_client_code(str(app_file));
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled" / "Button.js";
+        assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.cl.jac";
+    }
+}

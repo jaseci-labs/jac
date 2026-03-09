@@ -17,9 +17,8 @@ def test_union_common_member(x: Mammal | Bird) -> str {
 
 }
 
-# TODO: Should error when attribute error reporting is enabled
 def test_union_uncommon_member(x: Mammal | Bird) -> int {
-    return x.legs;  # Error (disabled for now)
+    return x.legs;  # <-- Error: Bird doesn't have .legs
 
 }
 

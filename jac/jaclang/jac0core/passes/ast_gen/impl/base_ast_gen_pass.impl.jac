@@ -1,19 +1,5 @@
 """Implementation for base_ast_gen_pass constructs."""
 
-"""Return the list of body statements regardless of ImplDef wrapping."""
-impl BaseAstGenPass._get_body_inner(
-    self: BaseAstGenPass, nd: uni.Archetype | uni.Enum | uni.Ability
-) -> (Sequence | None) {
-    body = nd.body;
-    if (isinstance(body, uni.ImplDef) and isinstance(body.body, `list)) {
-        return body.body;
-    }
-    if isinstance(body, `list) {
-        return body;
-    }
-    return None;
-}
-
 """Concatenate impl/test/variant bodies with the main module body."""
 impl BaseAstGenPass._merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -> list {
     clean_body = [

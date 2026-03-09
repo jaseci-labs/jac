@@ -36,7 +36,7 @@ The tutorial is split into seven parts. Each builds on the last:
 |------|-------------------|--------------|
 | [1](#part-1-your-first-lines-of-jac) | [Hello World](#part-1-your-first-lines-of-jac) | Syntax basics, types, functions |
 | [2](#part-2-modeling-data-with-nodes) | [Task data model](#part-2-modeling-data-with-nodes) | Nodes, graphs, root, edges |
-| [3](#part-3-building-the-backend-api) | [Backend API](#part-3-building-the-backend-api) | `def:pub`, imports, collections, list comprehensions |
+| [3](#part-3-building-the-backend-api) | [Backend API](#part-3-building-the-backend-api) | `def:pub`, `jid()`, collections, list comprehensions |
 | [4](#part-4-a-reactive-frontend) | [Working frontend](#part-4-a-reactive-frontend) | Client-side code, lambdas, JSX, reactive state |
 | [5](#part-5-making-it-smart-with-ai) | [AI features](#part-5-making-it-smart-with-ai) | `by llm()`, `obj`, `sem`, structured output |
 | [6](#part-6-authentication-and-multi-file-organization) | [Authentication](#part-6-authentication-and-multi-file-organization) | Login, signup, `def:priv`, per-user data, multi-file |
@@ -263,13 +263,14 @@ A node is structurally similar to an `obj` -- it's declared with the `node` keyw
 
 ```jac
 node Task {
-    has id: str,
-        title: str,
+    has title: str,
         done: bool = False;
 }
 ```
 
 The syntax looks almost identical to an `obj`, but nodes have a crucial additional capability: they can be connected to other nodes with **edges** (also `obj`-style classes), forming a graph. Think about the difference this makes. In traditional programming, objects exist independently in memory -- relationships between them must be maintained manually through references, foreign keys, or join tables. In Jac, relationships are structural. Objects are connected, and those connections form first-class graphs in the language.
+
+Every node automatically gets a unique identifier from the runtime, accessible via `jid(node)`. You never need to manage IDs manually -- Jac handles this for you. You'll see `jid()` in action starting in Part 3.
 
 This becomes especially powerful when coupled with one more abstraction: the self-referential `root`.
 
@@ -294,16 +295,15 @@ The `++>` operator creates a node and connects it to an existing node with an ed
 
 ```jac
 node Task {
-    has id: str,
-        title: str,
+    has title: str,
         done: bool = False;
 }
 
 with entry {
     # Create tasks and connect them to root
-    root ++> Task(id="1", title="Buy groceries");
-    root ++> Task(id="2", title="Team standup at 10am");
-    root ++> Task(id="3", title="Go for a run");
+    root ++> Task(title="Buy groceries");
+    root ++> Task(title="Team standup at 10am");
+    root ++> Task(title="Go for a run");
 
     print("Created 3 tasks!");
 }
@@ -325,7 +325,7 @@ The `++>` operator returns a list containing the newly created node. You can cap
 
 <!-- jac-skip -->
 ```jac
-result = root ++> Task(id="1", title="Buy groceries");
+result = root ++> Task(title="Buy groceries");
 task = result[0];  # The new Task node
 print(task.title);  # "Buy groceries"
 ```
@@ -367,8 +367,8 @@ Now here's where the two concepts come together. The `[-->]` syntax gives you a 
 
 ```jac
 with entry {
-    root ++> Task(id="1", title="Buy groceries");
-    root ++> Task(id="2", title="Team standup at 10am");
+    root ++> Task(title="Buy groceries");
+    root ++> Task(title="Team standup at 10am");
 
     # Get ALL nodes connected from root
     everything = [root-->];
@@ -400,7 +400,7 @@ Use `del` to remove a node from the graph:
 <!-- jac-skip -->
 ```jac
 for task in [root-->](?:Task) {
-    if task.id == "2" {
+    if task.title == "Team standup at 10am" {
         del task;
     }
 }
@@ -431,7 +431,7 @@ This is useful when data isn't appearing as expected.
     Connect with a typed edge using `+>: EdgeType :+>`:
 
     ```jac
-    root +>: Scheduled(time="9:00am", priority=3) :+> Task(id="1", title="Morning run");
+    root +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
     ```
 
     And filter queries by edge type:
@@ -453,6 +453,7 @@ This is useful when data isn't appearing as expected.
 - **`(?:Type)`** -- typed filter comprehension, works on any collection
 - **`(?:Type, field == val)`** -- combined type and field filtering
 - **`[root-->]`** -- query all connected nodes (returns a list, filterable like any other)
+- **`jid(node)`** -- get the built-in unique identifier of any node
 - **`del`** -- remove a node from the graph
 
 !!! example "Try It Yourself"
@@ -473,15 +474,20 @@ cd day-planner
 
 You can delete the scaffolded `main.jac` -- you'll replace it with the code below. Also create a `styles.css` file in the project root (we'll fill it in Part 4).
 
-**Imports**
+**Node Identity with `jid()`**
 
-An important feature of Jac is full interoperability with the Python ecosystem. You can import any Python package -- from the standard library or from PyPI. Here, we need `uuid` for generating unique task IDs:
+In Part 2, you learned that every node has a built-in unique identifier. The `jid()` function returns this identifier as a string -- no external libraries or manual ID management needed:
 
+<!-- jac-skip -->
 ```jac
-import from uuid { uuid4 }
+task = (root ++> Task(title="Buy groceries"))[0];
+print(jid(task));  # e.g., "1be2c28fc5924de28c55f68cc5ccaeb6"
 ```
 
-The syntax is `import from module { names }` -- it imports `uuid4` from Python's standard library `uuid` module. You can import anything from PyPI the same way.
+You'll use `jid()` in the endpoints below to identify tasks across API calls.
+
+!!! info "Python Imports"
+    Jac has full interoperability with the Python ecosystem. The syntax is `import from module { names }` -- you can import anything from the standard library or PyPI. You'll see this in action in Part 5 when we import the AI library.
 
 **def:pub -- Functions as Endpoints**
 
@@ -490,8 +496,8 @@ This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` 
 ```jac
 """Add a task and return it."""
 def:pub add_task(title: str) -> dict {
-    task = root ++> Task(id=str(uuid4()), title=title);
-    return {"id": task[0].id, "title": task[0].title, "done": task[0].done};
+    task = root ++> Task(title=title);
+    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
 }
 ```
 
@@ -507,31 +513,28 @@ Consider what this replaces in a traditional web framework: you'd need a route d
 With that understanding, here are all four CRUD (Create, Read, Update, Delete) operations for managing tasks:
 
 ```jac
-import from uuid { uuid4 }
-
 node Task {
-    has id: str,
-        title: str,
+    has title: str,
         done: bool = False;
 }
 
 """Add a task and return it."""
 def:pub add_task(title: str) -> dict {
-    task = root ++> Task(id=str(uuid4()), title=title);
-    return {"id": task[0].id, "title": task[0].title, "done": task[0].done};
+    task = root ++> Task(title=title);
+    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
 }
 
 """Get all tasks."""
 def:pub get_tasks -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](?:Task)];
+    return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->](?:Task)];
 }
 
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> dict {
     for task in [root-->](?:Task) {
-        if task.id == id {
+        if jid(task) == id {
             task.done = not task.done;
-            return {"id": task.id, "title": task.title, "done": task.done};
+            return {"id": jid(task), "title": task.title, "done": task.done};
         }
     }
     return {};
@@ -540,7 +543,7 @@ def:pub toggle_task(id: str) -> dict {
 """Delete a task."""
 def:pub delete_task(id: str) -> dict {
     for task in [root-->](?:Task) {
-        if task.id == id {
+        if jid(task) == id {
             del task;
             return {"deleted": id};
         }
@@ -578,7 +581,7 @@ task_data["done"] = True;   # Update a value
 <!-- jac-skip -->
 ```jac
 # Build a list of dicts from all Task nodes
-[{"id": t.id, "title": t.title} for t in [root-->](?:Task)]
+[{"id": jid(t), "title": t.title} for t in [root-->](?:Task)]
 
 # With a filter condition
 [t.title for t in [root-->](?:Task) if not t.done]
@@ -607,7 +610,7 @@ You can also visit [http://localhost:8000/graph](http://localhost:8000/graph) to
 **What You Learned**
 
 - **`def:pub`** -- functions that auto-become HTTP endpoints
-- **`import from module { name }`** -- import Python (or any) packages
+- **`jid(node)`** -- get the unique identifier of any node (no manual ID management needed)
 - **List comprehensions** -- `[expr for x in list]` and `[expr for x in list if cond]`
 - **Dictionaries** -- `{"key": value}` for structured data
 - **`jac start`** -- run the web server
@@ -629,7 +632,7 @@ Jac uses the `cl` (client) prefix to distinguish between server-side and browser
 cl import "./styles.css";
 ```
 
-This loads a CSS file client-side. Add this line at the top of your `main.jac`, after the `uuid` import.
+This loads a CSS file client-side. Add this line at the top of your `main.jac`.
 
 **Building the Component**
 
@@ -901,32 +904,30 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
 ??? note "Complete `main.jac` for Parts 1–4"
 
     ```jac
-    import from uuid { uuid4 }
     cl import "./styles.css";
 
     node Task {
-        has id: str,
-            title: str,
+        has title: str,
             done: bool = False;
     }
 
     """Add a task and return it."""
     def:pub add_task(title: str) -> dict {
-        task = root ++> Task(id=str(uuid4()), title=title);
-        return {"id": task[0].id, "title": task[0].title, "done": task[0].done};
+        task = root ++> Task(title=title);
+        return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
     }
 
     """Get all tasks."""
     def:pub get_tasks -> list {
-        return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](?:Task)];
+        return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->](?:Task)];
     }
 
     """Toggle a task's done status."""
     def:pub toggle_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 task.done = not task.done;
-                return {"id": task.id, "title": task.title, "done": task.done};
+                return {"id": jid(task), "title": task.title, "done": task.done};
             }
         }
         return {};
@@ -935,7 +936,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 del task;
                 return {"deleted": id};
             }
@@ -1082,14 +1083,13 @@ export ANTHROPIC_API_KEY="your-key-here"
 Add the AI import and model initialization to the top of `main.jac`, right after the existing imports:
 
 ```jac
-import from uuid { uuid4 }
 import from byllm.lib { Model }
 cl import "./styles.css";
 
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 ```
 
-`import from byllm.lib { Model }` loads Jac's AI plugin. `glob llm = Model(...)` initializes the model at module level -- the **`glob`** keyword declares a module-level variable, accessible everywhere in the file.
+`import from byllm.lib { Model }` loads Jac's AI plugin. The syntax is `import from module { names }` -- you can import any Python or PyPI package this way. `glob llm = Model(...)` initializes the model at module level -- the **`glob`** keyword declares a module-level variable, accessible everywhere in the file.
 
 **Enums as Output Constraints**
 
@@ -1128,8 +1128,7 @@ Two changes. First, add a `category` field to the `Task` node:
 
 ```jac
 node Task {
-    has id: str,
-        title: str,
+    has title: str,
         done: bool = False,
         category: str = "other";
 }
@@ -1141,9 +1140,9 @@ Then update `add_task` to call the AI:
 """Add a task with AI categorization."""
 def:pub add_task(title: str) -> dict {
     category = str(categorize(title)).split(".")[-1].lower();
-    task = root ++> Task(id=str(uuid4()), title=title, category=category);
+    task = root ++> Task(title=title, category=category);
     return {
-        "id": task[0].id, "title": task[0].title,
+        "id": jid(task[0]), "title": task[0].title,
         "done": task[0].done, "category": task[0].category
     };
 }
@@ -1157,7 +1156,7 @@ Also update `get_tasks` and `toggle_task` to include `"category"` in their retur
 """Get all tasks."""
 def:pub get_tasks -> list {
     return [
-        {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
+        {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
         for t in [root-->](?:Task)
     ];
 }
@@ -1165,10 +1164,10 @@ def:pub get_tasks -> list {
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> dict {
     for task in [root-->](?:Task) {
-        if task.id == id {
+        if jid(task) == id {
             task.done = not task.done;
             return {
-                "id": task.id, "title": task.title,
+                "id": jid(task), "title": task.title,
                 "done": task.done, "category": task.category
             };
         }
@@ -1478,7 +1477,6 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 ??? note "Complete `main.jac` for Parts 1–5"
 
     ```jac
-    import from uuid { uuid4 }
     import from byllm.lib { Model }
     cl import "./styles.css";
 
@@ -1512,8 +1510,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     # --- Data Nodes ---
 
     node Task {
-        has id: str,
-            title: str,
+        has title: str,
             done: bool = False,
             category: str = "other";
     }
@@ -1531,9 +1528,9 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     """Add a task with AI categorization."""
     def:pub add_task(title: str) -> dict {
         category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(id=str(uuid4()), title=title, category=category);
+        task = root ++> Task(title=title, category=category);
         return {
-            "id": task[0].id, "title": task[0].title,
+            "id": jid(task[0]), "title": task[0].title,
             "done": task[0].done, "category": task[0].category
         };
     }
@@ -1541,7 +1538,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     """Get all tasks."""
     def:pub get_tasks -> list {
         return [
-            {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
+            {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
             for t in [root-->](?:Task)
         ];
     }
@@ -1549,10 +1546,10 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     """Toggle a task's done status."""
     def:pub toggle_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 task.done = not task.done;
                 return {
-                    "id": task.id, "title": task.title,
+                    "id": jid(task), "title": task.title,
                     "done": task.done, "category": task.category
                 };
             }
@@ -1563,7 +1560,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 del task;
                 return {"deleted": id};
             }
@@ -1935,7 +1932,6 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     import from byllm.lib { Model }
-    import from uuid { uuid4 }
 
     glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -1967,8 +1963,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Data Nodes ---
 
     node Task {
-        has id: str,
-            title: str,
+        has title: str,
             done: bool = False,
             category: str = "other";
     }
@@ -1986,9 +1981,9 @@ All the complete files are in the collapsible sections below. Create each file, 
     """Add a task with AI categorization."""
     def:priv add_task(title: str) -> dict {
         category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(id=str(uuid4()), title=title, category=category);
+        task = root ++> Task(title=title, category=category);
         return {
-            "id": task[0].id, "title": task[0].title,
+            "id": jid(task[0]), "title": task[0].title,
             "done": task[0].done, "category": task[0].category
         };
     }
@@ -1996,7 +1991,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     """Get all tasks."""
     def:priv get_tasks -> list {
         return [
-            {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
+            {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
             for t in [root-->](?:Task)
         ];
     }
@@ -2004,10 +1999,10 @@ All the complete files are in the collapsible sections below. Create each file, 
     """Toggle a task's done status."""
     def:priv toggle_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 task.done = not task.done;
                 return {
-                    "id": task.id, "title": task.title,
+                    "id": jid(task), "title": task.title,
                     "done": task.done, "category": task.category
                 };
             }
@@ -2018,7 +2013,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     """Delete a task."""
     def:priv delete_task(id: str) -> dict {
         for task in [root-->](?:Task) {
-            if task.id == id {
+            if jid(task) == id {
                 del task;
                 return {"deleted": id};
             }
@@ -2594,8 +2589,8 @@ The best way to understand walkers is to compare them directly with the function
 ```jac
 def:priv add_task(title: str) -> dict {
     category = str(categorize(title)).split(".")[-1].lower();
-    task = root ++> Task(id=str(uuid4()), title=title, category=category);
-    return {"id": task[0].id, "title": task[0].title, "done": task[0].done, "category": task[0].category};
+    task = root ++> Task(title=title, category=category);
+    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done, "category": task[0].category};
 }
 ```
 
@@ -2608,12 +2603,11 @@ walker AddTask {
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
         new_task = here ++> Task(
-            id=str(uuid4()),
             title=self.title,
             category=category
         );
         report {
-            "id": new_task[0].id,
+            "id": jid(new_task[0]),
             "title": new_task[0].title,
             "done": new_task[0].done,
             "category": new_task[0].category
@@ -2655,7 +2649,7 @@ walker ListTasks {
 
     can collect with Task entry {
         self.results.append({
-            "id": here.id,
+            "id": jid(here),
             "title": here.title,
             "done": here.done,
             "category": here.category
@@ -2680,7 +2674,7 @@ Compare this to the function version:
 
 ```jac
 def:priv get_tasks -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done, "category": t.category}
+    return [{"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
             for t in [root-->](?:Task)];
 }
 ```
@@ -2696,14 +2690,13 @@ So far, all abilities have been defined on the **walker** (e.g., `can collect wi
 
 ```jac
 node Task {
-    has id: str,
-        title: str,
+    has title: str,
         done: bool = False,
         category: str = "other";
 
     can respond with ListTasks entry {
         visitor.results.append({
-            "id": self.id,
+            "id": jid(self),
             "title": self.title,
             "done": self.done,
             "category": self.category
@@ -2737,9 +2730,9 @@ walker ToggleTask {
     can search with Root entry { visit [-->]; }
 
     can toggle with Task entry {
-        if here.id == self.task_id {
+        if jid(here) == self.task_id {
             here.done = not here.done;
-            report {"id": here.id, "done": here.done};
+            report {"id": jid(here), "done": here.done};
             disengage;  # Found it -- stop visiting remaining nodes
         }
     }
@@ -2757,7 +2750,7 @@ walker DeleteTask {
     can search with Root entry { visit [-->]; }
 
     can remove with Task entry {
-        if here.id == self.task_id {
+        if jid(here) == self.task_id {
             del here;
             report {"deleted": self.task_id};
             disengage;
@@ -2914,7 +2907,6 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     import from byllm.lib { Model }
-    import from uuid { uuid4 }
 
     glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -2946,8 +2938,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Data Nodes ---
 
     node Task {
-        has id: str,
-            title: str,
+        has title: str,
             done: bool = False,
             category: str = "other";
     }
@@ -2968,12 +2959,11 @@ All the complete files are in the collapsible sections below. Create each file, 
         can create with Root entry {
             category = str(categorize(self.title)).split(".")[-1].lower();
             new_task = here ++> Task(
-                id=str(uuid4()),
                 title=self.title,
                 category=category
             );
             report {
-                "id": new_task[0].id,
+                "id": jid(new_task[0]),
                 "title": new_task[0].title,
                 "done": new_task[0].done,
                 "category": new_task[0].category
@@ -2990,7 +2980,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
         can collect with Task entry {
             self.results.append({
-                "id": here.id,
+                "id": jid(here),
                 "title": here.title,
                 "done": here.done,
                 "category": here.category
@@ -3008,10 +2998,10 @@ All the complete files are in the collapsible sections below. Create each file, 
         can search with Root entry { visit [-->]; }
 
         can toggle with Task entry {
-            if here.id == self.task_id {
+            if jid(here) == self.task_id {
                 here.done = not here.done;
                 report {
-                    "id": here.id,
+                    "id": jid(here),
                     "done": here.done
                 };
                 disengage;
@@ -3025,7 +3015,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         can search with Root entry { visit [-->]; }
 
         can remove with Task entry {
-            if here.id == self.task_id {
+            if jid(here) == self.task_id {
                 del here;
                 report {"deleted": self.task_id};
                 disengage;
@@ -3615,7 +3605,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 **Data & Types:** `node`, `edge`, `obj`, `enum`, `has`, `glob`, `sem`, type annotations, `str | None` unions
 
-**Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `(?:Type)` (filter), `del` (delete)
+**Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `(?:Type)` (filter), `jid()` (node identity), `del` (delete)
 
 **Functions:** `def`, `def:pub`, `def:priv`, `by llm()`, `lambda`, `async`/`await`
 
