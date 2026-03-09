@@ -175,8 +175,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -201,7 +199,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   wait-tier1:
     needs: [parse-release, publish-tier1]
@@ -232,8 +230,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -258,7 +254,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   wait-tier2:
     needs: [parse-release, publish-tier2]
@@ -289,8 +285,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -315,7 +309,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   # ============================================================================
   # Push tags after successful publish
