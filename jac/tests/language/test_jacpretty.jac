@@ -2,7 +2,7 @@
 
 import io;
 import os;
-import from jaclang.cli.jacpretty { Style, Console, render_markup, _parse_color }
+import from jaclang.cli.jacpretty { Style, Console, Theme, Panel, Table, render_markup, _parse_color }
 
 # Helper to create test console
 def make_console(
@@ -111,4 +111,87 @@ test "color parsing works for all formats" {
     assert _parse_color("rgb(255, 128, 0)") == ("38", "2", "255", "128", "0");
     assert _parse_color("color(196)") == ("38", "5", "196");
     assert _parse_color("invalid") is None;
+}
+
+# Theme
+test "theme get and fallback" {
+    theme = Theme({'success': 'green', 'error': 'red'});
+    assert theme.get('success') == 'green';
+    assert theme.get('missing') == '';
+    assert theme.get('missing', 'dim') == 'dim';
+}
+
+test "console resolves theme style names" {
+    theme = Theme({'hi': 'bold cyan'});
+    (console, buf) = make_console();
+    console = Console(file=buf, force_terminal=True, theme=theme);
+    console.print("text", style='hi');
+    assert '\x1b[1;36m' in buf.getvalue();
+}
+
+# Panel
+test "panel renders border, title and content" {
+    panel = Panel("Hello", title="Test", padding=(0, 0));
+    output = panel.render(30);
+    lines = output.split('\n');
+    assert len(lines) == 3;
+    assert "Hello" in output and "Test" in output and "─" in output;
+}
+
+test "panel border_style adds markup to render output" {
+    panel = Panel("Hi", border_style="red", padding=(0, 0));
+    output = panel.render(20);
+    assert "red" in output;
+}
+
+test "panel padding adds extra lines" {
+    panel = Panel("x", padding=(1, 0));
+    lines = panel.render(20).split('\n');
+    assert len(lines) >= 5;  # top + pad + content + pad + bottom
+}
+
+# Table
+test "table renders headers, separator and rows" {
+    table = Table(show_header=True, header_style="bold");
+    table.add_column("Name");
+    table.add_row("foo");
+    output = table.render(40);
+    assert "Name" in output and "foo" in output and "─" in output;
+}
+
+test "table renders title and column style" {
+    table = Table(title="Results", show_header=False, header_style="");
+    table.add_column("X", style="green");
+    table.add_row("val");
+    output = table.render(40);
+    assert "Results" in output and "[green]" in output;
+}
+
+test "empty table returns empty string" {
+    assert Table().render(80) == "";
+}
+
+# Spinner / status
+test "status non-terminal prints text and works as context manager" {
+    buf = io.StringIO();
+    console = Console(file=buf, force_terminal=False);
+    entered = False;
+    with console.status("Loading...") {
+        entered = True;
+    }
+    assert entered and "Loading..." in buf.getvalue();
+}
+
+test "status terminal mode spinner runs without error" {
+    buf = io.StringIO();
+    with Console(file=buf, force_terminal=True).status("Working") {
+        assert True;
+    }
+}
+
+# Console.log
+test "console log includes message" {
+    (console, buf) = make_console();
+    console.log("Hello");
+    assert "Hello" in buf.getvalue();
 }
