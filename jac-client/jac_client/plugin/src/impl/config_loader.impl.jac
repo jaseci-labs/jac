@@ -21,7 +21,6 @@ glob JAC_CLIENT_NODE_VERSION = "1.0.7",
 # ============================================================================
 # DEPENDENCY MANAGEMENT HELPERS
 # ============================================================================
-
 """Ensure a core dependency exists in jac.toml, add if missing.
 
 Returns updated deps dict and whether node_modules should be cleared.
@@ -36,33 +35,40 @@ def _ensure_dependency(
 ) -> tuple[dict, bool] {
     if name not in deps {
         console.print(
-            f"\n  [yellow]⚠[/yellow] Missing required {'dev ' if is_dev else ''}dependency: [bold]{name}[/bold]"
+            f"\n  [yellow]⚠[/yellow] Missing required {'dev '
+                if is_dev
+                else ''}dependency: [bold]{name}[/bold]"
         );
         console.print(f"  [dim]{description}[/dim]");
         jac_config.add_dependency(name, version, dev=is_dev, dep_type='npm');
         jac_config.save();
-        deps = {name: version, **deps};
+        deps = {name: version, ** deps};
         console.print(f"  [green]✔[/green] Added {name}@{version} to jac.toml");
         return (deps, True);  # needs reinstall
+
     }
     return (deps, False);
 }
 
-"""Check if dependency version matches required version, warn if not."""
+"""Check and auto-update dependency version if mismatched.
+
+Returns True if version was updated (needs reinstall).
+"""
 def _check_dependency_version(
-    deps: dict,
-    name: str,
-    required_version: str,
-    update_command: str
-) -> None {
+    jac_config: Any, deps: dict, name: str, required_version: str, is_dev: bool
+) -> bool {
     user_version: str = str(deps.get(name, ''));
     if user_version and user_version != required_version {
         console.print(
             f"\n  [yellow]⚠[/yellow] Version mismatch: {name}@{user_version} "
             f"(required: {required_version})"
         );
-        console.print(f"  [dim]Run '{update_command}' to update[/dim]\n");
+        jac_config.add_dependency(name, required_version, dev=is_dev, dep_type='npm');
+        jac_config.save();
+        console.print(f"  [green]✔[/green] Updated to {name}@{required_version}");
+        return True;
     }
+    return False;
 }
 
 """Clear node_modules to force dependency reinstall."""
@@ -133,7 +139,8 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
 
     # Runtime dependency: jac-client-node
     (npm_deps, added) = _ensure_dependency(
-        jac_config, npm_deps,
+        jac_config,
+        npm_deps,
         name='jac-client-node',
         version=JAC_CLIENT_NODE_VERSION,
         is_dev=False,
@@ -141,15 +148,20 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     );
     needs_reinstall = needs_reinstall or added;
     if not added {
-        _check_dependency_version(
-            npm_deps, 'jac-client-node', JAC_CLIENT_NODE_VERSION,
-            f"jac add --npm jac-client-node@{JAC_CLIENT_NODE_VERSION}"
+        updated = _check_dependency_version(
+            jac_config,
+            npm_deps,
+            'jac-client-node',
+            JAC_CLIENT_NODE_VERSION,
+            is_dev=False
         );
+        needs_reinstall = needs_reinstall or updated;
     }
 
     # Dev dependency: @jac-client/dev-deps
     (npm_dev_deps, added) = _ensure_dependency(
-        jac_config, npm_dev_deps,
+        jac_config,
+        npm_dev_deps,
         name='@jac-client/dev-deps',
         version=JAC_CLIENT_DEV_DEPS_VERSION,
         is_dev=True,
@@ -157,10 +169,14 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     );
     needs_reinstall = needs_reinstall or added;
     if not added {
-        _check_dependency_version(
-            npm_dev_deps, '@jac-client/dev-deps', JAC_CLIENT_DEV_DEPS_VERSION,
-            f"jac add --npm-dev @jac-client/dev-deps@{JAC_CLIENT_DEV_DEPS_VERSION}"
+        updated = _check_dependency_version(
+            jac_config,
+            npm_dev_deps,
+            '@jac-client/dev-deps',
+            JAC_CLIENT_DEV_DEPS_VERSION,
+            is_dev=True
         );
+        needs_reinstall = needs_reinstall or updated;
     }
 
     # Clear node_modules if any dependency was added
@@ -278,7 +294,7 @@ impl JacClientConfig.check_runtime_version(
     clean_user: str = user_version.lstrip('^~>=<');
     clean_required: str = required_version.lstrip('^~>=<');
 
-    is_compatible = (clean_user == clean_required);
+    is_compatible = clean_user == clean_required;
     return (is_compatible, user_version, required_version);
 }
 
@@ -292,5 +308,7 @@ impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {
     jac_config.save();
     # Invalidate cache to reload
     self.invalidate();
-    console.print(f"  [green]✔[/green] Synced jac-client-node to {JAC_CLIENT_NODE_VERSION}");
+    console.print(
+        f"  [green]✔[/green] Synced jac-client-node to {JAC_CLIENT_NODE_VERSION}"
+    );
 }
