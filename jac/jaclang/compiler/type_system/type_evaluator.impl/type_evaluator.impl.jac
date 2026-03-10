@@ -2137,6 +2137,13 @@ impl TypeEvaluator.get_narrowed_type(
     expr: uni.Expr, at_node: uni.UniNode
 ) -> TypeBase | None {
     import from jaclang.jac0core.constant { Tokens as Tok }
+    # Reentrancy guard: Skip if we're already computing narrowing for this expression.
+    # This prevents infinite recursion when processing augmented assignments like
+    # x += 5 (which expands to x = x + 5, where evaluating x + 5 triggers narrowing for x).
+    expr_id = id(expr);
+    if expr_id in self._narrowing_in_progress {
+        return None;
+    }
     # Get the type of the expression to narrow.
     # IMPORTANT: Use different strategies to avoid recursion:
     # - For Name nodes with symbol: use get_type_of_symbol (doesn't recurse)
@@ -2226,7 +2233,13 @@ impl TypeEvaluator.get_narrowed_type(
     if stmt is None {
         return None;
     }
-    return self._compute_narrowed_at(expr, expr_type, stmt, set());
+    # Mark this expression as in-progress before CFG walk
+    self._narrowing_in_progress.add(expr_id);
+    try {
+        return self._compute_narrowed_at(expr, expr_type, stmt, set());
+    } finally {
+        self._narrowing_in_progress.discard(expr_id);
+    }
 }
 
 """Check if a node contains another node in its subtree."""
