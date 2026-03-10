@@ -385,26 +385,27 @@ obj Panel {
         border_end = "[/]" if self.border_style else "";
         title_text = f" {self.title} " if self.title else "";
         title_len = len(self.title) + 2 if self.title else 0;
-        top_line = "╭" + title_text + ("─" * (width - 2 - title_len)) + "╮";
+        top_line = "\u256d" + title_text + ("\u2500" * (width - 2 - title_len)) + "\u256e";
         lines.append(f"{border_start}{top_line}{border_end}");
         for _ in range(pad_v) {
             lines.append(
-                f"{border_start}│{border_end}{' ' * (width - 2)}{border_start}│{border_end}"
+                f"{border_start}\u2502{border_end}{' ' * (width - 2)}{border_start}\u2502{border_end}"
             );
         }
         for line in self.content.split("\n") {
             padded_line = (" " * pad_h) + line + (" " * pad_h);
-            pad_right = width - 2 - len(line) - (2 * pad_h);
+            visible_len = len(re.sub(r'\[[^\[\]]*\]', '', line));
+            pad_right = width - 2 - visible_len - (2 * pad_h);
             lines.append(
-                f"{border_start}│{border_end}{padded_line}{' ' * pad_right}{border_start}│{border_end}"
+                f"{border_start}\u2502{border_end}{padded_line}{' ' * pad_right}{border_start}\u2502{border_end}"
             );
         }
         for _ in range(pad_v) {
             lines.append(
-                f"{border_start}│{border_end}{' ' * (width - 2)}{border_start}│{border_end}"
+                f"{border_start}\u2502{border_end}{' ' * (width - 2)}{border_start}\u2502{border_end}"
             );
         }
-        lines.append(f"{border_start}╰{'─' * (width - 2)}╯{border_end}");
+        lines.append(f"{border_start}\u2570{'\u2500' * (width - 2)}\u256f{border_end}");
         return "\n".join(lines);
     }
 }
