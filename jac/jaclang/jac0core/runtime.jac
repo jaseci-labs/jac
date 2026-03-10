@@ -51,17 +51,6 @@ import from jaclang.jac0core.constructs {
 import from jaclang.jac0core.modresolver { infer_language }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
-import from jaclang.runtimelib.sam_gti {
-    sam_invalidate,
-    sam_put,
-    sam_query,
-    sam_populate_from_gti,
-    gti_query_targets,
-    _get_sqlite,
-    _gti_write_edge,
-    _gti_delete_edge,
-    _gti_delete_node
-}
 
 glob _JAC_INDEX_DEGREE_THRESHOLD: int = int(
     os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
@@ -318,6 +307,12 @@ class JacNode {
     static def edges_to_nodes(
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
+        import from jaclang.runtimelib.sam_gti {
+            _get_sqlite,
+            gti_query_targets,
+            sam_populate_from_gti,
+            sam_query
+        };
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
@@ -447,6 +442,11 @@ class JacNode {
 
     """Remove reference without checking sync status."""
     static def remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
+        import from jaclang.runtimelib.sam_gti {
+            _get_sqlite,
+            _gti_delete_edge,
+            sam_invalidate
+        };
         for (idx, ed) in enumerate(nd.edges) {
             if (ed.id == `edge.id) {
                 nd.edges.pop(idx);
@@ -1733,6 +1733,11 @@ system,
     ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)] {
         ct = conn_type or GenericEdge;
         def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype {
+            import from jaclang.runtimelib.sam_gti {
+                _get_sqlite,
+                _gti_write_edge,
+                sam_put
+            };
             `edge = ct() if isinstance(ct, `type) else ct;
             eanch = `edge.__jac__=EdgeAnchor(
                 archetype=`edge,
@@ -1809,6 +1814,11 @@ system,
 
     """Destroy multiple objects passed in a tuple or list."""
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None {
+        import from jaclang.runtimelib.sam_gti {
+            _get_sqlite,
+            _gti_delete_node,
+            sam_invalidate
+        };
         obj_list = objs if isinstance(objs, `list) else [objs];
         for `obj in obj_list {
             if not isinstance(`obj, (Archetype, Anchor)) {
