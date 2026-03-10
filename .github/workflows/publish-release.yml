@@ -115,9 +115,6 @@ jobs:
       (needs.precompile.result == 'success' || needs.precompile.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      id-token: write
-      attestations: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -125,7 +122,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
           persist-credentials: false
           submodules: ${{ matrix.submodules }}
 
@@ -159,13 +155,19 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.extra_build_cmd }}
 
-      # Build the package with attestations
+      # Build the package
+      - name: Install build tools
+        run: pip install build
+
       - name: Build package
-        uses: hynek/build-and-inspect-python-package@efb823f52190ad02594531168b7a2d5790e66516 # v2.13.0
+        working-directory: ${{ matrix.dir }}
+        run: python -m build
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: ${{ matrix.dir }}
-          attest-build-provenance-github: "true"
-          upload-name-suffix: -${{ matrix.pypi }}
+          name: Packages-${{ matrix.pypi }}
+          path: ${{ matrix.dir }}/dist/*
 
   # ============================================================================
   # Publish Tier 1: jaclang (base package)
@@ -175,8 +177,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -201,7 +201,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   wait-tier1:
     needs: [parse-release, publish-tier1]
@@ -232,8 +232,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -258,7 +256,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   wait-tier2:
     needs: [parse-release, publish-tier2]
@@ -289,8 +287,6 @@ jobs:
     if: needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -315,7 +311,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_TOKEN }}
 
   # ============================================================================
   # Push tags after successful publish

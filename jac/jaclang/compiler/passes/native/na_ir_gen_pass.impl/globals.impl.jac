@@ -32,7 +32,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
             # Create LLVM global variable
             global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
-            global_var.linkage = "internal";
+            global_var.linkage = "";
             # Try compile-time constant initialization for simple values
             const_init = self._codegen_const_expr(assign.value, var_type)
                 if assign.value is not None

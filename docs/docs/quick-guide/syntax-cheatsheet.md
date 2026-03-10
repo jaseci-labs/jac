@@ -280,6 +280,16 @@ obj Dog {
     def bark() {
         print(f"{self.name} says Woof!");
     }
+
+    # Class method -- Self refers to the class
+    class def create(name: str) -> Self {
+        return Self(name=name);
+    }
+
+    # Static method -- no self or Self
+    static def species() -> str {
+        return "Canis familiaris";
+    }
 }
 
 # `class` follows standard Python class behavior
@@ -392,6 +402,12 @@ type Json = JsonPrimitive | list[Json] | dict[str, Json];
 # Generic type alias
 type NumberList = list[int | float];
 
+# Self type -- refers to the enclosing archetype
+obj TreeNode {
+    has value: int = 0,
+        next: Self | None = None;  # Self = TreeNode here
+}
+
 
 # ============================================================
 # Global Variables (glob)
@@ -480,6 +496,8 @@ with entry {
 # Decorators
 # ============================================================
 
+# Prefer `class def` for classmethods in obj (see Objects section above)
+# @classmethod decorator is supported for Python `class` compatibility
 @classmethod
 def my_class_method(cls: type) -> str {
     return cls.__name__;

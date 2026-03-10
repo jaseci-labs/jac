@@ -8,7 +8,7 @@ impl Arg.create(
     name: str,
     kind: ArgKind = ArgKind.OPTION,
     typ: Any = str,
-    default: Any = None,
+    `default: Any = None,
     help: str = "",
     short: str | None = None,
     choices: list[Any] | None = None,
@@ -24,7 +24,7 @@ impl Arg.create(
         name=name,
         kind=kind,
         typ=typ,
-        default=default,
+        `default=`default,
         help=help,
         short=auto_short,
         choices=choices,
@@ -62,8 +62,8 @@ impl CommandSpec.add_post_hook(hook: Callable, source: str) -> None {
 # HookContext Implementation
 # ===============================================================================
 """Get an argument value with optional default."""
-impl HookContext.get_arg(name: str, default: Any = None) -> Any {
-    return self.args.get(name, default);
+impl HookContext.get_arg(name: str, `default: Any = None) -> Any {
+    return self.args.get(name, `default);
 }
 
 """Set a value in the hook data context."""
@@ -72,6 +72,6 @@ impl HookContext.set_data(key: str, value: Any) -> None {
 }
 
 """Get a value from the hook data context."""
-impl HookContext.get_data(key: str, default: Any = None) -> Any {
-    return self.data.get(key, default);
+impl HookContext.get_data(key: str, `default: Any = None) -> Any {
+    return self.data.get(key, `default);
 }

@@ -16,8 +16,8 @@ import from tests.fixtures_list { JACLANG_PYTHON_FILES }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent);
 
+"""Every in-repo Python file should parse and unparse cleanly."""
 def pyfile_parse_test(rel_path: str) {
-    """Every in-repo Python file should parse and unparse cleanly."""
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     source = Path(filename).read_text();
     py_module = PyastBuildPass(

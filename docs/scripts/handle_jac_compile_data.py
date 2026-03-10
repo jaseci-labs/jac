@@ -1,58 +1,48 @@
 """Handle jac compile data for jaclang.org.
 
-This script is used to handle the jac compile data for jac playground.
+This script is used  to handle the jac compile data for jac playground.
 """
 
 import os
+import shutil
 import subprocess
+import tempfile
 import time
 import zipfile
 
 from jaclang.utils.lang_tools import AstTool
 
-TARGET_FOLDER = "../jac/jaclang"
 EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
 UNIIR_NODE_DOC = "docs/community/internals/uniir_node.md"
 TOP_CONTRIBUTORS_DOC = "docs/community/top_contributors.md"
 AST_TOOL = AstTool()
-EXAMPLE_SOURCE_FOLDER = "../jac/examples"
-EXAMPLE_TARGET_FOLDER = "docs/assets/examples"
-
 # Directory basenames to exclude
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
 EXCLUDE_EXTS = {".pyc", ".pyo", ".pyi"}
+# Subdirectory paths within jaclang to exclude entirely
+EXCLUDE_SUBDIRS = {
+    os.path.join("compiler", "passes", "native"),
+    os.path.join("vendor", "typeshed"),
+}
 
 
-def precompile_jaclang() -> None:
-    """Run the jaclang precompilation script to generate .jir bytecode.
+def fetch_pypi_jaclang() -> str:
+    """Install jaclang from PyPI into a temp dir to get pre-compiled .jir files."""
 
-    Precompiles the entire jaclang source, same as PyPI release builds.
-    """
-    jac_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "jac")
+    tmp_dir = tempfile.mkdtemp(prefix="jaclang_pypi_")
+    print("Installing jaclang from PyPI (for pre-compiled .jir files)...")
+    subprocess.run(
+        ["pip", "install", "jaclang", "--target", tmp_dir, "--no-deps", "--quiet"],
+        check=True,
     )
-    script_path = os.path.join(jac_root, "scripts", "precompile_bytecode.jac")
-
-    if not os.path.exists(script_path):
-        print(f"Warning: Precompile script not found at {script_path}. Skipping.")
-        return
-
-    print("Precompiling jaclang bytecode for playground...")
-    try:
-        subprocess.run(
-            ["jac", "run", "scripts/precompile_bytecode.jac", "."],
-            check=True,
-            cwd=jac_root,
-        )
-        print("Precompilation complete.")
-    except subprocess.CalledProcessError as e:
-        print(
-            f"Warning: Precompilation failed: {e}. Playground will use on-the-fly compilation."
-        )
-    except FileNotFoundError:
-        print("Warning: 'jac' command not found. Skipping precompilation.")
+    jaclang_dir = os.path.join(tmp_dir, "jaclang")
+    jir_count = sum(
+        1 for _, _, files in os.walk(jaclang_dir) for f in files if f.endswith(".jir")
+    )
+    print(f"Found {jir_count} pre-compiled .jir files")
+    return jaclang_dir
 
 
 def pre_build_hook(**kwargs: dict) -> None:
@@ -64,9 +54,17 @@ def pre_build_hook(**kwargs: dict) -> None:
     if os.path.exists(PLAYGROUND_ZIP_PATH):
         print(f"Removing existing zip file: {PLAYGROUND_ZIP_PATH}")
         os.remove(PLAYGROUND_ZIP_PATH)
-    precompile_jaclang()
-    create_playground_zip()
-    print("Jaclang zip file created successfully.")
+
+    jaclang_dir = None
+    try:
+        jaclang_dir = fetch_pypi_jaclang()
+        create_playground_zip(jaclang_dir)
+        print("Jaclang zip file created successfully.")
+    except Exception as e:
+        print(f"Warning: Failed to fetch from PyPI: {e}. Skipping playground zip.")
+    finally:
+        if jaclang_dir:
+            shutil.rmtree(os.path.dirname(jaclang_dir), ignore_errors=True)
 
     if is_file_older_than_minutes(UNIIR_NODE_DOC, 5):
         with open(UNIIR_NODE_DOC, "w") as f:
@@ -90,40 +88,40 @@ def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
     return time_diff_minutes > minutes
 
 
-def should_exclude(path: str) -> bool:
+def should_exclude(path: str, jaclang_dir: str) -> bool:
     """Check if file/directory should be excluded."""
     if os.path.basename(path) in EXCLUDE_DIRS:
         return True
-    return os.path.splitext(path)[1] in EXCLUDE_EXTS
+    if os.path.splitext(path)[1] in EXCLUDE_EXTS:
+        return True
+    rel = os.path.relpath(path, jaclang_dir)
+    return any(rel == ex or rel.startswith(ex + os.sep) for ex in EXCLUDE_SUBDIRS)
 
 
-def create_playground_zip() -> None:
-    """Create a zip from the jaclang source with precompiled .jir files.
-
-    Uses the source repo at ../jac/jaclang, which should be precompiled
-    before calling this function.
-    """
-    jaclang_dir = os.path.abspath(TARGET_FOLDER)
-    print(f"Creating zip from source at: {jaclang_dir}")
+def create_playground_zip(jaclang_dir: str) -> None:
+    """Create a zip from the jaclang directory with pre-compiled .jir files."""
+    print(f"Creating zip from: {jaclang_dir}")
 
     if not os.path.exists(jaclang_dir):
         raise FileNotFoundError(f"Folder not found: {jaclang_dir}")
 
     os.makedirs(EXTRACTED_FOLDER, exist_ok=True)
 
-    files_added = 0
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(jaclang_dir):
-            dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d))]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not should_exclude(os.path.join(root, d), jaclang_dir)
+            ]
 
             for file in files:
                 file_path = os.path.join(root, file)
-                if not should_exclude(file_path):
+                if not should_exclude(file_path, jaclang_dir):
                     arcname = os.path.join(
                         ZIP_FOLDER_NAME, os.path.relpath(file_path, jaclang_dir)
                     )
                     zipf.write(file_path, arcname)
-                    files_added += 1
 
     # Verify and report
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "r") as zf:

@@ -22,9 +22,9 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
-def ast_to_list(node: ast3.AST) -> list[ast3.AST] {
-    nodes = [node];
-    for (_, value) in ast3.iter_fields(node) {
+def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
+    nodes = [`node];
+    for (_, value) in ast3.iter_fields(`node) {
         if isinstance(value, list) {
             for item in value {
                 if isinstance(item, ast3.AST) {
