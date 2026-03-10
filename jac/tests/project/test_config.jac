@@ -1515,10 +1515,9 @@ test "plugin deep merge across files" {
 }
 
 test "save preserves special chars and env vars in plugins" {
-    """TOML serializer must:
-    1. Quote table headers with special characters (e.g. //npm.pkg.github.com/)
-    2. Preserve ${VAR} env var placeholders without interpolating them
-    """
+    # TOML serializer must:
+    # 1. Quote table headers with special characters (e.g. //npm.pkg.github.com/)
+    # 2. Preserve env var placeholders like ${VAR} without interpolating them
     config_mod._config = None;
     # Set an env var that could be interpolated
     os.environ["TEST_AUTH_TOKEN"] = "secret_value_12345";
