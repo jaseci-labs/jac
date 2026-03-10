@@ -545,7 +545,7 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 9;
+    assert len(program.errors_had) == 8;
 }
 
 test "cyclic_symbol" {
