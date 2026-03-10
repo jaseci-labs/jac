@@ -1352,6 +1352,31 @@ jac status main.jac
 jac destroy main.jac
 ```
 
+## Disabling Colors (NO_COLOR)
+
+To disable colored terminal output (useful for log files, CI/CD, or accessibility), set the `NO_COLOR` environment variable:
+
+```bash
+# Per-command
+NO_COLOR=1 jac run main.jac
+
+# Current session
+export NO_COLOR=1
+
+# Permanent (add to ~/.bashrc)
+echo 'export NO_COLOR=1' >> ~/.bashrc
+```
+
+**VS Code Terminal**: Add to `settings.json`:
+
+```json
+{
+    "terminal.integrated.env.linux": { "NO_COLOR": "1" }
+}
+```
+
+---
+
 ## See Also
 
 - [Project Configuration](../config/index.md)
