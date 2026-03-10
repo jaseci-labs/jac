@@ -10,15 +10,14 @@ Based on: rich/tests/test_markup.py
 """
 
 import pytest
-import re
 
 # Import jacpretty components
-from jaclang.cli.jacpretty import RE_MARKUP, render_markup, Style
-
+from jaclang.cli.jacpretty import RE_MARKUP, Style, render_markup
 
 # =============================================================================
 # REGEX TESTS (from Rich's test_re_no_match and test_re_match)
 # =============================================================================
+
 
 class TestRegexNoMatch:
     """Tags that should NOT be matched - Rich's test_re_no_match."""
@@ -91,6 +90,7 @@ class TestRegexMatch:
 # =============================================================================
 # RENDER TESTS (from Rich's test_render_*)
 # =============================================================================
+
 
 class TestRenderBasic:
     """Basic rendering tests - Rich's test_render."""
@@ -183,6 +183,7 @@ class TestRenderOverlap:
 # ESCAPE TESTS (from Rich's test_escape)
 # =============================================================================
 
+
 class TestEscape:
     """Escape handling tests - based on Rich's test_escape."""
 
@@ -201,6 +202,7 @@ class TestEscape:
 # =============================================================================
 # STYLE TESTS
 # =============================================================================
+
 
 class TestStyle:
     """Style parsing tests."""
@@ -247,6 +249,7 @@ class TestStyle:
 # EDGE CASES & BUG FIXES
 # =============================================================================
 
+
 class TestBugFixes:
     """Tests for specific bug fixes."""
 
@@ -260,6 +263,7 @@ class TestBugFixes:
     def test_large_numeric_array_no_hang(self):
         """Large numeric arrays should not hang (Jayanaka's bug)."""
         import time
+
         data = str([[i, f"name_{i}", "city", i * 100] for i in range(1000)])
 
         start = time.time()
@@ -308,6 +312,7 @@ class TestStricterThanRich:
 # HYPERLINK TESTS (Rich-compatible OSC 8)
 # =============================================================================
 
+
 class TestLinks:
     """Link features - jacpretty supports OSC 8 hyperlinks like Rich."""
 
@@ -323,7 +328,9 @@ class TestLinks:
 
     def test_render_link_with_style(self):
         """[bold][link=url]text[/link][/bold] combines style and link."""
-        result = render_markup("[bold][link=https://example.com]styled link[/link][/bold]")
+        result = render_markup(
+            "[bold][link=https://example.com]styled link[/link][/bold]"
+        )
         # Should have both OSC 8 and bold ANSI
         assert "\x1b]8;" in result  # OSC 8 hyperlink
         assert "\x1b[1m" in result  # Bold
@@ -350,6 +357,7 @@ class TestMarkupErrorNotImplemented:
         """foo[/] should raise MarkupError in Rich."""
         # jacpretty doesn't raise errors, just ignores invalid markup
         from rich.errors import MarkupError
+
         with pytest.raises(MarkupError):
             render_markup("foo[/]")
 
@@ -401,13 +409,16 @@ def print_compatibility_report():
         print(f"  [--] {item}")
 
     print("\n" + "=" * 70)
-    print(f"SUMMARY: {len(compatible)} compatible, {len(stricter_than_rich)} stricter, "
-          f"{len(not_implemented)} not implemented")
+    print(
+        f"SUMMARY: {len(compatible)} compatible, {len(stricter_than_rich)} stricter, "
+        f"{len(not_implemented)} not implemented"
+    )
     print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
     import sys
+
     if "--report" in sys.argv:
         print_compatibility_report()
     else:
