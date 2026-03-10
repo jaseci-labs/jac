@@ -1205,6 +1205,8 @@ lodash = "^4.17.21"
 axios = "^1.6.0"
 ```
 
+**Core Dependencies**: The `jac-client-node` and `@jac-client/dev-deps` packages are required for all jac-client projects. If missing or outdated in `jac.toml`, they are automatically added or updated when the config is loaded (e.g., during `jac start`).
+
 For private packages from custom registries, see [NPM Registry Configuration](#npm-registry-configuration) above.
 
 ### jac build
