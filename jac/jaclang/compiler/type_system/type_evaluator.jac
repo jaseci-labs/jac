@@ -101,6 +101,12 @@ obj NarrowingPredicate {
 
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
+    # Attributes set in init - declared here for type checker visibility
+    has diagnostic_callback: DiagnosticCallback,
+        builtins_module: uni.Module | None,
+        _narrowing_cache: dict,
+        _narrowing_in_progress: set;
+
     def init(program: "JacProgram") -> None;
     def _load_stub_module(path: str) -> uni.Module;
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
