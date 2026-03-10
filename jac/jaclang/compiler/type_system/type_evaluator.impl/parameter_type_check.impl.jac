@@ -111,6 +111,9 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             return None;
         }
 
+        is_covariant = False;
+        is_contravariant = False;
+
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
             type_var_name = _get_string_lit_value(first_arg) or "";
@@ -122,11 +125,21 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 );
             }
 
-            # Count positional constraint arguments (non-keyword args after the name)
+            # Count positional constraint arguments and extract variance kwargs
             for i in range(1, len(expr.params)) {
                 arg = expr.params[i];
                 if isinstance(arg, uni.KWPair) {
-                    continue;  # Skip named args like bound=, covariant=
+                    # Extract covariant= and contravariant= keyword args
+                    if isinstance(arg.key, uni.Name) {
+                        if arg.key.value == "covariant"
+                        and isinstance(arg.value, uni.Bool) {
+                            is_covariant = arg.value.value;
+                        } elif arg.key.value == "contravariant"
+                        and isinstance(arg.value, uni.Bool) {
+                            is_contravariant = arg.value.value;
+                        }
+                    }
+                    continue;
                 }
                 constraint_count += 1;
                 if first_constraint_arg is None {
@@ -147,7 +160,11 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 expr, "TypeVar() requires a string literal as the first argument"
             );
         }
-        return types.TypeVarType(name=type_var_name);
+        return types.TypeVarType(
+            name=type_var_name,
+            is_covariant=is_covariant,
+            is_contravariant=is_contravariant
+        );
     }
     if (
         isinstance(caller_type, types.ClassType)

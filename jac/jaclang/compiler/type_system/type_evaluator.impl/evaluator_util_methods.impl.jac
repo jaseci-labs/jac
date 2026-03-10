@@ -792,6 +792,96 @@ impl TypeEvaluator.validate_typevar_in_type_expr(expr: uni.Expr) -> None {
     }
 }
 
+"""Validate TypeVar variance in method parameters and return types.
+
+Pyright: Covariant TypeVars cannot be used in parameter types (input position).
+         Contravariant TypeVars cannot be used in return types (output position).
+         Only applies to DIRECT methods of generic classes (not nested functions).
+"""
+impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
+    # Only validate DIRECT methods of a generic class (not nested functions)
+    # Check if parent is directly the class (not another function)
+    if not isinstance(func.parent, uni.Archetype) {
+        return;
+    }
+    enclosing_class = func.parent;
+
+    # Get the class's type parameters
+    class_type = self.get_type_of_class(enclosing_class);
+    if not class_type or not class_type.shared or not class_type.shared.type_params {
+        return;
+    }
+
+    # Build map of class-scoped TypeVar names to their variance
+    class_tvars: dict[str, types.TypeVarType] = {};
+    for tp in class_type.shared.type_params {
+        class_tvars[tp.name] = tp;
+    }
+
+    # Helper to check variance - only direct TypeVar, not in unions for params
+    def check_expr(expr: uni.Expr, is_return: bool) -> None {
+        if isinstance(expr, uni.Name) {
+            resolved = self.get_type_of_expression(expr);
+            if isinstance(resolved, types.TypeVarType)
+            and resolved.name in class_tvars {
+                tv = class_tvars[resolved.name];
+                if is_return and tv.is_contravariant {
+                    self.add_diagnostic(
+                        expr,
+                        "Contravariant type variable cannot be used in return type"
+                    );
+                } elif not is_return and tv.is_covariant {
+                    self.add_diagnostic(
+                        expr,
+                        "Covariant type variable cannot be used in parameter type"
+                    );
+                }
+            }
+        } elif isinstance(expr, uni.BinaryExpr) and is_return {
+            # Only check unions for return types, not parameters
+            check_expr(expr.left, is_return);
+            check_expr(expr.right, is_return);
+        }
+        # Note: list[T] - T is in invariant position, so we don't recurse into subscripts
+    }
+
+    if not isinstance(func.signature, uni.FuncSignature) {
+        return;
+    }
+
+    # Check parameter types (covariant not allowed - direct usage only)
+    params = func.signature.get_parameters();
+    if params {
+        for param in params {
+            if param.type_tag and isinstance(param.type_tag.tag, uni.Expr) {
+                check_expr(param.type_tag.tag, False);
+            }
+        }
+    }
+
+    # Check return type (contravariant not allowed)
+    if func.signature.return_type {
+        check_expr(func.signature.return_type, True);
+    } else {
+        # Check inferred return type from return statements
+        for ret_stmt in func.get_all_sub_nodes(uni.ReturnStmt) {
+            if ret_stmt.expr and isinstance(ret_stmt.expr, uni.Name) {
+                resolved = self.get_type_of_expression(ret_stmt.expr);
+                if isinstance(resolved, types.TypeVarType)
+                and resolved.name in class_tvars {
+                    tv = class_tvars[resolved.name];
+                    if tv.is_contravariant {
+                        self.add_diagnostic(
+                            ret_stmt,
+                            "Contravariant type variable cannot be used in return type"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 """Validate that a TypeVar is used in a valid scope.
 
 Pyright: validateTypeVarUsage / enforceClassTypeVarScope
