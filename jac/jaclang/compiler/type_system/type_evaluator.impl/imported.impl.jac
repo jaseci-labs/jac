@@ -25,6 +25,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                 candidate_paths = [
                     (mod_dir / f"{node_.name.value}{ext}").resolve(),
+                    # Check for subpackage: e.g., llvmlite/ir/__init__.py
+                    (mod_dir / node_.name.value / f"__init__{ext}").resolve(),
                     (mod_dir / f"__init__{ext}").resolve(),
 
                 ];
@@ -35,7 +37,19 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     }
                     mod = self._import_module_from_path(str(path));
 
-                    if path.name.startswith("__init__") {
+                    # Check if this is a subpackage's __init__ file (e.g., subpkg/__init__.py)
+                    # vs the parent module's __init__ file
+                    is_subpackage_init = (
+                        path.name.startswith("__init__")
+                        and path.parent.name == node_.name.value
+                    );
+                    is_parent_init = (
+                        path.name.startswith("__init__")
+                        and path.parent.name != node_.name.value
+                    );
+
+                    if is_parent_init {
+                        # Look up the symbol in the parent's __init__.py
                         if sym := type_utils.lookup_symtab(
                             mod, node_.name.value, self.builtins_module
                         ) {
@@ -43,6 +57,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         }
                         continue;
                     }
+
+                    # For regular modules and subpackage __init__.py, create ModuleType
                     flags = type_utils.compute_module_source_flags(str(path));
                     mod_type = types.ModuleType(
                         mod_name=node_.name.sym_name,

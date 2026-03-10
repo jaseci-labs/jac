@@ -425,6 +425,7 @@ class FuncDef:
     body: list = field(default_factory=list)
     decorators: list = field(default_factory=list)
     is_static: bool = False
+    is_classmethod: bool = False
     is_async: bool = False
 
 
@@ -1054,6 +1055,9 @@ class Parser:
             if v == "import":
                 return self._parse_import()
             if v in ("class", "obj", "node", "edge", "walker"):
+                # Disambiguate: class def/can = classmethod, class Name = archetype
+                if v == "class" and self._peek(1).value in ("def", "can", "async"):
+                    return self._parse_funcdef([])
                 return self._parse_class([])
             if v == "enum":
                 return self._parse_enum([])
@@ -1278,14 +1282,19 @@ class Parser:
 
     def _parse_funcdef(self, decorators: list[str]) -> FuncDef:
         is_static = False
+        is_classmethod = False
         is_async = False
-        # Handle both orders: static async def / async static def
-        if self._match(TT.NAME, "static"):
+        # Handle modifiers: class/static async def / async class/static def
+        if self._match(TT.NAME, "class"):
+            is_classmethod = True
+        elif self._match(TT.NAME, "static"):
             is_static = True
         if self._match(TT.NAME, "async"):
             is_async = True
-        if not is_static and self._match(TT.NAME, "static"):
+        if not is_static and not is_classmethod and self._match(TT.NAME, "static"):
             is_static = True
+        if not is_classmethod and not is_static and self._match(TT.NAME, "class"):
+            is_classmethod = True
         # consume 'def' or 'can'
         self._advance()
         name = self._expect(TT.NAME).value
@@ -1318,6 +1327,7 @@ class Parser:
             body=body,
             decorators=decorators,
             is_static=is_static,
+            is_classmethod=is_classmethod,
             is_async=is_async,
         )
 
@@ -1929,15 +1939,25 @@ class CodeGen:
     def _emit_func(self, node: FuncDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
+        if node.is_classmethod:
+            self._line("@classmethod")
         if node.is_static:
             self._line("@staticmethod")
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         name = _dunder_names.get(node.name, node.name)
         func_params = list(node.params)
-        # Auto-add self for instance methods inside a class
+        # Auto-add cls for classmethods inside a class
         if (
             self._in_class
+            and node.is_classmethod
+            and (not func_params or func_params[0].name not in ("self", "cls"))
+        ):
+            func_params.insert(0, Param(name="cls"))
+        # Auto-add self for instance methods inside a class
+        elif (
+            self._in_class
             and not node.is_static
+            and not node.is_classmethod
             and (not func_params or func_params[0].name not in ("self", "cls"))
         ):
             func_params.insert(0, Param(name="self"))

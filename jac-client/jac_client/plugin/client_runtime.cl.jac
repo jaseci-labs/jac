@@ -15,6 +15,9 @@ import from 'react-router-dom' {
     useParams as reactRouterUseParams
 }
 import from 'react-error-boundary' { ErrorBoundary }
+import from 'react-hook-form' { useForm }
+import from '@hookform/resolvers/zod' { zodResolver }
+import from 'zod' { z }
 
 def:pub __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement;
 
@@ -30,8 +33,10 @@ glob:pub useState = reactUseState,
      useLocation = reactRouterUseLocation,
      useParams = reactRouterUseParams,
      Outlet = ReactRouterOutlet,
-     JacClientErrorBoundary = ErrorBoundary;
+     JacClientErrorBoundary = ErrorBoundary,
+     JacSchema = __createJacSchema(z);
 
+def:pub __createJacSchema(zodLib: any) -> any;
 def:pub useRouter -> dict;
 def:pub navigate(path: str) -> None;
 async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
@@ -48,17 +53,19 @@ def:pub __removeLocalStorage(key: str) -> None;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
 def:pub ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+def:pub JacForm(props: dict) -> JsxElement;
 
 # ============================================================================
 # AUTO-CACHE INTERNALS - Compiler-driven caching for walker/function calls
 # ============================================================================
 def:pub __getEndpointEffects -> dict;
 def:pub __getCacheState -> dict;
-def:pub __isFresh(entry: dict) -> bool;
+def:pub __isFresh(`entry: dict) -> bool;
 def:pub __cacheGet(key: str) -> dict;
 def:pub __cacheSet(key: str, data: Any, ttl: int) -> None;
 def:pub __evictOldest -> None;
-async def:pub __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> Any;
+async def:pub __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any;
 async def:pub __doFuncFetch(function_name: str, args: dict) -> Any;
 async def:pub __cachedEndpointCall(
     endpoint_key: str, args_key: str, fetch_fn: Any

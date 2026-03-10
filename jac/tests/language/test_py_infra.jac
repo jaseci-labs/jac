@@ -30,10 +30,10 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      EXAMPLES = os.path.join(JAC_ROOT, "examples");
 
 # Helper function to create files within tests
+"""Create a temporary Jac file in a specific directory."""
 def create_temp_jac_file(
     content: str, dir_path: str, filename: str = "test_mod.jac"
 ) -> str {
-    """Create a temporary Jac file in a specific directory."""
     full_path = os.path.join(dir_path, filename);
     os.makedirs(os.path.dirname(full_path), exist_ok=True);
     with open(full_path, "w") as f {

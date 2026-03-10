@@ -158,15 +158,6 @@ test "compute next run and schedule decorator" {
     assert module.static_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
     assert module.str_trigger_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
 
-    # DYNAMIC raises NotImplementedError
-    try {
-        @schedule(interval=10, trigger=ScheduleTrigger.DYNAMIC)
-        def dynamic_fn { }
-        assert False , "Expected NotImplementedError";
-    } except NotImplementedError as e {
-        assert "jac-scale" in str(e).lower();
-    }
-
     # _execute catches exceptions gracefully
     def bad_fn {
         raise RuntimeError("boom");

@@ -1,4 +1,5 @@
 import jwt;
+import logging;
 import from datetime { UTC, datetime, timedelta }
 import from typing { Any }
 import from fastapi { Request, Response }
@@ -8,7 +9,8 @@ import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.sso_provider { SSOProvider, SSOUserInfo }
-import from jac_scale.google_sso_provider { GoogleSSOProvider }
+import from jac_scale.mongo_storage { MongoUserStorage }
+import from jaclang.jac0core.constant { Constants as Con }
 
 # Load configuration
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -16,7 +18,8 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_SECRET = _jwt_config['secret'],
      JWT_ALGORITHM = _jwt_config['algorithm'],
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
-     SSO_HOST = _sso_config['host'];
+     SSO_HOST = _sso_config['host'],
+     logger = logging.getLogger(__name__);
 
 """User roles enum."""
 enum UserRole {
@@ -26,9 +29,23 @@ enum UserRole {
 
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
-        ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000';
+        ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
+        _storage: (MongoUserStorage | None) by postinit;
 
     def postinit -> None;
+    def _ensure_connection -> None;
+    def _init_sqlite_schema -> None;
+    def create_user(username: str, password: str) -> dict[str, str];
+    def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
+    def get_root_id(username: str) -> (str | None);
+    def get_user(username: str) -> (dict[(str, str)] | None);
+    def user_exists(username: str) -> bool;
+    def update_username(current_username: str, new_username: str) -> dict[str, str];
+    def update_password(
+        username: str, current_password: str, new_password: str
+    ) -> dict[str, str];
+
+    def close -> None;
     # JWT methods
     def create_jwt_token(username: str, include_role: bool = True) -> str;
     def validate_jwt_token(token: str) -> (str | None);

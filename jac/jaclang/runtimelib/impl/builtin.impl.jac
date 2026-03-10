@@ -171,7 +171,7 @@ impl schedule(**kwargs: Any) -> Callable {
         trigger = ScheduleTrigger(trigger);
     }
     if trigger == ScheduleTrigger.DYNAMIC {
-        raise NotImplementedError("Dynamic scheduling requires jac-scale.");
+        raise NotImplementedError("Dynamic scheduling is not implemented in jaclang.");
     }
     spec = ScheduleSpec(trigger=trigger, **kwargs);
     def decorator(target: type) -> type {

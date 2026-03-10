@@ -372,6 +372,7 @@ obj Parser {
     def check_peek_any(*kinds: TokenKind) -> bool;
     def check_name -> bool;
     def is_keyword_token -> bool;
+    def is_builtin_type_token -> bool;
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
@@ -503,7 +504,10 @@ obj Parser {
     def parse_nonlocal_stmt -> NonLocalStmt;
     def parse_visit_stmt -> VisitStmt;
     def parse_report_stmt -> ReportStmt;
-    def parse_assignment_with_target(target: Expr) -> Assignment;
+    def parse_assignment_with_target(
+        target: Expr, require_semi: bool = True
+    ) -> Assignment;
+
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;

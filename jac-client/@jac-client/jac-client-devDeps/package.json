@@ -1,6 +1,6 @@
 {
   "name": "@jac-client/dev-deps",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "Default devDependencies for Jac client projects",
   "dependencies": {
     "vite": "^6.4.1",
