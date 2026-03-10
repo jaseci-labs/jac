@@ -15,6 +15,21 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return types.UnknownType();
                 }
+                # Forward-reference resolution: when a string is used in a type
+                # annotation context, resolve the string content as a type name.
+                # This handles: -> 'Path', has x: 'SomeType', p: 'SomeType'
+                # The String may be wrapped in MultiString, so check both levels.
+                if isinstance(expr.lit_value, str) {
+                    ann_parent = expr.parent
+                        if not isinstance(expr.parent, uni.MultiString)
+                        else expr.parent.parent;
+                    if isinstance(ann_parent, (uni.SubTag, uni.FuncSignature)) {
+                        resolved = self._try_resolve_forward_ref(expr);
+                        if resolved is not None {
+                            return resolved;
+                        }
+                    }
+                }
                 # String literal -> Literal["value"]
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
@@ -26,6 +41,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                # Forward-reference resolution for single-string type annotations.
+                # When 'Path' is used as a type annotation, the parser wraps
+                # the String in a MultiString. Check if this is in a type context.
+                if (
+                    isinstance(expr.parent, (uni.SubTag, uni.FuncSignature))
+                    and len(expr.strings) == 1
+                    and isinstance(expr.strings[0], uni.String)
+                    and isinstance(expr.strings[0].lit_value, str)
+                ) {
+                    resolved = self._try_resolve_forward_ref(expr.strings[0]);
+                    if resolved is not None {
+                        return resolved;
+                    }
+                }
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
                     # Check if all parts are simple strings (no f-strings with interpolation)
@@ -2202,9 +2231,33 @@ impl TypeEvaluator._compute_narrowed_at(
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
 
+        # Check if predecessor is a BoolExpr (short-circuit branch point).
+        if isinstance(pred, uni.BoolExpr) {
+            predicate = self._find_predicate_for(symbol, pred);
+            if predicate is not None {
+                is_true_edge = stmt is pred.sc_true_target;
+                is_false_edge = stmt is pred.sc_false_target;
+                if is_true_edge or is_false_edge {
+                    narrowed = self._apply_narrowing(
+                        predicate, pred_narrowed, is_true_edge, symbol
+                    );
+                    if narrowed is not None {
+                        incoming_types.append(narrowed);
+                    } elif pred_narrowed is not None {
+                        incoming_types.append(pred_narrowed);
+                    } else {
+                        has_unnarrowed_pred = True;
+                    }
+                    continue;
+                }
+            }
+        }
+
         # Check if predecessor is a conditional with a narrowing predicate.
         # Note: ElseIf extends IfStmt, so this handles both.
-        if isinstance(pred, uni.IfStmt) {
+        # Skip when successor is a BoolExpr (IfStmt → chain entry edge,
+        # not a true/false branch — narrowing happens at the BoolExpr level).
+        if isinstance(pred, uni.IfStmt) and not isinstance(stmt, uni.BoolExpr) {
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
                 edge_kind = self._classify_edge(pred, stmt);
@@ -2289,9 +2342,12 @@ impl TypeEvaluator._compute_narrowed_at(
             # Check if match target is the symbol we're narrowing
             if isinstance(pred.target, uni.Name) and pred.target.value == sym_name {
                 # Find which MatchCase contains the current stmt
-                match_case: uni.MatchCase | None = stmt.find_parent_of_type(
-                    uni.MatchCase
-                );
+                match_case: uni.MatchCase | None;
+                if isinstance(stmt, uni.MatchCase) {
+                    match_case = stmt;
+                } else {
+                    match_case = stmt.find_parent_of_type(uni.MatchCase);
+                }
                 if match_case is not None and match_case.pattern {
                     pattern_type = self._get_type_from_match_pattern(match_case.pattern);
                     if pattern_type is not None {

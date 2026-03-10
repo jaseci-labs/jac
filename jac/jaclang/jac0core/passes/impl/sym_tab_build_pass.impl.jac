@@ -323,7 +323,14 @@ impl SymTabBuildPass.exit_atom_trailer(
     if (ability and ability.method_owner) {
         archetype = ability.method_owner;
         if isinstance(archetype, uni.Archetype) {
-            archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+            # Only allow dynamic self.attr for class archetypes (Python-style).
+            # obj/node/edge/walker have fixed schemas via 'has' declarations.
+            if (
+                archetype.arch_type.name == 'KW_CLASS'
+                or archetype.sym_tab.lookup(chain[1].sym_name, deep=False) is not None
+            ) {
+                archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+            }
         }
         return;
     }
@@ -337,7 +344,15 @@ impl SymTabBuildPass.exit_atom_trailer(
             lookup = impl_def.sym_tab.parent_scope.lookup(archetype_name, deep=True);
             if (lookup and isinstance(lookup.decl.name_of, uni.Archetype)) {
                 archetype = lookup.decl.name_of;
-                archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+                # Only allow dynamic self.attr for class archetypes.
+                if (
+                    archetype.arch_type.name == 'KW_CLASS'
+                    or archetype.sym_tab.lookup(
+                        chain[1].sym_name, deep=False
+                    ) is not None
+                ) {
+                    archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
+                }
             }
         }
     }

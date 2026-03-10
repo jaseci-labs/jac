@@ -101,6 +101,7 @@ class Constants(StrEnum) {
         HERE = 'here';
         ROOT = 'root';
         VISITOR = 'visitor';
+        GUEST = '__guest__';
         JAC_CHECK = '_check';
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }

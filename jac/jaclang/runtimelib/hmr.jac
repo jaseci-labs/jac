@@ -45,7 +45,9 @@ obj HotReloader {
     def _reload_server_module(file_path: str) -> None;
 
     """Recompile client declarations to JavaScript."""
-    def _recompile_client_code(file_path: str) -> None;
+    def _recompile_client_code(
+        file_path: str, visited: set | None = None, force: bool = True
+    ) -> None;
 
     """Get client and server declarations from a file."""
     def _classify_declarations(file_path: str) -> tuple[bool, bool];

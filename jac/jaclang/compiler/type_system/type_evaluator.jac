@@ -118,6 +118,7 @@ obj TypeEvaluator {
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
+    def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];

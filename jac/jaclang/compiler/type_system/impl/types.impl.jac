@@ -230,6 +230,7 @@ impl ClassType.is_builtin(class_name: (str | None) = None) -> bool {
 impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list | None = None
 ) -> (Symbol | None) {
+    import jaclang.jac0core.unitree as uni;
     for cls in self.shared.mro {
         all_syms = cls.shared.symbol_table.lookup_all(member, deep=False);
         if all_syms {
@@ -237,6 +238,54 @@ impl ClassType.lookup_member_symbol(
                 r_overloaded.extend(all_syms[1:]);
             }
             return all_syms[0];
+        }
+    }
+    # Fallback: check __init__ parameters and body for self-assignments.
+    # When a class/obj is imported from another module, its impl file's self.x
+    # assignments may not have been processed by _populate_self_member_symbols.
+    # This fallback scans init params and body to resolve instance attributes.
+    for cls in self.shared.mro {
+        arch = cls.shared.symbol_table;
+        if not isinstance(arch, uni.Archetype) {
+            continue;
+        }
+        init_sym = arch.lookup('init', deep=False);
+        if not init_sym or not isinstance(init_sym.decl.name_of, uni.Ability) {
+            continue;
+        }
+        init_ability = init_sym.decl.name_of;
+        if not isinstance(init_ability.signature, uni.FuncSignature) {
+            continue;
+        }
+        # Check init parameters
+        for param in init_ability.signature.params or [] {
+            if param.name.value == member and param.name.value != 'self' {
+                arch.def_insert(param.name, access_spec=arch);
+                return arch.lookup(member, deep=False);
+            }
+        }
+        # Check self.x = ... assignments in init body (including impl body).
+        # Only for class archetypes (Python-style) — obj/node/edge/walker
+        # require explicit 'has' declarations for instance attributes.
+        if arch.arch_type.name != 'KW_CLASS' {
+            continue;
+        }
+        for trailer in init_ability.get_all_sub_nodes(uni.AtomTrailer) {
+            if not (trailer.parent and isinstance(trailer.parent, uni.Assignment)) {
+                continue;
+            }
+            if trailer != trailer.parent.target[0] {
+                continue;
+            }
+            chain = trailer.as_attr_list;
+            if (
+                len(chain) >= 2
+                and chain[0].sym_name == 'self'
+                and chain[1].sym_name == member
+            ) {
+                arch.def_insert(chain[1], access_spec=arch);
+                return arch.lookup(member, deep=False);
+            }
         }
     }
     return None;

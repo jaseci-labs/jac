@@ -437,13 +437,13 @@ When you deploy a Jac application as a server (with `jac start`), access modifie
 
 ```jac
 # Public endpoint -- auto-generates an HTTP API
-def:pub add_task(title: str) -> dict { ... }
+def:pub add_task(title: str) -> dict { ...; }
 
 # Private -- requires authentication, per-user data isolation
-def:priv get_tasks -> list { ... }
+def:priv get_tasks -> list { ...; }
 
 # Protected -- accessible within the module
-def:protect helper -> None { ... }
+def:protect helper -> None { ...; }
 ```
 
 | Modifier | Visibility | Use Case |

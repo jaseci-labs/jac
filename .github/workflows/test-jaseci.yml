@@ -109,7 +109,7 @@ jobs:
       working-directory: docs
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_validate_md_files.jac
+      run: pytest -q -x docs/tests/test_docs.jac
 
     - name: Install Playwright
       run: |
@@ -195,6 +195,10 @@ jobs:
     - name: Run admin API tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_admin.jac
+
+    - name: Run MongoDB user manager tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
 
     - name: Run Serializer tests
       run: |

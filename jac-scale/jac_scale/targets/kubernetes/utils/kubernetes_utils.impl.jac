@@ -332,11 +332,13 @@ impl ensure_pvc_exists(
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
 }
 
-"""
-Detect if the current connected cluster is AWS or local.
+"""Check that the requested NodePorts are not already bound by services
+in other namespaces.
 
-    Returns:
-        'aws' for AWS EKS clusters, 'local' for local/other clusters.
+NodePorts are cluster-scoped, so two services in different namespaces
+cannot share the same NodePort value.  Services inside current_namespace
+are excluded because they will be replaced by this deployment.
+Raises ValueError listing every conflicting port and the service that owns it.
 """
 impl check_node_ports_available(
     node_port: int,
@@ -346,14 +348,6 @@ impl check_node_ports_available(
     redis_insight_node_port: int | None = None,
     mongo_express_node_port: int | None = None
 ) -> None {
-    """Check that the requested NodePorts are not already bound by services
-    in other namespaces.
-
-    NodePorts are cluster-scoped, so two services in different namespaces
-    cannot share the same NodePort value.  Services inside current_namespace
-    are excluded because they will be replaced by this deployment.
-    Raises ValueError listing every conflicting port and the service that owns it.
-    """
     v1 = client.CoreV1Api();
     all_services = v1.list_service_for_all_namespaces();
     # Build a map: port_number -> "namespace/service-name"
@@ -405,6 +399,11 @@ impl check_node_ports_available(
     }
 }
 
+"""Detect if the current connected cluster is AWS or local.
+
+Returns:
+    'aws' for AWS EKS clusters, 'local' for local/other clusters.
+"""
 impl cluster_type -> str {
     try {
         v1 = client.CoreV1Api();
