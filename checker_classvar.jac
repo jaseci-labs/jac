@@ -8,7 +8,7 @@ obj DSFunc {
 obj Archetype {
     with entry {
         _jac_entry_funcs_: ClassVar[list[DSFunc]] = [];
-        
+
         _jac_exit_funcs_: ClassVar[list[DSFunc]] = [];
     }
 
