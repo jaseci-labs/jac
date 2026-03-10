@@ -32,12 +32,12 @@ glob _plugin_src = Path(__file__).parent.parent / "plugin" / "src",
      _vite_bundler_jac_path = _plugin_src / "vite_bundler.jac",
      _vite_bundler_impl_path = _plugin_src / "impl" / "vite_bundler.impl.jac";
 
-def _import_sidecar_main -> types.ModuleType {
-    """Import sidecar main.py as a module.
+"""Import sidecar main.py as a module.
 
-    Uses importlib to load the module from its file path, since the sidecar
-    package does not have __init__.py files.
-    """
+Uses importlib to load the module from its file path, since the sidecar
+package does not have __init__.py files.
+"""
+def _import_sidecar_main -> types.ModuleType {
     spec = importlib.util.spec_from_file_location("sidecar_main", _sidecar_main_path);
     if not spec or not spec.loader {
         raise ImportError("Could not load sidecar main.py module");

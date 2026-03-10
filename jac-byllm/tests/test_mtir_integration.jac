@@ -34,8 +34,8 @@ import from jaclang.jac0core.program { JacProgram }
 glob jac_import = Jac.jac_import,
      FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures");
 
+"""Get absolute path of a fixture from fixtures directory."""
 def fixture_path(fixture: str) -> str {
-    """Get absolute path of a fixture from fixtures directory."""
     file_path = os.path.join(FIXTURE_DIR, fixture);
     return os.path.abspath(file_path);
 }

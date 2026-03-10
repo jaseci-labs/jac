@@ -46,7 +46,7 @@ glob logger = logging.getLogger("jaclang.lsp.server"),
 # ---------------------------------------------------------------------------
 def _to_camel_case(name: str) -> str;
 def _to_snake_case(name: str) -> str;
-def to_dict(obj: Any) -> Any;
+def to_dict(`obj: Any) -> Any;
 def from_dict(data: Any, cls: Any) -> Any;
 
 # ---------------------------------------------------------------------------

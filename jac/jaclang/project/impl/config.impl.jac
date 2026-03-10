@@ -11,10 +11,10 @@ impl interpolate_env_vars(value: str) -> str {
     }
     # Pattern to match ${VAR}, ${VAR:-default}, ${VAR:?error}
     pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
-    def replace_env_var(match: re.Match) -> str {
-        var_name = match.group(1);
-        operator = match.group(2);
-        operand = match.group(3) or "";
+    def replace_env_var(`match: re.Match) -> str {
+        var_name = `match.group(1);
+        operator = `match.group(2);
+        operand = `match.group(3) or "";
 
         env_value = os.environ.get(var_name);
 
@@ -162,9 +162,9 @@ impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
 }
 
 """Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
-def _deep_merge(base: dict, override: dict) -> dict {
+def _deep_merge(base: dict, `override: dict) -> dict {
     result = base.copy();
-    for (key, value) in override.items() {
+    for (key, value) in `override.items() {
         if key in result
         and isinstance(result[key], dict)
         and isinstance(value, dict) {
@@ -890,19 +890,19 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
     return config;
 }
 
-impl _interpolate_recursive(obj: Any) -> Any {
-    if isinstance(obj, str) {
+impl _interpolate_recursive(`obj: Any) -> Any {
+    if isinstance(`obj, str) {
         try {
-            return interpolate_env_vars(obj);
+            return interpolate_env_vars(`obj);
         } except ValueError {
-            return obj;
+            return `obj;
         }
-    } elif isinstance(obj, dict) {
-        return {k: _interpolate_recursive(v) for (k, v) in obj.items()};
-    } elif isinstance(obj, list) {
-        return [_interpolate_recursive(item) for item in obj];
+    } elif isinstance(`obj, dict) {
+        return {k: _interpolate_recursive(v) for (k, v) in `obj.items()};
+    } elif isinstance(`obj, list) {
+        return [_interpolate_recursive(item) for item in `obj];
     }
-    return obj;
+    return `obj;
 }
 
 # ===============================================================================

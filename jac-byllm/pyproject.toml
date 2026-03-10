@@ -1,6 +1,6 @@
 [project]
 name = "byllm"
-version = "0.5.4"
+version = "0.5.5"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
