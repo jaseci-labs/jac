@@ -32,9 +32,9 @@ impl reset_stats -> None {
 # MRO helper
 # ---------------------------------------------------------------------------
 
-impl get_type_mro(obj: object) -> list[str] {
+impl get_type_mro(instance: object) -> list[str] {
     result = [];
-    for cls in type(obj).__mro__ {
+    for cls in type(instance).__mro__ {
         mod = getattr(cls, '__module__', '') or '';
         if mod.startswith('jaclang') or cls.__name__ == 'object' {
             break;

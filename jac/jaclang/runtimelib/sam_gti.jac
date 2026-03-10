@@ -89,9 +89,9 @@ def reset_stats -> None;
 # MRO helper
 # ---------------------------------------------------------------------------
 
-"""Return user-defined Jac type names from obj's MRO.
+"""Return user-defined Jac type names from instance's MRO.
 
-Walks type(obj).__mro__ and stops at any class whose module starts with
+Walks type(instance).__mro__ and stops at any class whose module starts with
 'jaclang' (internal runtime bases) or at 'object'.
 
 Example:
@@ -103,7 +103,7 @@ Example:
 This enables parent-type queries at zero query-time cost:
     sam_index[src]["n:Animal"] also contains Dog node IDs.
 """
-def get_type_mro(obj: object) -> list[str];
+def get_type_mro(instance: object) -> list[str];
 
 # ---------------------------------------------------------------------------
 # SAM operations
