@@ -315,6 +315,13 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
         if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
             return mod_item.name.sym;
         }
+        # Symbol not resolved yet - call get_type_of_module_item to set it up.
+        # This is needed when modules are loaded from JIR cache and their
+        # import statements haven't been processed by the type evaluator.
+        self.get_type_of_module_item(mod_item);
+        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
+            return mod_item.name.sym;
+        }
         return sym;
     }
     return sym;
