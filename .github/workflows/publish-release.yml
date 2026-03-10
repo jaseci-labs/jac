@@ -115,9 +115,6 @@ jobs:
       (needs.precompile.result == 'success' || needs.precompile.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      id-token: write
-      attestations: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
@@ -125,7 +122,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
           persist-credentials: false
           submodules: ${{ matrix.submodules }}
 
@@ -172,12 +168,6 @@ jobs:
         with:
           name: Packages-${{ matrix.pypi }}
           path: ${{ matrix.dir }}/dist/*
-
-      # Generate attestations for supply chain security
-      - name: Generate attestations
-        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
-        with:
-          subject-path: ${{ matrix.dir }}/dist/*
 
   # ============================================================================
   # Publish Tier 1: jaclang (base package)
