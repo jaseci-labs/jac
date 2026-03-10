@@ -1389,10 +1389,13 @@ impl Ability.is_method -> bool {
 @property
 impl Ability.is_cls_method -> bool {
     return (
-        self.is_method
-        and `any(
-            (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
-            for dec in (self.decorators or ())
+        self.is_classmethod
+        or (
+            self.is_method
+            and `any(
+                (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
+                for dec in (self.decorators or ())
+            )
         )
     );
 }

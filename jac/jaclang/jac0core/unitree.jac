@@ -785,6 +785,7 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
     has name_ref: (NameAtom | None),
         is_override: bool,
         is_static: bool,
+        is_classmethod: bool,
         is_abstract: bool,
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,

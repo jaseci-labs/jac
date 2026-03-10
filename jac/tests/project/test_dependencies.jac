@@ -18,14 +18,14 @@ import from jaclang.project.dependencies {
     remove_venv_from_path
 }
 
+"""Reset global config singleton."""
 def reset_config {
-    """Reset global config singleton."""
     import from jaclang.project { config as config_mod }
     config_mod._config = None;
 }
 
+"""Create a temporary project directory with jac.toml. Returns (temp_dir, project_dir)."""
 def make_temp_project -> tuple {
-    """Create a temporary project directory with jac.toml. Returns (temp_dir, project_dir)."""
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     project_dir = Path(tmp) / "test_project";
     project_dir.mkdir();
@@ -45,8 +45,8 @@ def make_temp_project -> tuple {
     return (tmp, project_dir);
 }
 
+"""Create a minimal jac project for testing."""
 def create_test_project(tmpdir: str, toml_content: str = "") -> str {
-    """Create a minimal jac project for testing."""
     project_path = os.path.join(tmpdir, "testproj");
     os.makedirs(project_path, exist_ok=True);
     if not toml_content {

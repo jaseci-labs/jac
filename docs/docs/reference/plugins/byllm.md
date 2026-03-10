@@ -531,7 +531,7 @@ def search_db(query: str, limit: int = 10) -> list[dict] {
 }
 
 """Send an email notification."""
-def send_email(to: str, subject: str, body: str) -> bool {
+def send_email(recipient: str, subject: str, body: str) -> bool {
     # Implementation
     return True;
 }

@@ -167,7 +167,34 @@ glob GAP_FILES = [
          "double_else_on_if": "with entry { if true { } else { } else { } }",
          "from_import_empty_items": "import from foo { };",
          "bare_semi_at_module_level": ";",
-         "enum_empty_body": "enum Color { }"
+         "enum_empty_body": "enum Color { }",
+         # --- Strictness gaps: semicolons optional where they should be required ---
+         "assignment_missing_semi": 'with entry { x = 5 }',
+         "augmented_assign_missing_semi": 'with entry { x += 1 }',
+         "expression_stmt_missing_semi": 'with entry { print("hi") }',
+         "report_missing_semi": 'with entry { report 5 }',
+         "chained_assign_missing_semi": 'with entry { x = y = 5 }',
+         "typed_assign_missing_semi": 'with entry { x: int = 5 }',
+         # --- Strictness gaps: keywords as parameter names ---
+         "keyword_param_if": "def foo(if: int) { }",
+         "keyword_param_while": "def foo(while: str) { }",
+         "keyword_param_for": "def foo(for: int) { }",
+         "keyword_param_return": "def foo(return: int) { }",
+         "keyword_param_import": "def foo(import: int) { }",
+         "keyword_param_break": "def foo(break: int) { }",
+         "keyword_param_try": "def foo(try: int) { }",
+         "keyword_param_match": "def foo(match: int) { }",
+         "keyword_param_obj": "def foo(obj: int) { }",
+         "keyword_param_node": "def foo(node: int) { }",
+         "keyword_param_override": "def foo(override: bool) { }",
+         "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
+         # --- Strictness gaps: walrus LHS must be a name ---
+         "walrus_complex_lhs": "with entry { (a + b) := 5; }",
+         "walrus_call_lhs": "with entry { foo() := 5; }",
+         "walrus_subscript_lhs": "with entry { a[0] := 5; }",
+         # --- Strictness gaps: enum in code blocks (not allowed at stmt level in Lark) ---
+         "enum_inside_if": "with entry { if true { enum Color { RED } } }",
+         "enum_inside_function": "def foo() { enum Color { RED } }"
      };
 
 def strictness_test(name_snippet: tuple) -> None {

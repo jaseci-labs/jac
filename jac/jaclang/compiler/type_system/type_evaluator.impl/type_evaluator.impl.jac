@@ -15,6 +15,21 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return types.UnknownType();
                 }
+                # Forward-reference resolution: when a string is used in a type
+                # annotation context, resolve the string content as a type name.
+                # This handles: -> 'Path', has x: 'SomeType', p: 'SomeType'
+                # The String may be wrapped in MultiString, so check both levels.
+                if isinstance(expr.lit_value, str) {
+                    ann_parent = expr.parent
+                        if not isinstance(expr.parent, uni.MultiString)
+                        else expr.parent.parent;
+                    if isinstance(ann_parent, (uni.SubTag, uni.FuncSignature)) {
+                        resolved = self._try_resolve_forward_ref(expr);
+                        if resolved is not None {
+                            return resolved;
+                        }
+                    }
+                }
                 # String literal -> Literal["value"]
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
@@ -26,6 +41,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                # Forward-reference resolution for single-string type annotations.
+                # When 'Path' is used as a type annotation, the parser wraps
+                # the String in a MultiString. Check if this is in a type context.
+                if (
+                    isinstance(expr.parent, (uni.SubTag, uni.FuncSignature))
+                    and len(expr.strings) == 1
+                    and isinstance(expr.strings[0], uni.String)
+                    and isinstance(expr.strings[0].lit_value, str)
+                ) {
+                    resolved = self._try_resolve_forward_ref(expr.strings[0]);
+                    if resolved is not None {
+                        return resolved;
+                    }
+                }
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
                     # Check if all parts are simple strings (no f-strings with interpolation)

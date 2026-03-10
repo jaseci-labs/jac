@@ -2135,6 +2135,7 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
     }
 
     # Character tests
+    """Helper: loop over chars, call C ctype function, return 1 if all pass."""
     def _emit_char_test(
         self,
         ctx: NativeEmitCtx,
@@ -2143,7 +2144,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         prefix: str,
         empty_is_true: bool = False
     ) -> (ir.Value | None) {
-        """Helper: loop over chars, call C ctype function, return 1 if all pass."""
         p = ctx.pass_ref;
         b = p.builder;
         i8 = ir.IntType(8);

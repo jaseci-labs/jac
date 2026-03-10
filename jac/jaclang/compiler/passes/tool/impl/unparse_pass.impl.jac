@@ -407,6 +407,9 @@ impl UnparsePass.exit_ability(nd: uni.Ability) -> None {
     if nd.is_override {
         parts.append("override");
     }
+    if nd.is_classmethod {
+        parts.append("class");
+    }
     if nd.is_static {
         parts.append("static");
     }

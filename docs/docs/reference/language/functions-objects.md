@@ -210,23 +210,99 @@ obj Calculator {
 }
 ```
 
-### 6 Static Methods
+### 6 Static Methods and Class Methods
+
+Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives `Self`).
 
 ```jac
 obj Counter {
     static has count: int = 0;
 
-    # Static method
+    # Static method -- no self or cls, pure utility
     static def get_count() -> int {
         return Counter.count;
     }
 
-    # Instance method
+    # Class method -- Self refers to the class itself
+    class def create() -> Self {
+        return Self();
+    }
+
+    # Instance method -- self is the instance
     def increment() -> None {
         Counter.count += 1;
     }
 }
 ```
+
+| Modifier | Receiver | Use case |
+|----------|----------|----------|
+| `def` | `self` (implicit) | Instance behavior |
+| `static def` | none | Utility functions |
+| `class def` | `Self` (implicit) | Factory methods, alternative constructors |
+
+#### Class Methods and `Self`
+
+`class def` declares a class method. Inside it, `Self` (capital S) refers to the class itself -- equivalent to Python's `cls` parameter, but auto-injected.
+
+```jac
+obj Animal {
+    has name: str,
+        sound: str = "...";
+
+    class def create(name: str) -> Self {
+        return Self(name=name);
+    }
+
+    def speak() -> str {
+        return f"{self.name} says {self.sound}";
+    }
+}
+
+obj Dog(Animal) {
+    has sound: str = "woof";
+}
+
+with entry {
+    # Self resolves to Dog, not Animal -- polymorphic!
+    d = Dog.create("Rex");
+    print(d.speak());         # Rex says woof
+    print(type(d).__name__);  # Dog
+}
+```
+
+`Self` is polymorphic: when a subclass inherits a `class def`, `Self` resolves to the subclass. This makes factory methods work correctly across inheritance hierarchies without overriding.
+
+#### `Self` as a Type Annotation
+
+`Self` also works as a type annotation in instance methods, enabling fluent/builder patterns:
+
+```jac
+obj QueryBuilder {
+    has table: str = "",
+        limit_val: int = -1;
+
+    def from_table(table: str) -> Self {
+        self.table = table;
+        return self;
+    }
+
+    def limit(n: int) -> Self {
+        self.limit_val = n;
+        return self;
+    }
+}
+
+with entry {
+    q = QueryBuilder().from_table("users").limit(10);
+}
+```
+
+| Context | `Self` resolves to |
+|---------|-------------------|
+| `class def` body | the class (`cls` in Python) |
+| `def` body | `type(self)` -- the runtime class |
+| Type annotation | the enclosing class name |
 
 ### 7 Lambda Expressions
 
@@ -337,7 +413,7 @@ Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose
 !!! note "When to use `obj` vs `class`"
     Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
 
-    If you need Python-specific class machinery like metaclasses, `@classmethod`, or `@property` decorators, use a Python `class` instead. Jac provides the `static` keyword for static methods and fields, covering the most common use case for `@classmethod` and `@staticmethod`.
+    If you need Python-specific class machinery like metaclasses or `@property` decorators, use a Python `class` instead. Jac provides `static def` for static methods, `class def` for class methods (with `Self`), and `static has` for class-level fields.
 
 ```jac
 obj Person {

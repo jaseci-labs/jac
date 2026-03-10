@@ -17,10 +17,10 @@ import from .test_helpers {
 }
 import from playwright.sync_api { sync_playwright }
 
+"""Create a test project with the form-handling example copied in."""
 def _setup_form_project(
     app_name: str, build: bool = False, start_server: bool = False
 ) -> tuple {
-    """Create a test project with the form-handling example copied in."""
     tests_dir = os.path.dirname(__file__);
     jac_client_root = os.path.dirname(tests_dir);
     form_handling_path = os.path.join(jac_client_root, "examples", "form-handling");
@@ -100,8 +100,8 @@ def _setup_form_project(
     return (project_path, temp_dir, original_cwd, jac_cmd, env);
 }
 
+"""Clean up the test project."""
 def _cleanup_form_project(temp_dir: str, original_cwd: str) -> None {
-    """Clean up the test project."""
     os.chdir(original_cwd);
     gc.collect();
 }

@@ -22,8 +22,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      _js_compile_cache: dict[str, str] = {},
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_js_");
 
+"""Write code to a temp .jac file in a dedicated directory (avoids /tmp scan)."""
 def write_temp_jac(code: str) -> str {
-    """Write code to a temp .jac file in a dedicated directory (avoids /tmp scan)."""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
     ) as tmp {
@@ -32,8 +32,8 @@ def write_temp_jac(code: str) -> str {
     }
 }
 
+"""Compile a Jac fixture to JavaScript and return the emitted source."""
 def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
-    """Compile a Jac fixture to JavaScript and return the emitted source."""
     fixture_path = fixture_name;
     if not Path(fixture_path).exists() and fixture_dir {
         fixture_path = os.path.join(fixture_dir, fixture_name);
@@ -61,8 +61,8 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     return result;
 }
 
+"""Ensure generated JavaScript has balanced delimiters."""
 def assert_balanced_syntax(js_code: str, fixture_name: str) -> None {
-    """Ensure generated JavaScript has balanced delimiters."""
     pairs = [("{", "}"), ("(", ")"), ("[", "]")];
     for (open_char, close_char) in pairs {
         assert js_code.count(open_char) == js_code.count(close_char) , (
@@ -71,13 +71,13 @@ def assert_balanced_syntax(js_code: str, fixture_name: str) -> None {
     }
 }
 
-def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
-    """Verify Jac-specific keywords are absent from generated JavaScript.
+"""Verify Jac-specific keywords are absent from generated JavaScript.
 
-    Uses regex word-boundary matching so that Jac keywords appearing as
-    JS variable names (e.g. ``let has = false;`` inside the _jac runtime)
-    do not trigger false positives.
-    """
+Uses regex word-boundary matching so that Jac keywords appearing as
+JS variable names (e.g. ``let has = false;`` inside the _jac runtime)
+do not trigger false positives.
+"""
+def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
     import re;
 
     # Each entry: (keyword, pattern that matches Jac *statement* usage)
