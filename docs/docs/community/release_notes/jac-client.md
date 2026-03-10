@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.3.5 (Unreleased)
 
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
+- **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
 
 ## jac-client 0.3.4 (Latest Release)
 
