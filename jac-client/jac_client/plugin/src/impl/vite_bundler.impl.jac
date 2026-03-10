@@ -937,7 +937,14 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
 
 """Convert TOML config data to CommonJS module.exports."""
 def _toml_config_to_js(config_data: dict) -> str {
-    return f"module.exports = {json.dumps(config_data, indent=2)};\n";
+    return f"module.exports = {json.dumps(
+        {
+            k: v
+            for (k, v) in config_data.items()
+            if k not in CONFIG_META_KEYS
+        },
+        indent=2
+    )};\n";
 }
 
 """Convert TOML config data to ESM/TypeScript with imports and exports."""
