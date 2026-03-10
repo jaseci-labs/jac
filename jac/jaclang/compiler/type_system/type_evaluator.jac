@@ -243,39 +243,25 @@ obj TypeEvaluator {
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
     # -------------------------------------------------------------------------
-    # Type narrowing support
+    # Type narrowing support (CFG-based)
     #
-    # Two narrowing systems work together:
-    # 1. Scope-based narrowing: Tracks narrowings within if/AND blocks using a
-    #    stack of scope dictionaries. Used during forward AST traversal.
-    # 2. CFG-based narrowing: Walks backward through the control flow graph to
-    #    find narrowing conditions. Used for flow-sensitive analysis.
+    # Walks backward through CFG to find narrowing conditions.
+    # Uses structural expression matching for both simple names and attr chains.
     # -------------------------------------------------------------------------
-
-    # --- Scope-based narrowing (forward traversal) ---
-    def push_narrowing_scope -> None;
-    def pop_narrowing_scope -> None;
-    def add_scope_narrowing(key: str, narrowed_type: types.TypeBase) -> None;
-    def get_scope_narrowing(key: str) -> types.TypeBase | None;
-    def get_narrowing_key(expr: uni.Expr) -> str | None;
-    def process_condition(condition: uni.Expr) -> None;
-    # --- CFG-based narrowing (backward traversal) ---
-    def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
+    def get_narrowed_type(expr: uni.Expr, at_node: uni.UniNode) -> TypeBase | None;
+    def _exprs_match(expr1: uni.Expr, expr2: uni.Expr) -> bool;
+    def _node_contains(parent: uni.UniNode, target: uni.UniNode) -> bool;
     def _compute_narrowed_at(
-        symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+        target_expr: uni.Expr, expr_type: TypeBase, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
-    # --- Shared narrowing utilities ---
     def _find_predicate_for(
-        symbol: uni.Symbol, condition: uni.Expr
+        target_expr: uni.Expr, condition: uni.Expr
     ) -> NarrowingPredicate | None;
 
     def _apply_narrowing(
-        predicate: NarrowingPredicate,
-        incoming: TypeBase | None,
-        is_true_branch: bool,
-        symbol: uni.Symbol
+        predicate: NarrowingPredicate, base_type: TypeBase, is_true_branch: bool
     ) -> TypeBase | None;
 
     def _filter_union_for_isinstance(
@@ -287,5 +273,4 @@ obj TypeEvaluator {
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
-    def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
 }
