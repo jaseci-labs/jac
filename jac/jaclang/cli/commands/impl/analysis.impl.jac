@@ -483,6 +483,9 @@ def _iter_jac_files(paths: list, ignore_list: list = []) -> tuple[list[str], boo
     had_errors = False;
     for path in paths {
         path_obj = Path(path);
+        if path.endswith('.impl.jac') {
+            continue;
+        }
         if path.endswith('.jac') {
             if not _should_ignore(path, ignore_list) {
                 result.append(path);
