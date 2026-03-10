@@ -72,7 +72,7 @@ glob COLORS: Dict[(str, int)] = {
          "c": "conceal"
      },
      _console: Optional[Console] = None,
-     RE_MARKUP = re.compile(r"\[(/)?([a-z#/@][^\[\]]*)\]"),,
+     RE_MARKUP = re.compile(r"\[(/)?([a-z#/@][^\[\]]*)\]"),
      __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
 
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]];
