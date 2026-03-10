@@ -25,7 +25,7 @@ enum Color ( IntEnum ) {
 }
 
 # ANSI style codes as regular enum
-enum Style {
+enum _StyleAttr {
     BOLD = "1",
     DIM = "2",
     ITALIC = "3",
@@ -36,7 +36,7 @@ enum Style {
     STRIKE = "9"
 }
 
-glob COLORS: Dict[(str, int)] = {
+glob COLORS: dict[(str, int)] = {
          "black": Color.BLACK.value,
          "red": Color.RED.value,
          "green": Color.GREEN.value,
@@ -54,17 +54,17 @@ glob COLORS: Dict[(str, int)] = {
          "bright_cyan": Color.BRIGHT_CYAN.value,
          "bright_white": Color.BRIGHT_WHITE.value
      },
-     STYLES: Dict[(str, str)] = {
-         "bold": Style.BOLD.value,
-         "dim": Style.DIM.value,
-         "italic": Style.ITALIC.value,
-         "underline": Style.UNDERLINE.value,
-         "blink": Style.BLINK.value,
-         "reverse": Style.REVERSE.value,
-         "conceal": Style.CONCEAL.value,
-         "strike": Style.STRIKE.value
+     STYLES: dict[(str, str)] = {
+         "bold": _StyleAttr.BOLD.value,
+         "dim": _StyleAttr.DIM.value,
+         "italic": _StyleAttr.ITALIC.value,
+         "underline": _StyleAttr.UNDERLINE.value,
+         "blink": _StyleAttr.BLINK.value,
+         "reverse": _StyleAttr.REVERSE.value,
+         "conceal": _StyleAttr.CONCEAL.value,
+         "strike": _StyleAttr.STRIKE.value
      },
-     STYLE_ALIASES: Dict[(str, str)] = {
+     STYLE_ALIASES: dict[(str, str)] = {
          "b": "bold",
          "d": "dim",
          "i": "italic",
@@ -118,7 +118,7 @@ obj Style {
         return bool(self._def);
     }
 
-    def __add__(other: "Style") -> "Style" {
+    def __add__(other: Style) -> Style {
         return Style(f"{self._def} {other._def}")
             if (self and other)
             else (self or other);
@@ -166,8 +166,8 @@ obj Style {
     }
 
     @classmethod
-    def parse(cls: Any, definition: str) -> "Style" {
-        return cls(definition);
+    def parse(cls: Any, definition: str) -> Style {
+        return Style(definition);
     }
 }
 
@@ -198,10 +198,10 @@ obj Console {
         self._no_color = no_color or bool(os.environ.get("NO_COLOR"));
     }
 
+    """Return the output file, dynamically resolving sys.stdout/stderr each call
+    (like rich does) so test redirects and context managers are always respected."""
     @property
     def file -> Any {
-        """Return the output file, dynamically resolving sys.stdout/stderr each call
-        (like rich does) so test redirects and context managers are always respected."""
         f = self._file_arg or (sys.stderr if self._stderr else sys.stdout);
         return getattr(f, 'rich_proxied_file', f);
     }
@@ -283,10 +283,10 @@ obj Console {
         }
     }
 
+    """Render markup with theme-aware style resolution and optional auto-highlighting."""
     def _render_markup_with_theme(
         markup: str, base_style: str = "", highlight: bool = False
     ) -> str {
-        """Render markup with theme-aware style resolution and optional auto-highlighting."""
         markup = markup.replace("\\[", "\x00").replace("\\]", "\x01");
         (result, stack, pos) = ([], [base_style] if base_style else [], 0);
         for m in RE_MARKUP.finditer(markup) {
@@ -342,15 +342,15 @@ obj Console {
 }
 
 obj Theme {
-    has styles: Dict[(str, str)];
+    has styles: dict[(str, str)];
 
-    def init(styles: Dict[(str, str)] = {}) -> object {
+    def init(styles: dict[(str, str)] = {}) -> object {
         self.styles = styles;
     }
 
-    def get(name: str, default: str = "") -> str {
-        """Get a style by name from the theme."""
-        return self.styles.get(name, default);
+    """Get a style by name from the theme."""
+    def get(name: str, fallback: str = "") -> str {
+        return str(self.styles[name]) if name in self.styles else fallback;
     }
 }
 
