@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.5 (Unreleased)
 
+- **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
+
 ## jac-client 0.3.4 (Latest Release)
 
 - **HMR Client Error Reporting**: Client-side runtime and module import errors now reported to terminal via Vite WebSocket.

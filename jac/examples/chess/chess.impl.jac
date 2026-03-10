@@ -639,8 +639,8 @@ impl Game.move_summary -> str {
     return f"Move {full_moves + 1}" + ("..." if half == 1 else "");
 }
 
+"""Play one full game with random moves. Returns 'White', 'Black', or 'Draw'."""
 impl Game.play_auto -> str {
-    """Play one full game with random moves. Returns 'White', 'Black', or 'Draw'."""
     max_moves = 500;
     while not self.is_over and self.move_count < max_moves {
         all_legal: list[Move] = self.legal_moves(self.current_turn);
@@ -668,8 +668,8 @@ impl Game.play_auto -> str {
     return "Draw";
 }
 
+"""Run num_games automated random games and print results."""
 impl Game.benchmark(num_games: int) -> None {
-    """Run num_games automated random games and print results."""
     white_wins = 0;
     black_wins = 0;
     draws = 0;

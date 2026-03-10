@@ -13,8 +13,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );
 
+"""Collect every ESTree node in a depth-first traversal."""
 def walk_es_nodes(nd: es.Node) -> list {
-    """Collect every ESTree node in a depth-first traversal."""
     result: list = [nd];
     for value in vars(nd).values() {
         if isinstance(value, es.Node) {
@@ -30,8 +30,8 @@ def walk_es_nodes(nd: es.Node) -> list {
     return result;
 }
 
+"""Compile Jac source to an ESTree program."""
 def compile_to_esast(filename: str) -> es.Program {
-    """Compile Jac source to an ESTree program."""
     prog = JacProgram();
     ir = prog.compile(file_path=filename, no_cgen=True);
 
@@ -47,8 +47,8 @@ def compile_to_esast(filename: str) -> es.Program {
     return es_ir.gen.es_ast;
 }
 
+"""Return absolute path to a fixture file."""
 def fixture_path(filename: str) -> str {
-    """Return absolute path to a fixture file."""
     return os.path.join(FIXTURES, filename);
 }
 

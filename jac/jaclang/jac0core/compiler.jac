@@ -463,9 +463,10 @@ obj JacCompiler {
         precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
         if precompiled_bc is not None {
             try {
-                from
-                jaclang.jac0core.jir
-                import write_precompiled_jir, FLAG_PRECOMPILED;
+                import from jaclang.jac0core.jir {
+                    write_precompiled_jir,
+                    FLAG_PRECOMPILED
+                }
                 jir_bytes = write_precompiled_jir(precompiled_bc, 0, FLAG_PRECOMPILED);
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
                 tmp_path = cache_path.with_suffix('.tmp');
@@ -739,9 +740,7 @@ obj JacCompiler {
     def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
         import hashlib;
         import json;
-        from
-        pathlib
-        import Path as _Path;
+        import from pathlib { Path as _Path }
         norm_file = os.path.normpath(os.path.abspath(full_target));
         d = os.path.dirname(norm_file);
         pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";

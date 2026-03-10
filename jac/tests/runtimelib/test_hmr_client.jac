@@ -677,8 +677,8 @@ test "tsx component copied and updated on change" {
 }
 
 # --- TestHMRImplFileReload ---
+"""Test that changing a .impl.jac file triggers reload of its base .jac file."""
 test "server impl file reloads base jac file" {
-    """Test that changing a .impl.jac file triggers reload of its base .jac file."""
     with TemporaryDirectory() as tmpdir {
         temp_project = Path(tmpdir);
         # Create base server-side .jac file with abstract method
@@ -740,8 +740,8 @@ test "server impl file reloads base jac file" {
     }
 }
 
+"""Test that changing a .impl.jac file triggers recompilation of its base .cl.jac file."""
 test "client impl file reloads base cl.jac file" {
-    """Test that changing a .impl.jac file triggers recompilation of its base .cl.jac file."""
     with TemporaryDirectory() as tmpdir {
         unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
         unique_dir.mkdir(parents=True, exist_ok=True);
@@ -799,8 +799,8 @@ test "client impl file reloads base cl.jac file" {
 }
 
 # --- TestHMRRecursiveDependency ---
+"""When app.cl.jac imports Button.cl.jac, recompiling app should also generate Button.js."""
 test "dependency compiled when imported file recompiled" {
-    """When app.cl.jac imports Button.cl.jac, recompiling app should also generate Button.js."""
     with TemporaryDirectory() as tmpdir {
         unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
         unique_dir.mkdir(parents=True, exist_ok=True);

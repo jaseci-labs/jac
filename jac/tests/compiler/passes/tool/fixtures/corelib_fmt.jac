@@ -17,7 +17,7 @@ obj Memory {
     has index: dict[UUID, Element] = {},
         save_queue: list[Element] = [];
     #* Main Accessors *#
-    def get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element;
+    def get_obj(caller_id: UUID, item_id: UUID, `override: bool = False) -> Element;
     def has_obj(item_id: UUID) -> bool;
     def save_obj(caller_id: UUID, item: Element);
     def del_obj(caller_id: UUID, item: Element);
@@ -142,9 +142,9 @@ obj JacPlugin {
     static def visit_node(walker_obj: Any, expr: Any) -> bool;
 }
 
-impl Memory.get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element {
+impl Memory.get_obj(caller_id: UUID, item_id: UUID, `override: bool = False) -> Element {
     ret = item_id |> self.index.get;
-    if override or (ret is not None and caller_id |> ret.__is_readable) {
+    if `override or (ret is not None and caller_id |> ret.__is_readable) {
         return ret;
     }
 }

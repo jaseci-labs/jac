@@ -964,12 +964,12 @@ obj User {
     has profile: Profile | None = None;
 }
 
-def example(obj: User | None, user: User | None) {
-    # Without null-safe: raises AttributeError if obj is None
-    value = obj.profile;
+def example(item: User | None, user: User | None) {
+    # Without null-safe: raises AttributeError if item is None
+    value = item.profile;
 
-    # With null-safe: returns None if obj is None
-    value = obj?.profile;
+    # With null-safe: returns None if item is None
+    value = item?.profile;
 
     # Chained - stops at first None
     result = user?.profile?.settings;
@@ -1013,9 +1013,9 @@ obj Data {
     }
 }
 
-def example(obj: Data | None, data: Data | None) {
-    # Returns None if obj is None, doesn't call method
-    result = obj?.transform("x");
+def example(item: Data | None, data: Data | None) {
+    # Returns None if item is None, doesn't call method
+    result = item?.transform("x");
 
     # Chained with arguments
     output = data?.transform("param")?.format();

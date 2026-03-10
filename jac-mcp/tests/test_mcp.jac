@@ -350,8 +350,8 @@ test "unknown prompt returns error" {
 }
 
 # ── Bundle Script Tests ──
+"""Verify every DOC_MAPPINGS entry points to a real file in docs/."""
 test "all doc mapping source files exist" {
-    """Verify every DOC_MAPPINGS entry points to a real file in docs/."""
     import from jac_mcp.resources { find_repo_root, DOC_MAPPINGS }
     import from pathlib { Path }
 
@@ -372,8 +372,8 @@ test "all doc mapping source files exist" {
     assert len(missing) == 0 , f"Missing doc files: {missing}";
 }
 
+"""Verify the bundle_docs.jac script exits 0."""
 test "bundle script runs successfully" {
-    """Verify the bundle_docs.jac script exits 0."""
     import subprocess;
     import from pathlib { Path }
     import from jac_mcp.resources { find_repo_root }
@@ -392,8 +392,8 @@ test "bundle script runs successfully" {
     assert result.returncode == 0 , f"bundle_docs.jac failed:\n{result.stdout}\n{result.stderr}";
 }
 
+"""Verify no two DOC_MAPPINGS entries share the same bundled filename."""
 test "doc mappings have unique bundled names" {
-    """Verify no two DOC_MAPPINGS entries share the same bundled filename."""
     import from jac_mcp.resources { DOC_MAPPINGS }
 
     seen: dict[str, str] = {};

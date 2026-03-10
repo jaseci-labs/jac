@@ -107,12 +107,12 @@ impl __getCacheState -> dict {
 }
 
 # Check if a cache entry is still fresh
-impl __isFresh(entry: dict) -> bool {
-    if not entry {
+impl __isFresh(`entry: dict) -> bool {
+    if not `entry {
         return False;
     }
-    age = Date.now() - entry["timestamp"];
-    return age < entry["ttl"];
+    age = Date.now() - `entry["timestamp"];
+    return age < `entry["ttl"];
 }
 
 # Get a cache entry and promote it in LRU order
@@ -193,12 +193,12 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # ============================================================================
 
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
-impl __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> Any {
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
-    url = f"{base_url}/walker/{walker}";
+    url = f"{base_url}/walker/{`walker}";
     if nodeId != "" {
-        url = f"{base_url}/walker/{walker}/{nodeId}";
+        url = f"{base_url}/walker/{`walker}/{nodeId}";
     }
     headers = {"Content-Type": "application/json", "Accept": "application/json"};
     if token {
@@ -214,7 +214,7 @@ impl __doWalkerFetch(walker: str, nodeId: str, fields: dict) -> Any {
             return {};
         }
         error_text = await response.text();
-        walker_name = f"{walker}/{nodeId}" if nodeId else walker;
+        walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
         raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();

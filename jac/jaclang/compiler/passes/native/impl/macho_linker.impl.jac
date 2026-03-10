@@ -155,8 +155,8 @@ def _lc_str_pad(s: str, header_size: int) -> bytes {
 # ══════════════════════════════════════════════════════════════════
 # ARM64 stub and relocation support
 # ══════════════════════════════════════════════════════════════════
+"""Build a 12-byte arm64 stub: ADRP x16, got@page; LDR x16, [x16, got@pageoff]; BR x16."""
 def _arm64_build_stub(stub_vaddr: int, got_entry_vaddr: int) -> bytes {
-    """Build a 12-byte arm64 stub: ADRP x16, got@page; LDR x16, [x16, got@pageoff]; BR x16."""
     data = bytearray();
     # ADRP x16, got_entry@page
     page_diff = ((got_entry_vaddr & ~0xFFF) - (stub_vaddr & ~0xFFF)) >> 12;
@@ -236,8 +236,8 @@ def _arm64_apply_reloc(
 # ══════════════════════════════════════════════════════════════════
 # x86_64 stub and relocation support
 # ══════════════════════════════════════════════════════════════════
+"""Build a 6-byte x86_64 stub: jmpq *got_entry(%rip)."""
 def _x86_64_build_stub(stub_vaddr: int, got_entry_vaddr: int) -> bytes {
-    """Build a 6-byte x86_64 stub: jmpq *got_entry(%rip)."""
     disp32 = got_entry_vaddr - (stub_vaddr + 6);
     return b"\xFF\x25" + struct.pack("<i", disp32);
 }
@@ -285,6 +285,11 @@ def _x86_64_apply_reloc(
 # ══════════════════════════════════════════════════════════════════
 # Code signature builder
 # ══════════════════════════════════════════════════════════════════
+"""Build an ad-hoc code signature (SuperBlob with CodeDirectory).
+
+Uses SHA-256 hashes of each 4096-byte code page.
+All code signature structures are big-endian (Apple convention).
+"""
 def _build_code_signature(
     binary_data: bytes,
     code_limit: int,
@@ -292,11 +297,6 @@ def _build_code_signature(
     text_size: int,
     ident: str = "jac-binary"
 ) -> bytes {
-    """Build an ad-hoc code signature (SuperBlob with CodeDirectory).
-
-    Uses SHA-256 hashes of each 4096-byte code page.
-    All code signature structures are big-endian (Apple convention).
-    """
     hash_size = 32;
     n_code_slots = (code_limit + CS_PAGE_SIZE - 1) // CS_PAGE_SIZE;
     ident_bytes = ident.encode("utf-8") + b"\x00";
@@ -1516,6 +1516,7 @@ impl MachOLinker.build_executable -> bytes {
 }
 
 
+"""Write a section_64 header (80 bytes) into buf at offset."""
 def _write_section_header(
     buf: bytearray,
     offset: int,
@@ -1529,7 +1530,6 @@ def _write_section_header(
     reserved1: int,
     reserved2: int
 ) -> None {
-    """Write a section_64 header (80 bytes) into buf at offset."""
     sn = sectname.encode("utf-8");
     sg = segname.encode("utf-8");
     buf[offset:offset + 16] = sn + b"\x00" * (16 - len(sn));
