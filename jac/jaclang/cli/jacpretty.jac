@@ -198,12 +198,9 @@ obj Console {
         self._no_color = no_color or bool(os.environ.get("NO_COLOR"));
     }
 
-    """Return the output file, dynamically resolving sys.stdout/stderr each call
-    (like rich does) so test redirects and context managers are always respected."""
     @property
     def file -> Any {
-        f = self._file_arg or (sys.stderr if self._stderr else sys.stdout);
-        return getattr(f, 'rich_proxied_file', f);
+        return self._file_arg or (sys.stderr if self._stderr else sys.stdout);
     }
 
     @property
