@@ -9,14 +9,20 @@ impl Access.check(self: Access, anchor: str) -> (AccessLevel | None) {
 impl ObjectSpatialDestination.edge_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.edge or self.edge(arch));
+    return (
+        not self.edge
+        or (isinstance(arch, self.edge) if isinstance(self.edge, type) else self.edge(arch))
+    );
 }
 
 """Filter node."""
 impl ObjectSpatialDestination.node_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.nd or self.nd(arch));
+    return (
+        not self.nd
+        or (isinstance(arch, self.nd) if isinstance(self.nd, type) else self.nd(arch))
+    );
 }
 
 """Override Init."""
@@ -54,14 +60,11 @@ impl ObjectSpatialPath.append(
     self: ObjectSpatialPath,
     direction: EdgeDir,
     `edge: ObjectSpatialFilter,
-    nd: ObjectSpatialFilter,
-    nd_type: (str | None) = None,
-    edge_type: (str | None) = None
+    nd: ObjectSpatialFilter
 ) -> ObjectSpatialPath {
-    dest = ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd));
-    dest.node_type_name = nd_type;
-    dest.edge_type_name = edge_type;
-    self.destinations.append(dest);
+    self.destinations.append(
+        ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd))
+    );
     return self;
 }
 
@@ -69,33 +72,27 @@ impl ObjectSpatialPath.append(
 impl ObjectSpatialPath.edge_out(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    nd_type: (str | None) = None,
-    edge_type: (str | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(EdgeDir.OUT, `edge, nd, nd_type, edge_type);
+    return self.append(EdgeDir.OUT, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_in(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    nd_type: (str | None) = None,
-    edge_type: (str | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(EdgeDir.IN, `edge, nd, nd_type, edge_type);
+    return self.append(EdgeDir.IN, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_any(
     self: ObjectSpatialPath,
     `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None,
-    nd_type: (str | None) = None,
-    edge_type: (str | None) = None
+    nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
-    return self.append(EdgeDir.ANY, `edge, nd, nd_type, edge_type);
+    return self.append(EdgeDir.ANY, `edge, nd);
 }
 
 """Set edge only."""

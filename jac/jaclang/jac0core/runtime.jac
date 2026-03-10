@@ -324,8 +324,10 @@ class JacNode {
         for nd in origin {
             nanch = nd.__jac__;
             # --- SAM/GTI fast path (only when SQLite persistence is active) ---
-            target_type_name = destination.node_type_name;
-            edge_type_name = destination.edge_type_name;
+            # Pure type filters compile to the type class itself, so we can
+            # extract the name directly via MRO without any compiler help.
+            target_type_name = destination.nd.__name__ if isinstance(destination.nd, type) else None;
+            edge_type_name = destination.edge.__name__ if isinstance(destination.edge, type) else None;
             use_index = (
                 _JAC_INDEX_ENABLED
                 and _sqlite_active
