@@ -195,6 +195,10 @@ jobs:
     - name: Run admin API tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_admin.jac
+    
+    - name: Run MongoDB user manager tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
 
     - name: Run Serializer tests
       run: |
