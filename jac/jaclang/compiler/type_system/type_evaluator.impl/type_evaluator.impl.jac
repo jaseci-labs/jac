@@ -1666,6 +1666,17 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     return False;
 }
 
+"""Check if a type is the TypeVar class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.type_var_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.type_var_class, types.ClassType)
+        and ty.shared == self.prefetch.type_var_class.shared
+    );
+}
+
 """Assign the source type to the destination type."""
 impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
