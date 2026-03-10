@@ -51,6 +51,24 @@ import from jaclang.jac0core.constructs {
 import from jaclang.jac0core.modresolver { infer_language }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
+import from jaclang.runtimelib.sam_gti {
+    sam_invalidate,
+    sam_put,
+    sam_query,
+    sam_populate_from_gti,
+    gti_query_targets,
+    _get_sqlite,
+    _gti_write_edge,
+    _gti_delete_edge,
+    _gti_delete_node
+}
+
+glob _JAC_INDEX_DEGREE_THRESHOLD: int = int(
+    os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
+);
+glob _JAC_INDEX_ENABLED: bool = os.environ.get(
+    'JAC_INDEX_ENABLED', 'true'
+).lower() not in ('0', 'false', 'no');
 
 with entry {
     if TYPE_CHECKING {
@@ -300,34 +318,21 @@ class JacNode {
     static def edges_to_nodes(
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
-        import os;
-        import from jaclang.runtimelib.sam_gti {
-            sam_query,
-            sam_populate_from_gti,
-            gti_query_targets,
-            _get_sqlite
-        }
-        DEGREE_THRESHOLD: int = int(
-            os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
-        );
-        INDEX_ENABLED: bool = os.environ.get(
-            'JAC_INDEX_ENABLED', 'true'
-        ).lower() not in ('0', 'false', 'no');
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
-        for nd in origin {›
+        for nd in origin {
             nanch = nd.__jac__;
-            # --- AM/GT fast path (only when SQLite persistence is active) ---
+            # --- SAM/GTI fast path (only when SQLite persistence is active) ---
             target_type_name = destination.node_type_name;
             edge_type_name = destination.edge_type_name;
             use_index = (
-                INDEX_ENABLED
+                _JAC_INDEX_ENABLED
                 and _sqlite_active
                 and nanch.is_populated()
                 and (target_type_name is not None or edge_type_name is not None)
                 and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
-                and len(nanch.edges) > DEGREE_THRESHOLD
+                and len(nanch.edges) > _JAC_INDEX_DEGREE_THRESHOLD
             );
             if use_index {
                 target_ids: (list[str] | None) = None;
@@ -337,8 +342,8 @@ class JacNode {
                     e_col = 'e:' + edge_type_name;
                     node_ids = sam_query(nanch.id, n_col);
                     edge_ids = sam_query(nanch.id, e_col);
-                    if node_ids is None {
-                        # SAM bucket miss — populate both columns from GTI
+                    if node_ids is None or edge_ids is None {
+                        # SAM miss (bucket absent or column not yet indexed) — populate both from GTI
                         gt_n = gti_query_targets(ctx.mem, nanch.id, None, target_type_name);
                         gt_e = gti_query_targets(ctx.mem, nanch.id, edge_type_name, None);
                         if gt_n is not None {
@@ -389,7 +394,6 @@ class JacNode {
                     }
                 }
                 if target_ids is not None {
-                    from uuid import UUID;
                     for id_str in target_ids {
                         try {
                             uid = UUID(id_str);
@@ -448,7 +452,6 @@ class JacNode {
             }
         }
         # SAM + GTI invalidation hooks (only when SQLite persistence is active)
-        from jaclang.runtimelib.sam_gti import sam_invalidate, _gti_delete_edge, _get_sqlite;
         _mem = JacRuntimeInterface.get_context().mem;
         if _get_sqlite(_mem) is not None {
             sam_invalidate(nd.id);
@@ -1738,7 +1741,6 @@ system,
             source.edges.append(eanch);
             target.edges.append(eanch);
             # SAM + GTI write hooks (only when SQLite persistence is active)
-            from jaclang.runtimelib.sam_gti import sam_put, _gti_write_edge, _get_sqlite;
             _mem = JacRuntimeInterface.get_context().mem;
             if _get_sqlite(_mem) is not None {
                 sam_put(source.id, target.id, target.archetype, eanch.archetype);
@@ -1812,10 +1814,15 @@ system,
             }
             anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
             if JacRuntimeInterface.check_write_access(anchor) {
+                _mem = JacRuntimeInterface.get_context().mem;
                 match anchor {
                     case NodeAnchor():
                         for `edge in anchor.edges[:] {
                             JacRuntimeInterface.destroy([`edge]);
+                        }
+                        if _get_sqlite(_mem) is not None {
+                            _gti_delete_node(mem=_mem, node_id=anchor.id);
+                            sam_invalidate(anchor.id);
                         }
 
                     case EdgeAnchor():

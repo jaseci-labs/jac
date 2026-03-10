@@ -89,8 +89,15 @@ impl sam_query(source_id: UUID, key: str) -> (list[str] | None) {
         _stats['sam_misses'] += 1;
         return None;
     }
+    result = bucket.get(key);
+    if result is None {
+        # Bucket exists but this column was never populated — treat as a miss
+        # so the caller falls back to GTI rather than returning an empty result.
+        _stats['sam_misses'] += 1;
+        return None;
+    }
     _stats['sam_hits'] += 1;
-    return bucket.get(key, []);
+    return result;
 }
 
 impl sam_populate_from_gti(source_id: UUID, gt_rows: list[tuple[str, str]]) -> None {
@@ -179,6 +186,26 @@ impl _gti_delete_edge(mem: object, edge_id: UUID) -> None {
     }
     sqlite.__conn__.execute(
         'DELETE FROM edge_topology WHERE edge_id = ?', (str(edge_id),)
+    );
+    sqlite.__conn__.commit();
+}
+
+impl _gti_delete_node(mem: object, node_id: UUID) -> None {
+    sqlite = _get_sqlite(mem);
+    if sqlite is None {
+        return;
+    }
+    sqlite._ensure_connection();
+    if sqlite.__conn__ is None {
+        return;
+    }
+    node_id_str = str(node_id);
+    sqlite.__conn__.execute(
+        'DELETE FROM node_topology WHERE node_id = ?', (node_id_str,)
+    );
+    sqlite.__conn__.execute(
+        'DELETE FROM edge_topology WHERE source_id = ? OR target_id = ?',
+        (node_id_str, node_id_str)
     );
     sqlite.__conn__.commit();
 }

@@ -139,8 +139,10 @@ Args:
     key: prefixed column key, e.g. "n:PostNode" or "e:FollowEdge".
 
 Returns:
-    list of target UUID strings if the source bucket exists (may be empty),
-    None if the source is not in SAM (i.e. SAM miss — must fall back to GTI).
+    list of target UUID strings if the column key has been populated for this
+    source (the list may be empty when indexed but no matching targets exist),
+    None if the source bucket is absent OR the column key has never been
+    written (both are SAM misses — caller must fall back to GTI).
 """
 def sam_query(source_id: UUID, key: str) -> (list[str] | None);
 
@@ -187,6 +189,13 @@ Called from remove_edge() when an edge is removed.
 node_topology rows are not touched here — a node persists after edges are removed.
 """
 def _gti_delete_edge(mem: object, edge_id: UUID) -> None;
+
+"""Delete all node_topology rows for a given node.
+
+Called from destroy() when a NodeAnchor is deleted. Prevents stale ghost rows
+from accumulating in node_topology for nodes that no longer exist.
+"""
+def _gti_delete_node(mem: object, node_id: UUID) -> None;
 
 # ---------------------------------------------------------------------------
 # GTI query
