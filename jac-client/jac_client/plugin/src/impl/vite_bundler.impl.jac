@@ -857,7 +857,10 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
         }
         extension = config_data.get('extension', '.js');
         has_raw = 'raw' in config_data;
-        is_esm = config_data.get('format') == 'esm' or extension == '.ts';
+        is_esm = config_data.get('format') == 'esm'
+        or extension == '.ts'
+        or 'imports' in config_data
+        or 'exports' in config_data;
         config_path = configs_dir / f'{config_name}.config{extension}';
 
         if has_raw {

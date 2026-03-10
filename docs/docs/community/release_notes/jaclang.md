@@ -4,7 +4,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
-- **ESM & TypeScript Client Config Generation**: Added a feature to support for generating ESM and TypeScript client config files from `[plugins.client.configs]`, while preserving existing CommonJS behavior and allowing raw config templates when needed.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
 - 4 small refactors/changes.
