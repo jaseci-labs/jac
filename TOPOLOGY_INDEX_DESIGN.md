@@ -77,19 +77,21 @@ Populated lazily on first GTI query for a source node. Survives for the lifetime
              ctx.mem.get(uuid)   ← only matching nodes fetched
 ```
 
-### What the Current SAM Actually Covers
+### What the SAM Covers (Unified — Implemented)
 
-The SAM is keyed **only by node type**. The column space is node types only:
+The SAM uses **prefixed column keys** covering both node types and edge types:
 
 ```
 sam_index[source_id] = {
-    "PostNode":    [uuid1, uuid2],
-    "BaseContent": [uuid1, uuid2, uuid3, uuid4],   ← MRO superset
-    "CommentNode": [uuid3, uuid4],
+    "n:PostNode":    [uuid1, uuid2],
+    "n:BaseContent": [uuid1, uuid2, uuid3, uuid4],   ← MRO superset
+    "n:CommentNode": [uuid3, uuid4],
+    "e:FollowEdge":  [uuid1, uuid3],
+    "e:LikeEdge":    [uuid5],
 }
 ```
 
-Edge-type-only queries (`[-[FollowEdge]->]`) are **not cached** — they fall straight to the edge-list loop. The `use_index` guard requires `target_type_name is not None`.
+Edge-type queries (`[-[FollowEdge]->]`) hit `"e:FollowEdge"`. Combined queries intersect both columns in O(min(a,b)). The `use_index` guard activates when either `target_type_name` or `edge_type_name` is set.
 
 ### Benchmark Results (Current Implementation)
 
@@ -229,16 +231,29 @@ This is the fundamental speedup: `matching_count << fan_out` at low selectivity.
 
 ---
 
-## 3. Summary of Changes Needed
+## 3. Summary of Changes — ✅ Implemented
 
-| Component | Current state | Change needed |
-|-----------|--------------|---------------|
-| `sam_put` | writes `n:NodeType` columns | also write `e:EdgeType` column |
-| `sam_query` | takes `target_type` (node) | accept prefixed key `n:X` or `e:X` |
-| `use_index` guard | `target_type_name is not None` | `target_type_name or edge_type_name` |
-| `edges_to_nodes` query | node-type path only | handle edge-type and combined paths |
-| `gti_query_targets` | already handles edge_type param | just needs SAM caching of result |
-| GTI schema | no change needed | `edge_topology.edge_type` already exists |
-| `sam_populate_from_gti` | takes `(target_id, type)` rows | needs to specify `n:` or `e:` prefix |
+All gaps from the original design have been closed.
 
-No SQL schema changes. No new tables. The unified SAM is purely an extension of the existing SAM key space.
+| Component | Change | Status |
+|-----------|--------|--------|
+| `sam_put` | writes `e:EdgeType` column in addition to `n:NodeType` MRO columns | ✅ Done |
+| `sam_query` | accepts any prefixed key `n:X` or `e:X` | ✅ Done |
+| `use_index` guard | activates when `target_type_name or edge_type_name` | ✅ Done |
+| `edges_to_nodes` | 3-way branch: node-only / edge-only / combined (set intersection) | ✅ Done |
+| `gti_query_targets` | SAM is now populated from GTI results for both `n:` and `e:` columns | ✅ Done |
+| GTI schema | no change needed — `edge_topology.edge_type` already existed | ✅ Confirmed |
+| `sam_populate_from_gti` | accepts pre-prefixed `(target_id, col_key)` tuples | ✅ Done |
+| Naming convention | `am_index` → `sam_gti`, all functions renamed SAM/GTI throughout | ✅ Done |
+| Edge creation syntax | `+>: EdgeType() :+>` in build walkers | ✅ Done |
+| Edge filter traversal | `[src ->:EdgeType:->]` and `[src ->:EdgeType:-> (?:NodeType)]` | ✅ Done |
+
+No SQL schema changes were needed. No new tables. The unified SAM is a pure extension of the existing SAM key space.
+
+### Files implementing the unified SAM
+
+- `jac/jaclang/runtimelib/sam_gti.jac` — declarations
+- `jac/jaclang/runtimelib/impl/sam_gti.impl.jac` — implementations
+- `jac/jaclang/jac0core/runtime.jac` — 3-way fast path in `edges_to_nodes()`
+- `jac/examples/graph_index_bench/bench_gt_am.jac` — Scenarios 4 & 5 benchmark
+- `benchmarking/graph-query-bench/main.jac` — Edge Filter tab in interactive benchmark
