@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- **Fix: TOML Serializer Preserves Special Chars and Env Vars**: Fixed two bugs in the `jac.toml` serializer triggered when programmatically saving config changes: (1) Table headers containing special characters (e.g., `[plugins.client.npm.auth."//npm.pkg.github.com/"]`) now retain proper quoting instead of being written unquoted, and (2) Environment variable placeholders like `${NODE_AUTH_TOKEN}` are preserved as-is instead of being interpolated to their runtime values. Previously, these bugs would corrupt `jac.toml` files when dependencies were auto-updated.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
 - 4 small refactors/changes.
