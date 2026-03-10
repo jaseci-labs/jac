@@ -159,13 +159,25 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.extra_build_cmd }}
 
-      # Build the package with attestations
+      # Build the package
+      - name: Install build tools
+        run: pip install build
+
       - name: Build package
-        uses: hynek/build-and-inspect-python-package@efb823f52190ad02594531168b7a2d5790e66516 # v2.13.0
+        working-directory: ${{ matrix.dir }}
+        run: python -m build
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: ${{ matrix.dir }}
-          attest-build-provenance-github: "true"
-          upload-name-suffix: -${{ matrix.pypi }}
+          name: Packages-${{ matrix.pypi }}
+          path: ${{ matrix.dir }}/dist/*
+
+      # Generate attestations for supply chain security
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
+        with:
+          subject-path: ${{ matrix.dir }}/dist/*
 
   # ============================================================================
   # Publish Tier 1: jaclang (base package)
