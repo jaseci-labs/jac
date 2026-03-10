@@ -382,8 +382,20 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
         # This shows the correct type after narrowing (e.g., Mammal instead of Mammal|None)
         # Skip type display for Ability nodes — their signature is shown separately below
         if not isinstance(sym_node, uni.Ability) {
-            if sym_node?.type and sym_node.type {
-                node_info += f"': '{sym_node.type}";
+            # For attribute access (c.field), use the parent AtomTrailer's narrowed type
+            # instead of the Name node's declared type. The AtomTrailer has the CFG-narrowed
+            # type (e.g., Mammal) while the Name has the declared type (e.g., Mammal|None).
+            display_type = sym_node.type;
+            if (
+                isinstance(sym_node.parent, uni.AtomTrailer)
+                and sym_node.parent.is_attr
+                and sym_node.parent.right is sym_node
+                and sym_node.parent.type
+            ) {
+                display_type = sym_node.parent.type;
+            }
+            if display_type {
+                node_info += f"': '{display_type}";
             } elif sym_node.name_spec.clean_type {
                 node_info += f"': '{sym_node.name_spec.clean_type}";
             } elif (

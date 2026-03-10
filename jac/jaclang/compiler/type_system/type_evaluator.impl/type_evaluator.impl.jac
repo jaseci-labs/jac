@@ -2690,7 +2690,27 @@ impl TypeEvaluator._find_predicate_for(
             }
         }
     }
-    # Pattern 6: Truthiness narrowing - if expr: (AtomTrailer or Name)
+    # Pattern 6: Walrus operator truthiness - if (x := get_val()): narrows x
+    # When condition is a walrus expression and target matches the walrus target,
+    # return a truthiness predicate to narrow None from the type.
+    if (
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == Tok.WALRUS_EQ
+        and self._exprs_match(condition.left, target_expr)
+    ) {
+        if self.prefetch and self.prefetch.none_type_class {
+            # Get the type of the walrus value (right side)
+            walrus_type = self.get_type_of_expression(condition.right);
+            if self._union_contains_none(walrus_type) {
+                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                return NarrowingPredicate(
+                    sym_name="<expr>", narrow_type=none_inst, is_inverted=True
+                );
+            }
+        }
+    }
+    # Pattern 7: Truthiness narrowing - if expr: (AtomTrailer or Name)
     if self._exprs_match(condition, target_expr) {
         if self.prefetch and self.prefetch.none_type_class {
             # Get the type of the condition expression
