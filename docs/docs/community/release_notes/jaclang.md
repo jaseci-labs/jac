@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- **Fix: Tuple Unpacking in For Loops**: `for (a, b, c) in list[tuple[A, B, C]]` now correctly infers types for unpacked variables instead of `UnknownType`.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
 - 4 small refactors/changes.

@@ -1177,6 +1177,64 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         }
                     }
                 }
+                # ---- Handle tuple unpacking in for loops: for (a, b, c) in <expr> ----
+                # Similar to Pyright's evaluateTypesForForStatement + assignTypeToTupleOrListNode
+                elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
+                    collection_type = self.get_type_of_expression(
+                        unpack_assignment.collection
+                    );
+                    # Get the iterator's element type (similar to Pyright's getTypeOfIterator)
+                    iter_type = self.get_type_of_magic_method_call(
+                        collection_type, "__iter__", [], unpack_assignment
+                    );
+                    elem_type: types.TypeBase | None = None;
+                    if isinstance(iter_type, types.ClassType)
+                    and len(iter_type.private.type_args) == 1 {
+                        elem_type = iter_type.private.type_args[0];
+                        # If element type is a TypeVar, specialize it using collection's type_args
+                        if isinstance(elem_type, types.TypeVarType)
+                        and isinstance(collection_type, types.ClassType)
+                        and collection_type.private.type_args {
+                            specialized = iter_type.specialize_generics(
+                                collection_type.private.type_args
+                            );
+                            if len(specialized.private.type_args) == 1 {
+                                elem_type = specialized.private.type_args[0];
+                            }
+                        }
+                    }
+                    # Now extract the tuple element at the correct index
+                    if isinstance(elem_type, types.ClassType) {
+                        idx = -1;
+                        for (vi, v) in enumerate(unpack_container.values) {
+                            if v is node_ {
+                                idx = vi;
+                                break;
+                            }
+                        }
+                        if idx >= 0 {
+                            # NamedTuple: get field types from has vars
+                            if elem_type.is_namedtuple() {
+                                has_vars = elem_type.shared.symbol_table.get_has_vars();
+                                if idx < len(has_vars) {
+                                    field = has_vars[idx];
+                                    if field.type_tag {
+                                        field_type = self.get_type_of_expression(
+                                            field.type_tag.tag
+                                        );
+                                        return self._convert_to_instance(field_type);
+                                    }
+                                }
+                                # Regular tuple with type_args
+                            } elif elem_type.private.type_args
+                            and idx < len(elem_type.private.type_args) {
+                                return self._convert_to_instance(
+                                    elem_type.private.type_args[idx]
+                                );
+                            }
+                        }
+                    }
+                }
             }
 
             # ---- Handle simple assignment: var = <expr> ----
