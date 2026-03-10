@@ -50,9 +50,9 @@ obj Serializer {
         val: object, include_type: bool, api_mode: bool = False
     ) -> object;
 
-    static def _type_info(obj: object, include: bool) -> dict[str, object];
+    static def _type_info(`obj: object, `include: bool) -> dict[str, object];
     static def _serialize_attrs(
-        obj: object, include_type: bool, api_mode: bool
+        `obj: object, include_type: bool, api_mode: bool
     ) -> dict[str, object];
 
     static def _deserialize_value(val: object) -> object;

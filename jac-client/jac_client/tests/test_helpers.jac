@@ -7,8 +7,8 @@ import sys;
 import time;
 import from pathlib { Path }
 
+"""Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
-    """Get a free port by binding to port 0 and releasing it."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
         s.bind(("", 0));
         s.listen(1);
@@ -17,8 +17,8 @@ def get_free_port -> int {
     return port;
 }
 
+"""Get the jac command with proper path handling."""
 def get_jac_command -> list[str] {
-    """Get the jac command with proper path handling."""
     jac_path = shutil.which("jac");
     if jac_path {
         return [jac_path];
@@ -26,8 +26,8 @@ def get_jac_command -> list[str] {
     return [sys.executable, "-m", "jaclang"];
 }
 
+"""Get environment dict with bun in PATH."""
 def get_env_with_bun -> dict[str, str] {
-    """Get environment dict with bun in PATH."""
     env = os.environ.copy();
     bun_path = shutil.which("bun");
     if bun_path {
@@ -43,8 +43,8 @@ def get_env_with_bun -> dict[str, str] {
 # Backward compatibility alias
 glob get_env_with_npm = get_env_with_bun;
 
+"""Block until a TCP port is accepting connections or timeout."""
 def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None {
-    """Block until a TCP port is accepting connections or timeout."""
     deadline = time.time() + timeout;
     while time.time() < deadline {
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
