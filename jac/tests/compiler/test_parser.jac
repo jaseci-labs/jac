@@ -67,6 +67,7 @@ test "all ast has normalize" {
         "UniNode",
         "UniScopeNode",
         "UniCFGNode",
+        "ConditionalNode",
         "ContextAwareNode",
         "ProgramModule",
         "WalkerStmtOnlyNode",

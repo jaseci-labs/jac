@@ -1,3 +1,35 @@
+"""Try to resolve a string annotation as a forward reference to a type.
+
+Returns the resolved type if the string names a type in scope, None otherwise.
+This handles patterns like: -> 'Path', has x: 'SomeType' where the string
+refers to a type imported under TYPE_CHECKING or defined later in the module.
+"""
+impl TypeEvaluator._try_resolve_forward_ref(expr: uni.String) -> TypeBase | None {
+    name = expr.lit_value;
+    if not isinstance(name, str) or not name {
+        return None;
+    }
+    scope = expr.find_parent_of_type(uni.UniScopeNode);
+    if not scope {
+        return None;
+    }
+    symbol = type_utils.lookup_symtab(scope, name, self.builtins_module);
+    if not symbol {
+        return None;
+    }
+    symbol = self.resolve_imported_symbols(symbol);
+    if not symbol.decl or not symbol.decl.name_of {
+        return None;
+    }
+    resolved = self.get_type_of_expression(symbol.defn[-1])
+        if symbol.defn
+        else self.get_type_of_expression(symbol.decl);
+    if isinstance(resolved, types.UnknownType) {
+        return None;
+    }
+    return resolved;
+}
+
 """Build field parameters from class MRO for synthesized constructors."""
 impl TypeEvaluator._build_field_params(
     class_type: types.ClassType, skip_deferred: bool = True

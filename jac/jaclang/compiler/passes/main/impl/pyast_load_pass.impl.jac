@@ -2811,6 +2811,7 @@ impl PyastBuildPass.proc_function_def(
         name_ref=name,
         is_async=False,
         is_static=False,
+        is_classmethod=False,
         is_abstract=False,
         is_override=False,
         access=None,

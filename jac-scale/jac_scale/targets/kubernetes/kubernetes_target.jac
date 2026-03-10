@@ -1305,102 +1305,169 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    """Destroy all enabled databases and their dashboards."""
+    """Destroy all databases, caches, and their dashboards."""
     def _destroy_databases(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any
     ) -> None {
-        if self.k8s_config.mongodb_enabled {
-            mongodb_name = f"{app_name}-mongodb";
-            delete_if_exists(
-                apps_v1.delete_namespaced_stateful_set,
-                mongodb_name,
-                namespace,
-                'StatefulSet'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                f"{mongodb_name}-service",
-                namespace,
-                'Service'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_secret,
-                f"{mongodb_name}-secret",
-                namespace,
-                'Secret'
-            );
-            express_name = f"{app_name}-mongo-express";
-            delete_if_exists(
-                apps_v1.delete_namespaced_deployment,
-                express_name,
-                namespace,
-                'Deployment'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                f"{express_name}-service",
-                namespace,
-                'Service'
+        self._destroy_database(app_name, namespace, apps_v1, core_v1);
+        self._destroy_cache(app_name, namespace, apps_v1, core_v1);
+        self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
+    }
+
+    def _destroy_application(
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+    ) -> None {
+        autoscaling_v2 = client.AutoscalingV2Api();
+        delete_if_exists(
+            autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
+            f"{app_name}-hpa",
+            namespace,
+            'HorizontalPodAutoscaler'
+        );
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{app_name}-service",
+            namespace,
+            'Service'
+        );
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+        code_server_name = f"{app_name}-code-server";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment,
+            code_server_name,
+            namespace,
+            'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service, code_server_name, namespace, 'Service'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_pod, f"{app_name}-code-sync", namespace, 'Pod'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_persistent_volume_claim,
+            f"{app_name}-code-pvc",
+            namespace,
+            'PersistentVolumeClaim'
+        );
+    }
+
+    def _destroy_database(
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+    ) -> None {
+        mongodb_name = f"{app_name}-mongodb";
+        delete_if_exists(
+            apps_v1.delete_namespaced_stateful_set,
+            mongodb_name,
+            namespace,
+            'StatefulSet'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{mongodb_name}-service",
+            namespace,
+            'Service'
+        );
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-mongodb-secret");
+    }
+
+    def _destroy_cache(
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+    ) -> None {
+        redis_name = f"{app_name}-redis";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{redis_name}-service",
+            namespace,
+            'Service'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_config_map,
+            f"{redis_name}-config",
+            namespace,
+            'ConfigMap'
+        );
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-redis-secret");
+    }
+
+    def _destroy_dashboard(
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+    ) -> None {
+        express_name = f"{app_name}-mongo-express";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{express_name}-service",
+            namespace,
+            'Service'
+        );
+        insight_name = f"{app_name}-redis-insight";
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, insight_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{insight_name}-service",
+            namespace,
+            'Service'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_config_map,
+            f"{insight_name}-nginx-config",
+            namespace,
+            'ConfigMap'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_secret,
+            f"{insight_name}-auth",
+            namespace,
+            'Secret'
+        );
+    }
+
+    def _destroy_component(
+        app_name: str, namespace: str, component: str, apps_v1: Any, core_v1: Any
+    ) -> None {
+        if component == 'application' {
+            self._destroy_application(app_name, namespace, apps_v1, core_v1);
+        } elif component == 'database' {
+            self._destroy_database(app_name, namespace, apps_v1, core_v1);
+        } elif component == 'cache' {
+            self._destroy_cache(app_name, namespace, apps_v1, core_v1);
+        } elif component == 'monitoring' {
+            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+            monitoring.destroy(app_name, namespace, apps_v1, core_v1);
+        } elif component == 'dashboard' {
+            self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
+        } else {
+            raise ValueError(
+                f"Unknown component: '{component}'. Valid choices: application, database, cache, monitoring, dashboard"
             );
         }
-
-        if self.k8s_config.redis_enabled {
-            redis_name = f"{app_name}-redis";
-            delete_if_exists(
-                apps_v1.delete_namespaced_deployment,
-                redis_name,
-                namespace,
-                'Deployment'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                f"{redis_name}-service",
-                namespace,
-                'Service'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_config_map,
-                f"{redis_name}-config",
-                namespace,
-                'ConfigMap'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_secret,
-                f"{redis_name}-secret",
-                namespace,
-                'Secret'
-            );
-            insight_name = f"{app_name}-redis-insight";
-            delete_if_exists(
-                apps_v1.delete_namespaced_deployment,
-                insight_name,
-                namespace,
-                'Deployment'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                f"{insight_name}-service",
-                namespace,
-                'Service'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_config_map,
-                f"{insight_name}-nginx-config",
-                namespace,
-                'ConfigMap'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_secret,
-                f"{insight_name}-auth",
-                namespace,
-                'Secret'
-            );
+        if self.logger {
+            self.logger.info(f"Component '{component}' of '{app_name}' destroyed");
         }
     }
 
-    def destroy(app_name: str) -> None {
+    def destroy(app_name: str, component: str = "") -> None {
         if self.logger {
-            self.logger.info(f"Destroying application '{app_name}' from Kubernetes");
+            if component {
+                self.logger.info(
+                    f"Destroying component '{component}' of '{app_name}' from Kubernetes"
+                );
+            } else {
+                self.logger.info(
+                    f"Destroying application '{app_name}' from Kubernetes"
+                );
+            }
         }
 
         try {
@@ -1411,45 +1478,16 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             apps_v1 = client.AppsV1Api();
             core_v1 = client.CoreV1Api();
-            autoscaling_v2 = client.AutoscalingV2Api();
             namespace = self.k8s_config.namespace;
 
-            # Delete HPA
-            delete_if_exists(
-                autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
-                f"{app_name}-hpa",
-                namespace,
-                'HorizontalPodAutoscaler'
-            );
+            if component {
+                self._destroy_component(
+                    app_name, namespace, component, apps_v1, core_v1
+                );
+                return;
+            }
 
-            # Delete main deployment and service
-            delete_if_exists(
-                apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                f"{app_name}-service",
-                namespace,
-                'Service'
-            );
-
-            # Delete K8s Secret if it exists
-            delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
-
-            # Delete code-server deployment and service (before PVC deletion)
-            code_server_name = f"{app_name}-code-server";
-            delete_if_exists(
-                apps_v1.delete_namespaced_deployment,
-                code_server_name,
-                namespace,
-                'Deployment'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_service,
-                code_server_name,
-                namespace,
-                'Service'
-            );
+            self._destroy_application(app_name, namespace, apps_v1, core_v1);
 
             # Delete monitoring stack (Prometheus / Grafana)
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
@@ -1458,15 +1496,7 @@ obj KubernetesTarget(DeploymentTarget) {
             # Delete databases
             self._destroy_databases(app_name, namespace, apps_v1, core_v1);
 
-            # Delete code sync pod and PVCs
-            delete_if_exists(
-                core_v1.delete_namespaced_pod,
-                f"{app_name}-code-sync",
-                namespace,
-                'Pod'
-            );
-
-            # Delete PVCs
+            # Broad PVC sweep (catch any PVCs not cleaned up by component methods)
             pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
             for pvc in pvcs.items {
                 if pvc.metadata.name.startswith(app_name) {

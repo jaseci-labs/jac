@@ -3413,6 +3413,18 @@ impl Parser._dispatch_decorated{
     while self.check(TokenKind.KW_ASYNC) {
         self.advance();
     }
+    # Skip override/static modifiers
+    if self.check(TokenKind.KW_OVERRIDE) {
+        self.advance();
+    }
+    if self.check(TokenKind.KW_STATIC) {
+        self.advance();
+    }
+    # Skip `class` only when followed by def/can (classmethod), not class Name (archetype)
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        self.advance();
+    }
     # Check for abs prefix - not valid as a prefix modifier
     has_abs_prefix = self.check(TokenKind.KW_ABSTRACT);
     if has_abs_prefix {
@@ -3445,6 +3457,14 @@ impl Parser._dispatch_async{
     # Look ahead to see if it's an ability (def/can) or archetype (class/obj/etc)
     save_pos = self.pos;
     while self.check(TokenKind.KW_ASYNC) {
+        self.advance();
+    }
+    # Skip static/class modifiers for lookahead
+    if self.check(TokenKind.KW_STATIC) {
+        self.advance();
+    }
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         self.advance();
     }
     is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
@@ -3808,6 +3828,11 @@ impl Parser.parse_statement{
     }
     # Handle decorators for nested functions
     if self.check(TokenKind.DECOR_OP) {
+        return self.parse_ability();
+    }
+    # Handle `class def` / `class can` (classmethod) in code blocks
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
     # Handle nested class/archetype definitions
@@ -5303,6 +5328,16 @@ impl Parser.parse_archetype_member{
         }
         return ability;
     }
+    # Handle `class def` / `class can` (classmethod) — disambiguate from nested class
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        ability = self.parse_ability();
+        if doc {
+            ability.doc = doc;
+            ability.add_kids_left([doc]);
+        }
+        return ability;
+    }
     if self.check_any(
         TokenKind.KW_OBJECT,
         TokenKind.KW_NODE,
@@ -5502,9 +5537,17 @@ impl Parser.parse_ability -> Ability {
         is_override = True;
         override_tok = self.previous();
     }
+    is_classmethod = False;
+    classmethod_tok = None;
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        self.advance();
+        is_classmethod = True;
+        classmethod_tok = self.previous();
+    }
     is_static = False;
     static_tok = None;
-    if self.match_tok(TokenKind.KW_STATIC) {
+    if not is_classmethod and self.match_tok(TokenKind.KW_STATIC) {
         is_static = True;
         static_tok = self.previous();
     }
@@ -5513,10 +5556,17 @@ impl Parser.parse_ability -> Ability {
     if self.match_tok(TokenKind.KW_ASYNC) {
         is_async = True;
         async_tok = self.previous();
-        # Handle `async static/override def` ordering (async before modifiers)
+        # Handle `async static/override/class def` ordering (async before modifiers)
         (is_override, override_tok, is_static, static_tok) = self._parse_post_async_modifiers(
             is_override, override_tok, is_static, static_tok
         );
+        if not is_classmethod
+        and self.check(TokenKind.KW_CLASS)
+        and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
+            self.advance();
+            is_classmethod = True;
+            classmethod_tok = self.previous();
+        }
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
@@ -5600,6 +5650,9 @@ impl Parser.parse_ability -> Ability {
     if is_override {
         kid.append(self.make_uni_token(override_tok));
     }
+    if is_classmethod {
+        kid.append(self.make_uni_token(classmethod_tok));
+    }
     if is_static {
         kid.append(self.make_uni_token(static_tok));
     }
@@ -5650,6 +5703,7 @@ impl Parser.parse_ability -> Ability {
         is_async=is_async,
         is_override=is_override,
         is_static=is_static,
+        is_classmethod=is_classmethod,
         is_abstract=is_abstract,
         access=access,
         signature=signature,

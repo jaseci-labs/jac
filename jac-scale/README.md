@@ -281,6 +281,18 @@ jac destroy main.jac
 - Removes persistent volumes and claims
 - Cleans up the namespace (if custom namespace was used)
 
+You can also remove individual components without tearing down the entire deployment:
+
+```bash
+jac destroy main.jac --component application   # Remove only the app
+jac destroy main.jac --component database      # Remove only MongoDB
+jac destroy main.jac --component cache         # Remove only Redis
+jac destroy main.jac --component monitoring    # Remove only Prometheus + Grafana
+jac destroy main.jac --component dashboard     # Remove only Mongo Express + RedisInsight
+```
+
+> **Note:** `--component` is only supported for `--target kubernetes` (the default).
+
 ## Quick Start: Running Todo application with frontend
 
 Follow these steps to set up and test the Todo application with frontend
@@ -430,6 +442,18 @@ jac destroy app.jac
 - Removes persistent volumes and claims
 - Cleans up the namespace (if custom namespace was used)
 
+You can also remove individual components without tearing down the entire deployment:
+
+```bash
+jac destroy app.jac --component application   # Remove only the app
+jac destroy app.jac --component database      # Remove only MongoDB
+jac destroy app.jac --component cache         # Remove only Redis
+jac destroy app.jac --component monitoring    # Remove only Prometheus + Grafana
+jac destroy app.jac --component dashboard     # Remove only Mongo Express + RedisInsight
+```
+
+> **Note:** `--component` is only supported for `--target kubernetes` (the default).
+
 ## Async Walkers
 
 JAC Scale supports async walkers for non-blocking operations like external API calls, database queries, and file I/O.
@@ -515,6 +539,58 @@ jac start main.jac --scale --build
 - Deploying to production
 - You want to version and host your Docker image
 - Sharing your application with others
+
+## Managing Deployments
+
+### `jac destroy` - Remove a Deployment
+
+Removes a deployed JAC application from Kubernetes.
+
+```bash
+jac destroy <file.jac> [--target <target>] [--component <component>]
+```
+
+#### Remove the entire deployment
+
+```bash
+jac destroy main.jac
+```
+
+Deletes all resources in the namespace: the application, databases, cache, dashboards, and monitoring stack. **This is irreversible - you will be prompted to confirm.**
+
+#### Remove a single component (Kubernetes only)
+
+Use `--component` to tear down only one part of the deployment while leaving everything else running:
+
+| Component | What gets removed |
+|-----------|-------------------|
+| `application` | App deployment, service, secrets, HPA |
+| `database` | MongoDB StatefulSet and service |
+| `cache` | Redis deployment and service |
+| `monitoring` | Prometheus, Grafana, kube-state-metrics, and node-exporter (deployments, services, RBAC) |
+| `dashboard` | Mongo Express and RedisInsight deployments and services |
+
+**Examples:**
+
+```bash
+jac destroy main.jac --component application   # Remove only the JAC app
+jac destroy main.jac --component database      # Remove only MongoDB
+jac destroy main.jac --component cache         # Remove only Redis
+jac destroy main.jac --component monitoring    # Remove Prometheus + Grafana
+jac destroy main.jac --component dashboard     # Remove Mongo Express + RedisInsight
+```
+
+> **Note:** `--component` is only supported for `--target kubernetes` (the default target).
+
+### `jac status` - Check Deployment Status
+
+Show the live status of all components for a deployed application:
+
+```bash
+jac status main.jac
+```
+
+This prints a table showing the running/degraded/pending state of the application, databases, cache, and monitoring, along with service URLs.
 
 ## Important Notes
 

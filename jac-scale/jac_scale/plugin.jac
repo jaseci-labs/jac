@@ -228,17 +228,65 @@ class JacCmd {
                     default="kubernetes",
                     help="Deployment target (kubernetes, aws, gcp, etc.)",
                 ),
+                Arg.create(
+                    "component",
+                    typ=str,
+                    default="",
+                    help="Component to destroy (default: entire deployment). Choices: application, database, cache, monitoring, dashboard",
+                ),
 
             ],
-            examples=[("jac destroy app.jac", "Remove deployment for app"), ],
+            examples=[
+                ("jac destroy app.jac", "Remove entire deployment for app"),
+                (
+                    "jac destroy app.jac --component application",
+                    "Remove only the application"
+                ),
+                ("jac destroy app.jac --component database", "Remove only MongoDB"),
+                ("jac destroy app.jac --component cache", "Remove only Redis"),
+                (
+                    "jac destroy app.jac --component monitoring",
+                    "Remove only monitoring stack"
+                ),
+                (
+                    "jac destroy app.jac --component dashboard",
+                    "Remove only dashboards (Mongo Express + RedisInsight)"
+                ),
+
+            ],
             group="deployment",
             priority=CommandPriority.PLUGIN,
             source="jac-scale"
         )
-        def destroy(file_path: str, target: str = "kubernetes") -> int {
+        def destroy(
+            file_path: str, target: str = "kubernetes", component: str = ""
+        ) -> int {
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'");
             }
+
+            valid_components = [
+                "application",
+                "database",
+                "cache",
+                "monitoring",
+                "dashboard"
+            ];
+            if component and target != 'kubernetes' {
+                console.print(
+                    f"[bold red]ERROR:[/bold red] --component is only supported for the 'kubernetes' target."
+                );
+                return 1;
+            }
+            if component and component not in valid_components {
+                console.print(
+                    f"[bold red]ERROR:[/bold red] Invalid component '{component}'. Valid choices: {', '.join(
+                        valid_components
+                    )}"
+                );
+                return 1;
+            }
+
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
@@ -261,9 +309,15 @@ class JacCmd {
             namespace = target_config.get('namespace', 'default');
 
             # Warn user and require confirmation before proceeding
-            console.print(
-                f"[bold red]WARNING:[/bold red] You are about to delete namespace '{namespace}' and all its associated resources."
-            );
+            if component {
+                console.print(
+                    f"[bold red]WARNING:[/bold red] You are about to delete component '{component}' from deployment '{app_name}'."
+                );
+            } else {
+                console.print(
+                    f"[bold red]WARNING:[/bold red] You are about to delete namespace '{namespace}' and all its associated resources."
+                );
+            }
             confirmation = input(
                 "Are you sure you want to proceed? (y/n): "
             ).strip().lower();
@@ -276,11 +330,17 @@ class JacCmd {
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
-            deployment_target.destroy(app_name);
+            deployment_target.destroy(app_name, component);
 
-            console.print(
-                f"Successfully destroyed deployment '{app_name}' from {target}"
-            );
+            if component {
+                console.print(
+                    f"Successfully destroyed component '{component}' from '{app_name}'"
+                );
+            } else {
+                console.print(
+                    f"Successfully destroyed deployment '{app_name}' from {target}"
+                );
+            }
             return 0;
         }
 

@@ -422,6 +422,7 @@ archetype_member ::=
         | "has" has_stmt
         | "async" ability
         | ("def" | "can" | "override") ability
+        | "class" ability
         | ("obj" | "node" | "edge" | "walker" | "class") archetype
         | "enum" enum
         | "impl" impl_def
@@ -434,8 +435,8 @@ has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
 
 ability ::=
-    ("@" atomic_chain)* "override"? "static"? "async"? access_tag (NAME | KWESC_NAME)?
-    ("[" type_params "]")? ("with" expression | func_signature)
+    ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
+    (NAME | KWESC_NAME)? ("[" type_params "]")? ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?

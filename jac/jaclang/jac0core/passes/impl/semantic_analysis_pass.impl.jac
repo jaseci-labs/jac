@@ -78,9 +78,8 @@ impl SemanticAnalysisPass._check_archetype(
                 if isinstance(dec, uni.Name) {
                     if dec.sym_name == 'classmethod' {
                         self.log_warning(
-                            f"'@classmethod' is not supported in '{arch_kind}' definitions. "
-                            f"Use the 'static' keyword for static methods, or use 'class' "
-                            f"instead of '{arch_kind}' for Python-specific decorators.",
+                            f"'@classmethod' decorator is not recommended in '{arch_kind}' definitions. "
+                            f"Use 'class def method_name(...)' syntax instead.",
                             node_override=dec
                         );
                     } elif dec.sym_name == 'staticmethod' {

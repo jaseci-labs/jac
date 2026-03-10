@@ -513,11 +513,12 @@ test "checker_member_access" {
     for sym in mod_scope_symbols {
         assert sym in str(mod.sym_tab.names_in_scope.values());
     }
-    assert len(mod.sym_tab.kid_scope[0].names_in_scope.values()) == 5;
+    # obj archetypes only have declared 'has' fields and abilities in scope —
+    # dynamic self.attr assignments (self.name in greet) are NOT added.
+    assert len(mod.sym_tab.kid_scope[0].names_in_scope.values()) == 4;
     kid_scope_symbols = [
         "Symbol(age",
         "Symbol(greet",
-        "Symbol(name,",
         "Symbol(create_person",
         "Symbol(class_info"
     ];
@@ -527,13 +528,15 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    assert len(program.errors_had) == 4;
+    # 5 errors: 'has no attribute name' (obj can't have dynamic attrs),
+    # 3 Unknown self in static/classmethod, 1 type mismatch
+    assert len(program.errors_had) == 5;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[3].pretty_print()
+        program.errors_had[4].pretty_print()
     );
 }
 
@@ -1594,13 +1597,15 @@ test "parameterless_init_with_args" {
     program = JacProgram();
     mod = program.compile(os.path.join(FIXTURES, "checker_parameterless_init.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 2;
+    # 3 errors: 'has no attribute nickname' (obj can't have undeclared self-attrs),
+    # 'Named argument does not match', 'Too many positional arguments'
+    assert len(program.errors_had) == 3;
     assert_error_pretty_found(
         """Named argument 'name' does not match any parameter""",
-        program.errors_had[0].pretty_print()
+        program.errors_had[1].pretty_print()
     );
     assert_error_pretty_found(
-        """Too many positional arguments""", program.errors_had[1].pretty_print()
+        """Too many positional arguments""", program.errors_had[2].pretty_print()
     );
 }
 
@@ -1946,4 +1951,17 @@ test "module_level_overload" {
     assert_error_pretty_found(
         """Cannot assign <class float> to <class int>""", user_errors[0].pretty_print()
     );
+}
+
+"""Verifies two import resolution fixes:
+- MyClass: arrived via star re-export chain fix (modresolver local-first for relative imports)
+- subpkg: resolved as ModuleType fix (subpackage __init__.py treated correctly)
+"""
+test "py_pkg_imports" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_py_pkg_imports.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0;
+    assert mod.sym_tab.lookup("MyClass") is not None , "MyClass not in sym_tab - star re-export chain broken";
+    assert mod.sym_tab.lookup("subpkg") is not None , "subpkg not in sym_tab - subpackage resolution broken";
 }

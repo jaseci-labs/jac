@@ -24,6 +24,7 @@ import from jac_scale.jserver.jserver {
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.user_manager { UserRole }
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
+import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
 
@@ -934,7 +935,7 @@ impl JacAPIServerAdmin.admin_graph_data(
         );
     }
     import from jaclang.runtimelib.utils { collect_node_connections }
-    target_username = username or '__guest__';
+    target_username = username or Con.GUEST.value;
     root_id = self.user_manager.get_root_id(target_username);
     if not root_id {
         return JSONResponse(

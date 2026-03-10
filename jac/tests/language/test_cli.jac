@@ -376,7 +376,7 @@ test "cfg printgraph" {
     }
     stdout_value = captured.getvalue();
     correct_graph = (
-        "digraph G {\n" + '  0 [label="BB0\\n\\nprint ( \\"im still here\\" ) ;", shape=box];\n' + '  1 [label="BB1\\n\\"Hello World!\\" |> print ;", shape=box];\n' + "}\n\n"
+        "digraph G {\n" + '  0 [label="BB0\\ndef still_there\\nprint ( \\"im still here\\" ) ;", shape=box];\n' + '  1 [label="BB1\\n\\"Hello World!\\" |> print ;", shape=box];\n' + "}\n\n"
     );
     assert correct_graph == stdout_value;
 }
