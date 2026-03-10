@@ -44,14 +44,14 @@ impl _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]] {
     return None;
 }
 
-impl render_markup(markup: str, base_style: str = "", strict: bool = False) -> str {
-    """Render markup to ANSI codes. Supports [link=url] for hyperlinks.
+"""Render markup to ANSI codes. Supports [link=url] for hyperlinks.
 
-    Args:
-        markup: Text with markup tags
-        base_style: Base style to apply
-        strict: If True, raise MarkupError for invalid markup (Rich-compatible)
-    """
+Args:
+    markup: Text with markup tags
+    base_style: Base style to apply
+    strict: If True, raise MarkupError for invalid markup (Rich-compatible)
+"""
+impl render_markup(markup: str, base_style: str = "", strict: bool = False) -> str {
     # Use Unicode Private Use Area chars as placeholders (unlikely in real input)
     _LBRACKET = "\ue000";
     _RBRACKET = "\ue001";
@@ -68,7 +68,9 @@ impl render_markup(markup: str, base_style: str = "", strict: bool = False) -> s
             txt = markup[pos:m.start()].replace(_LBRACKET, "[").replace(_RBRACKET, "]");
             # Build style with link if present
             current_link = link_stack[-1] if link_stack else None;
-            style = Style(" ".join(stack), link=current_link) if stack or current_link else None;
+            style = Style(" ".join(stack), link=current_link)
+                if stack or current_link
+                else None;
             result.append(style.render(txt) if style else txt);
         }
 
@@ -83,7 +85,9 @@ impl render_markup(markup: str, base_style: str = "", strict: bool = False) -> s
             } elif (stack) {
                 stack.pop();
             } elif (strict) {
-                raise MarkupError(f"closing tag '[{tag}]' at position {m.start()} has nothing to close");
+                raise MarkupError(
+                    f"closing tag '[{tag}]' at position {m.start()} has nothing to close"
+                );
             }
         } elif (tag.lower().startswith("link=")) {
             # Link tag: [link=url]
@@ -99,7 +103,9 @@ impl render_markup(markup: str, base_style: str = "", strict: bool = False) -> s
     if (pos < len(markup)) {
         txt = markup[pos:].replace(_LBRACKET, "[").replace(_RBRACKET, "]");
         current_link = link_stack[-1] if link_stack else None;
-        style = Style(" ".join(stack), link=current_link) if stack or current_link else None;
+        style = Style(" ".join(stack), link=current_link)
+            if stack or current_link
+            else None;
         result.append(style.render(txt) if style else txt);
     }
     return "".join(result);

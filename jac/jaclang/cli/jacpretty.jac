@@ -79,13 +79,15 @@ glob COLORS: Dict[(str, int)] = {
          "c": "conceal"
      },
      _console: Optional[Console] = None,
-     # Production-grade regex (stricter than Rich):
-     # - Prevents matching JSON arrays like [123, "data"]
-     # - Only matches # when followed by exactly 6 hex digits (valid color)
-     # - Prevents accidental consumption of [#2000], [#123], etc.
-     # Pattern: [/...] closing | [#XXXXXX] hex color | [a-z@...] styles/handlers
      RE_MARKUP = re.compile(r"\[(/[a-z]*|#[0-9a-fA-F]{6}|[a-z@][^\[\]]*)\]"),
-     __all__ = ["Console", "Style", "print", "render_markup", "get_console", "MarkupError"];
+     __all__ = [
+         "Console",
+         "Style",
+         "print",
+         "render_markup",
+         "get_console",
+         "MarkupError"
+     ];
 
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]];
 

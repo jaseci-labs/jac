@@ -204,7 +204,7 @@ test "render_markup does not match JSON arrays as markup tags" {
 test "render_markup strict regex only matches valid tag openers" {
     # Valid markup tags (start with a-z, #, /, or @)
     assert "\x1b[" in render_markup("[bold]text[/]");  # lowercase letter
-    assert "\x1b[" in render_markup("[red]text[/]");   # lowercase letter
+    assert "\x1b[" in render_markup("[red]text[/]");  # lowercase letter
     assert "\x1b[" in render_markup("[#ff0000]text[/]");  # hash for hex color
     # Note: [/] alone produces empty string (closing tag with no open tag)
     assert render_markup("[/]") == "";  # forward slash close is recognized but no-op
@@ -257,7 +257,6 @@ test "render_markup handles mixed valid and invalid brackets" {
 # ============================================================================
 # Rich-compatible test cases (from rich/tests/test_markup.py)
 # ============================================================================
-
 test "RE_MARKUP regex no match (Rich-compatible)" {
     # These patterns should NOT be matched as markup tags
     # Based on Rich's test_re_no_match
@@ -345,7 +344,9 @@ test "Style with link parameter produces OSC 8" {
     assert "\x1b]8;" in result2;
     assert "plain link" in result2;
     # No ANSI style codes (but OSC 8 is present)
-    assert "\x1b[" not in result2.replace("\x1b]8", "");  # Check no ANSI after removing OSC
+    assert "\x1b[" not in result2.replace(
+        "\x1b]8", ""
+    );  # Check no ANSI after removing OSC
 }
 
 test "stricter hex matching preserves invalid hex patterns" {
