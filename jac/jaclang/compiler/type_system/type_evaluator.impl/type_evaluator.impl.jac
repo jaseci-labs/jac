@@ -1445,16 +1445,26 @@ impl TypeEvaluator._assign_class(
     # If the type is Final[T], unwrap it to T.
     # TODO: We can actually check if the Final type is modified and
     # prevent that, but for now just unwrap it.
+    unwrapped_dest: types.TypeBase = dest_type;
+    unwrapped_src: types.TypeBase = src_type;
     if dest_type.shared == self.prefetch.final_class.shared {
         if len(dest_type.private.type_args) > 0 {
-            dest_type = dest_type.private.type_args[0];
+            unwrapped_dest = dest_type.private.type_args[0];
         }
     }
     if src_type.shared == self.prefetch.final_class.shared {
         if len(src_type.private.type_args) > 0 {
-            src_type = src_type.private.type_args[0];
+            unwrapped_src = src_type.private.type_args[0];
         }
     }
+    # After unwrapping Final, if either type is no longer ClassType,
+    # delegate to the general assign_type method.
+    if not isinstance(unwrapped_src, types.ClassType)
+    or not isinstance(unwrapped_dest, types.ClassType) {
+        return self.assign_type(unwrapped_src, unwrapped_dest);
+    }
+    src_type = unwrapped_src;
+    dest_type = unwrapped_dest;
     if src_type.shared == dest_type.shared {
         # Same class type, but check literal values if dest is a literal type
         if dest_type.is_literal_type() {
@@ -1678,6 +1688,17 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
         }
     }
     return False;
+}
+
+"""Check if a type is the TypeVar class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.type_var_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.type_var_class, types.ClassType)
+        and ty.shared == self.prefetch.type_var_class.shared
+    );
 }
 
 """Assign the source type to the destination type."""

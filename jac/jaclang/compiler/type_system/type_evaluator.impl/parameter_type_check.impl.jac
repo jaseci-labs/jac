@@ -94,16 +94,77 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     }
     if isinstance(caller_type, types.ClassType)
     and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
-        # Extract the TypeVar name from the first argument: TypeVar('T')
+        # Pyright: createTypeVarType() - Extract TypeVar name and validate constraints
         type_var_name = "";
+        first_constraint_arg: uni.Expr | None = None;
+        constraint_count = 0;
+
+        # Helper to extract string literal value from String or MultiString
+        def _get_string_lit_value(arg: uni.Expr) -> str | None {
+            if isinstance(arg, uni.String) {
+                return arg.lit_value;
+            } elif isinstance(arg, uni.MultiString) and arg.strings {
+                if isinstance(arg.strings[0], uni.String) {
+                    return arg.strings[0].lit_value;
+                }
+            }
+            return None;
+        }
+
+        is_covariant = False;
+        is_contravariant = False;
+
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
-            if isinstance(first_arg, uni.String) {
-                # Use lit_value to get the parsed string without quotes
-                type_var_name = first_arg.lit_value;
+            type_var_name = _get_string_lit_value(first_arg) or "";
+            if not type_var_name {
+                # Pyright: typeVarFirstArg
+                self.add_diagnostic(
+                    first_arg,
+                    "TypeVar() requires a string literal as the first argument"
+                );
             }
+
+            # Count positional constraint arguments and extract variance kwargs
+            for i in range(1, len(expr.params)) {
+                arg = expr.params[i];
+                if isinstance(arg, uni.KWPair) {
+                    # Extract covariant= and contravariant= keyword args
+                    if isinstance(arg.key, uni.Name) {
+                        if arg.key.value == "covariant"
+                        and isinstance(arg.value, uni.Bool) {
+                            is_covariant = arg.value.value;
+                        } elif arg.key.value == "contravariant"
+                        and isinstance(arg.value, uni.Bool) {
+                            is_contravariant = arg.value.value;
+                        }
+                    }
+                    continue;
+                }
+                constraint_count += 1;
+                if first_constraint_arg is None {
+                    first_constraint_arg = arg;
+                }
+            }
+
+            # Pyright: typeVarSingleConstraint
+            if constraint_count == 1 and first_constraint_arg {
+                self.add_diagnostic(
+                    first_constraint_arg,
+                    "TypeVar requires at least two constrained types"
+                );
+            }
+        } else {
+            # Pyright: typeVarFirstArg
+            self.add_diagnostic(
+                expr, "TypeVar() requires a string literal as the first argument"
+            );
         }
-        return types.TypeVarType(name=type_var_name);
+        return types.TypeVarType(
+            name=type_var_name,
+            is_covariant=is_covariant,
+            is_contravariant=is_contravariant
+        );
     }
     if (
         isinstance(caller_type, types.ClassType)
