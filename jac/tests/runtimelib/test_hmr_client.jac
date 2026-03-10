@@ -677,8 +677,8 @@ test "tsx component copied and updated on change" {
 }
 
 # --- TestHMRImplFileReload ---
+"""Test that changing a .impl.jac file triggers reload of its base .jac file."""
 test "server impl file reloads base jac file" {
-    """Test that changing a .impl.jac file triggers reload of its base .jac file."""
     with TemporaryDirectory() as tmpdir {
         temp_project = Path(tmpdir);
         # Create base server-side .jac file with abstract method
@@ -740,8 +740,8 @@ test "server impl file reloads base jac file" {
     }
 }
 
+"""Test that changing a .impl.jac file triggers recompilation of its base .cl.jac file."""
 test "client impl file reloads base cl.jac file" {
-    """Test that changing a .impl.jac file triggers recompilation of its base .cl.jac file."""
     with TemporaryDirectory() as tmpdir {
         unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
         unique_dir.mkdir(parents=True, exist_ok=True);
@@ -795,5 +795,41 @@ test "client impl file reloads base cl.jac file" {
         content2 = output_file.read_text();
         assert "Submit Now" in content2 , "JS content should reflect impl file change";
         assert "Click Me" not in content2 , "Old label should not be in updated JS";
+    }
+}
+
+# --- TestHMRRecursiveDependency ---
+"""When app.cl.jac imports Button.cl.jac, recompiling app should also generate Button.js."""
+test "dependency compiled when imported file recompiled" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        # Button component in components/
+        btn_file = unique_dir / "Button.cl.jac";
+        btn_file.write_text(
+            "cl {\n"
+            "    def Button() {\n"
+            "        return <button>Click</button>;\n"
+            "    }\n"
+            "}\n"
+        );
+        # App imports Button
+        app_file = unique_dir / "app.cl.jac";
+        app_file.write_text(
+            "cl import from .Button { Button }\n"
+            "cl {\n"
+            "    def App() {\n"
+            "        return <div><Button /></div>;\n"
+            "    }\n"
+            "}\n"
+        );
+        watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
+        reloader = HotReloader(
+            base_path=str(unique_dir), module_name="app", watcher=watcher
+        );
+        # Compile app - should recursively compile Button as a dependency
+        reloader._recompile_client_code(str(app_file));
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled" / "Button.js";
+        assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.cl.jac";
     }
 }

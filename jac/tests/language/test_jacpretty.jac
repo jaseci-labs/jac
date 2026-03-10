@@ -112,3 +112,67 @@ test "color parsing works for all formats" {
     assert _parse_color("color(196)") == ("38", "5", "196");
     assert _parse_color("invalid") is None;
 }
+
+test "hex color parsing handles invalid characters gracefully" {
+    # These patterns caused ValueError crashes before the fix
+    # Pattern: #XXXX followed by non-hex chars totaling 7 chars
+    assert _parse_color('#2000"}') is None;
+    assert _parse_color('#2000",') is None;
+    assert _parse_color('#xx2"xx') is None;
+    assert _parse_color("#2\"xxxx") is None;
+
+    # Valid hex colors still work
+    assert _parse_color("#ff00aa") == ("38", "2", "255", "0", "170");
+    assert _parse_color("#000000") == ("38", "2", "0", "0", "0");
+}
+
+test "rgb color parsing validates numeric values" {
+    # Invalid non-numeric values should return None
+    assert _parse_color("rgb(abc, def, ghi)") is None;
+    assert _parse_color("rgb(1, two, 3)") is None;
+    assert _parse_color("rgb(, , )") is None;
+
+    # Valid rgb still works
+    assert _parse_color("rgb(0, 0, 0)") == ("38", "2", "0", "0", "0");
+    assert _parse_color("rgb(255, 255, 255)") == ("38", "2", "255", "255", "255");
+}
+
+test "color index parsing validates numeric values" {
+    # Invalid non-numeric values should return None
+    assert _parse_color("color(abc)") is None;
+    assert _parse_color("color(not-a-number)") is None;
+    assert _parse_color("color()") is None;
+
+    # Valid color indices still work
+    assert _parse_color("color(0)") == ("38", "5", "0");
+    assert _parse_color("color(255)") == ("38", "5", "255");
+}
+
+test "render_markup preserves null bytes in input" {
+    # Null bytes should not be corrupted to brackets
+    input_with_nulls = "text\x00with\x01nulls";
+    result = render_markup(input_with_nulls);
+    assert result == input_with_nulls;
+}
+
+test "console width zero is respected" {
+    buf = io.StringIO();
+    console = Console(file=buf, width=0);
+    assert console.width == 0;
+}
+
+test "render_markup handles JSON-like content without crashing" {
+    import json;
+    # Real-world crash case: JSON with hex-like patterns
+    test_cases = [
+        {"rows_json": json.dumps([{"addr": "Suite #2000"}])},
+        {"rows_json": json.dumps([{"addr": "Suite #2000", "city": "NYC"}])},
+        {"rows_json": json.dumps([{"addr": f"Unit #{i}000"} for i in range(5)])},
+
+    ];
+    for case in test_cases {
+        # Should not raise ValueError
+        result = render_markup(str(case));
+        assert result is not None;
+    }
+}

@@ -404,7 +404,7 @@ impl UniScopeNode.lookup(
     );
     if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
         return impl_def.decl_link.sym_tab.lookup(
-            name, deep=True, incl_inner_scope=True
+            name, deep=True, incl_inner_scope=False
         );
     }
     return None;
@@ -710,6 +710,11 @@ impl UniCFGNode.postinit -> None {
     self.affected_symbols = set();
 }
 
+"""Initialize ConditionalNode (CFG branch point with true/false targets)."""
+impl ConditionalNode.postinit -> None {
+    UniCFGNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -717,8 +722,12 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt))
-        and not isinstance(nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
+        and not isinstance(
+            nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
     ) {
@@ -733,7 +742,9 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -981,6 +992,7 @@ impl Test.postinit -> None {
         sym_category=SymbolType.TEST
     );
     UniScopeNode._init_scope(self, name=self.sym_name);
+    CodeBlockStmt.postinit(self);
     ContextAwareNode.postinit(self);
 }
 
@@ -1168,6 +1180,18 @@ impl ModuleItem.from_mod_path -> ModulePath {
         raise ValueError('Module items should have module path. Not Possible.');
     }
     return self.from_parent.from_loc;
+}
+
+"""Resolve the absolute path for this specific module item."""
+impl ModuleItem.resolve_relative_path -> str {
+    # Get the item name (handles both Name and Token types)
+    item_name = self.name.value if isinstance(self.name, Name) else None;
+    # For star imports (*) or default imports, just return parent module path
+    if item_name is None {
+        return self.from_mod_path.resolve_relative_path();
+    }
+    # Resolve: parent_module.item_name (e.g., llvmlite.ir)
+    return self.from_mod_path.resolve_relative_path(target_item=item_name);
 }
 
 impl Archetype.postinit -> None {
@@ -1365,10 +1389,13 @@ impl Ability.is_method -> bool {
 @property
 impl Ability.is_cls_method -> bool {
     return (
-        self.is_method
-        and `any(
-            (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
-            for dec in (self.decorators or ())
+        self.is_classmethod
+        or (
+            self.is_method
+            and `any(
+                (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
+                for dec in (self.decorators or ())
+            )
         )
     );
 }
@@ -1731,6 +1758,7 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
+    ConditionalNode.postinit(self);
 }
 
 
@@ -2037,6 +2065,7 @@ impl MatchStmt.postinit -> None {
 
 impl MatchCase.postinit -> None {
     UniNode.postinit(self);
+    CodeBlockStmt.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 
@@ -2049,6 +2078,7 @@ impl SwitchStmt.postinit -> None {
 
 impl SwitchCase.postinit -> None {
     UniNode.postinit(self);
+    CodeBlockStmt.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 

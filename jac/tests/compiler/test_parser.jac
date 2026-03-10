@@ -67,6 +67,7 @@ test "all ast has normalize" {
         "UniNode",
         "UniScopeNode",
         "UniCFGNode",
+        "ConditionalNode",
         "ContextAwareNode",
         "ProgramModule",
         "WalkerStmtOnlyNode",
@@ -138,12 +139,14 @@ test "new keyword errors" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 4;
+    assert len(prog.errors_had) == 6;
     expected_substrings = [
         "The 'new' keyword is not supported in Jac",
         "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+        "Missing ';'",
         "The 'new' keyword is not supported in Jac",
         "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+        "Missing ';'",
 
     ];
     for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
@@ -176,8 +179,13 @@ test "multiple syntax errors" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "multiple_syntax_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 3;
-    expected_substrings = ["Missing ')'", "Missing ','", "Unexpected token", ];
+    assert len(prog.errors_had) == 4;
+    expected_substrings = [
+        "Missing ')'",
+        "Missing ','",
+        "Unexpected token",
+        "Missing ';'"
+    ];
     for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
         pretty = alrt.pretty_print();
         assert expected in pretty;

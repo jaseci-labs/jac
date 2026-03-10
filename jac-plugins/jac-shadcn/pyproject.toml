@@ -1,0 +1,26 @@
+[project]
+name = "jac-shadcn"
+version = "0.1.0"
+description = "Shadcn-style UI components for Jac"
+authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "jaclang>=0.11.1",
+    "jac-client>=0.1.0",
+]
+
+[project.entry-points."jac"]
+shadcn = "jac_shadcn.plugin:JacShadcnPlugin"
+
+[tool.setuptools.packages.find]
+include = ["jac_shadcn*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac"]
+"jac_shadcn" = ["templates/*.jacpack"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

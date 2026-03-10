@@ -219,12 +219,24 @@ def print_ast_tree(
             name_str = nd.name.sym_name
                 if isinstance(nd.name, uni.Name)
                 else nd.name.value;
-            out = f"{nd.__class__.__name__} - {name_str} - abs_path: {nd.abs_path}";
+            # Resolve the path dynamically using the new resolve_relative_path method
+            try {
+                resolved_path = nd.resolve_relative_path();
+            } except Exception {
+                resolved_path = nd.abs_path;
+            }
+            out = f"{nd.__class__.__name__} - {name_str} - abs_path: {resolved_path}";
             return out;
         } elif isinstance(nd, uni.ModulePath) {
+            # Resolve the path dynamically
+            try {
+                resolved_path = nd.resolve_relative_path();
+            } except Exception {
+                resolved_path = nd.abs_path;
+            }
             out = f"{nd.__class__.__name__} - {'.'.join(
                 [n.value for n in nd.path] if nd.path else []
-            )} - abs_path: {nd.abs_path}";
+            )} - abs_path: {resolved_path}";
             return out;
         } elif isinstance(nd, AstSymbolNode) {
             type_str = str(nd.name_spec.type)

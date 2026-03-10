@@ -692,6 +692,59 @@ impl TypeCheckPass.exit_report_stmt(self: TypeCheckPass, nd: uni.ReportStmt) -> 
     self.evaluator.get_type_of_expression(nd.expr);
 }
 
+"""Validate postinit bodies assign to all 'by postinit' fields."""
+impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, nd: uni.ImplDef) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Only check postinit impl definitions
+    if not (
+        nd.decl_link
+        and isinstance(nd.decl_link, uni.Ability)
+        and isinstance(nd.decl_link.name_ref, uni.SpecialVarRef)
+        and nd.decl_link.name_ref.name == Tok.KW_POST_INIT
+    ) {
+        return;
+    }
+    # Find the parent archetype
+    archetype = nd.decl_link.find_parent_of_type(uni.Archetype);
+    if not archetype {
+        return;
+    }
+    # Collect by-postinit fields
+    deferred_fields: dict[str, uni.HasVar] = {};
+    for hv in archetype.get_has_vars() {
+        if hv.defer {
+            deferred_fields[hv.name.value] = hv;
+        }
+    }
+    if not deferred_fields {
+        return;
+    }
+    # Scan for self.field = ... assignments in the impl body
+    assigned: set[str] = set();
+    for trailer in nd.get_all_sub_nodes(uni.AtomTrailer) {
+        if not (trailer.parent and isinstance(trailer.parent, uni.Assignment)) {
+            continue;
+        }
+        if trailer != trailer.parent.target[0] {
+            continue;
+        }
+        chain = trailer.as_attr_list;
+        if len(chain) >= 2 and chain[0].sym_name == 'self' {
+            assigned.add(chain[1].sym_name);
+        }
+    }
+    # Report missing assignments
+    for (field_name, field_node) in deferred_fields.items() {
+        if field_name not in assigned {
+            self.log_error(
+                f"Field '{field_name}' declared 'by postinit' is never assigned "
+                f"in {archetype.name_spec.sym_name}.postinit",
+                nd
+            );
+        }
+    }
+}
+
 """Evaluate types for each Name in a tuple/list unpacking pattern."""
 impl TypeCheckPass._eval_unpacking_names(
     self: TypeCheckPass, container: uni.Expr

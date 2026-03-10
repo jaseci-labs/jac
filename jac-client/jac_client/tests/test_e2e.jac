@@ -17,38 +17,38 @@ import from .test_helpers {
 }
 
 # ---- Helper functions (replacing fixtures) ----
+"""Fill username and password fields."""
 def _fill_auth_form(page: Page, username: str, password: str) -> None {
-    """Fill username and password fields."""
     page.locator('input[type="text"], input[placeholder="Username" i]').first.fill(
         username
     );
     page.locator('input[type="password"]').first.fill(password);
 }
 
+"""Click submit button and wait for navigation."""
 def _submit_form(page: Page) -> None {
-    """Click submit button and wait for navigation."""
     page.locator('button[type="submit"]').first.click();
     page.wait_for_timeout(2000);
 }
 
+"""Navigate to signup, fill form, and submit."""
 def _signup(page: Page, base_url: str, username: str, password: str) -> None {
-    """Navigate to signup, fill form, and submit."""
     page.goto(f"{base_url}/signup", wait_until="networkidle", timeout=60000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
     _submit_form(page);
 }
 
+"""Navigate to login, fill form, and submit."""
 def _login(page: Page, base_url: str, username: str, password: str) -> None {
-    """Navigate to login, fill form, and submit."""
     page.goto(f"{base_url}/login", wait_until="networkidle", timeout=30000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
     _submit_form(page);
 }
 
+"""Click logout button if visible."""
 def _logout(page: Page) -> None {
-    """Click logout button if visible."""
     logout_btn = page.locator('button:has-text("Logout")').first;
     if logout_btn.is_visible() {
         logout_btn.click();
@@ -56,8 +56,8 @@ def _logout(page: Page) -> None {
     }
 }
 
+"""Start the all-in-one jac server and return (process, port, url, temp_dir, original_cwd)."""
 def _start_running_server -> tuple {
-    """Start the all-in-one jac server and return (process, port, url, temp_dir, original_cwd)."""
     tests_dir = os.path.dirname(__file__);
     jac_client_root = os.path.dirname(tests_dir);
     all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one");
@@ -115,8 +115,8 @@ def _start_running_server -> tuple {
     );
 }
 
+"""Stop the running server and clean up."""
 def _stop_running_server(server: Popen, temp_dir: str, original_cwd: str) -> None {
-    """Stop the running server and clean up."""
     server.terminate();
     try {
         server.wait(timeout=15);
@@ -271,17 +271,17 @@ test "complete auth flow" {
     }
 }
 
+"""Verifies the full auto-caching pipeline end-to-end in a real browser.
+
+The compiler classifies walkers as readers or writers, injects endpoint
+metadata into the served HTML, and the client JS runtime uses it to:
+1. Cache reader responses (skip network on repeat calls)
+2. Auto-invalidate reader caches after a writer executes
+
+This test observes actual HTTP traffic via Playwright to confirm the
+cache prevents redundant server calls and correctly invalidates.
+"""
 test "auto cache prevents duplicate reader requests and invalidates on write" {
-    """Verifies the full auto-caching pipeline end-to-end in a real browser.
-
-    The compiler classifies walkers as readers or writers, injects endpoint
-    metadata into the served HTML, and the client JS runtime uses it to:
-    1. Cache reader responses (skip network on repeat calls)
-    2. Auto-invalidate reader caches after a writer executes
-
-    This test observes actual HTTP traffic via Playwright to confirm the
-    cache prevents redundant server calls and correctly invalidates.
-    """;
     (server, port, url, temp_dir, original_cwd) = _start_running_server();
     try {
         with sync_playwright() as p {

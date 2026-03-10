@@ -25,26 +25,26 @@ impl _to_snake_case(name: str) -> str {
 }
 
 """Recursively convert an LSP object to a JSON-compatible dict."""
-impl to_dict(obj: Any) -> Any {
-    if obj is None {
+impl to_dict(`obj: Any) -> Any {
+    if `obj is None {
         return None;
     }
-    if isinstance(obj, (str, int, float, bool)) {
-        return obj;
+    if isinstance(`obj, (str, int, float, bool)) {
+        return `obj;
     }
-    if isinstance(obj, Enum) {
-        return obj.value;
+    if isinstance(`obj, Enum) {
+        return `obj.value;
     }
-    if isinstance(obj, list) {
-        return [to_dict(item) for item in obj];
+    if isinstance(`obj, list) {
+        return [to_dict(item) for item in `obj];
     }
-    if isinstance(obj, dict) {
-        return {k: to_dict(v) for (k, v) in obj.items()};
+    if isinstance(`obj, dict) {
+        return {k: to_dict(v) for (k, v) in `obj.items()};
     }
     # Object with __dict__ (Jac objs, dataclasses, etc.)
-    if hasattr(obj, "__dict__") {
+    if hasattr(`obj, "__dict__") {
         result: dict = {};
-        for (key, value) in vars(obj).items() {
+        for (key, value) in vars(`obj).items() {
             if key.startswith("_") {
                 continue;
             }
@@ -56,7 +56,7 @@ impl to_dict(obj: Any) -> Any {
         }
         return result;
     }
-    return obj;
+    return `obj;
 }
 
 """Recursively construct an LSP object from a JSON dict."""

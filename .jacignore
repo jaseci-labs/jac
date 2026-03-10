@@ -273,6 +273,11 @@ checker_gap_delete_stmt.jac
 checker_gap_walker_stmts.jac
 checker_gap_ctx_mgr_exit.jac
 checker_gap_enum_iter.jac
+checker_gap_impl_scope.jac
+checker_gap_impl_scope.impl.jac
+checker_gap_undeclared_attr.jac
+checker_gap_fwd_ref.jac
+checker_gap_postinit_tracking.jac
 # Re-enabled "has no attribute" diagnostic and __exit__ context manager check
 # expose false positives from incomplete Python type stubs. These files contain
 # valid code that fails type checking due to missing stub coverage for str,
@@ -670,3 +675,4 @@ wikipedia_react.jac
 with_llm_image.jac
 with_llm_type.jac
 with_llm_video.jac
+self_type.jac

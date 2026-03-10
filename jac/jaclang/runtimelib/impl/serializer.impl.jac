@@ -1,21 +1,21 @@
 """Helper: get type metadata dict."""
-impl Serializer._type_info(obj: object, include: bool) -> dict[str, object] {
+impl Serializer._type_info(`obj: object, `include: bool) -> dict[str, object] {
     return {
-        '__type__': type(obj).__name__,
-        '__module__': type(obj).__module__
+        '__type__': type(`obj).__name__,
+        '__module__': type(`obj).__module__
     }
-        if include
+        if `include
         else {};
 }
 
 """Helper: serialize object attributes (non-private, non-callable)."""
 impl Serializer._serialize_attrs(
-    obj: object, include_type: bool, api_mode: bool
+    `obj: object, include_type: bool, api_mode: bool
 ) -> dict[str, object] {
     return {
-        a: Serializer._serialize_value(getattr(obj, a), include_type, api_mode)
-        for a in dir(obj)
-        if not a.startswith('_') and not callable(getattr(obj, a, None))
+        a: Serializer._serialize_value(getattr(`obj, a), include_type, api_mode)
+        for a in dir(`obj)
+        if not a.startswith('_') and not callable(getattr(`obj, a, None))
     };
 }
 

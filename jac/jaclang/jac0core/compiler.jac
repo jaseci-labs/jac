@@ -463,9 +463,10 @@ obj JacCompiler {
         precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
         if precompiled_bc is not None {
             try {
-                from
-                jaclang.jac0core.jir
-                import write_precompiled_jir, FLAG_PRECOMPILED;
+                import from jaclang.jac0core.jir {
+                    write_precompiled_jir,
+                    FLAG_PRECOMPILED
+                }
                 jir_bytes = write_precompiled_jir(precompiled_bc, 0, FLAG_PRECOMPILED);
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
                 tmp_path = cache_path.with_suffix('.tmp');
@@ -739,9 +740,7 @@ obj JacCompiler {
     def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
         import hashlib;
         import json;
-        from
-        pathlib
-        import Path as _Path;
+        import from pathlib { Path as _Path }
         norm_file = os.path.normpath(os.path.abspath(full_target));
         d = os.path.dirname(norm_file);
         pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -893,6 +892,24 @@ obj JacCompiler {
     ) -> uni.Module {
         if (options is None) {
             options = CompileOptions();
+        }
+        # For impl/test annex files compiled standalone, redirect to compile the
+        # parent module instead. The parent's JacAnnexPass discovers and attaches
+        # the impl, and DeclImplMatchPass connects them with full scope context.
+        # Only applies when resolve_annex_parent is set to avoid affecting
+        # AST-only compilation (e.g., micro suite tests).
+        if (
+            use_str is None
+            and options.resolve_annex_parent
+            and (file_path.endswith('.impl.jac') or file_path.endswith('.test.jac'))
+        ) {
+            import from jaclang.jac0core.bccache { discover_base_file }
+            base_path = discover_base_file(file_path);
+            if (base_path and base_path not in target_program.mod.hub) {
+                return self.compile(
+                    file_path=base_path, target_program=target_program, options=options
+                );
+            }
         }
         actual_program = self._resolve_program(file_path, target_program);
         actual_program._compile_options = options;
