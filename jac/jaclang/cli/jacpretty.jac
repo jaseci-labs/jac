@@ -1,6 +1,13 @@
 """jacpretty - Lightweight colored terminal output for Jac CLI."""
 import os, re, sys;
 import from enum { IntEnum }
+import from random { randint }
+
+# MarkupError exception (Rich-compatible)
+obj MarkupError(Exception) {
+    """Markup was badly formatted."""
+    has message: str = "Markup error";
+}
 
 # ANSI color codes as IntEnum
 enum Color ( IntEnum ) {
@@ -72,12 +79,19 @@ glob COLORS: Dict[(str, int)] = {
          "c": "conceal"
      },
      _console: Optional[Console] = None,
-     RE_MARKUP = re.compile(r"\[(/)?([^\[\]]*)\]"),
-     __all__ = ["Console", "Style", "print", "render_markup", "get_console"];
+     RE_MARKUP = re.compile(r"\[(/[a-z]*|#[0-9a-fA-F]{6}|[a-z@][^\[\]]*)\]"),
+     __all__ = [
+         "Console",
+         "Style",
+         "print",
+         "render_markup",
+         "get_console",
+         "MarkupError"
+     ];
 
 def _parse_color(color: str, bg: bool = False) -> Optional[Tuple[(str, ...)]];
 
-def render_markup(markup: str, base_style: str = "") -> str;
+def render_markup(markup: str, base_style: str = "", strict: bool = False) -> str;
 
 def get_console -> Console;
 
@@ -85,10 +99,15 @@ def print(*objects: Any, **kwargs: Any) -> None;
 
 obj Style {
     has _def: str,
-        _codes: Optional[str] = None;
+        _codes: Optional[str] = None,
+        _link: Optional[str] = None,
+        _link_id: str = "";
 
-    def init(definition: str = "") -> object {
-        (self._def, self._codes) = (definition, None);
+    def init(definition: str = "", link: Optional[str] = None) -> object {
+        self._def = definition;
+        self._codes = None;
+        self._link = link;
+        self._link_id = str(randint(0, 999999)) if link else "";
     }
 
     def __repr__ -> object {
@@ -96,7 +115,7 @@ obj Style {
     }
 
     def __bool__ -> object {
-        return bool(self._def);
+        return bool(self._def or self._link);
     }
 
     def __add__(other: "Style") -> "Style" {
@@ -117,9 +136,18 @@ obj Style {
         if not self._def {
             return "";
         }
-        (codes, words, i) = ([], self._def.lower().split(), 0);
+        codes: list = [];
+        words = self._def.split();
+        i = 0;
         while (i < len(words)) {
-            w = words[i];
+            w = words[i].lower();
+            # Handle "link URL" syntax (Rich-compatible)
+            if ((w == "link") and ((i + 1) < len(words))) {
+                self._link = words[(i + 1)];  # Keep original case for URL
+                self._link_id = str(randint(0, 999999));
+                i += 2;
+                continue;
+            }
             if (
                 (w == "on")
                 and ((i + 1) < len(words))
@@ -143,7 +171,12 @@ obj Style {
     }
 
     def render(text: str) -> str {
-        return f"\x1b[{self.codes}m{text}\x1b[0m" if self.codes else text;
+        rendered = f"\x1b[{self.codes}m{text}\x1b[0m" if self.codes else text;
+        # Add OSC 8 hyperlink if link is set (Rich-compatible)
+        if (self._link) {
+            rendered = f"\x1b]8;id={self._link_id};{self._link}\x1b\\{rendered}\x1b]8;;\x1b\\";
+        }
+        return rendered;
     }
 
     @classmethod
