@@ -1974,6 +1974,7 @@ test "classvar_type_annotation" {
     assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
 
 """Test Final[UnionType] does not crash with 'UnionType has no attribute shared'.
 When unwrapping Final[T], if T is a UnionType, we must delegate to assign_type
