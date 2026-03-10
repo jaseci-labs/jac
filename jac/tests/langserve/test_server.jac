@@ -180,14 +180,15 @@ test "test_go_to_definition" {
         );
 
         # Test go-to-definition for self-member assigned in impl file.
-        # t2.program (line 20) should go to self.program in impl file (line 4).
+        # t2.program (line 25) should go to 'has program' declaration (line 12).
         self_member_file = uris.from_fs_path(
             passes_main_fixture_abs_path("checker_impl/checker_impl_self_member.jac")
         );
         lsp.type_check_file(self_member_file);
-        assert "checker_impl_self_member.impl.jac:3" in str(
-            lsp.get_definition(self_member_file, lspt.Position(19, 14))
-        );
+        go_def_result = str(lsp.get_definition(self_member_file, lspt.Position(24, 14)));
+        # program field is declared via 'has' -- go-to-def points to the declaration
+        # (line 12, 1-indexed = line 11 in 0-indexed LSP format)
+        assert "checker_impl_self_member.jac:11" in go_def_result , f"Unexpected go-to-def result: {go_def_result}";
     } finally {
         teardown_test();
     }

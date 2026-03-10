@@ -894,6 +894,24 @@ obj JacCompiler {
         if (options is None) {
             options = CompileOptions();
         }
+        # For impl/test annex files compiled standalone, redirect to compile the
+        # parent module instead. The parent's JacAnnexPass discovers and attaches
+        # the impl, and DeclImplMatchPass connects them with full scope context.
+        # Only applies when resolve_annex_parent is set to avoid affecting
+        # AST-only compilation (e.g., micro suite tests).
+        if (
+            use_str is None
+            and options.resolve_annex_parent
+            and (file_path.endswith('.impl.jac') or file_path.endswith('.test.jac'))
+        ) {
+            import from jaclang.jac0core.bccache { discover_base_file }
+            base_path = discover_base_file(file_path);
+            if (base_path and base_path not in target_program.mod.hub) {
+                return self.compile(
+                    file_path=base_path, target_program=target_program, options=options
+                );
+            }
+        }
         actual_program = self._resolve_program(file_path, target_program);
         actual_program._compile_options = options;
         keep_str = use_str or read_file_with_encoding(file_path);

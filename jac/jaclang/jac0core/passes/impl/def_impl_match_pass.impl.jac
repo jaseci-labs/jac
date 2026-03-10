@@ -244,6 +244,12 @@ impl DeclImplMatchPass._populate_self_member_symbols(
         if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
             continue;
         }
+        # Only allow dynamic self.attr = value for class archetypes (Python-style).
+        # obj/node/edge/walker have fixed schemas declared via 'has' —
+        # undeclared attrs will be caught by the type checker's "has no attribute" diagnostic.
+        if archetype.arch_type.name != 'KW_CLASS' {
+            continue;
+        }
         archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
     }
 }
