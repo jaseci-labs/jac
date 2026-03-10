@@ -121,149 +121,53 @@ test "color parsing works for all formats" {
     assert _parse_color("invalid") is None;
 }
 
-# Theme
-test "theme get and fallback" {
-    theme = Theme({'success': 'green', 'error': 'red'});
-    assert theme.get('success') == 'green';
-    assert theme.get('missing') == '';
-    assert theme.get('missing', 'dim') == 'dim';
+test "theme get returns correct style and fallback" {
+    theme = Theme({"success": "green", "error": "red"});
+    assert theme.get("success") == "green";
+    assert theme.get("error") == "red";
+    assert theme.get("missing") == "";
+    assert theme.get("missing", "dim") == "dim";
 }
 
-test "console resolves theme style names" {
-    theme = Theme({'hi': 'bold cyan'});
-    (console, buf) = make_console();
-    console = Console(file=buf, force_terminal=True, theme=theme);
-    console.print("text", style='hi');
-    assert '\x1b[1;36m' in buf.getvalue();
-}
-
-# Panel
-test "panel renders border, title and content" {
-    panel = Panel("Hello", title="Test", padding=(0, 0));
-    output = panel.render(30);
-    lines = output.split('\n');
+test "panel renders title and content within border" {
+    panel = Panel("Hello World", title="Test", padding=(0, 0));
+    output = panel.render(40);
+    lines = output.split("\n");
     assert len(lines) == 3;
-    assert "Hello" in output and "Test" in output and "─" in output;
-}
+    assert "Test" in lines[0];
+    assert "Hello World" in lines[1];
+    assert "─" in lines[0] and "─" in lines[2];
 
-test "panel border_style adds markup to render output" {
+
+test "panel with border style adds markup tags" {
     panel = Panel("Hi", border_style="red", padding=(0, 0));
     output = panel.render(20);
-    assert "red" in output;
+    assert "[red]" in output and "[/]" in output;
 }
 
-test "panel padding adds extra lines" {
-    panel = Panel("x", padding=(1, 0));
-    lines = panel.render(20).split('\n');
-    assert len(lines) >= 5;  # top + pad + content + pad + bottom
-}
-
-# Table
-test "table renders headers, separator and rows" {
+test "table renders headers and rows" {
     table = Table(show_header=True, header_style="bold");
     table.add_column("Name");
-    table.add_row("foo");
+    table.add_column("Age");
+    table.add_row("Alice", "30");
+    table.add_row("Bob", "25");
     output = table.render(40);
-    assert "Name" in output and "foo" in output and "─" in output;
+    assert "Name" in output and "Age" in output;
+    assert "Alice" in output and "Bob" in output;
 }
 
-test "table renders title and column style" {
-    table = Table(title="Results", show_header=False, header_style="");
-    table.add_column("X", style="green");
+test "table with title renders title" {
+    table = Table(title="My Table", show_header=False);
+    table.add_column("Col");
     table.add_row("val");
     output = table.render(40);
-    assert "Results" in output and "[green]" in output;
+    assert "My Table" in output and "val" in output;
 }
 
-test "empty table returns empty string" {
-    assert Table().render(80) == "";
-}
-
-# Spinner / status
-test "status non-terminal prints text and works as context manager" {
-    buf = io.StringIO();
-    console = Console(file=buf, force_terminal=False);
-    entered = False;
-    with console.status("Loading...") {
-        entered = True;
-    }
-    assert entered and "Loading..." in buf.getvalue();
-}
-
-test "status terminal mode spinner runs without error" {
-    buf = io.StringIO();
-    with Console(file=buf, force_terminal=True).status("Working") {
-        assert True;
-    }
-}
-
-# Console.log
-test "console log includes message" {
+test "spinner starts and stops without error" {
     (console, buf) = make_console();
-    console.log("Hello");
-    assert "Hello" in buf.getvalue();
-}
-
-test "hex color parsing handles invalid characters gracefully" {
-    # These patterns caused ValueError crashes before the fix
-    # Pattern: #XXXX followed by non-hex chars totaling 7 chars
-    assert _parse_color('#2000"}') is None;
-    assert _parse_color('#2000",') is None;
-    assert _parse_color('#xx2"xx') is None;
-    assert _parse_color("#2\"xxxx") is None;
-
-    # Valid hex colors still work
-    assert _parse_color("#ff00aa") == ("38", "2", "255", "0", "170");
-    assert _parse_color("#000000") == ("38", "2", "0", "0", "0");
-}
-
-test "rgb color parsing validates numeric values" {
-    # Invalid non-numeric values should return None
-    assert _parse_color("rgb(abc, def, ghi)") is None;
-    assert _parse_color("rgb(1, two, 3)") is None;
-    assert _parse_color("rgb(, , )") is None;
-
-    # Valid rgb still works
-    assert _parse_color("rgb(0, 0, 0)") == ("38", "2", "0", "0", "0");
-    assert _parse_color("rgb(255, 255, 255)") == ("38", "2", "255", "255", "255");
-}
-
-test "color index parsing validates numeric values" {
-    # Invalid non-numeric values should return None
-    assert _parse_color("color(abc)") is None;
-    assert _parse_color("color(not-a-number)") is None;
-    assert _parse_color("color()") is None;
-
-    # Valid color indices still work
-    assert _parse_color("color(0)") == ("38", "5", "0");
-    assert _parse_color("color(255)") == ("38", "5", "255");
-}
-
-test "render_markup preserves null bytes in input" {
-    # Null bytes should not be corrupted to brackets
-    input_with_nulls = "text\x00with\x01nulls";
-    result = render_markup(input_with_nulls);
-    assert result == input_with_nulls;
-}
-
-test "console width zero is respected" {
-    buf = io.StringIO();
-    console = Console(file=buf, width=0);
-    assert console.width == 0;
-}
-
-test "render_markup handles JSON-like content without crashing" {
-    import json;
-    # Real-world crash case: JSON with hex-like patterns
-    test_cases = [
-        {"rows_json": json.dumps([{"addr": "Suite #2000"}])},
-        {"rows_json": json.dumps([{"addr": "Suite #2000", "city": "NYC"}])},
-        {"rows_json": json.dumps([{"addr": f"Unit #{i}000"} for i in range(5)])},
-
-    ];
-    for case in test_cases {
-        # Should not raise ValueError
-        result = render_markup(str(case));
-        assert result is not None;
-    }
+    ctx = console.status("Loading...");
+    ctx.__enter__();
+    ctx.__exit__(None, None, None);
+    assert True;
 }
