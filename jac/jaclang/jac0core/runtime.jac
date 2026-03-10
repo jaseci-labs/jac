@@ -52,12 +52,6 @@ import from jaclang.jac0core.modresolver { infer_language }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
 
-glob _JAC_INDEX_DEGREE_THRESHOLD: int = int(
-    os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10')
-);
-glob _JAC_INDEX_ENABLED: bool = os.environ.get(
-    'JAC_INDEX_ENABLED', 'true'
-).lower() not in ('0', 'false', 'no');
 
 with entry {
     if TYPE_CHECKING {
@@ -316,7 +310,9 @@ class JacNode {
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
-        for nd in origin {
+        INDEX_ENABLED: bool = os.environ.get('JAC_INDEX_ENABLED', 'true').lower() not in ('0', 'false', 'no');
+        DEGREE_THRESHOLD: int = int(os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10'));
+        for nd in origin {›
             nanch = nd.__jac__;
             # --- SAM/GTI fast path (only when SQLite persistence is active) ---
             # Pure type filters compile to the type class itself, so we can
@@ -324,12 +320,12 @@ class JacNode {
             target_type_name = destination.nd.__name__ if isinstance(destination.nd, type) else None;
             edge_type_name = destination.edge.__name__ if isinstance(destination.edge, type) else None;
             use_index = (
-                _JAC_INDEX_ENABLED
+                INDEX_ENABLED
                 and _sqlite_active
                 and nanch.is_populated()
                 and (target_type_name is not None or edge_type_name is not None)
                 and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
-                and len(nanch.edges) > _JAC_INDEX_DEGREE_THRESHOLD
+                and len(nanch.edges) > DEGREE_THRESHOLD
             );
             if use_index {
                 target_ids: (list[str] | None) = None;
