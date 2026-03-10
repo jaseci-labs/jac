@@ -44,9 +44,7 @@ impl create(
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
         console.error(f"Unknown template: {use}");
-        console.print(
-            "Use --list-templates to see available templates.", style="muted"
-        );
+        console.print("Use --list-templates to see available templates.", style="muted");
         return 1;
     }
     cwd = Path.cwd();
@@ -173,7 +171,7 @@ Supports:
 
 Returns the ProjectTemplate or None if resolution fails.
 """
-def _resolve_template(use: str, registry: any) -> any {
+def _resolve_template(use: str, registry: Any) -> Any {
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory
@@ -262,7 +260,7 @@ def _quote_toml_key(k: str) -> str {
 def _render_config_to_toml(config: dict, project_name: str) -> str {
     lines: list[str] = [];
 
-    def render_value(v: any) -> str {
+    def render_value(v: Any) -> str {
         if isinstance(v, str) {
             # Replace {{name}} placeholder and escape for TOML
             v = v.replace("{{name}}", project_name);
@@ -349,9 +347,7 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.dep_registry { get_dependency_registry }
     config = get_config();
     if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
+        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
         return 1;
     }
     console.print(
@@ -460,7 +456,9 @@ impl add(
         }
         console.print(f"\n📦 Adding [cyan]{pkg_name}[/cyan] from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
-        with console.status(f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots") as status {
+        with console.status(
+            f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots"
+        ) as status {
             specs = installer._make_git_spec(pkg_name, git);
             git_success = installer.install_package([specs]);
         }
@@ -483,7 +481,9 @@ impl add(
         } else {
             install_spec = name;
         }
-        with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
+        with console.status(
+            f"[cyan]Installing {name}...[/cyan]", spinner="dots"
+        ) as status {
             pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
@@ -534,9 +534,7 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.dependencies { DependencyInstaller }
     config = get_config();
     if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
+        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
         return 1;
     }
     if not packages {

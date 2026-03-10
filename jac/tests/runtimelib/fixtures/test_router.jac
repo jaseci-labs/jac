@@ -104,7 +104,7 @@ cl {
     }
 
     # Test 4: Link component generation
-    def test_link_component()  -> JsxElement {
+    def test_link_component()  -> dict {
         link = Link("/about", "Go to About");
 
         return {"hasLink": link != None, "isJSX": link.tag == "a"};

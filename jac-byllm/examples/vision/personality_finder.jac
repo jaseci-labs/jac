@@ -1,6 +1,4 @@
-import from byllm.lib { Model, Image }
-
-glob llm = Model(model_name="gpt-4o");
+import from byllm.lib { Image }
 
 enum Personality { INTROVERT, EXTROVERT, AMBIVERT }
 

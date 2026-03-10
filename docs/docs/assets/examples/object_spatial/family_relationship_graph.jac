@@ -9,9 +9,7 @@ edge FamilyRelation {
 }
 
 # First, let's create our family members as nodes
-glob parent = root ++> Person(
-         name="John", age=45
-     ),
+glob parent = root ++> Person(name="John", age=45),
      child1 = root ++> Person(name="Alice", age=20),
      child2 = root ++> Person(name="Bob", age=18);
 

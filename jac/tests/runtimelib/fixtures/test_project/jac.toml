@@ -1,0 +1,4 @@
+[project]
+name = "test_db_naming"
+version = "1.0.0"
+entry-point = "main.jac"

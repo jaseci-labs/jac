@@ -1,6 +1,6 @@
 cl import from antd { Button }
 
-cl def CustomButton()  -> any {
+cl def CustomButton()  -> JsxElement {
     return <Button>
         Click Me
     </Button>;

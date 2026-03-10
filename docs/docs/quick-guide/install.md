@@ -1,16 +1,53 @@
-# Installation
+# Installation and First Run
 
 Get Jac installed and ready to use in under 2 minutes.
 
 ---
 
-## Requirements
+## One-Line Install (Recommended)
 
-- **Python 3.12+** (check with `python --version`)
+Install Jac with a single command -- no Python setup required:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+```
+
+This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Python 3.12+ runtime, and the full Jac ecosystem including all plugins.
+
+### Installer Options
+
+Pass flags after `--` to customize the install:
+
+```bash
+# Core language only (no plugins)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
+
+# Specific version
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
+
+# Standalone binary (self-contained, no Python/uv needed at runtime)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --standalone
+
+# Uninstall
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --uninstall
+```
+
+| Flag | Description |
+|------|-------------|
+| `--core` | Install only the Jac language compiler, no plugins |
+| `--standalone` | Download a pre-built binary from GitHub Releases |
+| `--version V` | Install a specific version |
+| `--uninstall` | Remove Jac |
+
+### Upgrading
+
+Re-run the install command to upgrade to the latest version. The installer detects existing installations and upgrades in place.
 
 ---
 
-## Quick Install
+## Install via pip
+
+If you already have Python 3.12+ and prefer pip:
 
 ```bash
 pip install jaseci
@@ -140,6 +177,123 @@ Expected output:
 🐛 Issues:        https://github.com/Jaseci-Labs/jaseci/issues
 ```
 
+Run your first program to confirm everything works. Create `hello.jac`:
+
+```jac
+with entry {
+    print("Hello from Jac!");
+}
+```
+
+```bash
+jac hello.jac
+```
+
+You should see `Hello from Jac!` printed to the console.
+
+---
+
+## Scaffold a Full-Stack App
+
+With the `jac-client` plugin installed, scaffold a complete full-stack project in one command:
+
+```bash
+jac create example --use fullstack
+cd example
+jac add
+jac start main.jac
+```
+
+This creates a project with a Jac backend and a React frontend, ready to go at `http://localhost:8000`.
+
+---
+
+## Community Jacpacks
+
+[Jacpacks](https://github.com/jaseci-labs/jacpacks) are ready-made Jac project templates you can spin up instantly. Since `--use` accepts a URL, you can run any jacpack directly from GitHub:
+
+```bash
+jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
+cd my-todo
+jac add
+jac start main.jac
+```
+
+Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI integration features to generate smart shopping lists with costs and nutritional info. It works out of the box with an Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
+cd meals-app
+jac add
+jac start main.jac
+```
+
+To use any of the other jacpacks, just swap the URL:
+
+```bash
+jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/<jacpack-name>/<jacpack-name>.jacpack
+```
+
+---
+
+## Upgrading Jac
+
+If you installed via the one-line installer, re-run it to upgrade:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+```
+
+If you installed via pip:
+
+```bash
+# Upgrade everything at once
+pip install --upgrade jaseci
+
+# Or upgrade individual packages
+pip install --upgrade jaclang
+pip install --upgrade byllm
+pip install --upgrade jac-client
+pip install --upgrade jac-scale
+pip install --upgrade jac-super
+```
+
+---
+
+## Creating a Project
+
+Use `jac create` to scaffold a new project:
+
+```bash
+# Full-stack web app (frontend + backend)
+jac create my-app --use client
+
+# Start the development server
+cd my-app
+jac start main.jac
+```
+
+The `--use client` template sets up a complete project with:
+
+- `main.jac` -- Entry point with server and client code
+- `jac.toml` -- Project configuration
+- `styles.css` -- Default stylesheet
+- Bundled frontend dependencies (via Bun)
+
+Available templates:
+
+| Template | Command | What It Creates |
+|----------|---------|-----------------|
+| Client | `--use client` | Full-stack web app with frontend and backend |
+| Fullstack | `--use fullstack` | Alias for `--use client` |
+
+You can also use community templates (Jacpacks):
+
+```bash
+jac create my-app --use <github-url>
+```
+
 ---
 
 ## For Contributors
@@ -150,5 +304,5 @@ See the [Contributing Guide](../community/contributing.md) for development setup
 
 ## Next Steps
 
-- [Hello World](hello-world.md) - Write your first program
-- [Build Your First App](../tutorials/first-app/part1-todo-app.md) - Build a complete full-stack application
+- [Core Concepts](what-makes-jac-different.md) - Codespaces, OSP, and compiler-integrated AI
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) - Build a complete full-stack application

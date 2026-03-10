@@ -24,17 +24,10 @@ glob registry = get_registry();
             short="e"
         ),
         Arg.create(
-            "warnonly",
-            typ=bool,
-            default=False,
-            help="Treat errors as warnings",
-            short="w"
-        ),
-        Arg.create(
             "ignore",
-            typ=str,
-            default="",
-            help="Comma-separated list of files/folders to ignore"
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
             "parse_only",
@@ -55,8 +48,7 @@ glob registry = get_registry();
         ("jac check myprogram.jac", "Check a single file"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
         ("jac check myproject/", "Check all files in directory"),
-        ("jac check myprogram.jac --warnonly", "Report but don't fail on errors"),
-        ("jac check myproject/ --ignore fixtures", "Check excluding folders,files"),
+        ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
         (
             "jac check myprogram.jac --parse-only",
             "Only check syntax, skip type checking"
@@ -69,8 +61,7 @@ glob registry = get_registry();
 def check(
     paths: list,
     print_errs: bool = True,
-    warnonly: bool = False,
-    ignore: str = "",
+    ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int;
@@ -88,9 +79,9 @@ def check(
         ),
         Arg.create(
             "ignore",
-            typ=str,
-            default="",
-            help="Comma-separated list of files/folders to ignore"
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Directories or files to ignore (space separated)"
         ),
 
     ],
@@ -98,12 +89,12 @@ def check(
         ("jac lint myfile.jac", "Lint a single file"),
         ("jac lint myproject/", "Lint all files in directory"),
         ("jac lint myfile.jac --fix", "Auto-fix lint violations"),
-        ("jac lint . --ignore fixtures", "Lint excluding folders"),
+        ("jac lint . --ignore jac jac-scale test", "Lint excluding directories"),
 
     ],
     group="analysis"
 )
-def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
+def lint(paths: list, fix: bool = False, ignore: list = []) -> int;
 
 """Format .jac files with improved code style."""
 @registry.command(
@@ -127,6 +118,13 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
             help="Also apply auto-lint fixes in the same pass",
             short="l"
         ),
+        Arg.create(
+            "check",
+            typ=bool,
+            default=False,
+            help="Check if files are formatted without modifying them (exit 1 if unformatted)",
+            short="c"
+        ),
 
     ],
     examples=[
@@ -134,11 +132,14 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
         ("jac format myproject/", "Format all files in directory"),
         ("jac format myfile.jac --to_screen", "Preview formatted output"),
         ("jac format . --lintfix", "Format and auto-fix lint violations"),
+        ("jac format . --check", "Check formatting without modifying files"),
 
     ],
     group="analysis"
 )
-def format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int;
+def format(
+    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+) -> int;
 
 """Run the test suite in the specified .jac file or directory."""
 @registry.command(

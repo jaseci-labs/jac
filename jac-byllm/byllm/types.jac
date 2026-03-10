@@ -5,9 +5,12 @@ tools, and tool calls. It provides a structured way to represent messages,
 tool calls, and tools that can be used in LLM requests and responses.
 """
 import base64;
+import logging;
 import mimetypes;
 import os;
 import from contextlib { suppress }
+
+glob logger: logging.Logger = logging.getLogger(__name__);
 import from enum { StrEnum }
 import from io { BytesIO }
 import from typing { Callable, TypeAlias, get_type_hints }
@@ -18,13 +21,13 @@ import from PIL.Image { open as open_image }
 import from litellm.types.utils { Message as LiteLLMMessage }
 import from pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
+import from byllm.exceptions { ByLLMError, FinishToolError, UnknownToolError }
 
 import from jaclang.jac0core.mtp { Info }
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
-glob MessageType:
-         TypeAlias = 'Message | LiteLLMMessage';
+glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
 
 """Enum for message roles in LLM interactions."""
 enum MessageRole ( StrEnum ) {
@@ -103,7 +106,19 @@ obj MockToolCall {
 """Result of the completion from the LLM."""
 obj CompletionResult {
     has output: object,
-        tool_calls: list[ToolCall];
+        tool_calls: list[ToolCall],
+        usage: dict = {};
+}
+
+"""Unified event type for streaming output from by llm() calls.
+
+Yielded by invoke() when logging=True is set in call_params.
+All intermediate steps (thoughts, tool calls, results) and final
+answer chunks share this single type.
+"""
+obj StreamEvent {
+    has event_type: str,
+        data: dict;
 }
 
 # -----------------------------------------------------------------------------

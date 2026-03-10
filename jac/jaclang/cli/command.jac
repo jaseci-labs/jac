@@ -33,7 +33,7 @@ obj Arg {
     has name: str,  # Parameter name
         kind: ArgKind = ArgKind.OPTION,  # Argument kind
         typ: Any = str,  # Python type for conversion
-        default: Any = None,  # Default value
+        `default: Any = None,  # Default value
         help: str = "",  # Help text for this argument
         short: str | None = None,  # Short flag, e.g., "-s" for "--session"
         choices: list[Any] | None = None,  # Valid choices
@@ -47,7 +47,7 @@ obj Arg {
         name: str,
         kind: ArgKind = ArgKind.OPTION,
         typ: Any = str,
-        default: Any = None,
+        `default: Any = None,
         help: str = "",
         short: str | None = None,
         choices: list[Any] | None = None,
@@ -104,11 +104,11 @@ obj HookContext {
         data: dict[str, Any] = {};  # Mutable context for hook communication
 
     """Get an argument value with optional default."""
-    def get_arg(name: str, default: Any = None) -> Any;
+    def get_arg(name: str, `default: Any = None) -> Any;
 
     """Set a value in the hook data context."""
     def set_data(key: str, value: Any) -> None;
 
     """Get a value from the hook data context."""
-    def get_data(key: str, default: Any = None) -> Any;
+    def get_data(key: str, `default: Any = None) -> Any;
 }

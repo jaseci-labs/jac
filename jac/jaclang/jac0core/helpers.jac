@@ -13,7 +13,7 @@ import from typing { TYPE_CHECKING, get_args, get_origin }
 
 with entry {
     if TYPE_CHECKING {
-        import pluggy;
+        import from jaclang { plugin as pluggy }
     }
 }
 
@@ -83,7 +83,7 @@ def dump_traceback(e: Exception) -> str {
             ('/jaclang/runtimelib/' in normalized)
             or ('/jaclang/jac0core/' in normalized)
             or ('/jaclang/vendor/' in normalized)
-            or ('/site-packages/pluggy/' in normalized)
+            or ('/jaclang/plugin.py' in normalized)
             or normalized.endswith('/jaclang/meta_importer.py')
         );
     }
@@ -284,12 +284,12 @@ def read_file_with_encoding(file_path: str) -> str {
         } except Exception as e {
             raise OSError(
                 f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            ) ;
+            );
         }
     }
     raise OSError(
         f"Could not read file {file_path} with any encoding. Report this issue:https://github.com/jaseci-labs/jaseci/issues"
-    ) ;
+    );
 }
 
 """Return a short, readable type name for annotations."""
@@ -369,7 +369,9 @@ def _describe_node(`obj: object) -> str {
 
 """One object per line, index-friendly for returning list."""
 def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
+    return '\n'.join(
+        f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects)
+    );
 }
 
 """Minimal distribution facade for tracking plugin origins.
@@ -377,10 +379,8 @@ def _describe_nodes_list(objects: Sequence) -> str {
     Used when manually loading entry points to maintain compatibility
     with pluggy's list_plugin_distinfo() interface.
     """
-class DistFacade {
-    def init(self: DistFacade, dist: 'object | None') -> None {
-        self._dist = dist;
-    }
+obj DistFacade {
+    has _dist: (object | None);
 
     """Get the distribution/package name."""
     @property

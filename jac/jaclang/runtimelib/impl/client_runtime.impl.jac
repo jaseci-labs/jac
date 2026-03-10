@@ -1,19 +1,19 @@
-impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
+impl __jacJsx(tag: Any, props: dict = {}, children: list = []) -> JsxElement {
     return JsxElement(tag=tag, props=props, children=children);
 }
 
-impl renderJsxTree(node: JsxElement, container: any) -> None {
-    container.replaceChildren(__buildDom(node));
+impl renderJsxTree(nd: JsxElement, container: Any) -> None {
+    container.replaceChildren(__buildDom(nd));
 }
 
-impl __buildDom(node: any) -> any {
-    if node == None {
+impl __buildDom(nd: Any) -> Any {
+    if nd == None {
         return document.createTextNode("");
     }
     # Handle arrays (from .map() calls) - return a document fragment
-    if Array.isArray(node) {
+    if Array.isArray(nd) {
         fragment = document.createDocumentFragment();
-        for item in node {
+        for item in nd {
             childDom = __buildDom(item);
             if childDom {
                 fragment.appendChild(childDom);
@@ -21,16 +21,16 @@ impl __buildDom(node: any) -> any {
         }
         return fragment;
     }
-    if not __isObject(node) {
-        return document.createTextNode(String(node));
+    if not __isObject(nd) {
+        return document.createTextNode(str(nd));
     }
     # Handle component functions
-    tag = node.tag;
+    tag = nd.tag;
     if __isFunction(tag) {
-        props = node.props;
-        children = node.children;
+        props = nd.props;
+        children = nd.children;
         # Merge children into props for component
-        if children and children.length > 0 {
+        if children and len(children) > 0 {
             props["children"] = children;
         }
         return __buildDom(tag(props));
@@ -38,13 +38,13 @@ impl __buildDom(node: any) -> any {
     # Create element
     element = document.createElement(tag or "div");
     # Apply properties
-    props = node.props;
+    props = nd.props;
     for key in __objectKeys(props) {
         value = props.get(key);
         __applyProp(element, key, value);
     }
     # Render children
-    children = node.children;
+    children = nd.children;
     for child in children {
         childDom = __buildDom(child);
         if childDom {
@@ -54,7 +54,7 @@ impl __buildDom(node: any) -> any {
     return element;
 }
 
-impl __applyProp(element: any, key: str, value: any) -> None {
+impl __applyProp(element: Any, key: str, value: Any) -> None {
     if key.startswith("on") {
         # Event handler: onclick -> click
         event = key[2:].lower();
@@ -71,24 +71,24 @@ impl __applyProp(element: any, key: str, value: any) -> None {
     or key == "readonly"
     or key == "selected" {
         # Boolean attributes - use property instead of attribute
-        element[key] = Boolean(value);
+        element[key] = bool(value);
     } elif key == "value" {
         # Value property for form elements
         element.value = value;
     } elif key != "children" {
-        element.setAttribute(key, String(value));
+        element.setAttribute(key, str(value));
     }
 }
 
-impl createSignal(initialValue: any) -> list {
-    signalId = __jacReactiveContext.signals.length;
+impl createSignal(initialValue: Any) -> list {
+    signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
-    __jacReactiveContext.signals.push(signalData);
-    def getter -> any {
+    __jacReactiveContext.signals.append(signalData);
+    def getter -> Any {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def setter(newValue: any) -> None {
+    def setter(newValue: Any) -> None {
         if newValue != signalData.value {
             signalData.value = newValue;
             __jacNotifySubscribers(signalData.subscribers);
@@ -98,9 +98,9 @@ impl createSignal(initialValue: any) -> list {
 }
 
 impl createState(initialState: dict) -> list {
-    signalId = __jacReactiveContext.signals.length;
+    signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialState, "subscribers": []};
-    __jacReactiveContext.signals.push(signalData);
+    __jacReactiveContext.signals.append(signalData);
     def getter -> dict {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
@@ -121,11 +121,11 @@ impl createState(initialState: dict) -> list {
     return [getter, setter];
 }
 
-impl createEffect(effectFn: any) -> None {
+impl createEffect(effectFn: Any) -> None {
     __jacRunEffect(effectFn);
 }
 
-impl onMount(mountFn: any) -> None {
+impl onMount(mountFn: Any) -> None {
     currentComponent = __jacReactiveContext.currentComponent;
     if not currentComponent {
         # Not in a component context, run immediately
@@ -161,7 +161,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
             }
         }
         if not alreadySubscribed {
-            subscribers.push(currentEffect);
+            subscribers.append(currentEffect);
         }
     }
     currentComponent = __jacReactiveContext.currentComponent;
@@ -173,7 +173,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
             }
         }
         if not alreadySubscribed {
-            subscribers.push(currentComponent);
+            subscribers.append(currentComponent);
         }
     }
 }
@@ -190,7 +190,7 @@ impl __jacNotifySubscribers(subscribers: list) -> None {
     }
 }
 
-impl __jacRunEffect(effectFn: any) -> None {
+impl __jacRunEffect(effectFn: Any) -> None {
     previousEffect = __jacReactiveContext.currentEffect;
     __jacReactiveContext.currentEffect = effectFn;
     try {
@@ -201,7 +201,7 @@ impl __jacRunEffect(effectFn: any) -> None {
     __jacReactiveContext.currentEffect = previousEffect;
 }
 
-impl __jacScheduleRerender(componentId: any) -> None {
+impl __jacScheduleRerender(componentId: Any) -> None {
     pending = __jacReactiveContext.pendingRenders;
     # Check if already scheduled
     alreadyScheduled = False;
@@ -211,7 +211,7 @@ impl __jacScheduleRerender(componentId: any) -> None {
         }
     }
     if not alreadyScheduled {
-        pending.push(componentId);
+        pending.append(componentId);
         __jacScheduleFlush();
     }
 }
@@ -237,7 +237,7 @@ impl __jacFlushRenders -> None {
     }
 }
 
-impl __jacRerenderComponent(componentId: any) -> None {
+impl __jacRerenderComponent(componentId: Any) -> None {
     rootEl = document.getElementById("__jac_root");
     if not rootEl {
         return;
@@ -272,12 +272,12 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: any  -> None { newPath = __jacGetPath();if not newPath {
+        lambda event: Any  -> None { newPath = __jacGetPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
     # Render method - returns component for current route
-    def render -> any {
+    def render -> JsxElement {
         path = currentPath();  # Track dependency!
 
         # Find matching route
@@ -297,7 +297,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
         # No match - show 404
         return
             <div>
-                404 - Route not found: {path}
+                404 - Route not found:{path}
             </div>;
     }
     # Navigate method
@@ -311,14 +311,14 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     return router;
 }
 
-impl Route(path: str, component: any, guard: any = None) -> dict {
+impl Route(path: str, component: Any, guard: Any = None) -> dict {
     return {"path": path, "component": component, "guard": guard};
 }
 
-impl Link(props: dict) -> any {
+impl Link(props: dict) -> JsxElement {
     href = props["href"] if "href" in props else "/";
     children = props["children"] if "children" in props else [];
-    def handleClick(event: any) -> None {
+    def handleClick(event: Any) -> None {
         event.preventDefault();
         navigate(href);
     }
@@ -348,7 +348,7 @@ impl __jacGetPath -> str {
     return "/";
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     token = __getLocalStorage("jac_token");
     url = f"/walker/{left}";
     if right != "" {
@@ -369,14 +369,14 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     if not response.ok {
         error_text = await response.json();
         walker_name = f"{left}/{right}" if right else left;
-        raise Exception(f"Walker {walker_name} failed: {error_text}") ;
+        raise Exception(f"Walker {walker_name} failed: {error_text}");
     }
     payload = await response.json();
     # Handle TransportResponse envelope format
     return payload["data"] if payload["data"] else payload;
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
+impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     token = __getLocalStorage("jac_token");
     response = await fetch(
         f"/function/{function_name}",
@@ -391,7 +391,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     );
     if not response.ok {
         error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}") ;
+        raise Exception(f"Function {function_name} failed: {error_text}");
     }
     payload = JSON.parse(await response.text());
     # Handle TransportResponse envelope format
@@ -435,8 +435,8 @@ impl jacSignup(username: str, password: str) -> dict {
             error_payload = JSON.parse(error_text);
             # Handle TransportResponse envelope format
             error_data = error_payload["data"]
-            if error_payload["data"]
-            else error_payload;
+                if error_payload["data"]
+                else error_payload;
             error_msg = None;
             try {
                 if error_data["error"] {
@@ -505,27 +505,27 @@ impl __removeLocalStorage(key: str) -> None {
     }
 }
 
-impl __isObject(value: any) -> bool {
+impl __isObject(value: Any) -> bool {
     if value == None {
         return False;
     }
     return Object.prototype.toString.call(value) == "[object Object]";
 }
 
-impl __isFunction(value: any) -> bool {
+impl __isFunction(value: Any) -> bool {
     return Object.prototype.toString.call(value) == "[object Function]";
 }
 
-impl __objectKeys(obj: any) -> list {
-    if obj == None {
+impl __objectKeys(`obj: Any) -> list {
+    if `obj == None {
         return [];
     }
-    return Object.keys(obj);
+    return Object.keys(`obj);
 }
 
-impl __jacHasOwn(obj: any, key: any) -> bool {
+impl __jacHasOwn(`obj: Any, key: Any) -> bool {
     try {
-        return Object.prototype.hasOwnProperty.call(obj, key);
+        return Object.prototype.hasOwnProperty.call(`obj, key);
     } except Exception {
         return False;
     }
@@ -537,7 +537,7 @@ impl __jacEnsureObjectGetPolyfill -> None {
         return;
     }
     # Define the polyfill function inline
-    def get_polyfill(key: any, defaultValue: any = None) -> any {
+    def get_polyfill(key: Any, defaultValue: Any = None) -> Any {
         if __jacHasOwn(this, key) {
             return this[key];
         }
@@ -551,7 +551,7 @@ impl __jacEnsureObjectGetPolyfill -> None {
     );
 }
 
-impl __jacGetDocument(scope: any) -> any {
+impl __jacGetDocument(scope: Any) -> Any {
     try {
         return scope.document;
     } except Exception {
@@ -559,7 +559,7 @@ impl __jacGetDocument(scope: any) -> any {
     }
 }
 
-impl __jacParseJsonObject(text: str) -> any {
+impl __jacParseJsonObject(text: str) -> Any {
     try {
         parsed = JSON.parse(text);
         if __isObject(parsed) {
@@ -580,12 +580,12 @@ impl __jacBuildOrderedArgs(order: list, argsDict: dict) -> list {
     }
     values = argsDict if __isObject(argsDict) else {};
     for name in order {
-        result.push(values.get(name));
+        result.append(values.get(name));
     }
     return result;
 }
 
-impl __jacResolveRenderer(scope: any) -> any {
+impl __jacResolveRenderer(scope: Any) -> Any {
     if scope.renderJsxTree {
         return scope.renderJsxTree;
     }
@@ -595,11 +595,11 @@ impl __jacResolveRenderer(scope: any) -> any {
     return None;
 }
 
-impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any {
+impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> Any {
     moduleFunctions = (
         moduleRecord.moduleFunctions
-        if moduleRecord and moduleRecord.moduleFunctions
-        else {}
+            if moduleRecord and moduleRecord.moduleFunctions
+            else {}
     );
     if __jacHasOwn(moduleFunctions, name) {
         return moduleFunctions[name];
@@ -612,7 +612,7 @@ impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any {
 }
 
 impl __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list, targetName: str
+    target: Any, scope: Any, orderedArgs: list, targetName: str
 ) -> dict {
     try {
         result = target.apply(scope, orderedArgs);
@@ -623,7 +623,7 @@ impl __jacSafeCallTarget(
     }
 }
 
-impl __jacGlobalScope -> any {
+impl __jacGlobalScope -> Any {
     try {
         return globalThis;
     } except Exception { }
@@ -671,12 +671,12 @@ impl __jacEnsureRegistry -> dict {
     return registry;
 }
 
-impl __jacApplyRender(renderer: any, container: any, node: any) -> None {
+impl __jacApplyRender(renderer: Any, container: Any, nd: Any) -> None {
     if not renderer or not container {
         return;
     }
     try {
-        renderer(node, container);
+        renderer(nd, container);
     } except Exception as err {
         console.error("[Jac] Failed to render JSX tree", err);
     }
@@ -716,8 +716,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     registry = __jacEnsureRegistry();
     modulesStore = registry.modules or {};
     moduleRecord = modulesStore[moduleName]
-    if __jacHasOwn(modulesStore, moduleName)
-    else None;
+        if __jacHasOwn(modulesStore, moduleName)
+        else None;
     if not moduleRecord {
         console.error("[Jac] Client module not registered: " + moduleName);
         return;
@@ -741,7 +741,7 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
         return;
     }
     # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda -> any { __jacReactiveContext.currentComponent = "__root__";result = target.apply(
+    __jacReactiveContext.rootComponent = lambda -> Any { __jacReactiveContext.currentComponent = "__root__";result = target.apply(
         scope, orderedArgs
     );__jacReactiveContext.currentComponent = None;return result; };
     renderer = __jacResolveRenderer(scope);
@@ -753,9 +753,9 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
         value.then(
-            lambda node: any  -> None { __jacApplyRender(renderer, rootEl, node);}
+            lambda nd: Any  -> None { __jacApplyRender(renderer, rootEl, nd);}
         ).catch(
-            lambda err: any  -> None { console.error(
+            lambda err: Any  -> None { console.error(
                 "[Jac] Error resolving client function promise", err
             );}
         );
@@ -787,7 +787,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: any  -> None { __jacExecuteHydration();},
+            lambda _event: Any  -> None { __jacExecuteHydration();},
             {"once": True}
         );
     }
@@ -816,14 +816,14 @@ impl __jacRegisterClientModule(
             moduleFunctions[funcName] = funcRef;
             registry.functions[funcName] = funcRef;
             scope[funcName] = funcRef;
-            registeredFunctions.push(funcName);
+            registeredFunctions.append(funcName);
         }
     }
     moduleGlobals = {};
     globalNames = [];
     globalsMap = clientGlobals or {};
     for gName in __objectKeys(globalsMap) {
-        globalNames.push(gName);
+        globalNames.append(gName);
         defaultValue = globalsMap[gName];
         existing = scope[gName];
         if existing == None {
@@ -836,8 +836,8 @@ impl __jacRegisterClientModule(
     }
     modulesStore = registry.modules or {};
     existingRecord = modulesStore[moduleName]
-    if __jacHasOwn(modulesStore, moduleName)
-    else None;
+        if __jacHasOwn(modulesStore, moduleName)
+        else None;
     moduleRecord = existingRecord or {};
     moduleRecord.moduleFunctions = moduleFunctions;
     moduleRecord.moduleGlobals = moduleGlobals;
@@ -860,12 +860,12 @@ Returns [value, setter] where value is the current state (not a getter function)
 When setter is called, schedules a re-render of the component.
 Uses hook index tracking to maintain state across re-renders.
 """
-impl useState(initialValue: any) -> list {
+impl useState(initialValue: Any) -> list {
     # Get current hook index
     hookIndex = __jacReactiveContext.hookIndex;
     hooks = __jacReactiveContext.hooks;
     # Check if this hook already exists (re-render) or needs to be created (first render)
-    if hookIndex < hooks.length {
+    if hookIndex < len(hooks) {
         # Re-render: return existing state
         hookData = hooks[hookIndex];
         __jacReactiveContext.hookIndex = hookIndex + 1;
@@ -874,7 +874,7 @@ impl useState(initialValue: any) -> list {
     # First render: create new state
     signalData = {"value": initialValue};
     # Setter that updates value and triggers re-render
-    def setter(newValue: any) -> None {
+    def setter(newValue: Any) -> None {
         if newValue != signalData.value {
             signalData.value = newValue;
             # Schedule re-render of root component
@@ -883,7 +883,7 @@ impl useState(initialValue: any) -> list {
     }
     # Store in hooks array for subsequent renders
     signalData["setter"] = setter;
-    hooks.push(signalData);
+    hooks.append(signalData);
     __jacReactiveContext.hookIndex = hookIndex + 1;
     # Return current value and setter
     return [signalData.value, setter];
@@ -893,7 +893,7 @@ impl useState(initialValue: any) -> list {
 When deps is empty [], runs once on mount (like onMount).
 Otherwise tracks dependencies and re-runs when they change.
 """
-impl useEffect(effectFn: any, deps: list = []) -> None {
+impl useEffect(effectFn: Any, deps: list = []) -> None {
     # For now, always run on mount since we don't have React's dep tracking
     # This matches useEffect(() => { ... }, []) behavior
     onMount(effectFn);

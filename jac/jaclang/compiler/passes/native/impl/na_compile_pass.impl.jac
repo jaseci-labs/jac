@@ -30,14 +30,31 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         if libc_name {
             llvm.load_library_permanently(libc_name);
         }
-        libgc_name = ctypes.util.find_library("gc");
-        if libgc_name {
-            llvm.load_library_permanently(libgc_name);
-        } else {
-            # Fallback: map GC_malloc/GC_init to libc malloc/noop
-            libc = _ct.CDLL(libc_name);
-            malloc_addr = _ct.cast(libc.malloc, _ct.c_void_p).value;
-            llvm.add_symbol("GC_malloc", malloc_addr);
+        # Note: libgc (Boehm GC) no longer needed — using reference counting
+        # Load C shared libraries from import from "lib" { ... } declarations
+        import os;
+        clib_paths = getattr(module.gen, '_clib_paths', None);
+        if clib_paths {
+            for lib_path in clib_paths {
+                try {
+                    # Try as absolute/relative path first
+                    if os.path.exists(lib_path) {
+                        llvm.load_library_permanently(lib_path);
+                    } else {
+                        # Try system library lookup
+                        found = ctypes.util.find_library(lib_path);
+                        if found {
+                            llvm.load_library_permanently(found);
+                        } else {
+                            self.log_warning(f"C library not found: {lib_path}");
+                        }
+                    }
+                } except Exception as lib_err {
+                    self.log_warning(
+                        f"Failed to load C library '{lib_path}': {lib_err}"
+                    );
+                }
+            }
         }
         mod = llvm.parse_assembly(llvm_ir_str);
         mod.verify();
@@ -67,6 +84,32 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             # (the original llvm_ir was pre-linking)
             module.gen.llvm_ir = mod;
         }
+
+        # Run LLVM optimization pipeline (after linking, before JIT)
+        import os as _os;
+        _opt_level = int(_os.environ.get("JAC_OPT_LEVEL", "2"));
+        if _opt_level > 0 {
+            pto = llvm.create_pipeline_tuning_options(
+                speed_level=_opt_level, size_level=0
+            );
+            pb = llvm.create_pass_builder(target_machine, pto);
+            opt_mpm = pb.getModulePassManager();
+            opt_mpm.run(mod, pb);
+        }
+
+        # Debug: dump IR before JIT compilation (after optimization)
+        _dump_path = _os.environ.get("JAC_DUMP_IR", "");
+        if _dump_path {
+            with open(_dump_path, "w") as _f {
+                _f.write(str(mod));
+            }
+        }
+
+        # Store post-optimization bitcode for fast cache loading.
+        # This must happen AFTER optimization but BEFORE create_mcjit_compiler
+        # which consumes the module. Bitcode is faster to parse than text IR
+        # and preserves the optimization work.
+        module.gen.native_bitcode = mod.as_bitcode();
 
         engine = llvm.create_mcjit_compiler(mod, target_machine);
         module.gen.native_engine = engine;
@@ -102,6 +145,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
             }
         } else {
             full_path = os.path.join(base_dir, source_mod_path);
+            # Also check if a .na.jac version exists (e.g., tokens → tokens.na.jac)
+            if not os.path.exists(full_path) {
+                na_path = os.path.join(base_dir, source_mod_path + ".na.jac");
+                if os.path.exists(na_path) {
+                    full_path = na_path;
+                }
+            }
         }
 
         if not os.path.exists(full_path) {
@@ -128,29 +178,54 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         try {
-            # Parse the imported module's IR
+            # Parse the imported module's IR, renaming jac_entry to avoid
+            # duplicate symbol conflicts (each .na.jac has its own entry).
+            # LLVM IR may quote names as @"jac_entry" or use bare @jac_entry.
             imported_llvm_str = str(imported_ir.gen.llvm_ir);
+            import re;
+            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', source_mod_path);
+            entry_rename = f"__jac_entry_{safe_name}";
+            imported_llvm_str = imported_llvm_str.replace(
+                '@"jac_entry"', f'@"{entry_rename}"'
+            );
+            imported_llvm_str = imported_llvm_str.replace(
+                "@jac_entry", f"@{entry_rename}"
+            );
+            # Rename __jac_glob_init to __jac_glob_init_<safe_name> so each
+            # imported module's initializer has a unique symbol after linking.
+            glob_init_rename = f"__jac_glob_init_{safe_name}";
+            imported_llvm_str = imported_llvm_str.replace(
+                '@"__jac_glob_init"', f'@"{glob_init_rename}"'
+            );
+            imported_llvm_str = imported_llvm_str.replace(
+                "@__jac_glob_init", f"@{glob_init_rename}"
+            );
             imported_mod = llvm.parse_assembly(imported_llvm_str);
 
+            # Collect exported function names BEFORE linking, because
+            # link_in consumes the module and invalidates its references
+            exported_funcs: list[str] = [];
+            for func in imported_mod.functions {
+                if not func.name.startswith("llvm.") and not func.is_declaration {
+                    exported_funcs.append(func.name);
+                }
+            }
+
             # Link the imported module into the main module at IR level
-            # This merges the imported module's functions into main_mod
+            # This merges the imported module's functions into main_mod.
+            # After this call, imported_mod is consumed and invalid.
             main_mod.link_in(imported_mod);
 
             # Create module info for tracking
             mod_info = NativeModuleInfo(
                 mod_path=full_path,
-                llvm_module=imported_mod,
+                llvm_module=None,
                 native_engine=None  # No separate engine needed - linked into main
             );
 
-            # Track exported functions
-            for func in imported_mod.functions {
-                func_name = func.name;
-                if not func_name.startswith("llvm.") and not func.is_declaration {
-                    mod_info.exported_functions[func_name] = NativeFunctionInfo(
-                        name=func_name
-                    );
-                }
+            # Track exported functions from pre-collected names
+            for fname in exported_funcs {
+                mod_info.exported_functions[fname] = NativeFunctionInfo(name=fname);
             }
 
             linked_modules[source_mod_path] = mod_info;

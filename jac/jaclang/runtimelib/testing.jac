@@ -64,7 +64,8 @@ obj JacTestClient {
         _server: (JacAPIServer | None) = None,
         _handler_class: (type | None) = None,
         _auth_token: (str | None) = None,
-        _current_user: (str | None) = None;
+        _current_user: (str | None) = None,
+        _hot_reloader: (Any | None) = None;
 
     """Create test client from a .jac file path."""
     static def from_file(

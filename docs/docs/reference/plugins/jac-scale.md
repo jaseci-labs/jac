@@ -1,6 +1,8 @@
 # jac-scale Reference
 
-Complete reference for jac-scale, the cloud-native deployment and scaling plugin for Jac.
+jac-scale generates REST endpoints from your Jac walkers and functions. Running `jac start` with this plugin turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
+
+For production, the `--scale` flag automates Docker image builds and Kubernetes deployment -- generating Dockerfiles, manifests, and service configurations from your code. This reference covers server startup options, endpoint generation, authentication, database persistence, Kubernetes deployment, and the CLI flags for each mode.
 
 ---
 
@@ -8,6 +10,7 @@ Complete reference for jac-scale, the cloud-native deployment and scaling plugin
 
 ```bash
 pip install jac-scale
+jac plugins enable scale
 ```
 
 ---
@@ -24,15 +27,19 @@ jac start app.jac
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--port` | Server port | 8000 |
-| `--host` | Bind address | 0.0.0.0 |
-| `--workers` | Number of workers | 1 |
-| `--reload` | Hot reload on changes | false |
-| `--scale` | Deploy to Kubernetes | false |
+| `--port` `-p` | Server port (auto-fallback if in use) | 8000 |
+| `--main` `-m` | Treat as `__main__` | false |
+| `--faux` `-f` | Print generated API docs only (no server) | false |
+| `--dev` `-d` | Enable HMR (Hot Module Replacement) mode | false |
+| `--api_port` `-a` | Separate API port for HMR mode (0=same as port) | 0 |
+| `--no_client` `-n` | Skip client bundling/serving (API only) | false |
+| `--profile` | Configuration profile to load (e.g. prod, staging) | - |
+| `--client` | Client build target for dev server (web, desktop, pwa) | - |
+| `--scale` | Deploy to a target platform instead of running locally | false |
 | `--build` `-b` | Build and push Docker image (with --scale) | false |
-| `--experimental` `-e` | Install from repo instead of PyPI (with --scale) | false |
-| `--target` | Deployment target (kubernetes, aws, gcp) | kubernetes |
-| `--registry` | Image registry (dockerhub, ecr, gcr) | dockerhub |
+| `--experimental` `-e` | Use experimental mode (install from repo instead of PyPI) | false |
+| `--target` `-t` | Deployment target (kubernetes, aws, gcp) | kubernetes |
+| `--registry` `-r` | Image registry (dockerhub, ecr, gcr) | dockerhub |
 
 ### Examples
 
@@ -40,14 +47,30 @@ jac start app.jac
 # Custom port
 jac start app.jac --port 3000
 
-# Multiple workers
-jac start app.jac --workers 4
+# Development with HMR (requires jac-client)
+jac start app.jac --dev
 
-# Development with hot reload
-jac start app.jac --reload
+# API only -- skip client bundling
+jac start app.jac --dev --no_client
 
-# Production
-jac start app.jac --host 0.0.0.0 --port 8000 --workers 4
+# Preview generated API endpoints without starting
+jac start app.jac --faux
+
+# Production with profile
+jac start app.jac --port 8000 --profile prod
+```
+
+### Default Persistence
+
+When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
+
+### CORS Configuration
+
+```toml
+[plugins.scale.cors]
+allow_origins = ["https://example.com"]
+allow_methods = ["GET", "POST", "PUT", "DELETE"]
+allow_headers = ["*"]
 ```
 
 ---
@@ -91,6 +114,47 @@ Walker `report` values become the response.
 
 ---
 
+## Middleware Walkers
+
+Walkers prefixed with `_` act as middleware hooks that run before or around normal request processing.
+
+### Request Logging
+
+```jac
+walker _before_request {
+    has request: dict;
+
+    can log with Root entry {
+        print(f"Request: {self.request['method']} {self.request['path']}");
+    }
+}
+```
+
+### Authentication Middleware
+
+```jac
+walker _authenticate {
+    has headers: dict;
+
+    can check with Root entry {
+        token = self.headers.get("Authorization", "");
+
+        if not token.startswith("Bearer ") {
+            report {"error": "Unauthorized", "status": 401};
+            return;
+        }
+
+        # Validate token...
+        report {"authenticated": True};
+    }
+}
+```
+
+!!! tip "Middleware vs Built-in Auth"
+    The `_authenticate` middleware pattern gives you custom authentication logic. For standard JWT authentication, use jac-scale's built-in auth endpoints (`/user/register`, `/user/login`) instead -- see [Authentication](#authentication) below.
+
+---
+
 ## @restspec Decorator
 
 The `@restspec` decorator customizes how walkers and functions are exposed as REST API endpoints.
@@ -101,7 +165,10 @@ The `@restspec` decorator customizes how walkers and functions are exposed as RE
 |--------|------|---------|-------------|
 | `method` | `HTTPMethod` | `POST` | HTTP method for the endpoint |
 | `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
-| `webhook` | `bool` | `False` | Expose as a webhook endpoint instead of a regular walker endpoint |
+| `protocol` | `APIProtocol` | `APIProtocol.HTTP` | Protocol for the endpoint (`HTTP`, `WEBHOOK`, or `WEBSOCKET`) |
+| `broadcast` | `bool` | `False` | Broadcast responses to all connected WebSocket clients (only valid with `WEBSOCKET` protocol) |
+
+> **Note:** `APIProtocol` and `restspec` are builtins and do not require an import statement. `HTTPMethod` must be imported with `import from http { HTTPMethod }`.
 
 ### Custom HTTP Method
 
@@ -134,6 +201,29 @@ walker :pub list_users {
 ```
 
 Accessible at `GET /custom/users`.
+
+### Path Parameters
+
+Define path parameters using `{param_name}` syntax:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/items/{item_id}")
+walker :pub get_item {
+    has item_id: str;
+    can fetch with Root entry { report {"item_id": self.item_id}; }
+}
+
+@restspec(method=HTTPMethod.GET, path="/users/{user_id}/orders")
+walker :pub get_user_orders {
+    has user_id: str;          # Path parameter
+    has status: str = "all";   # Query parameter
+    can fetch with Root entry { report {"user_id": self.user_id, "status": self.status}; }
+}
+```
+
+Parameters are classified as: **path** (matches `{name}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods).
 
 ### Functions
 
@@ -223,12 +313,84 @@ jac-scale supports SSO with external identity providers. Currently supported: Go
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
 | GET | `/sso/{platform}/login/callback` | OAuth callback handler |
 
+**Frontend Callback Redirect:**
+
+For browser-based OAuth flows, configure `client_auth_callback_url` in `jac.toml` to redirect the SSO callback to your frontend application instead of returning JSON:
+
+```toml
+[plugins.scale.sso]
+client_auth_callback_url = "http://localhost:3000/auth/callback"
+```
+
+When set, the callback endpoint redirects to the configured URL with query parameters:
+
+- On success: `{client_auth_callback_url}?token={jwt_token}`
+- On failure: `{client_auth_callback_url}?error={error_message}`
+
+This enables seamless browser-based OAuth flows where the frontend receives the token via URL parameters.
+
 **Example:**
 
 ```bash
 # Redirect user to Google login
 curl http://localhost:8000/sso/google/login
 ```
+
+---
+
+## Admin Portal
+
+jac-scale includes a built-in admin portal for managing users, roles, and SSO configurations.
+
+### Accessing the Admin Portal
+
+Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
+
+### Configuration
+
+```toml
+[plugins.scale.admin]
+enabled = true
+username = "admin"
+session_expiry_hours = 24
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable admin portal |
+| `username` | string | `"admin"` | Admin username |
+| `session_expiry_hours` | int | `24` | Admin session duration in hours |
+| `require_password_reset` | bool | `true` | Force admin to change the default password on first login |
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `ADMIN_USERNAME` | Admin username (overrides jac.toml) |
+| `ADMIN_EMAIL` | Admin email (overrides jac.toml) |
+| `ADMIN_DEFAULT_PASSWORD` | Initial password (overrides jac.toml) |
+
+### User Roles
+
+| Role | Value | Description |
+|------|-------|-------------|
+| `ADMIN` | `admin` | Full administrative access |
+| `MODERATOR` | `moderator` | Limited administrative access |
+| `USER` | `user` | Standard user access |
+
+### Admin API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/login` | Admin authentication |
+| GET | `/admin/users` | List all users |
+| GET | `/admin/users/{username}` | Get user details |
+| POST | `/admin/users` | Create a new user |
+| PUT | `/admin/users/{username}` | Update user role/settings |
+| DELETE | `/admin/users/{username}` | Delete a user |
+| POST | `/admin/users/{username}/force-password-reset` | Force password reset |
+| GET | `/admin/sso/providers` | List SSO providers |
+| GET | `/admin/sso/users/{username}/accounts` | Get user's SSO accounts |
 
 ---
 
@@ -293,6 +455,27 @@ with entry {
 }
 ```
 
+### Secure-by-Default Endpoints
+
+All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
+
+```jac
+# Protected (default) -- requires JWT token
+walker get_profile {
+    can fetch with Root entry { report [-->]; }
+}
+
+# Public -- no authentication required
+walker :pub health_check {
+    can check with Root entry { report {"status": "ok"}; }
+}
+
+# Private -- requires authentication, per-user isolated
+walker :priv internal_process {
+    can run with Root entry { }
+}
+```
+
 ### Walker Access Levels
 
 Walkers have three access levels when served as API endpoints:
@@ -301,7 +484,7 @@ Walkers have three access levels when served as API endpoints:
 |--------|-------------|
 | Public (`:pub`) | Accessible without authentication |
 | Protected (default) | Requires JWT authentication |
-| Private (`:priv`) | Only accessible by directly defined walkers (not imported) |
+| Private (`:priv`) | Requires JWT authentication; per-user isolated (each user operates on their own graph) |
 
 ### Permission Functions Reference
 
@@ -385,6 +568,8 @@ This walker will be accessible at `POST /webhook/PaymentReceived`.
 ### API Key Management
 
 Webhook endpoints require API key authentication. Users must first create an API key before calling webhook endpoints.
+
+> **Note:** API key metadata is stored persistently in MongoDB (in the `webhook_api_keys` collection), so keys survive server restarts. Previously, keys were held in memory only.
 
 #### Creating an API Key
 
@@ -784,7 +969,7 @@ with entry {
 ## MongoDB Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
-**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`, `find_nodes()`
 
 **Example:**
 
@@ -807,6 +992,20 @@ with entry {
 ```
 
 **Query Operators:** `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$ne`, `$and`, `$or`
+
+### Querying Persisted Nodes (`find_nodes`)
+
+Query persisted graph nodes by type with MongoDB filters. Returns deserialized node instances.
+
+```jac
+with entry{
+    db = kvstore(db_name='jac_db', db_type='mongodb');
+    young_users = list(db.find_nodes('User', {'age': {'$lt': 30}}));
+    admins = list(db.find_nodes('User', {'role': 'admin'}));
+}
+```
+
+**Parameters:** `node_type` (str), `filter` (dict, default `{}`), `col_name` (str, default `'_anchors'`)
 
 ---
 
@@ -837,16 +1036,126 @@ with entry {
 
 ---
 
-## Database Configuration
+## Database and Dashboards
 
-### Environment Variables
+### Auto-Provisioning
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection URI | None |
-| `REDIS_URL` | Redis connection URL | None |
-| `K8s_MONGODB` | Enable MongoDB deployment | `false` |
-| `K8s_REDIS` | Enable Redis deployment | `false` |
+On the first `jac start app.jac --scale`, jac-scale automatically deploys Redis and MongoDB as Kubernetes StatefulSets with persistent storage. Subsequent deployments only update the application - databases remain untouched.
+
+**What gets provisioned:**
+
+- **MongoDB** - StatefulSet with PersistentVolumeClaim (graph persistence, `kvstore` backend)
+- **Redis** - Deployment with persistent storage (cache layer, session management)
+- **Application Deployment** - Your Jac app pod(s)
+- **Services** - NodePort service for external access
+- **ConfigMaps** - Application configuration
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `mongodb_enabled` | `true` | Auto-provision MongoDB StatefulSet |
+| `redis_enabled` | `true` | Auto-provision Redis Deployment |
+| `mongodb_root_username` | `admin` | MongoDB root username - stored as a K8s Secret, injected via `secretKeyRef` |
+| `mongodb_root_password` | `password` | MongoDB root password - stored as a K8s Secret, injected via `secretKeyRef` |
+| `redis_username` | `admin` | Redis auth username - stored as a K8s Secret, injected via `secretKeyRef` |
+| `redis_password` | `password` | Redis auth password - stored as a K8s Secret, injected via `secretKeyRef` |
+
+Credentials are never hardcoded in pod specs. They are stored as Kubernetes `Secret` resources (`{app}-mongodb-secret`, `{app}-redis-secret`) and referenced via `valueFrom.secretKeyRef` - `kubectl describe pod` shows the secret name and key, not the actual value.
+
+**To disable (use an external database instead):**
+
+```toml
+[plugins.scale.kubernetes]
+mongodb_enabled = false   # Don't deploy MongoDB - use MONGODB_URI instead
+redis_enabled = false     # Don't deploy Redis - use REDIS_URL instead
+
+[plugins.scale.database]
+mongodb_uri = "mongodb://user:pass@external-host:27017"
+redis_url = "redis://external-redis:6379"
+```
+
+---
+
+### Connection Configuration
+
+Configure database connection URIs via environment variables or `jac.toml`. **Environment variables take priority over `jac.toml`.**
+
+**Option 1 - Environment variables (recommended for secrets):**
+
+| Variable | Description |
+|----------|-------------|
+| `MONGODB_URI` | MongoDB connection URI |
+| `REDIS_URL` | Redis connection URL |
+
+```env
+# .env
+MONGODB_URI=mongodb://user:password@host:27017/mydb
+REDIS_URL=redis://host:6379/0
+```
+
+**Option 2 - `jac.toml`:**
+
+```toml
+[plugins.scale.database]
+mongodb_uri = "mongodb://localhost:27017"   # External MongoDB URI (skip auto-provisioning)
+redis_url = "redis://localhost:6379"        # External Redis URL (skip auto-provisioning)
+shelf_db_path = ".jac/data/anchor_store.db"  # SQLite/shelf path for local dev
+```
+
+> `MONGODB_URI` and `REDIS_URL` environment variables take precedence over the `jac.toml` values when both are set.
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `mongodb_uri`| None | External MongoDB URI. When set, K8s MongoDB StatefulSet is not provisioned. |
+| `redis_url`  | None | External Redis URL. When set, K8s Redis is not provisioned. |
+| `shelf_db_path` | `.jac/data/anchor_store.db` | Local shelf/SQLite storage path for `jac start` (no K8s) |
+
+---
+
+### Dashboard Configuration
+
+Dashboards are **off by default** and must be explicitly enabled in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+redis_dashboard  = true   # Deploy RedisInsight UI (default: false)
+mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
+```
+
+| `jac.toml` key | Description | Default |
+|----------------|-------------|---------|
+| `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
+| `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
+
+#### Dashboard Credentials and Ports
+
+When dashboards are enabled, you can configure their access credentials and node ports:
+
+| `jac.toml` key | Description | Default |
+|----------------|-------------|---------|
+| `redis_insight_node_port` | NodePort for RedisInsight UI | `30032` |
+| `redis_insight_username` | RedisInsight login username | `admin` |
+| `redis_insight_password` | RedisInsight login password | `admin` |
+| `mongo_express_node_port` | NodePort for Mongo Express UI | `30033` |
+| `mongo_express_username` | Mongo Express login username | `admin` |
+| `mongo_express_password` | Mongo Express login password | `admin` |
+
+**Enable dashboards with custom credentials** (RedisInsight + Mongo Express):
+
+```toml
+# jac.toml
+[plugins.scale.kubernetes]
+redis_dashboard          = true
+redis_insight_node_port  = 30032
+redis_insight_username   = "admin"
+redis_insight_password   = "strongpassword"
+
+mongodb_dashboard        = true
+mongo_express_node_port  = 30033
+mongo_express_username   = "admin"
+mongo_express_password   = "strongpassword"
+```
+
+---
 
 ### Memory Hierarchy
 
@@ -858,19 +1167,352 @@ jac-scale uses a tiered memory system:
 | L2 | Redis | Cache layer |
 | L3 | MongoDB | Persistent storage |
 
+```mermaid
+graph TD
+    App["Application"] --- L1["L1: Volatile (in-memory)"]
+    L1 --- L2["L2: Redis (cache)"]
+    L2 --- L3["L3: MongoDB (persistent)"]
+```
+
 ---
 
 ## Kubernetes Deployment
 
-### Deploy
+### Deployment Modes
+
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Development** | `jac start app.jac --scale` | Deploy without building a Docker image - fast iteration |
+| **Production** | `jac start app.jac --scale --build` | Build and push Docker image to registry, then deploy |
+
+**Production mode** requires Docker credentials in `.env`:
+
+```env
+DOCKER_USERNAME=your-dockerhub-username
+DOCKER_PASSWORD=your-dockerhub-password-or-token
+```
+
+---
+
+### Naming & Namespace
+
+Controls the application name used for all Kubernetes resource names and the namespace resources are created in.
+
+**Defaults:**
+
+| TOML Key  | Default | Description |
+|-----------|---------|-------------|
+| `app_name` | `jaseci` | Prefix for all K8s resource names (deployments, services, secrets, etc.) |
+| `namespace`| `default` | Kubernetes namespace to deploy into |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+app_name = "myapp"
+namespace = "production"
+```
+
+---
+
+### Ports
+
+Controls how the application is exposed inside the cluster and externally via NodePort.
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `container_port`| `8000` | Port your app listens on inside the pod |
+| `node_port` | `30001` | External NodePort - access app at `http://localhost:<node_port>` |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+container_port = 8000
+node_port = 30080
+```
+
+---
+
+### Resource Limits
+
+Controls CPU and memory requests/limits for the application container. Kubernetes uses requests for scheduling and limits for enforcement (OOM-kill).
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `cpu_request`  | None | CPU units reserved for scheduling (e.g. `"250m"`) |
+| `cpu_limit`  | None | Maximum CPU the container may use (e.g. `"1000m"`) |
+| `memory_request`  | None | Memory reserved for scheduling (e.g. `"256Mi"`) |
+| `memory_limit` | None | Memory ceiling - container is OOM-killed if exceeded |
+
+Accepted suffixes: `Ki`, `Mi`, `Gi` (binary) or `K`, `M`, `G` (decimal).
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+cpu_request = "250m"
+cpu_limit = "1000m"
+memory_request = "256Mi"
+memory_limit = "2Gi"
+```
+
+---
+
+### Health Probes
+
+Kubernetes uses readiness and liveness probes to decide when a pod is ready to serve traffic and when to restart it. Both probes hit `GET <health_check_path>` on the container.
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `health_check_path` | Endpoint probed by both readiness and liveness checks |
+| `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
+| `readiness_period` | `20` | Seconds between readiness checks |
+| `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
+| `liveness_period`  | `20` | Seconds between liveness checks |
+| `liveness_failure_threshold` | `80` | Consecutive failures before the pod is restarted |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+health_check_path = "/health"
+readiness_initial_delay = 15
+readiness_period = 10
+liveness_initial_delay = 30
+liveness_period = 30
+liveness_failure_threshold = 5
+```
+
+> **Tip:** Set `health_check_path = "/health"` to use the built-in liveness and readiness endpoints - see [Health Checks](#health-checks).
+
+---
+
+### Horizontal Pod Autoscaling (HPA)
+
+jac-scale creates a Kubernetes HPA that scales the application pod count up or down based on average CPU utilization across all pods.
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `min_replicas` | `1` | Minimum number of pods (HPA lower bound) |
+| `max_replicas` | `3` | Maximum number of pods (HPA upper bound) |
+| `cpu_utilization_target`  | `50` | Average CPU % across pods that triggers scale-out |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+min_replicas = 2
+max_replicas = 10
+cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
+```
+
+> HPA requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+
+---
+
+### Persistent Storage
+
+Controls the PersistentVolumeClaim (PVC) size for MongoDB and Redis StatefulSets. The same size applies to both.
+
+**Default:**
+
+| TOML Key  | Default | Description |
+|----------|---------|-------------|
+| `pvc_size` | `5Gi` | Storage size for each database PVC |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+pvc_size = "20Gi"
+```
+
+> **Note:** PVC size cannot be reduced after creation. Increasing it requires deleting and recreating the StatefulSet (data loss). Plan accordingly.
+
+---
+
+### Container Images
+
+Controls the base images used for the application pod and init containers. Override these when you need a specific Python version or when operating in air-gapped environments.
+
+**Defaults:**
+
+| TOML Key  | Default | Description |
+|----------|---------|-------------|
+| `python_image` | `python:3.12-slim` | Base image for the application pod |
+| `busybox_image` | `busybox:1.36` | Init container image used for dependency health checks |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+python_image = "python:3.11-slim"
+busybox_image = "busybox:1.35"
+```
+
+---
+
+### Additional Packages
+
+Install extra pip packages into the pod at startup, alongside the standard Jaseci stack.
+
+**Default:** `[]` (none)
+
+**To add in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+additional_packages = ["pandas", "scikit-learn", "python-dotenv"]
+```
+
+Packages are installed at pod startup before the application starts. For frequently-updated packages, prefer building a custom Docker image with `--build` instead to keep startup times short.
+
+---
+
+### Jaseci Source Pinning (Experimental)
+
+When using `--experimental` mode, Jaseci packages are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds.
+
+**Defaults:**
+
+| TOML Key  | Default | Description |
+|-----------|---------|-------------|
+| `jaseci_repo_url` | `https://github.com/jaseci-labs/jaseci.git` | GitHub repository to install Jaseci packages from |
+| `jaseci_branch` | `main` | Repository branch to install from |
+| `jaseci_commit` | None | Specific commit SHA - leave empty for latest of the branch |
+
+**To change in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+jaseci_branch = "develop"
+jaseci_commit = "a1b2c3d4"
+```
+
+---
+
+### Package Version Pinning
+
+Pin specific PyPI versions for Jaseci packages installed inside the pod. Use `"none"` to skip a package entirely.
+
+**Defaults:** all packages default to `"latest"` from PyPI.
+
+**To configure in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "0.1.5"      # Pin to a specific version
+jac_scale = "latest"   # Latest from PyPI (default)
+jac_client = "0.1.0"   # Specific version
+jac_byllm = "none"     # Skip installation entirely
+```
+
+| Package | Description |
+|---------|-------------|
+| `jaclang` | Core Jac language runtime |
+| `jac_scale` | This scaling plugin |
+| `jac_client` | Frontend/client support |
+| `jac_byllm` | LLM integration (set to `"none"` to exclude) |
+
+---
+
+### Monitoring Stack
+
+jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter) into the same namespace as your application.
+
+| Component | Purpose |
+|-----------|---------|
+| **Prometheus** | Collects and stores metrics (ClusterIP - internal only, scraped by Grafana) |
+| **Grafana** | Dashboard UI - NodePort on local clusters, NLB on AWS |
+| **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
+| **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
+| `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
+| `grafana_node_port` | `30300` | NodePort for the Grafana dashboard |
+| `prometheus_node_port` | `30090` | NodePort for the Prometheus UI |
+| `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
+
+**To enable in `jac.toml`:**
+
+```toml
+[plugins.scale.monitoring]
+enabled = true
+k8s_metrics_enabled = true
+grafana_node_port = 30300
+prometheus_node_port = 30090
+prometheus_admin_password = "StrongPassword123!"
+```
+
+After deployment, access:
+
+- **Grafana:** `http://localhost:30300` - log in with `admin` / `<prometheus_admin_password>`
+- **Prometheus:** `http://localhost:30090` (for debugging scrape targets)
+
+On AWS clusters, Grafana is exposed via a Network Load Balancer (NLB) instead of NodePort.
+
+**Prometheus scrape targets:**
+
+- Jaseci application `/metrics` endpoint
+- kube-state-metrics (pod, deployment, replica, restart state)
+- node-exporter (CPU, memory, disk, network per node)
+
+> To collect application metrics, also enable `[plugins.scale.metrics] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
+
+---
+
+### Deployment Status
+
+Check the live health of all deployed components:
 
 ```bash
-# Deploy to Kubernetes
-jac start app.jac --scale
-
-# Build Docker image and deploy
-jac start app.jac --scale --build
+jac status app.jac
 ```
+
+Displays a table with:
+
+- **Component health** - Jaseci App, Redis, MongoDB, Prometheus, Grafana
+- **Pod readiness** - `ready/total` replica count per component
+- **Service URLs** - application endpoint and Grafana URL
+
+Status values:
+
+| Value | Meaning |
+|-------|---------|
+| `Running` | All pods ready |
+| `Degraded` | Some pods ready, others not |
+| `Pending` | Pods are starting up |
+| `Restarting` | One or more pods are crash-looping |
+| `Failed` | No pods are running |
+| `Not Deployed` | Component was never provisioned |
+
+---
+
+### Resource Tagging
+
+All Kubernetes resources created by jac-scale are labeled `managed: jac-scale` for easy auditing:
+
+```bash
+# List all jac-scale managed resources across all namespaces
+kubectl get all -l managed=jac-scale -A
+```
+
+Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, HorizontalPodAutoscalers.
+
+---
 
 ### Remove Deployment
 
@@ -878,47 +1520,26 @@ jac start app.jac --scale --build
 jac destroy app.jac
 ```
 
-### Environment Variables
+!!! warning
+    You will be prompted to confirm with `y` before deletion proceeds. The command deletes the entire namespace and **all** its resources - including persistent volumes and database data.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_NAME` | Application name for K8s resources | `jaseci` |
-| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `K8s_NODE_PORT` | External NodePort | `30001` |
-| `K8s_CPU_REQUEST` | CPU resource request | None |
-| `K8s_CPU_LIMIT` | CPU resource limit | None |
-| `K8s_MEMORY_REQUEST` | Memory resource request | None |
-| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
-| `K8s_READINESS_INITIAL_DELAY` | Readiness probe initial delay (seconds) | `10` |
-| `K8s_READINESS_PERIOD` | Readiness probe period (seconds) | `20` |
-| `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe initial delay (seconds) | `10` |
-| `K8s_LIVENESS_PERIOD` | Liveness probe period (seconds) | `20` |
-| `K8s_LIVENESS_FAILURE_THRESHOLD` | Failure threshold before restart | `80` |
-| `DOCKER_USERNAME` | DockerHub username | None |
-| `DOCKER_PASSWORD` | DockerHub password/token | None |
+Removes:
 
-### Package Version Pinning
-
-Configure specific package versions for Kubernetes deployments:
-
-```toml
-[plugins.scale.kubernetes.plugin_versions]
-jaclang = "0.1.5"      # Specific version
-jac_scale = "latest"   # Latest from PyPI (default)
-jac_client = "0.1.0"   # Specific version
-jac_byllm = "none"     # Skip installation
-```
-
-| Package | Description | Default |
-|---------|-------------|---------|
-| `jaclang` | Core Jac language package | latest |
-| `jac_scale` | Scaling plugin | latest |
-| `jac_client` | Client/frontend support | latest |
-| `jac_byllm` | LLM integration (use "none" to skip) | latest |
+- Application Deployment and pods
+- Redis and MongoDB StatefulSets
+- PersistentVolumeClaims (data is lost)
+- Services, ConfigMaps, Secrets, and HPA
 
 ---
 
 ## Health Checks
+
+Built-in endpoints are available for Kubernetes probes:
+
+- `/health` -- Liveness probe
+- `/ready` -- Readiness probe
+
+You can also create custom health walkers:
 
 ### Health Endpoint
 
@@ -986,7 +1607,11 @@ with entry {
 | `jac start app.jac` | Start local API server |
 | `jac start app.jac --scale` | Deploy to Kubernetes |
 | `jac start app.jac --scale --build` | Build image and deploy |
-| `jac destroy app.jac` | Remove Kubernetes deployment |
+| `jac start app.jac --scale --target kubernetes` | Explicit deployment target (default) |
+| `jac status app.jac` | Show live deployment status |
+| `jac status app.jac --target kubernetes` | Status for a specific target |
+| `jac destroy app.jac` | Remove Kubernetes deployment (prompts for confirmation) |
+| `jac destroy app.jac --target kubernetes` | Destroy a specific target |
 
 ---
 
@@ -997,6 +1622,277 @@ When server is running:
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
+
+---
+
+## Graph Visualization
+
+Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+
+- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+
+The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+
+| Endpoint | Description |
+|---|---|
+| `GET /graph` | Serves the graph visualization UI |
+| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+
+---
+
+## Prometheus Metrics
+
+jac-scale provides built-in Prometheus metrics collection for monitoring HTTP requests and walker execution. When enabled, a `/metrics` endpoint is automatically registered for Prometheus to scrape.
+
+### Configuration
+
+Configure metrics in `jac.toml`:
+
+```toml
+[plugins.scale.metrics]
+enabled = true                  # Enable metrics collection and /metrics endpoint
+endpoint = "/metrics"           # Prometheus scrape endpoint path
+namespace = "myapp"             # Metrics namespace prefix
+walker_metrics = true           # Enable per-walker execution timing
+histogram_buckets = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 10.0]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable Prometheus metrics collection and `/metrics` endpoint |
+| `endpoint` | string | `"/metrics"` | Path for the Prometheus scrape endpoint |
+| `namespace` | string | `"jac_scale"` | Metrics namespace prefix |
+| `walker_metrics` | bool | `false` | Enable walker execution timing metrics |
+| `histogram_buckets` | list | `[0.005, ..., 10.0]` | Histogram bucket boundaries in seconds |
+
+> **Note:** If `namespace` is not set, it is derived from the Kubernetes namespace config (sanitized) or defaults to `"jac_scale"`.
+
+### Exposed Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `{namespace}_http_requests_total` | Counter | `method`, `path`, `status_code` | Total HTTP requests processed |
+| `{namespace}_http_request_duration_seconds` | Histogram | `method`, `path` | HTTP request latency in seconds |
+| `{namespace}_http_requests_in_progress` | Gauge | -- | Concurrent HTTP requests |
+| `{namespace}_walker_duration_seconds` | Histogram | `walker_name`, `success` | Walker execution duration (only when `walker_metrics=true`) |
+
+### Authentication
+
+The `/metrics` endpoint requires admin authentication. Include the admin token in the `Authorization` header:
+
+```bash
+# Scrape metrics (admin token required)
+curl -H "Authorization: Bearer <admin_token>" http://localhost:8000/metrics
+```
+
+Unauthenticated requests receive a 403 Forbidden response. This protects sensitive server performance data from unauthorized access.
+
+### Admin Metrics Dashboard
+
+The admin portal includes a monitoring page that displays metrics in a visual dashboard. Access it at `/admin` and navigate to the Monitoring section.
+
+Additionally, the `/admin/metrics` endpoint returns parsed metrics as structured JSON:
+
+```bash
+curl -H "Authorization: Bearer <admin_token>" http://localhost:8000/admin/metrics
+```
+
+Response format:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "metrics": [
+      {
+        "name": "jac_scale_http_requests_total",
+        "type": "counter",
+        "help": "Total HTTP requests processed",
+        "values": [
+          {"labels": {"method": "GET", "path": "/", "status_code": "200"}, "value": 42}
+        ]
+      }
+    ],
+    "summary": {
+      "total_requests": 156,
+      "avg_latency_ms": 45.2,
+      "error_rate_percent": 0.5,
+      "active_requests": 2
+    }
+  }
+}
+```
+
+The admin dashboard monitoring page displays:
+
+- HTTP traffic breakdown by method and status code
+- Request latency statistics
+- Active requests gauge
+- System metrics (GC collections, memory usage, CPU time, file descriptors)
+
+Requests to the metrics endpoint itself are excluded from tracking.
+
+---
+
+## Kubernetes Secrets
+
+Manage sensitive environment variables securely in Kubernetes deployments using the `[plugins.scale.secrets]` section.
+
+### Configuration
+
+```toml
+[plugins.scale.secrets]
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+DATABASE_PASSWORD = "${DB_PASS}"
+STATIC_VALUE = "hardcoded-value"
+```
+
+Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`.
+
+### How It Works
+
+1. At `jac start app.jac --scale`, environment variable references (`${...}`) are resolved
+2. A Kubernetes `Opaque` Secret named `{app_name}-secrets` is created (or updated if it already exists)
+3. The Secret is attached to the deployment pod spec via `envFrom.secretRef`
+4. All keys become environment variables inside the container
+5. On `jac destroy`, the Secret is automatically cleaned up
+
+### Example
+
+```toml
+# jac.toml
+[plugins.scale.secrets]
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+MONGO_PASSWORD = "${MONGO_PASSWORD}"
+JWT_SECRET = "${JWT_SECRET}"
+```
+
+```bash
+# Set local env vars, then deploy
+export OPENAI_API_KEY="sk-..."
+export MONGO_PASSWORD="secret123"
+export JWT_SECRET="my-jwt-key"
+
+jac start app.jac --scale --build
+```
+
+This eliminates the need for manual `kubectl create secret` commands after deployment.
+
+---
+
+## Setting Up Kubernetes
+
+### Docker Desktop (Easiest)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Open Settings > Kubernetes
+3. Check "Enable Kubernetes"
+4. Click "Apply & Restart"
+
+### Minikube
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
+### MicroK8s (Linux)
+
+```bash
+sudo snap install microk8s --classic
+microk8s enable dns storage
+alias kubectl='microk8s kubectl'
+```
+
+---
+
+## Troubleshooting
+
+### Application Not Accessible
+
+```bash
+# Check pod status
+kubectl get pods
+
+# Check service
+kubectl get svc
+
+# For minikube, use tunnel
+minikube service jaseci
+```
+
+### Database Connection Issues
+
+```bash
+# Check StatefulSets
+kubectl get statefulsets
+
+# Check persistent volumes
+kubectl get pvc
+
+# View database logs
+kubectl logs -l app=mongodb
+kubectl logs -l app=redis
+```
+
+### Build Failures (--build mode)
+
+- Ensure Docker daemon is running
+- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+- Check disk space for image building
+
+### General Debugging
+
+```bash
+# Describe a pod for events
+kubectl describe pod <pod-name>
+
+# Get all resources
+kubectl get all
+
+# Check events
+kubectl get events --sort-by='.lastTimestamp'
+```
+
+---
+
+## Library Mode
+
+For teams preferring pure Python syntax or integrating Jac into existing Python codebases, Library Mode provides an alternative deployment approach. Instead of `.jac` files, you use Python files with Jac's runtime as a library.
+
+> **Complete Guide:** See [Library Mode](../language/library-mode.md) for the full API reference, code examples, and migration guide.
+
+**Key Features:**
+
+- All Jac features accessible through `jaclang.lib` imports
+- Pure Python syntax with decorators (`@on_entry`, `@on_exit`)
+- Full IDE/tooling support (autocomplete, type checking, debugging)
+- Zero migration friction for existing Python projects
+
+**Quick Example:**
+
+```python
+from jaclang.lib import Node, Walker, spawn, root, on_entry
+
+class Task(Node):
+    title: str
+    done: bool = False
+
+class TaskFinder(Walker):
+    @on_entry
+    def find(self, here: Task) -> None:
+        print(f"Found: {here.title}")
+
+spawn(TaskFinder(), root())
+```
 
 ---
 

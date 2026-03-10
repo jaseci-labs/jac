@@ -199,6 +199,6 @@ walker load_feed(visit_profile) {
 # ===================================================================
 
 # Main SPA entry point - simplified with reactive routing
-cl def littlex_app -> any {
+cl def littlex_app -> JsxElement {
     return App();
 }

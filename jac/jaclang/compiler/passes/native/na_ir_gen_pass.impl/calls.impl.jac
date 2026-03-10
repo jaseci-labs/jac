@@ -1,21 +1,37 @@
 """Function call codegen including builtins and method calls."""
-"""Generate function call."""
-impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
-    # Handle method calls: obj.method(args)
-    if isinstance(node.target, uni.AtomTrailer) and node.target.is_attr {
-        return self._codegen_method_call(node);
+
+"""Resolve a type name string to an LLVM type.
+
+Checks type_map (primitives), then struct_types (user-defined objs),
+falling back to i64 for unknown types.
+"""
+impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
+    if type_name in self.type_map {
+        return self.type_map[type_name];
     }
-    func_name = self._get_name(node.target);
+    if type_name in self.struct_types {
+        return self.struct_types[type_name].as_pointer();
+    }
+    return ir.IntType(64);
+}
+
+"""Generate function call."""
+impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    # Handle method calls: obj.method(args)
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        return self._codegen_method_call(nd);
+    }
+    func_name = self._get_name(nd.target);
     if func_name is None {
         return None;
     }
     # Handle print() specially
     if func_name == "print" {
-        return self._emit_print(node);
+        return self._emit_print(nd);
     }
     # Handle len() builtin for lists, dicts, sets, and strings
     if func_name == "len" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_name = self._get_name(params_l[0]);
             elem_type_name: (str | None) = None;
@@ -37,7 +53,8 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
                 # Check for dict type by inferring from value
                 for (dict_key, helpers) in self.dict_helpers.items() {
                     dict_type = self.dict_types.get(dict_key);
-                    if dict_type is not None and arg_val.type == dict_type.as_pointer() {
+                    if dict_type is not None
+                    and arg_val.type == dict_type.as_pointer() {
                         return self.builder.call(
                             helpers["len"], [arg_val], name="dict.len"
                         );
@@ -84,129 +101,201 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord() builtin: load first byte, zero-extend to i64
-    if func_name == "ord" {
-        params_l = node.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                byte_val = self.builder.load(arg_val, name="ord.byte");
-                return self.builder.zext(byte_val, ir.IntType(64), name="ord.val");
-            }
-        }
-    }
-    # Handle int() builtin: call strtol with ValueError check
-    if func_name == "int" {
-        params_l = node.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
+    # Handle complex() constructor: complex(real, imag) -> JacComplex*
+    if func_name == "complex" {
+        params_l = nd.params or [];
+        if len(params_l) >= 2 {
+            real_val = self._codegen_expr(params_l[0]);
+            imag_val = self._codegen_expr(params_l[1]);
+            if real_val is not None and imag_val is not None {
+                f64 = ir.DoubleType();
                 i64 = ir.IntType(64);
-                i32 = ir.IntType(32);
-                # strtol(str, &endptr, base) -> long
-                strtol_fn = self._get_or_declare_extern(
-                    "strtol", i64, [i8p, i8p.as_pointer(), i32]
+                real_f = self._coerce_type(real_val, f64)
+                    if not isinstance(real_val.type, ir.DoubleType)
+                    else real_val;
+                imag_f = self._coerce_type(imag_val, f64)
+                    if not isinstance(imag_val.type, ir.DoubleType)
+                    else imag_val;
+                ctype = self.complex_struct_type;
+                raw = self.builder.call(
+                    self.rc_alloc_fn, [ir.Constant(i64, 16)], name="complex.raw"
                 );
-                # Allocate endptr on the stack
-                endptr_alloca = self.builder.alloca(i8p, name="endptr");
-                # Call strtol(str, &endptr, 10)
-                result_val = self.builder.call(
-                    strtol_fn,
-                    [arg_val, endptr_alloca, ir.Constant(i32, 10)],
-                    name="strtol.result"
+                ptr = self.builder.bitcast(raw, ctype.as_pointer(), name="complex.ptr");
+                rp = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+                    name="complex.re.ptr"
                 );
-                # Check 1: endptr == str → nothing parsed
-                endptr_val = self.builder.load(endptr_alloca, name="endptr.val");
-                no_parse = self.builder.icmp_unsigned(
-                    "==", endptr_val, arg_val, name="int.noparse"
+                ip = self.builder.gep(
+                    ptr,
+                    [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
+                    name="complex.im.ptr"
                 );
-                self._emit_runtime_raise(
-                    no_parse, "ValueError", "invalid literal for int()"
-                );
-                # Check 2: *endptr != '\0' → trailing characters
-                end_char = self.builder.load(endptr_val, name="end.char");
-                has_trail = self.builder.icmp_unsigned(
-                    "!=", end_char, ir.Constant(ir.IntType(8), 0), name="int.trail"
-                );
-                self._emit_runtime_raise(
-                    has_trail, "ValueError", "invalid literal for int()"
-                );
-                return result_val;
+                self.builder.store(real_f, rp);
+                self.builder.store(imag_f, ip);
+                return ptr;
             }
         }
     }
-    # Handle chr() builtin: convert integer to single-character string
-    if func_name == "chr" {
-        params_l = node.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
-                # Allocate 2 bytes for character + null terminator
-                gc_malloc = self._get_or_declare_extern(
-                    "GC_malloc", i8p, [ir.IntType(64)]
-                );
-                str_ptr = self.builder.call(
-                    gc_malloc, [ir.Constant(ir.IntType(64), 2)], name="chr.buf"
-                );
-                # Truncate i64 to i8
-                byte_val = self.builder.trunc(arg_val, ir.IntType(8), name="chr.byte");
-                # Store character at index 0
-                self.builder.store(byte_val, str_ptr);
-                # Store null terminator at index 1
-                idx1_ptr = self.builder.gep(
-                    str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr"
-                );
-                self.builder.store(ir.Constant(ir.IntType(8), 0), idx1_ptr);
-                return str_ptr;
+    # Handle range() constructor: range(stop), range(start,stop), range(start,stop,step)
+    if func_name == "range" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            rtype = self.range_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="range.raw"
+            );
+            ptr = self.builder.bitcast(raw, rtype.as_pointer(), name="range.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="range.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="range.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="range.tp")
+            );
+            return ptr;
+        }
+    }
+    # Handle slice() constructor: slice(stop), slice(start,stop), slice(start,stop,step)
+    if func_name == "slice" {
+        params_l = nd.params or [];
+        i64 = ir.IntType(64);
+        i32 = ir.IntType(32);
+        start_v: (ir.Value | None) = None;
+        stop_v: (ir.Value | None) = None;
+        step_v: (ir.Value | None) = None;
+        if len(params_l) == 1 {
+            start_v = ir.Constant(i64, 0);
+            stop_v = self._codegen_expr(params_l[0]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) == 2 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = ir.Constant(i64, 1);
+        } elif len(params_l) >= 3 {
+            start_v = self._codegen_expr(params_l[0]);
+            stop_v = self._codegen_expr(params_l[1]);
+            step_v = self._codegen_expr(params_l[2]);
+        }
+        if start_v is not None and stop_v is not None and step_v is not None {
+            start_v = self._coerce_type(start_v, i64);
+            stop_v = self._coerce_type(stop_v, i64);
+            step_v = self._coerce_type(step_v, i64);
+            stype = self.slice_struct_type;
+            raw = self.builder.call(
+                self.rc_alloc_fn, [ir.Constant(i64, 24)], name="slice.raw"
+            );
+            ptr = self.builder.bitcast(raw, stype.as_pointer(), name="slice.ptr");
+            z0 = ir.Constant(i32, 0);
+            self.builder.store(
+                start_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 0)], name="slice.sp")
+            );
+            self.builder.store(
+                stop_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 1)], name="slice.ep")
+            );
+            self.builder.store(
+                step_v,
+                self.builder.gep(ptr, [z0, ir.Constant(i32, 2)], name="slice.tp")
+            );
+            return ptr;
+        }
+    }
+    # Handle multi-arg builtins via emitter dispatch
+    if func_name in (
+        "abs",
+        "min",
+        "max",
+        "pow",
+        "divmod",
+        "sum",
+        "any",
+        "all",
+        "format"
+    ) {
+        params_l = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params_l {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            result = self._dispatch_builtin(func_name, arg_vals);
+            if result is not None {
+                return result;
             }
         }
     }
-    # Handle str() builtin: convert int to string using snprintf
-    if func_name == "str" {
-        params_l = node.params or [];
+    # Handle ord, int, chr, str, hex, oct, bin, round, float, list, set builtins via emitter dispatch
+    if func_name in (
+        "ord",
+        "int",
+        "chr",
+        "str",
+        "hex",
+        "oct",
+        "bin",
+        "round",
+        "float",
+        "bool",
+        "sorted",
+        "reversed",
+        "list",
+        "set",
+        "frozenset",
+        "dict",
+        "bytes",
+        "bytearray",
+        "id",
+        "hash",
+        "repr",
+        "ascii"
+    ) {
+        params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
-                # Allocate buffer for string representation (32 bytes is plenty for integers)
-                gc_malloc = self._get_or_declare_extern(
-                    "GC_malloc", i8p, [ir.IntType(64)]
-                );
-                buf_ptr = self.builder.call(
-                    gc_malloc, [ir.Constant(ir.IntType(64), 32)], name="str.buf"
-                );
-                # Use snprintf to convert
-                snprintf = self._get_or_declare_extern(
-                    "snprintf",
-                    ir.IntType(32),
-                    [i8p, ir.IntType(64), i8p],
-                    var_arg=True
-                );
-                # Determine format string based on type
-                if isinstance(arg_val.type, ir.IntType) {
-                    fmt = self._get_fmt_string("%ld");
-                } elif isinstance(arg_val.type, ir.DoubleType) {
-                    fmt = self._get_fmt_string("%g");
-                } else {
-                    # Default to %ld
-                    fmt = self._get_fmt_string("%ld");
+                result = self._dispatch_builtin(func_name, [arg_val]);
+                if result is not None {
+                    return result;
                 }
-                fmt_ptr = self.builder.bitcast(fmt, i8p, name="str.fmt.ptr");
-                self.builder.call(
-                    snprintf,
-                    [buf_ptr, ir.Constant(ir.IntType(64), 32), fmt_ptr, arg_val],
-                    name="str.snprintf"
-                );
-                return buf_ptr;
             }
         }
     }
     # Handle input() builtin: printf prompt, fgets from stdin
     if func_name == "input" {
         i8p = ir.IntType(8).as_pointer();
-        params_l = node.params or [];
+        params_l = nd.params or [];
         # Print prompt if provided
         if params_l {
             prompt_val = self._codegen_expr(params_l[0]);
@@ -230,8 +319,9 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
         buf = self.builder.alloca(buf_type, name="input.buf");
         buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
         # Get stdin via fdopen or use __stdinp — use a simple approach with fgets(buf, size, stdin)
-        # Declare stdin as external global
-        stdin_name = "stdin";
+        # Declare stdin as external global (macOS uses __stdinp, Linux uses stdin)
+        import platform;
+        stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
         if stdin_name not in self.extern_funcs {
             stdin_type = i8p;
             stdin_global = ir.GlobalVariable(
@@ -257,9 +347,8 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
         self.builder.cbranch(is_eof, eof_bb, ok_bb);
         # EOF path: return empty string
         self.builder.position_at_start(eof_bb);
-        gc_malloc_eof = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
         eof_str = self.builder.call(
-            gc_malloc_eof, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
+            self.rc_alloc_fn, [ir.Constant(ir.IntType(64), 1)], name="eof.str"
         );
         self.builder.store(ir.Constant(ir.IntType(8), 0), eof_str);
         self.builder.branch(merge_bb);
@@ -269,12 +358,13 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
         # Strip trailing newline: find length, then set buf[len-1] = 0 if it's '\n'
         strlen_fn = self._get_or_declare_extern("strlen", ir.IntType(64), [i8p]);
         slen = self.builder.call(strlen_fn, [buf_ptr], name="input.len");
-        # Copy to GC-allocated string
-        gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [ir.IntType(64)]);
+        # Copy to RC-managed string
         alloc_size = self.builder.add(
             slen, ir.Constant(ir.IntType(64), 1), name="alloc.size"
         );
-        result_ptr = self.builder.call(gc_malloc, [alloc_size], name="input.result");
+        result_ptr = self.builder.call(
+            self.rc_alloc_fn, [alloc_size], name="input.result"
+        );
         memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, ir.IntType(64)]);
         self.builder.call(memcpy, [result_ptr, buf_ptr, alloc_size]);
         # Strip trailing newline if present (only if slen > 0)
@@ -333,11 +423,11 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle open() builtin for file I/O
     if func_name == "open" {
-        return self._emit_open(node);
+        return self._emit_open(nd);
     }
     # Handle object instantiation: ClassName(args)
     if func_name in self.struct_types {
-        return self._codegen_instantiation(node);
+        return self._codegen_instantiation(nd);
     }
     func = self.func_symtab.get(func_name);
     if func is None {
@@ -349,9 +439,9 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
                 # Declare extern function for this Python function (sv↔na)
                 param_ir_types: list = [];
                 for pt in binding.param_types {
-                    param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                    param_ir_types.append(self._resolve_type_str(pt));
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );
@@ -362,16 +452,16 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
                 param_ir_types: list = [];
                 if binding.param_types {
                     for pt in binding.param_types {
-                        param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                        param_ir_types.append(self._resolve_type_str(pt));
                     }
                 } else {
                     # Infer parameter types from call arguments
-                    params = node.params or [];
+                    params = nd.params or [];
                     for param in params {
                         param_ir_types.append(ir.IntType(64));  # Default to i64
                     }
                 }
-                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                ret_ir_type = self._resolve_type_str(binding.ret_type);
                 func = self._get_or_declare_extern(
                     func_name, ret_ir_type, param_ir_types
                 );
@@ -379,15 +469,75 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     if func is None {
+        # ── Indirect call via function-pointer local variable ────────────────
+        # If the callee name resolves to a local variable whose loaded type is
+        # a pointer to FunctionType (i.e., a Callable parameter), build an
+        # indirect call instead of giving up.
+        if func_name in self.local_vars {
+            _alloca = self.local_vars[func_name];
+            _loaded = self.builder.load(_alloca, name=f"fptr.{func_name}");
+            if (
+                isinstance(_loaded.type, ir.PointerType)
+                and isinstance(_loaded.type.pointee, ir.FunctionType)
+            ) {
+                _fn_type = _loaded.type.pointee;
+                _iargs: list[ir.Value] = [];
+                _iparams = nd.params or [];
+                for _ip in _iparams {
+                    _iv = self._codegen_expr(_ip);
+                    if _iv is not None {
+                        _iargs.append(_iv);
+                    }
+                }
+                _icoerced: list[ir.Value] = [];
+                for (_ii, _ia) in enumerate(_iargs) {
+                    if _ii < len(_fn_type.args) {
+                        _icoerced.append(self._coerce_type(_ia, _fn_type.args[_ii]));
+                    } else {
+                        _icoerced.append(_ia);
+                    }
+                }
+                return self.builder.call(
+                    _loaded, _icoerced, name=f"icall.{func_name}"
+                );
+            }
+        }
         return None;
+    }
+    # Propagate return type hint for for-loop element resolution
+    if func_name in self.method_ast_sigs {
+        fn_sig = self.method_ast_sigs[func_name];
+        if fn_sig?.return_type and fn_sig.return_type is not None {
+            self._last_type_node_hint = fn_sig.return_type;
+        }
     }
     # Build arguments
     args: list[ir.Value] = [];
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         val = self._codegen_expr(param);
         if val is not None {
             args.append(val);
+        }
+    }
+    # Fill in missing optional parameters with their AST default values
+    if func_name in self.method_ast_sigs and len(args) < len(func.args) {
+        sig_params = self.method_ast_sigs[func_name].get_parameters();
+        for pix in range(len(args), len(sig_params)) {
+            p = sig_params[pix];
+            expected_type = func.args[len(args)].type
+                if len(args) < len(func.args)
+                else ir.IntType(64);
+            if p.value is not None {
+                dval = self._codegen_expr(p.value);
+                if dval is not None {
+                    args.append(self._coerce_type(dval, expected_type));
+                } else {
+                    args.append(ir.Constant(expected_type, 0));
+                }
+            } else {
+                args.append(ir.Constant(expected_type, 0));
+            }
         }
     }
     # Type coerce arguments
@@ -399,6 +549,28 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             coerced.append(arg);
         }
     }
-    return self.builder.call(func, coerced, name=f"call.{func_name}");
+    result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
+    if func_name in self.clib_extern_names {
+        # Check ABI integer return types first (small structs coerced to int)
+        for (sname, abi_type) in self.clib_struct_abi_types.items() {
+            if result.type == abi_type {
+                result = self._coerce_type(
+                    result, self.struct_types[sname].as_pointer()
+                );
+                break;
+            }
+        }
+        # Check direct struct return types (larger structs)
+        if not isinstance(result.type, ir.PointerType) {
+            for (sname, stype) in self.struct_types.items() {
+                if sname in self.clib_struct_names and result.type == stype {
+                    result = self._coerce_type(result, stype.as_pointer());
+                    break;
+                }
+            }
+        }
+    }
+    return result;
 }
 # ─── External Function Support ───────────────────────────────

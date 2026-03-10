@@ -4,23 +4,23 @@ cl import from .level1.ButtonSecondL { ButtonSecondL }
 cl import from .level1.level2.ButtonThirdL { ButtonThirdL }
 cl import from .level1.Card { Card }
 
-cl def:pub app -> any {
+cl def:pub app -> JsxElement {
     return
         <div style={{padding: "20px"}}>
             <h1>
                 Nested Folder Levels Demo
             </h1>
             <div style={{margin: "10px 0"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <ButtonSecondL />
+                <ButtonSecondL/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <ButtonThirdL />
+                <ButtonThirdL/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <Card />
+                <Card/>
             </div>
         </div>;
 }

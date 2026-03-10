@@ -1,4 +1,4 @@
-def math;
+def math -> float;
 
 with entry {
     notmath = math();

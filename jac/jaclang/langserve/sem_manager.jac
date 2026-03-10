@@ -9,7 +9,7 @@ import from jaclang.langserve.utils {
     get_token_start,
     get_line_of_code
 }
-import lsprotocol.types as lspt;
+import jaclang.lsp.types as lspt;
 
 # Semantic token flat array field offsets.
 # Each token occupies TOK_STRIDE (5) consecutive ints:
@@ -27,10 +27,10 @@ obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
         sem_tokens: List[int] by postinit,
-        static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
+        static_sem_tokens:
+            List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 
     def postinit -> None;
-    def resolve_symbol(nd: uni.NameAtom) -> None;
     def collect_resolved_nodes(ir: uni.Module) -> list;
     def gen_sem_tokens(ir: uni.Module) -> list[int];
     def gen_sem_tok_node(

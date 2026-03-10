@@ -1,10 +1,14 @@
 # byLLM Quickstart
 
-Build your first AI-integrated function in Jac.
+byLLM is Jac's AI integration framework that lets you delegate function implementations to large language models. Instead of writing the logic yourself, you declare a function's signature -- its name, parameter names and types, and return type -- and end it with `by llm()`. The compiler uses these semantics to construct a prompt, calls the LLM at runtime, and validates the response against your declared return type.
+
+This is what Jac calls **Meaning-Typed Programming (MTP)**: the idea that a well-named function signature already describes what the function should do, and an LLM can infer the implementation from that meaning. It works because `translate_to_spanish(text: str) -> str` already tells the LLM everything it needs to know.
+
+In this tutorial, you'll set up byLLM, write your first AI-powered function, explore different model providers, and learn how to test AI functions with mocks.
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Jac installed with `pip install jaseci`
 > - An API key from OpenAI, Anthropic, or Google
 > - Time: ~20 minutes
@@ -41,24 +45,22 @@ export GOOGLE_API_KEY="..."
 Create `hello_ai.jac`:
 
 ```jac
-import from byllm.lib { Model }
-
-# Configure the LLM
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Translate the given text to French."""
-def translate(text: str) -> str by llm();
+def translate2french(text: str) -> str by llm();
+sem translate2french = "Translate the given text to French";
 
 with entry {
-    result = translate("Hello, how are you?");
+    result = translate2french("Hello, how are you?");
     print(result);
 }
 ```
 
+!!! tip "Zero-config `llm`"
+    `llm` is a **built-in** name -- no imports required. By default it uses `gpt-4o-mini` configured via your `jac.toml` (see [Configuration via jac.toml](#configuration-via-jactoml) below).
+
 Run it:
 
 ```bash
-jac hello_ai.jac
+jac run hello_ai.jac
 ```
 
 **Output:**
@@ -74,49 +76,104 @@ Bonjour, comment allez-vous ?
 The key is the `by llm()` syntax:
 
 ```jac
-def translate_to_french(text: str) -> str by llm();
+def translate2french(text: str) -> str by llm();
 ```
 
 | Part | Purpose |
 |------|---------|
-| `translate_to_french` | Function name conveys the intent |
+| `translate2french` | Function name conveys the intent |
 | `(text: str)` | Input parameter with descriptive name and type |
 | `-> str` | Expected return type |
 | `by llm()` | Delegates implementation to the LLM |
 
-The compiler extracts semantics from the code -- function name, parameter names, types, and return type -- and uses them to construct the LLM prompt. For additional context beyond what names and types convey, use `sem`:
+The compiler extracts semantics from the code -- function name, parameter names, types, and return type -- and uses them to construct the LLM prompt.
+
+### sem keyword
+
+Use the `sem` keyword to attach semantic descriptions to types, fields, functions, and parameters. These semantic strings are included in the compiler-generated prompt so the LLM sees them at runtime. Prefer `sem` for machine-readable guidance rather than embedding instructions in docstrings.
+
+Examples:
 
 ```jac
+# Attach semantics to a function
 sem translate = "Translate the given text to French. Preserve formatting and tone.";
 def translate(text: str) -> str by llm();
+
+# Attach semantics to a function parameter
+sem translate.text = "Short, plain-language input text to translate.";
+
+# Attach semantics to a type field
+obj Product { has price: float; }
+sem Product.price = "Price in USD, numeric value";
+
+# Attach semantics to an enum value
+enum Priority { LOW, MEDIUM, HIGH }
+sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
+
+!!! tip "Best practice"
+    Always use `sem` to provide context for `by llm()` functions. Docstrings are intended for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
 
 ---
 
 ## Different Providers
 
-### OpenAI
+byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giving you access to 100+ model providers. Set the model in your `jac.toml`:
+
+=== "OpenAI"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "gpt-4o-mini"
+    ```
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    ```
+
+=== "Anthropic"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "claude-sonnet-4-6"
+    ```
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    ```
+
+=== "Google"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "gemini/gemini-2.0-flash"
+    ```
+    ```bash
+    export GOOGLE_API_KEY="..."
+    ```
+
+=== "Ollama (Local)"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "ollama/llama3:70b"
+    ```
+    No API key needed - runs locally. See [Ollama](https://ollama.ai/) for setup.
+
+=== "HuggingFace"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "huggingface/meta-llama/Llama-3.3-70B-Instruct"
+    ```
+    ```bash
+    export HUGGINGFACE_API_KEY="hf_..."
+    ```
+
+You can also override the model per-file when needed:
 
 ```jac
-glob llm = Model(model_name="gpt-4o-mini");
-glob llm = Model(model_name="gpt-4o");
-glob llm = Model(model_name="gpt-4");
+import from byllm.lib { Model }
+glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
 ```
 
-### Anthropic
+For model name formats, configuration options, and 100+ additional providers (Azure, AWS Bedrock, Vertex AI, Groq, etc.), see the [byLLM Reference](../../reference/plugins/byllm.md#supported-providers) and [LiteLLM documentation](https://docs.litellm.ai/docs/providers).
 
-```jac
-glob llm = Model(model_name="claude-3-5-sonnet-20241022");
-glob llm = Model(model_name="claude-3-opus-20240229");
-glob llm = Model(model_name="claude-3-haiku-20240307");
-```
-
-### Google
-
-```jac
-glob llm = Model(model_name="gemini/gemini-2.0-flash");
-glob llm = Model(model_name="gemini/gemini-pro");
-```
+!!! tip "Model names change"
+    AI model names are updated regularly by providers. If an example's model name returns a "not found" error, check the provider's documentation for current model names. The `by llm()` syntax works with any model supported by [LiteLLM](https://docs.litellm.ai/docs/providers).
 
 ---
 
@@ -124,23 +181,15 @@ glob llm = Model(model_name="gemini/gemini-pro");
 
 ### Temperature
 
-Control creativity (0.0 = deterministic, 2.0 = very creative):
+Control creativity (0.0 = deterministic, higher = more creative):
+
+!!! note "Provider-Specific Limits"
+    Temperature range varies by provider: Anthropic supports 0.0–1.0, OpenAI supports 0.0–2.0. Use a value within your provider's range.
 
 ```jac
-"""Write a creative story about a robot."""
-def write_story(topic: str) -> str by llm(temperature=1.5);
+def write_story(topic: str) -> str by llm(temperature=0.9);
 
-"""Extract the main facts from this text."""
 def extract_facts(text: str) -> str by llm(temperature=0.0);
-```
-
-### Max Tokens
-
-Limit response length:
-
-```jac
-"""Summarize in one sentence."""
-def summarize(text: str) -> str by llm(max_tokens=100);
 ```
 
 ---
@@ -150,17 +199,12 @@ def summarize(text: str) -> str by llm(max_tokens=100);
 ### Sentiment Analysis
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 enum Sentiment {
     POSITIVE,
     NEGATIVE,
     NEUTRAL
 }
 
-"""Analyze the sentiment of this text."""
 def analyze_sentiment(text: str) -> Sentiment by llm();
 
 with entry {
@@ -180,12 +224,9 @@ with entry {
 ### Text Summarization
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Summarize this article in 2-3 bullet points."""
 def summarize(article: str) -> str by llm();
+
+sem summarize = "Summarize this article in 2-3 bullet points.";
 
 with entry {
     article = """
@@ -203,12 +244,9 @@ with entry {
 ### Code Generation
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Generate a Python function based on the description."""
 def generate_code(description: str) -> str by llm();
+
+sem generate_code = "Generate a Python function based on the description.";
 
 with entry {
     desc = "A function that checks if a string is a palindrome";
@@ -221,14 +259,20 @@ with entry {
 
 ## Configuration via jac.toml
 
-Set a global system prompt for all LLM calls in `jac.toml`:
+Control model, parameters, and system prompt in `jac.toml`:
 
 ```toml
+[plugins.byllm.model]
+default_model = "gpt-4o-mini"       # any LiteLLM-supported model
+
+[plugins.byllm.call_params]
+temperature = 0.7
+
 [plugins.byllm]
 system_prompt = "You are a helpful assistant."
 ```
 
-This applies to all `by llm()` functions, providing consistent behavior without repeating prompts in code.
+This applies to all `by llm()` functions, providing consistent behavior without repeating configuration in code.
 
 **Advanced:** For custom/self-hosted models with HTTP client, see [byLLM Reference](../../reference/plugins/byllm.md#project-configuration).
 
@@ -237,16 +281,11 @@ This applies to all `by llm()` functions, providing consistent behavior without 
 ## Error Handling
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Translate text to Spanish."""
-def translate(text: str) -> str by llm();
+def translate2spanish(text: str) -> str by llm();
 
 with entry {
     try {
-        result = translate("Hello");
+        result = translate2spanish("Hello");
         print(result);
     } except Exception as e {
         print(f"AI call failed: {e}");
@@ -270,14 +309,16 @@ glob llm = MockLLM(
     }
 );
 
-"""Translate text."""
 def translate(text: str) -> str by llm();
 
-test test_translate {
+test "translate" {
     result = translate("Hello");
     assert result == "Mocked response 1";
 }
 ```
+
+!!! tip "Running Tests"
+    Run with: `jac test <filename>.jac`
 
 ---
 
@@ -285,7 +326,7 @@ test test_translate {
 
 | Concept | Syntax |
 |---------|--------|
-| Configure LLM | `glob llm = Model(model_name="...")` |
+| Configure LLM | `jac.toml` `[plugins.byllm.model]` or `glob llm = Model(...)` |
 | AI function | `def func() -> Type by llm()` |
 | Semantic context | `sem func = "..."` |
 | Type safety | Return type annotation |
@@ -298,5 +339,5 @@ test test_translate {
 
 - [Structured Outputs](structured-outputs.md) - Return enums, objects, and lists
 - [Agentic AI](agentic.md) - Tool calling and ReAct patterns
-- [Part 2: Add AI](../first-app/part2-ai-features.md) - See AI integration in a complete full-stack app
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md#part-5-making-it-smart-with-ai) - See AI integration in a complete full-stack app
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation

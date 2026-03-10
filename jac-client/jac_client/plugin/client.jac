@@ -1,6 +1,7 @@
 """Jac Client plugin for client-side rendering."""
 import hashlib;
 import html;
+import json;
 import mimetypes;
 import types;
 import from http.server { BaseHTTPRequestHandler }
@@ -70,4 +71,9 @@ class JacClient {
 
     @hookimpl
     static def get_client_js(introspector: ModuleIntrospector) -> str;
+
+    @hookimpl
+    static def format_build_error(
+        error_output: str, project_dir: Path, config: object = None
+    ) -> str;
 }

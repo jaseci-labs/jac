@@ -6,133 +6,16 @@ impl SemTokManager.postinit -> None {
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
 }
 
-"""Resolve symbol for a NameAtom node.
-
-Searches hub modules to find and assign the correct symbol for an
-unresolved NameAtom. Sets nd.sym and nd.name_of so that the sem_token
-property computes correctly.
-"""
-impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
-    import from jaclang.jac0core.constant { JacSemTokenType }
-    if nd.sym is not None or not nd?.value {
-        return;
-    }
-    symbol = None;
-    # Handle member access (right side of AtomTrailer)
-    parent = nd.parent;
-    if isinstance(parent, uni.AtomTrailer) and parent.is_attr and parent.right == nd {
-        target = parent.target;
-        if isinstance(target, uni.NameAtom) and target.sym {
-            target_sym = target.sym;
-            if target_sym.decl and isinstance(target_sym.decl.name_of, uni.Archetype) {
-                archetype = target_sym.decl.name_of;
-                if member_sym := archetype.lookup(nd.value, deep=False) {
-                    symbol = member_sym;
-                }
-            }
-        }
-    }
-    # Scan hub modules
-    if symbol is None {
-        for (path, mod) in self.hub.items() {
-            if found := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
-                # Resolve imported symbols if needed
-                if found?.via_import and found?.via_import {
-                    if found.decl and found.decl?.name_of {
-                        if isinstance(found.decl.name_of, uni.ModuleItem) {
-                            if found.decl.name_of.sym {
-                                found = found.decl.name_of.sym;
-                            }
-                        }
-                    }
-                }
-                symbol = found;
-                break;
-            }
-        }
-    }
-    # Apply the resolved symbol to the node
-    if symbol is not None {
-        symbol.add_use(nd);
-        nd.sym = symbol;
-        if symbol.decl and symbol.decl.name_of {
-            nd.name_of = symbol.decl.name_of;
-        }
-        if nd.sem_token is None and symbol.decl and symbol.decl.name_of {
-            decl = symbol.decl.name_of;
-            if isinstance(decl, (uni.Architype, uni.Enum)) {
-                nd.sem_token = (JacSemTokenType.CLASS, 0);
-            } elif isinstance(decl, uni.Ability) {
-                nd.sem_token = (JacSemTokenType.FUNCTION, 0);
-            } elif isinstance(decl, uni.HasVar) {
-                nd.sem_token = (JacSemTokenType.PROPERTY, 0);
-            } else {
-                nd.sem_token = (JacSemTokenType.VARIABLE, 0);
-            }
-        }
-    }
-}
-
 """Collect all resolved NameAtom nodes from the module IR.
 
 Iterates all in-module nodes and collects those with valid semantic tokens.
-Resolves unresolved NameAtoms via hub lookup and patches ImplDef target names
-where DeclImplMatchPass sets name_spec.sym but NameAtom.sym reads _sym.
 """
 impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
     nodes: list = [];
-    # First pass: collect NameAtoms, resolving any that lack symbols.
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
-            self.resolve_symbol(nd);
             if nd.sem_token {
                 nodes.append(nd);
-            }
-        }
-    }
-    # Second pass: handle ImplDef target names and FuncSignature type annotations.
-    for nd in ir._in_mod_nodes {
-        if isinstance(nd, uni.ImplDef) {
-            # Patch target NameAtoms: DeclImplMatchPass sets name_spec.sym
-            # but NameAtom.sym reads from _sym, so copy from decl_link.
-            if nd.decl_link and nd.target {
-                method_nd = nd.target[-1];
-                if (
-                    isinstance(method_nd, uni.NameAtom)
-                    and method_nd.sym is None
-                    and nd.decl_link.sym
-                ) {
-                    method_nd.sym = nd.decl_link.sym;
-                }
-                if isinstance(method_nd, uni.NameAtom) and method_nd.sem_token {
-                    nodes.append(method_nd);
-                }
-            }
-            # Resolve type annotations in impl FuncSignature params/return.
-            if isinstance(nd.spec, uni.FuncSignature) {
-                sig = nd.spec;
-                all_params = (
-                    list(sig.posonly_params) + list(sig.params) + (
-                        [sig.varargs] if sig.varargs else []
-                    ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
-                );
-                for param in all_params {
-                    if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
-                        tag = param.type_tag.tag;
-                        if isinstance(tag, uni.NameAtom) {
-                            self.resolve_symbol(tag);
-                            if tag.sem_token {
-                                nodes.append(tag);
-                            }
-                        }
-                    }
-                }
-                if sig.return_type and isinstance(sig.return_type, uni.NameAtom) {
-                    self.resolve_symbol(sig.return_type);
-                    if sig.return_type.sem_token {
-                        nodes.append(sig.return_type);
-                    }
-                }
             }
         }
     }
@@ -163,6 +46,7 @@ impl SemTokManager.gen_sem_tok_node(
     } except Exception as e {
         logger.error(f"Error generating semantic token nodes: {e}");
     }
+    tokens.sort(key=lambda x: Any : (x[0].line, x[0].character));
     return tokens;
 }
 
@@ -305,8 +189,8 @@ impl SemTokManager.handle_multi_line_insertion(
             total_char_del = changing_line_text[1] + char_del;
         } else {
             total_char_del = sem_tokens[next_token_index + TOK_COL_DELTA]
-            if next_token_index + TOK_COL_DELTA < tok_count
-            else 0;
+                if next_token_index + TOK_COL_DELTA < tok_count
+                else 0;
             line_delta -= change_end_line - change_start_line;
         }
     }
@@ -424,8 +308,8 @@ impl SemTokManager.handle_multi_line_delete(
             sem_tokens[next_token_index + TOK_COL_DELTA] = (
                 total_char_del - prev_tok_pos[1]
             )
-            if prev_tok_pos[0] == change_start_line
-            else total_char_del;
+                if prev_tok_pos[0] == change_start_line
+                else total_char_del;
         }
     }
     if next_token_index + TOK_LINE_DELTA < tok_count {
@@ -470,12 +354,12 @@ impl SemTokManager.update_sem_tokens(
                 and change_start_char > (
                     prev_tok_pos[1] + sem_tokens[(prev_token_index + TOK_LENGTH)]
                 )
-                if prev_token_index
-                and (prev_token_index + TOK_LENGTH) < len(sem_tokens)
-                else 0
-                and change_end_line < nxt_tok_pos[0]
-                or change_end_line == nxt_tok_pos[0]
-                and change_end_char < nxt_tok_pos[1]
+                    if prev_token_index
+                    and (prev_token_index + TOK_LENGTH) < len(sem_tokens)
+                    else 0
+                    and change_end_line < nxt_tok_pos[0]
+                    or change_end_line == nxt_tok_pos[0]
+                    and change_end_char < nxt_tok_pos[1]
             );
             text = '%s' % change.text;
             line_delta = len(text.split('\n')) - 1;
@@ -483,13 +367,13 @@ impl SemTokManager.update_sem_tokens(
             is_next_token_same_line = change_end_line == nxt_tok_pos[0];
             if is_delete {
                 next_token_index = (prev_token_index + TOK_STRIDE)
-                if insert_inside_token
-                and prev_token_index is not None
-                or next_token_index
-                and prev_token_index is not None
-                and next_token_index >= 2 * TOK_STRIDE
-                and (next_token_index - prev_token_index) == 2 * TOK_STRIDE
-                else next_token_index;
+                    if insert_inside_token
+                    and prev_token_index is not None
+                    or next_token_index
+                    and prev_token_index is not None
+                    and next_token_index >= 2 * TOK_STRIDE
+                    and (next_token_index - prev_token_index) == 2 * TOK_STRIDE
+                    else next_token_index;
                 if next_token_index is None {
                     return sem_tokens;
                 }

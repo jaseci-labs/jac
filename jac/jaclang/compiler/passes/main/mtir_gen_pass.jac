@@ -62,13 +62,13 @@ obj MTIRGenPass(UniPass) {
     def _extract_class_info(symbol: uni.Symbol) -> ClassInfo | None;
 
     """Extract comprehensive information from an Ability node."""
-    def _extract_function_info(node: uni.Ability) -> FunctionInfo;
+    def _extract_function_info(nd: uni.Ability) -> FunctionInfo;
 
     """Extract method information from an Ability node."""
-    def _extract_method_info(node: uni.Ability, by_call: bool = False) -> MethodInfo;
+    def _extract_method_info(nd: uni.Ability, by_call: bool = False) -> MethodInfo;
 
     """Get a unique scope string for a given scope node."""
-    def _get_scope_str(node: uni.UniScopeNode) -> str;
+    def _get_scope_str(nd: uni.UniScopeNode) -> str;
 
     """Extract tools from a by clause expression."""
     def _extract_tools_from_expr(
@@ -76,5 +76,5 @@ obj MTIRGenPass(UniPass) {
     ) -> list[FunctionInfo];
 
     """Handle entering an ability node for MTIR generation."""
-    def enter_ability(node: uni.Ability) -> None;
+    def enter_ability(nd: uni.Ability) -> None;
 }

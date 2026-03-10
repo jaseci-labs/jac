@@ -1,7 +1,7 @@
 """List, set, and dict comprehension codegen."""
 """Generate code for a list comprehension [expr for x in iterable if cond]."""
-impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Determine element type from context
@@ -12,7 +12,7 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
     } else {
         # 2. Try to infer from first collection's element type
         # For [m for m in items], infer from items' element type
-        first_compr = node.compr[0];
+        first_compr = nd.compr[0];
         coll_name = self._get_name(first_compr.collection);
         if coll_name is not None and coll_name in self.var_type_node {
             hint = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
@@ -21,33 +21,33 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
             }
         }
         # 3. If output is a TupleVal, assume ptr type
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.TupleVal) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.TupleVal) {
             elem_type_name = "ptr";
         }
         # 4. If output is a struct instantiation (FuncCall to known struct), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.FuncCall) {
-            call_name = self._get_name(node.out_expr.target);
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.FuncCall) {
+            call_name = self._get_name(nd.out_expr.target);
             if call_name is not None and call_name in self.struct_types {
                 elem_type_name = "ptr";
             }
         }
         # 5. If output is a ListCompr (nested list comprehension), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListCompr) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.ListCompr) {
             elem_type_name = "ptr";
         }
         # 6. If output is a ListVal (list literal), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListVal) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.ListVal) {
             elem_type_name = "ptr";
         }
         # 7. If output is a Null (None), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.Null) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.Null) {
             elem_type_name = "ptr";
         }
         # 8. If output is a Name that's in a for-loop (same name as loop variable), use inferred type
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.Name) {
-            out_name = node.out_expr.value;
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.Name) {
+            out_name = nd.out_expr.value;
             # Check if out_name matches any of the comprehension loop variables
-            for compr in node.compr {
+            for compr in nd.compr {
                 target_name = self._get_name(compr.target);
                 if target_name == out_name {
                     # The output is the loop variable itself, infer from collection
@@ -80,7 +80,7 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
     # Create new empty list
     list_val = self.builder.call(helpers["new"], [], name="compr.list");
     # Generate nested loops for each InnerCompr
-    self._codegen_compr_loops(node.compr, 0, list_val, node.out_expr, elem_type_name);
+    self._codegen_compr_loops(nd.compr, 0, list_val, nd.out_expr, elem_type_name);
     return list_val;
 }
 
@@ -104,10 +104,12 @@ impl NaIRGenPass._codegen_compr_loops(
             helpers = self.list_helpers.get(elem_type_name);
             if helpers is not None {
                 # Bitcast pointer types to i8* for ptr lists
+                val = self._box_value_tuple(val);
                 if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                     i8p = ir.IntType(8).as_pointer();
                     val = self.builder.bitcast(val, i8p, name="compr.cast");
                 }
+                val = self._coerce_type(val, helpers["elem_type"]);
                 self.builder.call(helpers["append"], [list_val, val]);
             }
         }
@@ -156,7 +158,7 @@ impl NaIRGenPass._codegen_compr_loops(
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="compr.len");
     # Allocate loop index
-    idx_alloca = self.builder.alloca(i64, name="compr.idx");
+    idx_alloca = self._entry_alloca(i64, "compr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     # Resolve element type for ptr lists
     actual_elem_type = coll_helpers["elem_type"];
@@ -172,7 +174,7 @@ impl NaIRGenPass._codegen_compr_loops(
         }
     }
     # Allocate loop variable
-    loop_alloca = self.builder.alloca(actual_elem_type, name=loop_var_name);
+    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
     self.local_vars[loop_var_name] = loop_alloca;
     # Track type info for loop variable
     if inner_type is not None {
@@ -251,16 +253,16 @@ impl NaIRGenPass._codegen_compr_loops(
 }
 
 """Generate code for a dict comprehension {k: v for x in iterable if cond}."""
-impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Get key and value expressions from DictCompr's kv_pair
-    if node.kv_pair is None {
+    if nd.kv_pair is None {
         return None;
     }
-    key_expr = node.kv_pair.key;
-    val_expr = node.kv_pair.value;
+    key_expr = nd.kv_pair.key;
+    val_expr = nd.kv_pair.value;
     if key_expr is None or val_expr is None {
         return None;
     }
@@ -269,10 +271,24 @@ impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
     val_type_name = "i64";
     key_type = ir.IntType(64);
     val_type = ir.IntType(64);
+    key_size = 0;
     # Check if key is a tuple
     if isinstance(key_expr, uni.TupleVal) {
-        key_type_name = "ptr";
-        key_type = ir.IntType(8).as_pointer();
+        # Build the actual tuple struct type for proper key comparison
+        elem_types: list[ir.Type] = [];
+        for v in key_expr.values {
+            elem_types.append(ir.IntType(64));
+        }
+        n = len(elem_types);
+        tuple_key_str = f"Tuple.{n}." + ".".join([str(t) for t in elem_types]);
+        if tuple_key_str not in self.tuple_types {
+            struct_type = ir.LiteralStructType(elem_types);
+            self.tuple_types[tuple_key_str] = struct_type;
+        }
+        struct_type = self.tuple_types[tuple_key_str];
+        key_type = struct_type.as_pointer();
+        key_size = self._get_struct_size(struct_type);
+        key_type_name = f"tuple{key_size}";
     }
     # Check if value is a struct, tuple, or array access that returns a pointer
     if isinstance(val_expr, uni.TupleVal) {
@@ -298,7 +314,7 @@ impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
         }
     }
     # Ensure dict helpers exist
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type);
+    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
     if helpers is None {
@@ -307,9 +323,7 @@ impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
     # Create new empty dict
     dict_val = self.builder.call(helpers["new"], [], name="dcompr.dict");
     # Generate nested loops for each InnerCompr
-    self._codegen_dict_compr_loops(
-        node.compr, 0, dict_val, key_expr, val_expr, dict_key
-    );
+    self._codegen_dict_compr_loops(nd.compr, 0, dict_val, key_expr, val_expr, dict_key);
     return dict_val;
 }
 
@@ -332,16 +346,10 @@ impl NaIRGenPass._codegen_dict_compr_loops(
                 # Coerce to match helper's expected types
                 expected_key_type = helpers["key_type"];
                 expected_val_type = helpers["val_type"];
-                if key_val.type != expected_key_type {
-                    key_val = self.builder.bitcast(
-                        key_val, expected_key_type, name="dcompr.kcast"
-                    );
-                }
-                if value_val.type != expected_val_type {
-                    value_val = self.builder.bitcast(
-                        value_val, expected_val_type, name="dcompr.vcast"
-                    );
-                }
+                key_val = self._box_value_tuple(key_val);
+                key_val = self._coerce_type(key_val, expected_key_type);
+                value_val = self._box_value_tuple(value_val);
+                value_val = self._coerce_type(value_val, expected_val_type);
                 self.builder.call(helpers["set"], [dict_val, key_val, value_val]);
             }
         }
@@ -388,10 +396,10 @@ impl NaIRGenPass._codegen_dict_compr_loops(
     }
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="dcompr.len");
-    idx_alloca = self.builder.alloca(i64, name="dcompr.idx");
+    idx_alloca = self._entry_alloca(i64, "dcompr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     actual_elem_type = coll_helpers["elem_type"];
-    loop_alloca = self.builder.alloca(actual_elem_type, name=loop_var_name);
+    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="dcompr.cond");
@@ -486,7 +494,7 @@ impl NaIRGenPass._codegen_dict_compr_range_loop(
     i64 = ir.IntType(64);
     start_val = self._coerce_type(start_val, i64);
     stop_val = self._coerce_type(stop_val, i64);
-    loop_alloca = self.builder.alloca(i64, name=loop_var_name);
+    loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
@@ -545,16 +553,16 @@ impl NaIRGenPass._codegen_dict_compr_range_loop(
 }
 
 """Generate code for a set comprehension {expr for x in iterable if cond}."""
-impl NaIRGenPass._codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Determine element type and size
     elem_type_name = "i64";
     elem_type = ir.IntType(64);
     elem_size = 0;
-    out_expr = node.out_expr;
-    # Check if output is a tuple
+    out_expr = nd.out_expr;
+    # Check if output is a tuple literal
     if isinstance(out_expr, uni.TupleVal) {
         # Estimate tuple size from number of elements (assume int-sized elements)
         elem_count = len(out_expr.values) if out_expr.values else 0;
@@ -567,6 +575,39 @@ impl NaIRGenPass._codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None) {
             elem_type_name = "ptr";
             elem_type = ir.IntType(8).as_pointer();
         }
+    } elif isinstance(out_expr, uni.AtomTrailer) and out_expr.is_attr {
+        # Field access like m.to_pos — infer type from struct field definitions
+        field_name = self._get_name(out_expr.right);
+        target_name = self._get_name(out_expr.target);
+        if field_name is not None and target_name is not None and nd.compr {
+            loop_var = self._get_name(nd.compr[0].target);
+            if loop_var == target_name {
+                # Output accesses a field on the loop variable — infer loop var's struct type
+                loop_struct = self._infer_compr_elem_struct(nd.compr[0]);
+                if loop_struct is not None and loop_struct in self.struct_field_types {
+                    ftype = self.struct_field_types[loop_struct].get(field_name);
+                    if ftype is not None and isinstance(ftype, ir.PointerType) {
+                        pointee = ftype.pointee;
+                        if isinstance(pointee, ir.LiteralStructType) {
+                            # Tuple field — compute byte size
+                            total = 0;
+                            for el in pointee.elements {
+                                total += el.width // 8 if el?.width else 8;
+                            }
+                            elem_size = total;
+                            elem_type_name = f"tuple{elem_size}";
+                            elem_type = ir.IntType(8).as_pointer();
+                        } else {
+                            elem_type_name = "ptr";
+                            elem_type = ir.IntType(8).as_pointer();
+                        }
+                    } elif ftype is not None and isinstance(ftype, ir.IntType) {
+                        elem_type_name = "i64";
+                        elem_type = ftype;
+                    }
+                }
+            }
+        }
     }
     # Ensure set helpers exist
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);
@@ -577,7 +618,7 @@ impl NaIRGenPass._codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None) {
     # Create new empty set
     set_val = self.builder.call(helpers["new"], [], name="scompr.set");
     # Generate nested loops
-    self._codegen_set_compr_loops(node.compr, 0, set_val, out_expr, elem_type_name);
+    self._codegen_set_compr_loops(nd.compr, 0, set_val, out_expr, elem_type_name);
     return set_val;
 }
 
@@ -595,9 +636,17 @@ impl NaIRGenPass._codegen_set_compr_loops(
         if val is not None {
             helpers = self.set_helpers.get(elem_type_name);
             if helpers is not None {
-                i8p = ir.IntType(8).as_pointer();
-                if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
-                    val = self.builder.bitcast(val, i8p, name="scompr.cast");
+                # Coerce value to set's element type (e.g., tuple* → i8* for tuple sets)
+                expected_type = helpers["elem_type"];
+                if val.type != expected_type {
+                    if isinstance(val.type, ir.PointerType)
+                    and isinstance(expected_type, ir.PointerType) {
+                        val = self.builder.bitcast(
+                            val, expected_type, name="scompr.cast"
+                        );
+                    } else {
+                        val = self._coerce_type(val, expected_type);
+                    }
                 }
                 self.builder.call(helpers["add"], [set_val, val]);
             }
@@ -619,11 +668,25 @@ impl NaIRGenPass._codegen_set_compr_loops(
         }
     }
     # List iteration
+    self._last_type_node_hint = None;
     coll_val = self._codegen_expr(collection);
+    coll_type_hint = self._last_type_node_hint;
     if coll_val is None {
         return;
     }
     coll_elem_type_name = self._infer_list_elem_type(coll_val);
+    # Fallback: if coll_val is a generic ptr (e.g., from vtable dispatch),
+    # use the _last_type_node_hint (method return type AST) to infer list elem type.
+    if coll_elem_type_name is None and coll_type_hint is not None {
+        (_, inner_llvm_type, inner_elem_name) = self._peel_list_type(coll_type_hint);
+        if inner_elem_name is not None {
+            coll_elem_type_name = inner_elem_name;
+        }
+    }
+    # Fallback: if still None, treat unknown ptr results as ptr-element lists
+    if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
+        coll_elem_type_name = "ptr";
+    }
     if coll_elem_type_name is None {
         return;
     }
@@ -637,11 +700,27 @@ impl NaIRGenPass._codegen_set_compr_loops(
     }
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="scompr.len");
-    idx_alloca = self.builder.alloca(i64, name="scompr.idx");
+    idx_alloca = self._entry_alloca(i64, "scompr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     actual_elem_type = coll_helpers["elem_type"];
-    loop_alloca = self.builder.alloca(actual_elem_type, name=loop_var_name);
+    # Resolve inner element type for ptr lists (e.g., list[Move] -> Move*)
+    if coll_elem_type_name == "ptr" and coll_type_hint is not None {
+        (_, inner_llvm_type, _) = self._peel_list_type(coll_type_hint);
+        if inner_llvm_type is not None {
+            actual_elem_type = inner_llvm_type;
+        }
+    }
+    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
     self.local_vars[loop_var_name] = loop_alloca;
+    # Track struct type for the loop variable so field accesses work
+    if coll_elem_type_name == "ptr" and actual_elem_type != coll_helpers["elem_type"] {
+        for (sname, stype) in self.struct_types.items() {
+            if actual_elem_type == stype.as_pointer() {
+                self.type_var_map[loop_var_name] = sname;
+                break;
+            }
+        }
+    }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="scompr.cond");
     body_bb = func.append_basic_block(name="scompr.body");
@@ -657,6 +736,16 @@ impl NaIRGenPass._codegen_set_compr_loops(
     elem = self.builder.call(
         coll_helpers["get"], [coll_val, body_idx], name="scompr.elem"
     );
+    # Bitcast element if actual type differs from collection helper type
+    # (e.g., i8* from list[ptr].get → Move* for typed loop variable)
+    if elem.type != actual_elem_type {
+        if isinstance(elem.type, ir.PointerType)
+        and isinstance(actual_elem_type, ir.PointerType) {
+            elem = self.builder.bitcast(
+                elem, actual_elem_type, name="scompr.elem.cast"
+            );
+        }
+    }
     self.builder.store(elem, loop_alloca);
     if conditionals {
         filter_bb = func.append_basic_block(name="scompr.filter");
@@ -734,7 +823,7 @@ impl NaIRGenPass._codegen_set_compr_range_loop(
     i64 = ir.IntType(64);
     start_val = self._coerce_type(start_val, i64);
     stop_val = self._coerce_type(stop_val, i64);
-    loop_alloca = self.builder.alloca(i64, name=loop_var_name);
+    loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
@@ -826,7 +915,7 @@ impl NaIRGenPass._codegen_compr_range_loop(
     start_val = self._coerce_type(start_val, i64);
     stop_val = self._coerce_type(stop_val, i64);
     # Allocate loop variable
-    loop_alloca = self.builder.alloca(i64, name=loop_var_name);
+    loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;

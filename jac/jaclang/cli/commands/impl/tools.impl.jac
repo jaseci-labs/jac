@@ -5,40 +5,9 @@ Direct implementations - no delegation.
 
 import os;
 import from jaclang.cli.console { console }
-
-glob _runtime_initialized = False;
-
-"""Initialize Jac runtime once on first use."""
-def _ensure_jac_runtime -> None {
-    global _runtime_initialized;
-    if not _runtime_initialized {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        Jac.setup();
-        _runtime_initialized = True;
-    }
-}
-
-"""Create JacRuntime and return the base path, module name, and runtime state."""
-def _proc_file(filename: str) -> tuple {
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    (base, mod) = os.path.split(filename);
-    base = base or './';
-    if filename.endswith('.jac') {
-        mod = mod[:-4];
-    } elif filename.endswith('.py') {
-        mod = mod[:-3];
-    } else {
-        console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
-        `exit(1);
-    }
-    # Only set base path if not already set (allows tests to override)
-    if not Jac.base_path_dir {
-        Jac.set_base_path(base);
-    }
-    # Tools run in system context (no user authentication)
-    mach = Jac.create_j_context(user_root=None);
-    Jac.set_context(mach);
-    return (base, mod, mach);
+import from jaclang.cli.commands.cli_helpers {
+    ensure_jac_runtime as _ensure_jac_runtime,
+    proc_file as _proc_file
 }
 
 """Run the specified AST tool with optional arguments."""
@@ -83,9 +52,9 @@ impl dot(
         module = Jac.loaded_modules.get('__main__');
         mod_ns = vars(module) if module else {};
         try {
-            `node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
+            nd = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
             graph = printgraph(
-                `node=`node,
+                nd=nd,
                 depth=depth,
                 traverse=traverse,
                 edge_type=connection,
@@ -238,8 +207,8 @@ def _install_completion(shell: str, code: str) -> int {
         action = "Updated";
     } else {
         content = content.rstrip() + "\n\n" + new_block
-        if content.strip()
-        else new_block;
+            if content.strip()
+            else new_block;
         action = "Added";
     }
     try {
@@ -255,4 +224,57 @@ def _install_completion(shell: str, code: str) -> int {
         console.error(f"Error writing config: {e}");
         return 1;
     }
+}
+
+"""Regenerate (or verify) jir_registry.jac from the current unitree node classes."""
+impl gen_jir_registry(verify: bool = False) -> int {
+    import from jaclang.jac0core.gen_jir_registry { generate }
+    import from pathlib { Path }
+    import tempfile;
+    import subprocess;
+    import sys;
+    import jaclang;
+
+    registry_path = Path(jaclang.__file__).parent / "jac0core" / "jir_registry.jac";
+
+    try {
+        content = generate();
+    } except Exception as e {
+        console.error(f"Failed to generate registry: {e}");
+        return 1;
+    }
+
+    # Run jac format to get canonical output (formatter may expand long lines)
+    try {
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as tmp {
+            tmp.write(content);
+            tmp_path = tmp.name;
+        }
+        subprocess.run(
+            [sys.executable, '-m', 'jaclang', 'format', '--lintfix', tmp_path],
+            capture_output=True
+        );
+        content = Path(tmp_path).read_text();
+        Path(tmp_path).unlink(missing_ok=True);
+    } except Exception {
+        ;
+    }
+
+    if verify {
+        current = registry_path.read_text() if registry_path.exists() else "";
+        if current == content {
+            console.print("jir_registry.jac is up to date.");
+            return 0;
+        } else {
+            console.error(
+                "jir_registry.jac is OUT OF DATE. "
+                "Run `jac gen-jir-registry` to update."
+            );
+            return 1;
+        }
+    }
+
+    registry_path.write_text(content);
+    console.print(f"Generated {registry_path} ({len(content)} bytes)");
+    return 0;
 }

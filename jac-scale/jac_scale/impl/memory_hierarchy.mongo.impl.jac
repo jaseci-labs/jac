@@ -1,25 +1,17 @@
 """MongoDB PersistenceBackend Implementation."""
-import logging;
-import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps, loads }
-import from typing { Any, cast }
-import from uuid { UUID }
-import from pymongo { MongoClient, UpdateOne }
-import from pymongo.errors { ConnectionFailure }
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
-import from jaclang.runtimelib.utils { storage_key, to_uuid }
-
-glob logger = logging.getLogger(__name__);
 
 """Post-initialization: connect to MongoDB."""
 impl MongoBackend.postinit -> None {
+    if self.mongo_url is None {
+        self.mongo_url = _get_db_config().get('mongodb_uri');
+    }
     if self.client is None and self.mongo_url {
         try {
             self.client = MongoClient(self.mongo_url);
             self.db = self.client[self.db_name];
             self.collection = self.db[self.collection_name];
         } except Exception as e {
-            logger.debug(f"MongoDB connection failed: {e}");
+            logger.warning(f"MongoDB connection failed: {e}");
             self.client = None;
         }
     }
@@ -27,6 +19,9 @@ impl MongoBackend.postinit -> None {
 
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
+    if not self.mongo_url {
+        self.mongo_url = _get_db_config().get('mongodb_uri');
+    }
     if not self.mongo_url {
         return False;
     }
@@ -73,14 +68,14 @@ impl MongoBackend.put(anchor: Anchor) -> None {
     }
     _id = to_uuid(anchor.id);
     try {
-        data_blob = dumps(anchor);
+        data = Serializer.serialize(anchor, include_type=True);
         self.collection.update_one(
             {'_id': str(_id)},
-            {'$set': {'data': data_blob, 'type': type(anchor).__name__}},
+            {'$set': {'data': data, 'type': type(anchor).__name__}},
             upsert=True
         );
     } except Exception as e {
-        logger.debug(f"MongoDB put failed: {e}");
+        logger.error(f"MongoDB put failed: {e}");
     }
 }
 
@@ -203,11 +198,11 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
         }
         _id = to_uuid(anchor.id);
         try {
-            data_blob = dumps(anchor);
+            data = Serializer.serialize(anchor, include_type=True);
             ops.append(
                 UpdateOne(
                     {'_id': str(_id)},
-                    {'$set': {'data': data_blob, 'type': type(anchor).__name__}},
+                    {'$set': {'data': data, 'type': type(anchor).__name__}},
                     upsert=True
                 )
             );
@@ -230,10 +225,17 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         return None;
     }
     try {
-        data: bytes = raw['data'];
-        return loads(data);
+        data = raw['data'];
+        return Serializer.deserialize(data);
     } except Exception as e {
-        logger.debug(f"MongoDB _load_anchor failed: {e}");
+        doc_id = raw.get('_id', '<unknown>');
+        doc_type = raw.get('type', '<unknown>');
+        logger.warning(
+            f"MongoDB _load_anchor failed to deserialize anchor "
+            f"(id={doc_id}, type={doc_type}): {e}. "
+            f"This anchor will be skipped. Data may be from an incompatible "
+            f"version or the class definition has changed."
+        );
         return None;
     }
 }

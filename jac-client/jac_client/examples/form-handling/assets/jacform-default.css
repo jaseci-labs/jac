@@ -1,0 +1,38 @@
+.jac-form {
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.jac-form input,
+.jac-form select,
+.jac-form textarea {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.jac-form input:focus,
+.jac-form select:focus,
+.jac-form textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.jac-form-submit {
+    padding: 0.5rem 1rem;
+    background-color: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 1rem;
+}
+
+.jac-form-submit:hover:not(:disabled) {
+    background-color: #2563eb;
+}
+
+.jac-form-submit:disabled {
+    background-color: #93c5fd;
+    cursor: not-allowed;
+}

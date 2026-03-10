@@ -1,7 +1,4 @@
-import from byllm.lib { Model }
 import from pathlib { Path }
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 # Simple task object with semantic annotations
 obj Task {
@@ -31,9 +28,9 @@ sem CodeResult.status = "Task completion status: success or failed";
 sem CodeResult.feedback = "Validation feedback and suggestions";
 
 # Core AI functions
-def create_plan(request: str) -> list[Task] by llm(method="Reason");
-def generate_solution(task: Task) -> str by llm(method="Reason");
-def validate_code(code: str, task: Task) -> str by llm(method="Reason");
+def create_plan(request: str) -> list[Task] by llm();
+def generate_solution(task: Task) -> str by llm();
+def validate_code(code: str, task: Task) -> str by llm();
 
 # Nodes for walker traversal
 node TaskNode {

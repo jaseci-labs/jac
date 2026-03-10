@@ -9,7 +9,7 @@ cl def:pub ButtonSecondL -> JsxElement {
                 Second Level Button (imports from root)
             </Button>
             <div style={{marginTop: "10px"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
         </div>;
 }

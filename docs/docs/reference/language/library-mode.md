@@ -1,6 +1,6 @@
 # Jac Library Mode
 
-> **Part of:** [Part IX: Deployment](deployment.md)
+> **Part of:** [Part IX: Deployment](../plugins/jac-scale.md)
 >
 > **Related:** [Python Integration](python-integration.md) | [Part III: OSP](osp.md)
 
@@ -91,79 +91,82 @@ with entry {
 
 Run `jac jac2py friends.jac` to generate:
 
-```python
-from __future__ import annotations
-from jaclang.lib import (
-    Edge,
-    Node,
-    OPath,
-    Root,
-    Walker,
-    build_edge,
-    connect,
-    on_entry,
-    refs,
-    root,
-    spawn,
-    visit,
-)
+??? example "Generated Python code"
+    ```python
+    from **future** import annotations
+    from jaclang.lib import (
+        Edge,
+        Node,
+        OPath,
+        Root,
+        Walker,
+        build_edge,
+        connect,
+        on_entry,
+        refs,
+        root,
+        spawn,
+        visit,
+    )
+
+    class Person(Node):
+        name: str
+
+        @on_entry
+        def announce(self, visitor: FriendFinder) -> None:
+            print(f"{visitor} is checking me out")
 
 
-class Person(Node):
-    name: str
-
-    @on_entry
-    def announce(self, visitor: FriendFinder) -> None:
-        print(f"{visitor} is checking me out")
+    class Friend(Edge):
+        pass
 
 
-class Friend(Edge):
-    pass
+    class Family(Edge):
+
+        @on_entry
+        def announce(self, visitor: FriendFinder) -> None:
+            print(f"{visitor} is traveling to family member")
 
 
-class Family(Edge):
-
-    @on_entry
-    def announce(self, visitor: FriendFinder) -> None:
-        print(f"{visitor} is traveling to family member")
-
-
-# Build the graph
-p1 = Person(name="John")
-p2 = Person(name="Susan")
-p3 = Person(name="Mike")
-p4 = Person(name="Alice")
-connect(left=root(), right=p1)
-connect(left=p1, right=p2, edge=Friend)
-connect(left=p2, right=[p1, p3], edge=Family)
-connect(left=p2, right=p3, edge=Friend)
+    # Build the graph
+    p1 = Person(name="John")
+    p2 = Person(name="Susan")
+    p3 = Person(name="Mike")
+    p4 = Person(name="Alice")
+    connect(left=root(), right=p1)
+    connect(left=p1, right=p2, edge=Friend)
+    connect(left=p2, right=[p1, p3], edge=Family)
+    connect(left=p2, right=p3, edge=Friend)
 
 
-class FriendFinder(Walker):
-    started: bool = False
+    class FriendFinder(Walker):
+        started: bool = False
 
-    @on_entry
-    def report_friend(self, here: Person) -> None:
-        if self.started:
-            print(f"{here.name} is a friend of friend, or family")
-        else:
-            self.started = True
+        @on_entry
+        def report_friend(self, here: Person) -> None:
+            if self.started:
+                print(f"{here.name} is a friend of friend, or family")
+            else:
+                self.started = True
+                visit(self, refs(OPath(here).edge_out().visit()))
+            visit(
+                self,
+                refs(
+                    OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
+                ),
+            )
+
+        @on_entry
+        def move_to_person(self, here: Root) -> None:
             visit(self, refs(OPath(here).edge_out().visit()))
-        visit(
-            self,
-            refs(
-                OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
-            ),
-        )
-
-    @on_entry
-    def move_to_person(self, here: Root) -> None:
-        visit(self, refs(OPath(here).edge_out().visit()))
 
 
-result = spawn(FriendFinder(), root())
-print(result)
-```
+    result = spawn(FriendFinder(), root())
+    print(result)
+    ```
+
+!!! note
+    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
 
 ---
 
@@ -334,6 +337,9 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 ## **Complete Library Interface Reference**
 
+!!! warning "API Scope Notice"
+    The following reference includes both public API functions available via `from jaclang.lib import ...` and internal runtime functions that may not be directly importable. Core functions available for import include: `connect`, `disconnect`, `spawn`, `root`, `node`, `edge`, `walker`, `obj`, `Anchor`, `NodeAnchor`, `EdgeAnchor`, `WalkerAnchor`, `Root`. Other functions listed below may be internal to the runtime and subject to change.
+
 ### **Type Aliases & Constants**
 
 | Name | Type | Description |
@@ -462,7 +468,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 | Function | Description | Use Case |
 |----------|-------------|----------|
-| `by(model)` | Decorator for LLM-powered functions | `@by(model) def func(): ...` |
+| `by_operator(model)` | Decorator for LLM-powered functions | `@by_operator(model) def func(): ...` |
 | `call_llm(model, mtir)` | Direct LLM invocation | Advanced LLM usage |
 | `get_mtir(caller, args, call_params)` | Get method IR for LLM | LLM internal representation |
 | `sem(semstr, inner_semstr)` | Semantic metadata decorator | `@sem("doc", {"field": "desc"})` |

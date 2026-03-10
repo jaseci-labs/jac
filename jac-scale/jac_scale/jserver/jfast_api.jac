@@ -39,9 +39,9 @@ import from pydantic { BaseModel, Field, create_model }
 import from .jserver { APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType }
 import from jaclang.runtimelib.transport { TransportResponse }
 
-glob EndpointResponse: TypeAlias = Response | BaseModel | dict[(str, object)] | list[
-         object
-     ] | str | `bytes | None;
+glob EndpointResponse: TypeAlias = Response | BaseModel | dict[
+         (str, object)
+     ] | list[object] | str | `bytes | None;
 
 """Base protocol for parameter handlers."""
 obj ParameterHandler {
@@ -157,6 +157,9 @@ class JFastApiServer(JServer[FastAPI]) {
 
     def get_app(self: JFastApiServer) -> FastAPI;
     def run_server(
-        self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
+        self: JFastApiServer,
+        host: str = '0.0.0.0',
+        port: int = 8000,
+        max_retries: int = 10
     ) -> None;
 }

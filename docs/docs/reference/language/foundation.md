@@ -16,7 +16,7 @@
 
 ### 1 What is Jac?
 
-Jac is an AI-native full-stack programming language and superset of both Python and TypeScript/JavaScript. It introduces Object-Spatial Programming (OSP) and novel constructs for AI-integrated programming (such as `by llm()`), providing a unified language for backend, frontend, and AI development with full access to the PyPI and npm ecosystems.
+Jac is an AI-native full-stack programming language that supersets Python and JavaScript with native compilation support. It introduces Object-Spatial Programming (OSP) and novel constructs for AI-integrated programming (such as `by llm()`), providing a unified language for backend, frontend, and AI development with full access to the PyPI and npm ecosystems.
 
 ```jac
 with entry {
@@ -136,10 +136,14 @@ my_project/
 
 | Extension | Purpose |
 |-----------|---------|
-| `.jac` | Universal Jac code |
-| `.sv.jac` | Server-side only |
-| `.cl.jac` | Client-side only |
-| `.impl.jac` | Implementation file |
+| `.jac` | Universal Jac code (head module) |
+| `.sv.jac` | Server-variant code |
+| `.cl.jac` | Client-variant code |
+| `.na.jac` | Native-variant code (compiles to LLVM IR, JIT-executed) |
+| `.impl.jac` | Implementation file (annex) |
+| `.test.jac` | Test file (annex) |
+
+Files sharing the same base name form a single logical module. For example, `mymod.jac`, `mymod.sv.jac`, `mymod.cl.jac`, `mymod.impl.jac`, and `mymod.test.jac` are all part of the `mymod` module. Variant files (`.sv.jac`, `.cl.jac`, `.na.jac`) are automatically discovered and merged during compilation -- see [Variant Modules](functions-objects.md#variant-modules) for details.
 
 ### 4 Editor Setup
 
@@ -168,6 +172,9 @@ Jac source files are UTF-8 encoded. Unicode is fully supported in strings and co
 
 """Docstring for modules, classes, and functions"""
 ```
+
+!!! tip "Coming from Python"
+    The biggest syntactic differences: Jac uses **braces** `{ }` instead of indentation for blocks, and **semicolons** `;` to terminate statements. Everything else -- variables, control flow, imports -- is very similar to Python.
 
 ### 3 Statements and Expressions
 
@@ -202,14 +209,14 @@ Jac keywords are reserved and cannot be used as identifiers:
 |----------|----------|
 | **Archetypes** | `obj`, `node`, `edge`, `walker`, `class`, `enum` |
 | **Abilities** | `can`, `def`, `init`, `postinit` |
-| **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abs` |
+| **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abs`, `Self` |
 | **Control** | `if`, `elif`, `else`, `while`, `for`, `match`, `case`, `switch`, `default` |
-| **Loop** | `break`, `continue`, `skip` |
-| **Return** | `return`, `yield`, `report` |
+| **Loop** | `break`, `continue` |
+| **Return** | `return`, `yield`, `report`, `skip` |
 | **Exception** | `try`, `except`, `finally`, `raise`, `assert` |
 | **OSP** | `visit`, `disengage`, `spawn`, `here`, `root`, `visitor`, `entry`, `exit` |
 | **Module** | `import`, `include`, `from`, `as`, `glob` |
-| **Blocks** | `cl` (client), `sv` (server) |
+| **Blocks** | `cl` (client), `sv` (server), `na` (native) |
 | **Other** | `with`, `test`, `impl`, `sem`, `by`, `del`, `in`, `is`, `and`, `or`, `not`, `async`, `await`, `flow`, `wait`, `lambda`, `props` |
 
 **Note:** The abstract modifier keyword is `abs`, not `abstract`.
@@ -218,17 +225,26 @@ Jac keywords are reserved and cannot be used as identifiers:
 
 Valid identifiers start with a letter or underscore, followed by letters, digits, or underscores.
 
-To use a reserved keyword as an identifier, escape it with angle brackets:
+To use a reserved keyword as an identifier, escape it with a backtick prefix:
 
 ```jac
 obj Example {
-    has class_name: str;  # Field name (use <class> syntax for reserved words)
+    has `class: str;  # Backtick-escaped keyword used as identifier
 }
 ```
+
+!!! danger
+    Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
+
+!!! note "Special variable references don't need backtick escaping"
+    The following are **built-in references**, not regular identifiers. Use them directly without backticks: `self`, `Self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`. `self` is the current instance; `Self` is the enclosing type. For example, write `self.name`, `root ++> node`, and `def init()` -- never `` `self ``, `` `root ``, or `` `init ``.
 
 ### 7 Entry Point Variants
 
 Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
+
+!!! tip "Coming from Python"
+    Python's `if __name__ == "__main__":` becomes `with entry:__main__ { }`. Plain `with entry { }` runs every time the module loads (like top-level Python code).
 
 ```jac
 # Default entry - always runs when this module loads
@@ -265,6 +281,20 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `any` | Any type | -- |
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
+
+**Fixed-width types** (for native code and C interop):
+
+| Type | Description | C Equivalent |
+|------|-------------|--------------|
+| `i8`, `u8` | 8-bit signed/unsigned integer | `int8_t`, `uint8_t` |
+| `i16`, `u16` | 16-bit signed/unsigned integer | `int16_t`, `uint16_t` |
+| `i32`, `u32` | 32-bit signed/unsigned integer | `int32_t`, `uint32_t` |
+| `i64`, `u64` | 64-bit signed/unsigned integer | `int64_t`, `uint64_t` |
+| `f32` | 32-bit float | `float` |
+| `f64` | 64-bit float | `double` |
+| `c_void` | Opaque pointer | `void*` |
+
+These types are used in `.na.jac` files for C library interop. The compiler automatically coerces between Jac's standard types (`int` = `i64`, `float` = `f64`) and fixed-width types at call boundaries.
 
 ### 2 Type Annotations
 
@@ -304,7 +334,29 @@ obj Container {
 }
 ```
 
-### 4 Union Types
+### 4 The `Self` Type
+
+`Self` (capital S) is a special type that refers to the enclosing archetype. It is distinct from `self` (lowercase), which refers to the current instance.
+
+```jac
+obj Node {
+    has value: int = 0,
+        next: Self | None = None;  # Self = Node in type annotations
+
+    class def create(v: int) -> Self {  # Self = cls in class methods
+        return Self(value=v);
+    }
+
+    def set_next(n: Self) -> Self {  # Self as parameter and return type
+        self.next = n;
+        return self;
+    }
+}
+```
+
+`Self` is polymorphic -- in a subclass, it resolves to the subclass type, not the parent. See [Class Methods and Self](functions-objects.md#6-static-methods-and-class-methods) for usage details.
+
+### 5 Union Types
 
 ```jac
 obj Example {
@@ -316,7 +368,7 @@ def process(data: list[int] | dict[str, int]) -> None {
 }
 ```
 
-### 5 Type References
+### 6 Type References
 
 Type references are used in OSP operations like filtering graph traversals by node type. The `Root` keyword refers to the root node type in entry/exit clauses, and the `(?:TypeName)` syntax filters collections or traversals by type.
 
@@ -327,7 +379,7 @@ def example() {
 }
 ```
 
-### 6 Literals
+### 7 Literals
 
 **Numbers:**
 
@@ -362,7 +414,7 @@ def example() {
 }
 ```
 
-### 7 F-String Format Specifications
+### 8 F-String Format Specifications
 
 F-strings support powerful formatting with the syntax `{expression:format_spec}`.
 
@@ -503,6 +555,18 @@ def example() {
 }
 ```
 
+??? example "Try it: Literals and collections"
+    ```jac
+    with entry {
+        name = "Jac";
+        nums = [1, 2, 3, 4, 5];
+        info = {"language": name, "version": "0.10"};
+        evens = [x for x in nums if x % 2 == 0];
+        print(f"{name} evens: {evens}");
+        print(f"Info: {info}");
+    }
+    ```
+
 ---
 
 ## Variables and Scope
@@ -526,6 +590,9 @@ def example() {
 ### 2 Instance Variables (has)
 
 The `has` keyword declares instance variables in a clean, declarative style. Unlike Python's `self.x = value` pattern scattered throughout `__init__`, `has` statements appear at the top of your class definition, making the data model immediately visible. This design improves readability for both humans and AI code generators.
+
+!!! tip "Coming from Python"
+    In Python you write `self.x = value` inside `__init__`. In Jac, `has x: Type = value;` at the top of an `obj` replaces both the `__init__` parameter and the assignment -- no `self` needed for declarations.
 
 ```jac
 obj Person {
@@ -553,12 +620,16 @@ obj Rectangle {
 
 ### 3 Global Variables (glob)
 
+The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments.
+
+!!! tip "Coming from Python"
+    Python uses plain global assignment (`DEBUG = True`) and the `global` keyword inside functions. Jac uses `glob` for declarations (`glob DEBUG: bool = True;`) and still uses `global` inside functions to modify them.
+
 ```jac
 glob PI: float = 3.14159;
 glob config: dict = {};
 
 with entry {
-    global PI;
     print(PI);
 }
 ```
@@ -893,12 +964,12 @@ obj User {
     has profile: Profile | None = None;
 }
 
-def example(obj: User | None, user: User | None) {
-    # Without null-safe: raises AttributeError if obj is None
-    value = obj.profile;
+def example(item: User | None, user: User | None) {
+    # Without null-safe: raises AttributeError if item is None
+    value = item.profile;
 
-    # With null-safe: returns None if obj is None
-    value = obj?.profile;
+    # With null-safe: returns None if item is None
+    value = item?.profile;
 
     # Chained - stops at first None
     result = user?.profile?.settings;
@@ -906,6 +977,8 @@ def example(obj: User | None, user: User | None) {
 ```
 
 **Safe index access (`?[]`):**
+
+The `?[]` operator safely handles both `None` containers and invalid subscripts. It returns `None` instead of raising `IndexError`, `KeyError`, or `TypeError`:
 
 ```jac
 def example(my_list: list | None, config: dict | None) {
@@ -917,6 +990,14 @@ def example(my_list: list | None, config: dict | None) {
 
     # Works with dictionaries too
     value = config?["key"];
+
+    # Also handles out-of-bounds indices
+    items = [1, 2, 3];
+    result = items?[10];         # None (no IndexError)
+
+    # And missing dictionary keys
+    data = {"a": 1};
+    result = data?["missing"];   # None (no KeyError)
 }
 ```
 
@@ -932,9 +1013,9 @@ obj Data {
     }
 }
 
-def example(obj: Data | None, data: Data | None) {
-    # Returns None if obj is None, doesn't call method
-    result = obj?.transform("x");
+def example(item: Data | None, data: Data | None) {
+    # Returns None if item is None, doesn't call method
+    result = item?.transform("x");
 
     # Chained with arguments
     output = data?.transform("param")?.format();
@@ -1109,7 +1190,7 @@ obj Builder {
 
 def example() {
     # Dot forward pipe
-    result = Builder() .> add(5) .> double;
+    result = Builder() .> add(5) .> double();
 
     # Equivalent to:
     result = Builder().add(5).double();
@@ -1166,19 +1247,35 @@ When the `byllm` plugin is installed, `by` enables LLM delegation:
 
 ```jac
 # Function implementation delegated to LLM
-"""Summarize the given text."""
 def summarize(text: str) -> str by llm();
+sem summarize = "Summarize the given text in 2-3 sentences";
 
-"""Translate text to French."""
 def translate(text: str) -> str by llm(model_name="gpt-4");
+sem translate = "Translate the given text to French";
 
 with entry {
-    # Expression processed by LLM
     result = summarize("Hello world");
 }
 ```
 
-See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
+Use the **`sem` keyword** to attach semantic descriptions to functions, parameters, and fields. These descriptions are included in the compiler-generated prompt, giving the LLM additional context beyond what it can infer from names and types:
+
+```jac
+obj Ingredient {
+    has name: str;
+    has cost: float;
+}
+sem Ingredient.cost = "Estimated cost in USD";
+
+def plan_shopping(recipe: str) -> list[Ingredient] by llm();
+sem plan_shopping = "Generate a shopping list for the given recipe";
+sem plan_shopping.recipe = "A description of the meal to prepare";
+```
+
+!!! tip
+    Always use `sem` to provide context for `by llm()` functions. Docstrings are for human documentation and are not included in compiler-generated prompts.
+
+See [Part V: AI Integration](../plugins/byllm.md) for detailed LLM usage.
 
 ### 10 Operator Precedence
 
@@ -1267,6 +1364,19 @@ def example() {
 }
 ```
 
+??? example "Try it: Operators"
+    ```jac
+    with entry {
+        x = 10;
+        y = 3;
+        print(f"{x} + {y} = {x + y}");
+        print(f"{x} ** {y} = {x ** y}");
+        print(f"{x} > {y} = {x > y}");
+        print(f"not False = {not False}");
+        print(f"{x} in [1,5,10] = {x in [1, 5, 10]}");
+    }
+    ```
+
 ---
 
 ## Control Flow
@@ -1352,6 +1462,9 @@ def example() {
 
 Pattern matching lets you destructure and test complex data in a single construct. Unlike a chain of `if/elif` statements, `match` can extract values from lists, dicts, and objects while testing their structure. Use it when handling multiple data shapes or implementing state machines.
 
+!!! warning "Common Gotcha"
+    Match case bodies use **Python-style indentation**, not braces. The `case` keyword is followed by a colon, and the body is indented -- this is the one place in Jac where indentation matters.
+
 **Basic Patterns:**
 
 ```jac
@@ -1435,7 +1548,7 @@ def example(value: int) {
 }
 ```
 
-Note: Unlike C, there is no fall-through between cases.
+Note: Like C, cases fall through to subsequent cases. Use `break` to prevent fall-through.
 
 ### 6 Loop Control
 
@@ -1684,6 +1797,131 @@ def example() {
 }
 ```
 
+??? example "Try it: Control flow and generators"
+    ```jac
+    def fizzbuzz(n: int) -> str {
+        if n % 15 == 0 { return "FizzBuzz"; }
+        elif n % 3 == 0 { return "Fizz"; }
+        elif n % 5 == 0 { return "Buzz"; }
+        return str(n);
+    }
+
+    def countdown(n: int) -> Generator[int] {
+        while n > 0 {
+            yield n;
+            n -= 1;
+        }
+    }
+
+    with entry {
+        results = [fizzbuzz(i) for i in range(1, 16)];
+        print(results);
+        print([x for x in countdown(5)]);
+    }
+    ```
+
+---
+
+## Native Compilation
+
+Jac supports compiling to native machine code via LLVM for performance-critical workloads. Native code runs as pure machine code with zero Python interpreter overhead.
+
+### .na.jac Files
+
+Files ending in `.na.jac` are compiled to native code via LLVM IR:
+
+```bash
+# Run a native Jac file
+jac run compute.na.jac
+```
+
+Native code can also be part of a larger module via variant annexing. Given `main.jac`, a sibling `main.na.jac` is automatically discovered, compiled, and merged as the native codespace.
+
+### Supported Features
+
+The native backend supports:
+
+- Primitive types: `int`, `float`, `bool`, `str`
+- Fixed-width C types: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `c_void`
+- Collections: `list`, `dict`, `set` with literals, subscript, iteration, and comprehensions
+- Control flow: `if`/`elif`/`else`, `for`, `while`, `match`
+- Functions, closures, and cross-module imports
+- Context managers (`with` statements)
+- Python/native interop (native functions can call Python and vice versa)
+
+### C Library Imports
+
+Import C shared libraries directly in native Jac code:
+
+<!-- jac-skip -->
+```jac
+# compute.na.jac
+import from "libm" {
+    def sin(x: f64) -> f64;
+    def cos(x: f64) -> f64;
+    def sqrt(x: f64) -> f64;
+}
+
+with entry {
+    result = sqrt(sin(1.0) ** 2 + cos(1.0) ** 2);
+    print(result);  # 1.0
+}
+```
+
+C structs can be declared inside library import blocks and used as normal Jac objects with automatic value-type coercion at call boundaries:
+
+<!-- jac-skip -->
+```jac
+import from "libgraphics" {
+    obj Color {
+        has r: u8, g: u8, b: u8, a: u8;
+    }
+    def set_pixel(x: i32, y: i32, color: Color) -> c_void;
+}
+```
+
+### Python-Native Interop
+
+Native and Python codespaces can call each other within the same module:
+
+```jac
+# main.jac (Python/server codespace)
+sv {
+    def process_data(data: list) -> list {
+        # Python code with full PyPI access
+        return sorted(data);
+    }
+}
+
+# main.na.jac (native codespace)
+import from ...main { process_data }
+
+with entry {
+    # Native code calling Python function
+    result = process_data([3, 1, 2]);
+}
+```
+
+### Standalone Binaries
+
+Self-contained `.na.jac` files (those with a `with entry {}` block and no Python dependencies) can be compiled to standalone native executables:
+
+```bash
+# Compile to a standalone binary
+jac nacompile program.na.jac
+
+# Run it directly -- no jac or Python needed
+./program
+```
+
+The `nacompile` command requires no external compiler, assembler, or linker. The entire pipeline runs in pure Python:
+
+1. The Jac compiler generates LLVM IR from the `.na.jac` source
+2. llvmlite emits native object code for the host architecture
+3. A built-in pure-Python ELF linker produces a dynamically-linked executable
+
+The resulting binary links only against `libc` at runtime. See [`jac nacompile`](../../reference/cli/index.md#jac-nacompile) for full usage details.
+
 ---
 
 ## Learn More
@@ -1691,7 +1929,7 @@ def example() {
 **Tutorials:**
 
 - [Jac Basics](../../tutorials/language/basics.md) - Step-by-step introduction to Jac syntax
-- [Hello World](../../quick-guide/hello-world.md) - Your first Jac program
+- [Installation](../../quick-guide/install.md) - Setup and your first Jac program
 
 **Related Reference:**
 

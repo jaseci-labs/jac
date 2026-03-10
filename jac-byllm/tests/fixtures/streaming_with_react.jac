@@ -43,7 +43,7 @@ glob llm = Model(
 
 """Answer the question using available tools."""
 def answer_question(question: str) -> str by llm(
-    method="ReAct", tools=[get_current_date, calculate], stream=True
+    tools=[get_current_date, calculate], stream=True
 );
 
 with entry {

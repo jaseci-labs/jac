@@ -11,18 +11,18 @@ cl import from '@mui/icons-material/Remove' { default as RemoveIcon }
 cl import from '@mui/icons-material/Refresh' { default as RefreshIcon }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
-            console.log("Count changed: ", count);
+            print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: any  -> None { count = count + 1;};
+        handleIncrement = lambda e: Any  -> None { count = count + 1;};
 
-        handleDecrement = lambda e: any  -> None { count = count - 1;};
+        handleDecrement = lambda e: Any  -> None { count = count - 1;};
 
-        handleReset = lambda e: any  -> None { count = 0;};
+        handleReset = lambda e: Any  -> None { count = 0;};
 
         return
             <Box
@@ -44,7 +44,7 @@ cl {
                         >
                             Counter Application
                         </Typography>
-                        <Divider sx={{"my": 2}} />
+                        <Divider sx={{"my": 2}}/>
                         <Box
                             sx={{
                                 "display": "flex",
@@ -53,11 +53,7 @@ cl {
                                 "py": 3
                             }}
                         >
-                            <Typography
-                                variant="h6"
-                                color="text.secondary"
-                                gutterBottom
-                            >
+                            <Typography variant="h6" color="text.secondary" gutterBottom>
                                 Current Count
                             </Typography>
                             <Typography
@@ -66,15 +62,17 @@ cl {
                                 sx={{
                                     "fontWeight": "bold",
                                     "color": "success.main"
-                                    if count > 0
-                                    else "error.main" if count < 0 else "text.primary"
+                                        if count > 0
+                                        else "error.main"
+                                            if count < 0
+                                            else "text.primary"
                                 }}
                             >
                                 {count}
                             </Typography>
                         </Box>
                     </CardContent>
-                    <Divider />
+                    <Divider/>
                     <CardActions
                         sx={{
                             "display": "flex",
@@ -88,7 +86,7 @@ cl {
                             onClick={handleDecrement}
                             sx={{"border": "2px solid", "borderColor": "error.main"}}
                         >
-                            <RemoveIcon />
+                            <RemoveIcon/>
                         </IconButton>
                         <IconButton
                             color="primary"
@@ -96,7 +94,7 @@ cl {
                             onClick={handleReset}
                             sx={{"border": "2px solid", "borderColor": "primary.main"}}
                         >
-                            <RefreshIcon />
+                            <RefreshIcon/>
                         </IconButton>
                         <IconButton
                             color="success"
@@ -104,7 +102,7 @@ cl {
                             onClick={handleIncrement}
                             sx={{"border": "2px solid", "borderColor": "success.main"}}
                         >
-                            <AddIcon />
+                            <AddIcon/>
                         </IconButton>
                     </CardActions>
                     <Box sx={{"px": 3, "pb": 2}}>

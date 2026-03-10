@@ -19,36 +19,38 @@ cl def:pub BudgetPlanner -> JsxElement {
     # Filter transactions based on selected category
     filtered = budget["transactions"];
     if filter != "ALL" {
-        filtered = filtered.filter(
-            lambda tx: dict  -> bool { return tx["category"] == filter; }
-        );
+        filtered = [
+            tx
+            for tx in filtered
+            if tx["category"] == filter
+        ];
     }
 
     # Sort by date (newest first)
     sorted = filtered.slice().sort(
-        lambda a: dict , b: dict  -> int { return Reflect.construct(Date, [b["date"]]).getTime() - Reflect.construct(
-            Date, [a["date"]]
-        ).getTime(); }
+        lambda a: dict , b: dict  -> int { return Reflect.construct(
+            Date, [b["date"]]
+        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime(); }
     );
 
     # Prepare chart data with colors
-    chartData = budget["expensesByCategory"].map(
-        lambda item: dict  -> dict { return {
+    chartData = [
+        {
             "name": item["name"],
             "value": item["value"],
             "color": CATEGORY_COLORS[item["name"]]
-        }; }
-    );
+        } for item in budget["expensesByCategory"]
+    ];
 
     return
         <div className="app-container">
-            <Header />
+            <Header/>
             <main className="main-content">
                 <div className="left-panel">
-                    <Summary />
-                    <ProfitOverview />
-                    <TransactionForm />
-                    <CategoryFilter selectedCategory={filter} onSelect={setFilter} />
+                    <Summary/>
+                    <ProfitOverview/>
+                    <TransactionForm/>
+                    <CategoryFilter selectedCategory={filter} onSelect={setFilter}/>
                     <TransactionList
                         transactions={sorted}
                         onDelete={budget["deleteTransaction"]}

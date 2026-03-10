@@ -13,18 +13,18 @@ cl import from .styled {
 }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
-            console.log("Count changed: ", count);
+            print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: any  -> None { count = count + 1;};
+        handleIncrement = lambda e: Any  -> None { count = count + 1;};
 
-        handleDecrement = lambda e: any  -> None { count = count - 1;};
+        handleDecrement = lambda e: Any  -> None { count = count - 1;};
 
-        handleReset = lambda e: any  -> None { count = 0;};
+        handleReset = lambda e: Any  -> None { count = 0;};
 
         return
             <Container>

@@ -163,7 +163,7 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> N
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8');
         console.print("  ✔ Generated manifest.json", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate manifest.json: {e}") ;
+        raise RuntimeError(f"Failed to generate manifest.json: {e}");
     }
 }
 
@@ -187,7 +187,9 @@ def _build_service_worker_content(cache_name: str, precache_files: list[str]) ->
 const CACHE_NAME = '{cache_name}';
 const PRECACHE_ASSETS = [
   './',
-  {', '.join(precache_files)}
+  {', '.join(
+        precache_files
+    )}
 ];
 
 // Install event - precache assets
@@ -250,7 +252,7 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict) -> None {
         sw_path.write_text(sw_content, encoding='utf-8');
         console.print("  ✔ Generated sw.js (service worker)", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate service worker: {e}") ;
+        raise RuntimeError(f"Failed to generate service worker: {e}");
     }
 }
 
@@ -313,12 +315,12 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             console.print("  ✔ Updated index.html with PWA support", style="success");
         }
     } except Exception as e {
-        raise RuntimeError(f"Failed to update index.html for PWA: {e}") ;
+        raise RuntimeError(f"Failed to update index.html for PWA: {e}");
     }
 }
 
 """Setup PWA target - copies default icons and configures jac.toml."""
-impl PWATarget.setup(self: PWATarget, project_dir: Path) -> None {
+impl PWATarget.setup(project_dir: Path) -> None {
     console.print("\n📱 Setting up PWA target", style="bold");
     icons_dest = project_dir / "pwa_icons";
     if not icons_dest.exists() {
@@ -394,17 +396,16 @@ background_color = "#ffffff"
     }
 }
 
-"""Build PWA bundle - web bundle + manifest + service worker."""
+"""Build PWA bundle - web bundle + manifest + service worker.
+
+Uses super().build() to get the web bundle, then adds PWA artifacts.
+"""
 impl PWATarget.build(
-    self: PWATarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
+    entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
     console.print("\n📱 Building PWA target", style="bold");
-    web_target = WebTarget();
-    bundle_path = web_target.build(entry_file, project_dir, platform);
+    # Use inherited WebTarget.build() via super()
+    bundle_path = super.build(entry_file, project_dir, platform);
     bundler = ViteBundler(project_dir=project_dir);
     dist_dir = bundler.output_dir;
     (pwa_config, project_name) = _load_pwa_context();
@@ -418,20 +419,28 @@ impl PWATarget.build(
     return bundle_path;
 }
 
-"""Start PWA dev server."""
-impl PWATarget.dev(self: PWATarget, entry_file: Path, project_dir: Path) -> None {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
+"""Start PWA dev server - delegates to WebTarget.dev() via super().
+
+Service worker is disabled in dev mode for better developer experience.
+"""
+impl PWATarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
     console.print("\n📱 Starting PWA dev server", style="bold");
     console.print(
         "  Note: Service worker is disabled in dev mode for better DX", style="muted"
     );
-    web_target = WebTarget();
-    web_target.dev(entry_file, project_dir);
+    # Delegate to inherited WebTarget.dev()
+    super.dev(entry_file, project_dir, api_port);
 }
 
-"""Start PWA - no-op, handled by cli.jac which builds PWA then lets normal jac start serve."""
+"""Start PWA in production preview mode - builds PWA then serves.
+
+Delegates to WebTarget.start() via super() after building PWA artifacts.
+"""
 impl PWATarget.start(
-    self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    return;
+    # Build PWA first (which calls super().build() + adds PWA artifacts)
+    self.build(entry_file, project_dir, None);
+    # Then serve using inherited WebTarget.start()
+    super.start(entry_file, project_dir, api_port);
 }

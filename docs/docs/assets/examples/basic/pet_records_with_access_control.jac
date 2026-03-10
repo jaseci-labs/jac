@@ -64,9 +64,7 @@ with entry {
 }
 
 # Update contact through public method
-glob success = pet.update_owner_contact(
-         "new_owner@example.com"
-     );
+glob success = pet.update_owner_contact("new_owner@example.com");
 
 with entry {
     print(f"Contact updated: {success}");

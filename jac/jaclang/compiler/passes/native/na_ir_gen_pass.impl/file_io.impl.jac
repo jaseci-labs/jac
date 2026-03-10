@@ -20,12 +20,7 @@ impl NaIRGenPass._get_file_struct_type -> ir.Type {
     self._file_struct_type = file_struct;
     # Register as a known struct type for method calls and field access
     self.struct_types["File"] = file_struct;
-    self.struct_field_indices["File"] = {
-        "handle": 0,
-        "path": 1,
-        "mode": 2,
-        "closed": 3
-    };
+    self.struct_field_indices["File"] = {"handle": 0, "path": 1, "mode": 2, "closed": 3};
     self.struct_field_types["File"] = {
         "handle": i8p,
         "path": i8p,
@@ -60,8 +55,8 @@ impl NaIRGenPass._emit_file_helpers -> None {
     ftell_fn = self._get_or_declare_extern("ftell", i64, [i8p]);
     fseek_fn = self._get_or_declare_extern("fseek", i32, [i8p, i64, i32]);
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [i64]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    rc_alloc_fn = self.rc_alloc_fn;
     # ── File.read(): read entire file contents as string ──
     read_fnty = ir.FunctionType(i8p, [file_ptr_type]);
     read_fn = ir.Function(self.llvm_module, read_fnty, name="File.read");
@@ -79,9 +74,9 @@ impl NaIRGenPass._emit_file_helpers -> None {
     b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);  # SEEK_END = 2
     file_size = b.call(ftell_fn, [handle], name="file.size");
     b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);  # SEEK_SET = 0
-    # Allocate buffer (size + 1 for null terminator)
+    # Allocate buffer (size + 1 for null terminator) via rc_alloc
     buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
-    buffer = b.call(gc_malloc, [buf_size], name="read.buf");
+    buffer = b.call(rc_alloc_fn, [buf_size], name="read.buf");
     # Read file contents
     bytes_read = b.call(
         fread_fn, [buffer, ir.Constant(i64, 1), file_size, handle], name="bytes.read"
@@ -140,14 +135,14 @@ impl NaIRGenPass._emit_file_helpers -> None {
     b.cbranch(is_eof, eof_bb, ok_bb);
     # EOF: return empty string
     b.position_at_end(eof_bb);
-    empty = b.call(gc_malloc, [ir.Constant(i64, 1)], name="empty.str");
+    empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
     b.store(ir.Constant(i8, 0), empty);
     b.ret(empty);
     # OK: copy to GC memory
     b.position_at_end(ok_bb);
     slen = b.call(strlen_fn, [buf_ptr], name="line.len");
     alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
-    line_str = b.call(gc_malloc, [alloc_size], name="line.str");
+    line_str = b.call(rc_alloc_fn, [alloc_size], name="line.str");
     b.call(memcpy_fn, [line_str, buf_ptr, alloc_size]);
     b.ret(line_str);
     # ── File.close(): close the file handle ──
@@ -232,7 +227,7 @@ impl NaIRGenPass._emit_file_helpers -> None {
 
 # ─── open() Builtin ─────────────────────────────────────────
 """Emit code for open(path, mode) builtin: allocate File struct, call fopen."""
-impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
+impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
@@ -243,7 +238,7 @@ impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
     self._emit_file_helpers();
     file_ptr_type = file_struct.as_pointer();
     # Get arguments: path (required), mode (optional, default "r")
-    params = node.params or [];
+    params = nd.params or [];
     if not params {
         return None;
     }
@@ -260,9 +255,7 @@ impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Call fopen(path, mode)
     fopen_fn = self._get_or_declare_extern("fopen", i8p, [i8p, i8p]);
-    file_handle = self.builder.call(
-        fopen_fn, [path_val, mode_val], name="fopen.result"
-    );
+    file_handle = self.builder.call(fopen_fn, [path_val, mode_val], name="fopen.result");
     # Check for NULL (file open failure)
     func = self.builder.function;
     null_bb = func.append_basic_block(name="open.null");
@@ -278,15 +271,14 @@ impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
     null_bb_end = self.builder.block;
     # OK path: allocate and initialize File struct
     self.builder.position_at_end(ok_bb);
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8p, [i64]);
     # Compute sizeof(File) using GEP-from-null trick
     null_file_ptr = ir.Constant(file_ptr_type, None);
     size_gep = self.builder.gep(
         null_file_ptr, [ir.Constant(i32, 1)], name="file.sizeof"
     );
     file_size = self.builder.ptrtoint(size_gep, i64, name="file.size");
-    # Allocate
-    raw = self.builder.call(gc_malloc, [file_size], name="file.raw");
+    # Allocate via rc_alloc (RC-managed)
+    raw = self.builder.call(self.rc_alloc_fn, [file_size], name="file.raw");
     file_obj = self.builder.bitcast(raw, file_ptr_type, name="file.obj");
     # Store fields
     # handle

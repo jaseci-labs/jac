@@ -11,6 +11,12 @@ enum APIProtocol ( StrEnum ) {
     WEBSOCKET = 'websocket'
 }
 
+"""Trigger mode for a scheduled task."""
+enum ScheduleTrigger ( StrEnum ) {
+    STATIC = 'static',
+    DYNAMIC = 'dynamic'
+}
+
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
@@ -51,10 +57,12 @@ def _get_commit -> Callable[..., Any];
 
 def _get_store -> Callable[..., Any];
 
+def _get_llm -> object;
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
-    `node: (NodeArchetype | None) = None,
+    nd: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,
@@ -69,6 +77,8 @@ def _jac_graph_json(file: (str | None) = None) -> str;
 
 def restspec(**specs: Any) -> Callable;
 
+def schedule(**kwargs: Any) -> Callable;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -79,10 +89,13 @@ glob __all__ = [
          'save',
          'commit',
          'store',
+         'llm',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',
          'WritePerm',
          'restspec',
+         'schedule',
+         'ScheduleTrigger',
          'APIProtocol'
      ];

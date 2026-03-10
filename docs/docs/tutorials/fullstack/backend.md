@@ -1,6 +1,8 @@
 # Backend Integration
 
-Connect your frontend components to Jac walkers for data fetching and mutations.
+The real power of Jac's full-stack model is how seamlessly client components connect to server logic. Instead of manually defining REST endpoints, writing fetch calls, and parsing JSON, you simply call server-side functions or spawn walkers from your client code -- the compiler generates the HTTP layer automatically. Data goes from your graph through walkers, over the network, and into your React-style components with minimal boilerplate.
+
+This tutorial shows how to call backend functions from the frontend, use walkers for graph-based data operations, handle loading states, and structure your server-client communication.
 
 > **Prerequisites**
 >
@@ -12,16 +14,29 @@ Connect your frontend components to Jac walkers for data fetching and mutations.
 
 ## How It Works
 
-In Jac full-stack apps:
+In Jac full-stack apps, the compiler handles the client-server boundary for you. Here's the mental model:
 
-1. **Backend** = Walkers that process data and return results
+1. **Backend** = Functions or walkers that process data and return results
 2. **Frontend** = Components in `cl { }` blocks
-3. **Connection** = `useWalker` hook fetches walker results
+3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root spawn Walker()`)
 
 ```mermaid
 graph LR
-    Frontend["Frontend<br/>Component"] <-- "HTTP/WS<br/>useWalker()" --> Backend["Walker<br/>API"]
+    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root spawn" --> Backend["Functions or<br/>Walker API"]
 ```
+
+### Two Backend Approaches
+
+Jac offers two ways to create backend endpoints:
+
+| Approach | Syntax | Best For |
+|----------|--------|----------|
+| **Functions** | `def:pub get_tasks -> list { ... }` | Simple CRUD, quick prototyping |
+| **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
+
+Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
+
+Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data isolation. See the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md) for both approaches side by side.
 
 ---
 
@@ -111,17 +126,40 @@ walker:pub delete_task {
 
 ---
 
-## The useWalker Hook
+## Calling Walkers from Frontend
 
-### Basic Usage
+### Basic Pattern with `root spawn`
+
+Use `root spawn walker_name()` to call walkers from client code:
 
 ```jac
-cl {
-    import from jac_client { useWalker }
+# Import walkers from your main module
+sv import from ...main { get_tasks, add_task, toggle_task }
 
-    def:pub TaskList() -> any {
-        # Fetch data from walker
-        (data, loading, error, refetch) = useWalker("get_tasks");
+cl {
+    def:pub TaskList() -> JsxElement {
+        has tasks: list = [];
+        has loading: bool = True;
+        has error: str = "";
+
+        # Fetch data on component mount
+        async can with entry {
+            await load_tasks();
+        }
+
+        async def load_tasks() -> None {
+            loading = True;
+            error = "";
+            try {
+                result = root spawn get_tasks();
+                if result.reports and result.reports.length > 0 {
+                    tasks = result.reports[0];
+                }
+            } except Exception as e {
+                error = f"Failed to load: {e}";
+            }
+            loading = False;
+        }
 
         if loading {
             return <p>Loading tasks...</p>;
@@ -132,101 +170,75 @@ cl {
         }
 
         return <ul>
-            {data.map(lambda task: any -> any {
-                return <li key={task["id"]}>{task["title"]}</li>;
-            })}
+            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
         </ul>;
     }
 }
 ```
 
-### useWalker Returns
+### Understanding `root spawn` Results
 
-| Value | Type | Description |
-|-------|------|-------------|
-| `data` | any | Walker's reported data |
-| `loading` | bool | True while fetching |
-| `error` | str | Error message if failed |
-| `refetch` | function | Call to re-fetch data |
+| Property | Type | Description |
+|----------|------|-------------|
+| `result.reports` | list | Array of reported values from walker |
+| `result.reports[0]` | any | First reported value (most common) |
 
 ---
 
-## Passing Parameters to Walkers
+## Mutations (Create, Update, Delete)
 
 ```jac
+sv import from ...main { get_tasks, add_task, toggle_task, delete_task }
+
 cl {
-    import from jac_client { useWalker }
-
-    def:pub FilteredTasks() -> any {
-        has show_completed: bool = False;
-
-        # Pass parameters to walker
-        (data, loading, error, refetch) = useWalker(
-            "get_tasks",
-            {"filter_completed": show_completed}
-        );
-
-        return <div>
-            <label>
-                <input
-                    type="checkbox"
-                    checked={show_completed}
-                    onChange={lambda -> None {
-                        show_completed = not show_completed;
-                    }}
-                />
-                Show completed only
-            </label>
-
-            {loading and <p>Loading...</p>}
-
-            <ul>
-                {data and data.map(lambda task: any -> any {
-                    return <li key={task["id"]}>{task["title"]}</li>;
-                })}
-            </ul>
-        </div>;
-    }
-}
-```
-
----
-
-## Mutations with callWalker
-
-For create, update, delete operations, use `callWalker`:
-
-```jac
-cl {
-    import from jac_client { useWalker, callWalker }
-
-    def:pub TaskManager() -> any {
+    def:pub TaskManager() -> JsxElement {
+        has tasks: list = [];
         has new_title: str = "";
+        has loading: bool = True;
 
-        # Fetch tasks
-        (tasks, loading, error, refetch) = useWalker("get_tasks");
+        # Load tasks on mount
+        async can with entry {
+            await load_tasks();
+        }
+
+        async def load_tasks() -> None {
+            loading = True;
+            result = root spawn get_tasks();
+            if result.reports and result.reports.length > 0 {
+                tasks = result.reports[0];
+            }
+            loading = False;
+        }
 
         # Add new task
         async def handle_add() -> None {
-            if new_title {
-                result = await callWalker("add_task", {"title": new_title});
-                if result {
-                    new_title = "";
-                    refetch();  # Refresh the list
+            if new_title.trim() {
+                result = root spawn add_task(title=new_title.trim());
+                if result.reports and result.reports.length > 0 {
+                    tasks = tasks + [result.reports[0]];
                 }
+                new_title = "";
             }
         }
 
         # Toggle task completion
         async def handle_toggle(task_id: str) -> None {
-            await callWalker("toggle_task", {"task_id": task_id});
-            refetch();
+            result = root spawn toggle_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = [
+                    {**t, "completed": not t["completed"]}
+                    if t["id"] == task_id else t
+                    for t in tasks
+                ];
+            }
         }
 
         # Delete task
         async def handle_delete(task_id: str) -> None {
-            await callWalker("delete_task", {"task_id": task_id});
-            refetch();
+            result = root spawn delete_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = [t for t in tasks if t["id"] != task_id];
+            }
         }
 
         return <div>
@@ -234,6 +246,9 @@ cl {
                 <input
                     value={new_title}
                     onChange={lambda e: any -> None { new_title = e.target.value; }}
+                    onKeyDown={lambda e: any -> None {
+                        if e.key == "Enter" { handle_add(); }
+                    }}
                     placeholder="New task..."
                 />
                 <button onClick={lambda -> None { handle_add(); }}>
@@ -244,8 +259,8 @@ cl {
             {loading and <p>Loading...</p>}
 
             <ul className="task-list">
-                {tasks and tasks.map(lambda task: any -> any {
-                    return <li key={task["id"]}>
+                {[
+                    <li key={task["id"]}>
                         <input
                             type="checkbox"
                             checked={task["completed"]}
@@ -257,8 +272,9 @@ cl {
                         <button onClick={lambda -> None { handle_delete(task["id"]); }}>
                             Delete
                         </button>
-                    </li>;
-                })}
+                    </li>
+                    for task in tasks
+                ]}
             </ul>
         </div>;
     }
@@ -272,10 +288,10 @@ cl {
 ### Try-Catch Pattern
 
 ```jac
-cl {
-    import from jac_client { callWalker }
+sv import from ...main { submit_data }
 
-    def:pub SafeSubmit() -> any {
+cl {
+    def:pub SafeSubmit() -> JsxElement {
         has error_msg: str = "";
         has submitting: bool = False;
 
@@ -284,11 +300,14 @@ cl {
             error_msg = "";
 
             try {
-                result = await callWalker("submit_data", data);
-                if not result["success"] {
-                    error_msg = result["error"];
+                result = root spawn submit_data(payload=data);
+                if result.reports and result.reports.length > 0 {
+                    response = result.reports[0];
+                    if not response["success"] {
+                        error_msg = response["error"];
+                    }
                 }
-            } except e {
+            } except Exception as e {
                 error_msg = f"Network error: {e}";
             }
 
@@ -308,16 +327,32 @@ cl {
 }
 ```
 
-### Loading States
+### Loading States Pattern
 
 ```jac
 cl {
-    def:pub DataView() -> any {
+    def:pub DataView() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
         has error: str = "";
 
-        # Pattern: loading → data | error
+        async can with entry {
+            await fetch_data();
+        }
+
+        async def fetch_data() -> None {
+            loading = True;
+            try {
+                result = root spawn get_data();
+                if result.reports and result.reports.length > 0 {
+                    data = result.reports[0];
+                }
+            } except Exception as e {
+                error = f"Failed to load: {e}";
+            }
+            loading = False;
+        }
+
         if loading {
             return <div className="skeleton">
                 <div className="skeleton-line"></div>
@@ -328,14 +363,14 @@ cl {
         if error {
             return <div className="error">
                 <p>{error}</p>
-                <button onClick={lambda -> None { refetch(); }}>
+                <button onClick={lambda -> None { fetch_data(); }}>
                     Retry
                 </button>
             </div>;
         }
 
         return <div className="data">
-            {data}
+            {JSON.stringify(data)}
         </div>;
     }
 }
@@ -345,49 +380,38 @@ cl {
 
 ## Real-Time Updates
 
-### Polling
+### Polling Pattern
 
 ```jac
 cl {
     import from react { useEffect }
-    import from jac_client { useWalker }
 
-    def:pub LiveData() -> any {
-        (data, loading, error, refetch) = useWalker("get_live_data");
+    def:pub LiveData() -> JsxElement {
+        has data: any = None;
+        has loading: bool = True;
+
+        async def fetch_data() -> None {
+            result = root spawn get_live_data();
+            if result.reports and result.reports.length > 0 {
+                data = result.reports[0];
+            }
+            loading = False;
+        }
+
+        # Initial fetch
+        async can with entry {
+            await fetch_data();
+        }
 
         # Poll every 5 seconds
         useEffect(lambda -> None {
-            interval = setInterval(lambda -> None { refetch(); }, 5000);
+            interval = setInterval(lambda -> None { fetch_data(); }, 5000);
             return lambda -> None { clearInterval(interval); };
         }, []);
 
         return <div>
-            <p>Last updated: {data and data["timestamp"]}</p>
-        </div>;
-    }
-}
-```
-
-### WebSocket (if supported)
-
-```jac
-cl {
-    import from react { useEffect }
-    import from jac_client { useWalkerStream }
-
-    def:pub StreamingData() -> any {
-        # Subscribe to walker updates
-        (data, connected) = useWalkerStream("watch_updates");
-
-        return <div>
-            <span className={("online" if connected else "offline")}>
-                {("Connected" if connected else "Disconnected")}
-            </span>
-            <ul>
-                {data.map(lambda item: any -> any {
-                    return <li key={item["id"]}>{item["message"]}</li>;
-                })}
-            </ul>
+            {loading and <p>Loading...</p>}
+            {data and <p>Last updated: {data["timestamp"]}</p>}
         </div>;
     }
 }
@@ -398,16 +422,19 @@ cl {
 ## Complete Example: Task App
 
 ```jac
-# backend.jac - Walker endpoints
+# main.jac - Combined backend and frontend
+
+# === Backend: Data Model ===
 node Task {
     has id: str;
     has title: str;
     has completed: bool = False;
 }
 
+# === Backend: Walkers ===
 walker:pub get_tasks {
     can fetch with Root entry {
-        report [[-->](?:Task)];
+        report [-->](?:Task);
     }
 }
 
@@ -435,28 +462,39 @@ walker:pub toggle_task {
         }
     }
 }
-```
 
-```jac
-# frontend.jac - UI Component
+# === Frontend: UI ===
 cl {
-    import from jac_client { useWalker, callWalker }
-
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
+        has tasks: list = [];
         has input_text: str = "";
-        (tasks, loading, _, refetch) = useWalker("get_tasks");
+        has loading: bool = True;
+
+        # Load tasks on mount
+        async can with entry {
+            result = root spawn get_tasks();
+            if result.reports {
+                tasks = result.reports;
+            }
+            loading = False;
+        }
 
         async def add() -> None {
-            if input_text {
-                await callWalker("add_task", {"title": input_text});
+            if input_text.trim() {
+                result = root spawn add_task(title=input_text.trim());
+                if result.reports and result.reports.length > 0 {
+                    tasks = tasks + [result.reports[0]];
+                }
                 input_text = "";
-                refetch();
             }
         }
 
-        async def toggle(id: str) -> None {
-            await callWalker("toggle_task", {"task_id": id});
-            refetch();
+        async def toggle(task_id: str) -> None {
+            result = root spawn toggle_task(task_id=task_id);
+            if result.reports and result.reports.length > 0 {
+                updated = result.reports[0];
+                tasks = [updated if t.id == task_id else t for t in tasks];
+            }
         }
 
         return <div className="app">
@@ -466,26 +504,28 @@ cl {
                 <input
                     value={input_text}
                     onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onKeyDown={lambda e: any -> None {
                         if e.key == "Enter" { add(); }
                     }}
+                    placeholder="Add a task..."
                 />
                 <button onClick={lambda -> None { add(); }}>Add</button>
             </div>
 
-            {(
-                <p>Loading...</p>
-            ) if loading else (
+            {loading and <p>Loading...</p>}
+
+            {not loading and (
                 <ul>
-                    {tasks.map(lambda t: any -> any {
-                        return <li
+                    {[
+                        <li
                             key={t.id}
-                            className={t.completed and "done"}
+                            style={{"textDecoration": t.completed and "line-through"}}
                             onClick={lambda -> None { toggle(t.id); }}
                         >
-                            {("Y " if t.completed else "O ")}{t.title}
-                        </li>;
-                    })}
+                            {t.title}
+                        </li>
+                        for t in tasks
+                    ]}
                 </ul>
             )}
         </div>;
@@ -499,11 +539,11 @@ cl {
 
 | Concept | Usage |
 |---------|-------|
-| Fetch data | `useWalker("walker_name")` |
-| With params | `useWalker("name", {param: value})` |
-| Mutations | `await callWalker("name", {data})` |
-| Refresh data | `refetch()` from useWalker |
-| Error handling | Check `error` from useWalker |
+| Import walkers | `sv import from ...main { walker_name }` |
+| Call walker | `result = root spawn walker_name(args)` |
+| Get results | `result.reports[0]` |
+| Node spawn | `node_id spawn walker_name(args)` |
+| Error handling | `try { ... } except Exception as e { ... }` |
 
 ---
 
@@ -511,10 +551,10 @@ cl {
 
 - [Authentication](auth.md) - Add user login
 - [Routing](routing.md) - Multi-page applications
-- [Build a Todo App](todo-app.md) - Complete full-stack example with AI integration
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI integration
 
 **Reference:**
 
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
-- [Graph Operations](../../reference/language/graph-operations.md) - Node creation, traversal, deletion
+- [Graph Operations](../../reference/language/osp.md) - Node creation, traversal, deletion
 - [Part III: OSP Reference](../../reference/language/osp.md) - Complete walker and node language reference

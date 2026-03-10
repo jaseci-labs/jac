@@ -1,6 +1,8 @@
 # Debugging in VS Code
 
-Debug your Jac programs with breakpoints, variable inspection, and graph visualization.
+Jac integrates with VS Code's debugging infrastructure through the Jac extension, giving you the same debugging experience you'd expect from Python or JavaScript: breakpoints, step-through execution, variable inspection, call stacks, and watch expressions. The extension also includes `jacvis`, a live graph visualization tool that renders your graph structure in real time as you step through walker traversals -- so you can *see* nodes and edges appear as your code builds the graph.
+
+This tutorial walks you through setting up the debugger, using breakpoints effectively, and visualizing graph operations during debugging sessions.
 
 > **Prerequisites**
 >
@@ -204,5 +206,5 @@ You can drag nodes around to better visualize the structure.
 
 ## Next Steps
 
-- [Testing Your Code](testing.md) - Write and run tests
+- [Testing Your Code](../../reference/testing.md) - Write and run tests
 - [Object-Spatial Programming](osp.md) - Learn about nodes, edges, and walkers

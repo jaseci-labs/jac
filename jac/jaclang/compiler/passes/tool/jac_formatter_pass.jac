@@ -7,17 +7,18 @@ import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { Transform }
 """JacFormat Pass format Jac code."""
-obj JacFormatPass(Transform[(uni.Module, uni.Module)]) {
+obj JacFormatPass(Transform[uni.Module, uni.Module]) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def pre_transform -> None;
     def _probe_fits(
-        `node: doc.DocType,
+        nd: doc.DocType,
         indent_level: int,
         width_remaining: int,
         *,
         max_steps: int = 2000
     ) -> bool;
 
+    def _flat_first_line_width(nd: doc.DocType) -> int;
     def transform(ir_in: uni.Module) -> uni.Module;
     def format_doc_ir(
         doc_node: (doc.DocType | None) = None,

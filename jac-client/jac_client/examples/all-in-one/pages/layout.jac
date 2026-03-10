@@ -5,7 +5,7 @@ cl {
     def:pub layout -> JsxElement {
         return
             <>
-                <Navigation />
+                <Navigation/>
                 <div
                     style={{
                         "maxWidth": "960px",
@@ -13,7 +13,7 @@ cl {
                         "padding": "0 1rem 3rem 1rem"
                     }}
                 >
-                    <Outlet />
+                    <Outlet/>
                 </div>
             </>;
     }

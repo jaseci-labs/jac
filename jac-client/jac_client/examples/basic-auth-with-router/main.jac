@@ -1,8 +1,5 @@
 # Simple Authentication App with React Router
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useState, useEffect }
 cl import from "@jac/runtime" {
     Router,
     Routes,
@@ -19,11 +16,11 @@ cl import from "@jac/runtime" {
 
 cl {
     # Navigation Component
-    def Navigation -> any {
+    def Navigation -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: any) -> None {
+        def handleLogout(e: Any) -> None {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -110,14 +107,14 @@ cl {
     }
 
     # Login Page
-    def LoginPage -> any {
+    def LoginPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
 
         navigate = useNavigate();
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: Any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -132,11 +129,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: any) -> None {
+        def handleUsernameChange(e: Any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: any) -> None {
+        def handlePasswordChange(e: Any) -> None {
             password = e.target.value;
         }
 
@@ -234,14 +231,14 @@ cl {
     }
 
     # Signup Page
-    def SignupPage -> any {
+    def SignupPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
 
         navigate = useNavigate();
 
-        async def handleSignup(e: any) -> None {
+        async def handleSignup(e: Any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -256,11 +253,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: any) -> None {
+        def handleUsernameChange(e: Any) -> None {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: any) -> None {
+        def handlePasswordChange(e: Any) -> None {
             password = e.target.value;
         }
 
@@ -358,11 +355,11 @@ cl {
     }
 
     # Dashboard Page (Protected Route)
-    def DashboardPage -> any {
+    def DashboardPage -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         return
@@ -419,17 +416,17 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect based on auth status
-    def HomePage -> any {
+    def HomePage -> JsxElement {
         if jacIsLoggedIn() {
             return
-                <Navigate to="/dashboard" />;
+                <Navigate to="/dashboard"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div
@@ -438,12 +435,12 @@ cl {
                         "minHeight": "100vh"
                     }}
                 >
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/dashboard" element={<DashboardPage/>}/>
                     </Routes>
                 </div>
             </Router>;

@@ -20,6 +20,9 @@ This document provides a comprehensive reference of all JavaScript/ECMAScript im
 | **Category 1: String Literal Imports** |
 | Hyphenated packages | `import { render } from 'react-dom'` | `cl import from "react-dom" { render }` |  Working | `import { render } from "react-dom";` | Use string literals for package names with hyphens |
 | Multiple hyphens | `import { BrowserRouter } from 'react-router-dom'` | `cl import from "react-router-dom" { BrowserRouter }` |  Working | `import { BrowserRouter } from "react-router-dom";` | Works with any special characters |
+| **Category 1: Path Alias Imports** |
+| Alias with wildcard | `import { Button } from '@components/Button'` | `cl import from "@components/Button" { Button }` |  Working | `import { Button } from "@components/Button";` | Requires `[plugins.client.paths]` in jac.toml |
+| Exact alias | `import { constants } from '@shared'` | `cl import from "@shared" { constants }` |  Working | `import { constants } from "@shared";` | Maps to a single target path |
 | **Category 2: Default Imports** |
 | Default import | `import React from 'react'` | `cl import from react { default as React }` |  Working | `import React from "react";` | Must use `cl` prefix |
 | Default with relative | `import Component from './Button'` | `cl import from .Button { default as Component }` |  Working | `import Component from "./Button";` | |
@@ -89,7 +92,34 @@ cl import from react-dom { render }  # Error: hyphen not allowed in identifier
 
 **Note:** String literals work with all import types (named, default, namespace, mixed)
 
-### 4. Relative Path Conversion
+### 4. Path Alias Imports
+
+Path aliases let you define short prefixes (like `@components`) that map to project directories. Configure them in `jac.toml`:
+
+```toml
+[plugins.client.paths]
+"@components/*" = "./components/*"
+"@utils/*" = "./utils/*"
+"@shared" = "./shared/index"
+```
+
+Then use them in imports:
+
+```jac
+cl {
+    import from "@components/Button" { Button }
+    import from "@utils/format" { formatDate }
+    import from "@shared" { constants }
+}
+```
+
+Aliases are resolved by:
+
+- **Vite** (`resolve.alias`) for bundling
+- **TypeScript** (`compilerOptions.paths`) for IDE support
+- **Jac module resolver** for compilation
+
+### 5. Relative Path Conversion
 
 Jac uses Python-style dots for relative imports, which are automatically converted to JavaScript format:
 
@@ -216,6 +246,7 @@ function MyComponent() {
 - **Category 3 (Mixed Imports)**: Working for default+named and default+namespace
 - **Category 4 (Namespace Imports)**: Fully implemented and tested
 - **Relative Paths**: Full support with automatic conversion
+- **Path Aliases**: Full support via `[plugins.client.paths]` in jac.toml (Vite, TypeScript, and module resolver)
 - **String Literal Imports**: Full support for hyphenated package names (react-dom, styled-components, etc.)
 - ️ **Named + Namespace Mix**: Generates but produces invalid JavaScript
 

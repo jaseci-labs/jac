@@ -4,7 +4,7 @@ def:pub get_items -> list {
     return [{"name": "alpha"}, {"name": "beta"}];
 }
 
-cl def:pub app() -> any {
+cl def:pub app() -> JsxElement {
     has items: list = [];
 
     async can with entry {
@@ -16,7 +16,7 @@ cl def:pub app() -> any {
             <h1>Items</h1>
             <ul>
                 {items.map(
-                    lambda item: dict -> any { return <li>{item.name}</li>; }
+                    lambda item: dict -> Any { return <li>{item.name}</li>; }
                 )}
             </ul>
         </div>;

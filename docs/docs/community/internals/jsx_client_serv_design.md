@@ -88,7 +88,7 @@ When `cl` is present:
 #### Supported Constructs
 
 ```jac
-// Client function - executes in browser, can return JSX
+# Client function - executes in browser, can return JSX
 cl def homepage() -> dict {
     return <div>
         <h1>Welcome</h1>
@@ -96,13 +96,13 @@ cl def homepage() -> dict {
     </div>;
 }
 
-// Client object - available on both client and server
+# Client object - available on both client and server
 cl obj ButtonProps {
     has label: str = "Hello";
     has count: int = 0;
 }
 
-// Client global - literal value sent to browser
+# Client global - literal value sent to browser
 cl API_BASE_URL: str = "https://api.example.com";
 ```
 
@@ -199,10 +199,10 @@ cl def LoginForm() {
 
         success = await jacLogin(username, password);
         if success {
-            console.log("Login successful!");
-            // Redirect or update UI
+            print("Login successful!");
+            # Redirect or update UI
         } else {
-            console.log("Login failed");
+            print("Login failed");
         }
     }
 
@@ -329,7 +329,7 @@ cl def TodoList() {
 
     def addTodo(text: str) {
         todos = state().todos;
-        todos.push({"text": text, "done": False});
+        todos.append({"text": text, "done": False});
         setState({"todos": todos});  // Shallow merge with existing state
     }
 
@@ -362,7 +362,7 @@ cl def DataFetcher() {
 
     createEffect(lambda -> None {
         id = userId();  // Track dependency!
-        console.log("Fetching user", id);
+        print("Fetching user", id);
         # In real app, would fetch from API
         setUserData({"id": id, "name": "User " + str(id)});
     });
@@ -680,22 +680,22 @@ Event handlers are bound in `__applyProp` ([client_runtime.cl.jac:57-72](https:/
 ### Complete Application
 
 ```jac
-// Server-side data model
+# Server-side data model
 node User {
     has name: str;
     has email: str;
 }
 
-// Client-side global configuration
+# Client-side global configuration
 cl API_URL: str = "/api";
 
-// Client-side component
+# Client-side component
 cl obj CardProps {
     has title: str = "Untitled";
     has content: str = "";
 }
 
-// Client page - renders in browser
+# Client page - renders in browser
 cl def homepage() {
     return <div class="app">
         <header>
@@ -708,7 +708,7 @@ cl def homepage() {
     </div>;
 }
 
-// Server-side walker - called from client via spawn
+# Server-side walker - called from client via spawn
 walker LoadUsers {
     has users: list = [];
 
@@ -760,7 +760,7 @@ cl import from jac:client_runtime {
     navigate,
 }
 
-// Counter component with reactive signal
+# Counter component with reactive signal
 cl def Counter() {
     [count, setCount] = createSignal(0);
 
@@ -771,7 +771,7 @@ cl def Counter() {
     </div>;
 }
 
-// Todo list with reactive state
+# Todo list with reactive state
 cl def TodoApp() {
     [state, setState] = createState({
         "todos": [],
@@ -780,7 +780,7 @@ cl def TodoApp() {
 
     def addTodo() {
         todos = state().todos;
-        todos.push({"text": state().input, "done": False});
+        todos.append({"text": state().input, "done": False});
         setState({"todos": todos, "input": ""});
     }
 
@@ -797,7 +797,7 @@ cl def TodoApp() {
     </div>;
 }
 
-// Main app with routing
+# Main app with routing
 cl def littlex_app() {
     routes = [
         Route("/", Counter),

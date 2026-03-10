@@ -29,13 +29,21 @@ obj ProjectConfig {
 obj RunConfig {
     has session: str = "",
         main: bool = True,
-        cache: bool = True;
+        cache: bool = True,
+        autonative: bool = False;
+}
+
+"""Native compilation settings from [build.native] section."""
+obj NativeBuildConfig {
+    has opt_level: int = 2,  # LLVM optimization level (0-3)
+        dump_ir: str = "";  # Path to dump optimized IR (empty = disabled)
 }
 
 """Build command defaults and artifact directories from [build] section."""
 obj BuildConfig {
     has typecheck: bool = False,
-        dir: str = ".jac";  # Base directory for all build artifacts
+        dir: str = ".jac",  # Base directory for all build artifacts
+        native: NativeBuildConfig = NativeBuildConfig();
 }
 
 """Test command defaults from [test] section."""
@@ -104,7 +112,6 @@ obj LintConfig {
 """Check command defaults from [check] section."""
 obj CheckConfig {
     has print_errs: bool = True,
-        warnonly: bool = False,
         lint: LintConfig = LintConfig();
 }
 
@@ -145,14 +152,10 @@ obj EnvironmentConfig {
 
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
-def interpolate_env_vars(
-    value: str
-) -> str;
+def interpolate_env_vars(value: str) -> str;
 
 # Find project root by looking for jac.toml.
-def find_project_root(
-    start: Path | None = None
-) -> tuple[Path, Path] | None;
+def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
 # Check if currently in a Jac project.
 def is_in_project -> bool;
@@ -226,25 +229,21 @@ obj JacConfig {
 
 # Discover config files for a project in load order.
 # Returns list of paths: [jac.toml, jac.<profile>.toml?, jac.local.toml?]
-def discover_config_files(
-    project_root: Path, profile: str | None = None
-) -> list[Path];
+def discover_config_files(project_root: Path, profile: str | None = None) -> list[Path];
 
 # Parse TOML data into JacConfig object
-def _parse_toml_data(
-    data: dict[str, Any], toml_path: Path | None = None
-) -> JacConfig;
+def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
 
 # Recursively apply environment variable interpolation
-def _interpolate_recursive(
-    obj: Any
-) -> Any;
+def _interpolate_recursive(`obj: Any) -> Any;
 
 glob _config: JacConfig | None = None;
 
-# Get the global configuration, discovering it if necessary
+# Get the global configuration, discovering it if necessary.
+# If start_path is provided, config will be discovered from that path
+# instead of the current working directory.
 def get_config(
-    force_discover: bool = False
+    start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None;
 
 # Set the global configuration

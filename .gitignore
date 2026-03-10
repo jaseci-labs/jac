@@ -10,6 +10,8 @@ venv
 .jac/
 *.jir
 *.jbc
+_precompiled/
+**/content/docs/
 _planning/
 
 # Distribution / packaging
@@ -75,3 +77,4 @@ node_modules
 CLAUDE.local.md
 
 jactastic/**
+.mcp.json

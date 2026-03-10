@@ -16,7 +16,7 @@ code organization.
 """
 import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { discover_annex_files }
+import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
 import from jaclang.jac0core.passes.transform { Transform }
 
 with entry {
@@ -26,30 +26,12 @@ with entry {
 }
 
 """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
-class JacAnnexPass(Transform[(uni.Module, uni.Module)]) {
+class JacAnnexPass(Transform[uni.Module, uni.Module]) {
     """Load and attach annex modules to the given module."""
-    def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module {
-        mod_path = ir_in.loc.mod_path;
-        if (ir_in.stub_only or not mod_path.endswith('.jac') or ir_in.annexable_by) {
-            return ir_in;
-        }
-        self._load_annexes(self.prog, ir_in, mod_path);
-        return ir_in;
-    }
+    def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module;
 
     """Parse and attach annex modules to the node."""
     def _load_annexes(
-        self: JacAnnexPass, jac_program: JacProgram, `node: uni.Module, mod_path: str
-    ) -> None {
-        for path in discover_annex_files(mod_path, '.impl.jac') {
-            if (mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True)) {
-                `node.impl_mod.append(mod);
-            }
-        }
-        for path in discover_annex_files(mod_path, '.test.jac') {
-            if (mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True)) {
-                `node.test_mod.append(mod);
-            }
-        }
-    }
+        self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
+    ) -> None;
 }

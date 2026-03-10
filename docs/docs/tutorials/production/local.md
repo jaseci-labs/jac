@@ -1,17 +1,19 @@
 # Local API Server
 
-Run your Jac walkers as a production-ready HTTP API server.
+During development, `jac run` executes your program and exits. But production applications need to stay running and respond to HTTP requests from browsers, mobile apps, or other services. The `jac start` command transforms your Jac application into a persistent API server -- every walker and function marked with `:pub` or `:priv` access modifiers automatically becomes a REST endpoint, complete with authentication, JSON serialization, and API documentation.
+
+This means you go from "Jac program that runs locally" to "HTTP API server that clients can call" with a single command change -- no Flask routes, no Express middleware, no API framework needed.
 
 > **Prerequisites**
 >
-> - Completed: [Your First App](../../quick-guide/first-app.md)
+> - Completed: [Build an AI Day Planner](../first-app/build-ai-day-planner.md)
 > - Time: ~15 minutes
 
 ---
 
 ## Overview
 
-The `jac start` command turns your walkers into REST API endpoints automatically:
+The `jac start` command turns your walkers and functions into REST API endpoints automatically:
 
 ```mermaid
 graph LR
@@ -72,11 +74,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ### 3. Call the API
 
 ```bash
-# Get all tasks
-curl http://localhost:8000/get_tasks
+# Get all tasks (all walker endpoints use POST with /walker/ prefix)
+curl -X POST http://localhost:8000/walker/get_tasks
 
 # Add a task
-curl -X POST http://localhost:8000/add_task \
+curl -X POST http://localhost:8000/walker/add_task \
   -H "Content-Type: application/json" \
   -d '{"title": "Buy groceries"}'
 ```
@@ -90,6 +92,12 @@ curl -X POST http://localhost:8000/add_task \
 ```bash
 # Custom port
 jac start app.jac --port 3000
+```
+
+If the specified port is already in use, the server automatically finds and uses the next available port:
+
+```
+Port 3000 is in use, using port 3001 instead
 ```
 
 ### Development Mode (HMR)
@@ -107,7 +115,7 @@ Changes to your `.jac` files will automatically reload.
 Skip client bundling and only serve the API:
 
 ```bash
-jac start app.jac --dev --no-client
+jac start app.jac --dev --no_client
 ```
 
 ---
@@ -120,9 +128,9 @@ Each public walker becomes an endpoint:
 
 | Walker | HTTP Method | Endpoint |
 |--------|-------------|----------|
-| `walker:pub get_users { }` | POST | `/get_users` |
-| `walker:pub create_user { }` | POST | `/create_user` |
-| `walker:pub delete_user { }` | POST | `/delete_user` |
+| `walker:pub get_users { }` | POST | `/walker/get_users` |
+| `walker:pub create_user { }` | POST | `/walker/create_user` |
+| `walker:pub delete_user { }` | POST | `/walker/delete_user` |
 
 ### Request Format
 
@@ -137,7 +145,7 @@ walker:pub search_users {
 ```
 
 ```bash
-curl -X POST http://localhost:8000/search_users \
+curl -X POST http://localhost:8000/walker/search_users \
   -H "Content-Type: application/json" \
   -d '{"query": "john", "limit": 20, "page": 1}'
 ```
@@ -166,15 +174,36 @@ walker:pub get_user {
 }
 ```
 
-Response:
+Response (all walker responses are wrapped in a standard envelope):
 
 ```json
 {
-  "id": "123",
-  "name": "Alice",
-  "email": "alice@example.com"
+  "ok": true,
+  "type": "walker:pub:get_user",
+  "data": {
+    "result": null,
+    "reports": [
+      {
+        "id": "123",
+        "name": "Alice",
+        "email": "alice@example.com"
+      }
+    ]
+  },
+  "error": null,
+  "meta": {}
 }
 ```
+
+!!! note "Response Envelope"
+    All walker API responses use this envelope format:
+
+    - **`ok`**: `true` if the request succeeded, `false` on error
+    - **`type`**: The walker type identifier
+    - **`data.result`**: The walker's return value (if any)
+    - **`data.reports`**: Array of all `report`ed values during traversal
+    - **`error`**: Error message (if `ok` is `false`)
+    - **`meta`**: Additional metadata
 
 ---
 
@@ -185,6 +214,7 @@ Response:
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
+- **Graph Visualizer:** `http://localhost:8000/graph` - interactive visualization of your application's graph
 
 ---
 
@@ -302,7 +332,11 @@ walker:pub health {
 ```
 
 ```bash
+# Built-in health endpoint (provided by jac-scale)
 curl http://localhost:8000/health
+
+# Custom health walker endpoint (POST to /walker/<name>)
+curl -X POST http://localhost:8000/walker/health
 # {"status": "healthy"}
 ```
 
@@ -332,7 +366,7 @@ walker:pub ready {
 |--------|-------------|---------|
 | `--port`, `-p` | Server port | 8000 |
 | `--dev`, `-d` | Enable Hot Module Replacement | false |
-| `--no-client`, `-n` | Skip client bundling (API only) | false |
+| `--no_client`, `-n` | Skip client bundling (API only) | false |
 | `--faux`, `-f` | Print API docs only (no server) | false |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | false |
 
@@ -454,15 +488,15 @@ Test it:
 
 ```bash
 # Create user
-curl -X POST http://localhost:8000/create_user \
+curl -X POST http://localhost:8000/walker/create_user \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice", "email": "alice@example.com"}'
 
 # List users
-curl http://localhost:8000/list_users
+curl -X POST http://localhost:8000/walker/list_users
 
 # Health check
-curl http://localhost:8000/health
+curl -X POST http://localhost:8000/walker/health
 ```
 
 ---

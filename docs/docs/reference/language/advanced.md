@@ -1,172 +1,30 @@
-# Part VII: Advanced Features
+# Comprehensions & Filters
 
 **In this part:**
 
-- [Error Handling](#error-handling) - Try/except/finally, raising exceptions
-- [Testing](#testing) - Test blocks, JacTestClient
-- [Filter and Assign Comprehensions](#filter-and-assign-comprehensions) - List/dict comprehensions, typed filters
-- [Pipe Operators](#pipe-operators) - Forward/backward pipes
+- [Standard Comprehensions](#standard-comprehensions) - List, dict, set, generator
+- [Filter Comprehensions](#filter-comprehensions) - The `?` operator on collections
+- [Typed Filter Comprehensions](#typed-filter-comprehensions) - Filter by type with `?:Type`
+- [Assign Comprehensions](#assign-comprehensions) - Bulk update with `=`
 
 ---
 
-This part covers error handling, testing, and advanced operators like comprehensions and pipes. These features work the same as in Python with minor syntax differences (braces instead of colons, semicolons to end statements).
+Jac includes Python's familiar list, dict, set, and generator comprehensions -- and extends them with two powerful operators designed for working with collections of graph nodes and objects:
 
-## Error Handling
+- **Filter comprehensions** (`?`) -- query a collection by attribute conditions or type, returning only the matching elements. This replaces verbose `for`/`if` filtering with a concise inline syntax. For example, `people(?age >= 18)` returns all people whose age is 18 or above.
+- **Assign comprehensions** (`=`) -- bulk-update attributes on every item in a collection. Instead of writing a loop to set a field on each element, `people(=verified=True)` sets `verified` to `True` on all items in one expression.
 
-Jac uses Python's exception model with `try/except/finally` blocks. The syntax uses braces but the semantics are identical -- catch specific exceptions, optionally capture them with `as`, and use `finally` for cleanup that always runs.
+These operators are especially useful during graph traversal, where you often need to filter connected nodes by type or attribute and then update them. They chain naturally: `people(?age >= 18)(=can_vote=True)` filters *then* assigns in a single expression.
 
-### 1 Try/Except/Finally
+> **Related:**
+>
+> - [Error Handling](foundation.md#8-exception-handling) - Try/except/finally, raising exceptions
+> - [Pipe Operators](foundation.md#8-pipe-operators) - Forward/backward pipes
+> - [Testing](../testing.md) - Test blocks, assertions, CLI commands
 
-```jac
-def risky_operation() -> int {
-    return 42;
-}
+## Standard Comprehensions
 
-def cleanup() -> None {
-    # Cleanup logic here
-}
-
-def example() {
-    try {
-        result = risky_operation();
-    } except ValueError as e {
-        print(f"Value error: {e}");
-    } except KeyError {
-        print("Key not found");
-    } except Exception as e {
-        print(f"Unexpected: {e}");
-    } finally {
-        cleanup();
-    }
-}
-```
-
-### 2 Raising Exceptions
-
-```jac
-def inner_process(data: dict) -> None {
-    # Process data here
-}
-
-def validate(value: int) -> None {
-    if value < 0 {
-        raise ValueError("Value must be non-negative");
-    }
-}
-
-def process(data: dict) -> None {
-    try {
-        inner_process(data);
-    } except KeyError as e {
-        raise ValueError("Invalid data") from e;
-    }
-}
-```
-
-### 3 Assertions
-
-```jac
-def example() {
-    condition = True;
-    value = 10;
-    data: object = "something";
-    id = 1;
-
-    assert condition;
-    assert value > 0, "Value must be positive";
-    assert data is not None, f"Data was None for id {id}";
-}
-```
-
----
-
-## Testing
-
-### 1 Test Blocks
-
-```jac
-test addition_works {
-    result = add(2, 3);
-    assert result == 5;
-}
-
-test string_operations {
-    s = "hello";
-    assert len(s) == 5;
-    assert "ell" in s;
-    assert s.upper() == "HELLO";
-}
-```
-
-### 2 Testing Walkers
-
-```jac
-test walker_collects_data {
-    # Setup graph
-    root ++> DataNode(value=1);
-    root ++> DataNode(value=2);
-    root ++> DataNode(value=3);
-
-    # Run walker
-    result = root spawn Collector();
-
-    # Verify
-    assert len(result.reports) == 3;
-    assert sum(result.reports) == 6;
-}
-```
-
-### 3 Float Comparison
-
-```jac
-test float_comparison {
-    result = 0.1 + 0.2;
-    assert almostEqual(result, 0.3, places=10);
-}
-```
-
-### 4 JacTestClient
-
-For API testing without starting a server:
-
-```jac
-import from jaclang.testing { JacTestClient }
-
-test api_endpoints {
-    client = JacTestClient.from_file("main.jac");
-
-    # Register and login
-    client.register_user("test@example.com", "password123");
-    client.login("test@example.com", "password123");
-
-    # Test endpoint
-    response = client.post("/CreateItem", {"name": "Test"});
-    assert response.status_code == 200;
-    assert response.json()["name"] == "Test";
-}
-```
-
-### 5 Running Tests
-
-```bash
-# Run all tests
-jac test
-
-# Run specific test
-jac test --test-name test_addition
-
-# Stop on first failure
-jac test --xit
-
-# Verbose output
-jac test --verbose
-```
-
----
-
-## Filter and Assign Comprehensions
-
-### 1 Standard Comprehensions
+Jac supports all four Python comprehension forms -- list, dict, set, and generator -- with identical semantics. If you know Python comprehensions, these work exactly as you'd expect, just wrapped in braces and terminated with semicolons.
 
 ```jac
 def example() {
@@ -188,9 +46,11 @@ def example() {
 }
 ```
 
-### 2 Filter Comprehension Syntax
+## Filter Comprehensions
 
-Filter collections with `?condition`:
+Filter comprehensions use the `?` operator to select elements from a collection based on attribute conditions. The syntax is `collection(?attr op value)` -- the condition references attributes directly by name, without needing a lambda or loop variable. Multiple conditions are separated by commas and are ANDed together.
+
+This is particularly powerful with graph traversals. Instead of fetching all connected nodes and then filtering in a separate loop, you can write `[-->](?status == "active")` to get only the active connections in one expression.
 
 ```jac
 node Person {
@@ -215,9 +75,9 @@ def example(people: list[Person], employees: list[Employee]) {
 }
 ```
 
-### 3 Typed Filter Comprehensions
+## Typed Filter Comprehensions
 
-Filter by type with filter syntax:
+When a graph has multiple node types connected to the same parent, typed filter comprehensions let you select by type using the `?:Type` syntax. This is the graph-aware equivalent of `isinstance` filtering -- `[-->](?:Person)` returns only `Person` nodes from all outgoing connections. You can combine type filters with attribute conditions: `[-->](?:Person, age > 21)` filters by both type and attribute in one expression.
 
 ```jac
 node Dog {
@@ -240,9 +100,9 @@ def example(animals: list) {
 }
 ```
 
-### 4 Assign Comprehension Syntax
+## Assign Comprehensions
 
-Modify all items with `=attr=value`:
+Assign comprehensions bulk-update attributes on every item in a collection using the `=attr=value` syntax. This eliminates the need for `for` loops that exist solely to set a field on each element. The real power comes from chaining with filter comprehensions: `people(?age >= 18)(=can_vote=True)` first selects adults, then sets `can_vote` on each one -- a pattern that would otherwise require a multi-line loop with a conditional.
 
 ```jac
 node Person {
@@ -271,91 +131,3 @@ def example(people: list[Person], items: list[Item]) {
     items(=status="processed", processed_at=now());
 }
 ```
-
----
-
-## Pipe Operators
-
-### 1 Forward Pipe
-
-```jac
-def transform(x: list) -> list { return x; }
-def filter(x: list) -> list { return x; }
-def output(x: list) -> list { return x; }
-def remove_nulls(x: list) -> list { return x; }
-def normalize(x: list) -> list { return x; }
-def validate(x: list) -> list { return x; }
-
-def example() {
-    input = [1, 2, 3];
-    raw_data = [1, 2, 3];
-
-    # Traditional
-    result = output(filter(transform(input)));
-
-    # With pipes
-    result = input |> transform |> filter |> output;
-
-    # More readable data pipeline
-    cleaned = raw_data
-        |> remove_nulls
-        |> normalize
-        |> validate
-        |> transform;
-}
-```
-
-### 2 Backward Pipe
-
-```jac
-def transform(x: list) -> list { return x; }
-def filter(x: list) -> list { return x; }
-def output(x: list) -> list { return x; }
-
-def example() {
-    input = [1, 2, 3];
-
-    # Right to left
-    result = output <| filter <| transform <| input;
-}
-```
-
-### 3 Atomic Pipes (Graph Operations)
-
-```jac
-node Item {}
-
-walker DepthFirstWalker {
-    can visit with Item entry {
-        print("depth first");
-    }
-}
-walker BreadthFirstWalker {
-    can visit with Item entry {
-        print("breadth first");
-    }
-}
-
-with entry {
-    start = Item();
-
-    # Depth-first traversal
-    start spawn :> DepthFirstWalker();
-
-    # Breadth-first traversal
-    start spawn |> BreadthFirstWalker();
-}
-```
-
----
-
-## Learn More
-
-**Tutorials:**
-
-- [Testing](../../tutorials/language/testing.md) - Write and run tests
-
-**Related Reference:**
-
-- [Part I: Foundation](foundation.md) - Core language features
-- [Part III: OSP](osp.md) - Graph operations

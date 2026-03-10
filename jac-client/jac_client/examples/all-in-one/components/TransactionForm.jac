@@ -1,13 +1,11 @@
 # Transaction form component
 # Demonstrates: form handling, useState, events, select options
-cl import from ..context.BudgetContext {
-    useBudgetContext
-}
+cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS }
 cl import from ..constants.clients { CLIENTS }
 
 cl {
-    def:pub TransactionForm -> any {
+    def:pub TransactionForm -> JsxElement {
         [description, setDescription] = useState("");
         [amount, setAmount] = useState("");
         [category, setCategory] = useState("OTHER");
@@ -16,11 +14,11 @@ cl {
         [clientName, setClientName] = useState("");
         budget = useBudgetContext();
 
-        def handleSubmit(e: any) -> None {
+        def handleSubmit(e: Any) -> None {
             e.preventDefault();
 
             # Validate inputs
-            trimmedDesc = description.trim();
+            trimmedDesc = description.strip();
             if trimmedDesc == "" or amount == "" {
                 return;
             }
@@ -44,11 +42,11 @@ cl {
         }
 
         # Filter categories based on type (income only has INCOME category)
-        availableCategories = CATEGORIES.filter(
-            lambda cat: str  -> bool { if txType == "income" {
-                return cat == "INCOME";
-            }return cat != "INCOME"; }
-        );
+        availableCategories = [
+            cat
+            for cat in CATEGORIES
+            if (cat == "INCOME" if txType == "income" else cat != "INCOME")
+        ];
 
         # Show client dropdown only for business income
         showClientDropdown = txType == "income" and isBusiness;
@@ -60,8 +58,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if txType == "expense"
-                            else ("toggle-btn")}
+                                if txType == "expense"
+                                else ("toggle-btn")}
                             onClick={lambda : setTxType("expense")}
                         >
                             Expense
@@ -69,8 +67,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active income")
-                            if txType == "income"
-                            else ("toggle-btn")}
+                                if txType == "income"
+                                else ("toggle-btn")}
                             onClick={lambda : setTxType("income")}
                         >
                             Income
@@ -80,8 +78,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if isBusiness
-                            else ("toggle-btn")}
+                                if isBusiness
+                                else ("toggle-btn")}
                             onClick={lambda : setIsBusiness(true)}
                         >
                             Business
@@ -89,8 +87,8 @@ cl {
                         <button
                             type="button"
                             className={("toggle-btn active")
-                            if not isBusiness
-                            else ("toggle-btn")}
+                                if not isBusiness
+                                else ("toggle-btn")}
                             onClick={lambda : setIsBusiness(false)}
                         >
                             Personal
@@ -106,7 +104,7 @@ cl {
                             id="description"
                             type="text"
                             value={description}
-                            onChange={lambda e: any  -> None { setDescription(
+                            onChange={lambda e: Any  -> None { setDescription(
                                 e.target.value
                             );}}
                             placeholder="Enter description..."
@@ -121,7 +119,7 @@ cl {
                             id="amount"
                             type="number"
                             value={amount}
-                            onChange={lambda e: any  -> None { setAmount(
+                            onChange={lambda e: Any  -> None { setAmount(
                                 e.target.value
                             );}}
                             placeholder="0.00"
@@ -137,17 +135,16 @@ cl {
                         <select
                             id="category"
                             value={category}
-                            onChange={lambda e: any  -> None { setCategory(
+                            onChange={lambda e: Any  -> None { setCategory(
                                 e.target.value
                             );}}
                             className="form-select"
                         >
-                            {availableCategories.map(
-                                lambda cat: str  -> any { return
-                                    <option key={cat} value={cat}>
-                                        {CATEGORY_LABELS[cat]}
-                                    </option>; }
-                            )}
+                            {[
+                                <option key={cat} value={cat}>
+                                    {CATEGORY_LABELS[cat]}
+                                </option> for cat in availableCategories
+                            ]}
                         </select>
                     </div>
                     {showClientDropdown
@@ -158,7 +155,7 @@ cl {
                         <select
                             id="client"
                             value={clientName}
-                            onChange={lambda e: any  -> None { setClientName(
+                            onChange={lambda e: Any  -> None { setClientName(
                                 e.target.value
                             );}}
                             className="form-select"
@@ -166,12 +163,11 @@ cl {
                             <option value="">
                                 Select Client (Optional)
                             </option>
-                            {CLIENTS.map(
-                                lambda client: str  -> any { return
-                                    <option key={client} value={client}>
-                                        {client}
-                                    </option>; }
-                            )}
+                            {[
+                                <option key={client} value={client}>
+                                    {client}
+                                </option> for client in CLIENTS
+                            ]}
                         </select>
                     </div>}
                     <div className="form-group">
@@ -179,7 +175,7 @@ cl {
                             Action
                         </label>
                         <button type="submit" className="submit-btn">
-                            Add {(txType[0].toUpperCase() + txType.slice(1))}
+                            Add{(txType[0].upper() + txType[1:])}
                         </button>
                     </div>
                 </div>

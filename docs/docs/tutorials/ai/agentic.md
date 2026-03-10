@@ -1,6 +1,10 @@
 # Agentic AI
 
-Build AI agents that can use tools and reason through problems.
+The previous tutorials showed LLMs generating text and extracting structured data. But what happens when the LLM needs information it doesn't have -- like the current time, a database record, or today's weather? That's where **tool calling** comes in.
+
+byLLM lets you pass regular Jac functions as "tools" to a `by llm()` call. The LLM can then decide *when* to call these tools, *what arguments* to pass, and *how to use the results* in its response. This transforms the LLM from a passive text generator into an active agent that can interact with your application's data and services.
+
+This tutorial covers basic tool calling, multi-tool orchestration, the ReAct reasoning pattern, method-based tools on objects, combining agents with graph walkers, and building a complete agent with a knowledge base.
 
 > **Prerequisites**
 >
@@ -11,7 +15,7 @@ Build AI agents that can use tools and reason through problems.
 
 ## What is Agentic AI?
 
-Regular LLMs can only generate text. **Agentic AI** can:
+Regular LLMs can only generate text -- they have no ability to look up data, call APIs, or interact with external systems. **Agentic AI** bridges this gap by giving the LLM access to tools (functions you define) and the autonomy to use them. An agentic LLM can:
 
 - Use **tools** (functions you define)
 - **Reason** about which tools to use
@@ -33,10 +37,6 @@ Regular LLM:     Agentic LLM:
 Define functions the LLM can use:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 # Define a tool
 def get_current_time() -> str {
     import datetime;
@@ -44,7 +44,6 @@ def get_current_time() -> str {
 }
 
 # LLM function that can use the tool
-"""Answer questions, using available tools when needed."""
 def answer(question: str) -> str by llm(
     tools=[get_current_time]
 );
@@ -72,26 +71,18 @@ The LLM automatically:
 ## Multiple Tools
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Add two numbers together."""
 def add(a: int, b: int) -> int {
     return a + b;
 }
 
-"""Multiply two numbers."""
 def multiply(a: int, b: int) -> int {
     return a * b;
 }
 
-"""Get the value of pi."""
 def get_pi() -> float {
     return 3.14159;
 }
 
-"""Solve math problems using the available tools."""
 def solve_math(problem: str) -> str by llm(
     tools=[add, multiply, get_pi]
 );
@@ -110,10 +101,6 @@ with entry {
 Tools can have parameters that the LLM fills in:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 """Search the database for matching records."""
 def search_database(query: str, limit: int = 10) -> list[str] {
     # Simulated database search
@@ -130,7 +117,6 @@ def get_user_info(user_id: str) -> dict {
     };
 }
 
-"""Answer questions about users and data."""
 def query(question: str) -> str by llm(
     tools=[search_database, get_user_info]
 );
@@ -145,13 +131,9 @@ with entry {
 
 ## ReAct Pattern
 
-**ReAct** (Reason + Act) lets the LLM think step-by-step:
+**ReAct** (Reason + Act) is a prompting pattern where the LLM alternates between *thinking* about what to do next and *acting* by calling tools. With multiple tools available, the LLM chains together a sequence of reasoning steps and tool calls to solve problems that require multiple pieces of information. byLLM implements this automatically when you provide multiple tools -- the LLM reasons about which tools to call, in what order, and how to combine their results:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o");
-
 """Search the web for information."""
 def search_web(query: str) -> str {
     # Simulated web search
@@ -169,11 +151,10 @@ def get_date() -> str {
     return datetime.date.today().isoformat();
 }
 
-"""Answer complex questions using reasoning and tools."""
 def research(question: str) -> str by llm(
-    method="ReAct",
     tools=[search_web, calculate, get_date]
 );
+sem research = "Answer complex questions using reasoning and tools.";
 
 with entry {
     answer = research(
@@ -201,10 +182,6 @@ With ReAct, the LLM:
 Tools can be methods on objects:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 obj Calculator {
     has memory: float = 0;
 
@@ -231,11 +208,11 @@ obj Calculator {
         return self.memory;
     }
 
-    """Perform calculations step by step."""
     def calculate(instructions: str) -> str by llm(
         tools=[self.add, self.subtract, self.clear, self.get_memory]
     );
 }
+sem Calculator.calculate = "Perform calculations step by step.";
 
 with entry {
     calc = Calculator();
@@ -252,18 +229,15 @@ with entry {
 Combine tools with graph traversal:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 node Document {
     has title: str;
     has content: str;
     has summary: str = "";
 }
 
-"""Summarize this document in 2-3 sentences."""
 def summarize(content: str) -> str by llm();
+
+sem summarize = "Summarize this document in 2-3 sentences.";
 
 """Search documents for matching content."""
 def search_documents(query: str, docs: list) -> list {
@@ -275,7 +249,12 @@ def search_documents(query: str, docs: list) -> list {
     }
     return results;
 }
+```
 
+!!! warning "Graph Persistence"
+    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
+
+```jac
 walker DocumentAgent {
     has query: str;
 
@@ -323,13 +302,9 @@ with entry {
 
 ## Context Injection
 
-Provide additional context to the LLM:
+Sometimes the LLM needs background knowledge that isn't available through tools -- company policies, product details, user preferences, or domain-specific rules. The `incl_info` parameter lets you inject this context directly into the LLM prompt alongside the function's semantic information. The LLM sees this context as authoritative background and uses it when generating responses:
 
 ```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
 glob company_info = """
 Company: TechCorp
 Products: CloudDB, SecureAuth, DataViz
@@ -337,10 +312,11 @@ Support Hours: 9 AM - 5 PM EST
 Support Email: support@techcorp.com
 """;
 
-"""Answer customer questions about our products and services."""
 def support_agent(question: str) -> str by llm(
     incl_info={"company_context": company_info}
 );
+
+sem support_agent = "Answer customer questions about our products and services.";
 
 with entry {
     print(support_agent("What products do you offer?"));
@@ -353,10 +329,7 @@ with entry {
 ## Building a Full Agent
 
 ```jac
-import from byllm.lib { Model }
 import json;
-
-glob llm = Model(model_name="gpt-4o");
 
 # Knowledge base
 glob kb: dict = {
@@ -402,12 +375,11 @@ def place_order(product: str, quantity: int) -> str {
     return f"Order placed: {quantity}x {product}";
 }
 
-"""You are a helpful sales assistant. Help customers browse products,
-check prices and availability, and place orders."""
 def sales_agent(request: str) -> str by llm(
-    method="ReAct",
     tools=[list_products, get_price, check_inventory, place_order]
 );
+
+sem sales_agent = "Browse products, check prices and availability, and place orders.";
 
 with entry {
     print("Customer: What products do you have?");
@@ -429,9 +401,8 @@ with entry {
 
 | Concept | Usage |
 |---------|-------|
-| Basic tools | `by llm(tools=[func1, func2])` |
-| ReAct reasoning | `by llm(method="ReAct", tools=[...])` |
-| Object methods | `by llm(tools=[self.method])` |
+| Tools (ReAct reasoning) | `by llm(tools=[func1, func2])` |
+| Object methods as tools | `by llm(tools=[self.method])` |
 | Context injection | `by llm(incl_info={"key": value})` |
 | `sem` on tools | Help LLM understand when to use tools |
 
@@ -450,5 +421,4 @@ with entry {
 ## Next Steps
 
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete tool documentation
-- [Examples: EmailBuddy](../examples/emailbuddy.md) - Agentic email assistant
 - [Full-Stack Tutorial](../fullstack/setup.md) - Add UI to your agent

@@ -1,6 +1,8 @@
 # CLI Reference
 
-The Jac CLI provides commands for running, building, testing, and deploying Jac applications.
+The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac format`, `jac lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
+
+The CLI is extensible through plugins. When you install plugins like `jac-scale` or `jac-client`, they add new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment or `jac build --client desktop` for desktop app packaging.
 
 > **💡 Enhanced Output**: For beautiful, colorful terminal output with Rich formatting, install the optional `jac-super` plugin: `pip install jac-super`. All CLI commands will automatically use enhanced output with themes, panels, and spinners.
 
@@ -14,19 +16,23 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac check` | Type check code |
 | `jac test` | Run tests |
 | `jac format` | Format code |
+| `jac lint` | Lint code (use `--fix` to auto-fix) |
 | `jac clean` | Clean project build artifacts |
+| `jac purge` | Purge global bytecode cache (works even if corrupted) |
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac plugins` | Manage plugins |
 | `jac config` | Manage project configuration |
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
+| `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac jacpack` | Manage project templates (.jacpack files) |
-| `jac get_object` | Retrieve object by ID |
+| `jac grammar` | Extract and print the Jac grammar |
+| `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
 | `jac tool` | Language tools (IR, AST) |
@@ -34,6 +40,30 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac js` | JavaScript output |
 | `jac build` | Build for target platform (jac-client) |
 | `jac setup` | Setup build target (jac-client) |
+
+---
+
+## Version Info
+
+```bash
+jac --version
+```
+
+Displays the Jac version, Python version, platform, and all detected plugins with their versions:
+
+```
+ _
+(_) __ _  ___     Jac Language
+| |/ _` |/ __|
+| | (_| | (__     Version:  0.11.1
+_/ |\__,_|\___|    Python 3.12.3
+|__/                Platform: Linux x86_64
+
+🔌 Plugins Detected:
+   byllm==0.4.15
+   jac-client==0.2.11
+   jac-scale==0.2.1
+```
 
 ---
 
@@ -46,7 +76,7 @@ Execute a Jac file.
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
+jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [args ...]
 ```
 
 | Option | Description | Default |
@@ -54,6 +84,10 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
 | `filename` | Jac file to run | Required |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
+| `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
+| `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
+
+Like Python, everything after the filename is passed to the script. Jac flags must come **before** the filename.
 
 **Examples:**
 
@@ -61,8 +95,51 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
 # Run a file
 jac run main.jac
 
-# Run without cache
-jac run main.jac --no-cache
+# Run without cache (flags before filename)
+jac run --no-cache main.jac
+
+# Pass arguments to the script
+jac run script.jac arg1 arg2
+
+# Pass flag-like arguments to the script
+jac run script.jac --verbose --output result.txt
+```
+
+**Passing arguments to scripts:**
+
+Arguments after the filename are available in the script via `sys.argv`:
+
+```jac
+# greet.jac
+import sys;
+
+with entry {
+    name = sys.argv[1] if len(sys.argv) > 1 else "World";
+    print(f"Hello, {name}!");
+}
+```
+
+```bash
+jac run greet.jac Alice        # Hello, Alice!
+jac run greet.jac              # Hello, World!
+```
+
+`sys.argv[0]` is the script filename (like Python). For scripts that accept
+flags, use Python's `argparse` module:
+
+```jac
+import argparse;
+
+with entry {
+    parser = argparse.ArgumentParser();
+    parser.add_argument("--name", default="World");
+    args = parser.parse_args();
+    print(f"Hello, {args.name}!");
+}
+```
+
+```bash
+jac run greet.jac --name Alice
 ```
 
 ---
@@ -72,7 +149,7 @@ jac run main.jac --no-cache
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa}] [--scale] [--no-scale] [-b] [--no-build] [filename]
 ```
 
 | Option | Description | Default |
@@ -82,8 +159,10 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `-m, --main` | Treat as `__main__` | `True` |
 | `-f, --faux` | Print docs only (no server) | `False` |
 | `-d, --dev` | Enable HMR (Hot Module Replacement) mode | `False` |
-| `-a, --api_port` | Separate API port for HMR mode (0=same as port) | `0` |
-| `-n, --no_client` | Skip client bundling/serving (API only) | `False` |
+| `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
+| `--no_client` | Skip client bundling/serving (API only) | `False` |
+| `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
+| `--client` | Client build target (`web`, `desktop`, `pwa`) | None |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -100,7 +179,7 @@ jac start -p 3000
 jac start --dev
 
 # HMR mode without client bundling (API only)
-jac start --dev --no-client
+jac start --dev --no_client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
@@ -168,15 +247,16 @@ jac create
 Type check Jac code for errors.
 
 ```bash
-jac check [-h] [-p] [-np] [-w] [-nw] [--ignore PATTERNS] paths [paths ...]
+jac check [-h] [-e] [-i [IGNORE ...]] [-p] [--nowarn] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to check | Required |
-| `-p, --print_errs` | Print errors | `True` |
-| `-w, --warnonly` | Warnings only (no errors) | `False` |
-| `--ignore` | Comma-separated list of files/folders to ignore | None |
+| `-e, --print_errs` | Print detailed error messages | `True` |
+| `-i, --ignore` | Space-separated list of files/folders to ignore | None |
+| `-p, --parse_only` | Only check syntax (skip type checking) | `False` |
+| `--nowarn` | Suppress warning output | `False` |
 
 **Examples:**
 
@@ -187,14 +267,11 @@ jac check main.jac
 # Check a directory
 jac check src/
 
-# Warnings only mode
-jac check main.jac -w
-
 # Check directory excluding specific folders/files
-jac check myproject/ --ignore fixtures,tests
+jac check myproject/ --ignore fixtures tests
 
 # Check excluding multiple patterns
-jac check . --ignore node_modules,dist,__pycache__
+jac check . --ignore node_modules dist __pycache__
 ```
 
 ---
@@ -243,25 +320,30 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-t] paths [paths ...]
+jac format [-h] [-s] [-l] [-c] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to format | Required |
-| `-t, --to_screen` | Print to screen (don't write) | `False` |
+| `-s, --to_screen` | Print to stdout instead of writing | `False` |
+| `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
+| `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
 
 **Examples:**
 
 ```bash
 # Preview formatting
-jac format main.jac -t
+jac format main.jac -s
 
 # Apply formatting
 jac format main.jac
 
 # Format entire directory
 jac format .
+
+# Check formatting without modifying (useful in CI)
+jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
@@ -307,29 +389,29 @@ jac lint . --ignore fixtures
 Run a specific entrypoint in a Jac file.
 
 ```bash
-jac enter [-h] -e ENTRYPOINT [-s SESSION] [-m] [-r ROOT] [-n NODE] filename [args ...]
+jac enter [-h] [-m] [-r ROOT] [-n NODE] filename entrypoint [args ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Jac file | Required |
-| `-e, --entrypoint` | Entrypoint function/walker | Required |
+| `entrypoint` | Function/walker to invoke (positional) | Required |
 | `args` | Arguments to pass | None |
-| `-s, --session` | Session name | None |
-| `-r, --root` | Root node ID | None |
-| `-n, --node` | Target node ID | None |
+| `-m, --main` | Treat as `__main__` | `True` |
+| `-r, --root` | Root executor ID | None |
+| `-n, --node` | Starting node ID | None |
 
 **Examples:**
 
 ```bash
 # Run specific entrypoint
-jac enter main.jac -e my_walker
+jac enter main.jac my_walker
 
 # With arguments
-jac enter main.jac -e process_data arg1 arg2
+jac enter main.jac process_data arg1 arg2
 
-# With session
-jac enter main.jac -e my_walker -s my_session
+# With root and node
+jac enter main.jac my_walker -r root_id -n node_id
 ```
 
 ---
@@ -341,21 +423,22 @@ jac enter main.jac -e my_walker -s my_session
 Generate DOT graph visualization.
 
 ```bash
-jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-sa SAVETO] [-to] [-f FORMAT] filename [connection ...]
+jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-o SAVETO] [-p] [-f FORMAT] filename [connection ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Jac file | Required |
-| `-s, --session` | Session name | None |
-| `-i, --initial` | Initial node | None |
-| `-d, --depth` | Traversal depth | `-1` (unlimited) |
-| `-t, --traverse` | Traverse connections | `False` |
+| `-s, --session` | Session identifier | None |
+| `-i, --initial` | Initial node ID | None |
+| `-d, --depth` | Max traversal depth | `-1` (unlimited) |
+| `-t, --traverse` | Enable traversal mode | `False` |
+| `-c, --connection` | Connection filters | None |
 | `-b, --bfs` | Use BFS traversal | `False` |
 | `-e, --edge_limit` | Max edges | `512` |
 | `-n, --node_limit` | Max nodes | `512` |
-| `-sa, --saveto` | Output file path | None |
-| `-to, --to_screen` | Print to screen | `False` |
+| `-o, --saveto` | Output file path | None |
+| `-p, --to_screen` | Print to stdout | `False` |
 | `-f, --format` | Output format | `dot` |
 
 **Examples:**
@@ -394,6 +477,44 @@ jac debug [-h] [-m] [-c] filename
 jac debug main.jac
 ```
 
+#### VS Code Debugger Setup
+
+To use the VS Code debugger with Jac:
+
+1. Install the **Jac** extension from the VS Code Extensions marketplace
+2. Enable **Debug: Allow Breakpoints Everywhere** in VS Code Settings (search "breakpoints")
+3. Create a `launch.json` via Run and Debug panel (Ctrl+Shift+D) → "Create a launch.json file" → select "Jac Debug"
+
+The generated `.vscode/launch.json`:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "jac",
+            "request": "launch",
+            "name": "Jac Debug",
+            "program": "${file}"
+        }
+    ]
+}
+```
+
+Debugger controls: F5 (continue), F10 (step over), F11 (step into), Shift+F11 (step out).
+
+#### Graph Visualization (`jacvis`)
+
+The Jac extension includes live graph visualization:
+
+1. Open VS Code Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+2. Type `jacvis` and select **jacvis: Visualize Jaclang Graph**
+3. A side panel opens showing your graph structure
+
+Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
+
+For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
+
 ---
 
 ## Plugin Management
@@ -409,10 +530,10 @@ jac plugins [-h] [-v] [action] [names ...]
 | Action | Description |
 |--------|-------------|
 | `list` | List installed plugins (default) |
-| `install` | Install plugins |
-| `uninstall` | Remove plugins |
+| `info` | Show plugin information |
 | `enable` | Enable plugins |
 | `disable` | Disable plugins |
+| `disabled` | List disabled plugins |
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -427,16 +548,21 @@ jac plugins
 # Explicitly list plugins
 jac plugins list
 
-# Install a plugin
-jac plugins install jac-scale
+# Show info about a plugin
+jac plugins info byllm
 
-# Install jac-super for enhanced console output
-jac plugins install jac-super
+# Disable a plugin
+jac plugins disable byllm
 
-# Uninstall
-jac plugins uninstall byllm
+# Enable a plugin
+jac plugins enable byllm
+
+# List disabled plugins
+jac plugins disabled
 ```
 
+> **Note:** To install or uninstall plugins, use `pip install` / `pip uninstall` directly. The `jac plugins` command manages enabled/disabled state for already-installed plugins.
+>
 > **💡 Popular Plugins**:
 >
 > - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
@@ -452,7 +578,7 @@ jac plugins uninstall byllm
 View and modify project configuration settings in `jac.toml`.
 
 ```bash
-jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
+jac config [action] [key] [value] [-g GROUP] [-o FORMAT]
 ```
 
 | Action | Description |
@@ -461,14 +587,14 @@ jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
 | `list` | Display all settings including defaults |
 | `get` | Get a specific setting value |
 | `set` | Set a configuration value |
-| `unset` | Remove a configuration value |
+| `unset` | Remove a configuration value (revert to default) |
 | `path` | Show path to config file |
 | `groups` | List available configuration groups |
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-k, --key` | Configuration key (e.g., `project.name`) | None |
-| `-v, --value` | Value to set | None |
+| `key` | Configuration key (positional, e.g., `project.name`) | None |
+| `value` | Value to set (positional) | None |
 | `-g, --group` | Filter by configuration group | None |
 | `-o, --output` | Output format (`table`, `json`, `toml`) | `table` |
 
@@ -499,13 +625,13 @@ jac config list
 jac config show -g project
 
 # Get a specific value
-jac config get -k project.name
+jac config get project.name
 
 # Set a value
-jac config set -k project.version -v "2.0.0"
+jac config set project.version "2.0.0"
 
 # Remove a value (revert to default)
-jac config unset -k run.cache
+jac config unset run.cache
 
 # Show config file path
 jac config path
@@ -531,6 +657,64 @@ Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-star
 ```bash
 jac start --scale           # Deploy without building
 jac start --scale --build   # Build and deploy
+```
+
+---
+
+### jac status
+
+Show the deployment status of your Jac application on Kubernetes. Displays a color-coded table with the health of each component (application, Redis, MongoDB, Prometheus, Grafana), pod readiness counts, and service URLs.
+
+```bash
+jac status [-h] file_path [--target TARGET]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `file_path` | Path to the `.jac` file | Required |
+| `--target` | Deployment target platform | `kubernetes` |
+
+**Example output:**
+
+```
+  Jac Scale - Deployment Status
+  App: my-app   Namespace: default
+
+┌───────────────────┬────────────────────────┬───────┐
+│ Component         │ Status                 │ Pods  │
+├───────────────────┼────────────────────────┼───────┤
+│ Jaseci App        │ ● Running              │  1/1  │
+│ Redis             │ ● Running              │  1/1  │
+│ MongoDB           │ ● Running              │  1/1  │
+│ Prometheus        │ ● Running              │  1/1  │
+│ Grafana           │ ● Running              │  1/1  │
+└───────────────────┴────────────────────────┴───────┘
+
+  Service URLs
+  ────────────────────────────────────────────
+  Application:  http://localhost:30001
+  Grafana:      http://localhost:30003
+```
+
+**Status indicators:**
+
+| Symbol | Meaning |
+|--------|---------|
+| `● Running` | All pods healthy and ready |
+| `◑ Degraded` | Some pods ready, but not all |
+| `⟳ Pending` | Pods are starting up |
+| `↺ Restarting` | Pods are crash-looping |
+| `✗ Failed` | Component has failed |
+| `○ Not Deployed` | Component is not present in the cluster |
+
+**Examples:**
+
+```bash
+# Check deployment status
+jac status app.jac
+
+# Check status with explicit target
+jac status app.jac --target kubernetes
 ```
 
 ---
@@ -599,6 +783,8 @@ jac add --git https://github.com/user/package.git
 # Add npm package (requires jac-client)
 jac add react --npm
 ```
+
+For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[plugins.client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
 
 ---
 
@@ -709,7 +895,7 @@ jac clean [-h] [-a] [-d] [-c] [-p] [-f]
 | `-a, --all` | Clean all `.jac` artifacts (data, cache, packages, client) | `False` |
 | `-d, --data` | Clean data directory (`.jac/data`) | `False` |
 | `-c, --cache` | Clean cache directory (`.jac/cache`) | `False` |
-| `-p, --packages` | Clean packages directory (`.jac/packages`) | `False` |
+| `-p, --packages` | Clean virtual environment (`.jac/venv`) | `False` |
 | `-f, --force` | Force clean without confirmation prompt | `False` |
 
 By default (no flags), `jac clean` removes only the data directory (`.jac/data`).
@@ -733,7 +919,28 @@ jac clean --data --cache
 jac clean --all --force
 ```
 
-> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the cache with `jac clean --cache` or `rm -rf .jac`. Stale bytecode can cause issues when source files change.
+> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the cache with `jac clean --cache` (`rm -rf .jac`) or `jac purge`. Stale bytecode can cause issues when source files change.
+
+---
+
+### jac purge
+
+Purge the global bytecode cache. Works even when the cache is corrupted.
+
+```bash
+jac purge
+```
+
+**When to use:**
+
+- After upgrading Jaseci packages
+- When encountering cache-related errors (`jaclang.pycore`, `NodeAnchor`, etc.)
+- When setup stalls during first-time compilation
+
+| Command | Scope |
+|---------|-------|
+| `jac clean --cache` | Local project (`.jac/cache/`) |
+| `jac purge` | Global system cache |
 
 ---
 
@@ -843,25 +1050,58 @@ jac js app.jac
 
 ## Utility Commands
 
-### jac get_object
+### jac grammar
 
-Retrieve an object by ID from a session.
+Extract and print the Jac grammar.
 
 ```bash
-jac get_object [-h] -i ID [-s SESSION] filename
+jac grammar [-h] [--lark] [-o OUTPUT]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Jac file | Required |
-| `-i, --id` | Object ID | Required |
-| `-s, --session` | Session name | None |
+| `--lark` | Output in Lark format instead of EBNF | `False` |
+| `-o, --output` | Write output to file instead of stdout | None |
 
 **Examples:**
 
 ```bash
-jac get_object main.jac -i "node_123" -s my_session
+# Print grammar in EBNF format
+jac grammar
+
+# Print in Lark format
+jac grammar --lark
+
+# Save to file
+jac grammar -o grammar.ebnf
 ```
+
+---
+
+### jac script
+
+Run custom scripts defined in the `[scripts]` section of `jac.toml`.
+
+```bash
+jac script [-h] [-l] [name]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `name` | Script name to run | None |
+| `-l, --list_scripts` | List available scripts | `False` |
+
+**Examples:**
+
+```bash
+# Run a script
+jac script dev
+
+# List available scripts
+jac script --list
+```
+
+See [Configuration: Scripts](../config/index.md#scripts) for defining scripts in `jac.toml`.
 
 ---
 
@@ -919,6 +1159,45 @@ jac tool ir sym main.jac
 
 # View generated Python
 jac tool ir py main.jac
+```
+
+---
+
+### jac nacompile
+
+Compile a `.na.jac` file to a standalone native ELF executable. No external compiler, assembler, or linker is required. The entire pipeline runs in pure Python using llvmlite and a built-in ELF linker.
+
+```bash
+jac nacompile filename [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `-o, --output` | Output binary path | filename without `.na.jac` |
+
+The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
+
+**What happens under the hood:**
+
+1. Compiles the `.na.jac` through the Jac pipeline to get LLVM IR
+2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
+3. Emits native object code via llvmlite's `emit_object()`
+4. Links into an ELF executable via the built-in pure-Python ELF linker
+
+The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required.
+
+**Examples:**
+
+```bash
+# Compile to ./chess
+jac nacompile chess.na.jac
+
+# Compile with custom output name
+jac nacompile chess.na.jac -o mychess
+
+# Run the binary
+./mychess
 ```
 
 ---
@@ -1065,6 +1344,9 @@ jac start -p 8000
 
 # Deploy to Kubernetes
 jac start main.jac --scale
+
+# Check deployment status
+jac status main.jac
 
 # Remove deployment
 jac destroy main.jac

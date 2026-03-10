@@ -1,15 +1,12 @@
 """Meaning Typed Programming constructs for Jac Language."""
 import from collections.abc { Callable }
-import from dataclasses { dataclass }
+
 """Runtime context for Meaning Typed Programming."""
-@dataclass
-class MTRuntime {
-    with entry {
-        caller: Callable[(..., object)];
-        args: dict[((int | str), object)];
-        call_params: dict[(str, object)];
+obj MTRuntime {
+    has caller: Callable[(..., object)],
+        args: dict[((int | str), object)],
+        call_params: dict[(str, object)],
         mtir: (MTIR | None);
-    }
 
     """Create a new MTRuntime instance."""
     static def factory(
@@ -23,95 +20,53 @@ class MTRuntime {
 }
 
 """Intermediate Representation for Meaning Typed Programming."""
-@dataclass
-class MTIR {
-    with entry {
-        caller: Callable[(..., object)];
-        args: dict[((int | str), object)];
-        call_params: dict[(str, object)];
+obj MTIR {
+    has caller: Callable[(..., object)],
+        args: dict[((int | str), object)],
+        call_params: dict[(str, object)],
         ir_info: (Info | None) = None;
-    }
 
     """Convert to runtime context."""
     @property
-    def runtime(self: MTIR) -> MTRuntime {
-        return MTRuntime.factory(self.caller, self.args, self.call_params);
-    }
+    def runtime(self: MTIR) -> MTRuntime;
 }
 
-@dataclass
-class Info {
-    with entry {
-        name: str;
+obj Info {
+    has name: str,
         semstr: (str | None);
-    }
 }
 
-@dataclass
-class VarInfo(Info) {
-    with entry {
-        type_info: (ClassInfo | str | tuple | None) = None;
-    }
+obj VarInfo(Info) {
+    has type_info: (ClassInfo | str | tuple | None) = None;
 }
 
-@dataclass
-class ParamInfo(VarInfo) {}
+obj ParamInfo(VarInfo) {}
 
-@dataclass
-class FieldInfo(VarInfo) {}
+obj FieldInfo(VarInfo) {}
 
-@dataclass
-class EnumInfo(Info) {
-    with entry {
-        members: list[FieldInfo];
-    }
+obj EnumInfo(Info) {
+    has members: list[FieldInfo];
 }
 
-@dataclass
-class ClassInfo(Info) {
-    with entry {
-        fields: list[FieldInfo];
-        base_classes: list[ClassInfo];
+obj ClassInfo(Info) {
+    has fields: list[FieldInfo],
+        base_classes: list[ClassInfo],
         methods: list[MethodInfo];
-    }
 
-    def postinit(self: ClassInfo) -> object {
-        if (self.fields is None) {
-            self.fields = [];
-        }
-        if (self.base_classes is None) {
-            self.base_classes = [];
-        }
-        if (self.methods is None) {
-            self.methods = [];
-        }
-    }
+    def postinit(self: ClassInfo) -> object;
 }
 
-@dataclass
-class FunctionInfo(Info) {
-    with entry {
-        params: (list[ParamInfo] | None) = None;
-        return_type: (str | ClassInfo | tuple | None) = None;
-        tools: (list[MethodInfo] | None) = None;
+obj FunctionInfo(Info) {
+    has params: (list[ParamInfo] | None) = None,
+        return_type: (str | ClassInfo | tuple | None) = None,
+        tools: (list[MethodInfo] | None) = None,
         by_call: bool = False;
-    }
 
-    def postinit(self: FunctionInfo) -> object {
-        if (self.params is None) {
-            self.params = [];
-        }
-        if (self.tools is None) {
-            self.tools = [];
-        }
-    }
+    def postinit(self: FunctionInfo) -> object;
 }
 
-@dataclass
-class MethodInfo(FunctionInfo) {
-    with entry {
-        parent_class: (ClassInfo | None) = None;
-    }
+obj MethodInfo(FunctionInfo) {
+    has parent_class: (ClassInfo | None) = None;
 }
 
 def mk_list(inner: object) -> tuple {

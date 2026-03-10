@@ -3,7 +3,7 @@
 import from datetime { datetime }
 import from uuid { UUID, uuid4 }
 import from jaclang.jac0core.constant { EdgeDir }
-import from jaclang.plugin {
+import from jaclang.jac0core.plugin {
     Archetype,
     ArchetypeProtocol,
     DSFunc,
@@ -17,7 +17,7 @@ obj Memory {
     has index: dict[UUID, Element] = {},
         save_queue: list[Element] = [];
     #* Main Accessors *#
-    def get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element;
+    def get_obj(caller_id: UUID, item_id: UUID, `override: bool = False) -> Element;
     def has_obj(item_id: UUID) -> bool;
     def save_obj(caller_id: UUID, item: Element);
     def del_obj(caller_id: UUID, item: Element);
@@ -142,9 +142,9 @@ obj JacPlugin {
     static def visit_node(walker_obj: Any, expr: Any) -> bool;
 }
 
-impl Memory.get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element {
+impl Memory.get_obj(caller_id: UUID, item_id: UUID, `override: bool = False) -> Element {
     ret = item_id |> self.index.get;
-    if override or (ret is not None and caller_id |> ret.__is_readable) {
+    if `override or (ret is not None and caller_id |> ret.__is_readable) {
         return ret;
     }
 }
@@ -355,14 +355,14 @@ impl WalkerAnchor.disengage_now{
 
 impl NodeAnchor.__call__(walk: object) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance") ;
+        raise TypeError("Argument must be a Walker instance");
     }
     walk(self);
 }
 
 impl EdgeAnchor.__call__(walk: EdgeInterface) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance") ;
+        raise TypeError("Argument must be a Walker instance");
     }
     walk(self.__jac__.target);
 }
@@ -471,16 +471,16 @@ impl JacPlugin.visit_node(walker_obj: Any, expr: Any) -> bool {
 
 glob expected_area = 78.53981633974483;
 
-test a1 {
+test "a1" {
     assert assertAlmostEqual(calculate_area(RAD), expected_area);
 }
 
-test a2 {
+test "a2" {
     c = Circle(RAD);
     assert assertAlmostEqual(c.area(), expected_area);
 }
 
-test a3 {
+test "a3" {
     c = Circle(RAD);
     assert assertEqual(c.shape_type, ShapeType.CIRCLE);
 }

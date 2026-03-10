@@ -8,4 +8,5 @@ exclude = [
     "*/examples/*",
     "*/tests/*",
     "console.impl.jac",
+    "cli_boot.jac"
 ]

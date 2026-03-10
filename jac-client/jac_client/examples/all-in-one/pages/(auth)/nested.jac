@@ -36,8 +36,8 @@ cl {
                     Both buttons below are rendered via relative imports:
                 </p>
                 <div style={{"display": "flex", "gap": "1rem", "marginTop": "1.5rem"}}>
-                    <CustomButton />
-                    <CustomButtonRoot />
+                    <CustomButton/>
+                    <CustomButtonRoot/>
                 </div>
             </div>;
     }

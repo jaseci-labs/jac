@@ -9,6 +9,7 @@ impl TypeEvaluator._get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
 impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
+        # self inside class method → instance of that class
         if isinstance(cls, uni.Archetype) {
             node_.sym = type_utils.lookup_symtab(
                 method, node_.value, self.builtins_module
@@ -16,27 +17,52 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
             node_.type = self.get_type_of_class(cls).clone_as_instance();
             return node_.type;
         }
+        # self inside enum method → instance of that enum
         if isinstance(cls, uni.Enum) {
-            # TODO: Implement type from enum.
+            node_.sym = type_utils.lookup_symtab(
+                method, node_.value, self.builtins_module
+            );
+            node_.type = self.get_type_of_enum(cls).clone_as_instance();
+            return node_.type;
+        }
+    }
+    return types.UnknownType();
+}
+
+"""Return the effective type of super (first parent class in MRO)."""
+impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
+    if method := self._get_enclosing_method(node_) {
+        cls = method.method_owner;
+        if isinstance(cls, uni.Archetype) {
+            current_class_type = self.get_type_of_class(cls);
+            # MRO[0] is current class, MRO[1] is first parent
+            if len(current_class_type.shared.mro) > 1 {
+                parent_class_type = current_class_type.shared.mro[1];
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
+                node_.type = parent_class_type.clone_as_instance();
+                return node_.type;
+            }
         }
     }
     return types.UnknownType();
 }
 
 """Return the effective type of the float."""
-impl TypeEvaluator.get_type_of_float(node: uni.Float) -> TypeBase {
+impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
     return self.prefetch.float_class;
 }
 
 """Return the effective type of the int."""
-impl TypeEvaluator.get_type_of_int(node: uni.Int) -> TypeBase {
+impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     assert self.prefetch.int_class is not None;
     return self.prefetch.int_class;
 }
 
 """Return the effective type of the string."""
-impl TypeEvaluator.get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase {
+impl TypeEvaluator.get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase {
     # FIXME: Strings are a type of LiteralString type:
     # "foo" is not `str` but Literal["foo"], however for now we'll
     # not considering that and make it work and will implement that
@@ -54,15 +80,20 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         return node_.name_spec.type;
     }
     if not isinstance(node_.signature, uni.FuncSignature) {
+        flags = types.FunctionTypeFlags.Null;
+        if node_.is_static {
+            flags = flags | types.FunctionTypeFlags.StaticMethod;
+        }
         func_type = types.FunctionType(
             func_name=node_.name_spec.sym_name,
-            return_type=types.UnknownType(),
+            return_type=self.get_none_type(),
             parameters=None,
+            function_flags=flags,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
     }
-    return_type: TypeBase = types.UnknownType();
+    return_type: TypeBase = self.get_none_type();
     if isinstance(node_.signature.return_type, uni.Expr) {
         return_type = self._convert_to_instance(
             self.get_type_of_expression(node_.signature.return_type)
@@ -147,10 +178,19 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             )
         );
     }
+    # Set function flags for static/class methods
+    flags = types.FunctionTypeFlags.Null;
+    if node_.is_static {
+        flags = flags | types.FunctionTypeFlags.StaticMethod;
+    }
+    if self._is_ability_classmethod(node_) {
+        flags = flags | types.FunctionTypeFlags.ClassMethod;
+    }
     func_type = types.FunctionType(
         func_name=node_.name_spec.sym_name,
         return_type=return_type,
         parameters=parameters,
+        function_flags=flags,
     );
     node_.name_spec.type = func_type;
     return func_type;
@@ -169,7 +209,13 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    is_builtin_class = node_.find_parent_of_type(uni.Module) == self.builtins_module;
+    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+    parent_module = node_.find_parent_of_type(uni.Module);
+    mod_flags = type_utils.compute_module_source_flags(
+        parent_module.loc.mod_path if parent_module and parent_module.loc else ""
+    );
+    is_builtin_class = mod_flags.is_builtin_stub;
+    is_from_stdlib_stub = mod_flags.is_stdlib_stub;
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
@@ -181,7 +227,28 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     # other classes are with symbol type TYPE.
     # TODO: We need to handle @dataclass decorator as well.
     is_data_class = node_.sym_category != SymbolType.TYPE;
-    is_enum_class = node_.sym_category == SymbolType.ENUM_ARCH;
+    # Detect class-based enums: is_enum_class propagates from prefetched Enum.
+    import from jaclang.compiler.type_system { enum_utils }
+    is_enum_class = any(
+        isinstance(base, types.ClassType) and base.shared.is_enum_class
+        for base in base_classes
+    );
+    # Detect NamedTuple subclasses: class X(NamedTuple) { ... }
+    # Check both the name AND that it's a builtin class (from typing module)
+    # to avoid false positives from user-defined classes named "NamedTuple"
+    is_namedtuple = any(
+        isinstance(base, types.ClassType)
+        and base.shared.is_builtin_class
+        and base.shared.class_name == "NamedTuple" for base in base_classes
+    );
+    enum_members: dict[str, types.EnumMemberInfo] | None = None;
+    enum_value_type: types.TypeBase | None = None;
+    if is_enum_class {
+        enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
+            base_classes, self.prefetch
+        );
+        enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
+    }
     cls_type = types.ClassType(
         shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
@@ -189,8 +256,12 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             type_params=type_params,
             base_classes=base_classes,
             is_builtin_class=is_builtin_class,
+            is_from_stdlib_stub=is_from_stdlib_stub,
             is_data_class=is_data_class,
+            is_namedtuple=is_namedtuple,
             is_enum_class=is_enum_class,
+            enum_value_type=enum_value_type,
+            enum_members=enum_members,
         ),
         private=None,
         flags=types.TypeFlags.Instantiable,
@@ -203,9 +274,61 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     return cls_type;
 }
 
+"""Build the type for an enum class."""
+impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
+    import from jaclang.compiler.type_system { enum_utils }
+    # Return cached type if available
+    if node_.name_spec.type is not None {
+        return cast(types.ClassType, node_.name_spec.type);
+    }
+    # Collect base classes (Example: enum Color(IntEnum) → base_classes = [IntEnum])
+    base_classes: list[types.TypeBase] = [];
+    for base_class in node_.base_classes or [] {
+        base_class_type = self.get_type_of_expression(base_class);
+        base_classes.append(base_class_type);
+    }
+    # No base specified, Then add Enum as implicit base (Example: enum Color { RED=1 } → base_classes = [Enum])
+    if not base_classes and self.prefetch and self.prefetch.enum_class {
+        base_classes.append(self.prefetch.enum_class);
+    }
+    # Get required value type for special enums (IntEnum → int, StrEnum → str, IntFlag → int)
+    enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
+        base_classes, self.prefetch
+    );
+    # Build member dictionary (RED=1, GREEN=2, etc.) with validation
+    enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
+    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+    parent_module = node_.find_parent_of_type(uni.Module);
+    mod_flags = type_utils.compute_module_source_flags(
+        parent_module.loc.mod_path if parent_module and parent_module.loc else ""
+    );
+    cls_type = types.ClassType(
+        shared=types.ClassType.ClassDetailsShared(
+            class_name=node_.name_spec.sym_name,
+            symbol_table=node_,
+            type_params=None,
+            base_classes=base_classes,
+            is_builtin_class=mod_flags.is_builtin_stub,
+            is_from_stdlib_stub=mod_flags.is_stdlib_stub,
+            is_data_class=False,
+            is_enum_class=True,
+            enum_value_type=enum_value_type,
+            enum_members=enum_members,
+        ),
+        private=None,
+        flags=types.TypeFlags.Instantiable,
+    );
+    type_utils.compute_mro_linearization(cls_type);
+    # Store in node for reuse
+    node_.name_spec.type = cls_type;
+    return cls_type;
+}
+
 """Return the built-in type with the given name."""
 impl TypeEvaluator._get_type_from_module(module: uni.Module, name: str) -> TypeBase {
-    if (symbol := type_utils.lookup_symtab(module, name, self.builtins_module)) is not None {
+    if (
+        symbol := type_utils.lookup_symtab(module, name, self.builtins_module)
+    ) is not None {
         return self.get_type_of_symbol(symbol);
     }
     return types.UnknownType();

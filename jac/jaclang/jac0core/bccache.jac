@@ -1,27 +1,12 @@
-"""Bytecode caching for Jac modules.
+"""File discovery utilities for Jac module caching.
 
-This module provides disk-based caching for compiled Jac bytecode,
-similar to Python's __pycache__ mechanism. Cache files are stored
-in a global user cache directory following platform conventions:
-- Linux:   ~/.cache/jac/bytecode/
-- macOS:   ~/Library/Caches/jac/bytecode/
-- Windows: %LOCALAPPDATA%/jac/cache/bytecode/
+Provides functions to discover annex files (.impl.jac, .test.jac),
+variant files (.sv.jac, .cl.jac, .na.jac), and base files for a
+given Jac source path. Used by JIR cache invalidation and formatter.
 """
-import hashlib;
-import marshal;
 import os;
-import pickle;
 import sys;
-import types;
-import from dataclasses { dataclass }
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, Any, Final }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.project.config { JacConfig }
-    }
-}
 
 """Get the platform-appropriate global cache directory for Jac bytecode.
 
@@ -54,23 +39,126 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
         return [];
     }
     base = src.stem;
-    if base.endswith('.cl') {
-        base = base[:-3];
+    # Determine the source file's own variant context (if any).
+    src_variant: (str | None) = None;
+    for vext in ('.sv', '.cl', '.na') {
+        if base.endswith(vext) {
+            src_variant = vext;
+            base = base[:-len(vext)];
+            break;
+        }
     }
+    # When the source is a variant (.sv/.cl/.na) and no bare .jac head
+    # exists, bare annex files (no variant suffix) belong to this variant.
+    bare_head_exists = (
+        src_variant is not None and (src.parent / (base + '.jac')).is_file()
+    );
     mod_folder = src.parent / (base + suffix[:-4]);
     shared_folder = suffix[1:-4];
     dirs = [src.parent, mod_folder, (src.parent / shared_folder)];
-    return [
-        str(f)
-        for d in dirs
-        if d.is_dir()
-        for f in d.iterdir()
-        if (
-            f.is_file()
-            and f.name.endswith(suffix)
-            and ((d == mod_folder) or f.name.startswith(f"{base}."))
-        )
-    ];
+    results: list[str] = [];
+    for d in dirs {
+        if not d.is_dir() {
+            continue;
+        }
+        for f in d.iterdir() {
+            if not f.name.endswith(suffix) {
+                continue;
+            }
+            if ((d != mod_folder) and not f.name.startswith(f"{base}.")) {
+                continue;
+            }
+            if not f.is_file() {
+                continue;
+            }
+            # Determine the annex file's variant context.
+            annex_stem = f.name[:-len(suffix)];  # e.g. "svc.sv" from "svc.sv.impl.jac"
+            annex_variant: (str | None) = None;
+            for vext in ('.sv', '.cl', '.na') {
+                if annex_stem.endswith(vext) {
+                    annex_variant = vext;
+                    break;
+                }
+            }
+            # Variant-suffixed annex: must match the source variant exactly.
+            # Bare annex (no variant): matches any source, UNLESS a bare
+            # .jac head exists that would claim it instead.
+            if annex_variant is not None {
+                if (annex_variant != src_variant) {
+                    continue;
+                }
+            } elif (src_variant is not None and bare_head_exists) {
+                continue;
+            }
+            results.append(str(f));
+        }
+    }
+    return results;
+}
+
+"""Discover variant files (.sv.jac, .cl.jac, .na.jac) for a head module.
+
+    The head module is whichever file has the highest precedence among the
+    variants that exist on disk:  .jac > .sv.jac > .cl.jac > .na.jac
+
+    Given the head, this function returns all *lower-precedence* variant
+    files that exist.  For example if only ``main.sv.jac`` and ``main.na.jac``
+    exist, calling with ``main.sv.jac`` returns ``[".../main.na.jac"]``.
+
+    Impl and test files are never considered heads or variants.
+    """
+glob _VARIANT_SUFFIXES: list[str] = ['.sv.jac', '.cl.jac', '.na.jac'];
+
+def discover_variant_files(source_path: str) -> list[str] {
+    src = Path(source_path).resolve();
+    if not src.name.endswith('.jac') {
+        return [];
+    }
+    if ('.impl.' in src.name or '.test.' in src.name) {
+        return [];
+    }
+    # Determine the base stem and which suffix the source has.
+    stem = src.stem;  # e.g. "main" or "main.sv"
+    head_suffix: (str | None) = None;
+    for vs in _VARIANT_SUFFIXES {
+        ext = vs[:-4];  # ".sv", ".cl", ".na"
+        if stem.endswith(ext) {
+            head_suffix = vs;
+            stem = stem[:-len(ext)];
+            break;
+        }
+    }
+    # If a higher-precedence file exists on disk this file is a variant,
+    # not the head — return empty so the head handles discovery.
+    if (head_suffix is not None) {
+        if (src.parent / f"{stem}.jac").is_file() {
+            return [];
+        }
+        for vs in _VARIANT_SUFFIXES {
+            if (vs == head_suffix) {
+                break;
+            }
+            if (src.parent / f"{stem}{vs}").is_file() {
+                return [];
+            }
+        }
+    }
+    # Collect only the suffixes that come AFTER the head in precedence.
+    if (head_suffix is None) {
+        # Plain .jac — all variant suffixes are lower precedence.
+        search_suffixes = _VARIANT_SUFFIXES;
+    } else {
+        idx = _VARIANT_SUFFIXES.index(head_suffix);
+        search_suffixes = _VARIANT_SUFFIXES[idx + 1:];
+    }
+    variants: list[str] = [];
+    for variant_suffix in search_suffixes {
+        variant_path = src.parent / f"{stem}{variant_suffix}";
+        if variant_path.is_file() {
+            variants.append(str(variant_path));
+        }
+    }
+    return variants;
 }
 
 """Discover the base .jac or .cl.jac file for an annex file (.impl.jac, .test.jac).
@@ -104,320 +192,4 @@ def discover_base_file(annex_path: str) -> (str | None) {
         }
     }
     return None;
-}
-
-"""Immutable key identifying a cached bytecode entry.
-
-    Attributes:
-        source_path: Absolute path to the source .jac file.
-        minimal: Whether minimal compilation mode was used.
-        python_version: Python version tuple (major, minor).
-    """
-@dataclass(frozen=True, slots=True)
-class CacheKey {
-    with entry {
-        source_path: str;
-        minimal: bool;
-        python_version: tuple[(int, int)];
-    }
-
-    """Create a cache key for the current Python version."""
-    @classmethod
-    def for_source(cls: Any, source_path: str, minimal: bool = False) -> CacheKey {
-        return cls(
-            source_path=source_path,
-            minimal=minimal,
-            python_version=(sys.version_info.major, sys.version_info.minor)
-        );
-    }
-}
-
-"""Abstract interface for bytecode caching."""
-class BytecodeCache {
-    """Retrieve cached bytecode if valid."""
-    def get(self: BytecodeCache, _key: CacheKey) -> (types.CodeType | None) {
-        raise NotImplementedError ;
-    }
-
-    """Store bytecode in the cache."""
-    def put(self: BytecodeCache, _key: CacheKey, _bytecode: bytes) -> None {
-        raise NotImplementedError ;
-    }
-}
-
-"""Disk-based bytecode cache using a global user cache directory.
-
-    Cache files are stored in a platform-appropriate global location:
-    - Linux:   ~/.cache/jac/bytecode/
-    - macOS:   ~/Library/Caches/jac/bytecode/
-    - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
-
-    Filenames include a path hash, Python version, and compilation mode
-    to ensure uniqueness across different projects and avoid conflicts.
-
-    Example:
-        source:  /project/src/main.jac
-        cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
-                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
-                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.mtir.pkl
-                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.llvmir  (native modules)
-                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.interop.pkl  (native interop)
-    """
-class DiskBytecodeCache(BytecodeCache) {
-    with entry {
-        EXTENSION: Final[str] = '.jbc';
-        MINIMAL_SUFFIX: Final[str] = '.minimal';
-        MTIR_EXTENSION: Final[str] = '.mtir.pkl';
-        LLVMIR_EXTENSION: Final[str] = '.llvmir';
-        INTEROP_EXTENSION: Final[str] = '.interop.pkl';
-    }
-
-    """Initialize the cache with optional config."""
-    def init(self: DiskBytecodeCache, config: (JacConfig | None) = None) -> None {
-        self._config = config;
-        self._cache_dir: (Path | None) = None;
-    }
-
-    """Get the global cache directory."""
-    def _get_cache_dir(self: DiskBytecodeCache) -> Path {
-        if (self._cache_dir is not None) {
-            return self._cache_dir;
-        }
-        self._cache_dir = get_global_cache_dir();
-        return self._cache_dir;
-    }
-
-    """Generate the cache file path for a given key.
-
-        Uses a hash of the full source path to ensure uniqueness when
-        files with the same name exist in different directories.
-        """
-    def _get_cache_path(self: DiskBytecodeCache, key: CacheKey) -> Path {
-        source = Path(key.source_path).resolve();
-        cache_dir = self._get_cache_dir();
-        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
-        (major, minor) = key.python_version;
-        py_version = f"cpython-{major}{minor}";
-        suffix = f"{self.MINIMAL_SUFFIX}{self.EXTENSION}"
-        if key.minimal
-        else self.EXTENSION;
-        cache_name = f"{source.stem}.{path_hash}.{py_version}{suffix}";
-        return (cache_dir / cache_name);
-    }
-
-    """Check if cached bytecode is still valid.
-
-        The cache is valid if:
-        - The cache file exists
-        - The cache is newer than the source file
-        - The cache is newer than all impl files associated with the source
-        """
-    def _is_valid(self: DiskBytecodeCache, key: CacheKey, cache_path: Path) -> bool {
-        if not cache_path.exists() {
-            return False;
-        }
-        try {
-            cache_mtime = os.path.getmtime(cache_path);
-            source_mtime = os.path.getmtime(key.source_path);
-            if (cache_mtime <= source_mtime) {
-                return False;
-            }
-            for impl_path in discover_annex_files(key.source_path) {
-                try {
-                    impl_mtime = os.path.getmtime(impl_path);
-                    if (cache_mtime <= impl_mtime) {
-                        return False;
-                    }
-                } except OSError {
-                    return False;
-                }
-            }
-            return True;
-        } except OSError {
-            return False;
-        }
-    }
-
-    """Retrieve cached bytecode if valid."""
-    def get(self: DiskBytecodeCache, key: CacheKey) -> (types.CodeType | None) {
-        cache_path = self._get_cache_path(key);
-        if not self._is_valid(key, cache_path) {
-            return None;
-        }
-        try {
-            bytecode = cache_path.read_bytes();
-            return marshal.loads(bytecode);
-        } except (OSError, ValueError, EOFError) {
-            return None;
-        }
-    }
-
-    """Store bytecode in the cache."""
-    def put(self: DiskBytecodeCache, key: CacheKey, bytecode: bytes) -> None {
-        cache_path = self._get_cache_path(key);
-        try {
-            cache_path.parent.mkdir(parents=True, exist_ok=True);
-            cache_path.write_bytes(bytecode);
-        } except OSError {
-            ;
-        }
-    }
-
-    """Generate the MTIR cache file path for a given key.
-
-        MTIR cache is stored alongside bytecode cache with .mtir.pkl extension.
-        """
-    def _get_mtir_cache_path(self: DiskBytecodeCache, key: CacheKey) -> Path {
-        source = Path(key.source_path).resolve();
-        cache_dir = self._get_cache_dir();
-        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
-        (major, minor) = key.python_version;
-        py_version = f"cpython-{major}{minor}";
-        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.MTIR_EXTENSION}";
-        return (cache_dir / cache_name);
-    }
-
-    """Retrieve cached MTIR map if valid.
-
-        Returns the mtir_map dictionary that maps scope strings to MTIR objects.
-        """
-    def get_mtir(self: DiskBytecodeCache, key: CacheKey) -> (dict[(str, Any)] | None) {
-        mtir_cache_path = self._get_mtir_cache_path(key);
-        if not self._is_valid(key, mtir_cache_path) {
-            return None;
-        }
-        try {
-            with open(mtir_cache_path, 'rb') as f {
-                return pickle.load(f);
-            }
-        } except (OSError, pickle.PickleError, EOFError) {
-            return None;
-        }
-    }
-
-    """Store MTIR map in the cache.
-
-        Args:
-            key: Cache key identifying the source file
-            mtir_map: Dictionary mapping scope strings to MTIR objects
-        """
-    def put_mtir(
-        self: DiskBytecodeCache, key: CacheKey, mtir_map: dict[(str, Any)]
-    ) -> None {
-        mtir_cache_path = self._get_mtir_cache_path(key);
-        try {
-            mtir_cache_path.parent.mkdir(parents=True, exist_ok=True);
-            with open(mtir_cache_path, 'wb') as f {
-                pickle.dump(mtir_map, f, protocol=pickle.HIGHEST_PROTOCOL);
-            }
-        } except (OSError, pickle.PickleError) {
-            ;
-        }
-    }
-
-    """Generate the LLVM IR cache file path for a given key."""
-    def _get_llvmir_cache_path(self: DiskBytecodeCache, key: CacheKey) -> Path {
-        source = Path(key.source_path).resolve();
-        cache_dir = self._get_cache_dir();
-        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
-        (major, minor) = key.python_version;
-        py_version = f"cpython-{major}{minor}";
-        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.LLVMIR_EXTENSION}";
-        return (cache_dir / cache_name);
-    }
-
-    """Generate the interop manifest cache file path for a given key."""
-    def _get_interop_cache_path(self: DiskBytecodeCache, key: CacheKey) -> Path {
-        source = Path(key.source_path).resolve();
-        cache_dir = self._get_cache_dir();
-        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
-        (major, minor) = key.python_version;
-        py_version = f"cpython-{major}{minor}";
-        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.INTEROP_EXTENSION}";
-        return (cache_dir / cache_name);
-    }
-
-    """Retrieve cached LLVM IR string if valid.
-
-        Returns:
-            The LLVM IR string, or None if not cached/invalid.
-        """
-    def get_llvmir(self: DiskBytecodeCache, key: CacheKey) -> (str | None) {
-        llvmir_cache_path = self._get_llvmir_cache_path(key);
-        if not self._is_valid(key, llvmir_cache_path) {
-            return None;
-        }
-        try {
-            return llvmir_cache_path.read_text(encoding='utf-8');
-        } except OSError {
-            return None;
-        }
-    }
-
-    """Store LLVM IR string in the cache.
-
-        Args:
-            key: Cache key identifying the source file
-            llvm_ir: The LLVM IR string to cache
-        """
-    def put_llvmir(self: DiskBytecodeCache, key: CacheKey, llvm_ir: str) -> None {
-        llvmir_cache_path = self._get_llvmir_cache_path(key);
-        try {
-            llvmir_cache_path.parent.mkdir(parents=True, exist_ok=True);
-            llvmir_cache_path.write_text(llvm_ir, encoding='utf-8');
-        } except OSError {
-            ;
-        }
-    }
-
-    """Retrieve cached interop manifest data if valid.
-
-        Returns:
-            Dictionary with interop binding data, or None if not cached/invalid.
-        """
-    def get_interop(
-        self: DiskBytecodeCache, key: CacheKey
-    ) -> (dict[(str, Any)] | None) {
-        interop_cache_path = self._get_interop_cache_path(key);
-        if not self._is_valid(key, interop_cache_path) {
-            return None;
-        }
-        try {
-            with open(interop_cache_path, 'rb') as f {
-                return pickle.load(f);
-            }
-        } except (OSError, pickle.PickleError, EOFError) {
-            return None;
-        }
-    }
-
-    """Store interop manifest data in the cache.
-
-        Args:
-            key: Cache key identifying the source file
-            interop_data: Dictionary with serializable interop binding data
-        """
-    def put_interop(
-        self: DiskBytecodeCache, key: CacheKey, interop_data: dict[(str, Any)]
-    ) -> None {
-        interop_cache_path = self._get_interop_cache_path(key);
-        try {
-            interop_cache_path.parent.mkdir(parents=True, exist_ok=True);
-            with open(interop_cache_path, 'wb') as f {
-                pickle.dump(interop_data, f, protocol=pickle.HIGHEST_PROTOCOL);
-            }
-        } except (OSError, pickle.PickleError) {
-            ;
-        }
-    }
-}
-
-glob _default_cache: (BytecodeCache | None) = None;
-"""Get the default bytecode cache instance."""
-def get_bytecode_cache -> BytecodeCache {
-    global _default_cache;
-    if (_default_cache is None) {
-        _default_cache = DiskBytecodeCache();
-    }
-    return _default_cache;
 }

@@ -16,10 +16,19 @@ import from byllm.mtir { MTRuntime }
 import litellm;
 import from litellm._logging { _disable_debugging }
 import from openai { OpenAI }
+import openai;
+import from byllm.exceptions {
+    AuthenticationError,
+    OutputConversionError,
+    RateLimitError,
+    ModelNotFoundError,
+    UnknownToolError
+}
 import from byllm.types {
     CompletionResult,
     LiteLLMMessage,
     MockToolCall,
+    StreamEvent,
     ToolCall,
     Message,
     MessageRole
@@ -53,7 +62,8 @@ obj BaseLLM {
     has model_name: str,
         config: dict = {},
         api_key: str = "",
-        call_params: dict[(str, object)] = {};
+        call_params: dict[(str, object)] = {},
+        _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
@@ -65,6 +75,12 @@ obj BaseLLM {
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[str, None, None];
     def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
+    def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
+    def _yield_recovery_result(
+        recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime
+    ) -> Generator[StreamEvent, None, None];
+
+    def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
 }
 
 """Mock LLM connector that simulates responses for testing.

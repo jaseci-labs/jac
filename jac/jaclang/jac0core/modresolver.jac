@@ -29,7 +29,15 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
             paths.append(user_dir);
         }
     }
-    return `list(`dict.fromkeys(filter(None, paths)));
+    return `list(
+        `dict.fromkeys(
+            [
+                p
+                for p in paths
+                if p
+            ]
+        )
+    );
 }
 
 """Construct a list of paths to search for Python modules."""
@@ -39,7 +47,15 @@ def get_py_search_paths(base_path: (str | None) = None) -> list[str] {
         paths.append(base_path);
     }
     paths.append(os.getcwd());
-    return `list(`dict.fromkeys(filter(None, paths)));
+    return `list(
+        `dict.fromkeys(
+            [
+                p
+                for p in paths
+                if p
+            ]
+        )
+    );
 }
 
 def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
@@ -73,17 +89,121 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     return None;
 }
 
+"""Get path aliases from project config [plugins.client.paths]."""
+def _get_path_aliases -> dict[str, str] {
+    try {
+        import from jaclang.project.config { get_config }
+        config = get_config();
+        if config {
+            client_config = config.get_plugin_config('client');
+            return client_config.get('paths', {});
+        }
+    } except (ImportError, AttributeError) {
+        ;
+    }
+    return {};
+}
+
+"""Resolve a path alias to its actual filesystem path.
+
+Checks if target matches any configured path alias from [plugins.client.paths].
+Supports wildcard patterns like "@components/*" -> "./components/*"
+"""
+def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
+    if not target.startswith('@') {
+        return None;
+    }
+    aliases = _get_path_aliases();
+    if not aliases {
+        return None;
+    }
+    # Get project root from config
+    try {
+        import from jaclang.project.config { get_config }
+        config = get_config();
+        project_root = config.project_root if config else None;
+    } except (ImportError, AttributeError) {
+        project_root = None;
+    }
+    if not project_root {
+        project_root = os.path.dirname(base_path)
+            if os.path.isfile(base_path)
+            else base_path;
+    }
+    for (alias_pattern, target_path) in aliases.items() {
+        if alias_pattern.endswith('/*') {
+            prefix = alias_pattern[:-2];
+            if (target.startswith(prefix + '/') or target == prefix) {
+                target_base = target_path.rstrip('/*').lstrip('./');
+                if target == prefix {
+                    resolved = target_base;
+                } else {
+                    rest = target[len(prefix) + 1:];
+                    resolved = os.path.join(target_base, rest);
+                }
+                return os.path.join(str(project_root), resolved);
+            }
+        } else {
+            if target == alias_pattern {
+                resolved = target_path.lstrip('./');
+                return os.path.join(str(project_root), resolved);
+            }
+        }
+    }
+    return None;
+}
+
 """Resolve module path and infer language."""
 def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     base_dir = os.path.dirname(base_path);
+    # Check for path aliases first (e.g., @components/Button -> ./components/Button)
+    alias_resolved = _resolve_path_alias(target, base_path);
+    if alias_resolved {
+        res = _candidate_from(
+            os.path.dirname(alias_resolved), [os.path.basename(alias_resolved)]
+        );
+        if res {
+            return res;
+        }
+        if os.path.isfile(alias_resolved) {
+            ext = os.path.splitext(alias_resolved)[1].lower();
+            lang = {
+                '.jac': 'jac',
+                '.py': 'py',
+                '.js': 'js',
+                '.ts': 'js',
+                '.tsx': 'js'
+            }.get(
+                ext, 'other'
+            );
+            return (alias_resolved, lang);
+        }
+    }
     if target.startswith('.') {
         other_target = os.path.join(base_dir, convert_to_js_import_path(target));
     } else {
         other_target = os.path.join(base_dir, target);
     }
     if (os.path.exists(other_target) and os.path.isfile(other_target)) {
-        return (other_target, 'other');
+        return (os.path.normpath(other_target), 'other');
     }
+    # Check typeshed FIRST for non-relative imports (before Python stdlib fallback)
+    if not target.startswith('.') {
+        parts = target.split('.');
+        level = 0;
+        while ((level < len(parts)) and (parts[level] == '')) {
+            level += 1;
+        }
+        actual_parts = parts[level:];
+        typeshed_paths = get_typeshed_paths();
+        for typeshed_dir in typeshed_paths {
+            res = _candidate_from_typeshed(typeshed_dir, actual_parts);
+            if res {
+                return res;
+            }
+        }
+    }
+    # Fallback to Python's importlib for modules not in typeshed
     if not target.startswith('.') {
         try {
             spec = importlib.util.find_spec(target);
@@ -91,7 +211,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
             spec = None;
         }
         if (spec and spec.origin and (spec.origin not in {'built-in','frozen'})) {
-            origin = spec.origin;
+            origin = os.path.normpath(spec.origin);
             ext = os.path.splitext(origin)[1].lower();
             if (ext in {'.jac','.pyi','.py','.js','.ts','.jsx','.tsx'}) {
                 if (ext == '.jac') {
@@ -116,32 +236,34 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         level += 1;
     }
     actual_parts = parts[level:];
+
+    # For relative imports (level > 0), check local path FIRST before global paths
+    base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
+    for _ in range(max((level - 1), 0)) {
+        base_dir = os.path.dirname(base_dir);
+    }
+    if level > 0 {
+        # Relative import: check local directory first
+        res = _candidate_from(base_dir, actual_parts);
+        if res {
+            return res;
+        }
+    }
+
+    # Search global paths
     for sp in get_jac_search_paths(base_path) {
         res = _candidate_from(sp, actual_parts);
         if res {
             return res;
         }
     }
-    typeshed_paths = get_typeshed_paths();
-    for typeshed_dir in typeshed_paths {
-        res = _candidate_from_typeshed(typeshed_dir, actual_parts);
+
+    # Fallback to base_dir for non-relative imports
+    if level == 0 {
+        res = _candidate_from(base_dir, actual_parts);
         if res {
             return res;
         }
-    }
-    if typeshed_paths {
-        stub_pyi_path = os.path.join(typeshed_paths[0], *actual_parts) + '.pyi';
-        if os.path.isfile(stub_pyi_path) {
-            return (stub_pyi_path, 'pyi');
-        }
-    }
-    base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
-    for _ in range(max((level - 1), 0)) {
-        base_dir = os.path.dirname(base_dir);
-    }
-    res = _candidate_from(base_dir, actual_parts);
-    if res {
-        return res;
     }
     jacpath = os.getenv('JACPATH');
     if jacpath {
@@ -272,7 +394,9 @@ def get_typeshed_paths -> list[str] {
 }
 
 """Find .pyi files in typeshed, trying module.pyi then package/__init__.pyi."""
-def _candidate_from_typeshed(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
+def _candidate_from_typeshed(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None) {
     if not parts {
         return None;
     }

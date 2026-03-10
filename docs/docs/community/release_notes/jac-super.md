@@ -2,11 +2,25 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.2 (Unreleased)
+## jac-super 0.1.7 (Unreleased)
+
+- **Style: Remove Bold from CLI Console Output**: Removed bold from all Rich theme entries and inline styles, keeping only color for a cleaner look.
+
+## jac-super 0.1.6 (Latest Release)
+
+- 1 small refactor/change.
+
+## jac-super 0.1.5
+
+## jac-super 0.1.4
+
+## jac-super 0.1.3
+
+## jac-super 0.1.2
 
 - Various refactors
 
-## jac-super 0.1.1 (Latest Release)
+## jac-super 0.1.1
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 

@@ -1,14 +1,12 @@
 # Python Integration
 
-> **Part of:** [Part VIII: Ecosystem](ecosystem.md)
->
-> **Related:** [Library Mode](library-mode.md) | [Build a Todo App](../../tutorials/fullstack/todo-app.md)
+> **Related:** [Library Mode](library-mode.md) | [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md)
 
 ---
 
-## **Jac's Native Superset of Python and TypeScript/JavaScript**
+## **Jac Supersets Python**
 
-Jac is designed as a superset of both Python and TypeScript/JavaScript, providing full compatibility with both the PyPI and npm ecosystems. Developers can leverage their existing knowledge while accessing new capabilities for graph-based and object-spatial programming.
+Jac supersets Python and JavaScript, giving you full compatibility with both the PyPI and npm ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
 
 ### **How it Works: Transpilation to Native Python**
 
@@ -75,6 +73,9 @@ print(f'5! = {factorial(5)}')
 
 The compiled output demonstrates how Jac's object-oriented features map to standard Python classes inheriting from `Obj` (Jac's base object archetype), with imports from the `jaclang.lib` package.
 
+!!! note
+    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
+
 ---
 
 ### **Seamless Interoperability: Import Jac Files Like Python Modules**
@@ -118,9 +119,52 @@ Jac files can also import Python libraries:
 # analyzer.jac
 import pandas as pd;
 import numpy as np;
+import from sklearn.linear_model { LinearRegression }
 
-# Use Python libraries in Jac code
+with entry {
+    # NumPy
+    arr = np.array([1, 2, 3, 4, 5]);
+    print(f"Mean: {np.mean(arr)}");
+
+    # Pandas
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]});
+    print(df.describe());
+
+    # Scikit-learn
+    model = LinearRegression();
+}
 ```
+
+**Inline Python with `::py::` Blocks**
+
+For performance-critical code or complex Python-only APIs, embed Python directly in `.jac` files:
+
+```jac
+::py::
+import numpy as np
+
+def complex_calculation(data):
+    """Pure Python for performance-critical code."""
+    arr = np.array(data)
+    return arr.mean(), arr.std()
+::py::
+
+with entry {
+    (mean, std) = complex_calculation([1, 2, 3, 4, 5]);
+    print(f"Mean: {mean}, Std: {std}");
+}
+```
+
+**When to use inline Python:**
+
+* Complex Python-only APIs
+* Performance-critical numerical code
+* Legacy code integration
+
+**When NOT to use inline Python:**
+
+* Simple imports (use `import` instead)
+* New code that could use Jac features
 
 **Implementation Details:** Jac extends Python's native import mechanism using the [PEP 302](https://peps.python.org/pep-0302/) import hook system. When `import jaclang` is executed, it registers a custom importer that enables Python to locate and load `.jac` files. Subsequently, Python's import mechanism automatically checks for `.jac` files alongside `.py` files, compiles them transparently, and loads them into the program. This integration makes Jac modules function as first-class citizens within the Python environment.
 
@@ -543,3 +587,32 @@ Jac's design as a Python superset enables complementary use of both languages ra
 | Pattern 5: Pure Python + Library | Low | Very Low | Core runtime only | Very Low |
 
 Jac accommodates both new application development and enhancement of existing Python codebases, providing structured approaches to graph-based and object-spatial programming while maintaining full Python ecosystem compatibility.
+
+### Using Jac from Python
+
+```python
+import jaclang  # Registers the Jac import hook
+
+# Import Jac modules using standard Python import syntax
+from my_module import my_function, MyClass
+
+# Use exported functions/classes
+result = my_function(arg1, arg2)
+instance = MyClass()
+```
+
+---
+
+## Type Compatibility
+
+| Jac Type | Python Type |
+|----------|-------------|
+| `int` | `int` |
+| `float` | `float` |
+| `str` | `str` |
+| `bool` | `bool` |
+| `list` | `list` |
+| `dict` | `dict` |
+| `tuple` | `tuple` |
+| `set` | `set` |
+| `None` | `None` |

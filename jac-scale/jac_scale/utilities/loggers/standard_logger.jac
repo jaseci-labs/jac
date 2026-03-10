@@ -30,7 +30,9 @@ class StandardLogger(Logger) {
         }
     }
 
-    def debug(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
+    def debug(
+        self: StandardLogger, message: str, context: dict[str, Any] = {}
+    ) -> None {
         if context {
             console.print(f"[DEBUG] {message} | Context: {context}", style="muted");
         } else {

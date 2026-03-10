@@ -9,16 +9,15 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         elem_type = ir.IntType(8).as_pointer();
     }
     # Create list struct type: { i64 len, i64 cap, elem_type* data }
-    list_struct = self.llvm_module.context.get_identified_type(
-        f"List.{elem_type_name}"
-    );
+    list_struct = self.llvm_module.context.get_identified_type(f"List.{elem_type_name}");
     list_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
     self.list_types[elem_type_name] = list_struct;
     list_ptr_type = list_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    gc_malloc = self._get_or_declare_extern("GC_malloc", i8_ptr, [i64]);
+    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __list_new_T: create an empty list with capacity 8 ---
     new_fnty = ir.FunctionType(list_ptr_type, []);
@@ -28,29 +27,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     new_fn.linkage = "private";
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    # Allocate list struct
-    null_ptr = ir.Constant(list_ptr_type, None);
-    size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
-    struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(gc_malloc, [struct_size], name="raw");
-    list_ptr = b.bitcast(raw, list_ptr_type, name="list");
-    # len = 0
-    len_p = b.gep(list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
-    b.store(ir.Constant(i64, 0), len_p);
-    # cap = 8
-    cap_p = b.gep(list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
-    b.store(ir.Constant(i64, 8), cap_p);
-    # Allocate data: 8 * sizeof(elem)
-    elem_null = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_size = b.ptrtoint(elem_gep, i64, name="elem.size");
-    data_bytes = b.mul(ir.Constant(i64, 8), elem_size, name="data.bytes");
-    data_raw = b.call(gc_malloc, [data_bytes], name="data.raw");
-    data = b.bitcast(data_raw, elem_type.as_pointer(), name="data");
-    data_p = b.gep(
-        list_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr"
-    );
-    b.store(data, data_p);
+    (list_ptr, _) = self._emit_rc_alloc_container(b, list_ptr_type, [elem_type]);
     b.ret(list_ptr);
     # --- __list_append_T: append an element, growing if needed ---
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
@@ -74,23 +51,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     b.cbranch(need_grow, grow_bb, store_bb);
     # Grow block
     b.position_at_end(grow_bb);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_p2);
-    elem_null2 = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep2 = b.gep(elem_null2, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_sz = b.ptrtoint(elem_gep2, i64, name="elem.size");
-    new_bytes = b.mul(new_cap, elem_sz, name="new.bytes");
-    new_data_raw = b.call(gc_malloc, [new_bytes], name="new.data.raw");
-    new_data = b.bitcast(new_data_raw, elem_type.as_pointer(), name="new.data");
     data_p_g = b.gep(
         l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.g"
     );
-    old_data = b.load(data_p_g, name="old.data");
-    old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
-    old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
-    new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
-    b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    b.store(new_data, data_p_g);
+    self._emit_grow_array(b, data_p_g, elem_type, cur_len, cap_p2, cur_cap);
     b.branch(store_bb);
     # Store block
     b.position_at_end(store_bb);
@@ -152,6 +116,32 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     );
     length = b.load(lp, name="len");
     b.ret(length);
+    # --- __rc_release_list_T: type-specific destructor ---
+    release_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
+    release_fn = ir.Function(
+        self.llvm_module, release_fnty, name=f"__rc_release_list_{elem_type_name}"
+    );
+    release_fn.linkage = "private";
+    release_fn.args[0].name = "list";
+    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, list_ptr_type);
+    # Free block: release elements if pointer, free data, free struct
+    if isinstance(elem_type, ir.PointerType) {
+        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
+    }
+    # Free data array (plain malloc'd)
+    data_p_f = b.gep(
+        release_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+        name="data.ptr.f"
+    );
+    data_f = b.load(data_p_f, name="data.f");
+    data_f_i8 = b.bitcast(data_f, i8_ptr, name="data.f.i8");
+    b.call(free_fn, [data_f_i8]);
+    # Skip: bump allocator arena memory cannot be freed individually.
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    self.list_release_fns[elem_type_name] = release_fn;
     # Store helpers
     self.list_helpers[elem_type_name] = {
         "new": new_fn,
@@ -164,8 +154,8 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 }
 
 """Generate code for a list literal [a, b, c, ...]."""
-impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
-    if not node.values {
+impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
+    if not nd.values {
         # Empty list: infer type from context
         elem_type_name = "i64";
         # 1. Check the type hint set by assignment/field context
@@ -199,10 +189,12 @@ impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
         return None;
     }
     # Codegen first element to determine type
-    first_val = self._codegen_expr(node.values[0]);
+    first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {
         return None;
     }
+    # Box value tuples to pointers for container storage
+    first_val = self._box_value_tuple(first_val);
     elem_type = first_val.type;
     elem_type_name = "i64";
     if isinstance(elem_type, ir.DoubleType) {
@@ -223,9 +215,10 @@ impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
     }
     self.builder.call(helpers["append"], [list_val, append_val]);
     # Append remaining elements
-    for i in range(1, len(node.values)) {
-        val = self._codegen_expr(node.values[i]);
+    for i in range(1, len(nd.values)) {
+        val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            val = self._box_value_tuple(val);
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {
@@ -273,15 +266,11 @@ impl NaIRGenPass._codegen_index_set(
     is_neg = self.builder.icmp_signed(
         "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
     );
-    self._emit_runtime_raise(
-        is_neg, "IndexError", "list assignment index out of range"
-    );
+    self._emit_runtime_raise(is_neg, "IndexError", "list assignment index out of range");
     # IndexError: check index >= len
     len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
     is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
-    self._emit_runtime_raise(
-        is_oob, "IndexError", "list assignment index out of range"
-    );
+    self._emit_runtime_raise(is_oob, "IndexError", "list assignment index out of range");
     elem_type = helpers["elem_type"];
     value = self._coerce_type(value, elem_type);
     self.builder.call(helpers["set"], [target_val, index_val, value]);

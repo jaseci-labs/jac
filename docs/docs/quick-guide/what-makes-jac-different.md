@@ -1,18 +1,18 @@
 # Core Concepts
 
-Most of Jac will be recognizable if you are familary with another programming language like Python -- Jac is a Python superset, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [tutorials](../tutorials/index.md) and [language reference](../reference/language/index.md).
+Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [language reference](../reference/language/foundation.md).
 
-This page focuses on the three concepts that Jac adds beyond traditional programming languges. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
+This page focuses on the three concepts that Jac adds beyond traditional programming languages. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
 
 1. [How can one language target frontend, backend, and native binaries at the same time?](#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time)
 2. [How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?](#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data)
-3. [How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?](#3-how-does-jac-abstract-away-the-laborius-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem)
+3. [How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?](#3-how-does-jac-abstract-away-the-laborious-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem)
 
 ---
 
 ## 1. How can one language target frontends, backends, and native binaries at the same time?
 
-Similar to namespaces, the Jac language introduces the conecept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace either with a **block prefix** inside a file or with a **file extension**:
+Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace either with a **block prefix** inside a file or with a **file extension**:
 
 ```mermaid
 graph LR
@@ -55,12 +55,12 @@ def:pub add_todo(title: str) -> dict {
 
 # Client codespace
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has items: list = [];
 
         async def add -> None {
             todo = await add_todo("New");
-            items = items.concat([todo]);
+            items = items + [todo];
         }
 
         return <div>
@@ -76,62 +76,86 @@ The server definitions are visible to the `cl` block. When the client calls `add
 
 Codespaces are similar to namespaces, but instead of organizing names, they organize where code executes. Interop between them -- function calls, spawn calls, type sharing -- is handled by the compiler and runtime.
 
+!!! note "`obj` vs `class` -- choosing the right archetype"
+    Cross-codespace interop requires the compiler to fully understand your type's structure. Jac's `obj` is designed for this: it enforces strict, declarative semantics -- fields declared with `has`, auto-generated constructors, no runtime monkey-patching -- so the same definition can compile to Python, JavaScript, or native code.
+
+    If you need Python-specific class features like metaclasses, `@classmethod`, `@property`, or other decorator-heavy patterns, use a regular Python `class`. Those features are inherently tied to the Python runtime and cannot cross codespace boundaries. Jac provides the `static` keyword for static methods and fields, which covers the most common use case.
+
 ---
 
 ## 2. How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?
 
-Jac introduces graph-based Object Spatial Programming (OSP) contructs. OSP gives us two key capabilities. It provides us with a natural way to articulate solutions to problems with graph-like and hierarchical properties, and importantly, a way to organize a programs interaction with data that allows us to hide the complexity of database organization and management.
+Most languages store data in variables, objects, or database rows -- and you're responsible for the ORM, the schema, and the queries. Jac adds another option: **nodes** that live in a **graph**. You declare your data, connect it, and the runtime handles persistence automatically.
 
-Standard object-oriented programming models data as isolated objects -- you call methods to bring data to computation. OSP adds a layer on top: objects exist in a **graph** with explicit relationships. Additionally, the `walker` construct is also introduced allowing computation to **move to the data** by traversing that graph.
-
-OSP introduces three constructs alongside standard objects:
+A `node` is declared like an `obj/class`, but with a superpower -- nodes can be connected to other nodes with **edges**, forming a graph:
 
 ```jac
-# Nodes: objects that live in a graph
-node Document { has content: str; }
-node Summary  { has text: str; }
+node Task {
+    has title: str;
+    has done: bool = False;
+}
 
-# Edges: typed relationships between nodes
-edge Summarizes {}
-
-# Walkers: computation that traverses the graph
-walker Analyzer {
-    has results: list = [];
-
-    can process with Document entry {
-        self.results.append(here.content);
-        visit [-->];
-    }
+with entry {
+    # Create tasks and connect them to root
+    root ++> Task(title="Buy groceries");
+    root ++> Task(title="Team standup at 10am");
+    root ++> Task(title="Go for a run");
 }
 ```
 
-When you spawn an `Analyzer`, it visits each connected `Document` node and runs `process` at each one:
+The `++>` operator creates a node and connects it to an existing node with an edge. Your graph now looks like:
 
 ```mermaid
 graph LR
-    W["Analyzer"] -.->|visits| D1["Document A"]
-    D1 --> D2["Document B"]
-    D2 --> D3["Document C"]
+    root((root)) --> T1["Task(#quot;Buy groceries#quot;)"]
+    root --> T2["Task(#quot;Team standup at 10am#quot;)"]
+    root --> T3["Task(#quot;Go for a run#quot;)"]
 ```
-
-This model maps naturally to **agentic AI workflows**: the walker is the agent, the graph is the state space, and traversal is reasoning. States, transitions, tool calls, and memory are all nodes and edges.
 
 ### Persistence through `root`
 
-Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates the storage schema from your node declarations automatically. This allows Jac to abstract away database organization moving that to the responsibility of the runtime.
+Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates the storage schema from your node declarations automatically. No database setup, no ORM, no SQL.
 
-```mermaid
-graph LR
-    root((root)) --> A["Todo: Buy milk ✓ persisted"]
-    root --> B["Todo: Write tests ✓ persisted"]
-    C["Temp node ✗ transient"]
+When your app serves multiple users, each user gets their **own isolated `root`**. User A's tasks and User B's tasks live in completely separate graphs -- same code, isolated data, enforced by the runtime.
+
+### Querying the graph
+
+The `[-->]` syntax gives you a list of connected nodes, and Jac's filter comprehensions `(?...)` let you narrow the results:
+
+```jac
+with entry {
+    # Get all nodes connected from root as a list
+    everything = [root-->];
+
+    # Filter by node type
+    tasks = [root-->](?:Task);
+
+    # Filter by field value
+    pending = [root-->](?:Task, done == False);
+}
 ```
 
-You declare `node Todo { has title: str; }`, connect instances to `root`, and the runtime handles storage. Nodes not reachable from `root` are transient and will be garbage collected.
+Edges can also be **typed** with their own data, modeling relationships like schedules, dependencies, or social connections:
+
+```jac
+edge Scheduled {
+    has time: str;
+    has priority: int = 1;
+}
+
+with entry {
+    root +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
+
+    # Query through typed edges
+    urgent = [root->:Scheduled:priority>=3:->](?:Task);
+}
+```
+
+The key insight: instead of designing database tables and writing queries, you declare nodes and connect them. The graph **is** your data model, and `root` is the entry point. The runtime takes care of the rest.
 
 ---
 
-## 3. How does Jac abstract away the laborius task of prompt/context engineering for AI and turn it into a compiler/runtime problem?
+## 3. How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?
 
 Jac introduces Compiler-Integrated AI through its `by` and `sem` keywords. These  two keywords allow integrating language models into programs at the language level rather than through library calls.
 
@@ -162,9 +186,9 @@ obj Ingredient {
 sem Ingredient.cost = "Estimated cost in USD";
 sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-sem plan_shopping = "Generate a shopping list for the given recipe.";
 def plan_shopping(recipe: str) -> list[Ingredient]
     by llm();
+sem plan_shopping = "Generate a shopping list for the given recipe.";
 ```
 
 Without `sem`, the LLM has only the names `cost` and `carby` to work with. With it, the compiler includes "Estimated cost in USD" and "True if this ingredient is high in carbohydrates" in the prompt, producing more accurate structured output. The `sem` on `plan_shopping` itself provides the function-level instruction.
@@ -204,6 +228,6 @@ In practice, these compose: walkers traverse a graph on the server, delegate dec
 ## Next Steps
 
 - [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- Side-by-side comparison with a traditional stack
-- [Build Your First App](../tutorials/first-app/part1-todo-app.md) -- Apply these concepts in a working app
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) -- Apply these concepts in a working app
 - [Object-Spatial Programming](../tutorials/language/osp.md) -- Full tutorial on nodes, edges, and walkers
 - [byLLM Quickstart](../tutorials/ai/quickstart.md) -- Build an AI-integrated function

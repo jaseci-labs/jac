@@ -53,16 +53,16 @@ with entry:__main__ {
 # Unit Tests!
 glob expected_area = 78.53981633974483;
 
-test calc_area {
+test "calc area" {
     assert almostEqual(calculate_area(RAD), expected_area);
 }
 
-test circle_area {
+test "circle area" {
     c = Circle(RAD);
     assert almostEqual(c.area(), expected_area);
 }
 
-test circle_type {
+test "circle type" {
     c = Circle(RAD);
     assert c.shape_type == ShapeType.CIRCLE;
 }

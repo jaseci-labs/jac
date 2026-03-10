@@ -120,9 +120,7 @@ impl ViteCompiler._create_pages_entry_content(
     lines.append(
         f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}'
     );
-    lines.append(
-        'const authGuardElement = React.createElement(_AuthGuardRoute, null);'
-    );
+    lines.append('const authGuardElement = React.createElement(_AuthGuardRoute, null);');
     lines.append('');
     # --- Single App component with one BrowserRouter ---
     lines.append('function App() {');
@@ -315,15 +313,13 @@ impl ViteCompiler.compile_dependencies_recursively(
 """Compile client runtime utilities."""
 impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]] {
     if not self.runtime_path {
-        raise ClientBundleError('Runtime path not set') ;
+        raise ClientBundleError('Runtime path not set');
     }
     runtime_utils_path = self.runtime_path.parent / 'client_runtime.cl.jac';
     (runtimeutils_js, mod, runtimeutils_manifest) = self.jac_compiler.compile_module(
         runtime_utils_path
     );
-    runtimeutils_exports_list = self.jac_compiler.extract_exports(
-        runtimeutils_manifest
-    );
+    runtimeutils_exports_list = self.jac_compiler.extract_exports(runtimeutils_manifest);
     glob_names = list(runtimeutils_manifest.globals) if runtimeutils_manifest else [];
     all_exports = sorted(
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
@@ -445,14 +441,16 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func: (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
+    compile_to_js_func:
+        (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
     extract_exports_func: (Callable[([Any], list[str])] | None) = None,
-    extract_globals_func: (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
+    extract_globals_func:
+        (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
             'Vite package.json not found. Set vite_package_json when using ViteCompiler'
-        ) ;
+        );
     }
     if (
         (compile_to_js_func is None)
@@ -461,7 +459,7 @@ impl ViteCompiler.init(
     ) {
         raise ClientBundleError(
             'compile_to_js_func, extract_exports_func, and extract_globals_func are required'
-        ) ;
+        );
     }
     self.vite_package_json = vite_package_json;
     # Detect project root: package.json may be in .jac/client/configs/ or project root

@@ -5,7 +5,7 @@ cl {
     def:pub page -> JsxElement {
         return
             <BudgetProvider>
-                <BudgetPlannerUI />
+                <BudgetPlannerUI/>
             </BudgetProvider>;
     }
 }

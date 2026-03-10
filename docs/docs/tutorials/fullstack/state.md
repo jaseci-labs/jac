@@ -1,6 +1,8 @@
 # State Management
 
-Manage reactive state with hooks and the `has` keyword.
+Interactive applications need to track and respond to changing data -- a counter incrementing, a list of items growing, a form being filled out. In Jac's client-side code, state management uses the `has` keyword inside component functions to declare reactive variables. When a `has` variable changes, the component automatically re-renders to reflect the new value, just like React's `useState` hook.
+
+This tutorial covers declaring reactive state, handling user input, sharing state between components, and managing complex state with effects and derived values.
 
 > **Prerequisites**
 >
@@ -11,11 +13,11 @@ Manage reactive state with hooks and the `has` keyword.
 
 ## Reactive State with `has`
 
-Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`):
+Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`). Declaring `has count: int = 0;` inside a component function creates a stateful variable that persists across re-renders and triggers a UI update whenever its value changes:
 
 ```jac
 cl {
-    def:pub Counter() -> any {
+    def:pub Counter() -> JsxElement {
         has count: int = 0;  # Reactive state
 
         return <div>
@@ -40,7 +42,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Form() -> any {
+    def:pub Form() -> JsxElement {
         has name: str = "";
         has email: str = "";
         has submitted: bool = False;
@@ -82,7 +84,7 @@ cl {
 
 ```jac
 cl {
-    def:pub TodoApp() -> any {
+    def:pub TodoApp() -> JsxElement {
         has todos: list = [];
         has input_text: str = "";
 
@@ -105,14 +107,15 @@ cl {
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
 
             <ul>
-                {todos.map(lambda todo: any -> any {
-                    return <li key={todo["id"]}>
+                {[
+                    <li key={todo["id"]}>
                         {todo["text"]}
                         <button onClick={lambda -> None { remove_todo(todo["id"]); }}>
                             X
                         </button>
-                    </li>;
-                })}
+                    </li>
+                    for todo in todos
+                ]}
             </ul>
         </div>;
     }
@@ -134,7 +137,7 @@ Similar to how `has` automatically generates `useState`, you can use `can with e
 
 ```jac
 cl {
-    def:pub DataFetcher() -> any {
+    def:pub DataFetcher() -> JsxElement {
         has data: list = [];
         has loading: bool = True;
 
@@ -150,9 +153,7 @@ cl {
         }
 
         return <ul>
-            {data.map(lambda item: any -> any {
-                return <li key={item.id}>{item.name}</li>;
-            })}
+            {[<li key={item.id}>{item.name}</li> for item in data]}
         </ul>;
     }
 }
@@ -160,11 +161,11 @@ cl {
 
 ### Effect Dependencies
 
-Use list `[dep]` or tuple `(dep1, dep2)` syntax to specify dependencies:
+Use list syntax `[dep1, dep2]` to specify dependencies (similar to React's dependency arrays):
 
 ```jac
 cl {
-    def:pub SearchResults() -> any {
+    def:pub SearchResults() -> JsxElement {
         has query: str = "";
         has results: list = [];
 
@@ -181,7 +182,7 @@ cl {
                 onChange={lambda e: any -> None { query = e.target.value; }}
             />
             <ul>
-                {results.map(lambda r: any -> any { return <li>{r}</li>; })}
+                {[<li>{r}</li> for r in results]}
             </ul>
         </div>;
     }
@@ -194,7 +195,7 @@ Use `can with exit` for cleanup logic (runs on unmount):
 
 ```jac
 cl {
-    def:pub Timer() -> any {
+    def:pub Timer() -> JsxElement {
         has seconds: int = 0;
 
         # Setup interval on mount
@@ -222,7 +223,7 @@ You can also use `useEffect` manually by importing from React:
 cl {
     import from react { useEffect }
 
-    def:pub DataFetcher() -> any {
+    def:pub DataFetcher() -> JsxElement {
         has data: list = [];
 
         useEffect(lambda -> None {
@@ -248,7 +249,7 @@ cl {
     glob AppContext = createContext(None);
 
     # Provider component
-    def:pub AppProvider(props: dict) -> any {
+    def:pub AppProvider(props: dict) -> JsxElement {
         has user: any = None;
         has theme: str = "light";
 
@@ -265,7 +266,7 @@ cl {
     }
 
     # Consumer component
-    def:pub UserDisplay() -> any {
+    def:pub UserDisplay() -> JsxElement {
         ctx = useContext(AppContext);
 
         if ctx.user {
@@ -274,7 +275,7 @@ cl {
         return <p>Not logged in</p>;
     }
 
-    def:pub ThemeToggle() -> any {
+    def:pub ThemeToggle() -> JsxElement {
         ctx = useContext(AppContext);
 
         return <button onClick={lambda -> None {
@@ -284,7 +285,7 @@ cl {
         </button>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <AppProvider>
             <UserDisplay />
             <ThemeToggle />
@@ -323,7 +324,7 @@ cl {
         return (value, lambda v: any -> None { value = v; });
     }
 
-    def:pub Settings() -> any {
+    def:pub Settings() -> JsxElement {
         (theme, set_theme) = use_local_storage("theme", "light");
 
         return <div>
@@ -347,7 +348,7 @@ cl {
 
 ```jac
 cl {
-    def:pub DataComponent() -> any {
+    def:pub DataComponent() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
         has error: str = "";
@@ -371,7 +372,7 @@ cl {
 
 ```jac
 cl {
-    def:pub ContactForm() -> any {
+    def:pub ContactForm() -> JsxElement {
         has form_data: dict = {
             "name": "",
             "email": "",
@@ -381,7 +382,7 @@ cl {
         has submitting: bool = False;
 
         def update_field(field: str, value: str) -> None {
-            form_data[field] = value;
+            form_data = {**form_data, field: value};
         }
 
         def validate() -> bool {

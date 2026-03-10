@@ -1,6 +1,6 @@
 [project]
 name = "byllm"
-version = "0.4.18"
+version = "0.5.5"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 entry-point = "byllm/plugin.jac"
 readme = "README.md"

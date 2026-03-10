@@ -1,0 +1,60 @@
+name: "Bug Report"
+description: "Report a reproducible bug to help us improve Jaseci."
+title: "[Bug]: "
+labels: ["Type: Bug"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Thank you for helping us improve Jaseci!
+        To ensure we can address your report efficiently, please fill out all sections and provide as much detail as possible.
+        Before submitting, search [existing issues](https://github.com/Jaseci-Labs/jaseci/issues) to avoid duplicates.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating System"
+      options:
+        - "macOS"
+        - "Windows"
+        - "Ubuntu"
+        - "Debian"
+        - "Fedora"
+        - "Other Linux"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: "Versions"
+      placeholder: "Jac 0.11.0 | Python 3.12.2 | jac-scale = 0.1.10 | jac-byllm = 0.5.0"
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Steps to Reproduce"
+      placeholder: |
+        1. Create a `.jac` file with minimal reproduction code:
+           ```jac
+           # minimal reproduction
+           ```
+        2. Run: `jac run <file>.jac`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: "Expected vs Actual Behavior"
+      placeholder: |
+        Expected: Should print `Hello, Alice` and exit with code 0.
+
+        Actual:
+        ```
+        TypeError: can only concatenate str (not "NoneType") to str
+          File "test.jac", line 6, in say_hello
+        ```

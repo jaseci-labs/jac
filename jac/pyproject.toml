@@ -1,6 +1,6 @@
 [project]
 name = "jaclang"
-version = "0.10.0"
+version = "0.12.0"
 description = "Jac programming language - a superset of both Python and TypeScript/JavaScript with novel constructs for AI-integrated programming."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -15,11 +15,9 @@ keywords = [
     "machine-learning",
     "artificial-intelligence",
 ]
-requires-python = ">=3.11"
-dependencies = [
-    "llvmlite>=0.43.0",
-]
-# Note: lark, interegular, pluggy, pygls are vendored
+requires-python = ">=3.12"
+dependencies = ["llvmlite>=0.43.0"]
+# Note: lark, pygls are vendored; pluggy replaced by jaclang/plugin.py
 
 [project.urls]
 Repository = "https://github.com/Jaseci-Labs/jaseci"
@@ -27,7 +25,10 @@ Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
 
 [project.scripts]
-jac = "jaclang.cli.cli:start_cli"
+jac = "jaclang.jac0core.cli_boot:start_cli"
+
+[project.entry-points.pytest11]
+jaclang = "jaclang.pytest_plugin"
 
 [project.optional-dependencies]
 dev = [
@@ -43,7 +44,7 @@ include = ["jaclang*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.lark", "*.pyi", "py.typed"]
-jaclang = ["sitecustomize.py"]
+jaclang = ["sitecustomize.py", "_precompiled/**/*.jir", "_precompiled/manifest.json"]
 
 [tool.setuptools]
 include-package-data = true

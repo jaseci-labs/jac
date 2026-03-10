@@ -1,6 +1,11 @@
 # Testing Reference
 
-Complete reference for writing and running tests in Jac.
+Jac has first-class support for testing built directly into the language. Instead of importing a test framework or following naming conventions, you write `test "description" { ... }` blocks right alongside your code. These blocks are ignored during normal execution (`jac run`) and only run when you invoke `jac test`.
+
+Tests in Jac use the standard `assert` statement for all checks. Each test block runs in its own isolated context, so state created in one test (including graph nodes connected to `root`) doesn't leak into another. This isolation means you can test walkers, graph operations, and node behaviors without worrying about test ordering or cleanup -- each test gets a fresh graph.
+
+!!! tip "Graph state and tests"
+    If you encounter `NodeAnchor` errors when re-running tests, clear stale persisted state with `jac clean --all` before retrying. The local storage persists graph data between runs, but test isolation resets the in-memory graph for each test block.
 
 ---
 
@@ -9,7 +14,7 @@ Complete reference for writing and running tests in Jac.
 ### Basic Test
 
 ```jac
-test my_feature {
+test "my feature" {
     # Test body
     assert condition;
 }
@@ -26,7 +31,7 @@ obj MyObject {
     }
 }
 
-test object_processing {
+test "object processing" {
     # Setup
     my_obj = MyObject(data="test");
 
@@ -45,7 +50,7 @@ test object_processing {
 ### Basic Assert
 
 ```jac
-test basic_assert {
+test "basic assert" {
     assert condition;
     assert condition, "Error message";
 }
@@ -54,7 +59,7 @@ test basic_assert {
 ### Equality
 
 ```jac
-test equality_checks {
+test "equality checks" {
     assert a == b;           # Equal
     assert a != b;           # Not equal
     assert a is b;           # Same object
@@ -65,7 +70,7 @@ test equality_checks {
 ### Comparisons
 
 ```jac
-test comparisons {
+test "comparisons" {
     assert a > b;            # Greater than
     assert a >= b;           # Greater or equal
     assert a < b;            # Less than
@@ -76,7 +81,7 @@ test comparisons {
 ### Boolean
 
 ```jac
-test boolean_values {
+test "boolean values" {
     assert True;
     assert not False;
     assert bool(value);
@@ -86,7 +91,7 @@ test boolean_values {
 ### Membership
 
 ```jac
-test membership {
+test "membership" {
     assert item in collection;
     assert item not in collection;
     assert key in dictionary;
@@ -96,7 +101,7 @@ test membership {
 ### Type Checking
 
 ```jac
-test type_checking {
+test "type checking" {
     assert isinstance(obj, MyClass);
     assert type(obj) == MyClass;
 }
@@ -105,16 +110,25 @@ test type_checking {
 ### None Checking
 
 ```jac
-test none_checking {
+test "none checking" {
     assert value is None;
     assert value is not None;
+}
+```
+
+### Float Comparison
+
+```jac
+test "float comparison" {
+    result = 0.1 + 0.2;
+    assert almostEqual(result, 0.3, 10);
 }
 ```
 
 ### With Messages
 
 ```jac
-test assertions_with_messages {
+test "assertions with messages" {
     assert result > 0, f"Expected positive, got {result}";
     assert len(items) == 3, "Should have 3 items";
 }
@@ -166,6 +180,9 @@ jac test -d tests/ -m 3
 # Combined
 jac test main.jac -t calculator_add -v
 ```
+
+!!! tip "File naming"
+    Avoid naming `.jac` files with a `test_` prefix (e.g., `test_utils.jac`), as this can conflict with Python's module import system. Use descriptive names like `utils_tests.jac` or `my_app.jac` instead.
 
 ---
 
@@ -219,14 +236,14 @@ obj Calculator {
     }
 }
 
-test calculator_add {
+test "calculator add" {
     calc = Calculator();
     assert calc.add(5) == 5;
     assert calc.add(3) == 8;
     assert calc.value == 8;
 }
 
-test calculator_reset {
+test "calculator reset" {
     calc = Calculator();
     calc.add(10);
     calc.reset();
@@ -253,13 +270,13 @@ walker Incrementer {
     }
 }
 
-test walker_increments {
+test "walker increments" {
     counter = root ++> Counter();
     root spawn Incrementer();
     assert counter[0].count == 1;
 }
 
-test walker_custom_amount {
+test "walker custom amount" {
     counter = root ++> Counter();
     root spawn Incrementer(amount=5);
     assert counter[0].count == 5;
@@ -284,7 +301,7 @@ walker FindAdults {
     }
 }
 
-test find_adults {
+test "find adults" {
     root ++> Person(name="Alice", age=30);
     root ++> Person(name="Bob", age=15);
     root ++> Person(name="Carol", age=25);
@@ -308,7 +325,7 @@ node Room {
 
 edge Door {}
 
-test graph_connections {
+test "graph connections" {
     kitchen = Room(name="Kitchen");
     living = Room(name="Living Room");
     bedroom = Room(name="Bedroom");
@@ -320,6 +337,10 @@ test graph_connections {
     # Test connections
     assert len([root -->]) == 1;
     assert len([kitchen -->]) == 1;
+    assert len([living -->]) == 1;
+    assert len([bedroom -->]) == 0;
+
+    # Test connectivity
     assert living in [kitchen ->:Door:->];
     assert bedroom in [living ->:Door:->];
 }
@@ -335,17 +356,21 @@ def divide(a: int, b: int) -> float {
     return a / b;
 }
 
-test divide_normal {
+test "divide normal" {
     assert divide(10, 2) == 5;
 }
 
-test divide_by_zero {
+test "divide by zero" {
     try {
         divide(10, 0);
         assert False, "Should have raised error";
     } except ZeroDivisionError {
         assert True;  # Expected
     }
+}
+
+test "divide negative" {
+    assert divide(-10, 2) == -5;
 }
 ```
 
@@ -362,8 +387,8 @@ myproject/
 │   ├── models.jac
 │   └── walkers.jac
 └── tests/
-    ├── test_models.jac
-    └── test_walkers.jac
+    ├── models_test.jac
+    └── walkers_test.jac
 ```
 
 ```bash
@@ -371,7 +396,7 @@ myproject/
 jac test -d tests/
 
 # Run specific file
-jac test tests/test_models.jac
+jac test tests/models_test.jac
 ```
 
 ### Tests in Same File
@@ -389,13 +414,18 @@ obj User {
 }
 
 # Tests at bottom
-test user_valid {
+test "user valid" {
     user = User(name="Alice", email="alice@example.com");
     assert user.is_valid();
 }
 
-test user_invalid_email {
+test "user invalid email" {
     user = User(name="Alice", email="invalid");
+    assert not user.is_valid();
+}
+
+test "user empty name" {
+    user = User(name="", email="alice@example.com");
     assert not user.is_valid();
 }
 ```
@@ -535,34 +565,105 @@ def test_hmr(tmp_path):
 
 ---
 
+## Parameterized Tests
+
+The `parametrize()` helper registers one test per parameter, similar to `pytest.mark.parametrize`. It creates individual test cases from a list of inputs, so each case runs and reports independently.
+
+### Import
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+```
+
+### Signature
+
+```
+parametrize(base_name: str, params: Iterable, test_func: Callable, id_fn: Callable | None = None)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base_name` | `str` | Base name for the generated tests |
+| `params` | `Iterable` | List of parameter values, each passed to the test function |
+| `test_func` | `Callable` | Test function to invoke with each parameter |
+| `id_fn` | `Callable \| None` | Optional function to generate test IDs from each parameter |
+
+### Usage
+
+Define a test function that takes a single parameter, then call `parametrize()` in a `with entry` block:
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+
+def _test_square(pair: tuple) {
+    input_val = pair[0];
+    expected = pair[1];
+    result = input_val ** 2;
+    assert result == expected, f"Expected {expected}, got {result}";
+}
+
+with entry {
+    parametrize(
+        "square",
+        [(2, 4), (3, 9), (0, 0), (-1, 1)],
+        _test_square
+    );
+}
+```
+
+This registers four tests: `square_0`, `square_1`, `square_2`, `square_3`.
+
+### Custom Test IDs
+
+Use `id_fn` to generate descriptive test names:
+
+```jac
+import from jaclang.runtimelib.test { parametrize }
+
+def _test_parse(raw: str) {
+    # test logic
+}
+
+with entry {
+    parametrize(
+        "parse values",
+        ["500m", "2", "250"],
+        _test_parse,
+        id_fn=lambda p: str -> str { return f"input_{p}"; }
+    );
+}
+```
+
+---
+
 ## Best Practices
 
 ### 1. Descriptive Names
 
 ```jac
-# Good - the 'test' keyword already marks it as a test
-test user_creation_with_valid_email { }
-test walker_visits_all_connected_nodes { }
+# Good - use readable descriptions
+test "user creation with valid email" { }
+test "walker visits all connected nodes" { }
 
-# Avoid
-test t1 { }
-test thing { }
+# Avoid - vague or cryptic names
+test "t1" { }
+test "thing" { }
 ```
 
 ### 2. One Focus Per Test
 
 ```jac
 # Good - focused tests
-test add_positive_numbers {
+test "add positive numbers" {
     assert add(2, 3) == 5;
 }
 
-test add_negative_numbers {
+test "add negative numbers" {
     assert add(-2, -3) == -5;
 }
 
 # Avoid - too broad
-test all_math_operations {
+test "all math operations" {
     assert add(2, 3) == 5;
     assert subtract(5, 3) == 2;
     assert multiply(2, 3) == 6;
@@ -573,14 +674,14 @@ test all_math_operations {
 
 ```jac
 # Good - creates fresh state
-test counter_increment {
+test "counter increment" {
     counter = root ++> Counter();
     root spawn Incrementer();
     assert counter[0].count == 1;
 }
 
 # Each test should be independent
-test counter_starts_at_zero {
+test "counter starts at zero" {
     counter = Counter();
     assert counter.count == 0;
 }
@@ -589,17 +690,17 @@ test counter_starts_at_zero {
 ### 4. Test Edge Cases
 
 ```jac
-test empty_list {
+test "empty list" {
     result = process([]);
     assert result == [];
 }
 
-test single_item {
+test "single item" {
     result = process([1]);
     assert len(result) == 1;
 }
 
-test large_list {
+test "large list" {
     result = process(list(range(1000)));
     assert len(result) == 1000;
 }
@@ -609,13 +710,13 @@ test large_list {
 
 ```jac
 # Good - clear what failed
-test calculation_with_message {
+test "calculation with message" {
     result = calculate(input);
     assert result == expected, f"Expected {expected}, got {result}";
 }
 
 # Avoid - unclear failures
-test calculation_no_message {
+test "calculation no message" {
     assert calculate(input) == expected;
 }
 ```
@@ -624,5 +725,4 @@ test calculation_no_message {
 
 ## Related Resources
 
-- [Testing Tutorial](../tutorials/language/testing.md)
 - [CLI Reference](cli/index.md)

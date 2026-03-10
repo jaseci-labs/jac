@@ -18,18 +18,18 @@ cl {
 
     # Capitalize first letter of string
     def:pub capitalize(text: str) -> str {
-        if text.length == 0 {
+        if len(text) == 0 {
             return text;
         }
-        return text[0].toUpperCase() + text.slice(1).toLowerCase();
+        return text[0].upper() + text[1:].lower();
     }
 
     # Truncate string with ellipsis
     def:pub truncate(text: str, maxLength: int) -> str {
-        if text.length <= maxLength {
+        if len(text) <= maxLength {
             return text;
         }
-        return text.slice(0, maxLength) + "...";
+        return text[:maxLength] + "...";
     }
 
     # Format large numbers with K/M suffix

@@ -30,14 +30,12 @@ jobs:
 
       - name: Run jac format (check formatting)
         run: |
-          find . -name "*.jac" ! -path "*/fixtures/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --lintfix
-          if ! git diff --quiet; then
-            echo "::error::jac format found unformatted files. Run 'jac format . --lintfix' locally."
-            git diff --name-only
-            exit 1
-          fi
+          find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+
+      - name: Verify jir_registry.jac is up to date
+        run: |
+          jac gen-jir-registry --verify
 
       - name: Run jac check (using .jacignore)
         run: |
-          IGNORE_LIST=$(paste -sd, .jacignore)
-          jac check . --ignore "$IGNORE_LIST" --nowarn
+          jac check . --ignore checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn

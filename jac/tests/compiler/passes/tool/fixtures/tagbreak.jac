@@ -21,20 +21,20 @@ def walrus_example() {
 with entry {
     c = (
         a()
-        if 1
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        and isinstance(a, int)
-        else (
-            999
-            if isinstance(a, int)
+            if 1
             and isinstance(a, int)
             and isinstance(a, int)
-            and isinstance(4, bool)
-            else 7
-        )
+            and isinstance(a, int)
+            and isinstance(a, int)
+            and isinstance(a, int)
+            else (
+                999
+                    if isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(a, int)
+                    and isinstance(4, bool)
+                    else 7
+            )
     );
     print("""This is a long
         line of code.""");
@@ -373,7 +373,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard(tweet: ClientTweet) -> any {
+    def TweetCard(tweet: ClientTweet) -> JsxElement {
         return
             <div
                 class="tweet-card"
@@ -409,7 +409,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard2(tweet: ClientTweet) -> any {
+    def TweetCard2(tweet: ClientTweet) -> JsxElement {
         return
             <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                 <button style={{"padding": "5px 10px"}}>
@@ -419,7 +419,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard3(tweet: ClientTweet) -> any {
+    def TweetCard3(tweet: ClientTweet) -> JsxElement {
         return (
             <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                 <button style={{"padding": "5px 10px"}}>
@@ -431,7 +431,7 @@ cl {
 
     # Handle liking a tweet - calls server walker directly
     # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> any {
+    async def like_tweet_action(tweet_id: str) -> Any {
         try {
             result = await like_tweet(tweet_id);
             print("Tweet liked:", result);
@@ -476,7 +476,7 @@ with entry {
 }
 
 # Match statement comment preservation
-def test_match_comments(x: int) {
+def test_match_comments(x: int) -> bool {
     match x {
         # comment before first case
         case 1:

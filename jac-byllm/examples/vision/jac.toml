@@ -1,0 +1,6 @@
+[project]
+name = "vision-examples"
+version = "0.1.0"
+
+[plugins.byllm.model]
+default_model = "gpt-4o"

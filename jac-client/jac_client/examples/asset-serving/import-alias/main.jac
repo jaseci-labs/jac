@@ -1,15 +1,13 @@
 # Pages
 # Import image using the @jac-client/assets alias
-cl import from "@jac-client/assets/burger.png" {
-    default as burgerImage
-}
+cl import from "@jac-client/assets/burger.png" { default as burgerImage }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
-            console.log("Count: ", count);
+            print("Count: ", count);
         }
 
         return
@@ -49,7 +47,7 @@ cl {
                     times!
                 </p>
                 <button
-                    onClick={lambda e: any  -> None { count = count + 1;}}
+                    onClick={lambda e: Any  -> None { count = count + 1;}}
                     style={{
                         padding: "10px 20px",
                         fontSize: "16px",

@@ -24,7 +24,8 @@ glob result3 = instance.name if hasattr(instance, "name") else None;
 # hasattr in binary expression (and)
 glob result4 = hasattr(instance, "value") and instance.value > 0;
 
-# hasattr in binary expression (or)
+# hasattr in binary expression (or) — should NOT be converted
+# (standalone boolean check with no matching attr access in other operand)
 glob result5 = hasattr(instance, "name") or False;
 
 # hasattr with single quotes
@@ -41,7 +42,7 @@ glob result8 = instance.value if hasattr(instance, attr_name) else 0;
 # This would be a syntax error in real code, but the auto-lint should not touch it
 
 # Regular function call that looks like hasattr but isn't
-def hasattr_lookalike(obj: object, attr: str) -> bool {
+def hasattr_lookalike(`obj: object, attr: str) -> bool {
     return True;
 }
 glob result9 = hasattr_lookalike(instance, "value");

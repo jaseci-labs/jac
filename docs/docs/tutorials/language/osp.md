@@ -4,9 +4,12 @@ Learn Jac's unique graph-based programming paradigm with nodes, edges, and walke
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Recommended: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
 > - Time: ~45 minutes
+
+!!! warning "Graph Persistence Between Runs"
+    `jac run` persists graph state to a `.jac/` directory. If you run an example multiple times, you may see duplicate nodes or `NodeAnchor ... is not a valid reference!` errors. To start fresh, clean the `.jac/` directory: `jac clean --all`
 
 ---
 
@@ -41,7 +44,7 @@ graph TD
 > | `visit` | Move walker to nodes | `visit [-->]` |
 > | `report` | Return data from walker | `report here` |
 >
-> See [Graph Operations](../../reference/language/graph-operations.md) for complete reference.
+> See [Graph Operations](../../reference/language/osp.md) for complete reference.
 
 ---
 
@@ -184,16 +187,16 @@ edge Knows {
     has since: int;
 }
 
-def query_examples(node: Person, alice: Person) {
+def query_examples(src: Person, alice: Person) {
     # Basic queries
-    [node -->];           # All forward connections
-    [node <--];           # All backward connections
-    [node <-->];          # Both directions
+    [src -->];           # All forward connections
+    [src <--];           # All backward connections
+    [src <-->];          # Both directions
 
     # Type filtering
-    [node -->](?:Person);           # Only Person nodes
-    [node ->:Knows:->];             # Only via Knows edges
-    [node ->:Knows:->](?:Person);   # Knows edges to Person nodes
+    [src -->](?:Person);           # Only Person nodes
+    [src ->:Knows:->];             # Only via Knows edges
+    [src ->:Knows:->](?:Person);   # Knows edges to Person nodes
 
     # Chained traversal
     [alice ->:Knows:-> ->:Knows:->];  # Friends of friends
@@ -203,6 +206,8 @@ def query_examples(node: Person, alice: Person) {
 ---
 
 ## Walkers: Mobile Computation
+
+**Naming:** `Root` (capitalized) is the type of the root node, used in ability declarations like `can X with Root entry`. `root` (lowercase) is the built-in instance, used in expressions like `root ++> node` or `root spawn Walker()`.
 
 Walkers are objects that traverse the graph and execute abilities at each node.
 
@@ -240,6 +245,9 @@ with entry {
 ```
 Hello, Alice!
 ```
+
+!!! warning "Walkers need explicit traversal"
+    A walker spawned at `root` starts there but doesn't automatically visit connected nodes. You must include a `can start with Root entry { visit [-->]; }` ability to begin traversal. Without it, the walker sits at root and its node-specific abilities never fire.
 
 Wait, why only Alice? Because the walker visits root first (via `start`), then visits Alice (via `greet`), but doesn't continue to Bob. The walker needs to be told to continue traversing.
 
@@ -356,10 +364,59 @@ with entry {
 **Output:**
 
 ```
+Person(name='Alice', age=30)
+Person(name='Carol', age=25)
 Found 2 adults
   - Alice
   - Carol
 ```
+
+The `report` keyword does two things: prints the value to the console, and stores it in `result.reports` for programmatic access.
+
+---
+
+## Stopping Early with `disengage`
+
+Use `disengage` to immediately stop a walker's traversal -- useful when you've found what you're looking for:
+
+```jac
+node Person {
+    has name: str;
+    has age: int;
+}
+
+walker FindFirst {
+    can start with Root entry {
+        visit [-->];
+    }
+
+    can check with Person entry {
+        if here.age >= 18 {
+            report here;
+            disengage;  # Stop immediately -- don't visit more nodes
+        }
+        visit [-->];
+    }
+}
+
+with entry {
+    root ++> Person(name="Alice", age=15);
+    root ++> Person(name="Bob", age=25);
+    root ++> Person(name="Carol", age=30);
+
+    result = root spawn FindFirst();
+    print(f"First adult: {result.reports[0].name}");
+}
+```
+
+**Output:**
+
+```
+Person(name='Bob', age=25)
+First adult: Bob
+```
+
+Without `disengage`, the walker would continue visiting Carol. With it, the walker stops as soon as it finds Bob. This is especially useful in search walkers where you need to find and modify a specific node (like toggling or deleting a task by ID).
 
 ---
 
@@ -460,6 +517,19 @@ with entry {
 }
 ```
 
+**Output:**
+
+```
+User(username='bob', bio='')
+User(username='carol', bio='')
+Alice's followers:
+  - bob
+  - carol
+User(username='bob', bio='')
+Alice's mutual follows:
+  - bob
+```
+
 ---
 
 ## Running as an API
@@ -517,7 +587,7 @@ Jac gives you two ways to expose server logic: `def:pub` functions and `walker` 
 !!! tip "Rule of thumb"
     Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
 
-The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 1, then refactors to walkers in [Part 3](../first-app/part3-multi-user.md) -- showing exactly when and why to make the switch.
+The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-multi-user-support) -- showing exactly when and why to make the switch.
 
 ---
 
@@ -532,6 +602,7 @@ The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 
 | `[-->]` | Query connections |
 | `visit` | Continue walker traversal |
 | `report` | Collect results from walker |
+| `disengage` | Stop walker traversal immediately |
 | `here` | Current node in walker |
 | `spawn` | Start walker at a node |
 
@@ -541,12 +612,12 @@ The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 
 
 **Continue Learning:**
 
-- [Testing](testing.md) - Test your nodes and walkers
+- [Testing](../../reference/testing.md) - Test your nodes and walkers
 - [AI Integration](../ai/quickstart.md) - Add LLM capabilities
-- [First App Tutorial](../first-app/part1-todo-app.md) - Review the todo app example
+- [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) - Build a complete app with OSP concepts
 
 **Reference:**
 
-- [Graph Operations](../../reference/language/graph-operations.md) - Complete edge/node operator reference
+- [Graph Operations](../../reference/language/osp.md) - Complete edge/node operator reference
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
 - [Part III: OSP](../../reference/language/osp.md) - Full language reference

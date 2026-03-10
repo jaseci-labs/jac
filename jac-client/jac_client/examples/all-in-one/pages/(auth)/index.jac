@@ -10,29 +10,29 @@ cl {
             lastTodoMessage: str = "";
 
         can with count entry {
-            console.log("Home count changed: ", count);
+            print("Home count changed: ", count);
         }
 
         async def handlePing -> None {
             result = root spawn ping_server();
-            if result.reports and result.reports.length > 0 {
+            if result.reports and len(result.reports) > 0 {
                 pingResult = result.reports[0][0];
             }
         }
 
         async def loadServerMessage -> None {
             result = root spawn get_server_message();
-            if result.reports and result.reports.length > 0 {
+            if result.reports and len(result.reports) > 0 {
                 serverMessage = result.reports[0][0];
             }
         }
 
         async def handleCreateSampleTodo -> None {
             result = root spawn create_todo(text="Sample todo from all-in-one app");
-            if result.reports and result.reports.length > 0 {
+            if result.reports and len(result.reports) > 0 {
                 todo = result.reports[0][0];
                 lastTodoMessage = "Created Todo: " + todo.text;
-                console.log("Created Todo node:", todo);
+                print("Created Todo node:", todo);
             }
         }
 
@@ -46,7 +46,7 @@ cl {
         useEffect(
             lambda -> None { workerRef.current = Reflect.construct(
                 Worker, ["/workers/worker.js"]
-            );workerRef.current.onmessage = lambda event: any  -> None { console.log(
+            );workerRef.current.onmessage = lambda event: Any  -> None { print(
                 "Message received from worker:", event.data
             );message = event.data;};return (
                 lambda -> None { workerRef.current.terminate();}
@@ -159,7 +159,7 @@ cl {
                         times.
                     </p>
                     <button
-                        onClick={lambda e: any  -> None { count = count + 1;}}
+                        onClick={lambda e: Any  -> None { count = count + 1;}}
                         style={{
                             "padding": "0.6rem 1.4rem",
                             "fontSize": "1rem",
@@ -192,7 +192,7 @@ cl {
                         </code>
                     </p>
                     <button
-                        onClick={lambda e: any  -> None { handlePing();}}
+                        onClick={lambda e: Any  -> None { handlePing();}}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "marginRight": "0.75rem",
@@ -206,7 +206,7 @@ cl {
                         Ping Backend
                     </button>
                     <button
-                        onClick={lambda e: any  -> None { handleCreateSampleTodo();}}
+                        onClick={lambda e: Any  -> None { handleCreateSampleTodo();}}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "backgroundColor": "#10b981",

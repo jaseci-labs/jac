@@ -8,8 +8,6 @@ Modules:
 - unitree: Core AST definitions
 - constant: Constants and token definitions
 - codeinfo: Code location info for AST nodes
-- jac_parser: Jac parser using Lark
-- lark_jac_parser: Generated Lark parser for Jac
 - passes/: Bootstrap-critical compiler passes
 - runtime: Runtime bootstrap infrastructure
 - helpers: Utility functions

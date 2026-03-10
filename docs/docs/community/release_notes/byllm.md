@@ -2,11 +2,54 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.4.19 (Unreleased)
+## byllm 0.5.6 (Unreleased)
+
+## byllm 0.5.5 (Latest Release)
+
+- Small refactors/formatting fixes.
+
+## byllm 0.5.4
+
+- 2 small refactors/changes.
+- **Add: Explicit LLM exceptions**: Introduced `jac-byllm/byllm/exceptions.jac` to define clear exception types for LLM and tooling failures (improves diagnosability and retry logic).
+- **Fix: Error handling & propagation**: Updated LLM implementations and core modules (`byllm/lib.jac`, `byllm/llm.jac`, `byllm/mtir.jac`, `byllm/schema.jac`, `byllm/llm.impl/*`, `byllm/types.*`) to raise and propagate the new exceptions instead of swallowing or returning generic errors.
+- **Tests: Updated to assert exception semantics**: `jac-byllm/tests/test_byllm.jac` and related tests now validate the new failure modes and edge cases.
+- **Fix: `JSONDecodeError` when gpt-4o returns text alongside a tool call**: Fixed a crash where `parse_response` was called before `tool_calls_list` was extracted from the LLM message. `gpt-4o` sometimes returns a brief plain-text string alongside a tool call (e.g. `"I'll handle that."`), which bypassed the empty-string guard and caused `json.loads` to fail with `Expecting value: line 1 column 1`. The fix extracts `tool_calls_list` first and skips `parse_response` entirely when tool calls are present, the typed output comes from `finish_tool`, not from the message content field.
+- **Fix: `JSONDecodeError` / `AttributeError` when gpt-4o ignores `finish_tool` on follow-up turns**: `gpt-4o` does not reliably follow the `INSTRUCTION_TOOL` system prompt on multi-turn conversations and sometimes responds with plain conversational text instead of calling `finish_tool`. This caused two cascading failures: `json.loads` crashed on the plain-text response, and even if it didn't, `invoke` would break out of the ReAct loop returning a raw `str` where a structured type was expected. Fixed with two complementary changes: (1) `parse_response` now wraps `json.loads` in `try/except Exception` and returns the raw string on failure rather than crashing; (2) the `invoke` ReAct loop detects the no-tool-call / structured-type mismatch, appends a correction message, and re-invokes with only `finish_tool` available, recovering the typed result without an extra round-trip in the happy path.
+- **Fix: `NameError: name 'logger' is not defined` when a tool raises an exception**: `tool.impl.jac` called `logger.exception(...)` in the `Tool.__call__` error handler, but `logger` was not imported in `types.jac` (the module that owns the `Tool` type). Added `import logging` and `glob logger = logging.getLogger(__name__)` to `types.jac` so tool failures are logged correctly instead of raising a secondary `NameError`.
+- **Add: Structured streaming event system (`StreamEvent`)**: Introduced a `StreamEvent` type in `byllm/types.jac` representing unified streaming output events (thoughts, tool calls, tool results, and answer chunks). `BaseLLM.invoke` now detects when logging is enabled with streaming and routes calls to a new `_invoke_streaming` method that yields `StreamEvent` objects for all intermediate steps and final answer tokens. The final-answer streaming step clears all tools so the LLM produces plain text rather than re-invoking `finish_tool`. `StreamEvent` is exported via `byllm/lib.jac` and `byllm/llm.jac` and `_invoke_streaming` is added to the `BaseLLM` public interface. This enables more granular, structured streaming output useful for debugging and UI integration.
+
+## byllm 0.5.3
+
+## byllm 0.5.2
+
+- **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
+
+## byllm 0.5.1
+
+- **Fix: Enum/structured return types failing with Anthropic models**: Fixed a bug where `by llm()` functions returning non-string types (enums, objects) would crash with Anthropic/Claude models (`"Attempted to call tool: 'json_tool_call' which was not present"`). The issue was that `finish_tool` was only added when explicit tools were provided, so when no tools were passed but a structured return type was set, LiteLLM's Anthropic adapter would inject a hidden `json_tool_call` tool that byllm couldn't find. The fix ensures `finish_tool` is always created for non-string return types, regardless of whether explicit tools are provided.
+- **Fix: ReAct final answer tool calling error with Anthropic models**: Fixed a bug where the ReAct loop's final answer step would clear `tools=[]`, causing Anthropic to fail when the conversation history already contained tool call results (`"tools must be defined"` / `"tools must not be empty"`). The fix retains `finish_tool` in the tools list during the final answer step (for both streaming and non-streaming paths) and also handles the case where Anthropic returns the final answer via a `finish_tool` call rather than plain text.
+- **Dependency: LiteLLM updated to `>=1.81.15,<1.83.0`**: The minimum LiteLLM version has been raised from `1.75.5.post1` to `1.81.15` to pick up Anthropic tool-calling fixes. If you have other packages pinning LiteLLM below `1.81.15`, you will need to update them.
+
+## byllm 0.5.0
+
+- **Builtin `llm` for Zero-Config `by llm()`**: The `llm` name is now a builtin, so `by llm()` works without any explicit import or `glob llm = ...` declaration. The byllm plugin provides a `default_llm` hook that automatically returns a configured `Model` instance from `jac.toml` settings. Users can still override the builtin by defining `glob llm = ...` in their module.
+
+## byllm 0.4.21
+
+- **Deprecated `method` parameter**: The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) in `by llm()` is now deprecated and emits a `DeprecationWarning`. It was never functional; the ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of using `method="ReAct"`.
+
+## byllm 0.4.20
+
+- Minor internal refactors
+
+## byllm 0.4.19
 
 - Various refactors
+- **Fix: `api_key` parameter no longer silently ignored**: The `api_key` passed via constructor, instance config, or global config (`jac.toml`) was being overwritten with `None` before every LLM call. The key is now properly resolved with a clear priority chain (constructor > instance config > global config > environment variables) and passed to LiteLLM, OpenAI client, and HTTP calls. API keys are also masked in verbose logs, showing only the last 4 characters.
+- **Fix: MTIR scope key mismatch between compile-time and runtime**: Fixed a bug where MTIR entries stored at compile-time could not be retrieved at runtime due to mismatched scope keys. At compile-time, the scope key was generated using the module's file path, while at runtime it used `__main__`. This caused `by llm()` calls to silently fall back to introspection mode, losing all `sem` string descriptions. The fix uses `sys.modules['__main__'].__file__` at runtime to get the entry point's file path, then extracts the file stem to match the compile-time scope key format.
 
-## byllm 0.4.18 (Latest Release)
+## byllm 0.4.18
 
 ## byllm 0.4.17
 

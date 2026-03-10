@@ -1,0 +1,24 @@
+[project]
+name = "jac-scale-admin"
+version = "1.0.0"
+description = "JAC-Scale Admin Portal"
+entry-point = "main.jac"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client.app_meta_data]
+title = "JAC-Scale Admin"
+author = "Jaseci"
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm]
+jac-client-node = "1.0.4"
+tailwindcss = "latest"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+"@tailwindcss/vite" = "^4.1.17"

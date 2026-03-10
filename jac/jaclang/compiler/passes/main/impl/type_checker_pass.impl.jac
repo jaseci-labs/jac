@@ -1,24 +1,24 @@
 """Handle the special variable reference node."""
 
 impl TypeCheckPass.exit_special_var_ref(
-    self: TypeCheckPass, `node: uni.SpecialVarRef
+    self: TypeCheckPass, nd: uni.SpecialVarRef
 ) -> None {
-    self.evaluator.get_type_of_expression(`node);
+    self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle name nodes to ensure symbol resolution for all variable references."""
-impl TypeCheckPass.exit_name(self: TypeCheckPass, `node: uni.Name) -> None {
+impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
     # Skip if already resolved or if part of a construct that handles its own resolution
-    if `node.sym is None {
-        self.evaluator.get_type_of_expression(`node);
+    if nd.sym is None {
+        self.evaluator.get_type_of_expression(nd);
     }
 }
 
 """Handle the edge reference trailer node."""
 impl TypeCheckPass.exit_edge_ref_trailer(
-    self: TypeCheckPass, `node: uni.EdgeRefTrailer
+    self: TypeCheckPass, nd: uni.EdgeRefTrailer
 ) -> None {
-    for chain in `node.chain {
+    for chain in nd.chain {
         if isinstance(chain, uni.FilterCompr) {
             self.evaluator.get_type_of_expression(chain);
         }
@@ -27,20 +27,18 @@ impl TypeCheckPass.exit_edge_ref_trailer(
 
 """Handle the formatted value node."""
 impl TypeCheckPass.exit_formatted_value(
-    self: TypeCheckPass, `node: uni.FormattedValue
+    self: TypeCheckPass, nd: uni.FormattedValue
 ) -> None {
-    self.evaluator.get_type_of_expression(`node.format_part);
+    self.evaluator.get_type_of_expression(nd.format_part);
 }
 
 """Handle the return statement node."""
-impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, `node: uni.ReturnStmt) -> None {
-    returning_type = self.evaluator._convert_to_instance(
-        self.evaluator.get_none_type()
-    );
-    if `node.expr {
-        returning_type = self.evaluator.get_type_of_expression(`node.expr);
+impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
+    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    if nd.expr {
+        returning_type = self.evaluator.get_type_of_expression(nd.expr);
     }
-    if (fn := self.evaluator._get_enclosing_function(`node)) {
+    if (fn := self.evaluator._get_enclosing_function(nd)) {
         # Check if return type annotation is missing.
         has_annotation = (
             isinstance(fn.signature, uni.FuncSignature)
@@ -53,13 +51,13 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, `node: uni.ReturnStmt) 
             fn.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
         );
         if (
-            `node.expr
+            nd.expr
             and not has_annotation
-            and not isinstance(`node.expr, uni.Null)
+            and not isinstance(nd.expr, uni.Null)
             and is_toplevel_fn
         ) {
             self.log_error(
-                "Return type annotation required when function returns a value", `node
+                "Return type annotation required when function returns a value", nd
             );
             return;
         }
@@ -67,69 +65,187 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, `node: uni.ReturnStmt) 
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
         if not self.evaluator.assign_type(returning_type, return_type) {
             self.log_error(
-                f"Cannot return {returning_type}, expected {fn_type.return_type}",
-                `node
+                f"Cannot return {returning_type}, expected {fn_type.return_type}", nd
             );
         }
     }
 }
 
 """Handle the edge operation reference node."""
-impl TypeCheckPass.exit_filter_compr(
-    self: TypeCheckPass, `node: uni.FilterCompr
-) -> None {
-    self.evaluator.get_type_of_expression(`node);
+impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -> None {
+    self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle the function call node."""
-impl TypeCheckPass.exit_func_call(self: TypeCheckPass, `node: uni.FuncCall) -> None {
-    self.evaluator.get_type_of_expression(`node);
+impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
+    self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle the binary expression node."""
-impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, `node: uni.BinaryExpr) -> None {
-    self.evaluator.get_type_of_expression(`node);
+impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
+    self.evaluator.get_type_of_expression(nd);
+}
+
+"""Enter a boolean expression - set up narrowing scope for AND expressions."""
+impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # For AND expressions, push a narrowing scope
+    if nd.op.name == Tok.KW_AND {
+        self.evaluator.push_narrowing_scope();
+        # Pre-process conditions to add narrowings BEFORE children are evaluated
+        for val in nd.values {
+            self.evaluator.process_condition(val);
+        }
+    }
+}
+
+"""Exit a boolean expression - clean up narrowing scope."""
+impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Pop the narrowing scope for AND expressions
+    if nd.op.name == Tok.KW_AND {
+        self.evaluator.pop_narrowing_scope();
+    }
+}
+
+"""Enter an if statement - set up narrowing scope for the if body."""
+impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    # Push a narrowing scope for the if body
+    self.evaluator.push_narrowing_scope();
+    # Process the condition to add narrowings
+    self.evaluator.process_condition(nd.condition);
+}
+
+"""Exit an if statement - clean up narrowing scope."""
+impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    self.evaluator.pop_narrowing_scope();
 }
 
 """Handle the atom trailer node."""
-impl TypeCheckPass.exit_atom_trailer(
-    self: TypeCheckPass, `node: uni.AtomTrailer
-) -> None {
-    self.evaluator.get_type_of_expression(`node);
+impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
+    self.evaluator.get_type_of_expression(nd);
 }
 
 """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
-impl TypeCheckPass.exit_assignment(self: TypeCheckPass, `node: uni.Assignment) -> None {
-    if ((len(`node.target) == 1) and (`node.value is not None)) {
-        target = `node.target[0];
+impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None {
+    if ((len(nd.target) == 1) and (nd.value is not None)) {
+        target = nd.target[0];
         # For assignment targets, use the declared symbol type (not the
         # narrowed type). Narrowing reflects the *current* value; the
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
+            # Cache the type on the Name node for hover info
+            target.type = left_type;
+        } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+            import from jaclang.compiler.type_system { types }
+            # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
+            # Individual element types are inferred by _eval_unpacking_names.
+            # Skip whole-expression assign_type check since the LHS container
+            # type (tuple/list) is not directly comparable to the RHS iterable.
+            self._eval_unpacking_names(target);
+            right_type = self.evaluator.get_type_of_expression(nd.value);
+            # Check that the RHS is iterable for destructuring
+            if not isinstance(right_type, types.UnknownType) {
+                iter_result = self.evaluator.get_type_of_magic_method_call(
+                    right_type, "__iter__", [], nd.value
+                );
+                if iter_result is None {
+                    self.log_error(f"Cannot unpack non-iterable {right_type}", nd);
+                }
+            }
+            return;
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }
-        right_type = self.evaluator.get_type_of_expression(`node.value);
+        right_type = self.evaluator.get_type_of_expression(nd.value);
         if not self.evaluator.assign_type(right_type, left_type) {
             self.log_error(f"Cannot assign {right_type} to {left_type}");
         }
+        # Validate augmented assignment operator (+=, -=, etc.)
+        if nd.aug_op is not None {
+            import from jaclang.compiler.type_system { types }
+            import from jaclang.compiler.type_system.operations {
+                AUG_OPERATOR_MAP,
+                AUG_TO_BINARY_MAP,
+                BINARY_OPERATOR_MAP,
+                ARITHMETIC_OPERATORS,
+                get_numeric_promotion_type
+            }
+            if (
+                not isinstance(left_type, types.UnknownType)
+                and not isinstance(right_type, types.UnknownType)
+            ) {
+                aug_magic = AUG_OPERATOR_MAP.get(nd.aug_op.name);
+                if aug_magic is not None {
+                    # Try in-place magic method first (e.g., __iadd__)
+                    result = self.evaluator.get_type_of_magic_method_call(
+                        left_type, aug_magic, [nd.value], nd.value
+                    );
+                    if result is None {
+                        # Fall back to base binary operator (e.g., __add__/__radd__)
+                        base_op = AUG_TO_BINARY_MAP.get(nd.aug_op.name);
+                        if base_op is not None {
+                            # Try numeric promotion first (int += float, etc.)
+                            if base_op in ARITHMETIC_OPERATORS {
+                                promoted = get_numeric_promotion_type(
+                                    self.evaluator, left_type, right_type, base_op
+                                );
+                                if promoted is not None {
+                                    result = promoted;
+                                }
+                            }
+                            if result is None {
+                                binary_methods = BINARY_OPERATOR_MAP.get(base_op);
+                                if binary_methods is not None {
+                                    (magic, rmagic) = binary_methods;
+                                    result = self.evaluator.get_type_of_magic_method_call(
+                                        left_type, magic, [nd.value], nd.value
+                                    );
+                                    if result is None {
+                                        result = self.evaluator.get_type_of_magic_method_call(
+                                            right_type, rmagic, [nd.value], nd.value
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        if result is None {
+                            self.log_error(
+                                f"Unsupported operand types for {nd.aug_op.value}: "
+                                f"{left_type} and {right_type}",
+                                nd
+                            );
+                        }
+                    }
+                }
+            }
+        }
     } else {
-        ;
+        # Handle multi-target assignments: set type on each target for hover
+        for target in nd.target {
+            if isinstance(target, uni.Name) and target.sym {
+                target.type = self.evaluator.get_type_of_symbol(target.sym);
+            } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+                self._eval_unpacking_names(target);
+            } else {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
     }
 }
 
 """Exit an import node."""
-impl TypeCheckPass.exit_import(self: TypeCheckPass, `node: uni.Import) -> None {
-    if `node.from_loc {
-        self.evaluator.get_type_of_module(`node.from_loc);
-        for item in `node.items {
+impl TypeCheckPass.exit_import(self: TypeCheckPass, nd: uni.Import) -> None {
+    if nd.from_loc {
+        self.evaluator.get_type_of_module(nd.from_loc);
+        for item in nd.items {
             if isinstance(item, uni.ModuleItem) {
                 self.evaluator.get_type_of_module_item(item);
             }
         }
     } else {
-        for item in `node.items {
+        for item in nd.items {
             if isinstance(item, uni.ModulePath) {
                 self.evaluator.get_type_of_module(item);
             }
@@ -138,56 +254,197 @@ impl TypeCheckPass.exit_import(self: TypeCheckPass, `node: uni.Import) -> None {
 }
 
 """Enter an ability node."""
-impl TypeCheckPass.enter_ability(self: TypeCheckPass, `node: uni.Ability) -> None {
+impl TypeCheckPass.enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
-    for decor in (`node.decorators or []) {
+    for decor in (nd.decorators or []) {
         ty = self.evaluator.get_type_of_expression(decor);
         if (isinstance(ty, jtypes.ClassType) and ty.is_builtin('staticmethod')) {
-            `node.is_static = True;
+            nd.is_static = True;
             break;
         }
     }
 }
 
-"""Exit an ability node - ensure parameter type annotations are evaluated."""
-impl TypeCheckPass.exit_ability(self: TypeCheckPass, `node: uni.Ability) -> None {
+"""Exit an ability node - ensure parameter type annotations are evaluated and check return completeness."""
+impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
+    import from jaclang.compiler.type_system { types }
     # For abilities with ImplDef body (stubs linked to impl files), the original declaration's
     # type annotation Name nodes are orphaned (not in the traversal tree). We need to explicitly
     # process them to enable hover/go-to-definition on the declaration file.
-    if isinstance(`node.body, uni.ImplDef) {
-        ability_start_line = `node.loc.first_line;
-        ability_end_line = `node.loc.last_line;
+    if isinstance(nd.body, uni.ImplDef) {
+        ability_start_line = nd.loc.first_line;
+        ability_end_line = nd.loc.last_line;
         # Find orphaned Name nodes in type annotations at this ability's location
-        if module := `node.find_parent_of_type(uni.Module) {
-            for nd in module._in_mod_nodes {
+        if module := nd.find_parent_of_type(uni.Module) {
+            for mod_nd in module._in_mod_nodes {
                 if (
-                    isinstance(nd, uni.Name)
-                    and nd.sym is None
-                    and ability_start_line <= nd.loc.first_line <= ability_end_line
-                    and isinstance(nd.parent, uni.SubTag)
+                    isinstance(mod_nd, uni.Name)
+                    and mod_nd.sym is None
+                    and ability_start_line <= mod_nd.loc.first_line <= ability_end_line
+                    and isinstance(mod_nd.parent, uni.SubTag)
                 ) {  # SubTag is the type annotation wrapper
-
-                    self.evaluator.get_type_of_expression(nd);
+                    self.evaluator.get_type_of_expression(mod_nd);
                 }
             }
         }
         # The ImplDef body is not in the Ability's kid list, so it's not traversed by the pass.
         # We need to explicitly traverse the ImplDef body to evaluate types for hover/go-to-def.
-        self.traverse(`node.body);
+        self.traverse(nd.body);
+    }
+    # Check for missing return statements on non-None return type functions
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and nd.signature.return_type is not None
+        and not isinstance(nd.body, uni.ImplDef)
+        and isinstance(nd.body, list)
+        and len(nd.body) > 0
+        and not nd.is_abstract
+    ) {
+        # Skip @overload decorated functions (stubs with no real body)
+        is_overload = False;
+        for decor in (nd.decorators or []) {
+            if isinstance(decor, uni.Name) and decor.value == "overload" {
+                is_overload = True;
+                break;
+            }
+        }
+        # Skip generator functions (contain yield) — they don't need explicit return
+        is_generator = len(nd.get_all_sub_nodes(uni.YieldExpr)) > 0;
+        if not is_overload and not is_generator {
+            ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
+            ret_inst = self.evaluator._convert_to_instance(ret_type);
+            none_type = self.evaluator._convert_to_instance(
+                self.evaluator.get_none_type()
+            );
+            if not self.evaluator.assign_type(none_type, ret_inst) {
+                if not self._body_always_returns(nd.body) {
+                    self.log_error(
+                        f"Function '{nd.name_spec.sym_name}' declared return type "
+                        f"{ret_type} but may implicitly return None",
+                        nd
+                    );
+                }
+            }
+        }
     }
 }
+
+"""Check if a code block always returns a value on all paths."""
+impl TypeCheckPass._body_always_returns(
+    self: TypeCheckPass, body: list[uni.CodeBlockStmt]
+) -> bool {
+    for stmt in reversed(body) {
+        if isinstance(stmt, uni.ReturnStmt) {
+            return True;
+        }
+        if isinstance(stmt, uni.IfStmt) {
+            if_returns = self._body_always_returns(list(stmt.body));
+            else_returns = False;
+            if isinstance(stmt.else_body, uni.ElseIf) {
+                else_returns = self._body_always_returns(list(stmt.else_body.body));
+                if not else_returns {
+                    continue;
+                }
+                if stmt.else_body.else_body {
+                    if isinstance(stmt.else_body.else_body, uni.ElseStmt) {
+                        else_returns = self._body_always_returns(
+                            list(stmt.else_body.else_body.body)
+                        );
+                    } elif isinstance(stmt.else_body.else_body, uni.ElseIf) {
+                        else_returns = self._body_always_returns(
+                            [stmt.else_body.else_body]
+                        );
+                    }
+                } else {
+                    else_returns = False;
+                }
+            } elif isinstance(stmt.else_body, uni.ElseStmt) {
+                else_returns = self._body_always_returns(list(stmt.else_body.body));
+            }
+            if if_returns and else_returns {
+                return True;
+            }
+        }
+        if isinstance(stmt, uni.MatchStmt) {
+            # Match statement always returns if all cases return.
+            # This handles both explicit wildcard (case _:) and exhaustive
+            # union coverage (case A() + case B() covering A|B).
+            if stmt.cases {
+                all_cases_return = True;
+                for case in stmt.cases {
+                    if not self._body_always_returns(list(case.body)) {
+                        all_cases_return = False;
+                        break;
+                    }
+                }
+                if all_cases_return {
+                    return True;
+                }
+            }
+        }
+        if isinstance(stmt, uni.SwitchStmt) {
+            if stmt.cases {
+                has_default = False;
+                all_cases_return = True;
+                for case in stmt.cases {
+                    if case.pattern is None {
+                        has_default = True;
+                    }
+                    if not self._body_always_returns(list(case.body)) {
+                        all_cases_return = False;
+                    }
+                }
+                if has_default and all_cases_return {
+                    return True;
+                }
+            }
+        }
+        if isinstance(stmt, uni.WithStmt) {
+            if self._body_always_returns(list(stmt.body)) {
+                return True;
+            }
+        }
+        if isinstance(stmt, uni.TryStmt) {
+            try_returns = self._body_always_returns(list(stmt.body));
+            if try_returns {
+                if not stmt.excepts or len(stmt.excepts) == 0 {
+                    return True;
+                }
+                all_excepts_return = True;
+                for exc in stmt.excepts {
+                    if not self._body_always_returns(list(exc.body)) {
+                        all_excepts_return = False;
+                        break;
+                    }
+                }
+                if all_excepts_return {
+                    return True;
+                }
+            }
+        }
+        if isinstance(stmt, uni.RaiseStmt) {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Exit a type alias node."""
+impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None { }
 
 """Exit an archetype node - traverse ImplDef body if present."""
-impl TypeCheckPass.exit_archetype(self: TypeCheckPass, `node: uni.Archetype) -> None {
-    if isinstance(`node.body, uni.ImplDef) {
-        self.traverse(`node.body);
+impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None {
+    self.evaluator.get_type_of_class(nd);
+    if isinstance(nd.body, uni.ImplDef) {
+        self.traverse(nd.body);
     }
 }
 
-"""Exit an enum node - traverse ImplDef body if present."""
-impl TypeCheckPass.exit_enum(self: TypeCheckPass, `node: uni.Enum) -> None {
-    if isinstance(`node.body, uni.ImplDef) {
-        self.traverse(`node.body);
+"""Exit an enum node - build enum type eagerly and traverse ImplDef body if present."""
+impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
+    self.evaluator.get_type_of_enum(nd);
+    if isinstance(nd.body, uni.ImplDef) {
+        self.traverse(nd.body);
     }
 }
 
@@ -204,12 +461,12 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
 
 """Add a diagnostic message to the pass."""
 impl TypeCheckPass._add_diagnostic(
-    self: TypeCheckPass, `node: uni.UniNode, message: str, warning: bool
+    self: TypeCheckPass, nd: uni.UniNode, message: str, warning: bool
 ) -> None {
     if warning {
-        self.log_warning(message, `node);
+        self.log_warning(message, nd);
     } else {
-        self.log_error(message, `node);
+        self.log_error(message, nd);
     }
 }
 
@@ -219,4 +476,284 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
+}
+
+"""Set type on function/method parameters for hover info."""
+impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+    }
+}
+
+"""Set type on class fields (has vars) and validate initializer type."""
+impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
+    if (sym := nd.sym) {
+        nd.type = self.evaluator.get_type_of_symbol(sym);
+        # If there's an initializer, check that its type is compatible
+        # with the declared type (e.g., bad1: int = unknown_val;).
+        if nd.value is not None and nd.type is not None {
+            right_type = self.evaluator.get_type_of_expression(nd.value);
+            if not self.evaluator.assign_type(right_type, nd.type) {
+                self.log_error(f"Cannot assign {right_type} to {nd.type}", nd);
+            }
+        }
+    }
+}
+
+"""Set type on for loop iteration variable and check iterability."""
+impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None {
+    import from jaclang.compiler.type_system { types }
+    # Cache type on the iteration target (e.g., 'coord' in 'for coord in p')
+    if isinstance(nd.target, uni.Name) {
+        self.evaluator.get_type_of_expression(nd.target);
+    } elif isinstance(nd.target, (uni.TupleVal, uni.ListVal)) {
+        self._eval_unpacking_names(nd.target);
+    }
+    # Check that the collection is iterable
+    collection_type = self.evaluator.get_type_of_expression(nd.collection);
+    if not isinstance(collection_type, types.UnknownType) {
+        # Enum classes are iterable via EnumMeta.__iter__ which is not in the
+        # Jac type system's MRO. Skip the __iter__ check for enum classes.
+        is_enum = (
+            isinstance(collection_type, types.ClassType)
+            and collection_type.is_enum_class()
+        );
+        if not is_enum {
+            iter_result = self.evaluator.get_type_of_magic_method_call(
+                collection_type, "__iter__", [], nd.collection
+            );
+            if iter_result is None {
+                self.log_error(
+                    f"Type {collection_type} is not iterable (no __iter__ method)", nd
+                );
+            }
+        }
+    }
+}
+
+"""Type-check raise statements — ensure raised value is an exception."""
+impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> None {
+    import from jaclang.compiler.type_system { types }
+    if nd.cause {
+        cause_type = self.evaluator.get_type_of_expression(nd.cause);
+        if isinstance(cause_type, types.ClassType)
+        and not isinstance(cause_type, types.UnknownType) {
+            is_exception = False;
+            for cls in cause_type.shared.mro {
+                if isinstance(cls, types.ClassType)
+                and (cls.is_builtin("BaseException") or cls.is_builtin("Exception")) {
+                    is_exception = True;
+                    break;
+                }
+            }
+            if not is_exception {
+                self.log_error(
+                    f"Cannot raise {cause_type} (not an exception type)", nd
+                );
+            }
+        }
+    }
+}
+
+"""Type-check with statements — verify context manager protocol."""
+impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
+    import from jaclang.compiler.type_system { types }
+    for item in nd.exprs {
+        expr_type = self.evaluator.get_type_of_expression(item.expr);
+        if not isinstance(expr_type, types.UnknownType) {
+            enter_result = self.evaluator.get_type_of_magic_method_call(
+                expr_type, "__enter__", [], item.expr
+            );
+            if enter_result is None {
+                self.log_error(
+                    f"Type {expr_type} cannot be used in 'with' statement "
+                    f"(no __enter__ method)",
+                    nd
+                );
+            }
+            # Check __exit__ method exists (required for context manager protocol).
+            # Use direct member lookup instead of magic method call because
+            # __exit__ takes 3 params (exc_type, exc_val, exc_tb) that we
+            # don't have at this point — magic method call would fail on
+            # argument matching even when __exit__ exists.
+            if isinstance(expr_type, types.ClassType) {
+                has_exit = (
+                    self.evaluator._lookup_class_member(
+                        expr_type, "__exit__"
+                    ) is not None
+                    or self.evaluator._lookup_object_member(
+                        expr_type, "__exit__"
+                    ) is not None
+                );
+                if not has_exit and not expr_type.is_any_type() {
+                    self.log_error(
+                        f"Type {expr_type} cannot be used in 'with' statement "
+                        f"(no __exit__ method)",
+                        nd
+                    );
+                }
+            }
+            # Bind alias type from __enter__ return type
+            if item.alias is not None and enter_result is not None {
+                if isinstance(item.alias, uni.Name) and item.alias.sym {
+                    item.alias.type = enter_result;
+                }
+            }
+        }
+    }
+}
+
+"""Type-check while statement condition expression."""
+impl TypeCheckPass.exit_while_stmt(self: TypeCheckPass, nd: uni.WhileStmt) -> None {
+    self.evaluator.get_type_of_expression(nd.condition);
+}
+
+"""Type-check assert statement condition and error message."""
+impl TypeCheckPass.exit_assert_stmt(self: TypeCheckPass, nd: uni.AssertStmt) -> None {
+    self.evaluator.get_type_of_expression(nd.condition);
+    if nd.error_msg is not None {
+        self.evaluator.get_type_of_expression(nd.error_msg);
+    }
+}
+
+"""Type-check yield expressions against enclosing function's return type."""
+impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> None {
+    import from jaclang.compiler.type_system { types }
+    if nd.expr is None {
+        return;
+    }
+    yielded_type = self.evaluator.get_type_of_expression(nd.expr);
+    if (fn := self.evaluator._get_enclosing_function(nd)) {
+        has_annotation = (
+            isinstance(fn.signature, uni.FuncSignature)
+            and fn.signature.return_type is not None
+        );
+        if has_annotation {
+            fn_type = self.evaluator.get_type_of_ability(fn);
+            return_type = self.evaluator._convert_to_instance(fn_type.return_type);
+            if not isinstance(return_type, types.UnknownType) {
+                if not nd.with_from {
+                    # Regular yield: check yielded value against declared return type
+                    if not self.evaluator.assign_type(yielded_type, return_type) {
+                        self.log_error(
+                            f"Cannot yield {yielded_type}, expected {fn_type.return_type}",
+                            nd
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+"""Type-check delete statement target expression."""
+impl TypeCheckPass.exit_delete_stmt(self: TypeCheckPass, nd: uni.DeleteStmt) -> None {
+    self.evaluator.get_type_of_expression(nd.target);
+}
+
+"""Type-check visit statement target expression — must be a node type."""
+impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> None {
+    import from jaclang.compiler.type_system { types }
+    target_type = self.evaluator.get_type_of_expression(nd.target);
+    # Validate the visit target is a node (or unknown/any which we can't check)
+    if (
+        not isinstance(target_type, types.UnknownType)
+        and not target_type.is_any_type()
+    ) {
+        is_valid = False;
+        if isinstance(target_type, types.ClassType) {
+            if target_type.is_node_type() {
+                is_valid = True;
+            }
+            # Allow collections of nodes (e.g., list[NodeType])
+            if (
+                target_type.is_builtin()
+                and target_type.shared.class_name in (
+                    "list",
+                    "tuple",
+                    "set",
+                    "frozenset"
+                )
+            ) {
+                is_valid = True;
+            }
+        }
+        if isinstance(target_type, types.UnionType) {
+            is_valid = True;  # Could contain nodes, don't over-diagnose
+        }
+        if not is_valid {
+            self.log_error(f"Visit target must be a node type, got {target_type}", nd);
+        }
+    }
+}
+
+"""Type-check report statement expression."""
+impl TypeCheckPass.exit_report_stmt(self: TypeCheckPass, nd: uni.ReportStmt) -> None {
+    self.evaluator.get_type_of_expression(nd.expr);
+}
+
+"""Validate postinit bodies assign to all 'by postinit' fields."""
+impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, nd: uni.ImplDef) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Only check postinit impl definitions
+    if not (
+        nd.decl_link
+        and isinstance(nd.decl_link, uni.Ability)
+        and isinstance(nd.decl_link.name_ref, uni.SpecialVarRef)
+        and nd.decl_link.name_ref.name == Tok.KW_POST_INIT
+    ) {
+        return;
+    }
+    # Find the parent archetype
+    archetype = nd.decl_link.find_parent_of_type(uni.Archetype);
+    if not archetype {
+        return;
+    }
+    # Collect by-postinit fields
+    deferred_fields: dict[str, uni.HasVar] = {};
+    for hv in archetype.get_has_vars() {
+        if hv.defer {
+            deferred_fields[hv.name.value] = hv;
+        }
+    }
+    if not deferred_fields {
+        return;
+    }
+    # Scan for self.field = ... assignments in the impl body
+    assigned: set[str] = set();
+    for trailer in nd.get_all_sub_nodes(uni.AtomTrailer) {
+        if not (trailer.parent and isinstance(trailer.parent, uni.Assignment)) {
+            continue;
+        }
+        if trailer != trailer.parent.target[0] {
+            continue;
+        }
+        chain = trailer.as_attr_list;
+        if len(chain) >= 2 and chain[0].sym_name == 'self' {
+            assigned.add(chain[1].sym_name);
+        }
+    }
+    # Report missing assignments
+    for (field_name, field_node) in deferred_fields.items() {
+        if field_name not in assigned {
+            self.log_error(
+                f"Field '{field_name}' declared 'by postinit' is never assigned "
+                f"in {archetype.name_spec.sym_name}.postinit",
+                nd
+            );
+        }
+    }
+}
+
+"""Evaluate types for each Name in a tuple/list unpacking pattern."""
+impl TypeCheckPass._eval_unpacking_names(
+    self: TypeCheckPass, container: uni.Expr
+) -> None {
+    if isinstance(container, (uni.TupleVal, uni.ListVal)) {
+        for val in container.values {
+            if isinstance(val, uni.Name) {
+                self.evaluator.get_type_of_expression(val);
+            }
+        }
+    }
 }

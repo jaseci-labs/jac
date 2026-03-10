@@ -2,23 +2,113 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.8 (Unreleased)
+## jac-scale 0.2.5 (Unreleased)
 
+- **Fix: Parser Strictness Compliance**: Moved docstrings before signatures in `kubernetes_utils.impl.jac` and converted nested function docstring to comment in `api.cl.jac` to comply with the stricter RD parser.
+- [Internal] Refactor: Extract graph visualizer HTML into a standalone template file.
+- **User storage now supports both MongoDB and SQLite**: User authentication and management automatically uses SQLite when MongoDB is not configured, maintaining full backward compatibility with existing installations.
+
+## jac-scale 0.2.4 (Latest Release)
+
+- **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
+- [fix]Fix for internet facing aws load balancer
+- [Internal] Convert username and password for redis and mongodb to secret when injecting to pod deployment
+- 3 Minor refactors/changes.
+- update jac-scale plugin documentation with missing features
+- APP_NAME, K8s_NAMESPACE, DOCKER_USERNAME, DOCKER_PASSWORD are no longer read from environment variables and must be configured via `jac.toml.
+
+- **Component-Level Destroy**: `jac destroy app.jac --component <name>` now supports removing individual Kubernetes components (`application`, `database`, `cache`, `monitoring`, `dashboard`) without tearing down the entire deployment.
+- **Redis Cache Configuration with TTL Support**: Added configurable eviction policies and TTL support for Kubernetes Redis deployments via `jac.toml` (`redis_max_memory`, `redis_eviction_policy`, `redis_eviction_samples`, `redis_default_ttl`, `redis_enable_keyspace_notifications`); ConfigMap-based with automatic pod restart on change. Anchors stored in Redis L2 cache now respect the `redis_default_ttl` setting and will automatically expire after the configured duration (default: 0 = no expiration).
+- 1 small refactor/change.
+- **Fix: Redis deployment annotation null guard**: Fixed `'NoneType' object has no attribute 'get'` crash during `jac start --scale` when an existing Redis deployment has no annotations. Kubernetes returns `None` for the annotations field when none exist, so the config-hash check now guards against this.
+
+## jac-scale 0.2.3
+
+- **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
+- **Admin-Only Metrics Endpoint**: The `/metrics` Prometheus scrape endpoint now requires admin authentication. Unauthenticated requests receive a 403 Forbidden response. This prevents unauthorized access to server performance data.
+- **Admin Metrics Dashboard**: Added `/admin/metrics` endpoint that returns parsed Prometheus metrics as structured JSON with summary statistics (total requests, average latency, error rate, active requests). The admin dashboard monitoring page now displays metrics in a visual dashboard with HTTP traffic breakdown, system stats (GC, memory, CPU time), and real-time counters.
+- Set default maximum memory limit of k8s pods from unlimited to 12Gb
+- Automatically deploy Redis (RedisInsight) and MongoDB (MongoDB Dashboard) dashboards in Kubernetes when the redis_dashboard and mongodb_dashboard flags are enabled.
+- Set default maximum memory limit for jaseci app pod to None (unlimited)
+- 1 Minor refactor/change.
+
+## jac-scale 0.2.2
+
+- **Data Persists Across Server Restarts**: Graph nodes and edges created during a session now persist automatically in MongoDB. When you restart your `jac start` server, previously created data is restored and accessible - no manual save operations required.
+- **`jac status` Command**: New `jac status app.jac` command to check the live deployment status of all Kubernetes components (Jaseci App, Redis, MongoDB, Prometheus, Grafana). Displays a color-coded table with component health, pod readiness counts, and service URLs. Detects running, degraded, pending, restarting (crash-loop), and not-deployed states.
+- **Resource Tagging**: All Kubernetes resources created by jac-scale are now labeled with `managed: jac-scale`, enabling easy auditing and identification via `kubectl get all -l managed=jac-scale -A`.
+- k8s metrics dashboard in prometheus and grafana
+- Jac status command to check deployment status of each component of k8s
+- **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
+- **Fix: Root-Level Font/Asset 404s**: Added `.jac/client/dist/` as a search candidate in `serve_root_asset`, fixing 404s for font files (`.woff2`, `.ttf`, etc.) bundled by Vite with root-relative `@font-face url()` paths.
+
+## jac-scale 0.2.1
+
+- **Admin Portal**: Added a built-in `/admin` dashboard for user management and administration. Features include user CRUD operations (list, create, edit, delete), role-based access control with `admin`, `moderator`, and `user` roles, force password reset, and SSO account management view.
+- **Admin API Endpoints**: REST API for administrative operations at `/admin/*` including user management, SSO provider listing, and configuration access.
+- **Admin Configuration**: New `[plugins.scale.admin]` section in `jac.toml` to configure admin portal settings. Environment variables `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_DEFAULT_PASSWORD` supported.
+- **Refactor: `JacSerializer` removed, use `Serializer(api_mode=True)`**: `JacSerializer` has been removed from `jaclang.runtimelib.server`. API serialization is now handled directly by `Serializer.serialize(obj, api_mode=True)` from `jaclang.runtimelib.serializer`. Storage backends are unaffected; continue using `Serializer.serialize(obj, include_type=True)` for round-trip persistence. Added `social_graph.jac` fixture demonstrating native persistence with `db.find_nodes()` for querying the `_anchors` collection using MongoDB filters.
+- Internal: refactor jac-scale k8s loadbalancer/service to support other vendors
+- Before deploying to the local Kubernetes cluster, check whether the required NodePorts are already in use in any namespace; if they are, throw an error.
+- jac destroy command deletes non default namespace
+- **Fix: Code-sync pod stuck in ContainerCreating**: Added preferred `podAffinity` to the code-sync pod spec so it prefers scheduling on the same node as the code-server pod. Fixes RWO (ReadWriteOnce) PVC mount failures when Kubernetes schedules the two pods on different nodes.
+- 1 Minor refactor
+- Internal: check whether redis,mongodb,grafana and prometheus are also restarted when checking deployment status
+
+## jac-scale 0.2.0
+
+- **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `client_auth_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
+- **Graph Visualization Tests**: Added tests for `/graph` and `/graph/data` endpoints.
+
+## jac-scale 0.1.6
+
+## jac-scale 0.1.9
+
+- **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
+  - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
+  - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
+  - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
+- **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
+
+## jac-scale 0.1.11
+
+- **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
+
+## jac-scale 0.1.10
+
+- **support horizontal scaling**:  based on average cpu usage k8s pods are horizontally scaled
+- **Client Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes, source snippets, and quick fix suggestions instead of raw Vite/Rollup output. Uses the `jac-client` diagnostic engine for consistent error formatting across `jac start` and `jac build`.
+
+## jac-scale 0.1.9
+
+- **Remove Authorization header input from Swagger UI**: The `Authorization` header is no longer exposed as a visible text input field in Swagger UI for walker, function, and API key endpoints. Authentication tokens are now read transparently from the standard `Authorization` request header (accessible via the lock icon), consistent with the `update_username` and `update_password` endpoints.
+- 1 Minor refactors/changes.
+
+## jac-scale 0.1.8
+
+- Internal: K8s integration tests now install jac plugins from fork PRs instead of always using main
+- **.jac folder is excluded when creating the zip folder that is uploaded into jaseci deployment pods.Fasten up deployment**
+- **Fix: `jac start` Startup Banner**: Server now displays the startup banner (URLs, network IPs, mode info) correctly via `on_ready` callback, consistent with stdlib server behavior.
 - Various refactors
 - **PWA Build Detection**: Server startup now detects existing PWA builds (via `manifest.json`) and skips redundant client bundling. The `/static/client.js` endpoint serves Vite-hashed files (`client.*.js`) in PWA mode.
-- **Prometheus Metrics Integration**: Added `/metrics` endpoint with HTTP request metrics, configurable via `[plugins.scale.metrics]` in `jac.toml`.
+- **Prometheus Metrics Integration**: Added `/metrics` endpoint with HTTP request metrics, configurable via `[plugins.scale.metrics]
+` in `jac.toml`.
 - Update jaseci scale k8s pipeline to support parellel test cases.
 - **early exit from k8s deployment if container restarted**
 - **Direct Database Access (`kvstore`)**: Added `kvstore()` function for direct MongoDB and Redis operations without graph layer. Supports database-specific methods (MongoDB: `find_one`, `insert_one`, `update_one`; Redis: `set_with_ttl`, `incr`, `scan_keys`) with common methods (`get`, `set`, `delete`, `exists`) working across both. Import from `jac_scale.lib` with URI-based connection pooling and configuration fallback (explicit URI → env vars → jac.toml).
 - **Code refactors**: Backtick escape, etc.
+- **Persistent Webhook API Keys**: Webhook API key metadata is now stored in MongoDB (`webhook_api_keys` collection) instead of in-memory dictionaries. API keys now survive server restarts.
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 - **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
+- Docs update: return type `any` -> `JsxElement`
+- **1 Small Refactors**
+- **promethius and grafana deployment**: Jac-scale automatically deploys promethius and grafana and connect with metrics endpoint.
 
-## jac-scale 0.1.7 (Latest Release)
+## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
-- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (``(`?Type)``) with `(?:Type)` across all docs, tests, examples, and README.
 
 ## jac-scale 0.1.6
 

@@ -18,17 +18,17 @@ def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {
     if db_type == DatabaseType.MONGODB {
         resolved = db_config.get('mongodb_uri');
         if resolved is None {
-            raise ValueError('MongoDB URI not found in configuration') ;
+            raise ValueError('MongoDB URI not found in configuration');
         }
         return cast(str, resolved);
     } elif db_type == DatabaseType.REDIS {
         resolved = db_config.get('redis_url');
         if resolved is None {
-            raise ValueError('Redis URL not found in configuration') ;
+            raise ValueError('Redis URL not found in configuration');
         }
         return cast(str, resolved);
     } else {
-        raise ValueError(f'Unsupported database type: {db_type}') ;
+        raise ValueError(f'Unsupported database type: {db_type}');
     }
 }
 
@@ -51,9 +51,9 @@ class DatabaseProviderFactory {
             }
             return KubernetesRedisProvider(target=target, config=config or {});
         } elif provider_type == 'aws_documentdb' {
-            raise NotImplementedError("AWS DocumentDB provider not yet implemented") ;
+            raise NotImplementedError("AWS DocumentDB provider not yet implemented");
         } else {
-            raise ValueError(f"Unsupported database provider type: {provider_type}") ;
+            raise ValueError(f"Unsupported database provider type: {provider_type}");
         }
     }
 
@@ -68,7 +68,7 @@ class DatabaseProviderFactory {
             try {
                 db_type_enum = DatabaseType(db_type);
             } except Exception {
-                raise ValueError(f"Invalid database type: {db_type}") ;
+                raise ValueError(f"Invalid database type: {db_type}");
             }
         } else {
             db_type_enum = cast(DatabaseType, db_type);
@@ -85,7 +85,7 @@ class DatabaseProviderFactory {
             import from redis { Redis }
             return Redis.from_url(resolved_uri, **(config or {}));
         } else {
-            raise ValueError(f"Unsupported database type: {db_type_enum}") ;
+            raise ValueError(f"Unsupported database type: {db_type_enum}");
         }
     }
 }

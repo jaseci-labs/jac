@@ -13,6 +13,20 @@ import from kubernetes.client.rest { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
 
+"""Each companion component: (suffix, display_name, is_statefulset).
+Adding a new companion here automatically updates both check_pods_restarted
+and get_full_status component_defs."""
+glob COMPANION_DEFS: list = [
+         ("", "Jaseci App", False),
+         ("-redis", "Redis", False),
+         ("-mongodb", "MongoDB", True),
+         ("-prometheus", "Prometheus", False),
+         ("-grafana", "Grafana", False),
+         ("-redis-insight", "RedisInsight", False),
+         ("-mongo-express", "Mongo Express", False),
+
+     ];
+
 def check_pods_restarted(namespace: str, app_name: str) -> bool;
 
 def debug_print(statement: str, debug_only: bool = False) -> None;
@@ -49,6 +63,10 @@ def delete_if_exists(
 
 def ensure_namespace_exists(namespace: str) -> None;
 
+def delete_namespace(namespace: str) -> None;
+
+def exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo];
+
 def create_tarball(source_dir: str, tar_path: str) -> None;
 
 def create_or_update_configmap(
@@ -66,6 +84,15 @@ def check_deployment_status(
 ) -> tuple[bool, str];
 
 def cluster_type -> str;
+
+def check_node_ports_available(
+    node_port: int,
+    prometheus_node_port: int | None,
+    grafana_node_port: int | None,
+    current_namespace: str,
+    redis_insight_node_port: int | None = None,
+    mongo_express_node_port: int | None = None
+) -> None;
 
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,

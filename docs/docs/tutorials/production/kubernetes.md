@@ -1,13 +1,20 @@
 # Kubernetes Deployment
 
-Deploy your Jac application to Kubernetes with a single command.
+Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
+
+This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
 > - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
 > - `kubectl` configured
-> - jac-scale installed: `pip install jac-scale`
+> - jac-scale installed and enabled:
+>
+>   ```bash
+>   pip install jac-scale
+>   ```
+>
 > - Time: ~10 minutes
 
 ---
@@ -55,14 +62,14 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"id": todo[0].id, "title": todo[0].title};
+        report {"title": todo[0].title, "done": todo[0].done};
     }
 }
 
 walker:pub list_todos {
     can fetch with Root entry {
         todos = [-->](?:Todo);
-        report [{"id": t.id, "title": t.title, "done": t.done} for t in todos];
+        report [{"title": t.title, "done": t.done} for t in todos];
     }
 }
 
@@ -171,9 +178,25 @@ Configure deployment via environment variables in `.env`:
 
 ### Check Status
 
+Use `jac status` to see the health of all deployment components at a glance:
+
+```bash
+jac status app.jac
+```
+
+This displays a table showing each component's status (Running, Degraded, Pending, Restarting, or Not Deployed), pod readiness counts, and service URLs.
+
+For lower-level debugging, you can also use `kubectl` directly:
+
 ```bash
 kubectl get pods
 kubectl get services
+```
+
+All jac-scale resources are labeled with `managed: jac-scale`, so you can list everything it owns:
+
+```bash
+kubectl get all -l managed=jac-scale
 ```
 
 ### View Logs
@@ -250,10 +273,11 @@ alias kubectl='microk8s kubectl'
 ### Application not accessible
 
 ```bash
-# Check pod status
-kubectl get pods
+# Check all component statuses at once
+jac status app.jac
 
-# Check service
+# Or use kubectl for more detail
+kubectl get pods
 kubectl get svc
 
 # For minikube, use tunnel
@@ -283,11 +307,14 @@ kubectl logs -l app=redis
 ### General debugging
 
 ```bash
+# Quick overview of all components
+jac status app.jac
+
 # Describe a pod for events
 kubectl describe pod <pod-name>
 
-# Get all resources
-kubectl get all
+# Get all jac-scale managed resources
+kubectl get all -l managed=jac-scale
 
 # Check events
 kubectl get events --sort-by='.lastTimestamp'

@@ -580,4 +580,4 @@ glob Statement = ExpressionStatement | BlockStatement | EmptyStatement | Debugge
          ImportDeclaration | ExportNamedDeclaration | ExportDefaultDeclaration | ExportAllDeclaration
      );
 
-def es_node_to_dict(`node: Node) -> dict[str, Any];
+def es_node_to_dict(nd: Node) -> dict[str, Any];

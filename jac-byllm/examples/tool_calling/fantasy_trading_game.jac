@@ -4,7 +4,7 @@ Demonstrates byLLM character generation, conversation, and transaction systems
 """
 
 import from byllm.lib { Model }
-import from os { get_terminal_size }
+import from shutil { get_terminal_size }
 
 glob llm = Model(model_name="gpt-4o"),
      person_record: dict = {};
@@ -175,8 +175,8 @@ def display_chat_history {
 
     # Always show only the most recent messages that fit
     recent_messages = chat_display_history[-max_messages:]
-    if len(chat_display_history) > max_messages
-    else chat_display_history;
+        if len(chat_display_history) > max_messages
+        else chat_display_history;
 
     for chat_msg in recent_messages {
         if chat_msg["type"] == "npc" {

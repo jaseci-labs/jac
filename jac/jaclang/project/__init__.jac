@@ -5,7 +5,6 @@ This module provides the jac.toml configuration system, including:
 - Project discovery: Auto-detection of jac.toml in parent directories
 - Dependency management: Install, add, remove dependencies
 """
-import from jaclang.project { config, dependencies }
 import from jaclang.project.config {
     BuildConfig,
     CacheConfig,
@@ -14,6 +13,7 @@ import from jaclang.project.config {
     EnvironmentConfig,
     FormatConfig,
     JacConfig,
+    NativeBuildConfig,
     PluginsConfig,
     ProjectConfig,
     RunConfig,
@@ -47,6 +47,7 @@ glob __all__ = [
          'ProjectConfig',
          'RunConfig',
          'BuildConfig',
+         'NativeBuildConfig',
          'TestConfig',
          'ServeConfig',
          'FormatConfig',

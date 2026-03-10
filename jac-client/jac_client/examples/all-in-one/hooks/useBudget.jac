@@ -1,9 +1,6 @@
 # Custom hook for budget operations
 # Demonstrates: custom hooks, useState, array methods
-cl import from react {
-    useCallback,
-    useMemo
-}
+cl import from react { useCallback, useMemo }
 
 cl {
     # Main budget management hook
@@ -35,9 +32,11 @@ cl {
 
         # Delete a transaction by ID
         def deleteTransaction(id: str) -> None {
-            filtered = transactions.filter(
-                lambda tx: dict  -> bool { return tx["id"] != id; }
-            );
+            filtered = [
+                tx
+                for tx in transactions
+                if tx["id"] != id
+            ];
             setTransactions(filtered);
         }
 

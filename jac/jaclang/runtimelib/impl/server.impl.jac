@@ -1,57 +1,6 @@
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
-
-"""Serialize objects to JSON-compatible format."""
-impl JacSerializer.serialize(`obj: object) -> JsonValue {
-    import from jaclang.jac0core.constructs { Archetype }
-    if ((`obj is None) or isinstance(`obj, (str, int, float, bool))) {
-        return `obj;
-    }
-    if isinstance(`obj, (list, tuple)) {
-        return [JacSerializer.serialize(item) for item in `obj];
-    }
-    if isinstance(`obj, dict) {
-        return {key: JacSerializer.serialize(value) for (key, value) in `obj.items()};
-    }
-    if isinstance(`obj, Archetype) {
-        return JacSerializer._serialize_archetype(`obj);
-    }
-    if `obj?.__dict__ {
-        with suppress(Exception) {
-            return JacSerializer.serialize(
-                {
-                    k: v
-                    for (k, v) in `obj.__dict__.items()
-                    if not k.startswith('_')
-                }
-            );
-        }
-    }
-    return str(`obj);
-}
-
-"""Serialize Archetype instances."""
-impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
-    import from jaclang.jac0core.constructs { NodeArchetype, WalkerArchetype }
-    result: dict[(str, JsonValue)] = {
-        '_jac_type': type(arch).__name__,
-        '_jac_id': arch.__jac__.id.hex,
-        '_jac_archetype': 'node'
-        if isinstance(arch, NodeArchetype)
-        else 'walker' if isinstance(arch, WalkerArchetype) else 'archetype'
-    };
-    for attr_name in dir(arch) {
-        if (not attr_name.startswith('_') and (attr_name != '__jac__')) {
-            with suppress(Exception) {
-                attr_value = getattr(arch, attr_name);
-                if not callable(attr_value) {
-                    result[attr_name] = JacSerializer.serialize(attr_value);
-                }
-            }
-        }
-    }
-    return result;
-}
+import from jaclang.runtimelib.serializer { Serializer }
 
 impl UserManager.postinit -> None {
     import sqlite3;
@@ -130,9 +79,7 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
-    cursor = self._conn.execute(
-        "SELECT username FROM users WHERE token = ?", (token, )
-    );
+    cursor = self._conn.execute("SELECT username FROM users WHERE token = ?", (token, ));
     row = cursor.fetchone();
     return row[0] if row else None;
 }
@@ -273,8 +220,8 @@ impl ExecutionManager.execute_function(
             return reports;
         } else {
             return {
-                'result': JacSerializer.serialize(result),
-                'reports': JacSerializer.serialize(reports)
+                'result': Serializer.serialize(result, api_mode=True),
+                'reports': Serializer.serialize(reports, api_mode=True)
             };
         }
     } except Exception as e {
@@ -323,8 +270,8 @@ impl ExecutionManager.spawn_walker(
             return reports;
         } else {
             return {
-                'result': JacSerializer.serialize(result),
-                'reports': JacSerializer.serialize(reports)
+                'result': Serializer.serialize(result, api_mode=True),
+                'reports': Serializer.serialize(reports, api_mode=True)
             };
         }
     } except Exception as e {
@@ -359,6 +306,7 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     self._extract_access_levels();
     self._functions = self._collect_functions();
     self._walkers = self._collect_walkers();
+    self._analyze_endpoint_effects();
     self._bundle = None;
     self._bundle_error = None;
 }
@@ -382,7 +330,8 @@ impl ModuleIntrospector._load_manifest -> None {
                 'globals': manifest.globals,
                 'params': manifest.params,
                 'globals_values': manifest.globals_values,
-                'has_client': manifest.has_client
+                'has_client': manifest.has_client,
+                'endpoint_effects': manifest.endpoint_effects
             };
             return;
         }
@@ -406,27 +355,10 @@ impl ModuleIntrospector._extract_access_levels -> None {
         return;
     }
     import jaclang.jac0core.unitree as uni;
-    import from jaclang.jac0core.constructs { WalkerArchetype }
-    import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
     self._function_access = {};
     self._walker_access = {};
-    # Helper to check if an archetype AST node is explicitly public
-    def is_archetype_public(arch_ast: uni.Archetype) -> bool {
-        return arch_ast.access is not None and arch_ast.access.tag.name == Tok.KW_PUB;
-    }
-    # Helper to find walker access level from a module AST
-    def find_walker_access_in_ast(
-        mod_ast: uni.Module, walker_name: str
-    ) -> (bool | None) {
-        for item in mod_ast.body {
-            if isinstance(item, uni.Archetype) and item.name.sym_name == walker_name {
-                return not is_archetype_public(item);  # True = auth required, False = public
 
-            }
-        }
-        return None;
-    }
-    # Helper to get AST for a module path
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
         ast = Jac.program.mod.hub.get(mod_path);
         if not ast {
@@ -434,6 +366,48 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         return ast;
     }
+
+    def is_public(ast_node: (uni.AstAccessNode | None)) -> bool {
+        return ast_node is not None
+        and ast_node.access is not None
+        and ast_node.access.tag.name == Tok.KW_PUB;
+    }
+
+    def _process_import(
+        item: uni.Import, func_access: dict[str, bool], walker_access: dict[str, bool]
+    ) {
+        imported_names: list[str] = [
+            imp_item.alias.sym_name if imp_item.alias else imp_item.name.value
+            for imp_item in item.items
+            if isinstance(imp_item, uni.ModuleItem)
+        ];
+        if not imported_names {
+            return;
+        }
+        try {
+            source_file = item.from_loc.resolve_relative_path();
+            if not source_file.endswith(('.jac', '.cl.jac')) {
+                return;
+            }
+        } except Exception {
+            return;
+        }
+        source_ast = get_module_ast(source_file);
+        for name in imported_names {
+            if name in func_access or name in walker_access {
+                continue;
+            }
+            sym = source_ast.lookup(name) if source_ast else None;
+            is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
+            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode) if sym else None;
+            if is_walker {
+                walker_access[name] = not is_public(decl_node);
+            } else {
+                func_access[name] = not is_public(decl_node);
+            }
+        }
+    }
+
     # Get main module AST
     mod_path = getattr(self._module, '__file__', None);
     if not mod_path {
@@ -443,54 +417,168 @@ impl ModuleIntrospector._extract_access_levels -> None {
     if not mod_ast {
         return;
     }
-    # Process direct definitions in main module
+
+    # Single pass over module body: direct definitions + imports
     for item in mod_ast.body {
         if isinstance(item, uni.Ability) and item.name_ref is not None {
-            func_name = item.name_ref.sym_name;
-            is_explicitly_public = item.access and item.access.tag.name == Tok.KW_PUB;
-            self._function_access[func_name] = not is_explicitly_public;
-        } elif isinstance(item, uni.Archetype) {
-            arch_name = item.name.sym_name;
-            if hasattr(self._module, arch_name) {
-                cls = getattr(self._module, arch_name);
-                if isinstance(cls, type) and issubclass(cls, WalkerArchetype) {
-                    self._walker_access[arch_name] = not is_archetype_public(item);
+            self._function_access[item.name_ref.sym_name] = not is_public(item);
+        } elif isinstance(item, uni.Archetype)
+        and item.sym_category == SymbolType.WALKER_ARCH {
+            self._walker_access[item.name.sym_name] = not is_public(item);
+        } elif isinstance(item, uni.Import) and item.is_jac and item.from_loc {
+            _process_import(item, self._function_access, self._walker_access);
+        }
+    }
+}
+
+
+"""Analyze walker and function bodies to classify as reader or writer.
+
+Populates endpoint_effects in _client_manifest when the ES pass couldn't
+determine effects (e.g., walkers defined in a different module than where
+they're spawned from). Uses AST-level analysis to detect write operations
+(ConnectOp, DisconnectOp, DeleteStmt, spawn).
+"""
+impl ModuleIntrospector._analyze_endpoint_effects -> None {
+    # Skip if endpoint_effects already populated by ES pass
+    existing = self._client_manifest.get('endpoint_effects', {});
+    if existing {
+        return;
+    }
+    if not self._module {
+        return;
+    }
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constructs { WalkerArchetype }
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    endpoint_effects: dict = {};
+    # Recursively check if an AST subtree contains write operations
+    def has_write_ops(`node: Any) -> bool {
+        if isinstance(`node, uni.DeleteStmt) {
+            return True;
+        }
+        if isinstance(`node, uni.BinaryExpr) {
+            if isinstance(`node.op, (uni.ConnectOp, uni.DisconnectOp)) {
+                return True;
+            }
+            if `node.op?.name and `node.op.name == Tok.KW_SPAWN {
+                return True;
+            }
+        }
+        # Recurse into children
+        if `node?.kid and `node.kid {
+            for child in `node.kid {
+                if has_write_ops(child) {
+                    return True;
                 }
             }
         }
+        return False;
     }
-    # Process imported walkers - look up their source module's AST
-    for (name, cls) in inspect.getmembers(self._module) {
-        if (
-            isinstance(cls, type)
-            and issubclass(cls, WalkerArchetype)
-            and cls is not WalkerArchetype
-            and name not in self._walker_access  # Not already processed as direct definition
-        ) {
-            # Get the source file where this walker class is defined
-            try {
-                source_file = inspect.getfile(cls);
-            } except (TypeError, OSError) {
-                # Can't determine source file, default to requiring auth
-                self._walker_access[name] = True;
+    # Get module AST from compilation hub
+    def get_module_ast(mod_path: str) -> Any {
+        ast_mod = Jac.program.mod.hub.get(mod_path);
+        if not ast_mod {
+            ast_mod = Jac.program.compile(mod_path);
+        }
+        return ast_mod;
+    }
+    # Analyze a walker archetype AST node for read/write effects
+    def analyze_walker_in_ast(mod_ast: Any, walker_name: str) -> (dict | None) {
+        for item in mod_ast.body {
+            if not isinstance(item, uni.Archetype) {
                 continue;
             }
-            # Try to get the AST from the source module
-            source_ast = get_module_ast(source_file);
-            if source_ast {
-                access_level = find_walker_access_in_ast(source_ast, name);
-                if access_level is not None {
-                    self._walker_access[name] = access_level;
-                } else {
-                    # Walker not found in AST, default to requiring auth (secure by default)
-                    self._walker_access[name] = True;
+            if item.name.sym_name != walker_name {
+                continue;
+            }
+            # Get resolved body (handles .impl.jac)
+            body = item._get_impl_resolved_body();
+            is_writer = False;
+            for body_item in body {
+                if has_write_ops(body_item) {
+                    is_writer = True;
+                    break;
                 }
-            } else {
-                # Can't get AST, default to requiring auth (secure by default)
-                self._walker_access[name] = True;
+            }
+            return {"is_writer": is_writer, "touches": ["*"]};
+        }
+        return None;
+    }
+    # Get main module AST
+    mod_path = getattr(self._module, '__file__', None);
+    if not mod_path {
+        return;
+    }
+    mod_ast = get_module_ast(mod_path);
+    # Process all walkers
+    for (name, cls) in self._walkers.items() {
+        effect_key = f"walker:{name}";
+        # Try main module first
+        if mod_ast {
+            effects = analyze_walker_in_ast(mod_ast, name);
+            if effects is not None {
+                endpoint_effects[effect_key] = effects;
+                continue;
             }
         }
+        # Try source module (for imported walkers)
+        try {
+            source_file = inspect.getfile(cls);
+        } except (TypeError, OSError) {
+            # Default: conservative (assume writer)
+            endpoint_effects[effect_key] = {"is_writer": True, "touches": ["*"]};
+            continue;
+        }
+        if source_file != mod_path {
+            source_ast = get_module_ast(source_file);
+            if source_ast {
+                effects = analyze_walker_in_ast(source_ast, name);
+                if effects is not None {
+                    endpoint_effects[effect_key] = effects;
+                    continue;
+                }
+            }
+        }
+        # Default: conservative (assume writer)
+        endpoint_effects[effect_key] = {"is_writer": True, "touches": ["*"]};
     }
+    # Process public functions
+    for (name, func) in self._functions.items() {
+        effect_key = f"func:{name}";
+        if mod_ast {
+            for item in mod_ast.body {
+                if (
+                    isinstance(item, uni.Ability)
+                    and item.name_ref is not None
+                    and item.name_ref.sym_name == name
+                ) {
+                    is_writer = False;
+                    if item.body and hasattr(item.body, '__iter__') {
+                        for body_item in item.body {
+                            if has_write_ops(body_item) {
+                                is_writer = True;
+                                break;
+                            }
+                        }
+                    }
+                    endpoint_effects[effect_key] = {
+                        "is_writer": is_writer,
+                        "touches": ["*"]
+                    };
+                    break;
+                }
+            }
+        }
+        if effect_key not in endpoint_effects {
+            endpoint_effects[effect_key] = {"is_writer": False, "touches": ["*"]};
+        }
+    }
+    # Update client manifest
+    if not self._client_manifest {
+        self._client_manifest = {};
+    }
+    self._client_manifest['endpoint_effects'] = endpoint_effects;
 }
 
 """Collect callable functions from module."""
@@ -553,6 +641,7 @@ impl ModuleIntrospector._check_module_freshness -> None {
         self._extract_access_levels();
         self._functions = self._collect_functions();
         self._walkers = self._collect_walkers();
+        self._analyze_endpoint_effects();
         self._bundle = None;
         self._bundle_error = None;
         return;
@@ -585,7 +674,11 @@ impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
     } else {
         self._check_module_freshness();
     }
-    return dict(self._functions);
+    return {
+        k: v
+        for (k, v) in self._functions.items()
+        if not v?.schedule_spec
+    };
 }
 
 """Get all walkers."""
@@ -595,7 +688,11 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     } else {
         self._check_module_freshness();
     }
-    return dict(self._walkers);
+    return {
+        k: v
+        for (k, v) in self._walkers.items()
+        if not v?.schedule_spec
+    };
 }
 
 """Get client-exportable functions."""
@@ -623,8 +720,8 @@ impl ModuleIntrospector.introspect_callable(
             ),
             'required': (param.default == inspect.Parameter.empty),
             'default': None
-            if (param.default == inspect.Parameter.empty)
-            else str(param.default)
+                if (param.default == inspect.Parameter.empty)
+                else str(param.default)
         } for (name, param) in sig.parameters.items()
     };
     return_type = type_hints.get('return', Any);
@@ -670,8 +767,8 @@ impl ModuleIntrospector.introspect_walker(
             'type': type_name,
             'required': (param.default == inspect.Parameter.empty),
             'default': None
-            if (param.default == inspect.Parameter.empty)
-            else param.default
+                if (param.default == inspect.Parameter.empty)
+                else param.default
         };
     }
     fields['_jac_spawn_node'] = {
@@ -685,14 +782,14 @@ impl ModuleIntrospector.introspect_walker(
 """Ensure client bundle is available and return hash."""
 impl ModuleIntrospector.ensure_bundle -> str {
     if not self._module {
-        raise RuntimeError('Module not loaded') ;
+        raise RuntimeError('Module not loaded');
     }
     if self._bundle {
         return self._bundle.hash;
     }
     # Don't retry if we already have a cached error
     if self._bundle_error {
-        raise ClientBundleError(self._bundle_error) ;
+        raise ClientBundleError(self._bundle_error);
     }
     try {
         self._bundle = self._bundle_builder.build(self._module);
@@ -701,7 +798,7 @@ impl ModuleIntrospector.ensure_bundle -> str {
     } except Exception as exc {
         self._bundle = None;
         self._bundle_error = str(exc);
-        raise ClientBundleError(self._bundle_error) ;
+        raise ClientBundleError(self._bundle_error);
     }
 }
 
@@ -818,7 +915,9 @@ impl ResponseBuilder._add_custom_headers(handler: BaseHTTPRequestHandler) -> Non
     and config.environments
     and "response" in config.environments
     and "headers" in config.environments["response"] {
-        for (header_name, header_value) in config.environments["response"]["headers"].items() {
+        for (header_name, header_value) in config.environments["response"][
+            "headers"
+        ].items() {
             handler.send_header(header_name, header_value);
         }
     }
@@ -939,9 +1038,7 @@ impl AuthHandler.update_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    result = self.user_manager.update_password(
-        username, current_password, new_password
-    );
+    result = self.user_manager.update_password(username, current_password, new_password);
     if ('error' in result) {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -1081,6 +1178,7 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
+    import from jaclang.runtimelib.scheduler { Scheduler }
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
@@ -1101,9 +1199,11 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
+    self.scheduler = Scheduler.instance();
     # Only create real server if port > 0 (port=0 is test mode - no socket binding)
     if self.port > 0 {
         self.server = Jac.create_server(self, '0.0.0.0', self.port);
+        # Note: Jac.create_server updates self.port if a different port was used
     } else {
         self.server = None;
     }
@@ -1118,8 +1218,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         def _get_auth_token(self: JacRequestHandler) -> (str | None) {
             auth_header = self.headers.get('Authorization');
             return auth_header[7:]
-            if (auth_header and auth_header.startswith('Bearer '))
-            else None;
+                if (auth_header and auth_header.startswith('Bearer '))
+                else None;
         }
 
         """Authenticate request and return username."""
@@ -1132,8 +1232,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         def _read_json(self: JacRequestHandler) -> dict[str, Any] {
             content_length = int(self.headers.get('Content-Length', 0));
             body = self.rfile.read(content_length).decode()
-            if (content_length > 0)
-            else '{}';
+                if (content_length > 0)
+                else '{}';
             return json.loads(body);
         }
 
@@ -1159,7 +1259,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         ) -> None {
             username = self._authenticate();
             if not username {
-                username = '__guest__';
+                username = Con.GUEST.value;
                 if not server.user_manager.user_exists(username) {
                     server.user_manager.create_user(username, '__no_password__');
                 }
@@ -1228,8 +1328,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     # base_path_dir might be src/ when serving src/app.jac, but we need project root
                     import from jaclang.project.config { find_project_root }
                     base_path_dir = Path(Jac.base_path_dir)
-                    if Jac.base_path_dir
-                    else Path.cwd();
+                        if Jac.base_path_dir
+                        else Path.cwd();
                     project_root_result = find_project_root(base_path_dir);
                     if project_root_result {
                         (base_path, _) = project_root_result;
@@ -1280,9 +1380,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                             Jac.send_css(self, css_content);
                             return;
                         } elif assets_file_simple.exists() {
-                            css_content = assets_file_simple.read_text(
-                                encoding='utf-8'
-                            );
+                            css_content = assets_file_simple.read_text(encoding='utf-8');
                             Jac.send_css(self, css_content);
                             return;
                         } else {
@@ -1461,7 +1559,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     username = self._authenticate();
                     if not username {
-                        username = '__guest__';
+                        username = Con.GUEST.value;
                         if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
@@ -1487,7 +1585,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     username = self._authenticate();
                     if not username {
-                        username = '__guest__';
+                        username = Con.GUEST.value;
                         if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
@@ -1608,9 +1706,28 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[int], None] | None = None
+) -> None {
     import from pathlib { Path }
     self.introspector.load();
+    # Register scheduled walkers and functions, start scheduler only if needed
+    for (name, walker_cls) in self.introspector._walkers.items() {
+        if walker_cls?.schedule_spec {
+            self.scheduler.register(name, walker_cls, walker_cls.schedule_spec, True);
+        }
+    }
+    for (name, func) in self.introspector._functions.items() {
+        if func?.schedule_spec {
+            self.scheduler.register(name, func, func.schedule_spec, False);
+        }
+    }
+    if self.scheduler.has_pending() {
+        console.print("Scheduler started");
+        self.scheduler.start();
+    }
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
     bundle_error = None;
     if not dev and not no_client {
@@ -1631,9 +1748,7 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                 } else {
                     self.introspector.ensure_bundle();
                 }
-                console.print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
-                );
+                # Callback will handle startup message if provided
             } except Exception as e {
                 bundle_error = str(e);
             }
@@ -1669,27 +1784,39 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         # Display bundle error after endpoints if one occurred
         if bundle_error {
             import sys;
-            console.print('\n' + '=' * 70, file=sys.stderr);
-            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
-            console.print('=' * 70, file=sys.stderr);
+            formatted_error = Jac.format_build_error(
+                error_output=bundle_error,
+                project_dir=Path(self.base_path),
+                config=config
+            );
             console.print(file=sys.stderr);
-            console.print(bundle_error, file=sys.stderr);
+            console.print(formatted_error, file=sys.stderr);
             console.print(file=sys.stderr);
             console.warning(
                 'Client pages will not be available until this is fixed.', emoji=True
             );
             console.print(file=sys.stderr);
-            console.info('Try again after running: jac clean --all', emoji=True);
             console.info(
                 f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                 emoji=True
             );
-            console.print('=' * 70 + '\n', file=sys.stderr);
+            console.print(file=sys.stderr);
+        }
+        # Call the ready callback with actual port (e.g., to print startup banner)
+        # Try new signature (with port) first, fall back to old signature for cached code
+        if on_ready {
+            try {
+                on_ready(self.port);
+            } except TypeError {
+                on_ready();
+            }
         }
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {
             console.print('\nShutting down server...');
+        } finally {
+            self.scheduler.stop();
         }
     }
 }

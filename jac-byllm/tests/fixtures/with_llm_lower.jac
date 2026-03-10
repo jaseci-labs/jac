@@ -31,7 +31,7 @@ glob llm = MockLLM(
          },
      );
 
-def get_person_info(name: str) -> Person by llm(method="Reason");
+def get_person_info(name: str) -> Person by llm();
 
 with entry {
     person_obj = get_person_info('Oppenheimer');

@@ -3,8 +3,36 @@ name: Release jac-client to PYPI
 on: workflow_dispatch
 
 jobs:
+  precompile:
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13', '3.14']
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install jaclang and jac-client
+        run: |
+          pip install -e ./jac
+          pip install -e ./jac-client
+      - name: Precompile bytecode
+        run: jac run jac/scripts/precompile_bytecode.jac ./jac-client
+      - name: Upload precompiled artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: precompiled-client-${{ matrix.python-version }}
+          path: jac-client/jac_client/_precompiled/
+
   release-client:
     name: Release
+    needs: precompile
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,9 +44,15 @@ jobs:
         with:
           submodules: true
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Download precompiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: jac-client/jac_client/_precompiled/
+          pattern: precompiled-client-*
+          merge-multiple: true
       - name: Install build tools
         run: |
           pip install build twine

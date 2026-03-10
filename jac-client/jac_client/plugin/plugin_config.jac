@@ -9,6 +9,7 @@ configuration system, registering:
 """
 
 import os;
+import shutil;
 import subprocess;
 import json;
 import from pathlib { Path }
@@ -75,6 +76,28 @@ class JacClientPluginConfig {
                     "type": "dict",
                     "default": {},
                     "description": "Generate config files for npm packages. Keys are config names (e.g., 'postcss', 'tailwind'), values are the config objects to export."
+                },
+                "npm": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "NPM registry configuration for .npmrc generation. Supports 'settings' for global options, 'scoped_registries' for scope-to-registry mappings, and 'auth' for registry authentication tokens.",
+                    "nested": {
+                        "settings": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Global .npmrc settings as key-value pairs (e.g., registry, always-auth, strict-ssl, proxy)"
+                        },
+                        "scoped_registries": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Map npm scopes to custom registries (e.g., '@myorg' = 'https://npm.pkg.github.com')"
+                        },
+                        "auth": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Registry authentication tokens (e.g., '//npm.pkg.github.com/' = { _authToken = '${NODE_AUTH_TOKEN}' })"
+                        }
+                    }
                 }
             }
         };
@@ -215,6 +238,13 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         shutil.copy2(configs_package_json, build_package_json);
 
+        # Copy .npmrc for scoped registry auth during install
+        configs_npmrc = client_dir / 'configs' / '.npmrc';
+        build_npmrc = client_dir / '.npmrc';
+        if configs_npmrc.exists() {
+            shutil.copy2(configs_npmrc, build_npmrc);
+        }
+
         # Run bun install (ensure bun is available first)
         import from jac_client.plugin.utils { ensure_bun_available }
         if not ensure_bun_available() {
@@ -256,6 +286,10 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             if build_package_json.exists() {
                 build_package_json.unlink();
             }
+            # Clean up temporary .npmrc
+            if build_npmrc.exists() {
+                build_npmrc.unlink();
+            }
         }
     } except Exception as e {
         console.warning(f"Could not install default packages: {e}");
@@ -278,7 +312,7 @@ def _npm_install_handler(
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     # Add to config (core JacConfig handles this)
@@ -293,7 +327,7 @@ def _npm_install_handler(
 """Install all npm packages from jac.toml."""
 def _npm_install_all_handler(config: JacConfig) -> None {
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     _regenerate_and_install(Path(str(config.project_root)));
@@ -304,7 +338,7 @@ def _npm_remove_handler(
     config: JacConfig, package_name: str, is_dev: bool = False
 ) -> None {
     if config.project_root is None {
-        raise RuntimeError("No project root found") ;
+        raise RuntimeError("No project root found");
     }
 
     project_dir: Path = Path(str(config.project_root));
@@ -313,7 +347,7 @@ def _npm_remove_handler(
     result = config.remove_dependency(package_name, dev=is_dev, dep_type="npm");
     if not result {
         deps_key = "dev-dependencies" if is_dev else "dependencies";
-        raise RuntimeError(f'Package "{package_name}" not found in {deps_key}') ;
+        raise RuntimeError(f'Package "{package_name}" not found in {deps_key}');
     }
 
     config.save();
@@ -326,11 +360,12 @@ def _npm_remove_handler(
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils { ensure_bun_available }
-    import shutil;
 
     # Ensure Bun is installed before proceeding (prompt to install if not)
     if not ensure_bun_available() {
-        raise RuntimeError("Bun is required. Install manually: https://bun.sh") from None ;
+        raise RuntimeError(
+            "Bun is required. Install manually: https://bun.sh"
+        ) from None;
     }
 
     bundler = ViteBundler(project_dir);
@@ -347,15 +382,26 @@ def _regenerate_and_install(project_dir: Path) -> None {
         shutil.copy2(configs_package_json, build_package_json);
     }
 
+    # Copy .npmrc to .jac/client/ for scoped registry auth during install
+    configs_npmrc = client_dir / 'configs' / '.npmrc';
+    build_npmrc = client_dir / '.npmrc';
+    if configs_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
+
     try {
         # Run bun install
         subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
     } except subprocess.CalledProcessError as e {
-        raise RuntimeError(f"Failed to install packages: {e}") from e ;
+        raise RuntimeError(f"Failed to install packages: {e}") from e;
     } finally {
         # Clean up temporary package.json
         if build_package_json.exists() {
             build_package_json.unlink();
+        }
+        # Clean up temporary .npmrc
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
         }
         # Move bun.lockb to configs/ if it exists
         build_bun_lockb = client_dir / 'bun.lockb';

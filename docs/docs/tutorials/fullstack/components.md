@@ -1,6 +1,8 @@
 # React-Style Components
 
-Build reusable UI components with JSX syntax.
+Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared inside `cl { }` blocks that return `JsxElement` values. They support props for data passing, composition for building complex UIs from simple parts, and all the familiar React patterns -- conditional rendering, list mapping, and event handling.
+
+The key difference from a standard React setup: there's no separate JavaScript project, no webpack configuration, and no build toolchain to manage. You write components in Jac syntax, the compiler generates optimized JavaScript, and the dev server bundles and serves it automatically.
 
 > **Prerequisites**
 >
@@ -13,11 +15,11 @@ Build reusable UI components with JSX syntax.
 
 ```jac
 cl {
-    def:pub Greeting(props: dict) -> any {
+    def:pub Greeting(props: dict) -> JsxElement {
         return <h1>Hello, {props.name}!</h1>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <Greeting name="Alice" />
             <Greeting name="Bob" />
@@ -41,7 +43,7 @@ cl {
 
 ```jac
 cl {
-    def:pub MyComponent() -> any {
+    def:pub MyComponent() -> JsxElement {
         return <div className="container">
             <h1>Title</h1>
             <p>Paragraph text</p>
@@ -58,7 +60,7 @@ cl {
 
 ```jac
 cl {
-    def:pub MyComponent() -> any {
+    def:pub MyComponent() -> JsxElement {
         name = "World";
         items = [1, 2, 3];
 
@@ -81,7 +83,7 @@ Use `{ }` to embed any Jac expression.
 
 ```jac
 cl {
-    def:pub Status(props: dict) -> any {
+    def:pub Status(props: dict) -> JsxElement {
         return <span>
             {("Active" if props.active else "Inactive")}
         </span>;
@@ -93,7 +95,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Notification(props: dict) -> any {
+    def:pub Notification(props: dict) -> JsxElement {
         return <div>
             {props.count > 0 and <span>You have {props.count} messages</span>}
         </div>;
@@ -105,7 +107,7 @@ cl {
 
 ```jac
 cl {
-    def:pub UserGreeting(props: dict) -> any {
+    def:pub UserGreeting(props: dict) -> JsxElement {
         if props.isLoggedIn {
             return <h1>Welcome back!</h1>;
         }
@@ -120,15 +122,13 @@ cl {
 
 ```jac
 cl {
-    def:pub TodoList(props: dict) -> any {
+    def:pub TodoList(props: dict) -> JsxElement {
         return <ul>
-            {props.items.map(lambda item: any -> any {
-                return <li key={item.id}>{item.text}</li>;
-            })}
+            {[<li key={item.id}>{item.text}</li> for item in props.items]}
         </ul>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         todos = [
             {"id": 1, "text": "Learn Jac"},
             {"id": 2, "text": "Build app"},
@@ -150,7 +150,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Button() -> any {
+    def:pub Button() -> JsxElement {
         def handle_click() -> None {
             print("Button clicked!");
         }
@@ -166,7 +166,7 @@ cl {
 
 ```jac
 cl {
-    def:pub SearchBox() -> any {
+    def:pub SearchBox() -> JsxElement {
         has query: str = "";
 
         return <input
@@ -183,7 +183,7 @@ cl {
 
 ```jac
 cl {
-    def:pub LoginForm() -> any {
+    def:pub LoginForm() -> JsxElement {
         has username: str = "";
         has password: str = "";
 
@@ -216,14 +216,14 @@ cl {
 
 ```jac
 cl {
-    def:pub Card(props: dict) -> any {
+    def:pub Card(props: dict) -> JsxElement {
         return <div className="card">
             <div className="card-header">{props.title}</div>
             <div className="card-body">{props.children}</div>
         </div>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Card title="Welcome">
             <p>This is the card content.</p>
             <button>Action</button>
@@ -236,25 +236,25 @@ cl {
 
 ```jac
 cl {
-    def:pub Header() -> any {
+    def:pub Header() -> JsxElement {
         return <header>
             <h1>My App</h1>
             <Nav />
         </header>;
     }
 
-    def:pub Nav() -> any {
+    def:pub Nav() -> JsxElement {
         return <nav>
             <a href="/">Home</a>
             <a href="/about">About</a>
         </nav>;
     }
 
-    def:pub Footer() -> any {
+    def:pub Footer() -> JsxElement {
         return <footer>© 2024</footer>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <Header />
             <main>Content here</main>
@@ -273,7 +273,7 @@ cl {
 ```jac
 # No cl { } needed for .cl.jac files
 
-def:pub Header(props: dict) -> any {
+def:pub Header(props: dict) -> JsxElement {
     return <header>
         <h1>{props.title}</h1>
     </header>;
@@ -286,7 +286,7 @@ def:pub Header(props: dict) -> any {
 cl {
     import from "./Header.cl.jac" { Header }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <Header title="My App" />
             <main>Content</main>
@@ -320,7 +320,7 @@ export function Button({ label, onClick }: ButtonProps) {
 cl {
     import from "./Button.tsx" { Button }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Button
             label="Click me"
             onClick={lambda -> None { print("Clicked!"); }}
@@ -337,7 +337,7 @@ cl {
 
 ```jac
 cl {
-    def:pub StyledBox() -> any {
+    def:pub StyledBox() -> JsxElement {
         return <div style={{
             "backgroundColor": "#f0f0f0",
             "padding": "20px",
@@ -354,9 +354,9 @@ cl {
 
 ```jac
 cl {
-    import ".styles.css";
+    import "./styles.css";
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div className="container">
             <h1 className="title">Hello</h1>
         </div>;
@@ -381,12 +381,12 @@ cl {
 
 | Concept | Syntax |
 |---------|--------|
-| Define component | `def:pub Name(props: dict) -> any { }` |
+| Define component | `def:pub Name(props: dict) -> JsxElement { }` |
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Event handler | `onClick={lambda -> None { ... }}` |
-| List rendering | `{items.map(lambda x -> any { <li>{x}</li> })}` |
-| Conditional | `{condition ? <A /> : <B />}` |
+| List rendering | `{[<li>{x}</li> for x in items]}` |
+| Conditional | `{("A" if condition else "B")}` |
 | Children | `{props.children}` |
 | Import component | `import from "./File.cl.jac" { Component }` |
 

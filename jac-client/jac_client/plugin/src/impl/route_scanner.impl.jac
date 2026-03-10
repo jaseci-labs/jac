@@ -3,38 +3,15 @@ import from pathlib { Path }
 import from operator { attrgetter }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
-impl RouteEntry.init(
-    self: RouteEntry,
-    path: str,
-    component_import: str,
-    file_path: Path,
-    auth_required: bool = False,
-    is_layout: bool = False,
-    is_catch_all: bool = False,
-    children: (list[RouteEntry] | None) = None
-) {
-    self.path = path;
-    self.component_import = component_import;
-    self.file_path = file_path;
-    self.auth_required = auth_required;
-    self.is_layout = is_layout;
-    self.is_catch_all = is_catch_all;
-    self.children = children if children is not None else [];
+impl RouteScanner.postinit{
+    self.pages_dir = self.project_root / self.PAGES_DIR_NAME;
 }
 
-impl RouteScanner.init(self: RouteScanner, project_root: Path) {
-    self.project_root = project_root;
-    self.pages_dir = project_root / self.PAGES_DIR_NAME;
-    self._routes: list[RouteEntry] = [];
-    self._layouts: dict[(str, RouteEntry)] = {};
-    self._page_files: list[Path] = [];
-}
-
-impl RouteScanner.has_pages_dir(self: RouteScanner) -> bool {
+impl RouteScanner.has_pages_dir -> bool {
     return self.pages_dir.exists() and self.pages_dir.is_dir();
 }
 
-impl RouteScanner.scan(self: RouteScanner) -> list[RouteEntry] {
+impl RouteScanner.scan -> list[RouteEntry] {
     if not self.has_pages_dir() {
         return [];
     }
@@ -47,19 +24,16 @@ impl RouteScanner.scan(self: RouteScanner) -> list[RouteEntry] {
 }
 
 """Return layouts discovered during the last scan, keyed by URL prefix."""
-impl RouteScanner.get_layouts(self: RouteScanner) -> dict[(str, RouteEntry)] {
+impl RouteScanner.get_layouts -> dict[(str, RouteEntry)] {
     return self._layouts;
 }
 
-impl RouteScanner.get_page_files(self: RouteScanner) -> list[Path] {
+impl RouteScanner.get_page_files -> list[Path] {
     return self._page_files;
 }
 
 impl RouteScanner._scan_directory(
-    self: RouteScanner,
-    dir_path: Path,
-    url_prefix: str = "",
-    auth_required: bool = False
+    dir_path: Path, url_prefix: str = "", auth_required: bool = False
 ) -> list[RouteEntry] {
     routes: list[RouteEntry] = [];
     # Collect and sort entries for deterministic route ordering
@@ -94,7 +68,7 @@ impl RouteScanner._scan_directory(
                         f"Layout collision: '{layout_key}' has layouts from both "
                         f"'{self._layouts[layout_key].file_path}' and '{entry}'. "
                         f"Remove one of them."
-                    ) ;
+                    );
                 }
                 component_name = self._file_to_component_name(entry);
                 layout_entry = RouteEntry(
@@ -137,7 +111,7 @@ impl RouteScanner._scan_directory(
     [id]        → :id
     [...slug]   → *
 """
-impl RouteScanner._file_to_route_path(self: RouteScanner, filename: str) -> str {
+impl RouteScanner._file_to_route_path(filename: str) -> str {
     # Catch-all: [...slug] → *
     catch_all_match = re.match(r'^\[\.\.\.(\w+)\]$', filename);
     if catch_all_match {
@@ -160,7 +134,7 @@ impl RouteScanner._file_to_route_path(self: RouteScanner, filename: str) -> str 
     pages/users/[id].jac        → PagesUsersId
     pages/[...slug].jac         → PagesSlug
 """
-impl RouteScanner._file_to_component_name(self: RouteScanner, file_path: Path) -> str {
+impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
         relative = file_path.relative_to(self.pages_dir);
     } except ValueError {
@@ -181,9 +155,7 @@ impl RouteScanner._file_to_component_name(self: RouteScanner, file_path: Path) -
     return self.COMPONENT_PREFIX + "".join(parts);
 }
 
-impl RouteScanner._detect_collisions(
-    self: RouteScanner, routes: list[RouteEntry]
-) -> None {
+impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
     seen: dict[(str, Path)] = {};
     for route in routes {
         if route.is_layout {
@@ -194,7 +166,7 @@ impl RouteScanner._detect_collisions(
                 f"Route collision: '{route.path}' is defined by both "
                 f"'{seen[route.path]}' and '{route.file_path}'. "
                 f"Remove one of them."
-            ) ;
+            );
         }
         seen[route.path] = route.file_path;
     }
