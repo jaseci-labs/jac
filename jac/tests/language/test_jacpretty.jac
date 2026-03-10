@@ -202,6 +202,8 @@ test "console log includes message" {
     (console, buf) = make_console();
     console.log("Hello");
     assert "Hello" in buf.getvalue();
+}
+
 test "hex color parsing handles invalid characters gracefully" {
     # These patterns caused ValueError crashes before the fix
     # Pattern: #XXXX followed by non-hex chars totaling 7 chars
