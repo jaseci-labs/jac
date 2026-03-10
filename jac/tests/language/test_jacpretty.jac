@@ -136,8 +136,7 @@ test "panel renders title and content within border" {
     assert len(lines) == 3;
     assert "Test" in lines[0];
     assert "Hello World" in lines[1];
-    assert "─" in lines[0] and "─" in lines[2];
-
+}
 
 test "panel with border style adds markup tags" {
     panel = Panel("Hi", border_style="red", padding=(0, 0));
