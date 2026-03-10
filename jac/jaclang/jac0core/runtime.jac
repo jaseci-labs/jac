@@ -301,10 +301,10 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
         import os;
-        import from jaclang.runtimelib.am_index {
-            am_query,
-            am_populate_from_gt,
-            gt_query_targets,
+        import from jaclang.runtimelib.sam_gti {
+            sam_query,
+            sam_populate_from_gti,
+            gti_query_targets,
             _get_sqlite
         }
         DEGREE_THRESHOLD: int = int(
@@ -325,23 +325,67 @@ class JacNode {
                 INDEX_ENABLED
                 and _sqlite_active
                 and nanch.is_populated()
-                and target_type_name is not None
+                and (target_type_name is not None or edge_type_name is not None)
                 and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                 and len(nanch.edges) > DEGREE_THRESHOLD
             );
             if use_index {
-                target_ids = am_query(nanch.id, target_type_name);
-                if target_ids is None {
-                    # AM miss — query GT
-                    gt_ids = gt_query_targets(
-                        ctx.mem, nanch.id, edge_type_name, target_type_name
-                    );
-                    if gt_ids is not None {
-                        am_populate_from_gt(
-                            nanch.id,
-                            [(tid, target_type_name) for tid in gt_ids]
+                target_ids: (list[str] | None) = None;
+                if target_type_name and edge_type_name {
+                    # Combined filter: intersect "n:NodeType" and "e:EdgeType" columns
+                    n_col = 'n:' + target_type_name;
+                    e_col = 'e:' + edge_type_name;
+                    node_ids = sam_query(nanch.id, n_col);
+                    edge_ids = sam_query(nanch.id, e_col);
+                    if node_ids is None {
+                        # SAM bucket miss — populate both columns from GTI
+                        gt_n = gti_query_targets(ctx.mem, nanch.id, None, target_type_name);
+                        gt_e = gti_query_targets(ctx.mem, nanch.id, edge_type_name, None);
+                        if gt_n is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(t, n_col) for t in gt_n]
+                            );
+                        }
+                        if gt_e is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(t, e_col) for t in gt_e]
+                            );
+                        }
+                        node_ids = gt_n if gt_n is not None else [];
+                        edge_ids = gt_e if gt_e is not None else [];
+                    }
+                    target_ids = list(set(node_ids) & set(edge_ids));
+                } elif target_type_name {
+                    # Node-type filter only: "n:NodeType"
+                    n_col = 'n:' + target_type_name;
+                    target_ids = sam_query(nanch.id, n_col);
+                    if target_ids is None {
+                        # SAM miss — query GTI (handles MRO via node_topology JOIN)
+                        gt_ids = gti_query_targets(
+                            ctx.mem, nanch.id, edge_type_name, target_type_name
                         );
-                        target_ids = gt_ids;
+                        if gt_ids is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(tid, n_col) for tid in gt_ids]
+                            );
+                            target_ids = gt_ids;
+                        }
+                    }
+                } else {
+                    # Edge-type filter only: "e:EdgeType"
+                    e_col = 'e:' + edge_type_name;
+                    target_ids = sam_query(nanch.id, e_col);
+                    if target_ids is None {
+                        # SAM miss — query GTI (simple WHERE edge_type=?)
+                        gt_ids = gti_query_targets(
+                            ctx.mem, nanch.id, edge_type_name, None
+                        );
+                        if gt_ids is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(tid, e_col) for tid in gt_ids]
+                            );
+                            target_ids = gt_ids;
+                        }
                     }
                 }
                 if target_ids is not None {
@@ -403,12 +447,12 @@ class JacNode {
                 break;
             }
         }
-        # AM + GT invalidation hooks (only when SQLite persistence is active)
-        from jaclang.runtimelib.am_index import am_invalidate, _gt_delete_edge, _get_sqlite;
+        # SAM + GTI invalidation hooks (only when SQLite persistence is active)
+        from jaclang.runtimelib.sam_gti import sam_invalidate, _gti_delete_edge, _get_sqlite;
         _mem = JacRuntimeInterface.get_context().mem;
         if _get_sqlite(_mem) is not None {
-            am_invalidate(nd.id);
-            _gt_delete_edge(mem=_mem, edge_id=`edge.id);
+            sam_invalidate(nd.id);
+            _gti_delete_edge(mem=_mem, edge_id=`edge.id);
         }
     }
 }
@@ -1693,15 +1737,15 @@ system,
             );
             source.edges.append(eanch);
             target.edges.append(eanch);
-            # AM + GT write hooks (only when SQLite persistence is active)
-            from jaclang.runtimelib.am_index import am_put, _gt_write_edge, _get_sqlite;
+            # SAM + GTI write hooks (only when SQLite persistence is active)
+            from jaclang.runtimelib.sam_gti import sam_put, _gti_write_edge, _get_sqlite;
             _mem = JacRuntimeInterface.get_context().mem;
             if _get_sqlite(_mem) is not None {
-                am_put(source.id, target.id, target.archetype);
+                sam_put(source.id, target.id, target.archetype, eanch.archetype);
                 if is_undirected {
-                    am_put(target.id, source.id, source.archetype);
+                    sam_put(target.id, source.id, source.archetype, eanch.archetype);
                 }
-                _gt_write_edge(mem=_mem, eanch=eanch, source=source, target=target);
+                _gti_write_edge(mem=_mem, eanch=eanch, source=source, target=target);
             }
             if conn_assign {
                 for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {

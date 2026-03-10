@@ -1,20 +1,20 @@
-"""Graph Topology Index tests (GT + AM layers).
+"""Graph Topology Index tests (GTI + SAM layers).
 
 Written in Jac using proper OSP syntax:
   - Nodes and walkers defined at module level
   - Graph building via ++> (connect)
   - Graph traversal via [here-->](?:Type) (filtered OSP traversal)
   - Edge removal via del -->
-  - GT/AM state checked via direct imports
+  - GTI/SAM state checked via direct imports
 
 All tests use a single context per test (no close+reopen) to avoid
 the cross-context pickle issue with dynamically-loaded node classes.
-AM miss is simulated by calling am_clear() within the same context
-(GT tables remain intact in the committed SQLite connection).
+SAM miss is simulated by calling sam_clear() within the same context
+(GTI tables remain intact in the committed SQLite connection).
 
 Groups:
-  1 - GT Table Correctness
-  2 - AM Correctness
+  1 - GTI Table Correctness
+  2 - SAM Correctness
   3 - Fetch Count Reduction
   4 - Mutation Consistency
   5 - Schema
@@ -25,10 +25,10 @@ import sqlite3;
 import from tempfile { mkdtemp }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.runtime { without_plugins }
-import from jaclang.runtimelib.am_index {
-    am_index,
+import from jaclang.runtimelib.sam_gti {
+    sam_index,
     _stats,
-    am_clear,
+    sam_clear,
     reset_stats,
     rebuild_topology_index
 }
@@ -166,10 +166,10 @@ def count_table(db: str, table: str, where: str = "") -> int {
 }
 
 # ===========================================================================
-# Group 1 — GT Table Correctness
+# Group 1 — GTI Table Correctness
 # ===========================================================================
 
-test "GT - building graph populates edge_topology and node_topology" {
+test "GTI - building graph populates edge_topology and node_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
@@ -199,7 +199,7 @@ test "GT - building graph populates edge_topology and node_topology" {
     }
 }
 
-test "GT - del --> removes edge from edge_topology" {
+test "GTI - del --> removes edge from edge_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
@@ -228,11 +228,11 @@ test "GT - del --> removes edge from edge_topology" {
     }
 }
 
-test "GT - rebuild_topology_index warms AM from edge_topology" {
+test "GTI - rebuild_topology_index warms SAM from edge_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -245,15 +245,15 @@ test "GT - rebuild_topology_index warms AM from edge_topology" {
                 assert et_count >= 5, f"expected >=5 edge_topology rows, got {et_count}";
 
                 # Clear AM (GT tables intact)
-                am_clear();
+                sam_clear();
                 root_id = str(ctx.user_root.id);
-                assert am_index.get(root_id) is None, "AM must be empty after am_clear()";
+                assert sam_index.get(root_id) is None, "SAM must be empty after sam_clear()";
 
                 # rebuild_topology_index should warm AM from existing edge_topology
                 result = rebuild_topology_index(ctx.mem);
 
-                assert "rebuilt" in result.get("gt", ""), f"expected 'rebuilt' in result, got {result}";
-                assert am_index.get(root_id) is not None, "AM must be warmed after rebuild";
+                assert "rebuilt" in result.get("gti", ""), f"expected 'rebuilt' in result, got {result}";
+                assert sam_index.get(root_id) is not None, "SAM must be warmed after rebuild";
             } finally {
                 close_ctx(ctx);
             }
@@ -261,11 +261,11 @@ test "GT - rebuild_topology_index warms AM from edge_topology" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
-test "GT - MRO fan-out writes parent type rows to node_topology" {
+test "GTI - MRO fan-out writes parent type rows to node_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
@@ -293,14 +293,14 @@ test "GT - MRO fan-out writes parent type rows to node_topology" {
 }
 
 # ===========================================================================
-# Group 2 — AM Correctness
+# Group 2 — SAM Correctness
 # ===========================================================================
 
-test "AM - build_edge writes to am_index via am_put" {
+test "SAM - build_edge writes to sam_index via sam_put" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -308,10 +308,10 @@ test "AM - build_edge writes to am_index via am_put" {
                 root_id = str(ctx.user_root.id);
                 root spawn BuildGraph(n_targets=1, n_others=0);
 
-                bucket = am_index.get(root_id);
-                assert bucket is not None, "AM bucket for root must exist after build_edge";
-                assert len(bucket.get("TargetNode", [])) == 1, (
-                    "AM must contain 1 TargetNode under root"
+                bucket = sam_index.get(root_id);
+                assert bucket is not None, "SAM bucket for root must exist after build_edge";
+                assert len(bucket.get("n:TargetNode", [])) == 1, (
+                    "SAM must contain 1 TargetNode under root (key 'n:TargetNode')"
                 );
             } finally {
                 close_ctx(ctx);
@@ -320,15 +320,15 @@ test "AM - build_edge writes to am_index via am_put" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
-test "AM - del --> triggers am_invalidate" {
+test "SAM - del --> triggers sam_invalidate" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -336,12 +336,12 @@ test "AM - del --> triggers am_invalidate" {
                 root_id = str(ctx.user_root.id);
                 root spawn BuildGraph(n_targets=1, n_others=0);
 
-                assert am_index.get(root_id) is not None, "AM must be warm after build";
+                assert sam_index.get(root_id) is not None, "SAM must be warm after build";
 
                 # del --> in same context invalidates AM
                 root spawn RemoveFirstTarget();
 
-                assert am_index.get(root_id) is None, "AM must be invalidated after del -->";
+                assert sam_index.get(root_id) is None, "SAM must be invalidated after del -->";
             } finally {
                 close_ctx(ctx);
             }
@@ -349,15 +349,15 @@ test "AM - del --> triggers am_invalidate" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
-test "AM - miss falls back to GT then warms AM" {
+test "SAM - miss falls back to GTI then warms SAM" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -367,16 +367,16 @@ test "AM - miss falls back to GT then warms AM" {
                 root spawn BuildGraph(n_targets=15, n_others=5);
 
                 # Simulate AM eviction (GT tables stay intact in same connection)
-                am_clear();
+                sam_clear();
                 reset_stats();
 
-                # [here-->](?:TargetNode) hits AM miss → GT query → warms AM
+                # [here-->](?:TargetNode) hits SAM miss → GTI query → warms SAM
                 w = root spawn QueryTargets();
 
-                assert _stats["am_misses"] >= 1, "expected AM miss after am_clear()";
-                assert _stats["gt_hits"]   >= 1, "expected GT to answer the miss";
+                assert _stats["sam_misses"] >= 1, "expected SAM miss after sam_clear()";
+                assert _stats["gti_hits"]   >= 1, "expected GTI to answer the miss";
                 assert len(w.results) == 15, f"expected 15 results, got {len(w.results)}";
-                assert am_index.get(root_id) is not None, "AM must be populated after GT hit";
+                assert sam_index.get(root_id) is not None, "SAM must be populated after GTI hit";
             } finally {
                 close_ctx(ctx);
             }
@@ -384,22 +384,22 @@ test "AM - miss falls back to GT then warms AM" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
-test "AM - second traversal hits AM not GT" {
+test "SAM - second traversal hits SAM not GTI" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
             try {
                 root spawn BuildGraph(n_targets=15, n_others=5);
 
-                am_clear();
+                sam_clear();
 
                 # First traversal — warms AM from GT
                 w1 = root spawn QueryTargets();
@@ -407,8 +407,8 @@ test "AM - second traversal hits AM not GT" {
                 # Second traversal — must hit AM only
                 w2 = root spawn QueryTargets();
 
-                assert _stats["am_hits"] >= 1, "expected AM hit on second traversal";
-                assert _stats["gt_hits"] == 0, "GT must not be consulted on second traversal";
+                assert _stats["sam_hits"] >= 1, "expected SAM hit on second traversal";
+                assert _stats["gti_hits"] == 0, "GTI must not be consulted on second traversal";
                 assert len(w1.results) == len(w2.results) == 15;
             } finally {
                 close_ctx(ctx);
@@ -417,15 +417,15 @@ test "AM - second traversal hits AM not GT" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
-test "AM - parent type query [here-->](?:BaseContent) returns subtypes via MRO" {
+test "SAM - parent type query [here-->](?:BaseContent) returns subtypes via MRO" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -433,7 +433,7 @@ test "AM - parent type query [here-->](?:BaseContent) returns subtypes via MRO" 
                 # Use >DEGREE_THRESHOLD to force index path
                 root spawn BuildHierarchyGraph(n_post=8, n_comment=8, n_other=1);
 
-                am_clear();
+                sam_clear();
 
                 # [here-->](?:BaseContent) exercises MRO fan-out index
                 w = root spawn QueryBaseContent();
@@ -448,7 +448,7 @@ test "AM - parent type query [here-->](?:BaseContent) returns subtypes via MRO" 
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -461,18 +461,18 @@ test "fetch - index is consulted at low selectivity (10%) and skipped when disab
     tmp_loc = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         def run_query(tmp: str, enabled: bool) -> tuple[int, dict] {
             os.environ["JAC_INDEX_ENABLED"] = "true" if enabled else "false";
-            am_clear();
+            sam_clear();
             reset_stats();
             with without_plugins() {
                 ctx = fresh_ctx(tmp);
                 try {
                     # 5 TargetNode + 45 OtherNode = 10% selectivity
                     root spawn BuildGraph(n_targets=5, n_others=45);
-                    am_clear();
+                    sam_clear();
                     reset_stats();
                     w = root spawn QueryTargets();
                     return (len(w.results), dict(_stats));
@@ -488,19 +488,19 @@ test "fetch - index is consulted at low selectivity (10%) and skipped when disab
         os.environ["JAC_INDEX_ENABLED"] = "true";
 
         assert n_idx == n_loc == 5, "result count must match";
-        # With index: at least one AM miss (first traversal after am_clear) or GT hit
-        assert (stats_idx["am_misses"] + stats_idx["gt_hits"] + stats_idx["am_hits"]) >= 1, (
+        # With index: at least one SAM miss (first traversal after sam_clear) or GTI hit
+        assert (stats_idx["sam_misses"] + stats_idx["gti_hits"] + stats_idx["sam_hits"]) >= 1, (
             f"index must be consulted when enabled: stats={stats_idx}"
         );
         # Without index: no index stats at all
-        assert stats_loc["am_hits"] == 0 and stats_loc["gt_hits"] == 0, (
+        assert stats_loc["sam_hits"] == 0 and stats_loc["gti_hits"] == 0, (
             f"index must not be consulted when disabled: stats={stats_loc}"
         );
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
         os.environ["JAC_INDEX_ENABLED"] = "true";
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -509,11 +509,11 @@ test "fetch - index does not regress at high selectivity (90%)" {
     tmp_loc = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         def run_query(tmp: str, enabled: bool) -> tuple[int, int] {
             os.environ["JAC_INDEX_ENABLED"] = "true" if enabled else "false";
-            am_clear();
+            sam_clear();
             with without_plugins() {
                 ctx = fresh_ctx(tmp);
                 mem = ctx.mem;
@@ -530,7 +530,7 @@ test "fetch - index does not regress at high selectivity (90%)" {
                 mem.get = cget;
                 try {
                     root spawn BuildGraph(n_targets=45, n_others=5);
-                    am_clear();
+                    sam_clear();
                     w = root spawn QueryTargets();
                     return (len(w.results), counters["n"]);
                 } finally {
@@ -552,7 +552,7 @@ test "fetch - index does not regress at high selectivity (90%)" {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
         os.environ["JAC_INDEX_ENABLED"] = "true";
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -560,7 +560,7 @@ test "fetch - below degree threshold uses edge-list loop (no index stats)" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     reset_stats();
     try {
         # 5 edges total — below default threshold of 10
@@ -568,12 +568,12 @@ test "fetch - below degree threshold uses edge-list loop (no index stats)" {
             ctx = fresh_ctx(tmp);
             try {
                 root spawn BuildGraph(n_targets=2, n_others=3);
-                am_clear();
+                sam_clear();
                 reset_stats();
 
                 w = root spawn QueryTargets();
 
-                assert _stats["am_hits"] == 0 and _stats["gt_hits"] == 0, (
+                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0, (
                     "index must not be used below degree threshold"
                 );
                 assert len(w.results) == 2;
@@ -584,7 +584,7 @@ test "fetch - below degree threshold uses edge-list loop (no index stats)" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -592,20 +592,20 @@ test "fetch - wildcard [here-->] bypasses index entirely" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     reset_stats();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
             try {
                 root spawn BuildGraph(n_targets=25, n_others=25);
-                am_clear();
+                sam_clear();
                 reset_stats();
 
                 # [here-->] — no type filter → must use edge-list loop
                 w = root spawn QueryAll();
 
-                assert _stats["am_hits"] == 0 and _stats["gt_hits"] == 0, (
+                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0, (
                     "wildcard traversal must never consult the index"
                 );
                 assert len(w.results) == 50;
@@ -616,7 +616,7 @@ test "fetch - wildcard [here-->] bypasses index entirely" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -628,7 +628,7 @@ test "mutation - traversal count tracks ++> and del --> correctly" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -636,14 +636,14 @@ test "mutation - traversal count tracks ++> and del --> correctly" {
                 # Step A: build baseline (20 targets + 20 others)
                 root spawn BuildGraph(n_targets=20, n_others=20);
 
-                am_clear();
+                sam_clear();
                 w_a = root spawn QueryTargets();
                 assert len(w_a.results) == 20, f"step A: expected 20, got {len(w_a.results)}";
 
                 # Step B: add 5 more TargetNodes
                 root spawn AddTargets(n=5);
 
-                am_clear();
+                sam_clear();
                 w_b = root spawn QueryTargets();
                 assert len(w_b.results) == 25, f"step B: expected 25, got {len(w_b.results)}";
             } finally {
@@ -653,7 +653,7 @@ test "mutation - traversal count tracks ++> and del --> correctly" {
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
@@ -661,7 +661,7 @@ test "mutation - rebuild_topology_index warms AM and traversal returns full coun
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
     _orig_ctx  = Jac.exec_ctx;
-    am_clear();
+    sam_clear();
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -670,20 +670,20 @@ test "mutation - rebuild_topology_index warms AM and traversal returns full coun
                 db = db_path(ctx);
 
                 # Clear AM (edge_topology intact)
-                am_clear();
+                sam_clear();
                 root_id = str(ctx.user_root.id);
 
                 # rebuild_topology_index warms AM from existing edge_topology
                 result = rebuild_topology_index(ctx.mem);
 
-                assert am_index.get(root_id) is not None, "AM must be warmed after rebuild";
-                assert "rebuilt" in result.get("gt", ""), f"unexpected result: {result}";
+                assert sam_index.get(root_id) is not None, "SAM must be warmed after rebuild";
+                assert "rebuilt" in result.get("gti", ""), f"unexpected result: {result}";
 
                 # Now traversal must use warmed AM and return correct count
                 reset_stats();
                 w = root spawn QueryTargets();
                 assert len(w.results) == 20, f"expected 20, got {len(w.results)}";
-                assert _stats["am_hits"] >= 1, "AM must be hit after rebuild warmed it";
+                assert _stats["sam_hits"] >= 1, "SAM must be hit after rebuild warmed it";
             } finally {
                 close_ctx(ctx);
             }
@@ -691,7 +691,7 @@ test "mutation - rebuild_topology_index warms AM and traversal returns full coun
     } finally {
         Jac.set_base_path(_orig_base);
         Jac.exec_ctx = _orig_ctx;
-        am_clear();
+        sam_clear();
     }
 }
 
