@@ -25,6 +25,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Stricter RD Parser Enforcement**: The recursive-descent parser now enforces missing semicolons as errors instead of silently accepting them. Docstrings inside function/test bodies that belong at element level are reported and must be placed before the signature as `docstring_target`. Keywords used as parameter names now produce clear error messages suggesting backtick escaping (e.g., `` `default ``). Builtin type names (`str`, `int`, `float`, `list`, `tuple`, `set`, `dict`, `bool`, `bytes`, `any`, `type`) are treated as contextual identifiers and can be used as parameter names without escaping.
 - **Native: Function Pointer Support for C FFI Callbacks**: Jac `def` functions can now be passed as raw function pointers to C library calls in native code, enabling callback-based C APIs (e.g. libuv timers, async I/O) to be driven directly from Jac.
 - **Fix: jacpretty Crash on Hex-like Patterns**: Fixed `ValueError` crash when `render_markup` encounters strings like `#2000"}` in JSON data. Added input validation for `rgb()`, `color()`, and hex color parsing.
+- **Fix: jacpretty Stricter Hex Matching**: Hex colors now require exactly 6 digits (`[#ff0000]`). Patterns like `[#2000]`, `[#123]`, `[#fff]` are preserved as literal text instead of being consumed as invalid tags. Added OSC 8 hyperlink support via `[link=url]text[/link]`.
+- **Fix: Type Checker Crash on `Final[UnionType]`**: Fixed crash when type checking `Final[int | str]` annotations. Unwrapping `Final[T]` now correctly handles union types instead of failing with `'UnionType' has no attribute 'shared'`.
 
 ## jaclang 0.12.0 (Latest Release)
 
