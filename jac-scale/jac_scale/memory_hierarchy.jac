@@ -14,6 +14,7 @@ import logging;
 import redis;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
+import from threading { Thread, Event }
 import from typing { Any, cast }
 import from uuid { UUID }
 import from pymongo { MongoClient, UpdateOne }
@@ -36,6 +37,12 @@ glob logger = logging.getLogger(__name__);
 def _get_db_config -> dict {
     return get_scale_config().get_database_config();
 }
+
+"""Background thread: subscribes to jac:topo:invalidate.
+On each message, calls sam_invalidate(source_id) to drop the local SAM bucket.
+Runs as a daemon thread so it dies automatically when the process exits.
+"""
+def _run_topo_invalidate_subscriber(redis_url: str, stop_event: Event) -> None;
 
 """
 Redis cache backend - implements CacheMemory for distributed L2 caching.
@@ -114,6 +121,16 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    """Fetch multiple anchors by UUID list in a single MongoDB $in query.
+
+    Replaces N sequential find_one() calls with one find({_id: {$in: [...]}}).
+    Used by the edges_to_nodes() scale fast path after topology query resolves
+    matching UUIDs.
+
+    Returns only anchors that exist and deserialize successfully.
+    Missing or corrupted documents are silently skipped.
+    """
+    def find_bulk(ids: list[UUID]) -> list[Anchor];
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
 }

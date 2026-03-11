@@ -32,34 +32,53 @@ import from threading { Lock }
 import from uuid { UUID }
 
 glob __all__ = [
-         'sam_index',
-         '_stats',
-         '_get_lock',
-         'reset_stats',
-         'get_type_mro',
-         'sam_put',
-         'sam_invalidate',
-         'sam_query',
-         'sam_populate_from_gti',
-         'sam_clear',
-         '_get_sqlite',
-         '_gti_write_edge',
-         '_gti_delete_edge',
-         'gti_query_targets',
-         'rebuild_gti',
-         'rebuild_topology_index'
-     ],
-     sam_index: dict[str, dict[str, list[str]]] = defaultdict(
-         lambda : defaultdict(list)
-     ),
-     _locks: dict[str, Lock] = {},
-     _locks_mu: Lock = Lock(),
-     _stats: dict[str, int] = {
-         'sam_hits': 0,
-         'sam_misses': 0,
-         'gti_hits': 0,
-         'gti_misses': 0
-     };
+    'sam_index',
+    '_stats',
+    '_get_lock',
+    'reset_stats',
+    'get_type_mro',
+    'sam_put',
+    'sam_invalidate',
+    'sam_query',
+    'sam_populate_from_gti',
+    'sam_clear',
+    '_get_sqlite',
+    '_gti_write_edge',
+    '_gti_delete_edge',
+    'gti_query_targets',
+    'rebuild_gti',
+    'rebuild_topology_index',
+    '_get_scale_topo',
+    '_gti_write_edge_redis',
+    '_gti_delete_edge_redis',
+    '_gti_delete_node_redis',
+    'gti_query_targets_redis',
+    'sam_broadcast_invalidate',
+    'rebuild_gti_redis',
+    'rebuild_topology_index_scale',
+];
+
+# ---------------------------------------------------------------------------
+# Process-level singleton
+# { source_id_str: { column_key: [target_id_str, ...] } }
+# column_key is prefixed: "n:NodeType" or "e:EdgeType"
+# ---------------------------------------------------------------------------
+
+glob sam_index: dict[str, dict[str, list[str]]] = defaultdict(
+    lambda: defaultdict(list)
+);
+
+# Per-source lock for thread-safe writes
+glob _locks: dict[str, Lock] = {};
+glob _locks_mu: Lock = Lock();
+
+# Test-visible counters (zero overhead branch in production)
+glob _stats: dict[str, int] = {
+    'sam_hits': 0,
+    'sam_misses': 0,
+    'gti_hits': 0,
+    'gti_misses': 0
+};
 
 # ---------------------------------------------------------------------------
 # Lock helper
@@ -216,12 +235,132 @@ def rebuild_gti(mem: object) -> None;
 Safe to call on a running server. Returns a summary dict.
 """
 def rebuild_topology_index(mem: object) -> dict[str, str];
+
 # ---------------------------------------------------------------------------
-# Process-level singleton
-# { source_id_str: { column_key: [target_id_str, ...] } }
-# column_key is prefixed: "n:NodeType" or "e:EdgeType"
+# GTI scale backend: resolve (redis_client, MongoBackend) from mem
 # ---------------------------------------------------------------------------
 
-# Per-source lock for thread-safe writes
+"""Return (redis_client, MongoBackend) when ScaleTieredMemory has both
+Redis and MongoDB active, else None.
 
-# Test-visible counters (zero overhead branch in production)
+Imports jac_scale inside the function body so sam_gti has no hard
+dependency on jac-scale. Returns None when jac-scale is not installed
+or when the scale backends are not active (e.g. SQLite fallback mode).
+"""
+def _get_scale_topo(mem: object) -> (tuple | None);
+
+# ---------------------------------------------------------------------------
+# GTI scale write/delete hooks
+# ---------------------------------------------------------------------------
+
+"""Write edge to Redis topology sets.
+
+For each MRO type of target.archetype, adds target_id to:
+    jac:topo:n:{source_id}:{NodeType}
+Also adds target_id to:
+    jac:topo:e:{source_id}:{EdgeType}
+
+Uses a Redis pipeline (non-transactional) to batch all SADDs in one
+round-trip. Called from build_edge() after MongoDB anchor is committed.
+"""
+def _gti_write_edge_redis(
+    redis_client: object,
+    eanch: object,
+    source: object,
+    target: object
+) -> None;
+
+"""Remove a specific (source, target, edge) triple from Redis topology sets.
+
+For each MRO type of target_arch, SREMs target_id from:
+    jac:topo:n:{source_id}:{NodeType}
+Also SREMs target_id from:
+    jac:topo:e:{source_id}:{EdgeType}
+
+Precise — does not drop the entire source bucket.
+Called from remove_edge().
+"""
+def _gti_delete_edge_redis(
+    redis_client: object,
+    source_id: UUID,
+    target_id: UUID,
+    target_arch: object,
+    edge_arch: object
+) -> None;
+
+"""Delete all Redis topology keys where this node is the source.
+
+Used when a NodeAnchor is destroyed. Scans for all keys matching:
+    jac:topo:n:{node_id}:*
+    jac:topo:e:{node_id}:*
+and deletes them.
+
+Uses Redis SCAN (cursor-based) — safe on large keyspaces.
+Node destruction is rare so SCAN overhead is acceptable.
+"""
+def _gti_delete_node_redis(redis_client: object, node_id: UUID) -> None;
+
+# ---------------------------------------------------------------------------
+# GTI scale query
+# ---------------------------------------------------------------------------
+
+"""Query Redis topology sets for matching target UUIDs.
+
+Handles three cases:
+    target_type only  → SMEMBERS jac:topo:n:{src}:{target_type}
+    edge_type only    → SMEMBERS jac:topo:e:{src}:{edge_type}
+    both              → SINTER   jac:topo:n:{src}:{target_type}
+                                 jac:topo:e:{src}:{edge_type}
+
+SINTER is evaluated server-side — no Python set intersection needed.
+
+Returns list of target UUID strings, or None if both type args are None.
+An empty list means the topology is known but has no matching targets.
+"""
+def gti_query_targets_redis(
+    redis_client: object,
+    source_id: UUID,
+    edge_type: (str | None),
+    target_type: (str | None)
+) -> (list[str] | None);
+
+# ---------------------------------------------------------------------------
+# SAM invalidation broadcast
+# ---------------------------------------------------------------------------
+
+"""Publish a SAM invalidation message to all workers.
+
+All workers (including the caller) subscribe to 'jac:topo:invalidate'.
+On receiving a message, the subscriber thread calls sam_invalidate(source_id),
+dropping the SAM bucket for that source on every worker process.
+
+Called from build_edge() and remove_edge() in scale mode instead of
+sam_put() / sam_invalidate(). This ensures all workers stay consistent.
+"""
+def sam_broadcast_invalidate(redis_client: object, source_id: UUID) -> None;
+
+# ---------------------------------------------------------------------------
+# GTI scale rebuild
+# ---------------------------------------------------------------------------
+
+"""Reconstruct Redis topology from MongoDB anchor store.
+
+Two-pass scan of db._anchors:
+  Pass 1: NodeAnchors → build node_id → [MRO type names] mapping.
+  Pass 2: EdgeAnchors → SADD all topology keys using the type mapping.
+
+Uses a Redis pipeline to batch all SADDs. Safe to call on a live server
+since SADD is idempotent (duplicate members are silently ignored).
+"""
+def rebuild_gti_redis(redis_client: object, mongo_backend: object) -> int;
+
+# ---------------------------------------------------------------------------
+# Public scale rebuild API
+# ---------------------------------------------------------------------------
+
+"""Rebuild Redis GTI from MongoDB, then clear SAM (will warm lazily).
+
+Scale equivalent of rebuild_topology_index().
+Returns a summary dict: {'gti': 'rebuilt (N edges)', 'sam': 'cleared'}.
+"""
+def rebuild_topology_index_scale(mem: object) -> dict[str, str];

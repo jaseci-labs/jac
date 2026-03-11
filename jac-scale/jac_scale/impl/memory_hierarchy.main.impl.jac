@@ -3,6 +3,37 @@
 Storage configuration comes from environment variables or jac.toml.
 """
 
+impl _run_topo_invalidate_subscriber(redis_url: str, stop_event: Event) -> None {
+    import from jaclang.runtimelib.sam_gti { sam_invalidate };
+    client = None;
+    try {
+        client = redis.from_url(redis_url);
+        pubsub = client.pubsub();
+        pubsub.subscribe('jac:topo:invalidate');
+        while not stop_event.is_set() {
+            msg = pubsub.get_message(timeout=1.0);
+            if msg and msg['type'] == 'message' {
+                try {
+                    source_id_str = (
+                        msg['data'].decode()
+                        if isinstance(msg['data'], bytes)
+                        else msg['data']
+                    );
+                    sam_invalidate(UUID(source_id_str));
+                } except Exception {
+                    # never crash the subscriber thread
+                }
+            }
+        }
+        pubsub.unsubscribe();
+    } except Exception {
+    } finally {
+        if client {
+            try { client.close(); } except Exception { }
+        }
+    }
+}
+
 """Initialize ScaleTieredMemory with distributed backends."""
 impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
@@ -17,6 +48,22 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     } else {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
+    }
+    # Start SAM invalidation subscriber (only when Redis is live)
+    if self._cache_available {
+        self._topo_stop_event = Event();
+        db_config = _get_db_config();
+        redis_url = db_config.get('redis_url', '');
+        if redis_url {
+            self._topo_subscriber = Thread(
+                target=_run_topo_invalidate_subscriber,
+                args=(redis_url, self._topo_stop_event),
+                daemon=True,    # dies with process, no cleanup needed
+                name='jac-topo-invalidate'
+            );
+            self._topo_subscriber.start();
+            logger.debug("SAM invalidation subscriber started");
+        }
     }
     # L3: Try MongoDB first (replaces SqliteMemory), fall back to SqliteMemory
     mongo_backend = MongoBackend();
@@ -92,6 +139,10 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
 
 """Close all backends."""
 impl ScaleTieredMemory.close -> None {
+    # Signal subscriber thread to stop
+    if hasattr(self, '_topo_stop_event') {
+        self._topo_stop_event.set();
+    }
     self.commit();
     # Sync and close L3 persistence
     if self.l3 {

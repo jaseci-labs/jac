@@ -357,3 +357,168 @@ impl rebuild_topology_index(mem: object) -> dict[str, str] {
 
     return {'gti': 'rebuilt', 'sam': f'warmed ({count} edges)'};
 }
+
+# ---------------------------------------------------------------------------
+# Scale backend globals + implementations
+# ---------------------------------------------------------------------------
+
+glob _TOPO_PREFIX: str = 'jac:topo';
+glob _TOPO_INVALIDATE_CHANNEL: str = 'jac:topo:invalidate';
+
+impl _get_scale_topo(mem: object) -> (tuple | None) {
+    try {
+        import from jac_scale.memory_hierarchy {
+            ScaleTieredMemory,
+            RedisBackend,
+            MongoBackend
+        };
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(mem, ScaleTieredMemory) {
+        return None;
+    }
+    l2 = getattr(mem, 'l2', None);
+    l3 = getattr(mem, 'l3', None);
+    if (isinstance(l2, RedisBackend) and l2.redis_client is not None
+        and isinstance(l3, MongoBackend) and l3.client is not None) {
+        return (l2.redis_client, l3);
+    }
+    return None;
+}
+
+impl _gti_write_edge_redis(
+    redis_client: object,
+    eanch: object,
+    source: object,
+    target: object
+) -> None {
+    src_str = str(source.id);
+    tgt_str = str(target.id);
+    edge_type = type(eanch.archetype).__name__;
+    pipe = redis_client.pipeline(transaction=False);
+    for t in get_type_mro(target.archetype) {
+        pipe.sadd(f"{_TOPO_PREFIX}:n:{src_str}:{t}", tgt_str);
+    }
+    pipe.sadd(f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}", tgt_str);
+    pipe.execute();
+}
+
+impl _gti_delete_edge_redis(
+    redis_client: object,
+    source_id: UUID,
+    target_id: UUID,
+    target_arch: object,
+    edge_arch: object
+) -> None {
+    src_str = str(source_id);
+    tgt_str = str(target_id);
+    edge_type = type(edge_arch).__name__;
+    pipe = redis_client.pipeline(transaction=False);
+    for t in get_type_mro(target_arch) {
+        pipe.srem(f"{_TOPO_PREFIX}:n:{src_str}:{t}", tgt_str);
+    }
+    pipe.srem(f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}", tgt_str);
+    pipe.execute();
+}
+
+impl _gti_delete_node_redis(redis_client: object, node_id: UUID) -> None {
+    node_str = str(node_id);
+    for pattern in [
+        f"{_TOPO_PREFIX}:n:{node_str}:*",
+        f"{_TOPO_PREFIX}:e:{node_str}:*"
+    ] {
+        cursor = 0;
+        while True {
+            (cursor, keys) = redis_client.scan(cursor, match=pattern, count=100);
+            if keys {
+                redis_client.delete(*keys);
+            }
+            if cursor == 0 {
+                break;
+            }
+        }
+    }
+}
+
+impl gti_query_targets_redis(
+    redis_client: object,
+    source_id: UUID,
+    edge_type: (str | None),
+    target_type: (str | None)
+) -> (list[str] | None) {
+    src_str = str(source_id);
+    try {
+        if target_type and edge_type {
+            n_key = f"{_TOPO_PREFIX}:n:{src_str}:{target_type}";
+            e_key = f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}";
+            raw = redis_client.sinter(n_key, e_key);
+        } elif target_type {
+            raw = redis_client.smembers(
+                f"{_TOPO_PREFIX}:n:{src_str}:{target_type}"
+            );
+        } elif edge_type {
+            raw = redis_client.smembers(
+                f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}"
+            );
+        } else {
+            return None;
+        }
+        _stats['gti_hits'] += 1;
+        return [b.decode() if isinstance(b, bytes) else b for b in raw];
+    } except Exception {
+        _stats['gti_misses'] += 1;
+        return None;
+    }
+}
+
+impl sam_broadcast_invalidate(redis_client: object, source_id: UUID) -> None {
+    try {
+        redis_client.publish(_TOPO_INVALIDATE_CHANNEL, str(source_id));
+    } except Exception {
+        # Fire-and-forget — don't fail the write path on pub/sub error.
+    }
+}
+
+impl rebuild_gti_redis(redis_client: object, mongo_backend: object) -> int {
+    import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
+
+    node_type_map: dict[str, list[str]] = {};
+    for anchor in mongo_backend.query() {
+        if isinstance(anchor, NodeAnchor) and anchor.is_populated() {
+            node_type_map[str(anchor.id)] = get_type_mro(anchor.archetype);
+        }
+    }
+
+    pipe = redis_client.pipeline(transaction=False);
+    count = 0;
+    for anchor in mongo_backend.query() {
+        if not (isinstance(anchor, EdgeAnchor) and anchor.is_populated()) {
+            continue;
+        }
+        if not (anchor.source and anchor.target) {
+            continue;
+        }
+        src_str = str(anchor.source.id);
+        tgt_str = str(anchor.target.id);
+        edge_type = type(anchor.archetype).__name__;
+        for t in node_type_map.get(tgt_str, []) {
+            pipe.sadd(f"{_TOPO_PREFIX}:n:{src_str}:{t}", tgt_str);
+        }
+        pipe.sadd(f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}", tgt_str);
+        count += 1;
+    }
+    pipe.execute();
+    return count;
+}
+
+impl rebuild_topology_index_scale(mem: object) -> dict[str, str] {
+    scale = _get_scale_topo(mem);
+    if scale is None {
+        return {'gti': 'skipped (scale backends not active)', 'sam': 'skipped'};
+    }
+    (redis_client, mongo_backend) = scale;
+    count = rebuild_gti_redis(redis_client, mongo_backend);
+    sam_clear();
+    return {'gti': f'rebuilt ({count} edges)', 'sam': 'cleared'};
+}
