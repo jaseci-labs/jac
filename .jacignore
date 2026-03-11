@@ -214,7 +214,6 @@ test_native_lexer.jac
 test_jac_format_pass.jac
 for_loop_unpacking.jac
 separated_defpub_client.cl.jac
-jacpretty.jac
 jir_passes.jac
 imported.impl.jac
 objects.impl.jac
@@ -327,7 +326,6 @@ hension.jac
 hmr.impl.jac
 hmr.jac
 jac_formatter_pass.impl.jac
-jacpretty.impl.jac
 jfast_api.impl.jac
 jir.jac
 jir_passes.impl.jac
