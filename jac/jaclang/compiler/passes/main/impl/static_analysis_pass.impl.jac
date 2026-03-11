@@ -76,12 +76,6 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
     }
     # Recurse into child scopes
     for kid in scope.kid_scope {
-        if isinstance(kid, uni.AstImplNeedingNode) {
-            if isinstance(kid.body, uni.ImplDef) {
-                self._check_unused_symbols(kid.body);
-                continue;
-            }
-        }
         self._check_unused_symbols(kid);
     }
 }
