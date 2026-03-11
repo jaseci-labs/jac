@@ -13,6 +13,7 @@ import from kubernetes { client, config }
 import from kubernetes.client.exceptions { ApiException }
 
 import from jac_scale.abstractions.config.app_config { AppConfig }
+import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
@@ -1312,12 +1313,14 @@ test "early exit" {
         experimental=True
     );
 
-    result = deployment_target.deploy(app_config);
+    result: DeploymentResult = deployment_target.deploy(app_config);
     details = result.details;
+    failure_message = result.message;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
     assert len(details) == 10;
     assert result.success is False;
+    assert failure_message is not None and "Containers restarted" in failure_message;
 }
 
 """Test individual methods of KubernetesTarget."""
