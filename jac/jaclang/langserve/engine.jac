@@ -70,6 +70,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def type_check_file(
         file_uri: str, cancel_token: threading.Event | None = None
     ) -> bool;
+
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
     def get_token_at_position(
