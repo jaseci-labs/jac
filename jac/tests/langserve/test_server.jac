@@ -548,6 +548,33 @@ test "test_go_to_definition_nested_impl_symbols" {
     }
 }
 
+test "test_go_to_definition_stub_param_compound_types" {
+    setup_test();
+    try {
+        lsp = create_server();
+        stub_file = uris.from_fs_path(fixture_path("stub_param_goto_def.jac"));
+        lsp.type_check_file(stub_file);
+
+        # (line, col, description) — 1-indexed; col points to `Module` in `uni.Module`
+        positions = [
+            (8, 47, "simple param: uni.Module"),
+            (10, 40, "list param: list[uni.Module]"),
+            (12, 38, "union param: uni.Module | None"),
+            (14, 45, "dict param: dict[str, uni.Module]"),
+            (16, 43, "Optional param: Optional[uni.Module]"),
+
+        ];
+
+        for (line, col, desc) in positions {
+            result = lsp.get_definition(stub_file, lspt.Position(line - 1, col - 1));
+            assert result is not None , f"go-to-def returned None for {desc}";
+            assert "unitree.jac" in str(result) , f"Expected unitree.jac for {desc}, got: {result}";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_hover_narrowing_in_loop" {
     setup_test();
     try {

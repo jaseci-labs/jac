@@ -1,4 +1,3 @@
-
 """Test API fixture for restspec decorator tests."""
 
 import from jaclang.runtimelib.builtin { restspec }
@@ -7,10 +6,9 @@ import from http { HTTPMethod }
 # ============================================================================
 # RestSpec Decorator Tests
 # ============================================================================
-
 """Walker with GET method via restspec decorator."""
 @restspec(method=HTTPMethod.GET)
-walker : pub GetWalker {
+walker:pub GetWalker {
     can get_data with Root entry {
         report {"message": "GetWalker executed", "method": "GET"};
     }
@@ -18,7 +16,7 @@ walker : pub GetWalker {
 
 """Walker with custom path."""
 @restspec(method=HTTPMethod.GET, path="/custom/walker")
-walker : pub CustomPathWalker {
+walker:pub CustomPathWalker {
     can get_data with Root entry {
         report {"message": "CustomPathWalker executed", "path": "/custom/walker"};
     }
@@ -26,26 +24,26 @@ walker : pub CustomPathWalker {
 
 """Function with GET method via restspec decorator."""
 @restspec(method=HTTPMethod.GET)
-def get_func() -> dict {
+def get_func -> dict {
     return {"message": "get_func executed", "method": "GET"};
 }
 
 """Function with custom path."""
 @restspec(method=HTTPMethod.GET, path="/custom/func")
-def custom_path_func() -> dict {
+def custom_path_func -> dict {
     return {"message": "custom_path_func executed", "path": "/custom/func"};
 }
 
 """Walker with POST method via restspec decorator."""
 @restspec(method=HTTPMethod.POST)
-walker : pub PostWalker {
+walker:pub PostWalker {
     can post_data with Root entry {
         report {"message": "PostWalker executed", "method": "POST"};
     }
 }
 
 """Walker with default method (POST)."""
-walker : pub DefaultWalker {
+walker:pub DefaultWalker {
     can post_data with Root entry {
         report {"message": "DefaultWalker executed", "method": "DEFAULT"};
     }
@@ -53,20 +51,20 @@ walker : pub DefaultWalker {
 
 """Function with POST method via restspec decorator."""
 @restspec(method=HTTPMethod.POST)
-def post_func() -> dict {
+def post_func -> dict {
     return {"message": "post_func executed", "method": "POST"};
 }
 
 """Function with default method (POST)."""
-def default_func() -> dict {
+def default_func -> dict {
     return {"message": "default_func executed", "method": "DEFAULT"};
 }
 
 """Walker with GET method and parameters."""
 @restspec(method=HTTPMethod.GET)
-walker : pub GetWalkerWithParams {
-    has name: str;
-    has age: int;
+walker:pub GetWalkerWithParams {
+    has name: str,
+        age: int;
 
     can get_data with Root entry {
         report {
@@ -80,17 +78,12 @@ walker : pub GetWalkerWithParams {
 """Function with GET method and parameters."""
 @restspec(method=HTTPMethod.GET)
 def get_func_with_params(name: str, age: int) -> dict {
-    return {
-        "message": "get_func_with_params executed",
-        "name": name,
-        "age": age
-    };
+    return {"message": "get_func_with_params executed", "name": name, "age": age};
 }
 
 # ============================================================================
 # Path Parameter Tests (regression for @restspec path param bug)
 # ============================================================================
-
 """Function with a single path parameter."""
 @restspec(method=HTTPMethod.GET, path="/items/{item_id}")
 def get_item(item_id: str) -> dict {
@@ -110,11 +103,7 @@ def get_user_orders(user_id: str, status: str = "all") -> dict {
 """Function with multiple path parameters."""
 @restspec(method=HTTPMethod.GET, path="/orgs/{org_id}/repos/{repo_id}")
 def get_org_repo(org_id: str, repo_id: str) -> dict {
-    return {
-        "message": "get_org_repo executed",
-        "org_id": org_id,
-        "repo_id": repo_id
-    };
+    return {"message": "get_org_repo executed", "org_id": org_id, "repo_id": repo_id};
 }
 
 """POST function with a path parameter and body parameters."""
@@ -130,7 +119,7 @@ def update_resource(resource_id: str, name: str, value: int) -> dict {
 
 """Walker with a path parameter in its restspec path."""
 @restspec(method=HTTPMethod.GET, path="/nodes/{node_id}")
-walker : pub GetNodeWalker {
+walker:pub GetNodeWalker {
     has node_id: str;
 
     can get_data with Root entry {
@@ -140,15 +129,48 @@ walker : pub GetNodeWalker {
 
 """Walker with multiple path parameters in its restspec path."""
 @restspec(method=HTTPMethod.GET, path="/projects/{project_id}/tasks/{task_id}")
-walker : pub GetProjectTaskWalker {
-    has project_id: str;
-    has task_id: str;
+walker:pub GetProjectTaskWalker {
+    has project_id: str,
+        task_id: str;
 
     can get_data with Root entry {
         report {
             "message": "GetProjectTaskWalker executed",
             "project_id": self.project_id,
             "task_id": self.task_id
+        };
+    }
+}
+
+node UserProfile {
+    has user_id: str = "",
+        name: str = "";
+}
+
+"""Walker to create a UserProfile node for testing."""
+walker:pub CreateUserProfile {
+    has user_id: str,
+        name: str;
+
+    can create_node with Root entry {
+        profile = UserProfile(user_id=self.user_id, name=self.name);
+        here ++> profile;
+        report {
+            "message": "UserProfile created",
+            "node_id": str(profile.__jac__.id),
+            "user_id": profile.user_id,
+            "name": profile.name
+        };
+    }
+}
+
+walker:pub LoadUserProfile {
+    can load_profile with UserProfile entry {
+        report {
+            "message": "LoadUserProfile executed on node",
+            "node_id": str(here.__jac__.id),
+            "user_id": here.user_id,
+            "name": here.name
         };
     }
 }

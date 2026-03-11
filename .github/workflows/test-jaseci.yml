@@ -204,6 +204,10 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
+    - name: Run RestSpec tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
+
   test-scale-k8s:
     runs-on: ubuntu-latest
     steps:

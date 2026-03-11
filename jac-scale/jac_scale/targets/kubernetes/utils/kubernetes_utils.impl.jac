@@ -474,6 +474,10 @@ impl check_deployment_status(
             if (response.status_code == 200) {
                 return (True, "Successful");
             }
+            # Non-200 (e.g. 503 from NGINX when app pod is down) — check for restarts
+            if check_pods_restarted(namespace, app_name) {
+                return (False, "Containers restarted");
+            }
         } except RequestException as e {
             if check_pods_restarted(namespace, app_name) {
                 return (False, "Containers restarted");

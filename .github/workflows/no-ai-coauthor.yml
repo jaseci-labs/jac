@@ -1,0 +1,18 @@
+name: Block AI co-author attribution
+
+on: [pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for AI co-author in commits
+        run: |
+          if git log origin/${{ github.base_ref }}..HEAD --format='%b' \
+            | grep -iP 'co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'; then
+            echo "::error::AI co-author attribution found in commit messages. Please remove Co-Authored-By lines referencing AI tools."
+            exit 1
+          fi
