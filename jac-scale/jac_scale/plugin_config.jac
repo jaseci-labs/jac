@@ -135,11 +135,6 @@ class JacScalePluginConfig {
                             "default": 8000,
                             "description": "Container port for the application"
                         },
-                        "node_port": {
-                            "type": "int",
-                            "default": 30001,
-                            "description": "NodePort for external access"
-                        },
                         "mongodb_enabled": {
                             "type": "bool",
                             "default": True,
@@ -250,16 +245,6 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": "Adminpassword123",
                             "description": "Admin password for Grafana when deploying the monitoring stack"
-                        },
-                        "prometheus_node_port": {
-                            "type": "int",
-                            "default": 30090,
-                            "description": "NodePort for Prometheus when deploying the monitoring stack"
-                        },
-                        "grafana_node_port": {
-                            "type": "int",
-                            "default": 30300,
-                            "description": "NodePort for Grafana when deploying the monitoring stack"
                         }
                     }
                 }

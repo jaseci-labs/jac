@@ -192,6 +192,7 @@ test "deploy all in one" {
     apps_v1 = client.AppsV1Api();
     core_v1 = client.CoreV1Api();
     rbac_v1 = client.RbacAuthorizationV1Api();
+    networking_v1 = client.NetworkingV1Api();
 
     namespace = "all-in-one";
     app_name = namespace;
@@ -210,11 +211,9 @@ test "deploy all in one" {
     target_config = app_scale_config.get_kubernetes_config();
     target_config["app_name"] = app_name;
     target_config["namespace"] = namespace;
-    target_config["node_port"] = 30001;
+    target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
-    target_config["redis_insight_node_port"] = 30032;
-    target_config["mongo_express_node_port"] = 30033;
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -239,7 +238,7 @@ test "deploy all in one" {
 
     result = deployment_target.deploy(app_config);
     details = result.details;
-    assert len(details) == 10;
+    assert len(details) == 11;
     assert result.success is True;
     print(f"Deployment successful: {result.message}");
 
@@ -253,6 +252,7 @@ test "deploy all in one" {
     assert "Jaseci App" in component_names;
     assert "Redis" in component_names;
     assert "MongoDB" in component_names;
+    assert "NGINX Ingress" in component_names;
     for component in full_status["components"] {
         assert "name" in component;
         assert "status" in component;
@@ -275,13 +275,13 @@ test "deploy all in one" {
     assert deployment.metadata.name == app_name;
     assert deployment.spec.replicas == 1;
 
-    # Validate main service
+    # Validate main service is ClusterIP (all traffic goes through NGINX ingress)
     service = core_v1.read_namespaced_service(
         name=f"{app_name}-service", namespace=namespace
     );
-    assert service.spec.type == "NodePort";
-    node_port = service.spec.ports[0].node_port;
-    print(f"Service is exposed on NodePort: {node_port}");
+    assert service.spec.type == "ClusterIP";
+    ingress_node_port = target_config["ingress_node_port"];
+    print(f"App service is ClusterIP; ingress NodePort: {ingress_node_port}");
 
     # Validate MongoDB StatefulSet and Service
     mongodb_stateful = apps_v1.read_namespaced_stateful_set(
@@ -390,16 +390,24 @@ test "deploy all in one" {
     );
     assert ri_host_env == f"{app_name}-redis-service";
     assert ri_port_env == "6379";
+    ri_proxy_path_env = next(
+        (
+            e.value
+            for e in insight_container.env
+            if e.name == "RIPROXYPATH"
+        ),
+        None
+    );
+    assert ri_proxy_path_env == "/cache-dashboard";
     print(
-        f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured"
+        f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured and RIPROXYPATH=/cache-dashboard"
     );
 
     insight_service = core_v1.read_namespaced_service(
         name=f"{insight_name}-service", namespace=namespace
     );
-    assert insight_service.spec.type == "NodePort";
-    assert insight_service.spec.ports[0].node_port == 30032;
-    print(f"RedisInsight Service '{insight_name}-service' (NodePort:30032) exists");
+    assert insight_service.spec.type == "ClusterIP";
+    print(f"RedisInsight Service '{insight_name}-service' (ClusterIP) exists");
 
     # Validate mongo-express dashboard Deployment and Service
     express_name = f"{app_name}-mongo-express";
@@ -444,9 +452,8 @@ test "deploy all in one" {
     express_service = core_v1.read_namespaced_service(
         name=f"{express_name}-service", namespace=namespace
     );
-    assert express_service.spec.type == "NodePort";
-    assert express_service.spec.ports[0].node_port == 30033;
-    print(f"mongo-express Service '{express_name}-service' (NodePort:30033) exists");
+    assert express_service.spec.type == "ClusterIP";
+    print(f"mongo-express Service '{express_name}-service' (ClusterIP) exists");
 
     # Validate Prometheus Deployment, Service, and ConfigMap
     prometheus_name = f"{app_name}-prometheus";
@@ -493,9 +500,32 @@ test "deploy all in one" {
     grafana_service = core_v1.read_namespaced_service(
         name=f"{grafana_name}-service", namespace=namespace
     );
-    assert grafana_service.spec.type == "NodePort";
+    assert grafana_service.spec.type == "ClusterIP";
     assert grafana_service.spec.ports[0].port == 3000;
-    print(f"Grafana Service '{grafana_name}-service' (NodePort) exists");
+    print(f"Grafana Service '{grafana_name}-service' (ClusterIP) exists");
+
+    gf_root_url_env = next(
+        (
+            e.value
+            for e in grafana_container.env
+            if e.name == "GF_SERVER_ROOT_URL"
+        ),
+        None
+    );
+    gf_subpath_env = next(
+        (
+            e.value
+            for e in grafana_container.env
+            if e.name == "GF_SERVER_SERVE_FROM_SUB_PATH"
+        ),
+        None
+    );
+    assert gf_root_url_env is not None , "GF_SERVER_ROOT_URL must be set";
+    assert "grafana" in gf_root_url_env , f"GF_SERVER_ROOT_URL should contain 'grafana', got: {gf_root_url_env}";
+    assert gf_subpath_env == "true" , f"GF_SERVER_SERVE_FROM_SUB_PATH must be 'true', got: {gf_subpath_env}";
+    print(
+        f"Grafana subpath env vars verified: GF_SERVER_ROOT_URL={gf_root_url_env}, GF_SERVER_SERVE_FROM_SUB_PATH={gf_subpath_env}"
+    );
 
     grafana_secret = core_v1.read_namespaced_secret(
         name=f"{grafana_name}-secret", namespace=namespace
@@ -527,7 +557,7 @@ test "deploy all in one" {
     assert "provider.yaml" in grafana_provider.data;
     print("Grafana dashboard provider ConfigMap exists");
 
-    # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding
+    # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole,ClusterRoleBinding
     ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
     assert ksm_deploy.metadata.name == ksm_name;
     assert ksm_deploy.spec.replicas == 1;
@@ -624,22 +654,104 @@ test "deploy all in one" {
         f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
     );
 
+    # Validate NGINX Ingress controller resources
+    nginx_controller_name = f"{app_name}-ingress-nginx";
+    nginx_cluster_resource_name = f"{namespace}-{nginx_controller_name}";
+    ingress_class_name = f"{namespace}-{app_name}-nginx";
+    nginx_configmap_name = f"{app_name}-nginx-configuration";
+    nginx_service_name = f"{nginx_controller_name}-service";
+    ingress_name = f"{app_name}-ingress";
+    redis_ingress_name = f"{app_name}-redis-insight-ingress";
+
+    nginx_sa = core_v1.read_namespaced_service_account(
+        name=nginx_controller_name, namespace=namespace
+    );
+    assert nginx_sa.metadata.name == nginx_controller_name;
+    print(f"NGINX Ingress ServiceAccount '{nginx_controller_name}' exists");
+
+    nginx_cluster_role = rbac_v1.read_cluster_role(name=nginx_cluster_resource_name);
+    assert nginx_cluster_role.metadata.name == nginx_cluster_resource_name;
+    print(f"NGINX Ingress ClusterRole '{nginx_cluster_resource_name}' exists");
+
+    nginx_crb = rbac_v1.read_cluster_role_binding(name=nginx_cluster_resource_name);
+    assert nginx_crb.metadata.name == nginx_cluster_resource_name;
+    print(f"NGINX Ingress ClusterRoleBinding '{nginx_cluster_resource_name}' exists");
+
+    nginx_cm = core_v1.read_namespaced_config_map(
+        name=nginx_configmap_name, namespace=namespace
+    );
+    assert nginx_cm.metadata.name == nginx_configmap_name;
+    print(f"NGINX Ingress ConfigMap '{nginx_configmap_name}' exists");
+
+    nginx_ingress_class = networking_v1.read_ingress_class(name=ingress_class_name);
+    assert nginx_ingress_class.metadata.name == ingress_class_name;
+    print(f"NGINX IngressClass '{ingress_class_name}' exists");
+
+    nginx_deploy = apps_v1.read_namespaced_deployment(
+        name=nginx_controller_name, namespace=namespace
+    );
+    assert nginx_deploy.metadata.name == nginx_controller_name;
+    assert nginx_deploy.spec.replicas == 1;
+    nginx_container = nginx_deploy.spec.template.spec.containers[0];
+    assert "ingress-nginx/controller" in nginx_container.image;
+    print(f"NGINX Ingress controller Deployment '{nginx_controller_name}' exists");
+
+    nginx_service = core_v1.read_namespaced_service(
+        name=nginx_service_name, namespace=namespace
+    );
+    assert nginx_service.spec.type == "NodePort";
+    nginx_node_port = next(
+        (
+            p.node_port
+            for p in nginx_service.spec.ports
+            if p.name == "http"
+        ),
+        None
+    );
+    assert nginx_node_port == ingress_node_port , (
+        f"Expected ingress NodePort {ingress_node_port}, got {nginx_node_port}"
+    );
+    print(
+        f"NGINX Ingress Service '{nginx_service_name}' (NodePort:{ingress_node_port}) exists"
+    );
+
+    main_ingress = networking_v1.read_namespaced_ingress(
+        name=ingress_name, namespace=namespace
+    );
+    assert main_ingress.metadata.name == ingress_name;
+    assert main_ingress.spec.ingress_class_name == ingress_class_name;
+    ingress_paths = [
+        p.path for rule in main_ingress.spec.rules for p in rule.http.paths
+    ];
+    assert "/" in ingress_paths , f"Main ingress must route '/'; got paths: {ingress_paths}";
+    assert "/grafana" in ingress_paths , f"Main ingress must route '/grafana'; got paths: {ingress_paths}";
+    assert "/db-dashboard" in ingress_paths , f"Main ingress must route '/db-dashboard'; got paths: {ingress_paths}";
+    print(f"Main Ingress '{ingress_name}' exists with routes: {ingress_paths}");
+
+    ri_ingress = networking_v1.read_namespaced_ingress(
+        name=redis_ingress_name, namespace=namespace
+    );
+    assert ri_ingress.metadata.name == redis_ingress_name;
+    ri_paths = [p.path for rule in ri_ingress.spec.rules for p in rule.http.paths];
+    assert any(p.startswith("/cache-dashboard") for p in ri_paths) , f"Redis Insight ingress must route '/cache-dashboard'; got: {ri_paths}";
+    print(f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}");
+
     # Send POST request to create a todo (with retry for 503)
-    url = f"http://localhost:{node_port}/walker/create_todo";
+    url = f"http://localhost:{ingress_node_port}/walker/create_todo";
     payload = {"text": "first-task"};
     response = _request_with_retry("POST", url, json=payload, timeout=10);
     assert response.status_code == 200;
     print(f"Successfully created todo at {url}");
     print(f"  Response: {response.json()}");
 
-    url = f"http://localhost:{node_port}/cl/app";
+    url = f"http://localhost:{ingress_node_port}/cl/app";
     response = _request_with_retry("GET", url, timeout=100);
     print(f"Response status code for app page: {response.status_code}");
     assert response.status_code == 200;
     print(f"Successfully reached app page at {url}");
 
     # --- Port conflict test ---
-    # Deploy the same app into a different namespace using the same node_port.
+    # Deploy the same app into a different namespace using the same ingress_node_port.
     # check_node_ports_available must detect the conflict and the deploy must fail.
     duplicate_namespace = "all-in-one-duplicate";
     duplicate_app_name = duplicate_namespace;
@@ -647,13 +759,11 @@ test "deploy all in one" {
     duplicate_target_config = app_scale_config.get_kubernetes_config();
     duplicate_target_config["app_name"] = duplicate_app_name;
     duplicate_target_config["namespace"] = duplicate_namespace;
-    duplicate_target_config["node_port"] = target_config[
-        "node_port"
+    duplicate_target_config["ingress_node_port"] = target_config[
+        "ingress_node_port"
     ];  # same port — must conflict
     duplicate_target_config["redis_dashboard"] = True;
     duplicate_target_config["mongodb_dashboard"] = True;
-    duplicate_target_config["redis_insight_node_port"] = 30032;  # same — must conflict
-    duplicate_target_config["mongo_express_node_port"] = 30033;  # same — must conflict
     duplicate_target_config["jaseci_repo_url"] = repo_url;
     duplicate_target_config["jaseci_branch"] = branch;
     duplicate_target_config["jaseci_commit"] = commit;
@@ -1033,6 +1143,99 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
+    # Verify NGINX Ingress controller cleanup
+    nginx_controller_name = f"{app_name}-ingress-nginx";
+    nginx_cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";
+    ingress_class_name = f"{namespace}-{app_name}-nginx";
+    nginx_configmap_name = f"{app_name}-nginx-configuration";
+    nginx_service_name = f"{nginx_controller_name}-service";
+    ingress_name = f"{app_name}-ingress";
+    redis_ingress_name = f"{app_name}-redis-insight-ingress";
+    redis_auth_secret_name = f"{app_name}-redis-insight-auth";
+
+    try {
+        networking_v1.read_namespaced_ingress(name=ingress_name, namespace=namespace);
+        raise AssertionError("Main Ingress should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        networking_v1.read_namespaced_ingress(
+            name=redis_ingress_name, namespace=namespace
+        );
+        raise AssertionError("Redis Insight Ingress should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_secret(name=redis_auth_secret_name, namespace=namespace);
+        raise AssertionError("Redis Insight auth Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        apps_v1.read_namespaced_deployment(nginx_controller_name, namespace=namespace);
+        raise AssertionError("NGINX controller Deployment should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(nginx_service_name, namespace=namespace);
+        raise AssertionError("NGINX controller Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=nginx_controller_name, namespace=namespace
+        );
+        raise AssertionError(
+            "NGINX controller ServiceAccount should have been deleted"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(
+            name=nginx_configmap_name, namespace=namespace
+        );
+        raise AssertionError("NGINX ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role(name=nginx_cluster_resource_name);
+        raise AssertionError("NGINX controller ClusterRole should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=nginx_cluster_resource_name);
+        raise AssertionError(
+            "NGINX controller ClusterRoleBinding should have been deleted"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        networking_v1.read_ingress_class(name=ingress_class_name);
+        raise AssertionError("NGINX IngressClass should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("NGINX Ingress controller cleanup verified");
+
+    # Verify K8s Secret cleanup
     try {
         rbac_v1.read_cluster_role(name=cluster_role_name);
         raise AssertionError("kube-state-metrics ClusterRole should have been deleted");
@@ -1094,7 +1297,7 @@ test "early exit" {
     target_config = scale_config.get_kubernetes_config();
     target_config["app_name"] = app_name;
     target_config["namespace"] = namespace;
-    target_config["node_port"] = 30002;
+    target_config["ingress_node_port"] = 30081;
 
     logger = UtilityFactory.create_logger("standard");
 
@@ -1113,7 +1316,7 @@ test "early exit" {
     details = result.details;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
-    assert len(details) == 9;
+    assert len(details) == 10;
     assert result.success is False;
 }
 
