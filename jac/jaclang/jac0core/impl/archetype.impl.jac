@@ -11,7 +11,11 @@ impl ObjectSpatialDestination.edge_filter(
 ) -> bool {
     return (
         not self.edge
-        or (isinstance(arch, self.edge) if isinstance(self.edge, type) else self.edge(arch))
+        or (
+            isinstance(arch, self.edge)
+                if isinstance(self.edge, type)
+                else self.edge(arch)
+        )
     );
 }
 

@@ -306,19 +306,27 @@ class JacNode {
             gti_query_targets,
             sam_populate_from_gti,
             sam_query
-        };
+        }
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
-        INDEX_ENABLED: bool = os.environ.get('JAC_INDEX_ENABLED', 'true').lower() not in ('0', 'false', 'no');
+        INDEX_ENABLED: bool = os.environ.get('JAC_INDEX_ENABLED', 'true').lower() not in (
+            '0',
+            'false',
+            'no'
+        );
         DEGREE_THRESHOLD: int = int(os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10'));
-        for nd in origin {›
+        for nd in origin {
             nanch = nd.__jac__;
             # --- SAM/GTI fast path (only when SQLite persistence is active) ---
             # Pure type filters compile to the type class itself, so we can
             # extract the name directly via MRO without any compiler help.
-            target_type_name = destination.nd.__name__ if isinstance(destination.nd, type) else None;
-            edge_type_name = destination.edge.__name__ if isinstance(destination.edge, type) else None;
+            target_type_name = destination.nd.__name__
+                if isinstance(destination.nd, type)
+                else None;
+            edge_type_name = destination.edge.__name__
+                if isinstance(destination.edge, type)
+                else None;
             use_index = (
                 INDEX_ENABLED
                 and _sqlite_active
@@ -337,17 +345,17 @@ class JacNode {
                     edge_ids = sam_query(nanch.id, e_col);
                     if node_ids is None or edge_ids is None {
                         # SAM miss (bucket absent or column not yet indexed) — populate both from GTI
-                        gt_n = gti_query_targets(ctx.mem, nanch.id, None, target_type_name);
-                        gt_e = gti_query_targets(ctx.mem, nanch.id, edge_type_name, None);
+                        gt_n = gti_query_targets(
+                            ctx.mem, nanch.id, None, target_type_name
+                        );
+                        gt_e = gti_query_targets(
+                            ctx.mem, nanch.id, edge_type_name, None
+                        );
                         if gt_n is not None {
-                            sam_populate_from_gti(
-                                nanch.id, [(t, n_col) for t in gt_n]
-                            );
+                            sam_populate_from_gti(nanch.id, [(t, n_col) for t in gt_n]);
                         }
                         if gt_e is not None {
-                            sam_populate_from_gti(
-                                nanch.id, [(t, e_col) for t in gt_e]
-                            );
+                            sam_populate_from_gti(nanch.id, [(t, e_col) for t in gt_e]);
                         }
                         node_ids = gt_n if gt_n is not None else [];
                         edge_ids = gt_e if gt_e is not None else [];
@@ -442,7 +450,7 @@ class JacNode {
             _get_sqlite,
             _gti_delete_edge,
             sam_invalidate
-        };
+        }
         for (idx, ed) in enumerate(nd.edges) {
             if (ed.id == `edge.id) {
                 nd.edges.pop(idx);
@@ -1733,7 +1741,7 @@ system,
                 _get_sqlite,
                 _gti_write_edge,
                 sam_put
-            };
+            }
             `edge = ct() if isinstance(ct, `type) else ct;
             eanch = `edge.__jac__=EdgeAnchor(
                 archetype=`edge,
@@ -1814,7 +1822,7 @@ system,
             _get_sqlite,
             _gti_delete_node,
             sam_invalidate
-        };
+        }
         obj_list = objs if isinstance(objs, `list) else [objs];
         for `obj in obj_list {
             if not isinstance(`obj, (Archetype, Anchor)) {

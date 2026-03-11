@@ -32,63 +32,49 @@ import from threading { Lock }
 import from uuid { UUID }
 
 glob __all__ = [
-    'sam_index',
-    '_stats',
-    '_get_lock',
-    'reset_stats',
-    'get_type_mro',
-    'sam_put',
-    'sam_invalidate',
-    'sam_query',
-    'sam_populate_from_gti',
-    'sam_clear',
-    '_get_sqlite',
-    '_gti_write_edge',
-    '_gti_delete_edge',
-    'gti_query_targets',
-    'rebuild_gti',
-    'rebuild_topology_index'
-];
-
-# ---------------------------------------------------------------------------
-# Process-level singleton
-# { source_id_str: { column_key: [target_id_str, ...] } }
-# column_key is prefixed: "n:NodeType" or "e:EdgeType"
-# ---------------------------------------------------------------------------
-
-glob sam_index: dict[str, dict[str, list[str]]] = defaultdict(
-    lambda: defaultdict(list)
-);
-
-# Per-source lock for thread-safe writes
-glob _locks: dict[str, Lock] = {};
-glob _locks_mu: Lock = Lock();
-
-# Test-visible counters (zero overhead branch in production)
-glob _stats: dict[str, int] = {
-    'sam_hits': 0,
-    'sam_misses': 0,
-    'gti_hits': 0,
-    'gti_misses': 0
-};
+         'sam_index',
+         '_stats',
+         '_get_lock',
+         'reset_stats',
+         'get_type_mro',
+         'sam_put',
+         'sam_invalidate',
+         'sam_query',
+         'sam_populate_from_gti',
+         'sam_clear',
+         '_get_sqlite',
+         '_gti_write_edge',
+         '_gti_delete_edge',
+         'gti_query_targets',
+         'rebuild_gti',
+         'rebuild_topology_index'
+     ],
+     sam_index: dict[str, dict[str, list[str]]] = defaultdict(
+         lambda : defaultdict(list)
+     ),
+     _locks: dict[str, Lock] = {},
+     _locks_mu: Lock = Lock(),
+     _stats: dict[str, int] = {
+         'sam_hits': 0,
+         'sam_misses': 0,
+         'gti_hits': 0,
+         'gti_misses': 0
+     };
 
 # ---------------------------------------------------------------------------
 # Lock helper
 # ---------------------------------------------------------------------------
-
 def _get_lock(source_id: str) -> Lock;
 
 # ---------------------------------------------------------------------------
 # Stats
 # ---------------------------------------------------------------------------
-
 """Reset all performance counters to zero. Used in tests."""
 def reset_stats -> None;
 
 # ---------------------------------------------------------------------------
 # MRO helper
 # ---------------------------------------------------------------------------
-
 """Return user-defined Jac type names from instance's MRO.
 
 Walks type(instance).__mro__ and stops at any class whose module starts with
@@ -108,7 +94,6 @@ def get_type_mro(instance: object) -> list[str];
 # ---------------------------------------------------------------------------
 # SAM operations
 # ---------------------------------------------------------------------------
-
 """Index a new edge in SAM under all MRO types of the target and the edge type.
 
 Writes:
@@ -119,10 +104,7 @@ Called from build_edge() after the EdgeAnchor is created.
 Thread-safe per source_id.
 """
 def sam_put(
-    source_id: UUID,
-    target_id: UUID,
-    target_arch: object,
-    edge_arch: object
+    source_id: UUID, target_id: UUID, target_arch: object, edge_arch: object
 ) -> None;
 
 """Remove all SAM entries for a given source node.
@@ -162,7 +144,6 @@ def sam_clear -> None;
 # ---------------------------------------------------------------------------
 # GTI helper: resolve SqliteMemory from any mem object
 # ---------------------------------------------------------------------------
-
 """Return the SqliteMemory instance from mem, or None.
 
 Handles bare SqliteMemory and TieredMemory whose .l3 is SqliteMemory.
@@ -173,7 +154,6 @@ def _get_sqlite(mem: object) -> (object | None);
 # ---------------------------------------------------------------------------
 # GTI write/delete hooks
 # ---------------------------------------------------------------------------
-
 """Write edge to GTI (SQLite topology tables).
 
 Called from build_edge() after source.edges.append(eanch).
@@ -200,7 +180,6 @@ def _gti_delete_node(mem: object, node_id: UUID) -> None;
 # ---------------------------------------------------------------------------
 # GTI query
 # ---------------------------------------------------------------------------
-
 """Return list of target UUIDs from topology index.
 
 Args:
@@ -212,16 +191,12 @@ Returns:
     list of target UUID strings, or None if GTI not available.
 """
 def gti_query_targets(
-    mem: object,
-    source_id: UUID,
-    edge_type: (str | None),
-    target_type: (str | None)
+    mem: object, source_id: UUID, edge_type: (str | None), target_type: (str | None)
 ) -> (list[str] | None);
 
 # ---------------------------------------------------------------------------
 # GTI rebuild from anchor store
 # ---------------------------------------------------------------------------
-
 """Reconstruct node_topology and edge_topology from the anchors table.
 
 Safe to call on a live server — uses INSERT OR IGNORE / INSERT OR REPLACE
@@ -236,9 +211,17 @@ def rebuild_gti(mem: object) -> None;
 # ---------------------------------------------------------------------------
 # Public rebuild API
 # ---------------------------------------------------------------------------
-
 """Rebuild GTI tables from anchor store, then warm SAM from GTI.
 
 Safe to call on a running server. Returns a summary dict.
 """
 def rebuild_topology_index(mem: object) -> dict[str, str];
+# ---------------------------------------------------------------------------
+# Process-level singleton
+# { source_id_str: { column_key: [target_id_str, ...] } }
+# column_key is prefixed: "n:NodeType" or "e:EdgeType"
+# ---------------------------------------------------------------------------
+
+# Per-source lock for thread-safe writes
+
+# Test-visible counters (zero overhead branch in production)

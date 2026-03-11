@@ -8,7 +8,6 @@ import from uuid { UUID }
 # ---------------------------------------------------------------------------
 # Lock helper
 # ---------------------------------------------------------------------------
-
 impl _get_lock(source_id: str) -> Lock {
     with _locks_mu {
         if source_id not in _locks {
@@ -21,7 +20,6 @@ impl _get_lock(source_id: str) -> Lock {
 # ---------------------------------------------------------------------------
 # Stats
 # ---------------------------------------------------------------------------
-
 impl reset_stats -> None {
     for k in _stats {
         _stats[k] = 0;
@@ -31,7 +29,6 @@ impl reset_stats -> None {
 # ---------------------------------------------------------------------------
 # MRO helper
 # ---------------------------------------------------------------------------
-
 impl get_type_mro(instance: object) -> list[str] {
     result = [];
     for cls in type(instance).__mro__ {
@@ -47,12 +44,8 @@ impl get_type_mro(instance: object) -> list[str] {
 # ---------------------------------------------------------------------------
 # SAM operations
 # ---------------------------------------------------------------------------
-
 impl sam_put(
-    source_id: UUID,
-    target_id: UUID,
-    target_arch: object,
-    edge_arch: object
+    source_id: UUID, target_id: UUID, target_arch: object, edge_arch: object
 ) -> None {
     src_str = str(source_id);
     tgt_str = str(target_id);
@@ -123,7 +116,6 @@ impl sam_clear -> None {
 # ---------------------------------------------------------------------------
 # GTI helper: resolve SqliteMemory from any mem object
 # ---------------------------------------------------------------------------
-
 impl _get_sqlite(mem: object) -> (object | None) {
     import from jaclang.runtimelib.memory { SqliteMemory }
     if isinstance(mem, SqliteMemory) {
@@ -139,7 +131,6 @@ impl _get_sqlite(mem: object) -> (object | None) {
 # ---------------------------------------------------------------------------
 # GTI write/delete hooks
 # ---------------------------------------------------------------------------
-
 impl _gti_write_edge(
     mem: object, eanch: object, source: object, target: object
 ) -> None {
@@ -185,7 +176,7 @@ impl _gti_delete_edge(mem: object, edge_id: UUID) -> None {
         return;
     }
     sqlite.__conn__.execute(
-        'DELETE FROM edge_topology WHERE edge_id = ?', (str(edge_id),)
+        'DELETE FROM edge_topology WHERE edge_id = ?', (str(edge_id), )
     );
     sqlite.__conn__.commit();
 }
@@ -201,7 +192,7 @@ impl _gti_delete_node(mem: object, node_id: UUID) -> None {
     }
     node_id_str = str(node_id);
     sqlite.__conn__.execute(
-        'DELETE FROM node_topology WHERE node_id = ?', (node_id_str,)
+        'DELETE FROM node_topology WHERE node_id = ?', (node_id_str, )
     );
     sqlite.__conn__.execute(
         'DELETE FROM edge_topology WHERE source_id = ? OR target_id = ?',
@@ -213,12 +204,8 @@ impl _gti_delete_node(mem: object, node_id: UUID) -> None {
 # ---------------------------------------------------------------------------
 # GTI query
 # ---------------------------------------------------------------------------
-
 impl gti_query_targets(
-    mem: object,
-    source_id: UUID,
-    edge_type: (str | None),
-    target_type: (str | None)
+    mem: object, source_id: UUID, edge_type: (str | None), target_type: (str | None)
 ) -> (list[str] | None) {
     sqlite = _get_sqlite(mem);
     if sqlite is None {
@@ -238,10 +225,7 @@ impl gti_query_targets(
     if target_type {
         # Join with node_topology to support MRO-based type queries
         # (e.g. querying 'BaseContent' returns PostNode + CommentNode targets)
-        where = [
-            'et.source_id = ?',
-            'nt.node_type = ?'
-        ];
+        where = ['et.source_id = ?', 'nt.node_type = ?'];
         params.append(target_type);
         if edge_type {
             where.append('et.edge_type = ?');
@@ -276,7 +260,6 @@ impl gti_query_targets(
 # ---------------------------------------------------------------------------
 # GTI rebuild from anchor store
 # ---------------------------------------------------------------------------
-
 impl rebuild_gti(mem: object) -> None {
     import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
     sqlite = _get_sqlite(mem);
@@ -292,7 +275,7 @@ impl rebuild_gti(mem: object) -> None {
     cur = conn.execute('SELECT data FROM anchors');
     rows = cur.fetchall();
 
-    for (blob,) in rows {
+    for (blob, ) in rows {
         try {
             anchor = loads(blob);
         } except Exception {
@@ -314,7 +297,7 @@ impl rebuild_gti(mem: object) -> None {
     }
 
     # Pass 2: EdgeAnchors -> edge_topology
-    for (blob,) in rows {
+    for (blob, ) in rows {
         try {
             anchor = loads(blob);
         } except Exception {
@@ -344,7 +327,6 @@ impl rebuild_gti(mem: object) -> None {
 # ---------------------------------------------------------------------------
 # Public rebuild API
 # ---------------------------------------------------------------------------
-
 impl rebuild_topology_index(mem: object) -> dict[str, str] {
     sam_clear();
     rebuild_gti(mem);

@@ -36,21 +36,33 @@ import from jaclang.runtimelib.sam_gti {
 # ===========================================================================
 # Node types — must be module-level for OSP
 # ===========================================================================
+node TargetNode {
+    has val: int = 0;
+}
 
-node TargetNode  { has val: int = 0; }
-node OtherNode   { has val: int = 0; }
-node BaseContent { has val: int = 0; }
-node PostNode(BaseContent)    { has val: int = 0; }
-node CommentNode(BaseContent) { has val: int = 0; }
+node OtherNode {
+    has val: int = 0;
+}
+
+node BaseContent {
+    has val: int = 0;
+}
+
+node PostNode(BaseContent) {
+    has val: int = 0;
+}
+
+node CommentNode(BaseContent) {
+    has val: int = 0;
+}
 
 # ===========================================================================
 # Walkers — OSP graph building and traversal
 # ===========================================================================
-
 """Connect n_targets TargetNodes and n_others OtherNodes to root."""
 walker BuildGraph {
-    has n_targets: int = 3;
-    has n_others:  int = 2;
+    has n_targets: int = 3,
+        n_others: int = 2;
 
     can build with Root entry {
         for i in range(self.n_targets) {
@@ -64,9 +76,9 @@ walker BuildGraph {
 
 """Connect PostNodes, CommentNodes, and OtherNodes to root."""
 walker BuildHierarchyGraph {
-    has n_post:    int = 2;
-    has n_comment: int = 2;
-    has n_other:   int = 1;
+    has n_post: int = 2,
+        n_comment: int = 2,
+        n_other: int = 1;
 
     can build with Root entry {
         for i in range(self.n_post) {
@@ -132,7 +144,6 @@ walker RemoveFirstTarget {
 # ===========================================================================
 # Context helpers
 # ===========================================================================
-
 """Create a fresh isolated Jac context backed by SQLite in tmp_dir."""
 def fresh_ctx(tmp: str) -> object {
     Jac.set_base_path(tmp);
@@ -168,11 +179,10 @@ def count_table(db: str, table: str, where: str = "") -> int {
 # ===========================================================================
 # Group 1 — GTI Table Correctness
 # ===========================================================================
-
 test "GTI - building graph populates edge_topology and node_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -180,15 +190,15 @@ test "GTI - building graph populates edge_topology and node_topology" {
                 root spawn BuildGraph(n_targets=3, n_others=2);
                 db = db_path(ctx);
 
-                et_total  = count_table(db, "edge_topology");
+                et_total = count_table(db, "edge_topology");
                 et_target = count_table(db, "edge_topology", "target_type='TargetNode'");
-                et_other  = count_table(db, "edge_topology", "target_type='OtherNode'");
+                et_other = count_table(db, "edge_topology", "target_type='OtherNode'");
                 nt_target = count_table(db, "node_topology", "node_type='TargetNode'");
 
-                assert et_total  >= 5, f"expected >=5 edge_topology rows, got {et_total}";
-                assert et_target == 3, f"expected 3 TargetNode edges, got {et_target}";
-                assert et_other  == 2, f"expected 2 OtherNode edges, got {et_other}";
-                assert nt_target >= 3, f"expected >=3 TargetNode node_topology rows, got {nt_target}";
+                assert et_total >= 5 , f"expected >=5 edge_topology rows, got {et_total}";
+                assert et_target == 3 , f"expected 3 TargetNode edges, got {et_target}";
+                assert et_other == 2 , f"expected 2 OtherNode edges, got {et_other}";
+                assert nt_target >= 3 , f"expected >=3 TargetNode node_topology rows, got {nt_target}";
             } finally {
                 close_ctx(ctx);
             }
@@ -202,7 +212,7 @@ test "GTI - building graph populates edge_topology and node_topology" {
 test "GTI - del --> removes edge from edge_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -211,13 +221,13 @@ test "GTI - del --> removes edge from edge_topology" {
                 db = db_path(ctx);
 
                 before = count_table(db, "edge_topology", "target_type='TargetNode'");
-                assert before == 3, f"expected 3 rows before delete, got {before}";
+                assert before == 3 , f"expected 3 rows before delete, got {before}";
 
                 # del --> in same context — no cross-context pickle needed
                 root spawn RemoveFirstTarget();
 
                 after = count_table(db, "edge_topology", "target_type='TargetNode'");
-                assert after == 2, f"expected 2 rows after del -->, got {after}";
+                assert after == 2 , f"expected 2 rows after del -->, got {after}";
             } finally {
                 close_ctx(ctx);
             }
@@ -231,7 +241,7 @@ test "GTI - del --> removes edge from edge_topology" {
 test "GTI - rebuild_topology_index warms SAM from edge_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -242,18 +252,18 @@ test "GTI - rebuild_topology_index warms SAM from edge_topology" {
 
                 # Verify GT has rows
                 et_count = count_table(db, "edge_topology");
-                assert et_count >= 5, f"expected >=5 edge_topology rows, got {et_count}";
+                assert et_count >= 5 , f"expected >=5 edge_topology rows, got {et_count}";
 
                 # Clear AM (GT tables intact)
                 sam_clear();
                 root_id = str(ctx.user_root.id);
-                assert sam_index.get(root_id) is None, "SAM must be empty after sam_clear()";
+                assert sam_index.get(root_id) is None , "SAM must be empty after sam_clear()";
 
                 # rebuild_topology_index should warm AM from existing edge_topology
                 result = rebuild_topology_index(ctx.mem);
 
-                assert "rebuilt" in result.get("gti", ""), f"expected 'rebuilt' in result, got {result}";
-                assert sam_index.get(root_id) is not None, "SAM must be warmed after rebuild";
+                assert "rebuilt" in result.get("gti", "") , f"expected 'rebuilt' in result, got {result}";
+                assert sam_index.get(root_id) is not None , "SAM must be warmed after rebuild";
             } finally {
                 close_ctx(ctx);
             }
@@ -268,7 +278,7 @@ test "GTI - rebuild_topology_index warms SAM from edge_topology" {
 test "GTI - MRO fan-out writes parent type rows to node_topology" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     try {
         with without_plugins() {
             ctx = fresh_ctx(tmp);
@@ -280,8 +290,8 @@ test "GTI - MRO fan-out writes parent type rows to node_topology" {
                 base_rows = count_table(db, "node_topology", "node_type='BaseContent'");
 
                 # PostNode + CommentNode both inherit BaseContent → base_rows >= 4
-                assert post_rows >= 2, f"expected >=2 PostNode rows, got {post_rows}";
-                assert base_rows >= 4, f"expected >=4 BaseContent (MRO) rows, got {base_rows}";
+                assert post_rows >= 2 , f"expected >=2 PostNode rows, got {post_rows}";
+                assert base_rows >= 4 , f"expected >=4 BaseContent (MRO) rows, got {base_rows}";
             } finally {
                 close_ctx(ctx);
             }
@@ -295,11 +305,10 @@ test "GTI - MRO fan-out writes parent type rows to node_topology" {
 # ===========================================================================
 # Group 2 — SAM Correctness
 # ===========================================================================
-
 test "SAM - build_edge writes to sam_index via sam_put" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -309,8 +318,8 @@ test "SAM - build_edge writes to sam_index via sam_put" {
                 root spawn BuildGraph(n_targets=1, n_others=0);
 
                 bucket = sam_index.get(root_id);
-                assert bucket is not None, "SAM bucket for root must exist after build_edge";
-                assert len(bucket.get("n:TargetNode", [])) == 1, (
+                assert bucket is not None , "SAM bucket for root must exist after build_edge";
+                assert len(bucket.get("n:TargetNode", [])) == 1 , (
                     "SAM must contain 1 TargetNode under root (key 'n:TargetNode')"
                 );
             } finally {
@@ -327,7 +336,7 @@ test "SAM - build_edge writes to sam_index via sam_put" {
 test "SAM - del --> triggers sam_invalidate" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -336,12 +345,12 @@ test "SAM - del --> triggers sam_invalidate" {
                 root_id = str(ctx.user_root.id);
                 root spawn BuildGraph(n_targets=1, n_others=0);
 
-                assert sam_index.get(root_id) is not None, "SAM must be warm after build";
+                assert sam_index.get(root_id) is not None , "SAM must be warm after build";
 
                 # del --> in same context invalidates AM
                 root spawn RemoveFirstTarget();
 
-                assert sam_index.get(root_id) is None, "SAM must be invalidated after del -->";
+                assert sam_index.get(root_id) is None , "SAM must be invalidated after del -->";
             } finally {
                 close_ctx(ctx);
             }
@@ -356,7 +365,7 @@ test "SAM - del --> triggers sam_invalidate" {
 test "SAM - miss falls back to GTI then warms SAM" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -373,10 +382,10 @@ test "SAM - miss falls back to GTI then warms SAM" {
                 # [here-->](?:TargetNode) hits SAM miss → GTI query → warms SAM
                 w = root spawn QueryTargets();
 
-                assert _stats["sam_misses"] >= 1, "expected SAM miss after sam_clear()";
-                assert _stats["gti_hits"]   >= 1, "expected GTI to answer the miss";
-                assert len(w.results) == 15, f"expected 15 results, got {len(w.results)}";
-                assert sam_index.get(root_id) is not None, "SAM must be populated after GTI hit";
+                assert _stats["sam_misses"] >= 1 , "expected SAM miss after sam_clear()";
+                assert _stats["gti_hits"] >= 1 , "expected GTI to answer the miss";
+                assert len(w.results) == 15 , f"expected 15 results, got {len(w.results)}";
+                assert sam_index.get(root_id) is not None , "SAM must be populated after GTI hit";
             } finally {
                 close_ctx(ctx);
             }
@@ -391,7 +400,7 @@ test "SAM - miss falls back to GTI then warms SAM" {
 test "SAM - second traversal hits SAM not GTI" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -407,8 +416,8 @@ test "SAM - second traversal hits SAM not GTI" {
                 # Second traversal — must hit AM only
                 w2 = root spawn QueryTargets();
 
-                assert _stats["sam_hits"] >= 1, "expected SAM hit on second traversal";
-                assert _stats["gti_hits"] == 0, "GTI must not be consulted on second traversal";
+                assert _stats["sam_hits"] >= 1 , "expected SAM hit on second traversal";
+                assert _stats["gti_hits"] == 0 , "GTI must not be consulted on second traversal";
                 assert len(w1.results) == len(w2.results) == 15;
             } finally {
                 close_ctx(ctx);
@@ -424,7 +433,7 @@ test "SAM - second traversal hits SAM not GTI" {
 test "SAM - parent type query [here-->](?:BaseContent) returns subtypes via MRO" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -438,9 +447,11 @@ test "SAM - parent type query [here-->](?:BaseContent) returns subtypes via MRO"
                 # [here-->](?:BaseContent) exercises MRO fan-out index
                 w = root spawn QueryBaseContent();
 
-                assert len(w.results) == 16, f"expected 16 BaseContent nodes (PostNode+CommentNode), got {len(w.results)}";
+                assert len(w.results) == 16 , f"expected 16 BaseContent nodes (PostNode+CommentNode), got {len(
+                    w.results
+                )}";
                 type_names = {type(n).__name__ for n in w.results};
-                assert "OtherNode" not in type_names, "OtherNode must not appear in BaseContent query";
+                assert "OtherNode" not in type_names , "OtherNode must not appear in BaseContent query";
             } finally {
                 close_ctx(ctx);
             }
@@ -455,12 +466,11 @@ test "SAM - parent type query [here-->](?:BaseContent) returns subtypes via MRO"
 # ===========================================================================
 # Group 3 — Fetch Count Reduction
 # ===========================================================================
-
 test "fetch - index is consulted at low selectivity (10%) and skipped when disabled" {
     tmp_idx = mkdtemp();
     tmp_loc = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         def run_query(tmp: str, enabled: bool) -> tuple[int, dict] {
@@ -487,13 +497,13 @@ test "fetch - index is consulted at low selectivity (10%) and skipped when disab
 
         os.environ["JAC_INDEX_ENABLED"] = "true";
 
-        assert n_idx == n_loc == 5, "result count must match";
+        assert n_idx == n_loc == 5 , "result count must match";
         # With index: at least one SAM miss (first traversal after sam_clear) or GTI hit
-        assert (stats_idx["sam_misses"] + stats_idx["gti_hits"] + stats_idx["sam_hits"]) >= 1, (
-            f"index must be consulted when enabled: stats={stats_idx}"
-        );
+        assert (
+            stats_idx["sam_misses"] + stats_idx["gti_hits"] + stats_idx["sam_hits"]
+        ) >= 1 , (f"index must be consulted when enabled: stats={stats_idx}");
         # Without index: no index stats at all
-        assert stats_loc["sam_hits"] == 0 and stats_loc["gti_hits"] == 0, (
+        assert stats_loc["sam_hits"] == 0 and stats_loc["gti_hits"] == 0 , (
             f"index must not be consulted when disabled: stats={stats_loc}"
         );
     } finally {
@@ -508,7 +518,7 @@ test "fetch - index does not regress at high selectivity (90%)" {
     tmp_idx = mkdtemp();
     tmp_loc = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         def run_query(tmp: str, enabled: bool) -> tuple[int, int] {
@@ -524,7 +534,9 @@ test "fetch - index does not regress at high selectivity (90%)" {
                         return mem.__mem__[id];
                     }
                     r = _orig_get(id);
-                    if r is not None { counters["n"] += 1; }
+                    if r is not None {
+                        counters["n"] += 1;
+                    }
                     return r;
                 }
                 mem.get = cget;
@@ -543,8 +555,8 @@ test "fetch - index does not regress at high selectivity (90%)" {
         (n_loc, fc_loc) = run_query(tmp_loc, False);
         os.environ["JAC_INDEX_ENABLED"] = "true";
 
-        assert n_idx == n_loc == 45, "result count must match";
-        assert fc_idx <= fc_loc + 5, (
+        assert n_idx == n_loc == 45 , "result count must match";
+        assert fc_idx <= fc_loc + 5 , (
             f"index must not significantly regress at high selectivity: "
             f"index={fc_idx} local={fc_loc}"
         );
@@ -559,7 +571,7 @@ test "fetch - index does not regress at high selectivity (90%)" {
 test "fetch - below degree threshold uses edge-list loop (no index stats)" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     reset_stats();
     try {
@@ -573,7 +585,7 @@ test "fetch - below degree threshold uses edge-list loop (no index stats)" {
 
                 w = root spawn QueryTargets();
 
-                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0, (
+                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0 , (
                     "index must not be used below degree threshold"
                 );
                 assert len(w.results) == 2;
@@ -591,7 +603,7 @@ test "fetch - below degree threshold uses edge-list loop (no index stats)" {
 test "fetch - wildcard [here-->] bypasses index entirely" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     reset_stats();
     try {
@@ -605,7 +617,7 @@ test "fetch - wildcard [here-->] bypasses index entirely" {
                 # [here-->] — no type filter → must use edge-list loop
                 w = root spawn QueryAll();
 
-                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0, (
+                assert _stats["sam_hits"] == 0 and _stats["gti_hits"] == 0 , (
                     "wildcard traversal must never consult the index"
                 );
                 assert len(w.results) == 50;
@@ -623,11 +635,10 @@ test "fetch - wildcard [here-->] bypasses index entirely" {
 # ===========================================================================
 # Group 4 — Mutation Consistency
 # ===========================================================================
-
 test "mutation - traversal count tracks ++> and del --> correctly" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -638,14 +649,18 @@ test "mutation - traversal count tracks ++> and del --> correctly" {
 
                 sam_clear();
                 w_a = root spawn QueryTargets();
-                assert len(w_a.results) == 20, f"step A: expected 20, got {len(w_a.results)}";
+                assert len(w_a.results) == 20 , f"step A: expected 20, got {len(
+                    w_a.results
+                )}";
 
                 # Step B: add 5 more TargetNodes
                 root spawn AddTargets(n=5);
 
                 sam_clear();
                 w_b = root spawn QueryTargets();
-                assert len(w_b.results) == 25, f"step B: expected 25, got {len(w_b.results)}";
+                assert len(w_b.results) == 25 , f"step B: expected 25, got {len(
+                    w_b.results
+                )}";
             } finally {
                 close_ctx(ctx);
             }
@@ -660,7 +675,7 @@ test "mutation - traversal count tracks ++> and del --> correctly" {
 test "mutation - rebuild_topology_index warms AM and traversal returns full count" {
     tmp = mkdtemp();
     _orig_base = Jac.base_path_dir;
-    _orig_ctx  = Jac.exec_ctx;
+    _orig_ctx = Jac.exec_ctx;
     sam_clear();
     try {
         with without_plugins() {
@@ -676,14 +691,14 @@ test "mutation - rebuild_topology_index warms AM and traversal returns full coun
                 # rebuild_topology_index warms AM from existing edge_topology
                 result = rebuild_topology_index(ctx.mem);
 
-                assert sam_index.get(root_id) is not None, "SAM must be warmed after rebuild";
-                assert "rebuilt" in result.get("gti", ""), f"unexpected result: {result}";
+                assert sam_index.get(root_id) is not None , "SAM must be warmed after rebuild";
+                assert "rebuilt" in result.get("gti", "") , f"unexpected result: {result}";
 
                 # Now traversal must use warmed AM and return correct count
                 reset_stats();
                 w = root spawn QueryTargets();
-                assert len(w.results) == 20, f"expected 20, got {len(w.results)}";
-                assert _stats["sam_hits"] >= 1, "SAM must be hit after rebuild warmed it";
+                assert len(w.results) == 20 , f"expected 20, got {len(w.results)}";
+                assert _stats["sam_hits"] >= 1 , "SAM must be hit after rebuild warmed it";
             } finally {
                 close_ctx(ctx);
             }
@@ -698,7 +713,6 @@ test "mutation - rebuild_topology_index warms AM and traversal returns full coun
 # ===========================================================================
 # Group 5 — Schema
 # ===========================================================================
-
 test "schema - topology tables and indexes created by SqliteMemory" {
     import from jaclang.runtimelib.memory { SqliteMemory }
     tmp = mkdtemp();
@@ -709,18 +723,22 @@ test "schema - topology tables and indexes created by SqliteMemory" {
 
     con = sqlite3.connect(db);
     tables = {
-        row[0] for row in
-        con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        row[0]
+        for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
     };
     indexes = {
-        row[0] for row in
-        con.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
+        row[0]
+        for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()
     };
     con.close();
 
     assert "node_topology" in tables;
     assert "edge_topology" in tables;
-    assert "idx_nt_type"   in indexes;
+    assert "idx_nt_type" in indexes;
     assert "idx_et_source" in indexes;
     assert "idx_et_target" in indexes;
 }
