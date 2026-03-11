@@ -6,6 +6,7 @@ import os;
 import subprocess;
 import time;
 import requests;
+import importlib.resources;
 import from pathlib { Path }
 import from typing { Any }
 
@@ -1354,14 +1355,14 @@ test "deployment target methods" {
 
 """Test that redis.conf.template is included in package distribution."""
 test "redis template file in package" {
-    template_path = Path(__file__).parent.parent / 'providers' / 'database' / 'redis.conf.template';
-    assert template_path.exists() , (
-        f"redis.conf.template not found at {template_path}. "
-        "This file must be included in the package distribution via pyproject.toml"
+    ref = importlib.resources.files("jac_scale.providers.database") / "redis.conf.template";
+    assert ref.is_file() , (
+        "redis.conf.template not discoverable as package data. "
+        "Ensure it's included via pyproject.toml package-data"
     );
 
     # Verify it's readable and has content
-    content = template_path.read_text(encoding='utf-8');
+    content = ref.read_text(encoding='utf-8');
     assert len(content) > 0 , "redis.conf.template should not be empty";
     assert 'maxmemory-policy' in content , (
         "redis.conf.template should contain Redis configuration directives"
