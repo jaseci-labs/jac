@@ -14,6 +14,7 @@ Bug index:
   #13 - IfExpr (ternary) has no handler (returns UnknownType)
   #15 - No generic type argument checking (list[int] -> list[str])
   #21 - _get_method_with_overloads doesn't specialize the base method
+  #23 - With statement alias typed as Unknown (wrong traversal order)
 """
 
 import os;
@@ -240,4 +241,23 @@ test "bug_15_no_generic_variance_check" {
     assert len(program.errors_had) >= 1 , f"Bug #15: No generic type argument checking. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
     f"list[int] should NOT be assignable to list[str].";
+}
+
+# =========================================================================
+# Bug #23: With statement alias typed as Unknown
+#
+# In `with open(...) as f`, the alias `f` was typed as Unknown because
+# the type binding happened in exit_with_stmt (after the body was visited)
+# instead of enter_with_stmt (before the body was visited).
+#
+# Impact: `f.write()` fails with "Type is Unknown, cannot access attribute"
+# =========================================================================
+test "bug_23_with_stmt_alias_unknown" {
+    program = compile_and_check("checker_bug_with_stmt_alias_unknown.jac");
+
+    # Expected: 1 error (TextIOWrapper not assignable to int)
+    # With the bug: different error (Unknown cannot access "write")
+    assert len(program.errors_had) == 1 , f"Bug #23: With statement alias typed as Unknown. "
+    f"Expected 1 type error but got {len(program.errors_had)}. "
+    f"'with open(...) as f' should type f as TextIOWrapper, not Unknown.";
 }
