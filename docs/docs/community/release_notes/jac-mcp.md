@@ -2,6 +2,8 @@
 
 ## jac-mcp 0.1.4 (Unreleased)
 
+- **Fix streamable HTTP transport method issue**: Refactors the server initialization logic for the `streamable-http` transport method.
+
 ## jac-mcp 0.1.3 (Latest Release)
 
 - **Updated token definitions path**: Grammar resource now references `tokens.na.jac` (renamed from `tokens.jac`)
