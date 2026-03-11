@@ -57,6 +57,7 @@ glob __all__ = [
     'sam_broadcast_invalidate',
     'rebuild_gti_redis',
     'rebuild_topology_index_scale',
+    'migrate_to_qualified_types',
 ];
 
 # ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ Example:
     get_type_mro(Dog()) -> ["myapp.Dog", "myapp.Animal"]
 
 This enables parent-type queries at zero query-time cost:
-    sam_index[src]["n:Animal"] also contains Dog node IDs.
+    sam_index[src]["n:myapp.Animal"] also contains Dog node IDs.
 """
 def get_type_mro(instance: object) -> list[str];
 
@@ -375,3 +376,31 @@ Scale equivalent of rebuild_topology_index().
 Returns a summary dict: {'gti': 'rebuilt (N edges)', 'sam': 'cleared'}.
 """
 def rebuild_topology_index_scale(mem: object) -> dict[str, str];
+
+# ---------------------------------------------------------------------------
+# One-time migration: bare type names → qualified type names
+# ---------------------------------------------------------------------------
+
+"""Migrate existing GTI storage from bare type names to qualified names.
+
+Before this change, GTI stored bare class names ('Dog', 'Animal').
+After this change it stores 'module.Dog', 'module.Animal'.
+Running this on a deployed instance converts all stored keys in-place.
+
+SQLite path:
+  Truncates node_topology and edge_topology, then calls rebuild_gti()
+  to repopulate with qualified names from the pickled anchor store.
+
+Redis path:
+  Scans and deletes all 'jac:topo:*' keys, then calls rebuild_gti_redis()
+  to repopulate with qualified names from the MongoDB anchor store.
+
+Both paths also clear SAM (it will warm lazily on next traversal).
+
+Returns a summary dict describing what was done.
+
+WARNING: There is a brief window during which GTI is empty.
+         Traversals during this window fall back to full edge-list scan.
+         Run during a maintenance window or low-traffic period.
+"""
+def migrate_to_qualified_types(mem: object) -> dict[str, str];

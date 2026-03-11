@@ -28,9 +28,12 @@ import from jaclang.jac0core.runtime { without_plugins }
 import from jaclang.runtimelib.sam_gti {
     sam_index,
     _stats,
+    _qname,
     sam_clear,
     reset_stats,
-    rebuild_topology_index
+    get_type_mro,
+    rebuild_topology_index,
+    migrate_to_qualified_types
 }
 
 # ===========================================================================
@@ -751,4 +754,150 @@ test "schema - _ensure_connection is idempotent" {
     mem._ensure_connection();
     mem._ensure_connection();  # second call must not raise
     mem.close();
+}
+
+# ===========================================================================
+# Group 6 — Qualified Type Names (_qname / get_type_mro)
+# ===========================================================================
+test "qname - get_type_mro returns empty list for None archetype" {
+    # None archetype has __module__ == 'builtins' → must be filtered out
+    result = get_type_mro(None);
+    assert result == [] , f"expected [] for None, got {result}";
+}
+
+test "qname - get_type_mro returns empty list for builtin types" {
+    # int, str etc. are builtins → must not appear in topology keys
+    assert get_type_mro(42) == [] , "int must produce no MRO entries";
+    assert get_type_mro("hello") == [] , "str must produce no MRO entries";
+}
+
+test "qname - get_type_mro returns qualified names for user archetypes" {
+    result = get_type_mro(TargetNode());
+    assert len(result) >= 1 , "TargetNode must have at least one MRO entry";
+    assert result[0] == "test_graph_index.TargetNode" , (
+        f"expected 'test_graph_index.TargetNode', got {result[0]}"
+    );
+}
+
+test "qname - get_type_mro includes all parent types for inherited nodes" {
+    result = get_type_mro(PostNode());
+    assert "test_graph_index.PostNode" in result , "PostNode missing from MRO";
+    assert "test_graph_index.BaseContent" in result , "BaseContent missing from MRO";
+    assert result.index("test_graph_index.PostNode") < result.index(
+        "test_graph_index.BaseContent"
+    ) , "PostNode must appear before BaseContent in MRO";
+}
+
+test "qname - _qname returns module-qualified class name" {
+    name = _qname(TargetNode());
+    assert name == "test_graph_index.TargetNode" , (
+        f"expected 'test_graph_index.TargetNode', got {name!r}"
+    );
+}
+
+test "qname - _qname is safe for None (returns builtins.NoneType, not empty)" {
+    # _qname does NOT filter builtins — it's a raw qualified name.
+    # get_type_mro uses _qname internally but also applies the builtins filter.
+    name = _qname(None);
+    assert name == "builtins.NoneType" , f"expected 'builtins.NoneType', got {name!r}";
+}
+
+# ===========================================================================
+# Group 7 — Migration (migrate_to_qualified_types)
+# ===========================================================================
+test "migration - migrate_to_qualified_types clears and rebuilds SQLite topology" {
+    tmp = mkdtemp();
+    _orig_base = Jac.base_path_dir;
+    _orig_ctx = Jac.exec_ctx;
+    sam_clear();
+    try {
+        with without_plugins() {
+            ctx = fresh_ctx(tmp);
+            try {
+                # Build graph so topology tables are populated
+                root spawn BuildGraph(n_targets=3, n_others=2);
+                db = db_path(ctx);
+
+                # Manually corrupt node_topology with bare names to simulate
+                # pre-migration state
+                con = sqlite3.connect(db);
+                con.execute(
+                    "INSERT OR IGNORE INTO node_topology (node_id, node_type) "
+                    "VALUES ('fake-uuid', 'TargetNode')"
+                );
+                con.commit();
+                con.close();
+
+                # Verify the bare-name row exists before migration
+                bare_before = count_table(
+                    db, "node_topology", "node_type='TargetNode'"
+                );
+                assert bare_before >= 1 , "expected bare-name row to exist before migration";
+
+                # Run migration
+                result = migrate_to_qualified_types(ctx.mem);
+                assert result.get("backend") == "sqlite" , f"unexpected result: {result}";
+
+                # Bare-name rows must be gone
+                bare_after = count_table(
+                    db, "node_topology", "node_type='TargetNode'"
+                );
+                assert bare_after == 0 , (
+                    f"bare 'TargetNode' rows must be gone after migration, got {bare_after}"
+                );
+
+                # Qualified-name rows must exist
+                qual_after = count_table(
+                    db, "node_topology",
+                    "node_type='test_graph_index.TargetNode'"
+                );
+                assert qual_after >= 3 , (
+                    f"expected >=3 qualified TargetNode rows after migration, got {qual_after}"
+                );
+
+                # SAM must be cleared (will warm lazily on next traversal)
+                root_id = str(ctx.user_root.id);
+                assert sam_index.get(root_id) is None , "SAM must be cleared after migration";
+            } finally {
+                close_ctx(ctx);
+            }
+        }
+    } finally {
+        Jac.set_base_path(_orig_base);
+        Jac.exec_ctx = _orig_ctx;
+        sam_clear();
+    }
+}
+
+test "migration - traversal works correctly after migrate_to_qualified_types" {
+    tmp = mkdtemp();
+    _orig_base = Jac.base_path_dir;
+    _orig_ctx = Jac.exec_ctx;
+    sam_clear();
+    try {
+        with without_plugins() {
+            ctx = fresh_ctx(tmp);
+            try {
+                root spawn BuildGraph(n_targets=15, n_others=5);
+
+                # Migrate, then clear SAM to force a GTI lookup on next traversal
+                migrate_to_qualified_types(ctx.mem);
+                reset_stats();
+
+                w = root spawn QueryTargets();
+
+                assert len(w.results) == 15 , (
+                    f"expected 15 TargetNode results after migration, got {len(w.results)}"
+                );
+                # Must have used GTI (SAM was cleared by migration)
+                assert _stats["gti_hits"] >= 1 , "expected GTI hit after migration + sam_clear";
+            } finally {
+                close_ctx(ctx);
+            }
+        }
+    } finally {
+        Jac.set_base_path(_orig_base);
+        Jac.exec_ctx = _orig_ctx;
+        sam_clear();
+    }
 }

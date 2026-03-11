@@ -423,7 +423,7 @@ impl _gti_delete_edge_redis(
 ) -> None {
     src_str = str(source_id);
     tgt_str = str(target_id);
-    edge_type = type(edge_arch).__name__;
+    edge_type = _qname(edge_arch);
     pipe = redis_client.pipeline(transaction=False);
     for t in get_type_mro(target_arch) {
         pipe.srem(f"{_TOPO_PREFIX}:n:{src_str}:{t}", tgt_str);
@@ -531,4 +531,53 @@ impl rebuild_topology_index_scale(mem: object) -> dict[str, str] {
     count = rebuild_gti_redis(redis_client, mongo_backend);
     sam_clear();
     return {'gti': f'rebuilt ({count} edges)', 'sam': 'cleared'};
+}
+
+# ---------------------------------------------------------------------------
+# One-time migration: bare type names → qualified type names
+# ---------------------------------------------------------------------------
+impl migrate_to_qualified_types(mem: object) -> dict[str, str] {
+    # --- Scale path (Redis + MongoDB) ---
+    scale = _get_scale_topo(mem);
+    if scale is not None {
+        (redis_client, mongo_backend) = scale;
+        # Flush all existing topology keys (bare and qualified alike)
+        cursor = 0;
+        deleted = 0;
+        while True {
+            (cursor, keys) = redis_client.scan(
+                cursor, match=f"{_TOPO_PREFIX}:*", count=200
+            );
+            if keys {
+                redis_client.delete(*keys);
+                deleted += len(keys);
+            }
+            if cursor == 0 {
+                break;
+            }
+        }
+        count = rebuild_gti_redis(redis_client, mongo_backend);
+        sam_clear();
+        return {
+            'backend': 'redis',
+            'keys_flushed': str(deleted),
+            'edges_rebuilt': str(count),
+        };
+    }
+
+    # --- SQLite path ---
+    sqlite = _get_sqlite(mem);
+    if sqlite is None {
+        return {'status': 'skipped (no persistence backend)'};
+    }
+    sqlite._ensure_connection();
+    if sqlite.__conn__ is None {
+        return {'status': 'skipped (no connection)'};
+    }
+    sqlite.__conn__.execute('DELETE FROM node_topology');
+    sqlite.__conn__.execute('DELETE FROM edge_topology');
+    sqlite.__conn__.commit();
+    rebuild_gti(mem);
+    sam_clear();
+    return {'backend': 'sqlite', 'status': 'migrated'};
 }
