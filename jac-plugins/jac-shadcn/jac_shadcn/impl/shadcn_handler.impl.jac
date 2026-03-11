@@ -213,6 +213,107 @@ impl add_shadcn_components(config: Any, component_names: list) -> bool {
     return len(added) > 0;
 }
 
+impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
+    import from urllib.parse { urlparse, parse_qs }
+
+    project_root = Path(str(config.project_root));
+
+    console.print("\n Initializing jac-shadcn theme\n", style="bold cyan");
+
+    # Parse the URL to extract registry base and query params
+    parsed = urlparse(theme_url);
+    registry_url = parsed.scheme + "://" + parsed.netloc;
+    query_params = parse_qs(parsed.query);
+
+    # Extract theme options from query params (first value of each)
+    style = query_params.get("style", ["nova"])[0];
+    base_color = query_params.get("baseColor", ["neutral"])[0];
+    theme_color = query_params.get("theme", ["neutral"])[0];
+    font = query_params.get("font", ["figtree"])[0];
+    radius = query_params.get("radius", ["default"])[0];
+    menu_accent = query_params.get("menuAccent", ["subtle"])[0];
+    menu_color = query_params.get("menuColor", ["default"])[0];
+
+    # Ensure the URL hits the /theme endpoint
+    fetch_url = registry_url + "/theme" + "?" + parsed.query if parsed.query else theme_url;
+    if "/theme" not in parsed.path {
+        fetch_url = registry_url + "/theme";
+        if parsed.query {
+            fetch_url = fetch_url + "?" + parsed.query;
+        }
+    }
+
+    theme_data = _fetch_json(fetch_url);
+    if not theme_data {
+        console.error("Could not fetch theme from " + fetch_url);
+        return False;
+    }
+
+    # Write global.css
+    global_css = theme_data.get("global_css", "");
+    if global_css {
+        css_path = project_root / "global.css";
+        with open(css_path, "w") as f {
+            f.write(global_css);
+        }
+        console.print("  + Created global.css", style="green");
+    }
+
+    # Create lib/utils.cl.jac
+    utils_path = project_root / "lib" / "utils.cl.jac";
+    if not utils_path.exists() {
+        utils_path.parent.mkdir(parents=True, exist_ok=True);
+        with open(utils_path, "w") as f {
+            f.write(
+                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(...inputs: Any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
+            );
+        }
+        console.print("  + Created lib/utils.cl.jac", style="green");
+    }
+
+    # Create components/ui/ directory
+    ui_dir = project_root / "components" / "ui";
+    ui_dir.mkdir(parents=True, exist_ok=True);
+
+    # Update jac.toml with [jac-shadcn] section
+    toml_path = project_root / "jac.toml";
+    with open(toml_path, "r") as f {
+        toml_content = f.read();
+    }
+
+    if "[jac-shadcn]" not in toml_content {
+        shadcn_section = (
+            "\n[jac-shadcn]\n"
+            + 'style = "' + style + '"\n'
+            + 'baseColor = "' + base_color + '"\n'
+            + 'theme = "' + theme_color + '"\n'
+            + 'font = "' + font + '"\n'
+            + 'radius = "' + radius + '"\n'
+            + 'menuAccent = "' + menu_accent + '"\n'
+            + 'menuColor = "' + menu_color + '"\n'
+            + 'registry = "' + registry_url + '"\n'
+        );
+        toml_content = toml_content + shadcn_section;
+        with open(toml_path, "w") as f {
+            f.write(toml_content);
+        }
+        console.print("  + Added [jac-shadcn] section to jac.toml", style="green");
+    }
+
+    # Update npm deps
+    npm_deps = theme_data.get("npm_deps", {});
+    if npm_deps {
+        _update_npm_deps(config, npm_deps);
+        console.print("  + Updated [dependencies.npm] in jac.toml", style="green");
+    }
+
+    console.print(
+        "\nTheme initialized! Run 'jac add --shadcn button card' to add components.",
+        style="bold green"
+    );
+    return True;
+}
+
 impl remove_shadcn_components(config: Any, component_names: list) -> bool {
     project_root = Path(str(config.project_root));
     ui_dir = project_root / "components" / "ui";

@@ -21,3 +21,6 @@ def add_shadcn_components(config: Any, component_names: list) -> bool;
 
 """Remove component files from components/ui/."""
 def remove_shadcn_components(config: Any, component_names: list) -> bool;
+
+"""Initialize shadcn theme in an existing project by fetching global.css and config from a registry URL."""
+def init_shadcn_theme(config: Any, theme_url: str) -> bool;

@@ -17,3 +17,6 @@ def _handle_shadcn_add(ctx: HookContext) -> None;
 
 """Pre-hook handler for `jac remove --shadcn`."""
 def _handle_shadcn_remove(ctx: HookContext) -> None;
+
+"""Pre-hook handler for `jac add --shadcn --init <url>`."""
+def _handle_shadcn_init(ctx: HookContext) -> None;

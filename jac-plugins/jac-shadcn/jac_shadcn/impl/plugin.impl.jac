@@ -15,7 +15,12 @@ impl JacShadcnPlugin.create_cmd -> None {
                 default=False,
                 help="Add shadcn UI component(s) from registry"
             ),
-
+            Arg.create(
+                "init",
+                typ=str,
+                default="",
+                help="Initialize jac-shadcn theme from a registry URL (e.g. 'https://jac-shadcn.jaseci.org/theme?style=nova&theme=blue')"
+            ),
         ],
         pre_hook=_handle_shadcn_add,
         source="jac-shadcn"
@@ -36,6 +41,13 @@ impl JacShadcnPlugin.create_cmd -> None {
 
 impl _handle_shadcn_add(ctx: HookContext) -> None {
     if not ctx.get_arg("shadcn", False) {
+        return;
+    }
+
+    # Check if this is an --init call
+    init_url = ctx.get_arg("init", "");
+    if init_url {
+        _handle_shadcn_init(ctx);
         return;
     }
 
@@ -70,6 +82,44 @@ impl _handle_shadcn_add(ctx: HookContext) -> None {
         ctx.set_data("cancel_return_code", 0 if result else 1);
     } except Exception as e {
         console.error("Failed to add components: " + str(e));
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    }
+}
+
+impl _handle_shadcn_init(ctx: HookContext) -> None {
+    import from jaclang.project.config { get_config }
+    import from jaclang.cli.console { console }
+    import from jac_shadcn.shadcn_handler { init_shadcn_theme }
+
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found",
+            hint="Run 'jac create --use client' first to create a jac-client project."
+        );
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    theme_url = ctx.get_arg("init", "");
+    if not theme_url {
+        console.error(
+            "No theme URL provided",
+            hint="Usage: jac add --shadcn --init 'https://jac-shadcn.jaseci.org/theme?style=nova&theme=blue'"
+        );
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    try {
+        result = init_shadcn_theme(config, theme_url);
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0 if result else 1);
+    } except Exception as e {
+        console.error("Failed to initialize theme: " + str(e));
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     }
