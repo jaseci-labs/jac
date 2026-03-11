@@ -659,6 +659,49 @@ obj IngressDeployer {
         }
     }
 
+    """Start the NGINX controller (non-blocking). Call finish_ingress() later once other
+    deployment steps are done to minimise wall-clock wait time."""
+    def start_controller(
+        app_name: str,
+        namespace: str,
+        cluster_env: str,
+        apps_v1: Any,
+        core_v1: Any,
+        rbac_v1: Any,
+        networking_v1: Any
+    ) -> None {
+        self._deploy_nginx_controller(
+            app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
+        );
+    }
+
+    """Wait for the NGINX controller to be ready and then deploy routing rules.
+    Must be called after start_controller()."""
+    def finish_ingress(
+        app_name: str,
+        namespace: str,
+        service_port: int,
+        grafana_enabled: bool,
+        redis_dashboard: bool,
+        mongo_dashboard: bool,
+        apps_v1: Any,
+        core_v1: Any,
+        networking_v1: Any
+    ) -> None {
+        self._wait_for_nginx_ready(app_name, namespace, apps_v1);
+        self._deploy_ingress_resource(
+            app_name,
+            namespace,
+            f"{namespace}-{app_name}-nginx",
+            service_port,
+            grafana_enabled,
+            redis_dashboard,
+            mongo_dashboard,
+            networking_v1,
+            core_v1
+        );
+    }
+
     """Deploy the full ingress stack: NGINX controller, wait for readiness, then routing rules."""
     def deploy(
         app_name: str,
@@ -673,20 +716,19 @@ obj IngressDeployer {
         rbac_v1: Any,
         networking_v1: Any
     ) -> None {
-        self._deploy_nginx_controller(
+        self.start_controller(
             app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
         );
-        self._wait_for_nginx_ready(app_name, namespace, apps_v1);
-        self._deploy_ingress_resource(
+        self.finish_ingress(
             app_name,
             namespace,
-            f"{namespace}-{app_name}-nginx",
             service_port,
             grafana_enabled,
             redis_dashboard,
             mongo_dashboard,
-            networking_v1,
-            core_v1
+            apps_v1,
+            core_v1,
+            networking_v1
         );
     }
 
