@@ -34,6 +34,7 @@ import from uuid { UUID }
 glob __all__ = [
     'sam_index',
     '_stats',
+    '_qname',
     '_get_lock',
     'reset_stats',
     'get_type_mro',
@@ -81,6 +82,16 @@ glob _stats: dict[str, int] = {
 };
 
 # ---------------------------------------------------------------------------
+# Qualified-name helper
+# ---------------------------------------------------------------------------
+"""Return 'module.ClassName' for any Python object, e.g. 'myapp.models.Dog'.
+
+Used to build collision-free SAM/GTI keys when multiple Jac modules define
+archetypes with the same bare class name.
+"""
+def _qname(arch: object) -> str;
+
+# ---------------------------------------------------------------------------
 # Lock helper
 # ---------------------------------------------------------------------------
 def _get_lock(source_id: str) -> Lock;
@@ -97,13 +108,13 @@ def reset_stats -> None;
 """Return user-defined Jac type names from instance's MRO.
 
 Walks type(instance).__mro__ and stops at any class whose module starts with
-'jaclang' (internal runtime bases) or at 'object'.
+'jaclang' (internal runtime bases), 'builtins' (None, int, str, …), or at 'object'.
 
 Example:
     node Animal {}
     node Dog :Animal: {}
 
-    get_type_mro(Dog()) -> ["Dog", "Animal"]
+    get_type_mro(Dog()) -> ["myapp.Dog", "myapp.Animal"]
 
 This enables parent-type queries at zero query-time cost:
     sam_index[src]["n:Animal"] also contains Dog node IDs.

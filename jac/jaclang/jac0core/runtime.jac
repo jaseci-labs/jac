@@ -325,10 +325,10 @@ class JacNode {
             # --- SAM/GTI fast path (only when persistence index is active) ---
             # Pure type filters compile to the type class itself, so we can
             # extract the name directly via MRO without any compiler help.
-            target_type_name = destination.nd.__name__
+            target_type_name = (destination.nd.__module__ + '.' + destination.nd.__name__)
                 if isinstance(destination.nd, type)
                 else None;
-            edge_type_name = destination.edge.__name__
+            edge_type_name = (destination.edge.__module__ + '.' + destination.edge.__name__)
                 if isinstance(destination.edge, type)
                 else None;
             use_index = (

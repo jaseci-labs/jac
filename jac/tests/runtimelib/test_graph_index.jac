@@ -191,9 +191,9 @@ test "GTI - building graph populates edge_topology and node_topology" {
                 db = db_path(ctx);
 
                 et_total = count_table(db, "edge_topology");
-                et_target = count_table(db, "edge_topology", "target_type='TargetNode'");
-                et_other = count_table(db, "edge_topology", "target_type='OtherNode'");
-                nt_target = count_table(db, "node_topology", "node_type='TargetNode'");
+                et_target = count_table(db, "edge_topology", "target_type='test_graph_index.TargetNode'");
+                et_other = count_table(db, "edge_topology", "target_type='test_graph_index.OtherNode'");
+                nt_target = count_table(db, "node_topology", "node_type='test_graph_index.TargetNode'");
 
                 assert et_total >= 5 , f"expected >=5 edge_topology rows, got {et_total}";
                 assert et_target == 3 , f"expected 3 TargetNode edges, got {et_target}";
@@ -220,13 +220,13 @@ test "GTI - del --> removes edge from edge_topology" {
                 root spawn BuildGraph(n_targets=3, n_others=0);
                 db = db_path(ctx);
 
-                before = count_table(db, "edge_topology", "target_type='TargetNode'");
+                before = count_table(db, "edge_topology", "target_type='test_graph_index.TargetNode'");
                 assert before == 3 , f"expected 3 rows before delete, got {before}";
 
                 # del --> in same context — no cross-context pickle needed
                 root spawn RemoveFirstTarget();
 
-                after = count_table(db, "edge_topology", "target_type='TargetNode'");
+                after = count_table(db, "edge_topology", "target_type='test_graph_index.TargetNode'");
                 assert after == 2 , f"expected 2 rows after del -->, got {after}";
             } finally {
                 close_ctx(ctx);
@@ -286,8 +286,8 @@ test "GTI - MRO fan-out writes parent type rows to node_topology" {
                 root spawn BuildHierarchyGraph(n_post=2, n_comment=2, n_other=0);
                 db = db_path(ctx);
 
-                post_rows = count_table(db, "node_topology", "node_type='PostNode'");
-                base_rows = count_table(db, "node_topology", "node_type='BaseContent'");
+                post_rows = count_table(db, "node_topology", "node_type='test_graph_index.PostNode'");
+                base_rows = count_table(db, "node_topology", "node_type='test_graph_index.BaseContent'");
 
                 # PostNode + CommentNode both inherit BaseContent → base_rows >= 4
                 assert post_rows >= 2 , f"expected >=2 PostNode rows, got {post_rows}";
@@ -319,8 +319,8 @@ test "SAM - build_edge writes to sam_index via sam_put" {
 
                 bucket = sam_index.get(root_id);
                 assert bucket is not None , "SAM bucket for root must exist after build_edge";
-                assert len(bucket.get("n:TargetNode", [])) == 1 , (
-                    "SAM must contain 1 TargetNode under root (key 'n:TargetNode')"
+                assert len(bucket.get("n:test_graph_index.TargetNode", [])) == 1 , (
+                    "SAM must contain 1 TargetNode under root (key 'n:test_graph_index.TargetNode')"
                 );
             } finally {
                 close_ctx(ctx);
