@@ -333,7 +333,9 @@ impl format(
         total_errors += errors;
         if not success {
             failed_files += 1;
-            failed_results.append({'path': file_path, 'errors': syntax_errors, 'warnings': []});
+            failed_results.append(
+                {'path': file_path, 'errors': syntax_errors, 'warnings': []}
+            );
         } elif changed {
             changed_files += 1;
             if check {
