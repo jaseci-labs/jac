@@ -131,6 +131,8 @@ obj TypeEvaluator {
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
+    def is_typevar_class(ty: TypeBase) -> bool;
     # Comments from pyright:
     # // Determines if the source type can be assigned to the dest type.
     # // If constraint are provided, type variables within the destType are
@@ -243,6 +245,16 @@ obj TypeEvaluator {
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
+
+    # -------------------------------------------------------------------------
+    # TypeVar scope validation (Pyright: validateTypeVarUsage)
+    # -------------------------------------------------------------------------
+    def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
+    def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;
+    def validate_typevar_variance(func: uni.Ability) -> None;
+    def _get_enclosing_class_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
+    def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
+    def _get_outer_scope_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
     # -------------------------------------------------------------------------
     # Type narrowing support
     #

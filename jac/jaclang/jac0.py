@@ -1443,7 +1443,6 @@ class Parser:
     def _parse_impl(self, decorators: list[str]) -> ImplDef:
         self._expect(TT.NAME, "impl")
         is_static = False
-        is_async = False
         target = self._collect_dotted()
         params: list[Param] = []
         if self._at(TT.LPAREN):
@@ -1463,7 +1462,6 @@ class Parser:
             body=body,
             decorators=decorators,
             is_static=is_static,
-            is_async=is_async,
         )
 
     # ── With Entry ────────────────────────────────────────────────────────
@@ -1901,14 +1899,37 @@ class CodeGen:
         body = node.body
         # Stitch impls
         impls = self.impl_registry.get(node.name, [])
+        # Build lookup of stub FuncDefs (;-terminated) for decorator merging
+        _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
+        stub_lookup: dict[str, FuncDef] = {}
+        if impls:
+            for n in body:
+                if isinstance(n, FuncDef):
+                    stub_name = _dunder_names.get(n.name, n.name)
+                    is_stub = len(n.body) == 1 and isinstance(n.body[0], PassStmt)
+                    if is_stub:
+                        stub_lookup[stub_name] = n
+        # Determine which stubs to skip (have matching impl)
+        impl_method_names: set[str] = set()
+        for impl in impls:
+            parts = impl.target.split(".")
+            mname = parts[-1] if len(parts) > 1 else parts[0]
+            mname = _dunder_names.get(mname, mname)
+            impl_method_names.add(mname)
         if not body and not impls:
             self._line("pass")
         else:
             prev_in_class = self._in_class
             self._in_class = True
-            self._emit_body(body)
+            # Emit body but skip stubs that have matching impls
+            for bnode in body:
+                if isinstance(bnode, FuncDef):
+                    fname = _dunder_names.get(bnode.name, bnode.name)
+                    if fname in impl_method_names and fname in stub_lookup:
+                        continue  # Skip stub; impl will provide the method
+                self._emit(bnode)
             for impl in impls:
-                self._emit_impl_as_method(impl)
+                self._emit_impl_as_method(impl, stub_lookup)
             self._in_class = prev_in_class
         self.indent -= 1
         self._line()
@@ -2024,23 +2045,51 @@ class CodeGen:
 
     # ── Impl as Method ────────────────────────────────────────────────────
 
-    def _emit_impl_as_method(self, impl: ImplDef) -> None:
+    def _emit_impl_as_method(
+        self, impl: ImplDef, stub_lookup: dict[str, FuncDef] | None = None
+    ) -> None:
         parts = impl.target.split(".")
         method_name = parts[-1] if len(parts) > 1 else parts[0]
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         method_name = _dunder_names.get(method_name, method_name)
-        for dec in impl.decorators:
+        # Merge decorator/flag info from the matching stub declaration
+        is_static = impl.is_static
+        is_classmethod = False
+        is_async = impl.is_async
+        decorators = list(impl.decorators)
+        stub = stub_lookup.get(method_name) if stub_lookup else None
+        if stub:
+            # Inherit decorators from declaration that aren't already on impl
+            for dec in stub.decorators:
+                if dec not in decorators:
+                    decorators.append(dec)
+            if stub.is_static:
+                is_static = True
+            if stub.is_classmethod:
+                is_classmethod = True
+            if stub.is_async:
+                is_async = True
+        for dec in decorators:
             self._line(f"@{dec}")
-        if impl.is_static:
+        if is_classmethod:
+            self._line("@classmethod")
+        if is_static:
             self._line("@staticmethod")
         func_params = list(impl.params)
-        # Auto-add self for instance methods
-        if not impl.is_static and (
+        # Auto-add cls for classmethods
+        if is_classmethod and (
             not func_params or func_params[0].name not in ("self", "cls")
+        ):
+            func_params.insert(0, Param(name="cls"))
+        # Auto-add self for instance methods
+        elif (
+            not is_static
+            and not is_classmethod
+            and (not func_params or func_params[0].name not in ("self", "cls"))
         ):
             func_params.insert(0, Param(name="self"))
         params = self._format_params(func_params)
-        ap = "async " if impl.is_async else ""
+        ap = "async " if is_async else ""
         ret = f" -> {impl.return_type}" if impl.return_type else ""
         self._line(f"{ap}def {method_name}({params}){ret}:")
         self.indent += 1
