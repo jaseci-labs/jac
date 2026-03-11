@@ -303,13 +303,17 @@ class JacNode {
     ) -> list[NodeArchetype] {
         import from jaclang.runtimelib.sam_gti {
             _get_sqlite,
+            _get_scale_topo,
             gti_query_targets,
+            gti_query_targets_redis,
             sam_populate_from_gti,
             sam_query
         }
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
         ctx = JacRuntimeInterface.get_context();
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
+        _scale = _get_scale_topo(ctx.mem);
+        _index_active: bool = _sqlite_active or (_scale is not None);
         INDEX_ENABLED: bool = os.environ.get('JAC_INDEX_ENABLED', 'true').lower() not in (
             '0',
             'false',
@@ -318,7 +322,7 @@ class JacNode {
         DEGREE_THRESHOLD: int = int(os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10'));
         for nd in origin {
             nanch = nd.__jac__;
-            # --- SAM/GTI fast path (only when SQLite persistence is active) ---
+            # --- SAM/GTI fast path (only when persistence index is active) ---
             # Pure type filters compile to the type class itself, so we can
             # extract the name directly via MRO without any compiler help.
             target_type_name = destination.nd.__name__
@@ -329,7 +333,7 @@ class JacNode {
                 else None;
             use_index = (
                 INDEX_ENABLED
-                and _sqlite_active
+                and _index_active
                 and nanch.is_populated()
                 and (target_type_name is not None or edge_type_name is not None)
                 and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
@@ -345,12 +349,14 @@ class JacNode {
                     edge_ids = sam_query(nanch.id, e_col);
                     if node_ids is None or edge_ids is None {
                         # SAM miss (bucket absent or column not yet indexed) — populate both from GTI
-                        gt_n = gti_query_targets(
-                            ctx.mem, nanch.id, None, target_type_name
-                        );
-                        gt_e = gti_query_targets(
-                            ctx.mem, nanch.id, edge_type_name, None
-                        );
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_n = gti_query_targets_redis(redis_client, nanch.id, None, target_type_name);
+                            gt_e = gti_query_targets_redis(redis_client, nanch.id, edge_type_name, None);
+                        } else {
+                            gt_n = gti_query_targets(ctx.mem, nanch.id, None, target_type_name);
+                            gt_e = gti_query_targets(ctx.mem, nanch.id, edge_type_name, None);
+                        }
                         if gt_n is not None {
                             sam_populate_from_gti(nanch.id, [(t, n_col) for t in gt_n]);
                         }
@@ -367,9 +373,16 @@ class JacNode {
                     target_ids = sam_query(nanch.id, n_col);
                     if target_ids is None {
                         # SAM miss — query GTI (handles MRO via node_topology JOIN)
-                        gt_ids = gti_query_targets(
-                            ctx.mem, nanch.id, edge_type_name, target_type_name
-                        );
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_ids = gti_query_targets_redis(
+                                redis_client, nanch.id, edge_type_name, target_type_name
+                            );
+                        } else {
+                            gt_ids = gti_query_targets(
+                                ctx.mem, nanch.id, edge_type_name, target_type_name
+                            );
+                        }
                         if gt_ids is not None {
                             sam_populate_from_gti(
                                 nanch.id, [(tid, n_col) for tid in gt_ids]
@@ -383,9 +396,16 @@ class JacNode {
                     target_ids = sam_query(nanch.id, e_col);
                     if target_ids is None {
                         # SAM miss — query GTI (simple WHERE edge_type=?)
-                        gt_ids = gti_query_targets(
-                            ctx.mem, nanch.id, edge_type_name, None
-                        );
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_ids = gti_query_targets_redis(
+                                redis_client, nanch.id, edge_type_name, None
+                            );
+                        } else {
+                            gt_ids = gti_query_targets(
+                                ctx.mem, nanch.id, edge_type_name, None
+                            );
+                        }
                         if gt_ids is not None {
                             sam_populate_from_gti(
                                 nanch.id, [(tid, e_col) for tid in gt_ids]
@@ -395,19 +415,39 @@ class JacNode {
                     }
                 }
                 if target_ids is not None {
-                    for id_str in target_ids {
-                        try {
-                            uid = UUID(id_str);
-                        } except ValueError {
-                            continue;
+                    if _scale is not None {
+                        # Bulk fetch from MongoDB: one $in query instead of N find_one() calls.
+                        (_, mongo_backend) = _scale;
+                        uuids: list[UUID] = [];
+                        for id_str in target_ids {
+                            try {
+                                uuids.append(UUID(id_str));
+                            } except ValueError {
+                                continue;
+                            }
                         }
-                        target = ctx.mem.get(uid);
-                        if (
-                            target
-                            and target.archetype
-                            and JacRuntimeInterface.check_read_access(target)
-                        ) {
-                            nodes[target] = target.archetype;
+                        for anchor in mongo_backend.find_bulk(uuids) {
+                            ctx.mem.__mem__[anchor.id] = anchor;    # populate L1
+                            if anchor.archetype and JacRuntimeInterface.check_read_access(anchor) {
+                                nodes[anchor] = anchor.archetype;
+                            }
+                        }
+                    } else {
+                        # SQLite path: sequential ctx.mem.get() (unchanged).
+                        for id_str in target_ids {
+                            try {
+                                uid = UUID(id_str);
+                            } except ValueError {
+                                continue;
+                            }
+                            target = ctx.mem.get(uid);
+                            if (
+                                target
+                                and target.archetype
+                                and JacRuntimeInterface.check_read_access(target)
+                            ) {
+                                nodes[target] = target.archetype;
+                            }
                         }
                     }
                     continue;  # skip edge-list loop for this node
@@ -448,8 +488,11 @@ class JacNode {
     static def remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
         import from jaclang.runtimelib.sam_gti {
             _get_sqlite,
+            _get_scale_topo,
             _gti_delete_edge,
-            sam_invalidate
+            _gti_delete_edge_redis,
+            sam_invalidate,
+            sam_broadcast_invalidate
         }
         for (idx, ed) in enumerate(nd.edges) {
             if (ed.id == `edge.id) {
@@ -457,9 +500,22 @@ class JacNode {
                 break;
             }
         }
-        # SAM + GTI invalidation hooks (only when SQLite persistence is active)
+        # SAM + GTI invalidation hooks
         _mem = JacRuntimeInterface.get_context().mem;
-        if _get_sqlite(_mem) is not None {
+        _scale = _get_scale_topo(_mem);
+        if _scale is not None {
+            (redis_client, _) = _scale;
+            # Precise SREM — no bucket drop needed on Redis (it is shared).
+            _gti_delete_edge_redis(
+                redis_client,
+                nd.id,
+                `edge.target.id,
+                `edge.target.archetype,
+                `edge.archetype
+            );
+            # Broadcast SAM invalidation — all workers drop their bucket for nd.id.
+            sam_broadcast_invalidate(redis_client, nd.id);
+        } elif _get_sqlite(_mem) is not None {
             sam_invalidate(nd.id);
             _gti_delete_edge(mem=_mem, edge_id=`edge.id);
         }
@@ -1739,8 +1795,11 @@ system,
         def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype {
             import from jaclang.runtimelib.sam_gti {
                 _get_sqlite,
+                _get_scale_topo,
                 _gti_write_edge,
-                sam_put
+                _gti_write_edge_redis,
+                sam_put,
+                sam_broadcast_invalidate
             }
             `edge = ct() if isinstance(ct, `type) else ct;
             eanch = `edge.__jac__=EdgeAnchor(
@@ -1751,9 +1810,23 @@ system,
             );
             source.edges.append(eanch);
             target.edges.append(eanch);
-            # SAM + GTI write hooks (only when SQLite persistence is active)
+            # SAM + GTI write hooks
             _mem = JacRuntimeInterface.get_context().mem;
-            if _get_sqlite(_mem) is not None {
+            _scale = _get_scale_topo(_mem);
+            if _scale is not None {
+                # Scale path: Redis GTI write + broadcast SAM invalidation to all workers.
+                # No sam_put — all workers (including self) drop and lazily rebuild from Redis.
+                (redis_client, _) = _scale;
+                _gti_write_edge_redis(redis_client, eanch, source, target);
+                if is_undirected {
+                    _gti_write_edge_redis(redis_client, eanch, target, source);
+                }
+                sam_broadcast_invalidate(redis_client, source.id);
+                if is_undirected {
+                    sam_broadcast_invalidate(redis_client, target.id);
+                }
+            } elif _get_sqlite(_mem) is not None {
+                # SQLite path: unchanged.
                 sam_put(source.id, target.id, target.archetype, eanch.archetype);
                 if is_undirected {
                     sam_put(target.id, source.id, source.archetype, eanch.archetype);
@@ -1820,8 +1893,11 @@ system,
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None {
         import from jaclang.runtimelib.sam_gti {
             _get_sqlite,
+            _get_scale_topo,
             _gti_delete_node,
-            sam_invalidate
+            _gti_delete_node_redis,
+            sam_invalidate,
+            sam_broadcast_invalidate
         }
         obj_list = objs if isinstance(objs, `list) else [objs];
         for `obj in obj_list {
@@ -1836,7 +1912,12 @@ system,
                         for `edge in anchor.edges[:] {
                             JacRuntimeInterface.destroy([`edge]);
                         }
-                        if _get_sqlite(_mem) is not None {
+                        _scale = _get_scale_topo(_mem);
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            _gti_delete_node_redis(redis_client, anchor.id);
+                            sam_broadcast_invalidate(redis_client, anchor.id);
+                        } elif _get_sqlite(_mem) is not None {
                             _gti_delete_node(mem=_mem, node_id=anchor.id);
                             sam_invalidate(anchor.id);
                         }
