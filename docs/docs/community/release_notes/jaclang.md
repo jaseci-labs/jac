@@ -7,7 +7,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Tuple Unpacking in For Loops**: `for (a, b, c) in list[tuple[A, B, C]]` now correctly infers types for unpacked variables instead of `UnknownType`.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
-- 4 small refactors/changes.
+- 15 small refactors/changes.
 - **Fix: HMR Recursive recompilation**: Fixed client-side code recursive recompilation process, preventing cyclic recompilation, and ensuring that all dependencies are up to date.
 - **Fix: HTTP Server Authentication for Imported `:pub` Functions**: Fixed server incorrectly requiring authentication (401) for imported `:pub` functions. The server now inspects source file ASTs to determine access levels for imported function endpoints, matching the existing behavior for imported walkers.
 - **Fix: Python Package Imports**: Fixed two import bugs. (1) `import from mypkg { MyClass }` now works when `mypkg/__init__.py` re-exports via `from .mymod import *` - previously the type checker couldn't find `MyClass`. (2) `import from mypkg { subpkg }` now correctly types `subpkg` as a module - previously it failed when `subpkg` is a sub-package inside `mypkg`.
