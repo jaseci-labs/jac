@@ -315,6 +315,22 @@ impl PyastGenPass._get_sem_decorator(
     );
 }
 
+"""Safe accessor for a node's generated py_ast.
+
+Raises an ICE with source location instead of a bare IndexError
+when py_ast is unexpectedly empty.
+"""
+impl PyastGenPass.py_ast_val(self: PyastGenPass, nd: uni.UniNode) -> ast3.AST {
+    if not nd.gen.py_ast {
+        loc = nd.loc;
+        raise self.ice(
+            f"Empty py_ast on {type(nd).__name__} "
+            f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+        );
+    }
+    return nd.gen.py_ast[0];
+}
+
 """Sync ast locations."""
 impl PyastGenPass.sync(
     self: PyastGenPass,
@@ -374,9 +390,9 @@ impl PyastGenPass.resolve_switch_pattern(
     if isinstance(pattern, uni.MatchValue) {
         return self.sync(
             ast3.Compare(
-                left=cast(ast3.expr, target.gen.py_ast[0]),
+                left=cast(ast3.expr, self.py_ast_val(target)),
                 ops=[self.sync(ast3.Eq())],
-                comparators=[cast(ast3.expr, pattern.value.gen.py_ast[0])]
+                comparators=[cast(ast3.expr, self.py_ast_val(pattern.value))]
             )
         );
     } elif isinstance(pattern, uni.MatchOr) {
@@ -392,9 +408,9 @@ impl PyastGenPass.resolve_switch_pattern(
     } elif isinstance(pattern, uni.MatchSingleton) {
         return self.sync(
             ast3.Compare(
-                left=cast(ast3.expr, target.gen.py_ast[0]),
+                left=cast(ast3.expr, self.py_ast_val(target)),
                 ops=[self.sync(ast3.Is())],
-                comparators=[cast(ast3.expr, pattern.value.gen.py_ast[0])]
+                comparators=[cast(ast3.expr, self.py_ast_val(pattern.value))]
             )
         );
     } else {
@@ -487,7 +503,7 @@ impl PyastGenPass.resolve_stmt_block(
     if doc {
         ret = [
             self.sync(
-                ast3.Expr(value=cast(ast3.expr, doc.gen.py_ast[0])), jac_node=doc
+                ast3.Expr(value=cast(ast3.expr, self.py_ast_val(doc))), jac_node=doc
             ),
             *ret
         ];
@@ -571,7 +587,7 @@ impl PyastGenPass.exit_module(self: PyastGenPass, nd: uni.Module) -> None {
     body_items: list[ast3.AST | list[ast3.AST] | None] = [];
     if nd.doc {
         doc_stmt = self.sync(
-            ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+            ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))), jac_node=nd.doc
         );
         body_items.append(doc_stmt);
     }
@@ -583,11 +599,11 @@ impl PyastGenPass.exit_module(self: PyastGenPass, nd: uni.Module) -> None {
             ast3.Module(body=[cast(ast3.stmt, s) for s in new_body], type_ignores=[])
         )
     ];
-    nd.gen.py = ast3.unparse(nd.gen.py_ast[0]);
+    nd.gen.py = ast3.unparse(self.py_ast_val(nd));
 }
 
 impl PyastGenPass.exit_type_param(self: PyastGenPass, nd: uni.TypeParam) -> None {
-    bound_ast = cast(ast3.expr, nd.bound.gen.py_ast[0]) if nd.bound else None;
+    bound_ast = cast(ast3.expr, self.py_ast_val(nd.bound)) if nd.bound else None;
     type_var = self.sync(ast3.TypeVar(name=nd.name.value, bound=bound_ast));
     nd.gen.py_ast = [type_var];
 }
@@ -596,10 +612,10 @@ impl PyastGenPass.exit_type_alias(self: PyastGenPass, nd: uni.TypeAlias) -> None
     type_param_asts: list[ast3.type_param] = [];
     for tp in nd.type_params {
         if tp.gen.py_ast {
-            type_param_asts.append(cast(ast3.type_param, tp.gen.py_ast[0]));
+            type_param_asts.append(cast(ast3.type_param, self.py_ast_val(tp)));
         }
     }
-    value_ast = cast(ast3.expr, nd.value.gen.py_ast[0]);
+    value_ast = cast(ast3.expr, self.py_ast_val(nd.value));
     type_alias = self.sync(
         ast3.TypeAlias(
             name=self.sync(ast3.Name(id=nd.name.sym_name, ctx=ast3.Store())),
@@ -613,7 +629,7 @@ impl PyastGenPass.exit_type_alias(self: PyastGenPass, nd: uni.TypeAlias) -> None
 impl PyastGenPass.exit_global_vars(self: PyastGenPass, nd: uni.GlobalVars) -> None {
     if nd.doc {
         doc = self.sync(
-            ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+            ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))), jac_node=nd.doc
         );
         assigns_ast: list[ast3.AST] = self._flatten_ast_list(
             [a.gen.py_ast for a in nd.assignments]
@@ -651,7 +667,7 @@ impl PyastGenPass.exit_test(self: PyastGenPass, nd: uni.Test) -> None {
                 for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
             ],
             decorator_list=[
-                cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators
+                cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators
             ]
                 if nd.decorators
                 else [],
@@ -741,7 +757,7 @@ impl PyastGenPass.exit_native_block(self: PyastGenPass, nd: uni.NativeBlock) -> 
 impl PyastGenPass.exit_py_inline_code(self: PyastGenPass, nd: uni.PyInlineCode) -> None {
     if nd.doc {
         doc = self.sync(
-            ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+            ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))), jac_node=nd.doc
         );
         if isinstance(doc, ast3.AST) {
             nd.gen.py_ast = self.pyinline_sync([doc, *ast3.parse(nd.code.value).body]);
@@ -772,7 +788,8 @@ impl PyastGenPass.exit_import(self: PyastGenPass, nd: uni.Import) -> None {
     if nd.doc {
         py_nodes.append(
             self.sync(
-                ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+                ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))),
+                jac_node=nd.doc
             )
         );
     }
@@ -910,13 +927,13 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
             )
         );
     }
-    decorators = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators]
+    decorators = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
         if nd.decorators
         else [];
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);
     }
-    base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.base_classes];
+    base_classes = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.base_classes];
     if (nd.arch_type.name != Tok.KW_CLASS) {
         base_classes.append(self.jaclib_obj(nd.arch_type.value.capitalize()));
     }
@@ -924,7 +941,7 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
     if nd.type_params {
         for tp in nd.type_params {
             if tp.gen.py_ast {
-                type_param_asts.append(cast(ast3.type_param, tp.gen.py_ast[0]));
+                type_param_asts.append(cast(ast3.type_param, self.py_ast_val(tp)));
             }
         }
     }
@@ -956,13 +973,13 @@ impl PyastGenPass.exit_enum(self: PyastGenPass, nd: uni.Enum) -> None {
         inner = nd.body;
     }
     body = self.resolve_stmt_block(inner, doc=nd.doc);
-    decorators = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators]
+    decorators = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
         if nd.decorators
         else [];
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);
     }
-    base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.base_classes];
+    base_classes = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.base_classes];
     base_classes.append(self.builtin_name('Enum'));
     class_def = self.sync(
         ast3.ClassDef(
@@ -1029,9 +1046,9 @@ impl PyastGenPass.gen_llm_body(self: PyastGenPass, nd: uni.Ability) -> list[ast3
         and isinstance(nd.signature.return_type.op, uni.Token)
         and (nd.signature.return_type.op.name == Tok.KW_BY)
     ) {
-        model_expr = cast(ast3.expr, nd.signature.return_type.right.gen.py_ast[0]);
+        model_expr = cast(ast3.expr, self.py_ast_val(nd.signature.return_type.right));
     } elif isinstance(nd.body, uni.Expr) {
-        model_expr = cast(ast3.expr, nd.body.gen.py_ast[0]);
+        model_expr = cast(ast3.expr, self.py_ast_val(nd.body));
     } else {
         raise self.ice('gen_llm_body called without model expression');
     }
@@ -1101,7 +1118,8 @@ impl PyastGenPass.exit_ability(self: PyastGenPass, nd: uni.Ability) -> None {
         )
         else [
             self.sync(
-                ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+                ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))),
+                jac_node=nd.doc
             ),
             self.sync(ast3.Pass(), nd.body)
         ]
@@ -1122,7 +1140,7 @@ impl PyastGenPass.exit_ability(self: PyastGenPass, nd: uni.Ability) -> None {
             "Abstract ability " + str(nd.sym_name) + " should not have a body.", nd
         );
     }
-    decorator_list = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators]
+    decorator_list = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
         if nd.decorators
         else [];
     if (sem_decorator := self._get_sem_decorator(nd)) {
@@ -1174,15 +1192,17 @@ impl PyastGenPass.exit_ability(self: PyastGenPass, nd: uni.Ability) -> None {
             and isinstance(nd.signature.return_type.op, uni.Token)
             and (nd.signature.return_type.op.name == Tok.KW_BY)
         ) {
-            ast_returns = cast(ast3.expr, nd.signature.return_type.left.gen.py_ast[0]);
+            ast_returns = cast(
+                ast3.expr, self.py_ast_val(nd.signature.return_type.left)
+            );
         } else {
-            ast_returns = cast(ast3.expr, nd.signature.return_type.gen.py_ast[0]);
+            ast_returns = cast(ast3.expr, self.py_ast_val(nd.signature.return_type));
         }
     }
     func_def = self.sync(
         func_type(
             name=self._py_name(nd.name_ref),
-            args=cast(ast3.arguments, nd.signature.gen.py_ast[0])
+            args=cast(ast3.arguments, self.py_ast_val(nd.signature))
                 if nd.signature
                 else self.sync(
                     ast3.arguments(
@@ -1217,9 +1237,9 @@ impl PyastGenPass.exit_sem_def(self: PyastGenPass, nd: uni.SemDef) -> None {
 impl PyastGenPass.exit_func_signature(
     self: PyastGenPass, nd: uni.FuncSignature
 ) -> None {
-    posonlyargs = [i.gen.py_ast[0] for i in nd.posonly_params];
-    vararg = nd.varargs.gen.py_ast[0] if nd.varargs else None;
-    kwarg = nd.kwargs.gen.py_ast[0] if nd.kwargs else None;
+    posonlyargs = [self.py_ast_val(i) for i in nd.posonly_params];
+    vararg = self.py_ast_val(nd.varargs) if nd.varargs else None;
+    kwarg = self.py_ast_val(nd.kwargs) if nd.kwargs else None;
     params = [self.sync(ast3.arg(arg='cls', annotation=None))]
         if (
             (abl := nd.parent)
@@ -1240,21 +1260,21 @@ impl PyastGenPass.exit_func_signature(
             else [];
     if posonlyargs {
         posonlyargs = params + posonlyargs;
-        params = [cast(ast3.arg, i.gen.py_ast[0]) for i in nd.params];
+        params = [cast(ast3.arg, self.py_ast_val(i)) for i in nd.params];
     } else {
-        params = params + [cast(ast3.arg, i.gen.py_ast[0]) for i in nd.params];
+        params = params + [cast(ast3.arg, self.py_ast_val(i)) for i in nd.params];
     }
     defaults = [];
     for i in [*nd.posonly_params, *nd.params] {
         if i.value {
-            defaults.append(cast(ast3.expr, i.value.gen.py_ast[0]));
+            defaults.append(cast(ast3.expr, self.py_ast_val(i.value)));
         }
     }
-    kwonly_args = [cast(ast3.arg, i.gen.py_ast[0]) for i in nd.kwonlyargs];
+    kwonly_args = [cast(ast3.arg, self.py_ast_val(i)) for i in nd.kwonlyargs];
     kw_defaults: list[(ast3.expr | None)] = [];
     for i in nd.kwonlyargs {
         if i.value {
-            kw_defaults.append(cast(ast3.expr, i.value.gen.py_ast[0]));
+            kw_defaults.append(cast(ast3.expr, self.py_ast_val(i.value)));
         } else {
             kw_defaults.append(None);
         }
@@ -1280,7 +1300,7 @@ impl PyastGenPass.exit_event_signature(
     arch_kw = Con.HERE.value if nd.from_walker else Con.VISITOR.value;
     annotation = None;
     if nd.arch_tag_info {
-        py_ast = cast(ast3.expr, nd.arch_tag_info.gen.py_ast[0]);
+        py_ast = cast(ast3.expr, self.py_ast_val(nd.arch_tag_info));
         if (
             isinstance(py_ast, ast3.Tuple)
             and isinstance(nd.arch_tag_info, uni.TupleVal)
@@ -1332,13 +1352,13 @@ impl PyastGenPass.exit_event_signature(
 }
 
 impl PyastGenPass.exit_param_var(self: PyastGenPass, nd: uni.ParamVar) -> None {
-    if isinstance(nd.name.gen.py_ast[0], ast3.Name) {
-        name = nd.name.gen.py_ast[0].id;
+    if isinstance(self.py_ast_val(nd.name), ast3.Name) {
+        name = self.py_ast_val(nd.name).id;
         nd.gen.py_ast = [
             self.sync(
                 ast3.arg(
                     arg=name,
-                    annotation=cast(ast3.expr, nd.type_tag.gen.py_ast[0])
+                    annotation=cast(ast3.expr, self.py_ast_val(nd.type_tag))
                         if nd.type_tag
                         else None
                 )
@@ -1351,7 +1371,7 @@ impl PyastGenPass.exit_arch_has(self: PyastGenPass, nd: uni.ArchHas) -> None {
     vars_py: list[ast3.AST] = self._flatten_ast_list([v.gen.py_ast for v in nd.vars]);
     if nd.doc {
         doc = self.sync(
-            ast3.Expr(value=cast(ast3.expr, nd.doc.gen.py_ast[0])), jac_node=nd.doc
+            ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.doc))), jac_node=nd.doc
         );
         if isinstance(doc, ast3.AST) {
             nd.gen.py_ast = [doc] + vars_py;
@@ -1364,7 +1384,7 @@ impl PyastGenPass.exit_arch_has(self: PyastGenPass, nd: uni.ArchHas) -> None {
 }
 
 impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
-    annotation = nd.type_tag.gen.py_ast[0] if nd.type_tag else None;
+    annotation = self.py_ast_val(nd.type_tag) if nd.type_tag else None;
     is_static_var = (
         (haspar := nd.find_parent_of_type(uni.ArchHas)) and haspar and haspar.is_static
     );
@@ -1375,7 +1395,7 @@ impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
     );
     value = None;
     if is_in_class {
-        value = cast(ast3.expr, nd.value.gen.py_ast[0]) if nd.value else None;
+        value = cast(ast3.expr, self.py_ast_val(nd.value)) if nd.value else None;
     } elif is_static_var {
         annotation = self.sync(
             ast3.Subscript(
@@ -1384,7 +1404,7 @@ impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
                 ctx=ast3.Load()
             )
         );
-        value = cast(ast3.expr, nd.value.gen.py_ast[0]) if nd.value else None;
+        value = cast(ast3.expr, self.py_ast_val(nd.value)) if nd.value else None;
     } elif nd.defer {
         value = self.sync(
             ast3.Call(
@@ -1400,8 +1420,8 @@ impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
             )
         );
     } elif nd.value {
-        if isinstance(nd.value.gen.py_ast[0], ast3.Constant) {
-            value = cast(ast3.expr, nd.value.gen.py_ast[0]);
+        if isinstance(self.py_ast_val(nd.value), ast3.Constant) {
+            value = cast(ast3.expr, self.py_ast_val(nd.value));
         } else {
             value = self.sync(
                 ast3.Call(
@@ -1424,7 +1444,7 @@ impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
                                                 defaults=[]
                                             )
                                         ),
-                                        body=cast(ast3.expr, nd.value.gen.py_ast[0])
+                                        body=cast(ast3.expr, self.py_ast_val(nd.value))
                                     )
                                 )
                             )
@@ -1438,7 +1458,8 @@ impl PyastGenPass.exit_has_var(self: PyastGenPass, nd: uni.HasVar) -> None {
         self.sync(
             ast3.AnnAssign(
                 target=cast(
-                    ast3.Name | ast3.Attribute | ast3.Subscript, nd.name.gen.py_ast[0]
+                    ast3.Name | ast3.Attribute | ast3.Subscript,
+                    self.py_ast_val(nd.name)
                 ),
                 annotation=cast(ast3.expr, annotation)
                     if annotation
@@ -1464,7 +1485,7 @@ impl PyastGenPass.exit_typed_ctx_block(
                 `test=self.sync(
                     ast3.Call(
                         func=self.sync(ast3.Name(id='isinstance', ctx=ast3.Load())),
-                        args=[loc, cast(ast3.expr, nd.type_ctx.gen.py_ast[0])],
+                        args=[loc, cast(ast3.expr, self.py_ast_val(nd.type_ctx))],
                         keywords=[]
                     )
                 ),
@@ -1479,7 +1500,7 @@ impl PyastGenPass.exit_if_stmt(self: PyastGenPass, nd: uni.IfStmt) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.If(
-                `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
                 body=cast(`list[ast3.stmt], self.resolve_stmt_block(nd.body)),
                 orelse=cast(`list[ast3.stmt], nd.else_body.gen.py_ast)
                     if nd.else_body
@@ -1493,7 +1514,7 @@ impl PyastGenPass.exit_else_if(self: PyastGenPass, nd: uni.ElseIf) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.If(
-                `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
                 body=cast(`list[ast3.stmt], self.resolve_stmt_block(nd.body)),
                 orelse=cast(`list[ast3.stmt], nd.else_body.gen.py_ast)
                     if nd.else_body
@@ -1510,11 +1531,11 @@ impl PyastGenPass.exit_else_stmt(self: PyastGenPass, nd: uni.ElseStmt) -> None {
 impl PyastGenPass.exit_expr_stmt(self: PyastGenPass, nd: uni.ExprStmt) -> None {
     hoisted = self._hoisted_funcs[:];
     self._hoisted_funcs.clear();
-    expr_stmt = self.sync(ast3.Expr(value=cast(ast3.expr, nd.expr.gen.py_ast[0])))
+    expr_stmt = self.sync(ast3.Expr(value=cast(ast3.expr, self.py_ast_val(nd.expr))))
         if not nd.in_fstring
         else self.sync(
             ast3.FormattedValue(
-                value=cast(ast3.expr, nd.expr.gen.py_ast[0]),
+                value=cast(ast3.expr, self.py_ast_val(nd.expr)),
                 conversion=-1,
                 format_spec=None
             )
@@ -1549,7 +1570,7 @@ impl PyastGenPass.exit_concurrent_expr(
                             defaults=[]
                         )
                     ),
-                    body=cast(ast3.expr, nd.target.gen.py_ast[0])
+                    body=cast(ast3.expr, self.py_ast_val(nd.target))
                 )
             )
         ];
@@ -1561,7 +1582,7 @@ impl PyastGenPass.exit_concurrent_expr(
                         `list[ast3.expr],
                         lambda_ex
                             if (func == 'thread_run')
-                            else [nd.target.gen.py_ast[0]]
+                            else [self.py_ast_val(nd.target)]
                     ),
                     keywords=[]
                 )
@@ -1576,7 +1597,7 @@ impl PyastGenPass.exit_try_stmt(self: PyastGenPass, nd: uni.TryStmt) -> None {
             ast3.Try(
                 body=cast(`list[ast3.stmt], self.resolve_stmt_block(nd.body)),
                 handlers=[
-                    cast(ast3.ExceptHandler, i.gen.py_ast[0]) for i in nd.excepts
+                    cast(ast3.ExceptHandler, self.py_ast_val(i)) for i in nd.excepts
                 ],
                 orelse=[cast(ast3.stmt, i) for i in nd.else_body.gen.py_ast]
                     if nd.else_body
@@ -1593,7 +1614,7 @@ impl PyastGenPass.exit_except(self: PyastGenPass, nd: uni.Except) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.ExceptHandler(
-                `type=cast(ast3.expr, nd.ex_type.gen.py_ast[0])
+                `type=cast(ast3.expr, self.py_ast_val(nd.ex_type))
                     if nd.ex_type
                     else None,
                 name=nd.name.sym_name if nd.name else None,
@@ -1614,18 +1635,18 @@ impl PyastGenPass.exit_iter_for_stmt(self: PyastGenPass, nd: uni.IterForStmt) ->
     body = self.resolve_stmt_block(nd.body);
     if (
         isinstance(body, `list)
-        and isinstance(nd.count_by.gen.py_ast[0], ast3.AST)
-        and isinstance(nd.iter.gen.py_ast[0], ast3.AST)
+        and isinstance(self.py_ast_val(nd.count_by), ast3.AST)
+        and isinstance(self.py_ast_val(nd.iter), ast3.AST)
     ) {
-        body += [nd.count_by.gen.py_ast[0]];
+        body += [self.py_ast_val(nd.count_by)];
     } else {
         raise self.ice();
     }
-    py_nodes.append(nd.iter.gen.py_ast[0]);
+    py_nodes.append(self.py_ast_val(nd.iter));
     py_nodes.append(
         self.sync(
             ast3.While(
-                `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
                 body=[cast(ast3.stmt, stmt) for stmt in body],
                 orelse=[cast(ast3.stmt, stmt) for stmt in nd.else_body.gen.py_ast]
                     if nd.else_body
@@ -1641,8 +1662,8 @@ impl PyastGenPass.exit_in_for_stmt(self: PyastGenPass, nd: uni.InForStmt) -> Non
     nd.gen.py_ast = [
         self.sync(
             for_node(
-                target=cast(ast3.expr, nd.target.gen.py_ast[0]),
-                iter=cast(ast3.expr, nd.collection.gen.py_ast[0]),
+                target=cast(ast3.expr, self.py_ast_val(nd.target)),
+                iter=cast(ast3.expr, self.py_ast_val(nd.collection)),
                 body=[
                     cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
                 ],
@@ -1658,7 +1679,7 @@ impl PyastGenPass.exit_while_stmt(self: PyastGenPass, nd: uni.WhileStmt) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.While(
-                `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
                 body=[
                     cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
                 ],
@@ -1675,7 +1696,9 @@ impl PyastGenPass.exit_with_stmt(self: PyastGenPass, nd: uni.WithStmt) -> None {
     nd.gen.py_ast = [
         self.sync(
             with_node(
-                items=[cast(ast3.withitem, item.gen.py_ast[0]) for item in nd.exprs],
+                items=[
+                    cast(ast3.withitem, self.py_ast_val(item)) for item in nd.exprs
+                ],
                 body=[
                     cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
                 ]
@@ -1688,8 +1711,8 @@ impl PyastGenPass.exit_expr_as_item(self: PyastGenPass, nd: uni.ExprAsItem) -> N
     nd.gen.py_ast = [
         self.sync(
             ast3.withitem(
-                context_expr=cast(ast3.expr, nd.expr.gen.py_ast[0]),
-                optional_vars=cast(ast3.expr, nd.alias.gen.py_ast[0])
+                context_expr=cast(ast3.expr, self.py_ast_val(nd.expr)),
+                optional_vars=cast(ast3.expr, self.py_ast_val(nd.alias))
                     if nd.alias
                     else None
             )
@@ -1701,8 +1724,8 @@ impl PyastGenPass.exit_raise_stmt(self: PyastGenPass, nd: uni.RaiseStmt) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.Raise(
-                exc=cast(ast3.expr, nd.cause.gen.py_ast[0]) if nd.cause else None,
-                cause=cast(ast3.expr, nd.from_target.gen.py_ast[0])
+                exc=cast(ast3.expr, self.py_ast_val(nd.cause)) if nd.cause else None,
+                cause=cast(ast3.expr, self.py_ast_val(nd.from_target))
                     if nd.from_target
                     else None
             )
@@ -1717,8 +1740,8 @@ impl PyastGenPass.exit_assert_stmt(self: PyastGenPass, nd: uni.AssertStmt) -> No
         nd.gen.py_ast = [
             self.sync(
                 ast3.Assert(
-                    `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
-                    msg=cast(ast3.expr, nd.error_msg.gen.py_ast[0])
+                    `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
+                    msg=cast(ast3.expr, self.py_ast_val(nd.error_msg))
                         if nd.error_msg
                         else None
                 )
@@ -1748,19 +1771,19 @@ impl PyastGenPass.assert_helper(self: PyastGenPass, nd: uni.AssertStmt) -> None 
         ) {
             return CheckNodeIsinstanceCallResult();
         }
-        func = nd.target.gen.py_ast[0];
+        func = self.py_ast_val(nd.target);
         if not (isinstance(func, ast3.Name) and (func.id == 'isinstance')) {
             return CheckNodeIsinstanceCallResult();
         }
         return CheckNodeIsinstanceCallResult(
-            True, nd.params[0].gen.py_ast[0], nd.params[1].gen.py_ast[0]
+            True, self.py_ast_val(nd.params[0]), self.py_ast_val(nd.params[1])
         );
     }
     assert_func_name = 'assertTrue';
     assert_args_list = nd.condition.gen.py_ast;
     if (
         isinstance(nd.condition, uni.CompareExpr)
-        and isinstance(nd.condition.gen.py_ast[0], ast3.Compare)
+        and isinstance(self.py_ast_val(nd.condition), ast3.Compare)
         and (len(nd.condition.ops) == 1)
     ) {
         expr: uni.CompareExpr = nd.condition;
@@ -1779,7 +1802,10 @@ impl PyastGenPass.assert_helper(self: PyastGenPass, nd: uni.AssertStmt) -> None 
         };
         if (opty.name in optype2fn) {
             assert_func_name = optype2fn[opty.name];
-            assert_args_list = [expr.left.gen.py_ast[0], expr.rights[0].gen.py_ast[0]];
+            assert_args_list = [
+                self.py_ast_val(expr.left),
+                self.py_ast_val(expr.rights[0])
+            ];
             if ((opty.name == Tok.KW_IS) and isinstance(expr.rights[0], uni.Null)) {
                 assert_func_name = 'assertIsNone';
                 assert_args_list.pop();
@@ -1790,7 +1816,7 @@ impl PyastGenPass.assert_helper(self: PyastGenPass, nd: uni.AssertStmt) -> None 
         }
     } elif (
         isinstance(nd.condition, uni.FuncCall)
-        and isinstance(nd.condition.gen.py_ast[0], ast3.Call)
+        and isinstance(self.py_ast_val(nd.condition), ast3.Call)
     ) {
         res = check_node_isinstance_call(nd.condition);
         if res.isit {
@@ -1815,14 +1841,14 @@ impl PyastGenPass.assert_helper(self: PyastGenPass, nd: uni.AssertStmt) -> None 
     }
     if (
         isinstance(nd.condition, uni.FuncCall)
-        and isinstance(nd.condition.gen.py_ast[0], ast3.Call)
+        and isinstance(self.py_ast_val(nd.condition), ast3.Call)
     ) {
         func = nd.condition.target;
         if (isinstance(func, uni.Name) and (func.value == 'almostEqual')) {
             assert_func_name = 'assertAlmostEqual';
             assert_args_list = [];
             for param in nd.condition.params {
-                assert_args_list.append(param.gen.py_ast[0]);
+                assert_args_list.append(self.py_ast_val(param));
             }
         }
     }
@@ -1849,7 +1875,7 @@ impl PyastGenPass.exit_ctrl_stmt(self: PyastGenPass, nd: uni.CtrlStmt) -> None {
     } elif (nd.ctrl.name == Tok.KW_CONTINUE) {
         if (iter_for_parent := self.find_parent_of_type(nd, uni.IterForStmt)) {
             count_by = iter_for_parent.count_by;
-            nd.gen.py_ast = [count_by.gen.py_ast[0], self.sync(ast3.Continue())];
+            nd.gen.py_ast = [self.py_ast_val(count_by), self.sync(ast3.Continue())];
         } else {
             nd.gen.py_ast = [self.sync(ast3.Continue())];
         }
@@ -1928,7 +1954,7 @@ impl PyastGenPass.exit_return_stmt(self: PyastGenPass, nd: uni.ReturnStmt) -> No
     nd.gen.py_ast = [
         self.sync(
             ast3.Return(
-                value=cast(ast3.expr, nd.expr.gen.py_ast[0]) if nd.expr else None
+                value=cast(ast3.expr, self.py_ast_val(nd.expr)) if nd.expr else None
             )
         )
     ];
@@ -1939,7 +1965,9 @@ impl PyastGenPass.exit_yield_expr(self: PyastGenPass, nd: uni.YieldExpr) -> None
         nd.gen.py_ast = [
             self.sync(
                 ast3.Yield(
-                    value=cast(ast3.expr, nd.expr.gen.py_ast[0]) if nd.expr else None
+                    value=cast(ast3.expr, self.py_ast_val(nd.expr))
+                        if nd.expr
+                        else None
                 )
             )
         ];
@@ -1947,7 +1975,7 @@ impl PyastGenPass.exit_yield_expr(self: PyastGenPass, nd: uni.YieldExpr) -> None
         nd.gen.py_ast = [
             self.sync(
                 ast3.YieldFrom(
-                    value=cast(ast3.expr, nd.expr.gen.py_ast[0])
+                    value=cast(ast3.expr, self.py_ast_val(nd.expr))
                         if nd.expr
                         else self.sync(ast3.Constant(value=None))
                 )
@@ -1965,7 +1993,7 @@ impl PyastGenPass.exit_visit_stmt(self: PyastGenPass, nd: uni.VisitStmt) -> None
     visit_call = self.sync(
         ast3.Call(
             func=self.jaclib_obj('visit'),
-            args=cast(`list[ast3.expr], [loc, nd.target.gen.py_ast[0]]),
+            args=cast(`list[ast3.expr], [loc, self.py_ast_val(nd.target)]),
             keywords=[]
         )
     );
@@ -1974,7 +2002,7 @@ impl PyastGenPass.exit_visit_stmt(self: PyastGenPass, nd: uni.VisitStmt) -> None
             self.sync(
                 ast3.keyword(
                     arg='insert_loc',
-                    value=cast(ast3.expr, nd.insert_loc.gen.py_ast[0])
+                    value=cast(ast3.expr, self.py_ast_val(nd.insert_loc))
                 )
             )
         );
@@ -2018,7 +2046,7 @@ impl PyastGenPass.exit_disengage_stmt(
 
 impl PyastGenPass.exit_await_expr(self: PyastGenPass, nd: uni.AwaitExpr) -> None {
     nd.gen.py_ast = [
-        self.sync(ast3.Await(value=cast(ast3.expr, nd.target.gen.py_ast[0])))
+        self.sync(ast3.Await(value=cast(ast3.expr, self.py_ast_val(nd.target))))
     ];
 }
 
@@ -2039,7 +2067,7 @@ impl PyastGenPass.exit_non_local_stmt(self: PyastGenPass, nd: uni.NonLocalStmt) 
 }
 
 impl PyastGenPass.exit_assignment(self: PyastGenPass, nd: uni.Assignment) -> None {
-    value = nd.value.gen.py_ast[0]
+    value = self.py_ast_val(nd.value)
         if nd.value
         else self.sync(
             ast3.Call(
@@ -2050,15 +2078,15 @@ impl PyastGenPass.exit_assignment(self: PyastGenPass, nd: uni.Assignment) -> Non
         )
             if nd.is_enum_stmt
             else None if nd.type_tag else self.ice();
-    targets_ast = [cast(ast3.expr, t.gen.py_ast[0]) for t in nd.target];
+    targets_ast = [cast(ast3.expr, self.py_ast_val(t)) for t in nd.target];
     hoisted = self._hoisted_funcs[:];
     self._hoisted_funcs.clear();
     if nd.type_tag {
         assignment_stmt: ast3.AnnAssign | ast3.Assign | ast3.AugAssign = self.sync(
             ast3.AnnAssign(
                 target=cast(ast3.Name, targets_ast[0]),
-                annotation=cast(ast3.expr, nd.type_tag.gen.py_ast[0]),
-                value=cast(ast3.expr, nd.value.gen.py_ast[0]) if nd.value else None,
+                annotation=cast(ast3.expr, self.py_ast_val(nd.type_tag)),
+                value=cast(ast3.expr, self.py_ast_val(nd.value)) if nd.value else None,
                 simple=int(isinstance(targets_ast[0], ast3.Name))
             )
         );
@@ -2066,7 +2094,7 @@ impl PyastGenPass.exit_assignment(self: PyastGenPass, nd: uni.Assignment) -> Non
         assignment_stmt = self.sync(
             ast3.AugAssign(
                 target=cast(ast3.Name, targets_ast[0]),
-                op=cast(ast3.operator, nd.aug_op.gen.py_ast[0]),
+                op=cast(ast3.operator, self.py_ast_val(nd.aug_op)),
                 value=cast(ast3.expr, value)
                     if isinstance(value, ast3.expr)
                     else ast3.Constant(value=None)
@@ -2087,12 +2115,12 @@ impl PyastGenPass.exit_assignment(self: PyastGenPass, nd: uni.Assignment) -> Non
 
 impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> None {
     if isinstance(nd.op, uni.ConnectOp) {
-        left = nd.right.gen.py_ast[0]
+        left = self.py_ast_val(nd.right)
             if (nd.op.edge_dir == EdgeDir.IN)
-            else nd.left.gen.py_ast[0];
-        right = nd.left.gen.py_ast[0]
+            else self.py_ast_val(nd.left);
+        right = self.py_ast_val(nd.left)
             if (nd.op.edge_dir == EdgeDir.IN)
-            else nd.right.gen.py_ast[0];
+            else self.py_ast_val(nd.right);
         keywords = [
             self.sync(ast3.keyword(arg='left', value=cast(ast3.expr, left))),
             self.sync(ast3.keyword(arg='right', value=cast(ast3.expr, right)))
@@ -2102,7 +2130,7 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
                 self.sync(
                     ast3.keyword(
                         arg='edge',
-                        value=cast(ast3.expr, nd.op.conn_type.gen.py_ast[0])
+                        value=cast(ast3.expr, self.py_ast_val(nd.op.conn_type))
                     )
                 )
             );
@@ -2121,7 +2149,7 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
                 self.sync(
                     ast3.keyword(
                         arg='conn_assign',
-                        value=cast(ast3.expr, nd.op.conn_assign.gen.py_ast[0])
+                        value=cast(ast3.expr, self.py_ast_val(nd.op.conn_assign))
                     )
                 )
             );
@@ -2134,11 +2162,13 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
     } elif isinstance(nd.op, uni.DisconnectOp) {
         keywords = [
             self.sync(
-                ast3.keyword(arg='left', value=cast(ast3.expr, nd.left.gen.py_ast[0]))
+                ast3.keyword(
+                    arg='left', value=cast(ast3.expr, self.py_ast_val(nd.left))
+                )
             ),
             self.sync(
                 ast3.keyword(
-                    arg='right', value=cast(ast3.expr, nd.right.gen.py_ast[0])
+                    arg='right', value=cast(ast3.expr, self.py_ast_val(nd.right))
                 )
             )
         ];
@@ -2164,7 +2194,7 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
                     ast3.keyword(
                         arg='filter_on',
                         value=cast(
-                            ast3.expr, nd.op.edge_spec.filter_cond.gen.py_ast[0]
+                            ast3.expr, self.py_ast_val(nd.op.edge_spec.filter_cond)
                         )
                     )
                 )
@@ -2181,34 +2211,34 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
         nd.gen.py_ast = [
             self.sync(
                 ast3.BoolOp(
-                    op=cast(ast3.boolop, nd.op.gen.py_ast[0]),
+                    op=cast(ast3.boolop, self.py_ast_val(nd.op)),
                     values=[
-                        cast(ast3.expr, nd.left.gen.py_ast[0]),
-                        cast(ast3.expr, nd.right.gen.py_ast[0])
+                        cast(ast3.expr, self.py_ast_val(nd.left)),
+                        cast(ast3.expr, self.py_ast_val(nd.right))
                     ]
                 )
             )
         ];
     } elif (
         (nd.op.name in [Tok.WALRUS_EQ])
-        and isinstance(nd.left.gen.py_ast[0], ast3.Name)
+        and isinstance(self.py_ast_val(nd.left), ast3.Name)
     ) {
-        nd.left.gen.py_ast[0].ctx = ast3.Store();
+        self.py_ast_val(nd.left).ctx = ast3.Store();
         nd.gen.py_ast = [
             self.sync(
                 ast3.NamedExpr(
-                    target=cast(ast3.Name, nd.left.gen.py_ast[0]),
-                    value=cast(ast3.expr, nd.right.gen.py_ast[0])
+                    target=cast(ast3.Name, self.py_ast_val(nd.left)),
+                    value=cast(ast3.expr, self.py_ast_val(nd.right))
                 )
             )
         ];
-    } elif (nd.op.gen.py_ast and isinstance(nd.op.gen.py_ast[0], ast3.AST)) {
+    } elif (nd.op.gen.py_ast and isinstance(self.py_ast_val(nd.op), ast3.AST)) {
         nd.gen.py_ast = [
             self.sync(
                 ast3.BinOp(
-                    left=cast(ast3.expr, nd.left.gen.py_ast[0]),
-                    right=cast(ast3.expr, nd.right.gen.py_ast[0]),
-                    op=cast(ast3.operator, nd.op.gen.py_ast[0])
+                    left=cast(ast3.expr, self.py_ast_val(nd.left)),
+                    right=cast(ast3.expr, self.py_ast_val(nd.right)),
+                    op=cast(ast3.operator, self.py_ast_val(nd.op))
                 )
             )
         ];
@@ -2241,7 +2271,7 @@ impl PyastGenPass.translate_jac_bin_op(
                     func=self.jaclib_obj('spawn'),
                     args=cast(
                         `list[ast3.expr],
-                        [nd.left.gen.py_ast[0], nd.right.gen.py_ast[0]]
+                        [self.py_ast_val(nd.left), self.py_ast_val(nd.right)]
                     ),
                     keywords=[]
                 )
@@ -2266,7 +2296,7 @@ impl PyastGenPass.translate_jac_bin_op(
                     func=self.jaclib_obj('by_operator'),
                     args=cast(
                         `list[ast3.expr],
-                        [nd.left.gen.py_ast[0], nd.right.gen.py_ast[0]]
+                        [self.py_ast_val(nd.left), self.py_ast_val(nd.right)]
                     ),
                     keywords=[]
                 )
@@ -2286,9 +2316,9 @@ impl PyastGenPass.exit_compare_expr(self: PyastGenPass, nd: uni.CompareExpr) -> 
     nd.gen.py_ast = [
         self.sync(
             ast3.Compare(
-                left=cast(ast3.expr, nd.left.gen.py_ast[0]),
-                comparators=[cast(ast3.expr, i.gen.py_ast[0]) for i in nd.rights],
-                ops=[cast(ast3.cmpop, i.gen.py_ast[0]) for i in nd.ops]
+                left=cast(ast3.expr, self.py_ast_val(nd.left)),
+                comparators=[cast(ast3.expr, self.py_ast_val(i)) for i in nd.rights],
+                ops=[cast(ast3.cmpop, self.py_ast_val(i)) for i in nd.ops]
             )
         )
     ];
@@ -2298,8 +2328,8 @@ impl PyastGenPass.exit_bool_expr(self: PyastGenPass, nd: uni.BoolExpr) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.BoolOp(
-                op=cast(ast3.boolop, nd.op.gen.py_ast[0]),
-                values=[cast(ast3.expr, i.gen.py_ast[0]) for i in nd.values]
+                op=cast(ast3.boolop, self.py_ast_val(nd.op)),
+                values=[cast(ast3.expr, self.py_ast_val(i)) for i in nd.values]
             )
         )
     ];
@@ -2308,7 +2338,7 @@ impl PyastGenPass.exit_bool_expr(self: PyastGenPass, nd: uni.BoolExpr) -> None {
 impl PyastGenPass.exit_lambda_expr(self: PyastGenPass, nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
         if (nd.signature and nd.signature.gen.py_ast) {
-            arguments = cast(ast3.arguments, nd.signature.gen.py_ast[0]);
+            arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
         } else {
             arguments = self.sync(
                 ast3.arguments(
@@ -2325,7 +2355,7 @@ impl PyastGenPass.exit_lambda_expr(self: PyastGenPass, nd: uni.LambdaExpr) -> No
             body_stmts = [self.sync(ast3.Pass(), jac_node=nd)];
         }
         func_name = self._next_temp_name('lambda');
-        returns = cast(ast3.expr, nd.signature.return_type.gen.py_ast[0])
+        returns = cast(ast3.expr, self.py_ast_val(nd.signature.return_type))
             if (
                 nd.signature
                 and nd.signature.return_type
@@ -2356,7 +2386,7 @@ impl PyastGenPass.exit_lambda_expr(self: PyastGenPass, nd: uni.LambdaExpr) -> No
         self._remove_lambda_param_annotations(nd.signature);
     }
     if (nd.signature and nd.signature.gen.py_ast) {
-        arguments = cast(ast3.arguments, nd.signature.gen.py_ast[0]);
+        arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
     } else {
         arguments = self.sync(
             ast3.arguments(
@@ -2366,7 +2396,7 @@ impl PyastGenPass.exit_lambda_expr(self: PyastGenPass, nd: uni.LambdaExpr) -> No
         );
     }
     body_node = cast(uni.Expr, nd.body);
-    body_expr = cast(ast3.expr, body_node.gen.py_ast[0]);
+    body_expr = cast(ast3.expr, self.py_ast_val(body_node));
     nd.gen.py_ast = [
         self.sync(ast3.Lambda(args=arguments, body=body_expr), jac_node=nd)
     ];
@@ -2376,8 +2406,8 @@ impl PyastGenPass._remove_lambda_param_annotations(
     self: PyastGenPass, signature: uni.FuncSignature
 ) -> None {
     for param in signature.params {
-        if (param.gen.py_ast and isinstance(param.gen.py_ast[0], ast3.arg)) {
-            param.gen.py_ast[0].annotation = None;
+        if (param.gen.py_ast and isinstance(self.py_ast_val(param), ast3.arg)) {
+            self.py_ast_val(param).annotation = None;
         }
     }
 }
@@ -2390,7 +2420,7 @@ impl PyastGenPass.exit_unary_expr(self: PyastGenPass, nd: uni.UnaryExpr) -> None
             self.sync(
                 ast3.UnaryOp(
                     op=self.sync(op_cls()),
-                    operand=cast(ast3.expr, nd.operand.gen.py_ast[0])
+                    operand=cast(ast3.expr, self.py_ast_val(nd.operand))
                 )
             )
         ];
@@ -2399,7 +2429,7 @@ impl PyastGenPass.exit_unary_expr(self: PyastGenPass, nd: uni.UnaryExpr) -> None
         nd.gen.py_ast = [
             self.sync(
                 ast3.Call(
-                    func=cast(ast3.expr, nd.operand.gen.py_ast[0]),
+                    func=cast(ast3.expr, self.py_ast_val(nd.operand)),
                     args=[],
                     keywords=[]
                 )
@@ -2412,7 +2442,7 @@ impl PyastGenPass.exit_unary_expr(self: PyastGenPass, nd: uni.UnaryExpr) -> None
         nd.gen.py_ast = [
             self.sync(
                 ast3.Starred(
-                    value=cast(ast3.expr, nd.operand.gen.py_ast[0]),
+                    value=cast(ast3.expr, self.py_ast_val(nd.operand)),
                     ctx=cast(ast3.expr_context, ctx_val)
                 )
             )
@@ -2429,7 +2459,7 @@ impl PyastGenPass.exit_unary_expr(self: PyastGenPass, nd: uni.UnaryExpr) -> None
                         self.sync(
                             ast3.keyword(
                                 arg='id',
-                                value=cast(ast3.expr, nd.operand.gen.py_ast[0])
+                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
                             )
                         )
                     ]
@@ -2445,9 +2475,9 @@ impl PyastGenPass.exit_if_else_expr(self: PyastGenPass, nd: uni.IfElseExpr) -> N
     nd.gen.py_ast = [
         self.sync(
             ast3.IfExp(
-                `test=cast(ast3.expr, nd.condition.gen.py_ast[0]),
-                body=cast(ast3.expr, nd.value.gen.py_ast[0]),
-                orelse=cast(ast3.expr, nd.else_value.gen.py_ast[0])
+                `test=cast(ast3.expr, self.py_ast_val(nd.condition)),
+                body=cast(ast3.expr, self.py_ast_val(nd.value)),
+                orelse=cast(ast3.expr, self.py_ast_val(nd.else_value))
             )
         )
     ];
@@ -2460,7 +2490,7 @@ impl PyastGenPass.exit_multi_string(self: PyastGenPass, nd: uni.MultiString) -> 
             if isinstance(i, uni.String) {
                 pieces.append(i.lit_value);
             } elif isinstance(i, (uni.FString, uni.ExprStmt)) {
-                pieces.append(i.gen.py_ast[0]);
+                pieces.append(self.py_ast_val(i));
             } elif (isinstance(i, uni.Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])) {
                 continue;
             } else {
@@ -2510,7 +2540,7 @@ impl PyastGenPass.exit_f_string(self: PyastGenPass, nd: uni.FString) -> None {
         self.sync(
             ast3.JoinedStr(
                 values=[
-                    cast(ast3.expr, part.gen.py_ast[0])
+                    cast(ast3.expr, self.py_ast_val(part))
                     for part in nd.parts
                     if part.gen.py_ast
                 ]
@@ -2525,9 +2555,9 @@ impl PyastGenPass.exit_formatted_value(
     nd.gen.py_ast = [
         self.sync(
             ast3.FormattedValue(
-                value=cast(ast3.expr, nd.format_part.gen.py_ast[0]),
+                value=cast(ast3.expr, self.py_ast_val(nd.format_part)),
                 conversion=nd.conversion,
-                format_spec=cast(ast3.expr, nd.format_spec.gen.py_ast[0])
+                format_spec=cast(ast3.expr, self.py_ast_val(nd.format_spec))
                     if nd.format_spec
                     else None
             )
@@ -2536,7 +2566,7 @@ impl PyastGenPass.exit_formatted_value(
 }
 
 impl PyastGenPass.exit_list_val(self: PyastGenPass, nd: uni.ListVal) -> None {
-    elts = [cast(ast3.expr, v.gen.py_ast[0]) for v in nd.values];
+    elts = [cast(ast3.expr, self.py_ast_val(v)) for v in nd.values];
     ctx = ast3.Load()
         if isinstance(nd.py_ctx_func(), ast3.Load)
         else cast(ast3.expr_context, nd.py_ctx_func());
@@ -2544,7 +2574,7 @@ impl PyastGenPass.exit_list_val(self: PyastGenPass, nd: uni.ListVal) -> None {
 }
 
 impl PyastGenPass.exit_set_val(self: PyastGenPass, nd: uni.SetVal) -> None {
-    elts = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.values];
+    elts = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.values];
     nd.gen.py_ast = [self.sync(ast3.Set(elts=elts))];
 }
 
@@ -2552,7 +2582,7 @@ impl PyastGenPass.exit_tuple_val(self: PyastGenPass, nd: uni.TupleVal) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.Tuple(
-                elts=[cast(ast3.expr, i.gen.py_ast[0]) for i in nd.values],
+                elts=[cast(ast3.expr, self.py_ast_val(i)) for i in nd.values],
                 ctx=cast(ast3.expr_context, nd.py_ctx_func())
             )
         )
@@ -2564,10 +2594,10 @@ impl PyastGenPass.exit_dict_val(self: PyastGenPass, nd: uni.DictVal) -> None {
         self.sync(
             ast3.Dict(
                 keys=[
-                    cast(ast3.expr, x.key.gen.py_ast[0]) if x.key else None
+                    cast(ast3.expr, self.py_ast_val(x.key)) if x.key else None
                     for x in nd.kv_pairs
                 ],
-                values=[cast(ast3.expr, x.value.gen.py_ast[0]) for x in nd.kv_pairs]
+                values=[cast(ast3.expr, self.py_ast_val(x.value)) for x in nd.kv_pairs]
             )
         )
     ];
@@ -2581,12 +2611,12 @@ impl PyastGenPass.exit_k_w_pair(self: PyastGenPass, nd: uni.KWPair) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.keyword(
-                arg=nd.key.gen.py_ast[0].id
+                arg=self.py_ast_val(nd.key).id
                     if (
-                        nd.key and isinstance(nd.key.gen.py_ast[0], ast3.Name)
+                        nd.key and isinstance(self.py_ast_val(nd.key), ast3.Name)
                     )
                     else None,
-                value=cast(ast3.expr, nd.value.gen.py_ast[0])
+                value=cast(ast3.expr, self.py_ast_val(nd.value))
             )
         )
     ];
@@ -2596,9 +2626,9 @@ impl PyastGenPass.exit_inner_compr(self: PyastGenPass, nd: uni.InnerCompr) -> No
     nd.gen.py_ast = [
         self.sync(
             ast3.comprehension(
-                target=cast(ast3.expr, nd.target.gen.py_ast[0]),
-                iter=cast(ast3.expr, nd.collection.gen.py_ast[0]),
-                ifs=[cast(ast3.expr, x.gen.py_ast[0]) for x in nd.conditional]
+                target=cast(ast3.expr, self.py_ast_val(nd.target)),
+                iter=cast(ast3.expr, self.py_ast_val(nd.collection)),
+                ifs=[cast(ast3.expr, self.py_ast_val(x)) for x in nd.conditional]
                     if nd.conditional
                     else [],
                 is_async=0
@@ -2611,9 +2641,9 @@ impl PyastGenPass.exit_list_compr(self: PyastGenPass, nd: uni.ListCompr) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.ListComp(
-                elt=cast(ast3.expr, nd.out_expr.gen.py_ast[0]),
+                elt=cast(ast3.expr, self.py_ast_val(nd.out_expr)),
                 generators=cast(
-                    `list[ast3.comprehension], [i.gen.py_ast[0] for i in nd.compr]
+                    `list[ast3.comprehension], [self.py_ast_val(i) for i in nd.compr]
                 )
             )
         )
@@ -2624,9 +2654,9 @@ impl PyastGenPass.exit_gen_compr(self: PyastGenPass, nd: uni.GenCompr) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.GeneratorExp(
-                elt=cast(ast3.expr, nd.out_expr.gen.py_ast[0]),
+                elt=cast(ast3.expr, self.py_ast_val(nd.out_expr)),
                 generators=[
-                    cast(ast3.comprehension, i.gen.py_ast[0]) for i in nd.compr
+                    cast(ast3.comprehension, self.py_ast_val(i)) for i in nd.compr
                 ]
             )
         )
@@ -2637,9 +2667,9 @@ impl PyastGenPass.exit_set_compr(self: PyastGenPass, nd: uni.SetCompr) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.SetComp(
-                elt=cast(ast3.expr, nd.out_expr.gen.py_ast[0]),
+                elt=cast(ast3.expr, self.py_ast_val(nd.out_expr)),
                 generators=[
-                    cast(ast3.comprehension, i.gen.py_ast[0]) for i in nd.compr
+                    cast(ast3.comprehension, self.py_ast_val(i)) for i in nd.compr
                 ]
             )
         )
@@ -2650,12 +2680,12 @@ impl PyastGenPass.exit_dict_compr(self: PyastGenPass, nd: uni.DictCompr) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.DictComp(
-                key=cast(ast3.expr, nd.kv_pair.key.gen.py_ast[0])
+                key=cast(ast3.expr, self.py_ast_val(nd.kv_pair.key))
                     if nd.kv_pair.key
                     else cast(ast3.expr, ast3.Constant(value=None)),
-                value=cast(ast3.expr, nd.kv_pair.value.gen.py_ast[0]),
+                value=cast(ast3.expr, self.py_ast_val(nd.kv_pair.value)),
                 generators=[
-                    cast(ast3.comprehension, i.gen.py_ast[0]) for i in nd.compr
+                    cast(ast3.comprehension, self.py_ast_val(i)) for i in nd.compr
                 ]
             )
         )
@@ -2671,7 +2701,7 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
             nd.gen.py_ast = [
                 self.sync(
                     ast3.Attribute(
-                        value=cast(ast3.expr, nd.target.gen.py_ast[0]),
+                        value=cast(ast3.expr, self.py_ast_val(nd.target)),
                         attr=self._py_name(nd.right),
                         ctx=cast(ast3.expr_context, nd.right.py_ctx_func())
                     )
@@ -2690,13 +2720,13 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
                         self.sync(
                             ast3.keyword(
                                 arg='items',
-                                value=cast(ast3.expr, nd.target.gen.py_ast[0])
+                                value=cast(ast3.expr, self.py_ast_val(nd.target))
                             )
                         ),
                         self.sync(
                             ast3.keyword(
                                 arg='func',
-                                value=cast(ast3.expr, nd.right.gen.py_ast[0])
+                                value=cast(ast3.expr, self.py_ast_val(nd.right))
                             )
                         )
                     ]
@@ -2710,7 +2740,7 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
                     func=self.jaclib_obj('assign_all'),
                     args=cast(
                         `list[ast3.expr],
-                        [nd.target.gen.py_ast[0], nd.right.gen.py_ast[0]]
+                        [self.py_ast_val(nd.target), self.py_ast_val(nd.right)]
                     ),
                     keywords=[]
                 )
@@ -2720,40 +2750,40 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
         nd.gen.py_ast = [
             self.sync(
                 ast3.Subscript(
-                    value=cast(ast3.expr, nd.target.gen.py_ast[0]),
-                    slice=cast(ast3.expr, nd.right.gen.py_ast[0]),
+                    value=cast(ast3.expr, self.py_ast_val(nd.target)),
+                    slice=cast(ast3.expr, self.py_ast_val(nd.right)),
                     ctx=cast(ast3.expr_context, nd.right.py_ctx_func())
                         if isinstance(nd.right, uni.AstSymbolNode)
                         else ast3.Load()
                 )
             )
         ];
-        nd.right.gen.py_ast[0].ctx = ast3.Load();
+        self.py_ast_val(nd.right).ctx = ast3.Load();
     }
     if nd.is_null_ok {
         walrus_assign = self.sync(
             ast3.NamedExpr(
                 target=self.sync(ast3.Name(id='__jac_tmp', ctx=ast3.Store())),
-                value=cast(ast3.expr, nd.target.gen.py_ast[0])
+                value=cast(ast3.expr, self.py_ast_val(nd.target))
             )
         );
         tmp_ref = self.sync(ast3.Name(id='__jac_tmp', ctx=ast3.Load()));
         none_const = self.sync(ast3.Constant(value=None));
         body_expr: ast3.expr;
-        if isinstance(nd.gen.py_ast[0], ast3.Attribute) {
+        if isinstance(self.py_ast_val(nd), ast3.Attribute) {
             body_expr = self.sync(
                 ast3.Call(
                     func=self.sync(ast3.Name(id='getattr', ctx=ast3.Load())),
                     args=[
                         tmp_ref,
-                        self.sync(ast3.Constant(value=nd.gen.py_ast[0].attr)),
+                        self.sync(ast3.Constant(value=self.py_ast_val(nd).attr)),
                         none_const
                     ],
                     keywords=[]
                 )
             );
-        } elif isinstance(nd.gen.py_ast[0], ast3.Call) {
-            call_node = nd.gen.py_ast[0];
+        } elif isinstance(self.py_ast_val(nd), ast3.Call) {
+            call_node = self.py_ast_val(nd);
             if (
                 isinstance(call_node.func, ast3.Attribute)
                 or (
@@ -2781,8 +2811,8 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
             }
             body_expr = cast(ast3.expr, call_node);
         } else {
-            if isinstance(nd.gen.py_ast[0], ast3.Subscript) {
-                index_expr = nd.gen.py_ast[0].slice;
+            if isinstance(self.py_ast_val(nd), ast3.Subscript) {
+                index_expr = self.py_ast_val(nd).slice;
                 body_expr = self.sync(
                     ast3.Call(
                         func=self.jaclib_obj('safe_subscript'),
@@ -2791,8 +2821,8 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
                     )
                 );
             } else {
-                nd.gen.py_ast[0].value = tmp_ref;
-                body_expr = cast(ast3.expr, nd.gen.py_ast[0]);
+                self.py_ast_val(nd).value = tmp_ref;
+                body_expr = cast(ast3.expr, self.py_ast_val(nd));
             }
         }
         nd.gen.py_ast = [
@@ -2818,11 +2848,11 @@ impl PyastGenPass.exit_atom_unit(self: PyastGenPass, nd: uni.AtomUnit) -> None {
         isinstance(nd.value, uni.Ability)
         and nd.value.gen.py_ast
         and isinstance(
-            nd.value.gen.py_ast[0], (ast3.FunctionDef, ast3.AsyncFunctionDef)
+            self.py_ast_val(nd.value), (ast3.FunctionDef, ast3.AsyncFunctionDef)
         )
     ) {
         func_ast = cast(
-            (ast3.FunctionDef | ast3.AsyncFunctionDef), nd.value.gen.py_ast[0]
+            (ast3.FunctionDef | ast3.AsyncFunctionDef), self.py_ast_val(nd.value)
         );
         nd.gen.py_ast = [
             self._function_expr_from_def(
@@ -2847,15 +2877,19 @@ impl PyastGenPass.gen_call_args(
             if (isinstance(x, uni.UnaryExpr) and (x.op.name == Tok.STAR_POW)) {
                 keywords.append(
                     self.sync(
-                        ast3.keyword(value=cast(ast3.expr, x.operand.gen.py_ast[0])), x
+                        ast3.keyword(
+                            value=cast(ast3.expr, self.py_ast_val(x.operand))
+                        ),
+                        x
                     )
                 );
             } elif isinstance(x, uni.Expr) {
-                args.append(cast(ast3.expr, x.gen.py_ast[0]));
+                args.append(cast(ast3.expr, self.py_ast_val(x)));
             } elif (
-                isinstance(x, uni.KWPair) and isinstance(x.gen.py_ast[0], ast3.keyword)
+                isinstance(x, uni.KWPair)
+                and isinstance(self.py_ast_val(x), ast3.keyword)
             ) {
-                keywords.append(x.gen.py_ast[0]);
+                keywords.append(self.py_ast_val(x));
             } else {
                 self.ice('Invalid Parameter');
             }
@@ -2877,7 +2911,7 @@ impl PyastGenPass.exit_func_call(self: PyastGenPass, nd: uni.FuncCall) -> None {
         # but wiring it in validates the dispatch mechanism.
         # Integration point: check if nd.target is an AtomTrailer on a
         # primitive type, then call PyListEmitter/PyStrEmitter/etc.
-        func = nd.target.gen.py_ast[0];
+        func = self.py_ast_val(nd.target);
         (args, keywords) = self.gen_call_args(nd);
         nd.gen.py_ast = [
             self.sync(
@@ -2901,14 +2935,18 @@ impl PyastGenPass.exit_index_slice(self: PyastGenPass, nd: uni.IndexSlice) -> No
                             self.sync(
                                 ast3.Slice(
                                     lower=cast(
-                                        ast3.expr, slice.start.gen.py_ast[0]
+                                        ast3.expr, self.py_ast_val(slice.start)
                                     )
                                         if slice.start
                                         else None,
-                                    upper=cast(ast3.expr, slice.stop.gen.py_ast[0])
+                                    upper=cast(
+                                        ast3.expr, self.py_ast_val(slice.stop)
+                                    )
                                         if slice.stop
                                         else None,
-                                    step=cast(ast3.expr, slice.step.gen.py_ast[0])
+                                    step=cast(
+                                        ast3.expr, self.py_ast_val(slice.step)
+                                    )
                                         if slice.step
                                         else None
                                 )
@@ -2923,13 +2961,13 @@ impl PyastGenPass.exit_index_slice(self: PyastGenPass, nd: uni.IndexSlice) -> No
             nd.gen.py_ast = [
                 self.sync(
                     ast3.Slice(
-                        lower=cast(ast3.expr, slice.start.gen.py_ast[0])
+                        lower=cast(ast3.expr, self.py_ast_val(slice.start))
                             if slice.start
                             else None,
-                        upper=cast(ast3.expr, slice.stop.gen.py_ast[0])
+                        upper=cast(ast3.expr, self.py_ast_val(slice.stop))
                             if slice.stop
                             else None,
-                        step=cast(ast3.expr, slice.step.gen.py_ast[0])
+                        step=cast(ast3.expr, self.py_ast_val(slice.step))
                             if slice.step
                             else None
                     )
@@ -2975,13 +3013,13 @@ impl PyastGenPass.exit_edge_ref_trailer(
     chomp = [*nd.chain[1:]];
     from_visit = bool(isinstance(nd.parent, uni.VisitStmt));
     if not isinstance(cur, uni.EdgeOpRef) {
-        origin = cur.gen.py_ast[0];
+        origin = self.py_ast_val(cur);
         cur = cast(uni.EdgeOpRef, chomp.pop(0));
     }
     pynode = self.sync(
         ast3.Call(
             func=self.jaclib_obj('OPath'),
-            args=[cast(ast3.expr, (origin or cur.gen.py_ast[0]))],
+            args=[cast(ast3.expr, (origin or self.py_ast_val(cur)))],
             keywords=[]
         )
     );
@@ -2992,7 +3030,9 @@ impl PyastGenPass.exit_edge_ref_trailer(
                 self.sync(
                     ast3.keyword(
                         arg='edge',
-                        value=cast(ast3.expr, self.sync(cur.filter_cond.gen.py_ast[0]))
+                        value=cast(
+                            ast3.expr, self.sync(self.py_ast_val(cur.filter_cond))
+                        )
                     )
                 )
             );
@@ -3002,7 +3042,8 @@ impl PyastGenPass.exit_edge_ref_trailer(
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='nd', value=cast(ast3.expr, self.sync(filt.gen.py_ast[0]))
+                        arg='nd',
+                        value=cast(ast3.expr, self.sync(self.py_ast_val(filt)))
                     )
                 )
             );
@@ -3091,7 +3132,7 @@ impl PyastGenPass.exit_connect_op(self: PyastGenPass, nd: uni.ConnectOp) -> None
                     self.sync(
                         ast3.keyword(
                             arg='conn_type',
-                            value=cast(ast3.expr, nd.conn_type.gen.py_ast[0])
+                            value=cast(ast3.expr, self.py_ast_val(nd.conn_type))
                                 if nd.conn_type
                                 else self.sync(ast3.Constant(value=None))
                         )
@@ -3099,7 +3140,7 @@ impl PyastGenPass.exit_connect_op(self: PyastGenPass, nd: uni.ConnectOp) -> None
                     self.sync(
                         ast3.keyword(
                             arg='conn_assign',
-                            value=cast(ast3.expr, nd.conn_assign.gen.py_ast[0])
+                            value=cast(ast3.expr, self.py_ast_val(nd.conn_assign))
                                 if nd.conn_assign
                                 else self.sync(ast3.Constant(value=None))
                         )
@@ -3120,7 +3161,7 @@ impl PyastGenPass.exit_filter_compr(self: PyastGenPass, nd: uni.FilterCompr) -> 
                     `list[ast3.expr],
                     [
                         self.sync(ast3.Name(id=iter_name, ctx=ast3.Load())),
-                        self.sync(nd.f_type.gen.py_ast[0])
+                        self.sync(self.py_ast_val(nd.f_type))
                     ]
                 ),
                 keywords=[]
@@ -3137,20 +3178,20 @@ impl PyastGenPass.exit_filter_compr(self: PyastGenPass, nd: uni.FilterCompr) -> 
                         value=self.sync(
                             ast3.Name(id=iter_name, ctx=ast3.Load()), jac_node=x
                         ),
-                        attr=x.gen.py_ast[0].left.id,
+                        attr=self.py_ast_val(x).left.id,
                         ctx=ast3.Load()
                     ),
                     jac_node=x
                 ),
-                ops=x.gen.py_ast[0].ops,
-                comparators=x.gen.py_ast[0].comparators
+                ops=self.py_ast_val(x).ops,
+                comparators=self.py_ast_val(x).comparators
             ),
             jac_node=x
         )
         for x in nd.compares
         if (
-            isinstance(x.gen.py_ast[0], ast3.Compare)
-            and isinstance(x.gen.py_ast[0].left, ast3.Name)
+            isinstance(self.py_ast_val(x), ast3.Compare)
+            and isinstance(self.py_ast_val(x).left, ast3.Name)
         )
     );
     if (
@@ -3190,7 +3231,7 @@ impl PyastGenPass.exit_assign_compr(self: PyastGenPass, nd: uni.AssignCompr) -> 
     for i in nd.assigns {
         if i.key {
             keys.append(self.sync(ast3.Constant(i.key.sym_name)));
-            values.append(i.value.gen.py_ast[0]);
+            values.append(self.py_ast_val(i.value));
         }
     }
     key_tup = self.sync(
@@ -3220,8 +3261,8 @@ impl PyastGenPass.exit_match_stmt(self: PyastGenPass, nd: uni.MatchStmt) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.Match(
-                subject=cast(ast3.expr, nd.target.gen.py_ast[0]),
-                cases=[cast(ast3.match_case, x.gen.py_ast[0]) for x in nd.cases]
+                subject=cast(ast3.expr, self.py_ast_val(nd.target)),
+                cases=[cast(ast3.match_case, self.py_ast_val(x)) for x in nd.cases]
             )
         )
     ];
@@ -3231,9 +3272,9 @@ impl PyastGenPass.exit_match_case(self: PyastGenPass, nd: uni.MatchCase) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.match_case(
-                pattern=cast(ast3.pattern, nd.pattern.gen.py_ast[0]),
-                guard=cast(ast3.expr, nd.guard.gen.py_ast[0]) if nd.guard else None,
-                body=[cast(ast3.stmt, x.gen.py_ast[0]) for x in nd.body]
+                pattern=cast(ast3.pattern, self.py_ast_val(nd.pattern)),
+                guard=cast(ast3.expr, self.py_ast_val(nd.guard)) if nd.guard else None,
+                body=cast(`list[ast3.stmt], self.resolve_stmt_block(nd.body))
             )
         )
     ];
@@ -3243,7 +3284,7 @@ impl PyastGenPass.exit_match_or(self: PyastGenPass, nd: uni.MatchOr) -> None {
     nd.gen.py_ast = [
         self.sync(
             ast3.MatchOr(
-                patterns=[cast(ast3.pattern, x.gen.py_ast[0]) for x in nd.patterns]
+                patterns=[cast(ast3.pattern, self.py_ast_val(x)) for x in nd.patterns]
             )
         )
     ];
@@ -3254,7 +3295,7 @@ impl PyastGenPass.exit_match_as(self: PyastGenPass, nd: uni.MatchAs) -> None {
         self.sync(
             ast3.MatchAs(
                 name=nd.name.sym_name,
-                pattern=cast(ast3.pattern, nd.pattern.gen.py_ast[0])
+                pattern=cast(ast3.pattern, self.py_ast_val(nd.pattern))
                     if nd.pattern
                     else None
             )
@@ -3268,7 +3309,7 @@ impl PyastGenPass.exit_match_wild(self: PyastGenPass, nd: uni.MatchWild) -> None
 
 impl PyastGenPass.exit_match_value(self: PyastGenPass, nd: uni.MatchValue) -> None {
     nd.gen.py_ast = [
-        self.sync(ast3.MatchValue(value=cast(ast3.expr, nd.value.gen.py_ast[0])))
+        self.sync(ast3.MatchValue(value=cast(ast3.expr, self.py_ast_val(nd.value))))
     ];
 }
 
@@ -3284,7 +3325,7 @@ impl PyastGenPass.exit_match_sequence(
     nd.gen.py_ast = [
         self.sync(
             ast3.MatchSequence(
-                patterns=[cast(ast3.pattern, x.gen.py_ast[0]) for x in nd.values]
+                patterns=[cast(ast3.pattern, self.py_ast_val(x)) for x in nd.values]
             )
         )
     ];
@@ -3296,11 +3337,11 @@ impl PyastGenPass.exit_match_mapping(self: PyastGenPass, nd: uni.MatchMapping) -
         if (
             isinstance(i, uni.MatchKVPair)
             and isinstance(i.key, uni.MatchValue)
-            and isinstance(i.key.value.gen.py_ast[0], ast3.expr)
-            and isinstance(i.value.gen.py_ast[0], ast3.pattern)
+            and isinstance(self.py_ast_val(i.key.value), ast3.expr)
+            and isinstance(self.py_ast_val(i.value), ast3.pattern)
         ) {
-            mapping.keys.append(i.key.value.gen.py_ast[0]);
-            mapping.patterns.append(i.value.gen.py_ast[0]);
+            mapping.keys.append(self.py_ast_val(i.key.value));
+            mapping.patterns.append(self.py_ast_val(i.value));
         } elif isinstance(i, uni.MatchStar) {
             mapping.rest = i.name.sym_name;
         }
@@ -3320,9 +3361,9 @@ impl PyastGenPass.exit_match_arch(self: PyastGenPass, nd: uni.MatchArch) -> None
     nd.gen.py_ast = [
         self.sync(
             ast3.MatchClass(
-                cls=cast(ast3.expr, nd.name.gen.py_ast[0]),
+                cls=cast(ast3.expr, self.py_ast_val(nd.name)),
                 patterns=[
-                    cast(ast3.pattern, x.gen.py_ast[0])
+                    cast(ast3.pattern, self.py_ast_val(x))
                     for x in (nd.arg_patterns or [])
                 ],
                 kwd_attrs=[
@@ -3331,7 +3372,7 @@ impl PyastGenPass.exit_match_arch(self: PyastGenPass, nd: uni.MatchArch) -> None
                     if isinstance(x.key, uni.NameAtom)
                 ],
                 kwd_patterns=[
-                    cast(ast3.pattern, x.value.gen.py_ast[0])
+                    cast(ast3.pattern, self.py_ast_val(x.value))
                     for x in (nd.kw_patterns or [])
                 ]
             )

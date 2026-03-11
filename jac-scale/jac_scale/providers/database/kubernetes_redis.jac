@@ -4,8 +4,6 @@ import hashlib;
 import logging;
 import from pathlib { Path }
 import from typing { Any }
-import hashlib;
-import base64;
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
@@ -407,36 +405,15 @@ obj KubernetesRedisProvider(DatabaseProvider) {
     Returns deployment and service specs for the caller to apply via the K8s API.
     Follows the same pattern as deploy(): pure spec construction, no API calls.
 
-    When insight_htpasswd is provided (htpasswd-formatted string, e.g. the output
-    of `htpasswd -nB admin mypassword`), an nginx sidecar is injected that enforces
-    HTTP basic auth in front of RedisInsight. This works identically for local
-    NodePort, AWS NLB, and Ingress (ClusterIP) deployments.
+    Authentication is handled at the NGINX Ingress level via the
+    nginx.ingress.kubernetes.io/auth-type: basic annotation, so no sidecar is needed.
     """
-    def deploy_dashboard(
-        cluster_env: str,
-        node_port: int,
-        ingress_enabled: bool = False,
-        username: str = '',
-        password: str = ''
-    ) -> dict[str, Any] {
+    def deploy_dashboard -> dict[str, Any] {
         redis_service_name = f"{self.app_name}-redis-service";
         insight_name = f"{self.app_name}-redis-insight";
-        auth_enabled = bool(username and password);
 
-        # Generate htpasswd entry using SHA1 (no external deps required).
-        # Format: username:{SHA}base64(sha1(password))
-        if auth_enabled {
-            pw_hash = base64.b64encode(
-                hashlib.sha1(password.encode('utf-8')).digest()
-            ).decode(
-                'utf-8'
-            );
-            insight_htpasswd = f"{username}:{{SHA}}{pw_hash}";
-        }
-
-        # When auth is on, nginx sidecar listens on 8080 and proxies to localhost:5540.
-        # The service targets this port so auth is enforced for all access paths.
-        service_port = 8080 if auth_enabled else 5540;
+        # RedisInsight always listens on 5540. Auth is enforced by the ingress controller.
+        service_port = 5540;
 
         # RedisInsight v3 supports RI_REDIS_HOST / RI_REDIS_PORT env vars to
         # pre-seed a database connection on first start (no manual setup needed).
@@ -448,7 +425,11 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'env': [
                     {'name': 'RI_REDIS_HOST', 'value': redis_service_name},
                     {'name': 'RI_REDIS_PORT', 'value': '6379'},
-                    {'name': 'RI_REDIS_ALIAS', 'value': 'Jaseci Redis'}
+                    {'name': 'RI_REDIS_ALIAS', 'value': 'Jaseci Redis'},
+                    # RIPROXYPATH is injected into the HTML as window.__RI_PROXY_PATH__
+                    # so the JS frontend prefixes all API calls with /cache-dashboard.
+                    # Static asset paths are handled separately by the ingress sub_filter.
+                    {'name': 'RIPROXYPATH', 'value': '/cache-dashboard'}
                 ],
                 'resources': {
                     'requests': {'cpu': '100m', 'memory': '128Mi'},
@@ -456,75 +437,6 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 }
             }
         ];
-
-        pod_spec = {'containers': containers};
-
-        if auth_enabled {
-            nginx_config_name = f"{insight_name}-nginx-config";
-            auth_secret_name = f"{insight_name}-auth";
-
-            nginx_conf = """server {
-    listen 8080;
-    location / {
-        auth_basic "RedisInsight";
-        auth_basic_user_file /etc/nginx/.htpasswd;
-        proxy_pass http://localhost:5540;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}""";
-
-            nginx_configmap = {
-                'apiVersion': 'v1',
-                'kind': 'ConfigMap',
-                'metadata': {
-                    'name': nginx_config_name,
-                    'labels': {'app': insight_name, 'managed': 'jac-scale'}
-                },
-                'data': {'nginx.conf': nginx_conf}
-            };
-
-            auth_secret = {
-                'apiVersion': 'v1',
-                'kind': 'Secret',
-                'metadata': {
-                    'name': auth_secret_name,
-                    'labels': {'app': insight_name, 'managed': 'jac-scale'}
-                },
-                'stringData': {'.htpasswd': insight_htpasswd}
-            };
-
-            containers.append(
-                {
-                    'name': 'nginx-auth',
-                    'image': 'nginx:1.27-alpine',
-                    'ports': [{'containerPort': 8080}],
-                    'volumeMounts': [
-                        {
-                            'name': 'nginx-config',
-                            'mountPath': '/etc/nginx/conf.d/default.conf',
-                            'subPath': 'nginx.conf'
-                        },
-                        {
-                            'name': 'htpasswd',
-                            'mountPath': '/etc/nginx/.htpasswd',
-                            'subPath': '.htpasswd'
-                        }
-                    ],
-                    'resources': {
-                        'requests': {'cpu': '50m', 'memory': '32Mi'},
-                        'limits': {'cpu': '100m', 'memory': '64Mi'}
-                    }
-                }
-            );
-
-            pod_spec['volumes'] = [
-                {'name': 'nginx-config', 'configMap': {'name': nginx_config_name}},
-                {'name': 'htpasswd', 'secret': {'secretName': auth_secret_name}}
-            ];
-        }
 
         insight_deployment = {
             'apiVersion': 'apps/v1',
@@ -538,86 +450,36 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'selector': {'matchLabels': {'app': insight_name}},
                 'template': {
                     'metadata': {'labels': {'app': insight_name}},
-                    'spec': pod_spec
+                    'spec': {'containers': containers}
                 }
             }
         };
 
-        if ingress_enabled {
-            insight_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': f"{insight_name}-service",
-                    'labels': {'app': insight_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'type': 'ClusterIP',
-                    'selector': {'app': insight_name},
-                    'ports': [
-                        {
-                            'protocol': 'TCP',
-                            'port': service_port,
-                            'targetPort': service_port
-                        }
-                    ]
-                }
-            };
-        } elif cluster_env == 'aws' {
-            insight_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': f"{insight_name}-service",
-                    'labels': {'app': insight_name, 'managed': 'jac-scale'},
-                    'annotations': {
-                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
-                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
+        insight_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{insight_name}-service",
+                'labels': {'app': insight_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': insight_name},
+                'ports': [
+                    {
+                        'protocol': 'TCP',
+                        'port': service_port,
+                        'targetPort': service_port
                     }
-                },
-                'spec': {
-                    'type': 'LoadBalancer',
-                    'selector': {'app': insight_name},
-                    'ports': [
-                        {'protocol': 'TCP', 'port': 80, 'targetPort': service_port}
-                    ]
-                }
-            };
-        } else {
-            insight_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': f"{insight_name}-service",
-                    'labels': {'app': insight_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'type': 'NodePort',
-                    'selector': {'app': insight_name},
-                    'ports': [
-                        {
-                            'protocol': 'TCP',
-                            'port': service_port,
-                            'targetPort': service_port,
-                            'nodePort': node_port
-                        }
-                    ]
-                }
-            };
-        }
+                ]
+            }
+        };
 
-        result = {
+        return {
             'deployment': insight_deployment,
             'service': insight_service,
             'deployment_name': insight_name,
             'service_name': f"{insight_name}-service"
         };
-
-        if auth_enabled {
-            result['auth_configmap'] = nginx_configmap;
-            result['auth_secret'] = auth_secret;
-        }
-
-        return result;
     }
 }

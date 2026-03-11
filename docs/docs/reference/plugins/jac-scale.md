@@ -1047,7 +1047,8 @@ On the first `jac start app.jac --scale`, jac-scale automatically deploys Redis 
 - **MongoDB** - StatefulSet with PersistentVolumeClaim (graph persistence, `kvstore` backend)
 - **Redis** - Deployment with persistent storage (cache layer, session management)
 - **Application Deployment** - Your Jac app pod(s)
-- **Services** - NodePort service for external access
+- **NGINX Ingress Controller** - Single NodePort entry point; routes traffic to ClusterIP services by path
+- **Services** - ClusterIP services for all components (all traffic goes through the Ingress)
 - **ConfigMaps** - Application configuration
 
 | TOML Key | Default | Description |
@@ -1126,18 +1127,25 @@ mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
 | `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
 | `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
 
-#### Dashboard Credentials and Ports
+#### Dashboard Credentials
 
-When dashboards are enabled, you can configure their access credentials and node ports:
+When dashboards are enabled, they are served through the NGINX Ingress at fixed subpaths. No separate NodePorts are needed.
 
 | `jac.toml` key | Description | Default |
 |----------------|-------------|---------|
-| `redis_insight_node_port` | NodePort for RedisInsight UI | `30032` |
-| `redis_insight_username` | RedisInsight login username | `admin` |
-| `redis_insight_password` | RedisInsight login password | `admin` |
-| `mongo_express_node_port` | NodePort for Mongo Express UI | `30033` |
+| `redis_insight_username` | RedisInsight basic-auth username | `admin` |
+| `redis_insight_password` | RedisInsight basic-auth password | `admin` |
 | `mongo_express_username` | Mongo Express login username | `admin` |
 | `mongo_express_password` | Mongo Express login password | `admin` |
+
+> **Note:** When `redis_dashboard = true`, the `/cache-dashboard` route is always protected by HTTP basic authentication using the credentials above. Change the defaults before deploying to a shared or public cluster.
+
+**Access URLs:**
+
+| Dashboard | URL |
+|-----------|-----|
+| Redis Insight | `http://localhost:<ingress_node_port>/cache-dashboard/` |
+| Mongo Express | `http://localhost:<ingress_node_port>/db-dashboard` |
 
 **Enable dashboards with custom credentials** (RedisInsight + Mongo Express):
 
@@ -1145,12 +1153,10 @@ When dashboards are enabled, you can configure their access credentials and node
 # jac.toml
 [plugins.scale.kubernetes]
 redis_dashboard          = true
-redis_insight_node_port  = 30032
 redis_insight_username   = "admin"
 redis_insight_password   = "strongpassword"
 
 mongodb_dashboard        = true
-mongo_express_node_port  = 30033
 mongo_express_username   = "admin"
 mongo_express_password   = "strongpassword"
 ```
@@ -1217,21 +1223,32 @@ namespace = "production"
 
 ### Ports
 
-Controls how the application is exposed inside the cluster and externally via NodePort.
+Controls how the application is exposed inside the cluster and externally.
+
+All traffic flows through a single **NGINX Ingress controller** deployed per app. The Ingress controller listens on one NodePort and routes requests to the correct ClusterIP service based on path. Individual services (app, Grafana, dashboards) are all ClusterIP and not directly reachable from outside the cluster.
 
 **Defaults:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `container_port`| `8000` | Port your app listens on inside the pod |
-| `node_port` | `30001` | External NodePort - access app at `http://localhost:<node_port>` |
+| `ingress_node_port` | `30080` | NodePort for the NGINX Ingress controller (all external traffic enters here) |
+
+**Access URLs (local cluster):**
+
+| Path | Destination |
+|------|-------------|
+| `http://localhost:30080/` | Jaseci application |
+| `http://localhost:30080/grafana` | Grafana dashboard (if monitoring enabled) |
+| `http://localhost:30080/cache-dashboard/` | Redis Insight (if `redis_dashboard = true`) |
+| `http://localhost:30080/db-dashboard` | Mongo Express (if `mongodb_dashboard = true`) |
 
 **To change in `jac.toml`:**
 
 ```toml
 [plugins.scale.kubernetes]
 container_port = 8000
-node_port = 30080
+ingress_node_port = 30080
 ```
 
 ---
@@ -1432,7 +1449,7 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 | Component | Purpose |
 |-----------|---------|
 | **Prometheus** | Collects and stores metrics (ClusterIP - internal only, scraped by Grafana) |
-| **Grafana** | Dashboard UI - NodePort on local clusters, NLB on AWS |
+| **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
 
@@ -1442,8 +1459,6 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 |----------|---------|-------------|
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
-| `grafana_node_port` | `30300` | NodePort for the Grafana dashboard |
-| `prometheus_node_port` | `30090` | NodePort for the Prometheus UI |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
 
 **To enable in `jac.toml`:**
@@ -1452,17 +1467,14 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 [plugins.scale.monitoring]
 enabled = true
 k8s_metrics_enabled = true
-grafana_node_port = 30300
-prometheus_node_port = 30090
 prometheus_admin_password = "StrongPassword123!"
 ```
 
 After deployment, access:
 
-- **Grafana:** `http://localhost:30300` - log in with `admin` / `<prometheus_admin_password>`
-- **Prometheus:** `http://localhost:30090` (for debugging scrape targets)
+- **Grafana:** `http://localhost:<ingress_node_port>/grafana` - log in with `admin` / `<prometheus_admin_password>`
 
-On AWS clusters, Grafana is exposed via a Network Load Balancer (NLB) instead of NodePort.
+On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Balancer (NLB). Grafana is accessible at `<nlb-url>/grafana`.
 
 **Prometheus scrape targets:**
 
