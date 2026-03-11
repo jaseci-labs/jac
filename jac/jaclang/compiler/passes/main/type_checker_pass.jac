@@ -51,6 +51,7 @@ class TypeCheckPass(UniPass) {
     def exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> None;
     def exit_report_stmt(self: TypeCheckPass, nd: uni.ReportStmt) -> None;
     def exit_impl_def(self: TypeCheckPass, nd: uni.ImplDef) -> None;
+    def exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> None;
     def _eval_unpacking_names(self: TypeCheckPass, container: uni.Expr) -> None;
     def _body_always_returns(
         self: TypeCheckPass, body: list[uni.CodeBlockStmt]
