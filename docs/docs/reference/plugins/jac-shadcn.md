@@ -114,7 +114,7 @@ This deletes the `.cl.jac` files from `components/ui/`. npm dependencies in `jac
 Import components from `components/ui/` and use them like any React component:
 
 ```jac
-cl import from "./components/ui/button" { Button }
+cl import from ".components.ui.button" { Button }
 
 cl {
     def:pub MyPage() -> JsxElement {
@@ -128,9 +128,9 @@ cl {
 ### Combining Multiple Components
 
 ```jac
-cl import from "./components/ui/button" { Button }
-cl import from "./components/ui/card" { Card, CardHeader, CardTitle, CardContent }
-cl import from "./components/ui/input" { Input }
+cl import from ".components.ui.button" { Button }
+cl import from ".components.ui.card" { Card, CardHeader, CardTitle, CardContent }
+cl import from ".components.ui.input" { Input }
 
 cl {
     def:pub LoginForm() -> JsxElement {
@@ -155,7 +155,7 @@ cl {
 The `cn()` function (auto-generated in `lib/utils.cl.jac`) merges Tailwind classes intelligently using `clsx` + `tailwind-merge`:
 
 ```jac
-cl import from "../lib/utils" { cn }
+cl import from "..lib.utils" { cn }
 
 cl {
     def:pub MyComponent(variant: str = "default") -> JsxElement {
@@ -314,10 +314,10 @@ jac add --shadcn button card badge separator
 **2. Build the page (`main.jac`):**
 
 ```jac
-cl import from "./components/ui/button" { Button }
-cl import from "./components/ui/card" { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
-cl import from "./components/ui/badge" { Badge }
-cl import from "./components/ui/separator" { Separator }
+cl import from ".components.ui.button" { Button }
+cl import from ".components.ui.card" { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
+cl import from ".components.ui.badge" { Badge }
+cl import from ".components.ui.separator" { Separator }
 
 cl {
     def:pub App() -> JsxElement {
