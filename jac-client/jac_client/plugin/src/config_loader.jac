@@ -34,4 +34,6 @@ class JacClientConfig(PluginConfigBase) {
     ) -> bool;
 
     def get_paths_config(self: JacClientConfig) -> dict[str, str];
+    def check_runtime_version(self: JacClientConfig) -> tuple[bool, str, str];
+    def sync_runtime_version(self: JacClientConfig) -> None;
 }
