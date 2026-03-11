@@ -1,6 +1,6 @@
 """A bit more chill approach."""
 
-obj rson {
+obj Person {
     has age: int,
         name: str;
 

@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.5 (Unreleased)
+## byllm 0.5.6 (Unreleased)
+
+## byllm 0.5.5 (Latest Release)
 
 - Small refactors/formatting fixes.
 
-## byllm 0.5.4 (Latest Release)
+## byllm 0.5.4
 
 - 2 small refactors/changes.
 - **Add: Explicit LLM exceptions**: Introduced `jac-byllm/byllm/exceptions.jac` to define clear exception types for LLM and tooling failures (improves diagnosability and retry logic).

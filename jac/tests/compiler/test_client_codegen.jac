@@ -13,8 +13,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      ),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_codegen_");
 
+"""Write inline Jac code to a temp file and compile it, return the module."""
 def compile_inline(code: str, prog: JacProgram | None = None) -> object {
-    """Write inline Jac code to a temp file and compile it, return the module."""
     with NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
     ) as f {

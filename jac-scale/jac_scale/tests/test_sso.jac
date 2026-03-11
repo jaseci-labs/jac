@@ -128,6 +128,14 @@ obj MockScaleConfig {
         return {"secret": "test_secret", "algorithm": "HS256", "exp_delta_days": 1};
     }
 
+    def get_database_config -> dict {
+        return {
+            "mongodb_uri": None,
+            "redis_url": None,
+            "shelf_db_path": ".jac/data/anchor_store.db"
+        };
+    }
+
     def get_kubernetes_config -> dict {
         return {"namespace": "default"};
     }

@@ -233,7 +233,7 @@ def discover_config_files(project_root: Path, profile: str | None = None) -> lis
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
 
 # Recursively apply environment variable interpolation
-def _interpolate_recursive(obj: Any) -> Any;
+def _interpolate_recursive(`obj: Any) -> Any;
 
 glob _config: JacConfig | None = None;
 

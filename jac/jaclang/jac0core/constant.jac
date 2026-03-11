@@ -61,13 +61,8 @@ class JacSemTokenType(IntEnum) {
         OPERATOR = 21;
     }
 
-    static def as_str_list -> list {
-        return [
-            i.name.lower()
-            for i in JacSemTokenType
-            if i.name
-        ];
-    }
+    """Return the string list of token types."""
+    static def as_str_list -> list;
 }
 
 """LSP Token modifiers for Jac."""
@@ -85,14 +80,8 @@ class JacSemTokenModifier(IntFlag) {
         DEFAULT_LIBRARY = 1 << 9;
     }
 
-    """Return the string representation of the token."""
-    static def as_str_list -> list {
-        return [
-            i.name.lower()
-            for i in JacSemTokenModifier
-            if i.name
-        ];
-    }
+    """Return the string list of token modifiers."""
+    static def as_str_list -> list;
 }
 
 """Token constants for Jac."""
@@ -101,14 +90,13 @@ class Constants(StrEnum) {
         HERE = 'here';
         ROOT = 'root';
         VISITOR = 'visitor';
+        GUEST = '__guest__';
         JAC_CHECK = '_check';
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
     """Return the string representation of the token."""
-    def __str__(self: Constants) -> str {
-        return self.value;
-    }
+    def __str__(self: Constants) -> str;
 }
 
 """Code execution context for client/server/native separation."""

@@ -22,9 +22,9 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
-def ast_to_list(node: ast3.AST) -> list[ast3.AST] {
-    nodes = [node];
-    for (_, value) in ast3.iter_fields(node) {
+def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
+    nodes = [`node];
+    for (_, value) in ast3.iter_fields(`node) {
         if isinstance(value, list) {
             for item in value {
                 if isinstance(item, ast3.AST) {
@@ -255,4 +255,58 @@ test "string literal import works with cl" {
     assert not prog.errors_had , (
         f"Unexpected errors: {[str(e) for e in prog.errors_had]}"
     );
+}
+
+test "match case empty wildcard body compiles" {
+    code = """
+with entry {
+    x = 42;
+    match x {
+        case 1: print("one");
+        case _:;
+    }
+}
+""";
+    prog = JacProgram();
+    prog.compile(file_path="test_match.jac", use_str=code);
+    assert not prog.errors_had , (
+        f"Match with empty wildcard body should compile cleanly, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "py_ast_val raises ICE with source location on empty py_ast" {
+    code = """with entry { x = 1; }""";
+    prog = JacProgram();
+    mod = prog.compile(file_path="test_ice.jac", use_str=code);
+    # Get the PyastGenPass instance from child passes
+    pyast_pass = PyastGenPass(ir_in=mod, prog=prog);
+    # Create a node with empty py_ast by using an existing node and clearing it
+    target_node = mod;
+    original = target_node.gen.py_ast[:];
+    target_node.gen.py_ast = [];
+    try {
+        pyast_pass.py_ast_val(target_node);
+        assert False , "Expected RuntimeError from py_ast_val";
+    } except RuntimeError as e {
+        msg = str(e);
+        assert "Internal Compiler Error" in msg , (
+            f"ICE should mention 'Internal Compiler Error', got: {msg}"
+        );
+        assert "PyastGenPass" in msg , (f"ICE should mention the pass name, got: {msg}");
+        assert "Empty py_ast" in msg , (
+            f"ICE should mention 'Empty py_ast', got: {msg}"
+        );
+        assert "Module" in msg , (f"ICE should mention the node type, got: {msg}");
+        assert "test_ice.jac" in msg , (
+            f"ICE should mention the source file, got: {msg}"
+        );
+        # Verify file:line:col format is present
+        import re;
+        assert re.search(r"test_ice\.jac:\d+:\d+", msg) , (
+            f"ICE should contain file:line:col location, got: {msg}"
+        );
+    } finally {
+        target_node.gen.py_ast = original;
+    }
 }

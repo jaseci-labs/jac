@@ -11,14 +11,14 @@ glob JAC_FILE = os.path.join(
          os.path.dirname(__file__), "littleX_single_nodeps.jac"
      );
 
+"""Create test client for littleX with isolated base path."""
 def make_client -> JacTestClient {
-    """Create test client for littleX with isolated base path."""
     tmp = mkdtemp();
     return JacTestClient.from_file(JAC_FILE, base_path=tmp);
 }
 
+"""Helper to create a user and return the response data."""
 def create_user(client: JacTestClient, username: str, password: str) -> dict[str, Any] {
-    """Helper to create a user and return the response data."""
     response = client.register_user(username, password);
     return response.data;
 }

@@ -8,12 +8,7 @@ import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
-    config = {
-        "app_name": "test-app",
-        "namespace": "default",
-        "container_port": 8000,
-        "node_port": 30001
-    };
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
 
     target = DeploymentTargetFactory.create("kubernetes", config);
 
@@ -102,7 +97,7 @@ test "kubernetes config from dict" {
         "app_name": "my-app",
         "namespace": "test-ns",
         "container_port": 9000,
-        "node_port": 30002,
+        "ingress_node_port": 30082,
         "mongodb_enabled": False,
         "redis_enabled": False
     };
@@ -112,7 +107,7 @@ test "kubernetes config from dict" {
     assert config.app_name == "my-app";
     assert config.namespace == "test-ns";
     assert config.container_port == 9000;
-    assert config.node_port == 30002;
+    assert config.ingress_node_port == 30082;
     assert config.mongodb_enabled is False;
     assert config.redis_enabled is False;
 }

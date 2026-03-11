@@ -264,7 +264,7 @@ impl UnparsePass.exit_import(nd: uni.Import) -> None {
 
 """ModulePath."""
 impl UnparsePass.exit_module_path(nd: uni.ModulePath) -> None {
-    path = ".".join([p.gen.jac for p in nd.path]);
+    path = ".".join([p.gen.jac for p in nd.path] if nd.path else []);
     if nd.alias {
         path = path + " as " + nd.alias.gen.jac;
     }
@@ -406,6 +406,9 @@ impl UnparsePass.exit_ability(nd: uni.Ability) -> None {
     }
     if nd.is_override {
         parts.append("override");
+    }
+    if nd.is_classmethod {
+        parts.append("class");
     }
     if nd.is_static {
         parts.append("static");

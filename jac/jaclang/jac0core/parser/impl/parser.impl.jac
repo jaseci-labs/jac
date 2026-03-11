@@ -382,6 +382,22 @@ impl Parser.is_keyword_token -> bool {
     );
 }
 
+impl Parser.is_builtin_type_token -> bool {
+    return self.check_any(
+        TokenKind.TYP_STRING,
+        TokenKind.TYP_INT,
+        TokenKind.TYP_FLOAT,
+        TokenKind.TYP_LIST,
+        TokenKind.TYP_TUPLE,
+        TokenKind.TYP_SET,
+        TokenKind.TYP_DICT,
+        TokenKind.TYP_BOOL,
+        TokenKind.TYP_BYTES,
+        TokenKind.TYP_ANY,
+        TokenKind.TYP_TYPE
+    );
+}
+
 impl Parser.expect_name -> Token {
     # Expect NAME or KWESC_NAME
     if self.check_name() {
@@ -713,9 +729,7 @@ impl Parser.parse_module -> Module {
     }
     mod_name = self.file_path;
     if mod_name {
-        from
-        pathlib
-        import Path as _Path;
+        import from pathlib { Path as _Path }
         _p = _Path(mod_name);
         # Use stem without .jac extension, e.g. "getme.impl" from "getme.impl.jac"
         mod_name = _p.name[:-4] if _p.name.endswith('.jac') else _p.stem;
@@ -783,10 +797,13 @@ impl Parser.parse_concurrent_expr -> Expr {
 impl Parser.parse_walrus_assign -> Expr {
     expr = self.parse_by_expr();
     if self.check(TokenKind.WALRUS_EQ) {
+        # Validate LHS is a named reference (Name or SpecialVarRef)
+        if not isinstance(expr, Name) and not isinstance(expr, SpecialVarRef) {
+            self.error("Walrus operator ':=' requires a simple name on the left side");
+        }
         walrus_tok = self.advance();
         value = self.parse_by_expr();
         op = self.make_uni_token(walrus_tok);
-        # Walrus assignment is a BinaryExpr, like in the existing parser
         return BinaryExpr(left=expr, op=op, right=value, kid=[expr, op, value]);
     }
     return expr;
@@ -2962,6 +2979,10 @@ impl Parser.parse_lambda_param -> ParamVar | None {
     ) {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
+    } elif self.is_builtin_type_token() {
+        # Builtin type names (str, int, any, etc.) are contextual — allowed as param names
+        name_tok = self.advance();
+        name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
         self.error(
@@ -3413,6 +3434,18 @@ impl Parser._dispatch_decorated{
     while self.check(TokenKind.KW_ASYNC) {
         self.advance();
     }
+    # Skip override/static modifiers
+    if self.check(TokenKind.KW_OVERRIDE) {
+        self.advance();
+    }
+    if self.check(TokenKind.KW_STATIC) {
+        self.advance();
+    }
+    # Skip `class` only when followed by def/can (classmethod), not class Name (archetype)
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        self.advance();
+    }
     # Check for abs prefix - not valid as a prefix modifier
     has_abs_prefix = self.check(TokenKind.KW_ABSTRACT);
     if has_abs_prefix {
@@ -3445,6 +3478,14 @@ impl Parser._dispatch_async{
     # Look ahead to see if it's an ability (def/can) or archetype (class/obj/etc)
     save_pos = self.pos;
     while self.check(TokenKind.KW_ASYNC) {
+        self.advance();
+    }
+    # Skip static/class modifiers for lookahead
+    if self.check(TokenKind.KW_STATIC) {
+        self.advance();
+    }
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         self.advance();
     }
     is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
@@ -3810,6 +3851,11 @@ impl Parser.parse_statement{
     if self.check(TokenKind.DECOR_OP) {
         return self.parse_ability();
     }
+    # Handle `class def` / `class can` (classmethod) in code blocks
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        return self.parse_ability();
+    }
     # Handle nested class/archetype definitions
     if self.check_any(
         TokenKind.KW_OBJECT,
@@ -3819,9 +3865,6 @@ impl Parser.parse_statement{
         TokenKind.KW_CLASS
     ) {
         return self.parse_archetype();
-    }
-    if self.check(TokenKind.KW_ENUM) {
-        return self.parse_enum();
     }
     # Handle impl inside code blocks
     if self.check(TokenKind.KW_IMPL) {
@@ -3886,24 +3929,11 @@ impl Parser.parse_statement{
         return self.parse_assignment_with_target(expr);
     }
     # Wrap bare expression in ExprStmt with Semi
-    semi_tok: Semi | None = None;
-    if self.match_tok(TokenKind.SEMI) {
-        prev = self.previous();
-        semi_tok = Semi(
-            orig_src=self.get_source(),
-            name=Tok.SEMI.value,
-            value=";",
-            line=prev.loc.line,
-            end_line=prev.loc.end_line,
-            col_start=prev.loc.col_start,
-            col_end=prev.loc.col_end,
-            pos_start=prev.loc.pos_start,
-            pos_end=prev.loc.pos_end
-        );
-    }
     expr_kid: list = [expr];
-    if semi_tok is not None {
-        expr_kid.append(semi_tok);
+    if self.match_tok(TokenKind.SEMI) {
+        expr_kid.append(self.make_semi());
+    } else {
+        self.error("Missing ';'");
     }
     return ExprStmt(expr=expr, in_fstring=False, kid=expr_kid);
 }
@@ -4012,7 +4042,9 @@ impl Parser.parse_for_stmt{
             TokenKind.STAR_POW_EQ,
             TokenKind.MATMUL_EQ
         ) {
-            step_assign = self.parse_assignment_with_target(step_target);
+            step_assign = self.parse_assignment_with_target(
+                step_target, require_semi=False
+            );
         } else {
             self.error("Expected augmented assignment in for...to...by step");
             step_assign = Assignment(
@@ -4794,7 +4826,9 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
     return NonLocalStmt(target=targets, kid=kid);
 }
 
-impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
+impl Parser.parse_assignment_with_target(
+    target: Expr, require_semi: bool = True
+) -> Assignment {
     type_tag = None;
     if self.match_tok(TokenKind.COLON) {
         colon_uni = self.make_uni_token(self.previous());
@@ -4862,21 +4896,11 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
         kid.append(value);
     }
     # Add Semi as child of Assignment (matching Lark structure)
-    if self.match_tok(TokenKind.SEMI) {
-        prev = self.previous();
-        kid.append(
-            Semi(
-                orig_src=self.get_source(),
-                name=Tok.SEMI.value,
-                value=";",
-                line=prev.loc.line,
-                end_line=prev.loc.end_line,
-                col_start=prev.loc.col_start,
-                col_end=prev.loc.col_end,
-                pos_start=prev.loc.pos_start,
-                pos_end=prev.loc.pos_end
-            )
-        );
+    if require_semi {
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+    } elif self.match_tok(TokenKind.SEMI) {
+        kid.append(self.make_semi());
     }
     return Assignment(
         target=targets,
@@ -5303,6 +5327,16 @@ impl Parser.parse_archetype_member{
         }
         return ability;
     }
+    # Handle `class def` / `class can` (classmethod) — disambiguate from nested class
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        ability = self.parse_ability();
+        if doc {
+            ability.doc = doc;
+            ability.add_kids_left([doc]);
+        }
+        return ability;
+    }
     if self.check_any(
         TokenKind.KW_OBJECT,
         TokenKind.KW_NODE,
@@ -5502,9 +5536,17 @@ impl Parser.parse_ability -> Ability {
         is_override = True;
         override_tok = self.previous();
     }
+    is_classmethod = False;
+    classmethod_tok = None;
+    if self.check(TokenKind.KW_CLASS)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        self.advance();
+        is_classmethod = True;
+        classmethod_tok = self.previous();
+    }
     is_static = False;
     static_tok = None;
-    if self.match_tok(TokenKind.KW_STATIC) {
+    if not is_classmethod and self.match_tok(TokenKind.KW_STATIC) {
         is_static = True;
         static_tok = self.previous();
     }
@@ -5513,10 +5555,17 @@ impl Parser.parse_ability -> Ability {
     if self.match_tok(TokenKind.KW_ASYNC) {
         is_async = True;
         async_tok = self.previous();
-        # Handle `async static/override def` ordering (async before modifiers)
+        # Handle `async static/override/class def` ordering (async before modifiers)
         (is_override, override_tok, is_static, static_tok) = self._parse_post_async_modifiers(
             is_override, override_tok, is_static, static_tok
         );
+        if not is_classmethod
+        and self.check(TokenKind.KW_CLASS)
+        and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
+            self.advance();
+            is_classmethod = True;
+            classmethod_tok = self.previous();
+        }
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
@@ -5600,6 +5649,9 @@ impl Parser.parse_ability -> Ability {
     if is_override {
         kid.append(self.make_uni_token(override_tok));
     }
+    if is_classmethod {
+        kid.append(self.make_uni_token(classmethod_tok));
+    }
     if is_static {
         kid.append(self.make_uni_token(static_tok));
     }
@@ -5650,6 +5702,7 @@ impl Parser.parse_ability -> Ability {
         is_async=is_async,
         is_override=is_override,
         is_static=is_static,
+        is_classmethod=is_classmethod,
         is_abstract=is_abstract,
         access=access,
         signature=signature,
@@ -5847,22 +5900,26 @@ impl Parser.parse_param_var -> ParamVar | None {
     } elif self.check(TokenKind.KW_SELF) {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif self.is_keyword_token() {
+    } elif self.check_any(
+        TokenKind.KW_PROPS,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_HERE,
+        TokenKind.KW_VISITOR
+    ) {
         name_tok = self.advance();
-        if name_tok.kind in [
-            TokenKind.KW_SELF,
-            TokenKind.KW_PROPS,
-            TokenKind.KW_SUPER,
-            TokenKind.KW_ROOT,
-            TokenKind.KW_HERE,
-            TokenKind.KW_VISITOR
-        ] {
-            name = SpecialVarRef(
-                var=self.make_special_name(name_tok), is_enum_stmt=False
-            );
-        } else {
-            name = self.make_special_name(name_tok);
-        }
+        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
+    } elif self.is_builtin_type_token() {
+        # Builtin type names (str, int, any, etc.) are contextual — allowed as param names
+        name_tok = self.advance();
+        name = self.make_name_or_special(name_tok);
+    } elif self.is_keyword_token() {
+        kw = self.current().value;
+        self.error(
+            f"'{kw}' is a keyword and cannot be used as a parameter"
+            f" name (prefix with backtick to escape: {chr(96)}{kw})"
+        );
+        return None;
     } else {
         return None;
     }
@@ -6774,10 +6831,8 @@ impl Parser.parse_visit_stmt -> VisitStmt {
 impl Parser.parse_report_stmt -> ReportStmt {
     report_uni = self.consume_uni(TokenKind.KW_REPORT);
     expr = self.parse_expression();
-    kid: list = [report_uni, expr];
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid: list = [report_uni, expr, self.make_semi()];
     return ReportStmt(expr=expr, kid=kid);
 }
 
