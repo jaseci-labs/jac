@@ -724,19 +724,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return self._create_callable_type(type_args_expr, expr);
                 }
-                # --- Handle Union / Optional special forms ---
+                # --- Handle Union / Optional / ClassVar special forms ---
                 # Union[A, B, C] creates a UnionType, Optional[T] creates Union[T, None].
+                # ClassVar[T] unwraps to just T.
                 # Similar to how Callable[...] creates a FunctionType above.
-                # We detect these by checking that the base_type is a _SpecialForm
-                # (same shared as Callable) and the target name is "Union" or "Optional".
+                # We detect these by checking that the base_type is a _SpecialForm.
+                # Use class_name check instead of shared instance comparison for cache compatibility.
                 if (
                     isinstance(base_type, types.ClassType)
                     and base_type.shared is not None
                     and base_type.shared.is_builtin_class
-                    and self.prefetch
-                    and self.prefetch.callable_class
-                    and isinstance(self.prefetch.callable_class, types.ClassType)
-                    and base_type.shared == self.prefetch.callable_class.shared
+                    and base_type.shared.class_name == "_SpecialForm"
                 ) {
                     target_name: str | None = None;
                     if isinstance(expr.target, uni.Name) and expr.target.sym {
@@ -782,6 +780,22 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         if len(union_args) > 1 {
                             return types.UnionType(types=union_args);
                         }
+                    }
+                    # --- Handle ClassVar special form ---
+                    # ClassVar[T] is a marker indicating a class variable, not an instance variable.
+                    # The actual type of the variable is T, so we unwrap and return T.
+                    # Similar to Pyright's handling where ClassVar[T] unwraps to T.
+                    # The outer check ensures base_type is a _SpecialForm from typing module.
+                    if target_name == "ClassVar" {
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            inner_type_expr = expr.right.slices[0].start;
+                            return self._convert_to_instance(
+                                self.get_type_of_expression(inner_type_expr)
+                            );
+                        }
+                        # Bare ClassVar without type arg - return Unknown
+                        return types.UnknownType();
                     }
                 }
                 # if <expr> is a class type, the atom trailer will be the type params.

@@ -568,7 +568,10 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     }
     # Check that the collection is iterable
     collection_type = self.evaluator.get_type_of_expression(nd.collection);
-    if not isinstance(collection_type, types.UnknownType) {
+    # Skip check for UnknownType and any-like types (Any, object, TypeVar)
+    # Following Pyright's pattern: these types are assumed to be iterable.
+    if not isinstance(collection_type, types.UnknownType)
+    and not collection_type.is_any_type() {
         # Enum classes are iterable via EnumMeta.__iter__ which is not in the
         # Jac type system's MRO. Skip the __iter__ check for enum classes.
         is_enum = (
