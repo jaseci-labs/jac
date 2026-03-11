@@ -141,7 +141,8 @@ obj ModuleType(TypeBase) {
 obj TypeVarType(TypeBase) {
     has name: str = "",
         is_covariant: bool = False,
-        is_contravariant: bool = False;
+        is_contravariant: bool = False,
+        bound: (TypeBase | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
