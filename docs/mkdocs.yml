@@ -44,6 +44,7 @@ nav:
               - Multimodal: "tutorials/ai/multimodal.md"
       - Full-Stack Development:
           - jac-client Reference: "reference/plugins/jac-client.md"
+          - jac-shadcn Reference: "reference/plugins/jac-shadcn.md"
           - Learn by Doing:
               - Project Setup: "tutorials/fullstack/setup.md"
               - Components: "tutorials/fullstack/components.md"
@@ -80,6 +81,7 @@ nav:
           - jac-scale: "community/release_notes/jac-scale.md"
           - jac-super: "community/release_notes/jac-super.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
+          - jac-shadcn: "community/release_notes/jac-shadcn.md"
       - Internals:
           - Import Patterns: "community/internals/jac_import_patterns.md"
           - UniIR Nodes: "community/internals/uniir_node.md"
