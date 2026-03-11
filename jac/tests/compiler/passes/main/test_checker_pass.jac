@@ -1965,3 +1965,27 @@ test "py_pkg_imports" {
     assert mod.sym_tab.lookup("MyClass") is not None , "MyClass not in sym_tab - star re-export chain broken";
     assert mod.sym_tab.lookup("subpkg") is not None , "subpkg not in sym_tab - subpackage resolution broken";
 }
+
+"""Test ClassVar[T] type annotation unwraps to T correctly."""
+test "classvar_type_annotation" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_classvar.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Test Final[UnionType] does not crash with 'UnionType has no attribute shared'.
+When unwrapping Final[T], if T is a UnionType, we must delegate to assign_type
+instead of accessing .shared directly.
+"""
+test "final_union_type_no_crash" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_union_type.jac")
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should complete without crashing - no errors expected
+    assert len(program.errors_had) == 0;
+}
