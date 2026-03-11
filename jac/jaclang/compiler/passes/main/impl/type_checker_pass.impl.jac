@@ -353,7 +353,9 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     self.evaluator.validate_typevar_variance(nd);
 
     # ImplDef body is not in kid list, traverse it explicitly
+    # Only process stubs linked to an impl file
     if isinstance(nd.body, uni.ImplDef) {
+        # ImplDef body is not in kid list, traverse it explicitly
         self.traverse(nd.body);
     }
     # Check for missing return statements on non-None return type functions
