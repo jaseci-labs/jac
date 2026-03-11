@@ -241,9 +241,9 @@ impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None
             ['kubectl', *args], check=True, text=True, cwd=str(cwd) if cwd else None
         );
     } except subprocess.CalledProcessError as exc {
-        raise exc from RuntimeError(
+        raise RuntimeError(
             f"kubectl command failed: {' '.join(['kubectl', *args])}"
-        );
+        ) from exc;
     }
 }
 
@@ -340,14 +340,15 @@ cannot share the same NodePort value.  Services inside current_namespace
 are excluded because they will be replaced by this deployment.
 Raises ValueError listing every conflicting port and the service that owns it.
 """
-impl check_node_ports_available(
-    node_port: int,
-    prometheus_node_port: int | None,
-    grafana_node_port: int | None,
-    current_namespace: str,
-    redis_insight_node_port: int | None = None,
-    mongo_express_node_port: int | None = None
-) -> None {
+impl check_node_ports_available(node_port: int, current_namespace: str) -> None {
+    """Check that the ingress controller NodePort is not already bound by a
+    service in another namespace.
+
+    NodePorts are cluster-scoped, so two services in different namespaces
+    cannot share the same NodePort value.  Services inside current_namespace
+    are excluded because they will be replaced by this deployment.
+    Raises ValueError if the port is already bound.
+    """;
     v1 = client.CoreV1Api();
     all_services = v1.list_service_for_all_namespaces();
     # Build a map: port_number -> "namespace/service-name"
@@ -364,37 +365,13 @@ impl check_node_ports_available(
             }
         }
     }
-    requested: dict[str, int] = {'node_port': node_port};
-    if prometheus_node_port is not None {
-        requested['prometheus_node_port'] = prometheus_node_port;
-    }
-    if grafana_node_port is not None {
-        requested['grafana_node_port'] = grafana_node_port;
-    }
-    if redis_insight_node_port is not None {
-        requested['redis_insight_node_port'] = redis_insight_node_port;
-    }
-    if mongo_express_node_port is not None {
-        requested['mongo_express_node_port'] = mongo_express_node_port;
-    }
-    conflicts: list[str] = [];
-    for (param_name, port_val) in requested.items() {
-        if port_val in used_ports {
-            conflicts.append(
-                f"  {param_name}={port_val} is already in use by '{used_ports[
-                    port_val
-                ]}'"
-            );
-        }
-    }
-    if conflicts {
-        conflict_lines = '\n'.join(conflicts);
+    if node_port in used_ports {
         raise ValueError(
             f"NodePort conflict detected on local cluster.\n"
-            f"The following requested ports are already bound:\n{conflict_lines}\n"
-            f"Please choose different port values in your KubernetesConfig "
-            f"(node_port, prometheus_node_port, grafana_node_port, "
-            f"redis_insight_node_port, mongo_express_node_port) and try again."
+            f"  ingress_node_port={node_port} is already in use by '{used_ports[
+                node_port
+            ]}'\n"
+            f"Please choose a different ingress_node_port value in your KubernetesConfig and try again."
         );
     }
 }

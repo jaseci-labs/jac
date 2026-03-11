@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.5 (Unreleased)
 
+- **NGINX Ingress Controller**: Replaced individual NodePort services with a single NGINX Ingress controller. All services are now ClusterIP, accessible via path-based routing through `ingress_node_port` (default: `30080`): `/` app, `/grafana`, `/cache-dashboard/`, `/db-dashboard`.
+- **Fix: Ingress routes now update correctly on re-deploy**: Switched from `patch` to `replace` for Ingress resources so toggling monitoring or dashboards off actually removes the old routes instead of leaving them in place.
+- **Security: RedisInsight always requires authentication**: The `/cache-dashboard` route now always enforces HTTP basic-auth when `redis_dashboard = true`. Credentials are hashed with bcrypt (replaces the previous SHA1 scheme). The auth Secret is also cleaned up automatically when `redis_dashboard` is disabled.
+- Fix: Redis Insight dashboard 404 and nginx-auth ConfigMap not updating on re-deploy.
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures in `kubernetes_utils.impl.jac` and converted nested function docstring to comment in `api.cl.jac` to comply with the stricter RD parser.
 - [Internal] Refactor: Extract graph visualizer HTML into a standalone template file.
 - **User storage now supports both MongoDB and SQLite**: User authentication and management automatically uses SQLite when MongoDB is not configured, maintaining full backward compatibility with existing installations.
@@ -11,7 +15,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.4 (Latest Release)
 
 - **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
-- [fix]Fix for internet facing aws load balancer
+- **Fix**: Fix for internet-facing AWS load balancer
 - [Internal] Convert username and password for redis and mongodb to secret when injecting to pod deployment
 - 3 Minor refactors/changes.
 - update jac-scale plugin documentation with missing features
@@ -60,16 +64,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `client_auth_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
 - **Graph Visualization Tests**: Added tests for `/graph` and `/graph/data` endpoints.
 
-## jac-scale 0.1.6
-
-## jac-scale 0.1.9
-
-- **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
-  - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
-  - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
-  - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
-- **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
-
 ## jac-scale 0.1.11
 
 - **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
@@ -81,6 +75,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.9
 
+- **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
+  - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
+  - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
+  - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
+- **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
 - **Remove Authorization header input from Swagger UI**: The `Authorization` header is no longer exposed as a visible text input field in Swagger UI for walker, function, and API key endpoints. Authentication tokens are now read transparently from the standard `Authorization` request header (accessible via the lock icon), consistent with the `update_username` and `update_password` endpoints.
 - 1 Minor refactors/changes.
 
@@ -176,7 +175,7 @@ Added `plugin_versions` configuration in `jac.toml` to pin specific package vers
 jaclang = "0.1.5"      # or "latest"
 jac_scale = "0.1.1"    # or "latest"
 jac_client = "0.1.0"   # or "latest"
-jac_byllm = "none"     # use "none" to skip installation (will insall elvant byllm version)
+jac_byllm = "none"     # use "none" to skip installation (will install relevant byllm version)
 ```
 
 When not specified, defaults to `"latest"` for all packages.
