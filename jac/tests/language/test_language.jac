@@ -455,6 +455,13 @@ test "match multi ex" {
     assert lines[1] == "ten";
 }
 
+test "match class pattern with empty wildcard" {
+    output = run_jac(os.path.join(FIXTURES, "match_class_pattern.jac"));
+    lines = output.split("\n");
+    assert lines[0] == "int";
+    assert lines[1] == "str";
+}
+
 test "entry exit" {
     output = run_jac(os.path.join(FIXTURES, "entry_exit.jac"));
     lines = output.split("\n");
