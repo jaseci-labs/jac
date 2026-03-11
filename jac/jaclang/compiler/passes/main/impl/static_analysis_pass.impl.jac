@@ -12,7 +12,7 @@ impl StaticAnalysisPass.after_pass -> None {
     self._check_unused_symbols(self.ir_in);
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
-    for impl_mod in self.ir_in.impl_mod {
+    for impl_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
         self._check_undefined_names(impl_mod);
         self._check_unreachable_code(impl_mod);
     }
