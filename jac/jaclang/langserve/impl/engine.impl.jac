@@ -68,7 +68,7 @@ impl JacLangServer._do_type_check(file_uri: str) -> None {
 
 """Rebuild a file and its dependencies (typecheck)."""
 impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: Event | None = None
+    file_uri: str, cancel_token: threading.Event | None = None
 ) -> bool {
     if cancel_token and cancel_token.is_set() {
         return False;
