@@ -15,6 +15,11 @@ Gap index:
   #43 - Walker visit/disengage/report have zero type validation
   #44 - Context manager __exit__ not checked (only __enter__)
   #45 - Enum iteration raises false positive error
+  #46 - Impl file standalone scope resolution via discover_base_file
+  #47 - Undeclared self-attribute assignment on obj/node/edge/walker
+  #48 - TypeCheckPass self-check produces 100+ false positives
+  #49 - TYPE_CHECKING forward-reference string annotations
+  #50 - postinit body not validated against by-postinit field declarations
 """
 
 import os;
@@ -22,14 +27,15 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compile_options { CompileOptions }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );
 
+"""Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
-    """Compile a checker fixture and run the type check pass."""
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
     TypeCheckPass(ir_in=mod, prog=program);
@@ -287,4 +293,226 @@ test "gap 45 enum iteration false positive" {
     f"Expected 1 type error but got {len(program.errors_had)}: "
     f"{[str(e) for e in program.errors_had]}. "
     f"Iterating over an enum class should be valid (EnumMeta provides __iter__).";
+}
+
+# =========================================================================
+# Gap #46: Impl file standalone scope resolution
+#
+# When an impl file is compiled directly (e.g., `jac check foo.impl.jac`),
+# the type checker should use discover_base_file() to locate the parent
+# declaration module and check the impl in its full scope context. All
+# impls should only be checked in the context of the full module.
+#
+# Currently, standalone compilation of an impl file leaves all parent-scope
+# types (self, parameter types, imports) as Unknown, producing cascading
+# false positives that mask the real type errors. The bccache module
+# already provides discover_base_file() for this purpose.
+#
+# Impact: `jac check some.impl.jac` produces hundreds of "Type is Unknown"
+#         false positives instead of the 2 real errors in the impl body.
+#         This is the root cause of ~70% of .jacignore entries.
+# =========================================================================
+test "gap 46 impl file standalone scope resolution" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_gap_impl_scope.impl.jac"),
+        options=CompileOptions(resolve_annex_parent=True)
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Expected: exactly 3 real type errors in the impl file:
+    #   1. return 42 in bad_return -> str (int not assignable to str)
+    #   2. self.value + "oops" in bad_op (int + str not valid)
+    #   3. return <Unknown> in bad_op -> int (cascade from error #2)
+    #
+    # Actual (gap): many "Type is Unknown" false positives because the impl
+    # is checked without its parent module's scope. The fix should use
+    # discover_base_file() to find checker_gap_impl_scope.jac and compile
+    # through the parent, so Calculator, self.value, int, str all resolve.
+    assert len(program.errors_had) == 3 , f"Gap #46: Impl file standalone scope resolution. "
+    f"Expected exactly 3 type errors but got {len(program.errors_had)}. "
+    f"Impl files compiled standalone should use discover_base_file() to find "
+    f"the parent module and check in its full scope context. "
+    f"Errors: {[e.pretty_print() for e in program.errors_had[:5]]}";
+}
+
+# =========================================================================
+# Gap #47: Undeclared self-attribute assignment on obj/node/edge/walker
+#
+# In Jac, obj/node/edge/walker archetypes have a fixed schema declared
+# via 'has'. Unlike Python classes, these archetypes do NOT allow monkey-
+# patching — assigning to self.new_attr in init where new_attr is not in
+# the 'has' block should be a type error.
+#
+# Regular Python-style 'class' declarations DO allow dynamic attributes
+# in __init__, following standard Python conventions.
+#
+# Currently, _populate_self_member_symbols() in DeclImplMatchPass
+# propagates ALL self.x = value assignments to the archetype symbol
+# table regardless of archetype kind, effectively allowing monkey
+# patching for all types.
+#
+# Impact: `self.extra = 42` in an obj's init (where 'extra' is not
+#         declared via 'has') silently succeeds. This breaks the Jac
+#         guarantee that archetype schemas are statically known.
+# =========================================================================
+test "gap 47 undeclared attr assignment on archetypes" {
+    program = compile_and_check("checker_gap_undeclared_attr.jac");
+
+    # Expected: at least 4 errors for undeclared attribute assignments:
+    #   1. MyObj.init: self.extra = 42           (undeclared on obj)
+    #   2. MyNode.init: self.extra = "data"      (undeclared on node)
+    #   3. MyEdge.init: self.extra = True        (undeclared on edge)
+    #   4. MyWalker.init: self.extra = []        (undeclared on walker)
+    #
+    # No error for FlexibleClass (Python-style class allows dynamic attrs)
+    #
+    # Actual (gap): 0 errors — _populate_self_member_symbols adds all
+    # self.x = value assignments to the symbol table unconditionally.
+    assert len(program.errors_had) >= 4 , f"Gap #47: Undeclared attr on archetypes. "
+    f"Expected at least 4 type errors but got {len(program.errors_had)}. "
+    f"obj/node/edge/walker should not allow self.attr = value for attrs "
+    f"not declared in the 'has' block. Only 'class' allows dynamic attrs.";
+}
+
+# =========================================================================
+# Gap #48: TypeCheckPass self-check produces 100+ false positives
+#
+# Type-checking the type checker's own source (type_checker_pass.jac)
+# should produce few or no errors. Instead it produces 100+ errors
+# because self.ir_in, self.prog (from BaseTransform.init in a separate
+# impl file) and self.evaluator (set in before_pass) are not resolved,
+# cascading into "Type is Unknown" for every downstream access.
+#
+# This is likely caused by a combination of:
+#   - Generic type params on BaseTransform[T_in, T_out] not substituted
+#   - TYPE_CHECKING-guarded JacProgram import not resolved
+#   - Dynamic attrs from cross-module impl files not in MRO
+#
+# Impact: The type checker cannot type-check itself or most of the
+#         compiler codebase, which is why ~70% of .jacignore entries
+#         are compiler source files.
+# =========================================================================
+test "gap 48 type checker self check" {
+    program = JacProgram();
+    tc_path = os.path.join(
+        JAC_ROOT, "jaclang", "compiler", "passes", "main", "type_checker_pass.jac"
+    );
+    mod = program.compile(tc_path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # The type checker checking itself. The primary issue was that self.prog,
+    # self.ir_in, self.evaluator (set in BaseTransform.__init__ via impl files)
+    # weren't found through MRO when checking imported classes, producing 125+
+    # cascading false positives.
+    #
+    # Fix: ClassType.lookup_member_symbol now falls back to scanning __init__
+    # parameters and body assignments when MRO lookup fails. This resolves
+    # the self.prog/ir_in/evaluator cascade.
+    #
+    # Remaining errors are from:
+    #   - TypeEvaluator attrs set in init body (impl file not compiled in
+    #     import context, so init body is a stub with no self.x assignments)
+    #   - TypeBase.return_type (needs narrowing to FunctionType)
+    #   - Dynamic .type assignments on obj nodes (real code pattern issue)
+    #   - Type is Unknown cascades from the above
+    #
+    # Filter to "has no attribute" and "Type is Unknown" false positives.
+    false_positives = [
+        e
+        for e in program.errors_had
+        if "has no attribute" in str(e) or "Type is Unknown" in str(e)
+    ];
+    assert len(false_positives) <= 40 , f"Gap #48: TypeCheckPass self-check. "
+    f"Expected <= 40 false positives but got {len(false_positives)} "
+    f"({len(program.errors_had)} total errors). "
+    f"Significant improvement from 125+ baseline via __init__ param/body fallback. "
+    f"Sample: {[e.pretty_print()[:100] for e in false_positives[:5]]}";
+}
+
+# =========================================================================
+# Gap #49: TYPE_CHECKING forward-reference string annotations
+#
+# Types imported under `if TYPE_CHECKING` guard should be resolvable
+# when used as string annotations in function signatures. The checker
+# should treat these imports as available for type analysis even though
+# they don't execute at runtime.
+#
+# Currently, string annotations like 'Path' (where Path is imported
+# under TYPE_CHECKING) may resolve to Literal["Path"] or Unknown instead
+# of the actual pathlib.Path class, causing false "has no attribute"
+# errors and preventing type error detection on return values.
+#
+# Impact: `def foo() -> 'Path'` where Path is TYPE_CHECKING-imported
+#         produces Unknown/Literal return type. `p = foo(); p.name`
+#         either errors falsely or misses real type mismatches.
+# =========================================================================
+test "gap 49 type checking forward ref" {
+    program = compile_and_check("checker_gap_fwd_ref.jac");
+
+    # Expected: exactly 2 errors:
+    #   1. bad1: int = get_name(p)   (str not assignable to int)
+    #   2. bad2: int = p.stem        (str not assignable to int)
+    #
+    # No errors for: p.name (Path.name is str), get_name(p) (returns str),
+    # accept_path(p) (returns str) — all valid when 'Path' resolves.
+    #
+    # Actual (gap): 'Path' from TYPE_CHECKING import may resolve to
+    # Literal["Path"] or Unknown, so p has wrong type and either
+    # false positives or missed errors occur.
+    assert len(program.errors_had) == 2 , f"Gap #49: TYPE_CHECKING forward ref. "
+    f"Expected exactly 2 type errors but got {len(program.errors_had)}. "
+    f"String annotations referencing TYPE_CHECKING-guarded imports should "
+    f"resolve to the actual imported type, not Literal or Unknown. "
+    f"Errors: {[e.pretty_print() for e in program.errors_had[:5]]}";
+}
+
+# =========================================================================
+# Gap #50: postinit body not validated against by-postinit declarations
+#
+# When an obj declares fields with 'by postinit', the type checker should
+# verify that the postinit method body actually assigns to ALL such fields
+# with compatible types. The semantic analysis pass already validates that
+# a postinit METHOD exists, but the type checker should go further:
+#
+#   A) All 'by postinit' fields must be assigned in the postinit body
+#   B) Assigned values must be compatible with declared field types
+#
+# Currently, the type checker does not inspect postinit bodies to verify
+# these constraints, allowing missing assignments (runtime AttributeError)
+# and type mismatches to slip through.
+#
+# Impact: An obj with `has z: str by postinit` but no `self.z = ...` in
+#         postinit compiles cleanly, then crashes at runtime when z is
+#         accessed. Similarly, `self.value = "wrong"` for `has value: int`
+#         silently passes type checking.
+# =========================================================================
+test "gap 50 postinit assignment tracking" {
+    program = compile_and_check("checker_gap_postinit_tracking.jac");
+
+    # WrongType type-mismatch assignments (self.value = "wrong", self.label = 42)
+    # are already caught by the existing assignment type checker because
+    # by-postinit fields are still declared with types via 'has'.
+    #
+    # The REAL gap is missing assignments: Incomplete.postinit never assigns
+    # to self.z (declared `has z: str by postinit`), which will crash at
+    # runtime but produces no compile-time error.
+    #
+    # Check that the Incomplete case produces at least one error about the
+    # missing assignment to self.z. Filter errors to those in the Incomplete
+    # postinit body (fixture lines 44-51).
+    incomplete_errors = [
+        e
+        for e in program.errors_had
+        if "checker_gap_postinit_tracking.jac" in (e.loc.mod_path or "")
+        and 44 <= e.loc.first_line <= 51
+    ];
+    assert len(incomplete_errors) >= 1 , f"Gap #50: postinit missing assignment not caught. "
+    f"Incomplete.postinit never assigns to self.z (by postinit field), but "
+    f"no error is produced. The type checker should validate that postinit "
+    f"bodies assign to ALL 'by postinit' fields. "
+    f"Total errors: {len(program.errors_had)}, Incomplete errors: {len(
+        incomplete_errors
+    )}. "
+    f"All errors: {[e.pretty_print()[:100] for e in program.errors_had]}";
 }

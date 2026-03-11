@@ -122,7 +122,14 @@ impl InteropAnalysisPass.enter_ability(
     self: InteropAnalysisPass, nd: uni.Ability
 ) -> None {
     if (nd.sym_name and isinstance(nd.signature, uni.FuncSignature)) {
-        ctx = self._get_context(nd);
+        nd_cc = nd.code_context;
+        if nd_cc == uni.CodeContext.NATIVE {
+            ctx = InteropContext.NATIVE;
+        } elif nd_cc == uni.CodeContext.CLIENT {
+            ctx = InteropContext.CLIENT;
+        } else {
+            ctx = self._get_context(nd);
+        }
         self._func_defs[nd.sym_name] = (ctx, nd);
     }
 }

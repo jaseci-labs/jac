@@ -23,19 +23,19 @@ import from .test_helpers {
     wait_for_port
 }
 
+"""Block until an HTTP endpoint returns a successful response or timeout.
+
+Retries on 503 Service Unavailable (temporary) and connection errors.
+Fails immediately on 500 Internal Server Error (permanent errors like compilation failures).
+
+Returns the response body as bytes.
+"""
 def _wait_for_endpoint(
     url: str,
     timeout: float = 120.0,
     poll_interval: float = 2.0,
     request_timeout: float = 30.0,
 ) -> bytes {
-    """Block until an HTTP endpoint returns a successful response or timeout.
-
-    Retries on 503 Service Unavailable (temporary) and connection errors.
-    Fails immediately on 500 Internal Server Error (permanent errors like compilation failures).
-
-    Returns the response body as bytes.
-    """
     deadline = time.time() + timeout;
     last_err: Exception | None = None;
 
@@ -72,8 +72,8 @@ def _wait_for_endpoint(
     );
 }
 
+"""Create a Jac app, copy all-in-one into it, install packages from jac.toml, then verify endpoints."""
 test "all in one app endpoints" {
-    """Create a Jac app, copy all-in-one into it, install packages from jac.toml, then verify endpoints."""
     print(
         "[DEBUG] Starting test_all_in_one_app_endpoints using jac create --use client + @all-in-one"
     );
@@ -738,8 +738,8 @@ test "all in one app endpoints" {
     }
 }
 
+"""Test that a default jac create --use client app renders correctly when served."""
 test "default client app renders" {
-    """Test that a default jac create --use client app renders correctly when served."""
     print("[DEBUG] Starting test_default_client_app_renders");
 
     app_name = "e2e-default-app";
@@ -949,8 +949,8 @@ test "default client app renders" {
     }
 }
 
+"""Test that [plugins.client.api] base_url is baked into the served JS bundle."""
 test "configurable api base url in bundle" {
-    """Test that [plugins.client.api] base_url is baked into the served JS bundle."""
     print("[DEBUG] Starting test_configurable_api_base_url_in_bundle");
 
     # Resolve the all-in-one example
@@ -1152,11 +1152,11 @@ test "configurable api base url in bundle" {
     }
 }
 
-def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
-    """Shared helper: scaffold a jac client app, copy all-in-one into it, install npm deps.
+"""Shared helper: scaffold a jac client app, copy all-in-one into it, install npm deps.
 
-    Returns the project directory path.
-    """
+Returns the project directory path.
+"""
+def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
     tests_dir = os.path.dirname(__file__);
     jac_client_root = os.path.dirname(tests_dir);
     all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one");
@@ -1220,8 +1220,8 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
     return project_path;
 }
 
+"""Verify that --profile prod loads jac.prod.toml and its settings take effect."""
 test "profile config applies to server" {
-    """Verify that --profile prod loads jac.prod.toml and its settings take effect."""
     print("[DEBUG] Starting test_profile_config_applies_to_server");
 
     prod_title = "All-In-One Prod";
@@ -1316,8 +1316,8 @@ test "profile config applies to server" {
     }
 }
 
+"""Verify that without --profile, prod-only settings are NOT applied."""
 test "no profile omits profile settings" {
-    """Verify that without --profile, prod-only settings are NOT applied."""
     print("[DEBUG] Starting test_no_profile_omits_profile_settings");
 
     prod_title = "All-In-One Prod";
@@ -1402,8 +1402,8 @@ test "no profile omits profile settings" {
     }
 }
 
+"""Test Vite environment and define configuration features."""
 test "vite env and define config" {
-    """Test Vite environment and define configuration features."""
     print("[DEBUG] Starting test_vite_env_and_define_config");
 
     app_name = "e2e-vite-config";
@@ -1529,8 +1529,8 @@ test "vite env and define config" {
     }
 }
 
+"""Test that jac build --client pwa generates manifest.json and sw.js."""
 test "pwa build generates manifest and service worker" {
-    """Test that jac build --client pwa generates manifest.json and sw.js."""
     print("[DEBUG] Starting test_pwa_build_generates_manifest_and_service_worker");
 
     app_name = "e2e-pwa-build";
@@ -1795,15 +1795,15 @@ test "pwa build generates manifest and service worker" {
     }
 }
 
-test "diagnostics syntax error in console" {
-    """Test that syntax errors show formatted diagnostics in console.
+"""Test that syntax errors show formatted diagnostics in console.
 
-    This is a real end-to-end test that:
-    1. Sets up all-in-one project
-    2. Introduces a syntax error in a client .jac file
-    3. Starts the server and captures console output (debug=true by default)
-    4. Verifies diagnostic formatting appears in the output
-    """
+This is a real end-to-end test that:
+1. Sets up all-in-one project
+2. Introduces a syntax error in a client .jac file
+3. Starts the server and captures console output (debug=true by default)
+4. Verifies diagnostic formatting appears in the output
+"""
+test "diagnostics syntax error in console" {
     print("[DEBUG] Starting test_diagnostics_syntax_error_in_console");
 
     app_name = "e2e-diagnostics-test";
@@ -2016,5 +2016,61 @@ test "diagnostics syntax error in console" {
             os.chdir(original_cwd);
             gc.collect();
         }
+    }
+}
+
+# ===========================================================================
+# Config Loader Dependency Management Tests
+# ===========================================================================
+"""Test JacClientConfig auto-injects missing deps and detects version mismatch."""
+test "config_loader_dependency_management" {
+    import from jac_client.plugin.src.config_loader { JacClientConfig }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir);
+        jac_toml = project_dir / "jac.toml";
+        # Scenario 1: Missing dependencies - should auto-inject
+        jac_toml.write_text(
+            """[project]
+name = "test-project"
+version = "1.0.0"
+entry-point = "main.jac"
+
+[serve]
+base_route_app = "app"
+"""
+        );
+        (project_dir / "main.jac").write_text('with entry { print("test"); }');
+        config = JacClientConfig(project_dir=project_dir);
+        loaded = config.load();
+        # Verify auto-injection happened
+        package = loaded.get("package", {});
+        deps = package.get("dependencies", {});
+        dev_deps = package.get("devDependencies", {});
+        assert "jac-client-node" in deps , "jac-client-node should be auto-injected";
+        assert "@jac-client/dev-deps" in dev_deps , "@jac-client/dev-deps should be auto-injected";
+        # Verify saved to jac.toml
+        with open(jac_toml, "rb") as f {
+            saved = tomllib.load(f);
+        }
+        assert "jac-client-node" in saved.get("dependencies", {}).get("npm", {});
+        # Scenario 2: Correct version present - check_runtime_version returns compatible
+        (is_compat, user_ver, required_ver) = config.check_runtime_version();
+        assert is_compat == True , "Exact version match should be compatible";
+        # Scenario 3: Version mismatch - modify and check
+        config.invalidate();
+        jac_toml.write_text(
+            """[project]
+name = "test-project"
+version = "1.0.0"
+
+[dependencies.npm]
+jac-client-node = "1.0.0"
+"""
+        );
+        config2 = JacClientConfig(project_dir=project_dir);
+        (is_compat2, user_ver2, required_ver2) = config2.check_runtime_version();
+        assert is_compat2 == False , "Version mismatch should be incompatible";
+        assert user_ver2 == "1.0.0";
     }
 }

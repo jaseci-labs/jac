@@ -516,16 +516,16 @@ impl __isFunction(value: Any) -> bool {
     return Object.prototype.toString.call(value) == "[object Function]";
 }
 
-impl __objectKeys(obj: Any) -> list {
-    if obj == None {
+impl __objectKeys(`obj: Any) -> list {
+    if `obj == None {
         return [];
     }
-    return Object.keys(obj);
+    return Object.keys(`obj);
 }
 
-impl __jacHasOwn(obj: Any, key: Any) -> bool {
+impl __jacHasOwn(`obj: Any, key: Any) -> bool {
     try {
-        return Object.prototype.hasOwnProperty.call(obj, key);
+        return Object.prototype.hasOwnProperty.call(`obj, key);
     } except Exception {
         return False;
     }

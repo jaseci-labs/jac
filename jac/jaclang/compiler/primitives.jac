@@ -4,8 +4,8 @@ Generic abstract emitter contracts for all Jac primitive type methods,
 operator semantics, and builtin functions, parameterized on value type V
 and context type C.
 
-Each compilation backend (Python, ECMAScript, Native) must subclass every
-emitter class here, binding V and C to its own types:
+Each compilation backend (Python, ECMAScript, Native) must subobjevery
+emitter objhere, binding V and C to its own types:
   - ES:     V = str,      C = ESEmitCtx
   - Native: V = ir.Value,  C = NativeEmitCtx
 
@@ -794,7 +794,7 @@ class BuiltinEmitter[V, C] {
 # Backend implementation notes:
 #   - NA (Native/LLVM): Extend the flat type-ID registry with a parent-ID
 #     table. emit_match walks up the parent chain instead of a single ==.
-#   - CL (Client/ES): Generate JS class hierarchy (class ValueError extends
+#   - CL (Client/ES): Generate JS objhierarchy (objValueError extends
 #     Error {}). Multi-handler dispatch becomes instanceof chains inside a
 #     single catch block.
 #   - SV (Server/Python): Maps directly to Python's built-in exception
@@ -804,7 +804,7 @@ class BuiltinEmitter[V, C] {
 class ExceptionEmitter[V, C] {
     # --- Instance creation ---
     # Create an exception instance of the given type. type_name identifies
-    # the exception class (e.g. "ValueError"). args holds constructor
+    # the exception obj(e.g. "ValueError"). args holds constructor
     # arguments (typically a single message string). Backends must map
     # type_name to their internal representation (Python class, LLVM type
     # ID, JS Error subclass).

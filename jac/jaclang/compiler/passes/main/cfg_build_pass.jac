@@ -1,35 +1,71 @@
 """Control flow graph build pass for the Jac compiler.
 
-This pass constructs a control flow graph (CFG) representation of the program by:
-1. Identifying basic blocks (sequences of statements with a single entry and exit point)
-2. Establishing control flow relationships between these blocks
-3. Tracking loop structures and maintaining proper nesting relationships
-4. Building connections between statements that affect control flow (conditionals, loops, etc.)
+This pass constructs a control flow graph (CFG) by establishing bb_in/bb_out
+edges between UniCFGNode AST nodes using an entry/exit visitor pattern.
 
-The CFG provides a foundation for data flow analysis, optimization, and understanding program execution paths.
-The pass also includes functionality to coalesce basic blocks and generate visual representations of the CFG.
+Each node's exit handler connects it to its CFG children (outgoing edges).
+Incoming edges are set by the parent node's exit handler via sequential linking.
+The entry handlers collect affected_symbols for the Pyright-style branch-skipping
+optimization used during backward CFG walks in type narrowing.
 """
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
-"""Jac Symbol table build pass."""
+
+"""CFG build pass using entry/exit visitor pattern."""
 obj CFGBuildPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def before_pass -> None;
-    def push_loop_stack(loop_header: uni.UniCFGNode) -> None;
-    def pop_loop_stack(nd: uni.UniCFGNode) -> None;
-    def get_parent_bb_stmt(nd: uni.UniCFGNode) -> (uni.UniCFGNode | None);
+    # -- Utilities --
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
-    def get_code_block_sequence(
-        nd: (uni.UniNode | None)
-    ) -> (list[uni.UniCFGNode] | None);
+    def _link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None;
+    def _connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) -> None;
+    def _is_terminal(nd: uni.UniNode) -> bool;
+    def _find_parent_of_types(nd: uni.UniNode, types: tuple) -> (uni.UniNode | None);
+    def _find_next_cfg_stmt_after(
+        parent: uni.UniNode, child: uni.UniNode
+    ) -> (uni.UniCFGNode | None);
 
-    def _is_break_stmt(nd: uni.UniNode) -> bool;
-    def _is_continue_stmt(nd: uni.UniNode) -> bool;
-    def _is_in_loop_else(nd: uni.UniNode, loop_stmt: uni.UniCFGNode) -> bool;
+    def _wire_bool_condition(
+        expr: uni.BoolExpr,
+        true_target: (uni.UniCFGNode | None),
+        false_target: (uni.UniCFGNode | None)
+    ) -> uni.UniCFGNode;
+
+    # -- Symbol collection (enter) --
     def enter_node(nd: uni.UniNode) -> None;
-    def exit_node(nd: uni.UniNode) -> None;
-    def after_pass -> None;
+    def enter_if_stmt(nd: uni.IfStmt) -> None;
+    def enter_else_if(nd: uni.ElseIf) -> None;
+    def enter_assert_stmt(nd: uni.AssertStmt) -> None;
+    def enter_match_stmt(nd: uni.MatchStmt) -> None;
+    # -- Edge building (exit) --
+    # Branch
+    def exit_if_stmt(nd: uni.IfStmt) -> None;
+    def exit_else_if(nd: uni.ElseIf) -> None;
+    def exit_else_stmt(nd: uni.ElseStmt) -> None;
+    # Loop
+    def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_in_for_stmt(nd: uni.InForStmt) -> None;
+    def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
+    # Control flow
+    def exit_ctrl_stmt(nd: uni.CtrlStmt) -> None;
+    # Exception
+    def exit_try_stmt(nd: uni.TryStmt) -> None;
+    def exit_except(nd: uni.Except) -> None;
+    def exit_finally_stmt(nd: uni.FinallyStmt) -> None;
+    # Multi-branch
+    def exit_match_stmt(nd: uni.MatchStmt) -> None;
+    def exit_match_case(nd: uni.MatchCase) -> None;
+    def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
+    def exit_switch_case(nd: uni.SwitchCase) -> None;
+    # Other
+    def exit_with_stmt(nd: uni.WithStmt) -> None;
+    def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    # Scope boundaries
+    def exit_ability(nd: uni.Ability) -> None;
+    def exit_archetype(nd: uni.Archetype) -> None;
+    def exit_impl_def(nd: uni.ImplDef) -> None;
+    def exit_module_code(nd: uni.ModuleCode) -> None;
 }
 
 """Fetch basic blocks."""
@@ -39,6 +75,9 @@ obj CoalesceBBPass(UniPass) {
     def get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode];
     def enter_node(nd: uni.UniNode) -> None;
     def printgraph_cfg -> str;
+    def _node_label(nd: uni.UniNode) -> str;
+    def _has_bool_sc(condition: uni.Expr) -> bool;
 }
 
+def _is_structural_child(nd: uni.UniNode) -> bool;
 def cfg_dot_from_file(file_name: str) -> str;

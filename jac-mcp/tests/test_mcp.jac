@@ -22,6 +22,33 @@ test "server creation with custom config" {
     assert server.host == "0.0.0.0";
 }
 
+test "streamable-http transport initializes session manager and app" {
+    import from mcp.server { Server }
+    import from mcp.server.streamable_http_manager { StreamableHTTPSessionManager }
+    import from starlette.applications { Starlette }
+    import from starlette.routing { Mount }
+    import contextlib;
+
+    server = Server("test-server");
+    session_manager = StreamableHTTPSessionManager(
+        app=server, json_response=True, stateless=False
+    );
+    assert session_manager is not None;
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: object) -> object {
+        async with session_manager.run() {
+            yield ;
+        }
+    }
+
+    starlette_app = Starlette(
+        lifespan=lifespan, routes=[Mount("/mcp", app=session_manager.handle_request)]
+    );
+    assert starlette_app is not None;
+    assert starlette_app.routes[0].path == "/mcp";
+}
+
 # ── Plugin Config Tests ──
 test "get plugin metadata" {
     metadata = JacMcpPluginConfig.get_plugin_metadata();
@@ -350,8 +377,8 @@ test "unknown prompt returns error" {
 }
 
 # ── Bundle Script Tests ──
+"""Verify every DOC_MAPPINGS entry points to a real file in docs/."""
 test "all doc mapping source files exist" {
-    """Verify every DOC_MAPPINGS entry points to a real file in docs/."""
     import from jac_mcp.resources { find_repo_root, DOC_MAPPINGS }
     import from pathlib { Path }
 
@@ -372,8 +399,8 @@ test "all doc mapping source files exist" {
     assert len(missing) == 0 , f"Missing doc files: {missing}";
 }
 
+"""Verify the bundle_docs.jac script exits 0."""
 test "bundle script runs successfully" {
-    """Verify the bundle_docs.jac script exits 0."""
     import subprocess;
     import from pathlib { Path }
     import from jac_mcp.resources { find_repo_root }
@@ -392,8 +419,8 @@ test "bundle script runs successfully" {
     assert result.returncode == 0 , f"bundle_docs.jac failed:\n{result.stdout}\n{result.stderr}";
 }
 
+"""Verify no two DOC_MAPPINGS entries share the same bundled filename."""
 test "doc mappings have unique bundled names" {
-    """Verify no two DOC_MAPPINGS entries share the same bundled filename."""
     import from jac_mcp.resources { DOC_MAPPINGS }
 
     seen: dict[str, str] = {};

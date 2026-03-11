@@ -10,8 +10,8 @@ import from pathlib { Path }
 import from subprocess { PIPE, Popen, run }
 import unittest.mock;
 
+"""Test jac create --use client command."""
 test "create jac app" {
-    """Test jac create --use client command."""
     test_project_name = "test-jac-app";
 
     # Create a temporary directory for testing
@@ -117,8 +117,8 @@ test "create jac app" {
     }
 }
 
+"""Test jac create --use client command with project names containing spaces."""
 test "create jac app invalid name" {
-    """Test jac create --use client command with project names containing spaces."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -144,8 +144,8 @@ test "create jac app invalid name" {
     }
 }
 
+"""Test jac create --use client command when directory already exists."""
 test "create jac app existing directory" {
-    """Test jac create --use client command when directory already exists."""
     test_project_name = "existing-test-app";
 
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -176,8 +176,8 @@ test "create jac app existing directory" {
     }
 }
 
+"""Test jac create --use client command creates Button.cl.jac component."""
 test "create jac app with button component" {
-    """Test jac create --use client command creates Button.cl.jac component."""
     test_project_name = "test-jac-app-component";
 
     # Create a temporary directory for testing
@@ -283,8 +283,8 @@ test "create jac app with button component" {
     }
 }
 
+"""Test jac create --use client --skip command skips package installation."""
 test "create jac app with skip flag" {
-    """Test jac create --use client --skip command skips package installation."""
     test_project_name = "test-jac-app-skip";
 
     # Create a temporary directory for testing
@@ -332,8 +332,8 @@ test "create jac app with skip flag" {
     }
 }
 
+"""Test jac create --use client command attempts to install default packages."""
 test "create jac app installs default packages" {
-    """Test jac create --use client command attempts to install default packages."""
     test_project_name = "test-jac-app-install";
 
     # Create a temporary directory for testing
@@ -388,8 +388,8 @@ test "create jac app installs default packages" {
     }
 }
 
+"""Test that generate_client_config command no longer exists (use jac init instead)."""
 test "generate client config" {
-    """Test that generate_client_config command no longer exists (use jac init instead)."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -408,8 +408,8 @@ test "generate client config" {
     }
 }
 
+"""Test that generate_client_config command no longer exists."""
 test "generate client config existing file" {
-    """Test that generate_client_config command no longer exists."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -428,8 +428,8 @@ test "generate client config existing file" {
     }
 }
 
+"""Create a minimal jac.toml file for testing."""
 def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
-    """Create a minimal jac.toml file for testing."""
     deps_section = f"\n{deps}" if deps else "";
     dev_deps_section = f"\n{dev_deps}" if dev_deps else "";
 
@@ -441,8 +441,8 @@ def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
     return config_path;
 }
 
+"""Test add command without --npm flag errors when no jac.toml exists."""
 test "install without cl flag" {
-    """Test add command without --npm flag errors when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -463,8 +463,8 @@ test "install without cl flag" {
     }
 }
 
+"""Test jac add --npm adds npm dep when project also has pypi deps."""
 test "add npm with mixed deps" {
-    """Test jac add --npm adds npm dep when project also has pypi deps."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -501,8 +501,8 @@ test "add npm with mixed deps" {
     }
 }
 
+"""Test add --npm command installs all packages from jac.toml."""
 test "install all packages" {
-    """Test add --npm command installs all packages from jac.toml."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -531,8 +531,8 @@ test "install all packages" {
     }
 }
 
+"""Test add --npm command adds package to dependencies."""
 test "install package to dependencies" {
-    """Test add --npm command adds package to dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -571,8 +571,8 @@ test "install package to dependencies" {
     }
 }
 
+"""Test add --npm command with specific version."""
 test "install package with version" {
-    """Test add --npm command with specific version."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -613,8 +613,8 @@ test "install package with version" {
     }
 }
 
+"""Test add --npm -d command adds package to dev-dependencies."""
 test "install package to devdependencies" {
-    """Test add --npm -d command adds package to dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -650,8 +650,8 @@ test "install package to devdependencies" {
     }
 }
 
+"""Test add --npm command when jac.toml doesn't exist."""
 test "install without config json" {
-    """Test add --npm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -671,8 +671,8 @@ test "install without config json" {
     }
 }
 
+"""Test remove command without --npm flag should fail when no jac.toml exists."""
 test "uninstall without cl flag" {
-    """Test remove command without --npm flag should fail when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -690,8 +690,8 @@ test "uninstall without cl flag" {
     }
 }
 
+"""Test remove --npm command without package name should fail."""
 test "uninstall without package name" {
-    """Test remove --npm command without package name should fail."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -712,8 +712,8 @@ test "uninstall without package name" {
     }
 }
 
+"""Test remove --npm command removes package from dependencies."""
 test "uninstall package from dependencies" {
-    """Test remove --npm command removes package from dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -750,8 +750,8 @@ test "uninstall package from dependencies" {
     }
 }
 
+"""Test remove --npm -d command removes package from dev-dependencies."""
 test "uninstall package from devdependencies" {
-    """Test remove --npm -d command removes package from dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -787,8 +787,8 @@ test "uninstall package from devdependencies" {
     }
 }
 
+"""Test remove --npm command with non-existent package should fail."""
 test "uninstall nonexistent package" {
-    """Test remove --npm command with non-existent package should fail."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -813,8 +813,8 @@ test "uninstall nonexistent package" {
     }
 }
 
+"""Test remove --npm command when jac.toml doesn't exist."""
 test "uninstall without config toml" {
-    """Test remove --npm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -834,8 +834,8 @@ test "uninstall without config toml" {
     }
 }
 
+"""Test that [plugins.client.configs] in jac.toml generates config files."""
 test "config files from jac toml" {
-    """Test that [plugins.client.configs] in jac.toml generates config files."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
@@ -887,15 +887,16 @@ test "config files from jac toml" {
     }
 }
 
+"""Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
 test "npmrc from jac toml" {
-    """Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
             os.chdir(temp_dir);
 
             # Create jac.toml with npm scoped registry and auth config
-            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            # Include required npm deps to avoid auto-injection modifying the file
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -935,8 +936,8 @@ test "npmrc from jac toml" {
     }
 }
 
+"""Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
 test "create cl and run no root files" {
-    """Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
     test_project_name = "test-cl-no-root-files";
 
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -958,8 +959,8 @@ test "create cl and run no root files" {
             project_path = os.path.join(temp_dir, test_project_name);
 
             # Record files after create (before run), excluding .jac directory
+            # Get files/dirs in project root, excluding .jac directory.
             def get_root_files(path: str) -> set[str] {
-                """Get files/dirs in project root, excluding .jac directory."""
                 items = set();
                 for item in os.listdir(path) {
                     if item != ".jac" {
@@ -998,8 +999,8 @@ test "create cl and run no root files" {
     }
 }
 
+"""Test that ViteBundler.build() prompts to install deps when jac.toml is missing."""
 test "vite build prompts for missing client deps" {
-    """Test that ViteBundler.build() prompts to install deps when jac.toml is missing."""
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -1034,26 +1035,24 @@ test "vite build prompts for missing client deps" {
             data = tomllib.load(f);
         }
         npm_deps = data.get("dependencies", {}).get("npm", {});
-        assert "react" in npm_deps , "react should be in dependencies.npm";
-        assert "react-dom" in npm_deps , "react-dom should be in dependencies.npm";
+        # Now uses meta-packages instead of individual deps
+        assert "jac-client-node" in npm_deps , "jac-client-node should be in dependencies.npm";
         npm_dev = npm_deps.get("dev", {});
-        assert "vite" in npm_dev , "vite should be in dev dependencies";
-        assert "@vitejs/plugin-react" in npm_dev , (
-            "@vitejs/plugin-react should be in dev deps"
-        );
+        assert "@jac-client/dev-deps" in npm_dev , "@jac-client/dev-deps should be in dev dependencies";
         # Verify the generated package.json also picked up the deps
         package_json = project_dir / ".jac" / "client" / "configs" / "package.json";
         assert package_json.exists() , "package.json should have been generated";
         with open(package_json) as f {
             pkg = json.load(f);
         }
-        assert pkg["dependencies"].get("react") , "package.json should have react";
-        assert pkg["devDependencies"].get("vite") , "package.json should have vite";
+        # jac-client-node bundles react, @jac-client/dev-deps bundles vite
+        assert pkg["dependencies"].get("jac-client-node") , "package.json should have jac-client-node";
+        assert pkg["devDependencies"].get("@jac-client/dev-deps") , "package.json should have @jac-client/dev-deps";
     }
 }
 
+"""Test that jac start --dev auto-installs watchdog and performs initial compilation."""
 test "start dev with client does initial compilation" {
-    """Test that jac start --dev auto-installs watchdog and performs initial compilation."""
     test_project_name = "test-start-dev-client";
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -1130,8 +1129,8 @@ test "start dev with client does initial compilation" {
     }
 }
 
+"""Test that create_vite_config(build/dev) generate correct files."""
 test "vite config generation" {
-    """Test that create_vite_config(build/dev) generate correct files."""
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {

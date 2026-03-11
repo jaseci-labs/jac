@@ -19,6 +19,7 @@ dependencies = [
     "fastapi-sso>=0.18.0,<1.0.0",
     "python-multipart>=0.0.21,<1.0.0",
     "prometheus-client>=0.21.0,<1.0.0",
+    "bcrypt>=4.0.0,<5.0.0"
 ]
 
 [project.entry-points."jac"]
@@ -30,7 +31,7 @@ include = ["jac_scale*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
-jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json"]
+jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

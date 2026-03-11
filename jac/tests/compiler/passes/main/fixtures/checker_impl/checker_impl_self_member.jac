@@ -1,12 +1,17 @@
 """Test self-member assignment in impl files creates valid archetype attributes."""
 
 obj TypeEvaluator {
+    has program: str;
+
     def init(program: str) -> None {
         self.program = program;
     }
 }
 
 obj TypeEvaluator2 {
+    has program: str,
+        type_evaluator: TypeEvaluator;
+
     def init(program: str) -> None;
 }
 

@@ -11,10 +11,10 @@ impl interpolate_env_vars(value: str) -> str {
     }
     # Pattern to match ${VAR}, ${VAR:-default}, ${VAR:?error}
     pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
-    def replace_env_var(match: re.Match) -> str {
-        var_name = match.group(1);
-        operator = match.group(2);
-        operand = match.group(3) or "";
+    def replace_env_var(`match: re.Match) -> str {
+        var_name = `match.group(1);
+        operator = `match.group(2);
+        operand = `match.group(3) or "";
 
         env_value = os.environ.get(var_name);
 
@@ -162,9 +162,9 @@ impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
 }
 
 """Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
-def _deep_merge(base: dict, override: dict) -> dict {
+def _deep_merge(base: dict, `override: dict) -> dict {
     result = base.copy();
-    for (key, value) in override.items() {
+    for (key, value) in `override.items() {
         if key in result
         and isinstance(result[key], dict)
         and isinstance(value, dict) {
@@ -543,15 +543,12 @@ impl JacConfig.save -> None {
         }
     }
     # Update plugins configuration
-    # Always update plugins section if it exists in doc or we have data to write
-    has_existing_plugins = "plugins" in doc;
-    needs_update = self.plugins or self.plugins_config.disabled is not None;
-    if has_existing_plugins or needs_update {
+    # IMPORTANT: We must preserve raw values (e.g. ${VAR}) from the original file,
+    # so we only update the disabled list, not the entire plugin configs.
+    # Plugin configs are updated via plugin-specific save methods when needed.
+    if self.plugins_config.disabled is not None {
         if "plugins" not in doc {
             doc["plugins"] = {};
-        }
-        for (plugin_name, plugin_config) in self.plugins.items() {
-            doc["plugins"][plugin_name] = plugin_config;
         }
         # Persist disabled plugins list - handle both setting and clearing
         if self.plugins_config.disabled {
@@ -589,8 +586,9 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
     # First pass: write simple key-value pairs
     for (key, value) in data.items() {
         if isinstance(value, dict) {
-            # Collect tables for later
-            table_key = f"{prefix}{key}" if prefix else key;
+            # Collect tables for later - quote the key NOW before building path
+            quoted_key = _quote_key(key);
+            table_key = f"{prefix}{quoted_key}" if prefix else quoted_key;
             tables.append((table_key, value));
         } else {
             lines.append(f"{_quote_key(key)} = {_toml_value(value)}");
@@ -890,19 +888,19 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
     return config;
 }
 
-impl _interpolate_recursive(obj: Any) -> Any {
-    if isinstance(obj, str) {
+impl _interpolate_recursive(`obj: Any) -> Any {
+    if isinstance(`obj, str) {
         try {
-            return interpolate_env_vars(obj);
+            return interpolate_env_vars(`obj);
         } except ValueError {
-            return obj;
+            return `obj;
         }
-    } elif isinstance(obj, dict) {
-        return {k: _interpolate_recursive(v) for (k, v) in obj.items()};
-    } elif isinstance(obj, list) {
-        return [_interpolate_recursive(item) for item in obj];
+    } elif isinstance(`obj, dict) {
+        return {k: _interpolate_recursive(v) for (k, v) in `obj.items()};
+    } elif isinstance(`obj, list) {
+        return [_interpolate_recursive(item) for item in `obj];
     }
-    return obj;
+    return `obj;
 }
 
 # ===============================================================================

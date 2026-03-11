@@ -32,6 +32,7 @@ import from jaclang.runtimelib.transport {
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
+import from jaclang.jac0core.constant { Constants as Con }
 
 with entry {
     if TYPE_CHECKING {

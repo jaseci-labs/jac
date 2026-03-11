@@ -74,7 +74,7 @@ impl JacAPIServerEndpoints.create_walker_parameters(
         }
         parameters.append(
             APIParameter(
-                name='node' if (field_name == '_jac_spawn_node') else field_name,
+                name='nd' if (field_name == '_jac_spawn_node') else field_name,
                 data_type=field_type,
                 required=walker_fields[field_name]['required'],
                 default=walker_fields[field_name]['default'],
@@ -119,7 +119,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
             kwargs['_jac_spawn_node'] = nd;
         }
         result = await self.execution_manager.spawn_walker(
-            self.get_walkers()[walker_name], kwargs, (username or '__guest__')
+            self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             return StreamingResponse(
@@ -242,7 +242,7 @@ impl JacAPIServerEndpoints.create_function_callback(
         }
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
         result = await self.execution_manager.execute_function(
-            self.get_functions()[func_name], kwargs, (username or '__guest__')
+            self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
         # Handle streaming responses (generators/async generators)
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
@@ -499,7 +499,7 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                     result = await self.execution_manager.spawn_walker(
                         self.get_walkers()[walker_name],
                         data,
-                        (username or '__guest__')
+                        (username or Con.GUEST.value)
                     );
                     if isinstance(result, dict) and 'error' in result {
                         # Errors always go only to sender
@@ -644,7 +644,7 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
         }
 
         result = await self.execution_manager.spawn_walker(
-            walkers[walker_name], kwargs, (username or '__guest__')
+            walkers[walker_name], kwargs, (username or Con.GUEST.value)
         );
 
         # Handle streaming responses (generators/async generators)
@@ -676,7 +676,7 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
-            path='/walker/{walker_name}/{node}',
+            path='/walker/{walker_name}/{nd}',
             callback=dynamic_walker_handler,
             parameters=[
                 APIParameter(
@@ -688,7 +688,7 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
                     type=ParameterType.PATH
                 ),
                 APIParameter(
-                    name='node',
+                    name='nd',
                     data_type='string',
                     required=True,
                     default=None,
@@ -706,7 +706,7 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/walker/{walker_name}/{node}',
+            path='/walker/{walker_name}/{nd}',
             callback=dynamic_walker_handler,
             parameters=[
                 APIParameter(
@@ -718,7 +718,7 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
                     type=ParameterType.PATH
                 ),
                 APIParameter(
-                    name='node',
+                    name='nd',
                     data_type='string',
                     required=True,
                     default=None,
@@ -842,7 +842,7 @@ impl JacAPIServerEndpoints.register_dynamic_function_endpoint -> None {
         }
 
         result = await self.execution_manager.execute_function(
-            functions[function_name], kwargs, (username or '__guest__')
+            functions[function_name], kwargs, (username or Con.GUEST.value)
         );
         # Handle streaming responses (generators/async generators)
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {

@@ -42,7 +42,7 @@ glob result8 = instance.value if hasattr(instance, attr_name) else 0;
 # This would be a syntax error in real code, but the auto-lint should not touch it
 
 # Regular function call that looks like hasattr but isn't
-def hasattr_lookalike(obj: object, attr: str) -> bool {
+def hasattr_lookalike(`obj: object, attr: str) -> bool {
     return True;
 }
 glob result9 = hasattr_lookalike(instance, "value");

@@ -118,6 +118,7 @@ obj TypeEvaluator {
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
+    def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
@@ -130,6 +131,8 @@ obj TypeEvaluator {
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
+    def is_typevar_class(ty: TypeBase) -> bool;
     # Comments from pyright:
     # // Determines if the source type can be assigned to the dest type.
     # // If constraint are provided, type variables within the destType are
@@ -242,6 +245,20 @@ obj TypeEvaluator {
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
+
+    # -------------------------------------------------------------------------
+    # TypeVar scope validation (Pyright: validateTypeVarUsage)
+    # -------------------------------------------------------------------------
+    def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
+    def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;
+    def validate_typevar_variance(func: uni.Ability) -> None;
+    def validate_typevar_operation(
+        expr: uni.Expr, operand_type: types.TypeBase, operation: str
+    ) -> None;
+
+    def _get_enclosing_class_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
+    def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
+    def _get_outer_scope_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
     # -------------------------------------------------------------------------
     # Type narrowing support
     #

@@ -15,6 +15,21 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return types.UnknownType();
                 }
+                # Forward-reference resolution: when a string is used in a type
+                # annotation context, resolve the string content as a type name.
+                # This handles: -> 'Path', has x: 'SomeType', p: 'SomeType'
+                # The String may be wrapped in MultiString, so check both levels.
+                if isinstance(expr.lit_value, str) {
+                    ann_parent = expr.parent
+                        if not isinstance(expr.parent, uni.MultiString)
+                        else expr.parent.parent;
+                    if isinstance(ann_parent, (uni.SubTag, uni.FuncSignature)) {
+                        resolved = self._try_resolve_forward_ref(expr);
+                        if resolved is not None {
+                            return resolved;
+                        }
+                    }
+                }
                 # String literal -> Literal["value"]
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
@@ -26,6 +41,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                # Forward-reference resolution for single-string type annotations.
+                # When 'Path' is used as a type annotation, the parser wraps
+                # the String in a MultiString. Check if this is in a type context.
+                if (
+                    isinstance(expr.parent, (uni.SubTag, uni.FuncSignature))
+                    and len(expr.strings) == 1
+                    and isinstance(expr.strings[0], uni.String)
+                    and isinstance(expr.strings[0].lit_value, str)
+                ) {
+                    resolved = self._try_resolve_forward_ref(expr.strings[0]);
+                    if resolved is not None {
+                        return resolved;
+                    }
+                }
                 str_class = self.prefetch.str_class;
                 if isinstance(str_class, types.ClassType) {
                     # Check if all parts are simple strings (no f-strings with interpolation)
@@ -628,6 +657,68 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         )}'
                     );
                     return types.UnknownType();
+                } elif isinstance(base_type, types.TypeVarType) {
+                    attr_name = expr.right.value;
+                    # Bounded TypeVar - use bound type for attribute lookup (Pyright: typeVar6)
+                    if base_type.bound {
+                        bound_type = base_type.bound;
+                        if isinstance(bound_type, types.ClassType) {
+                            if member := self._lookup_object_member(
+                                bound_type, attr_name
+                            ) {
+                                self._set_symbol_to_expr(expr.right, member.symbol);
+                                return self.get_type_of_symbol(member.symbol);
+                            }
+                            # Attribute not found on bound type
+                            self.add_diagnostic(
+                                expr,
+                                "Cannot access attribute \"" + attr_name + "\" for type \"" + str(
+                                    bound_type
+                                ) + "\""
+                            );
+                            return types.UnknownType();
+                        } elif isinstance(bound_type, types.UnionType) {
+                            # Check all union members have the attribute
+                            for member_type in bound_type.types {
+                                if isinstance(member_type, types.ClassType) {
+                                    if not self._lookup_object_member(
+                                        member_type, attr_name
+                                    ) {
+                                        self.add_diagnostic(
+                                            expr,
+                                            "Cannot access attribute \"" + attr_name + "\" for type \"" + str(
+                                                member_type
+                                            ) + "\""
+                                        );
+                                    }
+                                }
+                            }
+                            # Return Unknown for now - could compute common type
+                            return types.UnknownType();
+                        }
+                    }
+                    # Unbounded TypeVar - only universal object attributes are allowed
+                    # Pyright: treats unbounded TypeVars as "object*"
+                    universal_attrs = {"__class__","__doc__","__dict__","__module__","__sizeof__","__str__","__repr__","__hash__","__eq__","__ne__","__init__","__new__"};
+                    if attr_name in universal_attrs {
+                        # Look up on object class
+                        if self.prefetch.object_class {
+                            if member := self._lookup_object_member(
+                                self.prefetch.object_class.clone_as_instance(),
+                                attr_name
+                            ) {
+                                self._set_symbol_to_expr(expr.right, member.symbol);
+                                return self.get_type_of_symbol(member.symbol);
+                            }
+                        }
+                        return types.UnknownType();
+                    }
+                    # Error: attribute not available on unbounded TypeVar
+                    self.add_diagnostic(
+                        expr,
+                        "Cannot access attribute \"" + attr_name + "\" for type \"" + base_type.name + "\""
+                    );
+                    return types.UnknownType();
                 }
             } elif expr.is_null_ok {
                 # TODO:
@@ -695,19 +786,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return self._create_callable_type(type_args_expr, expr);
                 }
-                # --- Handle Union / Optional special forms ---
+                # --- Handle Union / Optional / ClassVar special forms ---
                 # Union[A, B, C] creates a UnionType, Optional[T] creates Union[T, None].
+                # ClassVar[T] unwraps to just T.
                 # Similar to how Callable[...] creates a FunctionType above.
-                # We detect these by checking that the base_type is a _SpecialForm
-                # (same shared as Callable) and the target name is "Union" or "Optional".
+                # We detect these by checking that the base_type is a _SpecialForm.
+                # Use class_name check instead of shared instance comparison for cache compatibility.
                 if (
                     isinstance(base_type, types.ClassType)
                     and base_type.shared is not None
                     and base_type.shared.is_builtin_class
-                    and self.prefetch
-                    and self.prefetch.callable_class
-                    and isinstance(self.prefetch.callable_class, types.ClassType)
-                    and base_type.shared == self.prefetch.callable_class.shared
+                    and base_type.shared.class_name == "_SpecialForm"
                 ) {
                     target_name: str | None = None;
                     if isinstance(expr.target, uni.Name) and expr.target.sym {
@@ -754,6 +843,22 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             return types.UnionType(types=union_args);
                         }
                     }
+                    # --- Handle ClassVar special form ---
+                    # ClassVar[T] is a marker indicating a class variable, not an instance variable.
+                    # The actual type of the variable is T, so we unwrap and return T.
+                    # Similar to Pyright's handling where ClassVar[T] unwraps to T.
+                    # The outer check ensures base_type is a _SpecialForm from typing module.
+                    if target_name == "ClassVar" {
+                        if isinstance(expr.right, uni.IndexSlice)
+                        and expr.right.slices {
+                            inner_type_expr = expr.right.slices[0].start;
+                            return self._convert_to_instance(
+                                self.get_type_of_expression(inner_type_expr)
+                            );
+                        }
+                        # Bare ClassVar without type arg - return Unknown
+                        return types.UnknownType();
+                    }
                 }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
@@ -787,6 +892,31 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     # TODO: Validate the slice type arguments.
                     return self.get_type_of_expression(expr.target);
                 }
+                # TypeVar subscript handling (Pyright: typeVar5/6)
+                if isinstance(base_type, types.TypeVarType) {
+                    if base_type.bound {
+                        # Bounded TypeVar - use bound type for __getitem__ lookup
+                        bound_type = base_type.bound;
+                        if isinstance(bound_type, types.ClassType) {
+                            result = self.get_type_of_magic_method_call(
+                                bound_type, "__getitem__", [expr.right], expr
+                            );
+                            if result {
+                                return result;
+                            }
+                            # Bound type is not subscriptable
+                            self.add_diagnostic(
+                                expr, f'Type "{bound_type}" is not subscriptable'
+                            );
+                            return types.UnknownType();
+                        }
+                    }
+                    # Unbounded TypeVar - not subscriptable
+                    self.add_diagnostic(
+                        expr, f'Type "{base_type.name}" is not subscriptable'
+                    );
+                    return types.UnknownType();
+                }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
                 # Extract the actual index expression from IndexSlice.
                 # IndexSlice wraps the subscript value in slices[0].start,
@@ -811,6 +941,33 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.FuncCall():
             return self.validate_call_args(expr);
+
+        case uni.AwaitExpr():
+            # Evaluate the awaited expression
+            target_type = self.get_type_of_expression(expr.target);
+            # TypeVar await handling (Pyright: typeVar5/6)
+            if isinstance(target_type, types.TypeVarType) {
+                if target_type.bound
+                and isinstance(target_type.bound, types.ClassType) {
+                    # Bounded TypeVar - check if bound type has __await__
+                    result = self.get_type_of_magic_method_call(
+                        target_type.bound, "__await__", [], None
+                    );
+                    if result {
+                        return result;
+                    }
+                    # Bound type is not awaitable
+                    self.add_diagnostic(
+                        expr, f'Type "{target_type.bound}" is not awaitable'
+                    );
+                    return types.UnknownType();
+                }
+                # Unbounded TypeVar - not awaitable
+                self.add_diagnostic(expr, f'Type "{target_type.name}" is not awaitable');
+                return types.UnknownType();
+            }
+            # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
+            return target_type;
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
@@ -875,7 +1032,34 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 }
                 if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
                     # `-x`, `~x` -> type of operand
-                    return self.get_type_of_expression(expr.operand);
+                    operand_type = self.get_type_of_expression(expr.operand);
+                    op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                    # TypeVar unary operation handling (Pyright: typeVar5/6)
+                    if isinstance(operand_type, types.TypeVarType) {
+                        if operand_type.bound
+                        and isinstance(operand_type.bound, types.ClassType) {
+                            # Bounded TypeVar - use bound type for magic method lookup
+                            result = self.get_type_of_magic_method_call(
+                                operand_type.bound, op_name, [], None
+                            );
+                            if result {
+                                return result;
+                            }
+                            # Bound type doesn't support this operator
+                            self.add_diagnostic(
+                                expr,
+                                f'Operator "{op_name}" not supported for type "{operand_type.bound}"'
+                            );
+                            return types.UnknownType();
+                        }
+                        # Unbounded TypeVar
+                        self.add_diagnostic(
+                            expr,
+                            f'Operator "{op_name}" not supported for type "{operand_type.name}"'
+                        );
+                        return types.UnknownType();
+                    }
+                    return operand_type;
                 }
             }
 
@@ -1106,6 +1290,11 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         # This actually defined in the function getTypeForDeclaration();
         # Pyright has DeclarationType.Variable.
         case uni.Name():
+            # ---- Handle pre-set type (e.g., from with statement alias) ----
+            # If the type was already bound (e.g., by enter_with_stmt), return it.
+            if node_.type is not None {
+                return node_.type;
+            }
             # ---- Handle tuple/list unpacking targets ----
             # When a Name is inside a TupleVal/ListVal that is the target
             # of an Assignment, infer its type from the RHS tuple element.
@@ -1143,6 +1332,64 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                             and idx < len(rhs_type.private.type_args) {
                                 return self._convert_to_instance(
                                     rhs_type.private.type_args[idx]
+                                );
+                            }
+                        }
+                    }
+                }
+                # ---- Handle tuple unpacking in for loops: for (a, b, c) in <expr> ----
+                # Similar to Pyright's evaluateTypesForForStatement + assignTypeToTupleOrListNode
+                elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
+                    collection_type = self.get_type_of_expression(
+                        unpack_assignment.collection
+                    );
+                    # Get the iterator's element type (similar to Pyright's getTypeOfIterator)
+                    iter_type = self.get_type_of_magic_method_call(
+                        collection_type, "__iter__", [], unpack_assignment
+                    );
+                    elem_type: types.TypeBase | None = None;
+                    if isinstance(iter_type, types.ClassType)
+                    and len(iter_type.private.type_args) == 1 {
+                        elem_type = iter_type.private.type_args[0];
+                        # If element type is a TypeVar, specialize it using collection's type_args
+                        if isinstance(elem_type, types.TypeVarType)
+                        and isinstance(collection_type, types.ClassType)
+                        and collection_type.private.type_args {
+                            specialized = iter_type.specialize_generics(
+                                collection_type.private.type_args
+                            );
+                            if len(specialized.private.type_args) == 1 {
+                                elem_type = specialized.private.type_args[0];
+                            }
+                        }
+                    }
+                    # Now extract the tuple element at the correct index
+                    if isinstance(elem_type, types.ClassType) {
+                        idx = -1;
+                        for (vi, v) in enumerate(unpack_container.values) {
+                            if v is node_ {
+                                idx = vi;
+                                break;
+                            }
+                        }
+                        if idx >= 0 {
+                            # NamedTuple: get field types from has vars
+                            if elem_type.is_namedtuple() {
+                                has_vars = elem_type.shared.symbol_table.get_has_vars();
+                                if idx < len(has_vars) {
+                                    field = has_vars[idx];
+                                    if field.type_tag {
+                                        field_type = self.get_type_of_expression(
+                                            field.type_tag.tag
+                                        );
+                                        return self._convert_to_instance(field_type);
+                                    }
+                                }
+                                # Regular tuple with type_args
+                            } elif elem_type.private.type_args
+                            and idx < len(elem_type.private.type_args) {
+                                return self._convert_to_instance(
+                                    elem_type.private.type_args[idx]
                                 );
                             }
                         }
@@ -1402,16 +1649,26 @@ impl TypeEvaluator._assign_class(
     # If the type is Final[T], unwrap it to T.
     # TODO: We can actually check if the Final type is modified and
     # prevent that, but for now just unwrap it.
+    unwrapped_dest: types.TypeBase = dest_type;
+    unwrapped_src: types.TypeBase = src_type;
     if dest_type.shared == self.prefetch.final_class.shared {
         if len(dest_type.private.type_args) > 0 {
-            dest_type = dest_type.private.type_args[0];
+            unwrapped_dest = dest_type.private.type_args[0];
         }
     }
     if src_type.shared == self.prefetch.final_class.shared {
         if len(src_type.private.type_args) > 0 {
-            src_type = src_type.private.type_args[0];
+            unwrapped_src = src_type.private.type_args[0];
         }
     }
+    # After unwrapping Final, if either type is no longer ClassType,
+    # delegate to the general assign_type method.
+    if not isinstance(unwrapped_src, types.ClassType)
+    or not isinstance(unwrapped_dest, types.ClassType) {
+        return self.assign_type(unwrapped_src, unwrapped_dest);
+    }
+    src_type = unwrapped_src;
+    dest_type = unwrapped_dest;
     if src_type.shared == dest_type.shared {
         # Same class type, but check literal values if dest is a literal type
         if dest_type.is_literal_type() {
@@ -1635,6 +1892,17 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
         }
     }
     return False;
+}
+
+"""Check if a type is the TypeVar class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.type_var_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.type_var_class, types.ClassType)
+        and ty.shared == self.prefetch.type_var_class.shared
+    );
 }
 
 """Assign the source type to the destination type."""
@@ -2202,9 +2470,33 @@ impl TypeEvaluator._compute_narrowed_at(
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
 
+        # Check if predecessor is a BoolExpr (short-circuit branch point).
+        if isinstance(pred, uni.BoolExpr) {
+            predicate = self._find_predicate_for(symbol, pred);
+            if predicate is not None {
+                is_true_edge = stmt is pred.sc_true_target;
+                is_false_edge = stmt is pred.sc_false_target;
+                if is_true_edge or is_false_edge {
+                    narrowed = self._apply_narrowing(
+                        predicate, pred_narrowed, is_true_edge, symbol
+                    );
+                    if narrowed is not None {
+                        incoming_types.append(narrowed);
+                    } elif pred_narrowed is not None {
+                        incoming_types.append(pred_narrowed);
+                    } else {
+                        has_unnarrowed_pred = True;
+                    }
+                    continue;
+                }
+            }
+        }
+
         # Check if predecessor is a conditional with a narrowing predicate.
         # Note: ElseIf extends IfStmt, so this handles both.
-        if isinstance(pred, uni.IfStmt) {
+        # Skip when successor is a BoolExpr (IfStmt → chain entry edge,
+        # not a true/false branch — narrowing happens at the BoolExpr level).
+        if isinstance(pred, uni.IfStmt) and not isinstance(stmt, uni.BoolExpr) {
             predicate = self._find_predicate_for(symbol, pred.condition);
             if predicate is not None {
                 edge_kind = self._classify_edge(pred, stmt);
@@ -2289,9 +2581,12 @@ impl TypeEvaluator._compute_narrowed_at(
             # Check if match target is the symbol we're narrowing
             if isinstance(pred.target, uni.Name) and pred.target.value == sym_name {
                 # Find which MatchCase contains the current stmt
-                match_case: uni.MatchCase | None = stmt.find_parent_of_type(
-                    uni.MatchCase
-                );
+                match_case: uni.MatchCase | None;
+                if isinstance(stmt, uni.MatchCase) {
+                    match_case = stmt;
+                } else {
+                    match_case = stmt.find_parent_of_type(uni.MatchCase);
+                }
                 if match_case is not None and match_case.pattern {
                     pattern_type = self._get_type_from_match_pattern(match_case.pattern);
                     if pattern_type is not None {

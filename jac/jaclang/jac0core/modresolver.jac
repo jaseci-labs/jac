@@ -236,19 +236,34 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         level += 1;
     }
     actual_parts = parts[level:];
+
+    # For relative imports (level > 0), check local path FIRST before global paths
+    base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
+    for _ in range(max((level - 1), 0)) {
+        base_dir = os.path.dirname(base_dir);
+    }
+    if level > 0 {
+        # Relative import: check local directory first
+        res = _candidate_from(base_dir, actual_parts);
+        if res {
+            return res;
+        }
+    }
+
+    # Search global paths
     for sp in get_jac_search_paths(base_path) {
         res = _candidate_from(sp, actual_parts);
         if res {
             return res;
         }
     }
-    base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
-    for _ in range(max((level - 1), 0)) {
-        base_dir = os.path.dirname(base_dir);
-    }
-    res = _candidate_from(base_dir, actual_parts);
-    if res {
-        return res;
+
+    # Fallback to base_dir for non-relative imports
+    if level == 0 {
+        res = _candidate_from(base_dir, actual_parts);
+        if res {
+            return res;
+        }
     }
     jacpath = os.getenv('JACPATH');
     if jacpath {

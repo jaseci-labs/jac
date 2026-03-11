@@ -23,8 +23,8 @@ import from tests.fixtures_list { MICRO_JAC_FILES }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent);
 
-def parent_scrub(node: uni.UniNode) -> bool {
-    for i in node.kid {
+def parent_scrub(`node: uni.UniNode) -> bool {
+    for i in `node.kid {
         if not isinstance(i, uni.Module) and i.parent is None {
             return False;
         }

@@ -21,6 +21,7 @@ import from pathlib { Path }
 import from typing { Any }
 
 import from jaclang { JacRuntime as Jac }
+import from jaclang.jac0core.constant { Constants as Con }
 
 """Create an isolated ScaleTestClient with temp dir from a fixture file."""
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
@@ -122,7 +123,7 @@ obj ScaleTestClient {
         self._server.register_static_file_endpoint();
         self._server.register_page_endpoint();
         self._server.register_client_js_endpoint();
-        self._server.user_manager.create_user('__guest__', '__no_password__');
+        self._server.user_manager.create_user(Con.GUEST.value, '__no_password__');
 
         # Execute endpoint registration (compiles JEndPoints into FastAPI routes)
         self._server.server.create_server();

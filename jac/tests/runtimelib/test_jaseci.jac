@@ -25,10 +25,10 @@ def capture_get(captured: io.StringIO) -> str {
     return captured.getvalue();
 }
 
+"""Test different access validation."""
 def trigger_access_validation_test(
     roots: list, nodes: list, give_access_to_full_graph: bool, via_all: bool = False
 ) {
-    """Test different access validation."""
     captured = capture_start();
 
     ##############################################

@@ -1147,14 +1147,14 @@ impl ElfLinker.build_executable -> bytes {
 
 
 # ── Merge a CRT object file's sections/symbols/relocs into self ──
-def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
-    """Parse a CRT object and merge its sections, symbols, and relocations
-    into the linker's existing parsed state.
+"""Parse a CRT object and merge its sections, symbols, and relocations
+into the linker's existing parsed state.
 
-    When a CRT section has the same name as an existing section (e.g. .text),
-    the CRT data is appended to the existing section. Symbol values and
-    relocation offsets are adjusted by the merge offset.
-    """
+When a CRT section has the same name as an existing section (e.g. .text),
+the CRT data is appended to the existing section. Symbol values and
+relocation offsets are adjusted by the merge offset.
+"""
+def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
     crt = ElfLinker(
         obj_data=crt_bytes, sections=[], symbols=[], relocations=[], needed_libs=[]
     );

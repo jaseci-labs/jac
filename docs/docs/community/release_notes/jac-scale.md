@@ -4,15 +4,27 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.5 (Unreleased)
 
+- **Fix: Walker Route OpenAPI Parameter Naming**: Fixed inconsistency where walker routes with node parameters used `{nd}` in URL paths but declared `node` in OpenAPI schema, causing FastAPI validation errors (`"Field required"` for parameter `node`). The OpenAPI schema now correctly uses `nd` to match the actual path variable and function parameter. This fixes requests to `/walker/{walker_name}/{node_id}` endpoints. Note: `node` is a reserved Jac keyword, so `nd` is used as the parameter name throughout.
+- **Fix: K8s deployment time regression**: NGINX Ingress controller now starts in parallel with databases/monitoring, restoring test runtimes.
+- **NGINX Ingress Controller**: Replaced individual NodePort services with a single NGINX Ingress controller. All services are now ClusterIP, accessible via path-based routing through `ingress_node_port` (default: `30080`): `/` app, `/grafana`, `/cache-dashboard/`, `/db-dashboard`.
+- **Fix: Ingress routes now update correctly on re-deploy**: Switched from `patch` to `replace` for Ingress resources so toggling monitoring or dashboards off actually removes the old routes instead of leaving them in place.
+- **Security: RedisInsight always requires authentication**: The `/cache-dashboard` route now always enforces HTTP basic-auth when `redis_dashboard = true`. Credentials are hashed with bcrypt (replaces the previous SHA1 scheme). The auth Secret is also cleaned up automatically when `redis_dashboard` is disabled.
+- Fix: Redis Insight dashboard 404 and nginx-auth ConfigMap not updating on re-deploy.
+- **Fix: Parser Strictness Compliance**: Moved docstrings before signatures in `kubernetes_utils.impl.jac` and converted nested function docstring to comment in `api.cl.jac` to comply with the stricter RD parser.
+- [Internal] Refactor: Extract graph visualizer HTML into a standalone template file.
+- **User storage now supports both MongoDB and SQLite**: User authentication and management automatically uses SQLite when MongoDB is not configured, maintaining full backward compatibility with existing installations.
+- **Fix: Include `redis.conf.template` in package distribution**: Fixed `FileNotFoundError` during Redis deployment when jac-scale is installed via pip (non-editable install). The `redis.conf.template` file is now correctly included in the wheel distribution via `package-data` configuration in `pyproject.toml`.
+
 ## jac-scale 0.2.4 (Latest Release)
 
 - **Automatic Port Fallback**: When starting the server with `jac start`, if the specified port is already in use, the server now automatically finds and uses the next available port instead of crashing with "Address already in use". A warning message displays when using an alternative port. Supports up to 10 port retries with cross-platform compatibility (Linux and Windows).
-- [fix]Fix for internet facing aws load balancer
+- **Fix**: Fix for internet-facing AWS load balancer
 - [Internal] Convert username and password for redis and mongodb to secret when injecting to pod deployment
 - 3 Minor refactors/changes.
 - update jac-scale plugin documentation with missing features
 - APP_NAME, K8s_NAMESPACE, DOCKER_USERNAME, DOCKER_PASSWORD are no longer read from environment variables and must be configured via `jac.toml.
 
+- **Component-Level Destroy**: `jac destroy app.jac --component <name>` now supports removing individual Kubernetes components (`application`, `database`, `cache`, `monitoring`, `dashboard`) without tearing down the entire deployment.
 - **Redis Cache Configuration with TTL Support**: Added configurable eviction policies and TTL support for Kubernetes Redis deployments via `jac.toml` (`redis_max_memory`, `redis_eviction_policy`, `redis_eviction_samples`, `redis_default_ttl`, `redis_enable_keyspace_notifications`); ConfigMap-based with automatic pod restart on change. Anchors stored in Redis L2 cache now respect the `redis_default_ttl` setting and will automatically expire after the configured duration (default: 0 = no expiration).
 - 1 small refactor/change.
 - **Fix: Redis deployment annotation null guard**: Fixed `'NoneType' object has no attribute 'get'` crash during `jac start --scale` when an existing Redis deployment has no annotations. Kubernetes returns `None` for the annotations field when none exist, so the config-hash check now guards against this.
@@ -35,6 +47,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - k8s metrics dashboard in prometheus and grafana
 - Jac status command to check deployment status of each component of k8s
 - **Chore: Codebase Reformatted**: All `.jac` files reformatted with improved `jac format` (better line-breaking, comment spacing, and ternary indentation).
+- **Fix: Root-Level Font/Asset 404s**: Added `.jac/client/dist/` as a search candidate in `serve_root_asset`, fixing 404s for font files (`.woff2`, `.ttf`, etc.) bundled by Vite with root-relative `@font-face url()` paths.
 
 ## jac-scale 0.2.1
 
@@ -54,16 +67,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `client_auth_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
 - **Graph Visualization Tests**: Added tests for `/graph` and `/graph/data` endpoints.
 
-## jac-scale 0.1.6
-
-## jac-scale 0.1.9
-
-- **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
-  - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
-  - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
-  - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
-- **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
-
 ## jac-scale 0.1.11
 
 - **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
@@ -75,6 +78,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.9
 
+- **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
+  - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
+  - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
+  - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
+- **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
 - **Remove Authorization header input from Swagger UI**: The `Authorization` header is no longer exposed as a visible text input field in Swagger UI for walker, function, and API key endpoints. Authentication tokens are now read transparently from the standard `Authorization` request header (accessible via the lock icon), consistent with the `update_username` and `update_password` endpoints.
 - 1 Minor refactors/changes.
 
@@ -170,7 +178,7 @@ Added `plugin_versions` configuration in `jac.toml` to pin specific package vers
 jaclang = "0.1.5"      # or "latest"
 jac_scale = "0.1.1"    # or "latest"
 jac_client = "0.1.0"   # or "latest"
-jac_byllm = "none"     # use "none" to skip installation (will insall elvant byllm version)
+jac_byllm = "none"     # use "none" to skip installation (will install relevant byllm version)
 ```
 
 When not specified, defaults to `"latest"` for all packages.
