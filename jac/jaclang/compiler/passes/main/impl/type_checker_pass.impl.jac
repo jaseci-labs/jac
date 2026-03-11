@@ -615,6 +615,22 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
     }
 }
 
+"""Bind alias types from context manager BEFORE visiting body."""
+impl TypeCheckPass.enter_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
+    import from jaclang.compiler.type_system { types }
+    for item in nd.exprs {
+        ctx_item: uni.ExprAsItem = item;
+        expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
+        # Bind alias type - context managers typically return self from __enter__
+        if ctx_item.alias is not None
+        and not isinstance(expr_type, types.UnknownType) {
+            if isinstance(ctx_item.alias, uni.Name) {
+                ctx_item.alias.type = expr_type;
+            }
+        }
+    }
+}
+
 """Type-check with statements — verify context manager protocol."""
 impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
     import from jaclang.compiler.type_system { types }
@@ -652,12 +668,6 @@ impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None
                         f"(no __exit__ method)",
                         nd
                     );
-                }
-            }
-            # Bind alias type from __enter__ return type
-            if ctx_item.alias is not None and enter_result is not None {
-                if isinstance(ctx_item.alias, uni.Name) and ctx_item.alias.sym {
-                    ctx_item.alias.type = enter_result;
                 }
             }
         }
