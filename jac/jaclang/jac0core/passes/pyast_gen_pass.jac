@@ -167,6 +167,13 @@ variables
         """
     def _get_sem_decorator(self: PyastGenPass, nd: uni.UniNode) -> (ast3.Call | None);
 
+    """Safe accessor for a node's generated py_ast.
+
+        Raises an ICE with source location instead of a bare IndexError
+        when py_ast is unexpectedly empty.
+        """
+    def py_ast_val(self: PyastGenPass, nd: uni.UniNode) -> ast3.AST;
+
     """Sync ast locations."""
     def sync(
         self: PyastGenPass,

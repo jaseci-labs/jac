@@ -14,6 +14,7 @@ Bug index:
   #13 - IfExpr (ternary) has no handler (returns UnknownType)
   #15 - No generic type argument checking (list[int] -> list[str])
   #21 - _get_method_with_overloads doesn't specialize the base method
+  #22 - Tuple unpacking in for loops returns UnknownType
 """
 
 import os;
@@ -240,4 +241,34 @@ test "bug_15_no_generic_variance_check" {
     assert len(program.errors_had) >= 1 , f"Bug #15: No generic type argument checking. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
     f"list[int] should NOT be assignable to list[str].";
+}
+
+# =========================================================================
+# Bug #22: Tuple unpacking in for loops returns UnknownType
+#
+# When iterating with destructuring like `for (a, b, c) in items`, the
+# type checker only handled tuple unpacking for Assignment targets, not
+# for InForStmt/InnerCompr targets.
+#
+# In type_evaluator.impl.jac, the Name case checked if the grandparent
+# was Assignment but not InForStmt, so unpacked variables got UnknownType.
+#
+# Impact: `for (x, y) in list[tuple[A, B]]` types x and y as Unknown,
+#         missing all type errors involving these variables.
+# =========================================================================
+test "bug_22_tuple_unpack_for_loop_unknown" {
+    program = compile_and_check("checker_bug_tuple_unpack_for_loop.jac");
+
+    # Expected errors:
+    #   - bad1: int = s (str -> int)
+    #   - bad2: str = n (int -> str)
+    #   - bad3: str = f (Foo -> str)
+    #   - bad_name: int = names[0] (str -> int)
+    #   - c: str = num (int -> str)
+    # Total: 5 errors
+    #
+    # With the bug: 0 errors (all unpacked vars are UnknownType)
+    assert len(program.errors_had) == 5 , f"Bug #22: Tuple unpacking in for loops returns UnknownType. "
+    f"Expected 5 type errors but got {len(program.errors_had)}. "
+    f"for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
 }

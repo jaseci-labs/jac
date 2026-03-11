@@ -374,6 +374,7 @@ test_api.jac
 test_bugs.jac
 test_checker_gaps.jac
 test_checker_shortcomings.jac
+test_typevar.jac
 test_client_codegen.jac
 test_decl_impl_match_pass.jac
 test_desktop_api_url.jac
