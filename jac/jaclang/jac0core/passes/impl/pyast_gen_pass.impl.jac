@@ -3233,7 +3233,7 @@ impl PyastGenPass.exit_match_case(self: PyastGenPass, nd: uni.MatchCase) -> None
             ast3.match_case(
                 pattern=cast(ast3.pattern, nd.pattern.gen.py_ast[0]),
                 guard=cast(ast3.expr, nd.guard.gen.py_ast[0]) if nd.guard else None,
-                body=[cast(ast3.stmt, x.gen.py_ast[0]) for x in nd.body]
+                body=cast(`list[ast3.stmt], self.resolve_stmt_block(nd.body))
             )
         )
     ];
