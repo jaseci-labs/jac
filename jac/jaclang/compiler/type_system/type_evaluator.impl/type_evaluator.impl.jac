@@ -1149,6 +1149,11 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         # This actually defined in the function getTypeForDeclaration();
         # Pyright has DeclarationType.Variable.
         case uni.Name():
+            # ---- Handle pre-set type (e.g., from with statement alias) ----
+            # If the type was already bound (e.g., by enter_with_stmt), return it.
+            if node_.type is not None {
+                return node_.type;
+            }
             # ---- Handle tuple/list unpacking targets ----
             # When a Name is inside a TupleVal/ListVal that is the target
             # of an Assignment, infer its type from the RHS tuple element.

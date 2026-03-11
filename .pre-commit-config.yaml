@@ -76,6 +76,12 @@ repos:
         entry: '—'
         types: [markdown]
 
+      - id: no-ai-coauthor
+        name: Block AI co-author attribution
+        language: pygrep
+        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'
+        stages: [commit-msg]
+
       - id: jac-format
         name: jac-format
         description: Format and lint-fix Jac files
