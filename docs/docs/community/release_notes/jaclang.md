@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.1 (Unreleased)
 
+- **Fix: TOML Serializer Preserves Special Chars and Env Vars**: Fixed two bugs in the `jac.toml` serializer triggered when programmatically saving config changes: (1) Table headers containing special characters (e.g., `[plugins.client.npm.auth."//npm.pkg.github.com/"]`) now retain proper quoting instead of being written unquoted, and (2) Environment variable placeholders like `${NODE_AUTH_TOKEN}` are preserved as-is instead of being interpolated to their runtime values. Previously, these bugs would corrupt `jac.toml` files when dependencies were auto-updated.
 - **Fix: With Statement Alias Type Inference**: `with open(...) as f` now correctly types `f` instead of `Unknown`. The type binding was moved from `exit_with_stmt` to `enter_with_stmt` so the alias type is set before the body is visited.
 - **Fix: Tuple Unpacking in For Loops**: `for (a, b, c) in list[tuple[A, B, C]]` now correctly infers types for unpacked variables instead of `UnknownType`.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.

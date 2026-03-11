@@ -1513,3 +1513,49 @@ test "plugin deep merge across files" {
         assert cfg.plugins["byllm"]["default_model"] == "gpt-4";
     }
 }
+
+test "save preserves special chars and env vars in plugins" {
+    # TOML serializer must:
+    # 1. Quote table headers with special characters (e.g. //npm.pkg.github.com/)
+    # 2. Preserve env var placeholders like ${VAR} without interpolating them
+    config_mod._config = None;
+    # Set an env var that could be interpolated
+    os.environ["TEST_AUTH_TOKEN"] = "secret_value_12345";
+
+    toml_with_special_chars = """[project]
+name = "test-special"
+version = "1.0.0"
+
+[plugins.client.npm.auth."//npm.pkg.github.com/"]
+_authToken = "${TEST_AUTH_TOKEN}"
+
+[dependencies.npm]
+some-package = "1.0.0"
+""";
+
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(toml_with_special_chars);
+        # Load config
+        cfg = JacConfig.load(toml_path);
+        # Modify something to trigger save
+        cfg.add_dependency("another-package", "2.0.0", dev=False, dep_type="npm");
+        cfg.save();
+        # Read back saved content
+        saved_content = toml_path.read_text();
+        # Verify special characters are properly quoted in table header
+        assert '"//npm.pkg.github.com/"' in saved_content , (
+            "Special chars in table header must be quoted"
+        );
+        # Verify env var placeholder is preserved (not interpolated)
+        assert '${TEST_AUTH_TOKEN}' in saved_content , (
+            "Env var placeholder must be preserved, not interpolated"
+        );
+        assert "secret_value_12345" not in saved_content , (
+            "Env var must NOT be interpolated to actual value"
+        );
+        # Verify the saved TOML is valid and can be reloaded
+        cfg2 = JacConfig.load(toml_path);
+        assert "another-package" in cfg2.plugin_dependencies["npm"];
+    }
+}
