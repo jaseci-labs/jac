@@ -818,25 +818,14 @@ impl ViteBundler.init(
 }
 
 """Create config files from jac.toml [plugins.client.configs].
-
 Each key in [plugins.client.configs] becomes a <name>.config.<ext> file.
-Three output modes are supported:
 
-CommonJS (default) — plain TOML data, no meta keys:
+CommonJS (default) - plain TOML data, no meta keys:
     [plugins.client.configs.postcss]
     plugins = ["tailwindcss", "autoprefixer"]
     → postcss.config.js:  module.exports = { "plugins": [...] };
 
-ESM/TypeScript — use imports/exports or set format/extension:
-    [plugins.client.configs.source]
-    extension = ".ts"
-    [plugins.client.configs.source.imports]
-    mdx = "import { defineConfig } from 'fumadocs-mdx/config'"
-    [plugins.client.configs.source.exports]
-    default = "defineConfig({})"
-    → source.config.ts:  import ...; export default defineConfig({});
-
-Raw template — write file content verbatim:
+Raw template - write file content verbatim (any extension):
     [plugins.client.configs.source]
     extension = ".ts"
     raw = "export default { foo: 'bar' };"
@@ -856,17 +845,10 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
             continue;
         }
         extension = config_data.get('extension', '.js');
-        has_raw = 'raw' in config_data;
-        is_esm = config_data.get('format') == 'esm'
-        or extension == '.ts'
-        or 'imports' in config_data
-        or 'exports' in config_data;
         config_path = configs_dir / f'{config_name}.config{extension}';
 
-        if has_raw {
+        if 'raw' in config_data {
             file_content = _toml_config_from_raw(config_data);
-        } elif is_esm {
-            file_content = _toml_config_to_esm(config_data);
         } else {
             file_content = _toml_config_to_js(config_data);
         }
@@ -945,31 +927,6 @@ def _toml_config_to_js(config_data: dict) -> str {
         },
         indent=2
     )};\n";
-}
-
-"""Convert TOML config data to ESM/TypeScript with imports and exports."""
-def _toml_config_to_esm(config_data: dict) -> str {
-    lines: list[str] = [];
-    # Imports
-    imports_section = config_data.get('imports', {});
-    for (_, import_stmt) in imports_section.items() {
-        lines.append(f"{str(import_stmt).strip().rstrip(';')};");
-    }
-
-    # Exports
-    exports_section = config_data.get('exports', {});
-    for (export_name, export_value) in exports_section.items() {
-        lines.append('');
-        value_str = str(export_value).strip().rstrip(';');
-        if export_name == 'default' {
-            lines.append(f"export default {value_str};");
-        } else {
-            lines.append(f"export const {export_name} = {value_str};");
-        }
-    }
-
-    lines.append('');
-    return '\n'.join(lines);
 }
 
 """Write the 'raw' field verbatim as config file content."""

@@ -16,7 +16,7 @@ glob logger = logging.getLogger(__name__),
      VITE_READY_TIMEOUT_SECONDS = 60,  # Max time to wait for Vite to be ready
      VITE_READY_PATTERNS = ['ready in', 'local:'],
      VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'],
-     CONFIG_META_KEYS = frozenset({'format','extension','imports','exports'});
+     CONFIG_META_KEYS = frozenset({'extension'});
 
 """Handles Vite bundling operations."""
 class ViteBundler {

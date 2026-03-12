@@ -887,51 +887,6 @@ test "config files from jac toml" {
     }
 }
 
-"""Test that legacy CJS and new ESM configs can coexist."""
-test "both js and esm config files" {
-    with tempfile.TemporaryDirectory() as temp_dir {
-        original_cwd = os.getcwd();
-        try {
-            os.chdir(temp_dir);
-
-            # Create jac.toml with both CJS and ESM configs
-            toml_content = '[project]\nname = "test-mixed"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.configs.postcss]\nplugins = ["tailwindcss", "autoprefixer"]\n\n[plugins.client.configs.source]\nformat = "esm"\nextension = ".ts"\n\n[plugins.client.configs.source.imports]\nfumadocs = "import { defineConfig } from \'fumadocs-mdx/config\'"\n\n[plugins.client.configs.source.exports]\ndefault = "defineConfig({})"\n';
-            config_path = os.path.join(temp_dir, "jac.toml");
-            with open(config_path, "w") as f {
-                f.write(toml_content);
-            }
-
-            import from jac_client.plugin.src.vite_bundler { ViteBundler }
-
-            bundler = ViteBundler(Path(temp_dir));
-            created_files = bundler.create_config_files();
-
-            assert len(created_files) == 2;
-
-            configs_dir = os.path.join(temp_dir, ".jac", "client", "configs");
-
-            # CJS config should be .js with module.exports
-            postcss_path = os.path.join(configs_dir, "postcss.config.js");
-            assert os.path.exists(postcss_path);
-            with open(postcss_path) as f {
-                postcss_content = f.read();
-            }
-            assert "module.exports" in postcss_content;
-
-            # ESM config should be .ts with export
-            source_path = os.path.join(configs_dir, "source.config.ts");
-            assert os.path.exists(source_path);
-            with open(source_path) as f {
-                source_content = f.read();
-            }
-            assert "export default" in source_content;
-            assert "module.exports" not in source_content;
-        } finally {
-            os.chdir(original_cwd);
-        }
-    }
-}
-
 """Test raw template config generation."""
 test "raw template config files from jac toml" {
     with tempfile.TemporaryDirectory() as temp_dir {
