@@ -271,7 +271,13 @@ Replace all `log_error`/`log_warning` in type checker with `emit()`. Remove the 
 
 ## Phase 4: Migrate All Remaining Passes
 
-STATUS: PENDING
+STATUS: DONE
+
+> DEVIATION: `langserve/engine.impl.jac` callsites were NOT migrated because `JacLangServer` extends `JacProgram` + `LanguageServer` (not `Transform`). Its `log_error`/`log_warning` are LSP message display methods, not compiler diagnostics.
+>
+> DEVIATION: `jac_auto_lint_pass.impl.jac` callsites are intentionally deferred to Phase 5 (LintRule replacement).
+>
+> FIX: 4 test assertions in `test_checker_pass.jac`, `test_typevar.jac`, and `test_compilation.jac` were updated to match the new pretty-printed diagnostic message format from Phase 3.
 
 ### Goal
 

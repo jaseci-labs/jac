@@ -3424,10 +3424,7 @@ impl EsastGenPass._prepare_spawn_call(
     left_walker = self._resolve_spawn_walker(nd.left, left_expr);
     right_walker = self._resolve_spawn_walker(nd.right, right_expr);
     if (left_walker and right_walker) {
-        self.log_warning(
-            'Both sides of spawn look like walker instantiations; defaulting to the right-hand expression.',
-            node_override=nd
-        );
+        self.emit(W5013, node_override=nd);
         target = self._resolve_spawn_target(nd.left, left_expr);
         return SpawnCallParts(`walker=right_walker, target=target);
     }
@@ -3439,10 +3436,7 @@ impl EsastGenPass._prepare_spawn_call(
         target = self._resolve_spawn_target(nd.left, left_expr);
         return SpawnCallParts(`walker=right_walker, target=target);
     }
-    self.log_error(
-        'Spawn expressions must include a walker constructor on one side.',
-        node_override=nd
-    );
+    self.emit(E5010, node_override=nd);
     return None;
 }
 
@@ -3538,10 +3532,7 @@ impl EsastGenPass._build_spawn_arg_object(
             if (positional_index < len(ordered_fields))
             else f"arg{positional_index}";
         if (positional_index >= len(ordered_fields)) {
-            self.log_warning(
-                'Walker spawn has more positional arguments than fields.',
-                node_override=param
-            );
+            self.emit(W5014, node_override=param);
         }
         positional_index += 1;
         key_expr = self.sync_loc(es.Literal(value=key_name), jac_node=param);
@@ -3575,7 +3566,7 @@ impl EsastGenPass._expr_from_node(
     if isinstance(generated, es.Expression) {
         return generated;
     }
-    self.log_error('Expected expression in spawn argument.', node_override=nd);
+    self.emit(E5011, node_override=nd);
     return self.sync_loc(es.Literal(value=`default), jac_node=(nd or self.cur_node));
 }
 
@@ -3584,7 +3575,7 @@ impl EsastGenPass.get_main_mod -> uni.Module {
     main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
     mod = self.prog.mod.hub.get(main_mod_path);
     if not isinstance(mod, uni.Module) {
-        self.log_error('Expected main module to be a Module node.');
+        self.emit(E5012);
     }
     return mod;
 }

@@ -31,7 +31,7 @@ test "typevar1_validation_errors" {
     error_messages = [e.pretty_print() for e in program.errors_had];
     all_errors = "\n".join(error_messages);
 
-    assert 'TypeVar name "T3 ' in all_errors and 'must match' in all_errors , "Expected name mismatch error for T2 = TypeVar('T3')";
+    assert 'TypeVar name "T3"' in all_errors and 'must match' in all_errors , "Expected name mismatch error for T2 = TypeVar('T3')";
     assert 'must be assigned to a simple variable' in all_errors , "Expected index expression error for my_dict['var'] = TypeVar('T5')";
     assert 'requires at least two constrained types' in all_errors , "Expected single constraint error for TypeVar('T5', str)";
 }

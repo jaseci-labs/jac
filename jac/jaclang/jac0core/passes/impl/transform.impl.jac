@@ -264,7 +264,7 @@ impl Transform._is_suppressed(self: Transform, diag: DiagnosticInfo) -> bool {
 impl Transform.ice(
     self: Transform, msg: str = 'Something went horribly wrong!'
 ) -> RuntimeError {
-    self.log_error(f"ICE: Pass {self.__class__.__name__} - {msg}");
+    self.emit(E9001, pass_name=self.__class__.__name__, details=msg);
     return RuntimeError(
         f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}"
     );

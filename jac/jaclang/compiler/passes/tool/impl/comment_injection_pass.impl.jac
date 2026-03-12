@@ -980,11 +980,7 @@ impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
             if (len(info.token.value) > 50) {
                 comment_preview += '...';
             }
-            self.log_warning(
-                "Comment could not be placed precisely; emitting near the end of the formatted output: "
-                f"{comment_preview!r}",
-                node_override=info.token
-            );
+            self.emit(W5050, node_override=info.token, preview=repr(comment_preview));
         }
         sink: list[doc.DocType] = [processed];
         self._emit_standalone_comments(

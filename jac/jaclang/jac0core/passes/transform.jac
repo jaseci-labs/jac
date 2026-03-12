@@ -4,7 +4,7 @@ import from abc { ABC, abstractmethod }
 import from threading { Event }
 import from typing { Any, TYPE_CHECKING }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
-import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity }
+import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
 import from jaclang.jac0core.log { logging }
 import from jaclang.jac0core.unitree { UniNode }
 

@@ -849,14 +849,7 @@ impl PyastGenPass.exit_module_path(self: PyastGenPass, nd: uni.ModulePath) -> No
     if (nd.path and (len(nd.path) == 1) and isinstance(nd.path[0], uni.String)) {
         import_node = nd.parent_of_type(uni.Import);
         if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
-            self.log_error(
-                'String literal imports (e.g., from "' + str(
-                    nd.path[0].lit_value
-                ) + '") are only supported in client (cl) imports, not Python imports. ' + "Use 'cl import from \"" + str(
-                    nd.path[0].lit_value
-                ) + "\" { ... }' instead.",
-                nd
-            );
+            self.emit(E5001, node_override=nd, path=str(nd.path[0].lit_value));
         }
     }
     nd.gen.py_ast = [
@@ -874,9 +867,11 @@ impl PyastGenPass.exit_module_item(self: PyastGenPass, nd: uni.ModuleItem) -> No
         import_node = nd.from_parent;
         if (import_node.code_context != CodeContext.CLIENT) {
             import_type = 'Default' if (nd.name.value == 'default') else 'Namespace';
-            self.log_error(
-                import_type + " imports (using '" + str(nd.name.value) + "') are only supported in client (cl) imports, not Python imports",
-                nd
+            self.emit(
+                E5002,
+                node_override=nd,
+                import_type=import_type,
+                name=str(nd.name.value)
             );
             nd.gen.py_ast = [];
             return;
@@ -911,7 +906,7 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
     }
     body: list[ast3.AST] = self.resolve_stmt_block(inner, doc=nd.doc);
     if (not body and not isinstance(nd.body, uni.Expr)) {
-        self.log_error('Archetype has no body. Perhaps an impl must be imported.', nd);
+        self.emit(E5003, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
     }
     if nd.is_async {
@@ -1136,9 +1131,7 @@ impl PyastGenPass.exit_ability(self: PyastGenPass, nd: uni.Ability) -> None {
                     doc=nd.doc
                 );
     if (nd.is_abstract and nd.body) {
-        self.log_error(
-            "Abstract ability " + str(nd.sym_name) + " should not have a body.", nd
-        );
+        self.emit(E5004, node_override=nd, name=str(nd.sym_name));
     }
     decorator_list = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
         if nd.decorators
@@ -1182,7 +1175,7 @@ impl PyastGenPass.exit_ability(self: PyastGenPass, nd: uni.Ability) -> None {
         );
     }
     if (not body and not isinstance(nd.body, uni.Expr)) {
-        self.log_error('Ability has no body. Perhaps an impl must be imported.', nd);
+        self.emit(E5005, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
     }
     ast_returns: ast3.expr = self.sync(ast3.Constant(value=None));
@@ -2303,11 +2296,9 @@ impl PyastGenPass.translate_jac_bin_op(
             )
         ];
     } elif ((nd.op.name == Tok.PIPE_FWD) and isinstance(nd.right, uni.TupleVal)) {
-        self.log_error('Invalid pipe target.');
+        self.emit(E5006);
     } else {
-        self.log_error(
-            "Binary operator " + str(nd.op.value) + " not supported in bootstrap Jac"
-        );
+        self.emit(E5007, op=str(nd.op.value));
     }
     return [];
 }
@@ -2708,7 +2699,7 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
                 )
             ];
         } else {
-            self.log_error('Invalid attribute access');
+            self.emit(E5008);
         }
     } elif isinstance(nd.right, uni.FilterCompr) {
         nd.gen.py_ast = [

@@ -46,13 +46,11 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
                         if found {
                             llvm.load_library_permanently(found);
                         } else {
-                            self.log_warning(f"C library not found: {lib_path}");
+                            self.emit(W5021, path=lib_path);
                         }
                     }
                 } except Exception as lib_err {
-                    self.log_warning(
-                        f"Failed to load C library '{lib_path}': {lib_err}"
-                    );
+                    self.emit(W5022, path=lib_path, error=str(lib_err));
                 }
             }
         }
@@ -114,7 +112,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         engine = llvm.create_mcjit_compiler(mod, target_machine);
         module.gen.native_engine = engine;
     } except Exception as e {
-        self.log_error(f"Native compilation failed: {e}");
+        self.emit(E5020, error=str(e));
     }
     return ir_in;
 }
@@ -155,7 +153,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if not os.path.exists(full_path) {
-            self.log_warning(f"Native module not found: {full_path}");
+            self.emit(W5023, path=full_path);
             continue;
         }
 
@@ -168,12 +166,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 file_path=full_path, options=import_options
             );
         } except Exception as e {
-            self.log_warning(f"Failed to compile native module {full_path}: {e}");
+            self.emit(W5024, path=full_path, error=str(e));
             continue;
         }
 
         if imported_ir is None or imported_ir.gen.llvm_ir is None {
-            self.log_warning(f"Failed to compile native module: {full_path}");
+            self.emit(W5024, path=full_path, error="No LLVM IR generated");
             continue;
         }
 
@@ -231,7 +229,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             linked_modules[source_mod_path] = mod_info;
             module.gen.interop_manifest.native_module_imports[source_mod_path] = mod_info;
         } except Exception as e {
-            self.log_warning(f"Failed to link native module {full_path}: {e}");
+            self.emit(W5025, path=full_path, error=str(e));
         }
     }
 }

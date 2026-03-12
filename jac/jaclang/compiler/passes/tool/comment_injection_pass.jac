@@ -14,6 +14,7 @@ import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.diagnostics { W5050 }
 
 """Information about a pair of delimiters and their positions."""
 class DelimiterInfo(NamedTuple) {

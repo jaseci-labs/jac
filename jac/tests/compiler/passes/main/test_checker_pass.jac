@@ -736,25 +736,25 @@ test "connect_filter" {
                                   ^^^^^
         """,
         """
-        Edge type "<class MyEdge>" has no member named "not_mem"
+        Member "not_mem" not found on type "<class MyEdge>"
             # Assign compr in edges
             a_inst +>: MyEdge : id=1,not_mem="some" :+> b_inst;  # Error
                                      ^^^^^^^
         """,
         """
-        Member "not_exist not found on type <class Book>"
+        Member "not_exist" not found on type "<class Book>"
             lst(=title="Parry Potter",author="K.J. Bowling",year=1997);  # Ok
             lst(=not_exist="some");  # Error
                  ^^^^^^^^^
         """,
         """
-        Type "Literal["Type Error"] is not assignable to type <class int>"
+        Type "Literal["Type Error"]" is not assignable to type "<class int>"
             lst(=not_exist="some");  # Error
             lst(=year="Type Error");  # Error
                       ^^^^^^^^^^^^
         """,
         """
-        Member "not_exists not found on type <class MyEdge>"
+        Member "not_exists" not found on type "<class MyEdge>"
             [->:MyEdge:id==1:->];  # Ok
             [->:MyEdge:not_exists>=1:->];  # Error
                        ^^^^^^^^^^
@@ -1444,7 +1444,7 @@ test "enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"jac\"] to enum member 'B' of type <class int>",
+        "Cannot assign Literal[\"jac\"] to <class int>",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
@@ -1474,9 +1474,9 @@ test "class_based_enum_type_checking" {
 
     expected_errors = [
         "Cannot assign <Tokens.FLOAT> to <class int>",
-        "Cannot assign Literal[\"1\"] to enum member 'FLOAT' of type <class int>",
-        "Cannot assign Literal[\"LSQUARE\"] to enum member 'LSQUARE' of type <class int>",
-        "Cannot assign Literal[\"RSQUARE\"] to enum member 'RSQUARE' of type <class int>"
+        "Cannot assign Literal[\"1\"] to <class int>",
+        "Cannot assign Literal[\"LSQUARE\"] to <class int>",
+        "Cannot assign Literal[\"RSQUARE\"] to <class int>"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
