@@ -237,6 +237,7 @@ impl JacAPIServerCore.start(
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user(Con.GUEST.value, '__no_password__');
+    self._setup_scheduler();
     # Find an available port (may differ from requested if port is in use)
     original_port = self.port;
     self.port = _find_available_port(self.port);
@@ -248,6 +249,10 @@ impl JacAPIServerCore.start(
     }
     # Print startup banner with correct port
     self._print_startup_banner(dev, no_client);
+    # Call the ready callback with the actual port (e.g., to print startup banner)
+    if on_ready {
+        on_ready(self.port);
+    }
     self.server.run_server(port=self.port);
 }
 
@@ -981,6 +986,32 @@ impl JacAPIServerCore.register_api_key_endpoints -> None {
             description='Revokes an API key, making it invalid for future webhook requests.'
         )
     );
+}
+
+"""Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
+impl JacAPIServerCore._setup_scheduler -> None {
+    scheduler_config = get_scale_config().get_scheduler_config();
+    system_password = scheduler_config.get('system_user_password', 'system_secret');
+    try {
+        self.user_manager.create_user('__system__', system_password);
+    } except Exception { }
+    system_token = self.user_manager.create_jwt_token('__system__');
+
+    # Initialise JacScaleScheduler singleton
+    jac_scheduler = JacScaleScheduler.instance();
+    jac_scheduler.setup(system_token=system_token or '', server=self);
+
+    # Register static tasks (walkers/functions with STATIC trigger)
+    jac_scheduler.register_static_tasks(self.get_walkers(), self.get_functions(), self);
+
+    # Reload persisted dynamic jobs from DB
+    jac_scheduler.register_dynamic_tasks_from_db();
+
+    # Start APScheduler background thread
+    jac_scheduler.start();
+
+    # Register /jobs REST endpoints
+    self.register_scheduler_endpoints();
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""

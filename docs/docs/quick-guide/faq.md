@@ -39,7 +39,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         Yes. Jac integrates seamlessly with Python libraries.
 
     ??? question "What's the learning curve coming from Python? How is Jac different from just using Python?"
-        Jac supersets Python -- you'll feel at home. Key differences:
+        Jac compiles to Python bytecode and shares familiar syntax -- you'll feel at home. Key differences:
 
         - Braces `{ }` instead of indentation
         - Semicolons `;` required

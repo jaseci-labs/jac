@@ -7,6 +7,10 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
             continue;
         }
         walker_cls = self.get_walkers()[walker_name];
+        # Skip walkers with a schedule_spec (they run on a schedule, not as HTTP endpoints)
+        if walker_cls?.schedule_spec {
+            continue;
+        }
         restspec = walker_cls.restspec if walker_cls?.restspec else None;
         spec_method = restspec.method if restspec?.method else HTTPMethod.POST;
         spec_path = restspec.path if restspec?.path else f"/walker/{walker_name}";
@@ -153,6 +157,10 @@ impl JacAPIServerEndpoints.create_walker_callback(
 impl JacAPIServerEndpoints.register_functions_endpoints -> None {
     for func_name in self.get_functions() {
         func_obj = self.get_functions()[func_name];
+        # Skip functions with a schedule_spec (they run on a schedule, not as HTTP endpoints)
+        if func_obj?.schedule_spec {
+            continue;
+        }
         restspec = func_obj.restspec if func_obj?.restspec else None;
         spec_method = restspec.method if restspec else HTTPMethod.POST;
         spec_path = restspec.path if restspec else None;

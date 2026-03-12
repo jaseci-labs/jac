@@ -44,45 +44,27 @@ All memory implementations (volatile, cache, persistent, tiered) implement this 
 This enables ExecutionContext to work with any memory type transparently.
 """
 obj Memory {
-    """Check if the memory is available and operational."""
     def is_available -> bool abs;
-
-    """Retrieve an anchor by its UUID."""
     def get(id: UUID) -> (Anchor | None) abs;
-
-    """Store an anchor."""
     def put(anchor: Anchor) -> None abs;
-
-    """Remove an anchor by ID."""
     def delete(id: UUID) -> None abs;
-
-    """Close the memory and release resources."""
     def close -> None abs;
-
-    """Check if an anchor is currently in memory."""
     def `has(id: UUID) -> bool abs;
-
-    """Query all anchors with optional filter."""
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None] abs;
 
-    """Get all root anchors."""
     def get_roots -> Generator[Root, None, None] abs;
-
-    """Find anchors by IDs with optional filter."""
     def find(
         ids: (UUID | Iterable[UUID]),
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None] abs;
 
-    """Find one anchor by ID(s) with optional filter."""
     def find_one(
         ids: (UUID | Iterable[UUID]),
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None) abs;
 
-    """Commit/sync pending changes. For write-through this flushes to durable storage."""
     def commit(anchor: (Anchor | None) = None) -> None abs;
 }
 
@@ -93,13 +75,8 @@ Cache backends are expected to be fast but data loss is acceptable.
 Used for L2 (local or distributed cache like Redis) in the tiered hierarchy.
 """
 obj CacheMemory(Memory) {
-    """Check if a key exists in the cache without loading the value."""
     def exists(id: UUID) -> bool abs;
-
-    """Store an anchor only if it already exists in the cache."""
     def put_if_exists(anchor: Anchor) -> bool abs;
-
-    """Invalidate a cache entry by ID."""
     def invalidate(id: UUID) -> None abs;
 }
 
@@ -109,10 +86,7 @@ Extends Memory with operations specific to durable storage.
 Implementations must guarantee data durability after sync().
 """
 obj PersistentMemory(Memory) {
-    """Flush pending writes to durable storage."""
     def sync -> None abs;
-
-    """Bulk store multiple anchors efficiently."""
     def bulk_put(anchors: Iterable[Anchor]) -> None abs;
 }
 
