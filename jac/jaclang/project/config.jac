@@ -130,6 +130,12 @@ obj CacheConfig {
         dir: str = ".jac_cache";
 }
 
+"""Graph runtime settings from [graph] section."""
+obj GraphConfig {
+    has index_enabled: bool = True,
+        index_degree_threshold: int = 10;
+}
+
 """Plugin settings from [plugins] section."""
 obj PluginsConfig {
     has discovery: str = "auto",
@@ -178,6 +184,7 @@ obj JacConfig {
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
+        graph: GraphConfig = GraphConfig(),
         storage: StorageConfig = StorageConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),

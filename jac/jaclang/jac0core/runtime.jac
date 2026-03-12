@@ -314,12 +314,20 @@ class JacNode {
         _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
         _scale = _get_scale_topo(ctx.mem);
         _index_active: bool = _sqlite_active or (_scale is not None);
-        INDEX_ENABLED: bool = os.environ.get('JAC_INDEX_ENABLED', 'true').lower() not in (
-            '0',
-            'false',
-            'no'
+        _env_index = os.environ.get('JAC_INDEX_ENABLED');
+        _env_threshold = os.environ.get('JAC_INDEX_DEGREE_THRESHOLD');
+        import from jaclang.project.config { get_config as _get_jac_cfg }
+        _jac_cfg = _get_jac_cfg();
+        INDEX_ENABLED: bool = (
+            _env_index.lower() not in ('0', 'false', 'no')
+            if _env_index is not None
+            else (_jac_cfg.graph.index_enabled if _jac_cfg is not None else True)
         );
-        DEGREE_THRESHOLD: int = int(os.environ.get('JAC_INDEX_DEGREE_THRESHOLD', '10'));
+        DEGREE_THRESHOLD: int = int(
+            _env_threshold
+            if _env_threshold is not None
+            else (_jac_cfg.graph.index_degree_threshold if _jac_cfg is not None else 10)
+        );
         for nd in origin {
             nanch = nd.__jac__;
             # --- SAM/GTI fast path (only when persistence index is active) ---

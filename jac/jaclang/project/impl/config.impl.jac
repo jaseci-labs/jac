@@ -205,6 +205,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
+        "graph": self.graph,
         "environment": self.environment
     };
     for (section, obj) in section_map.items() {
@@ -316,6 +317,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
+        "graph": self.graph,
         "environment": self.environment
     };
     for (section, obj) in section_map.items() {
@@ -852,6 +854,13 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
         config.cache = CacheConfig(
             enabled=cache_data.get("enabled", True),
             dir=cache_data.get("dir", ".jac_cache")
+        );
+    }
+    if "graph" in data {
+        graph_data = data["graph"];
+        config.graph = GraphConfig(
+            index_enabled=graph_data.get("index_enabled", True),
+            index_degree_threshold=graph_data.get("index_degree_threshold", 10)
         );
     }
     if "storage" in data {
