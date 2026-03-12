@@ -598,6 +598,23 @@ def parse(
             module.source.comments.append(ct);
         }
     }
+    # Parse inline suppressions from comments: # jac:ignore[CODE1, CODE2]
+    if module.source {
+        import re;
+        ignore_pattern = re.compile(r'#\s*jac:ignore\[([^\]]+)\]');
+        for comment in module.source.comments {
+            m = ignore_pattern.search(comment.value);
+            if m {
+                codes = {c.strip() for c in m.group(1).split(',')};
+                line = comment.line_no;
+                if line in module.source.inline_suppressions {
+                    module.source.inline_suppressions[line].update(codes);
+                } else {
+                    module.source.inline_suppressions[line] = codes;
+                }
+            }
+        }
+    }
     had_error = parser.error_count > 0 or lexer.error_count > 0;
     return (module, had_error);
 }

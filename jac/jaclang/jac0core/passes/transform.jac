@@ -109,7 +109,9 @@ class Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
     ) -> bool;
 
     """Check if a diagnostic code is suppressed."""
-    def _is_suppressed(self: Transform, diag: DiagnosticInfo) -> bool;
+    def _is_suppressed(
+        self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    ) -> bool;
 
     """Pass Error."""
     def ice(

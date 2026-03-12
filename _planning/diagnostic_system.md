@@ -472,7 +472,7 @@ Verify nothing legacy remains. Clean up imports. Final validation.
 
 ## Phase 8: Inline Suppression (Stretch Goal)
 
-STATUS: PENDING
+STATUS: DONE
 
 ### Goal
 

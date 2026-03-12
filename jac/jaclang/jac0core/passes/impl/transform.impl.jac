@@ -191,8 +191,10 @@ impl Transform.emit(
     **kwargs: Any
 ) -> bool {
     import from jaclang.jac0core.diagnostics { Severity }
-    # Check suppression
-    if self._is_suppressed(diag) {
+    # Determine location early (needed for inline suppression check)
+    loc = node_override.loc if node_override else self.cur_node.loc;
+    # Check suppression (project config + inline comments)
+    if self._is_suppressed(diag, loc) {
         return False;
     }
     # Format message from template
@@ -204,8 +206,6 @@ impl Transform.emit(
             related_locs.append((label, node.loc));
         }
     }
-    # Create Alert
-    loc = node_override.loc if node_override else self.cur_node.loc;
     alrt = Alert(
         msg=msg,
         loc=loc,
@@ -225,9 +225,34 @@ impl Transform.emit(
     return True;
 }
 
-"""Check if a diagnostic code is suppressed by project config."""
-impl Transform._is_suppressed(self: Transform, diag: DiagnosticInfo) -> bool {
+"""Check if a diagnostic code is suppressed by project config or inline comment."""
+impl Transform._is_suppressed(
+    self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+) -> bool {
     import from jaclang.jac0core.diagnostics { LINT_ALIASES, DIAGNOSTICS }
+    # Check inline suppression: # jac:ignore[CODE]
+    if loc {
+        try {
+            source = loc.orig_src;
+            if (source and source?.inline_suppressions and source.inline_suppressions) {
+                line = loc.first_line;
+                if line in source.inline_suppressions {
+                    suppressed_codes = source.inline_suppressions[line];
+                    if diag.code in suppressed_codes {
+                        return True;
+                    }
+                    # Also check aliases (kebab names)
+                    for alias in suppressed_codes {
+                        if alias in LINT_ALIASES and LINT_ALIASES[alias] == diag.code {
+                            return True;
+                        }
+                    }
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+    }
     try {
         import from jaclang.project.config { get_config }
         config = get_config();

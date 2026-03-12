@@ -2503,6 +2503,7 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
     self.comments: list[CommentToken] = [];
+    self.inline_suppressions: dict[int, set[str]] = {};
 }
 
 """Return the source code as string."""
