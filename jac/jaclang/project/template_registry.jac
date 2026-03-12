@@ -23,7 +23,6 @@ obj ProjectTemplate {
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create: Callable | None = None;  # optional callback(project_path, project_name)
 
-    """Convert to dict for serialization (e.g., JSON bundling)."""
     def to_dict -> dict[str, Any];
 }
 
@@ -36,22 +35,11 @@ this registry to scaffold projects based on the selected template.
 obj TemplateRegistry {
     has _templates: dict[str, ProjectTemplate] = {};
 
-    """Register a new template from plugin hook data."""
     def register(template_info: dict[str, Any]) -> None;
-
-    """Get template by name (e.g., 'default', 'client')."""
     def get(name: str) -> ProjectTemplate | None;
-
-    """Get the default template."""
     def get_default -> ProjectTemplate;
-
-    """List all registered templates as (name, description) tuples."""
     def list_templates -> list[tuple[str, str]];
-
-    """Check if a template is registered."""
     def has_template(name: str) -> bool;
-
-    """Clear all registered templates (for testing)."""
     def clear -> None;
 }
 

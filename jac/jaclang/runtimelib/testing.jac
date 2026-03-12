@@ -41,14 +41,10 @@ obj TestResponse {
         text: str,
         _json_cache: (dict[str, Any] | None) = None;
 
-    """Parse response body as JSON."""
     def json -> dict[str, Any];
-
-    """Check if response indicates success (2xx status)."""
     @property
     def ok -> bool;
 
-    """Get data from response, handling TransportResponse envelope."""
     @property
     def data -> (dict[str, Any] | None);
 }
@@ -67,36 +63,29 @@ obj JacTestClient {
         _current_user: (str | None) = None,
         _hot_reloader: (Any | None) = None;
 
-    """Create test client from a .jac file path."""
     static def from_file(
         jac_file: str, base_path: (str | None) = None, module_name: (str | None) = None
     ) -> JacTestClient;
 
-    """Initialize server and handler (lazy loading)."""
     def _ensure_initialized -> None;
-
-    """Make a GET request."""
     def get(
         path: str,
         params: (dict[str, Any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
-    """Make a POST request with JSON body."""
     def post(
         path: str,
         json: (dict[str, Any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
-    """Make a PUT request with JSON body."""
     def put(
         path: str,
         json: (dict[str, Any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
-    """Make a request with specified method."""
     def request(
         method: str,
         path: str,
@@ -105,19 +94,10 @@ obj JacTestClient {
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
-    """Set authentication token for subsequent requests."""
     def set_auth_token(token: str) -> None;
-
-    """Clear authentication token."""
     def clear_auth -> None;
-
-    """Register a new user and set auth token."""
     def register_user(username: str, password: str) -> TestResponse;
-
-    """Login existing user and set auth token."""
     def login(username: str, password: str) -> TestResponse;
-
-    """Internal: Execute request through mock handler."""
     def _execute_request(
         method: str,
         path: str,
@@ -125,24 +105,13 @@ obj JacTestClient {
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
-    """Internal: Parse raw HTTP response."""
     def _parse_response(raw_response: bytes) -> TestResponse;
-
-    """Get the underlying server instance."""
     @property
     def server -> JacAPIServer;
 
-    """Get the user manager for direct manipulation."""
     @property
     def user_manager -> Any;
 
-    """Reload the module (for HMR testing).
-
-    This simulates what the HotReloader does when a file changes,
-    allowing HMR functionality to be tested without real servers.
-    """
     def reload -> None;
-
-    """Cleanup resources."""
     def close -> None;
 }

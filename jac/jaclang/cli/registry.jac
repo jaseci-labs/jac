@@ -26,20 +26,7 @@ obj CommandRegistry {
         parser: argparse.ArgumentParser | None = None,
         sub_parsers: Any = None;
 
-    """Initialize the command registry."""
     def init -> None;
-
-    """Register a new command with metadata.
-
-    Use as a decorator:
-        @registry.command(
-            name="run",
-            help="Run a Jac program",
-            args=[Arg.create("filename", kind=ArgKind.POSITIONAL, help="File to run")],
-            group="execution"
-        )
-        def run_handler(filename: str, **extra) -> int { ... }
-    """
     def command(
         name: str,
         help: str,
@@ -50,17 +37,6 @@ obj CommandRegistry {
         source: str = "jaclang"
     ) -> Callable[[Callable], Callable];
 
-    """Extend an existing command with additional arguments or hooks.
-
-    Plugin API for adding functionality to core commands:
-        registry.extend_command(
-            "run",
-            args=[Arg.create("profile", help="Enable profiling")],
-            pre_hook=setup_profiler,
-            post_hook=dump_profile,
-            source="jac-profiler"
-        )
-    """
     def extend_command(
         command_name: str,
         args: list[Arg] | None = None,
@@ -69,34 +45,13 @@ obj CommandRegistry {
         source: str = "unknown"
     ) -> None;
 
-    """Get a command by name."""
     def get(name: str) -> CommandSpec | None;
-
-    """Check if a command exists."""
     def has_command(name: str) -> bool;
-
-    """Get all commands, optionally filtered by group."""
     def get_all(group: str | None = None) -> list[CommandSpec];
-
-    """Get all command group names."""
     def get_groups -> list[str];
-
-    """Finalize the registry and build argparse parser.
-
-    This should be called after all plugins have registered their commands
-    and extensions. After finalization, the registry is read-only.
-    """
     def finalize -> argparse.ArgumentParser;
-
-    """Apply any pending extensions to a command."""
     def _apply_pending_extensions(name: str) -> None;
-
-    """Build argparse subparser for a command."""
-    def _build_subparser(
-        subparsers: Any, spec: CommandSpec
-    ) -> argparse.ArgumentParser;
-
-    """Add an argument to an argparse parser."""
+    def _build_subparser(subparsers: Any, spec: CommandSpec) -> argparse.ArgumentParser;
     def _add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None;
 }
 
