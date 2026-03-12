@@ -430,7 +430,9 @@ Wire diagnostic codes into LSP and improve CLI output formatting.
 
 ## Phase 7: Cleanup Sweep
 
-STATUS: PENDING
+STATUS: DONE
+
+> All legacy APIs verified removed: ParseError, LexerError, DiagnosticCallback, LintRule -- zero hits. LintConfig kept for backward compat (4 hits). log_error/log_warning only in Transform definitions + langserve LSP methods. 140 diagnostic codes registered. Full test suite: 2781 passed, 1 xfailed.
 
 ### Goal
 
