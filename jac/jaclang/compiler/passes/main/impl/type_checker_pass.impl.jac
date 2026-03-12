@@ -208,7 +208,38 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
         }
 
-        if not self.evaluator.assign_type(right_type, left_type) {
+        # Augmented assignment TypeVar check (Pyright: typeVar5/6)
+        # e.g., a += 3 where a is TypeVar is an error (unless bound supports it)
+        if nd.aug_op and isinstance(left_type, types.TypeVarType) {
+            if left_type.bound and isinstance(left_type.bound, types.ClassType) {
+                # Bounded TypeVar - check if bound supports __iadd__ (etc)
+                # Use operations module to check via magic method lookup
+                import from jaclang.compiler.type_system { operations }
+                op_name = operations.AUG_OPERATOR_MAP.get(nd.aug_op.name);
+                if op_name {
+                    result = self.evaluator.get_type_of_magic_method_call(
+                        left_type.bound, op_name, [nd.value], nd
+                    );
+                    if result is None {
+                        self.log_error(
+                            f'Operator "{nd.aug_op.name}" not supported for type "{left_type.bound}"',
+                            nd
+                        );
+                    }
+                } else {
+                    self.log_error(
+                        f'Operator "{nd.aug_op.name}" not supported for type "{left_type.bound}"',
+                        nd
+                    );
+                }
+            } else {
+                # Unbounded TypeVar
+                self.log_error(
+                    f'Operator "{nd.aug_op.name}" not supported for type "{left_type.name}"',
+                    nd
+                );
+            }
+        } elif not self.evaluator.assign_type(right_type, left_type) {
             self.log_error(f"Cannot assign {right_type} to {left_type}");
         }
         # Validate augmented assignment operator (+=, -=, etc.)
@@ -321,28 +352,10 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     # Validate TypeVar variance (covariant in params, contravariant in returns)
     self.evaluator.validate_typevar_variance(nd);
 
-    # For abilities with ImplDef body (stubs linked to impl files), the original declaration's
-    # type annotation Name nodes are orphaned (not in the traversal tree). We need to explicitly
-    # process them to enable hover/go-to-definition on the declaration file.
+    # ImplDef body is not in kid list, traverse it explicitly
+    # Only process stubs linked to an impl file
     if isinstance(nd.body, uni.ImplDef) {
-        ability_start_line = nd.loc.first_line;
-        ability_end_line = nd.loc.last_line;
-        # Find orphaned Name nodes in type annotations at this ability's location
-        if module := nd.find_parent_of_type(uni.Module) {
-            mod: uni.Module = module;
-            for mod_nd in mod._in_mod_nodes {
-                if (
-                    isinstance(mod_nd, uni.Name)
-                    and mod_nd.sym is None
-                    and ability_start_line <= mod_nd.loc.first_line <= ability_end_line
-                    and isinstance(mod_nd.parent, uni.SubTag)
-                ) {  # SubTag is the type annotation wrapper
-                    self.evaluator.get_type_of_expression(mod_nd);
-                }
-            }
-        }
-        # The ImplDef body is not in the Ability's kid list, so it's not traversed by the pass.
-        # We need to explicitly traverse the ImplDef body to evaluate types for hover/go-to-def.
+        # ImplDef body is not in kid list, traverse it explicitly
         self.traverse(nd.body);
     }
     # Check for missing return statements on non-None return type functions
@@ -568,9 +581,24 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     }
     # Check that the collection is iterable
     collection_type = self.evaluator.get_type_of_expression(nd.collection);
-    # Skip check for UnknownType and any-like types (Any, object, TypeVar)
-    # Following Pyright's pattern: these types are assumed to be iterable.
-    if not isinstance(collection_type, types.UnknownType)
+    # Check TypeVarType before is_any_type() — TypeVars are any-like but still need special handling.
+    if isinstance(collection_type, types.TypeVarType) {
+        if collection_type.bound
+        and isinstance(collection_type.bound, types.ClassType) {
+            # Bounded TypeVar - check if bound type has __iter__
+            iter_result = self.evaluator.get_type_of_magic_method_call(
+                collection_type.bound, "__iter__", [], nd.collection
+            );
+            if iter_result is None {
+                self.log_error(f'Type "{collection_type.bound}" is not iterable', nd);
+            }
+        } else {
+            # Unbounded TypeVar - not iterable
+            self.log_error(f'Type "{collection_type.name}" is not iterable', nd);
+        }
+        # Skip check for UnknownType and any-like types (Any, object)
+        # Following Pyright's pattern: these types are assumed to be iterable.
+    } elif not isinstance(collection_type, types.UnknownType)
     and not collection_type.is_any_type() {
         # Enum classes are iterable via EnumMeta.__iter__ which is not in the
         # Jac type system's MRO. Skip the __iter__ check for enum classes.

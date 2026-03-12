@@ -191,6 +191,29 @@ def run_plugin_tests(runner: IntegrationTestRunner) {
     );
 }
 
+"""Test that .jac modules can be imported without explicit 'import jaclang'."""
+def run_pth_tests(runner: IntegrationTestRunner) {
+    # Write a temporary .jac module
+    import tempfile;
+    tmpdir = tempfile.mkdtemp();
+    jac_file = os.path.join(tmpdir, "hello_pth.jac");
+    open(jac_file, "w").write('with entry { print("pth_import_ok"); }\n');
+
+    # Import the .jac module from Python without 'import jaclang'
+    runner.run(
+        [
+            sys.executable, "-c",
+            f"import sys; sys.path.insert(0, {tmpdir!r}); import hello_pth",
+        ],
+        check_contains=["pth_import_ok"],
+        description=".pth finder: import .jac module without explicit 'import jaclang'",
+    );
+
+    # Cleanup
+    os.remove(jac_file);
+    os.rmdir(tmpdir);
+}
+
 """Test basic CLI functionality."""
 def run_cli_tests(runner: IntegrationTestRunner) {
     runner.run(
@@ -225,6 +248,7 @@ glob runner = IntegrationTestRunner();
 
 with entry {
     run_plugin_tests(runner);
+    run_pth_tests(runner);
     run_cli_tests(runner);
     sys.exit(runner.summary());
 }

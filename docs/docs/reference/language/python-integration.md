@@ -4,9 +4,9 @@
 
 ---
 
-## **Jac Supersets Python**
+## **Jac Compiles to Python Bytecode**
 
-Jac supersets Python and JavaScript, giving you full compatibility with both the PyPI and npm ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
+Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible), giving you full compatibility with the PyPI, npm, and native ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
 
 ### **How it Works: Transpilation to Native Python**
 
@@ -16,7 +16,7 @@ Jac programs execute on the standard Python runtime without requiring custom run
 * **Full Ecosystem Access:** All packages on PyPI, internal libraries, and Python development tools are compatible with Jac.
 * **Readable Output:** The transpiled Python code is clean and maintainable, enabling inspection, debugging, and understanding.
 
-The relationship between Jac and Python is analogous to that of TypeScript and JavaScript: a superset language that compiles to a widely-adopted base language.
+Jac's Python target compiles to standard Python bytecode, giving you native access to the entire Python ecosystem without interop layers or wrappers.
 
 **Example: From Jac to Python**
 
@@ -80,7 +80,10 @@ The compiled output demonstrates how Jac's object-oriented features map to stand
 
 ### **Seamless Interoperability: Import Jac Files Like Python Modules**
 
-Jac integrates with Python through a simple import mechanism. By adding `import jaclang` to Python code, developers can import `.jac` files using standard Python import statements without requiring build steps, compilation commands, or configuration files.
+Jac integrates with Python through a seamless import mechanism. When jaclang is installed, a `.pth` file automatically registers a lightweight import hook at Python startup, so `.jac` files can be imported using standard Python import statements without requiring build steps, compilation commands, or configuration files.
+
+!!! note
+    In previous versions, `import jaclang` was required before importing `.jac` modules. This is no longer necessary: Jac imports work automatically after installation. The explicit `import jaclang` still works and is harmless if present in existing code.
 
 **Key Integration Features:**
 
@@ -106,8 +109,7 @@ This module can be imported in Python using standard import syntax:
 
 ```python
 # main.py
-import jaclang  # Enable Jac imports (one-time setup)
-from graph_tools import Task  # Import from .jac file
+from graph_tools import Task  # Import from .jac file, just works!
 
 # Use Jac classes in Python
 my_task = Task(name="Deploy", priority=1)
@@ -166,7 +168,7 @@ with entry {
 * Simple imports (use `import` instead)
 * New code that could use Jac features
 
-**Implementation Details:** Jac extends Python's native import mechanism using the [PEP 302](https://peps.python.org/pep-0302/) import hook system. When `import jaclang` is executed, it registers a custom importer that enables Python to locate and load `.jac` files. Subsequently, Python's import mechanism automatically checks for `.jac` files alongside `.py` files, compiles them transparently, and loads them into the program. This integration makes Jac modules function as first-class citizens within the Python environment.
+**Implementation Details:** Jac extends Python's native import mechanism using the [PEP 302](https://peps.python.org/pep-0302/) import hook system. When jaclang is installed, a `.pth` file registers a lightweight lazy finder at Python startup. On the first `.jac` import, the full Jac compiler is bootstrapped and a `JacMetaImporter` is registered that enables Python to locate and load `.jac` files. Subsequently, Python's import mechanism automatically checks for `.jac` files alongside `.py` files, compiles them transparently, and loads them into the program. This integration makes Jac modules function as first-class citizens within the Python environment.
 
 ---
 
@@ -442,8 +444,6 @@ project/
 === "main.py"
     ```python
     """Python application importing Jac modules."""
-    import jaclang  # Enable Jac imports
-
     from validators import validate_title
     from task_graph import Task, TaskCreator, generate_desc
     from jaclang.lib import spawn, root
@@ -570,13 +570,13 @@ This pattern provides graph-based capabilities in pure Python without introducin
 
 ### **Key Takeaways**
 
-Jac's design as a Python superset enables complementary use of both languages rather than requiring a choice between them. Key characteristics include:
+Jac's Python bytecode compilation enables complementary use of both languages rather than requiring a choice between them. Key characteristics include:
 
 * **Incremental Adoption:** Projects can begin with Pattern 5 (pure Python + Jac library) and progressively adopt Pattern 1 (pure Jac) as requirements evolve
 * **Full Ecosystem Access:** All Python libraries, frameworks, and development tools remain compatible without modification
 * **Flexible Integration:** Five adoption patterns accommodate different team preferences and project requirements
 * **No Vendor Lock-in:** Transpiled Python code is readable and maintainable, providing migration paths if needed
-* **Transparent Interoperability:** PEP 302 import hooks enable seamless bidirectional imports between `.jac` and `.py` files
+* **Transparent Interoperability:** A `.pth`-based lazy import hook enables seamless bidirectional imports between `.jac` and `.py` files with zero configuration
 
 | Adoption Pattern | Learning Curve | Migration Effort | Feature Access | Risk Level |
 |------------------|---------------|------------------|----------------|------------|
@@ -591,9 +591,7 @@ Jac accommodates both new application development and enhancement of existing Py
 ### Using Jac from Python
 
 ```python
-import jaclang  # Registers the Jac import hook
-
-# Import Jac modules using standard Python import syntax
+# Import Jac modules using standard Python import syntax, no setup needed!
 from my_module import my_function, MyClass
 
 # Use exported functions/classes

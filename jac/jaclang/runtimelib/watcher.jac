@@ -46,27 +46,12 @@ obj JacFileWatcher {
         _pending_events: dict[str, FileChangeEvent] = {},
         _last_flush: float = 0.0;
 
-    """Start watching for file changes."""
     def start -> None;
-
-    """Stop watching for file changes."""
     def stop -> None;
-
-    """Add a callback to be invoked on file changes."""
     def add_callback(callback: Callable[[FileChangeEvent], None]) -> None;
-
-    """Remove a previously added callback."""
     def remove_callback(callback: Callable[[FileChangeEvent], None]) -> None;
-
-    """Internal: Handle a file change event from watchdog."""
     def _on_change(path: str, change_type: ChangeType) -> None;
-
-    """Internal: Flush pending events after debounce period."""
     def _debounce_flush -> None;
-
-    """Internal: Check if a path matches the watch pattern."""
     def _matches_pattern(path: str) -> bool;
-
-    """Internal: Notify all callbacks of an event."""
     def _notify_callbacks(event: FileChangeEvent) -> None;
 }

@@ -47,7 +47,6 @@ obj UniNode {
         loc: CodeLocInfo by postinit;
 
     def postinit -> None;
-    """Lazy initialization of CodeGenTarget."""
     @property
     def gen -> CodeGenTarget {
         if (self._gen is None) {
@@ -56,91 +55,48 @@ obj UniNode {
         return self._gen;
     }
 
-    """Set CodeGenTarget."""
     @gen.setter
     def gen(value: CodeGenTarget) -> None {
         self._gen = value;
     }
 
-    """Lazy initialization of sub node table."""
     @property
     def _sub_node_tab -> dict[(type, list[UniNode])];
 
-    """Construct sub node table."""
     def _construct_sub_node_tab -> None;
-
-    """Get symbol table."""
     @property
     def sym_tab -> UniScopeNode;
 
-    """Add kid left."""
     def add_kids_left(
         nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
     ) -> UniNode;
 
-    """Add kid right."""
     def add_kids_right(
         nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
     ) -> UniNode;
 
-    """Insert kids at position."""
     def insert_kids_at_pos(
         nodes: Sequence[UniNode], pos: int, pos_update: bool = True
     ) -> UniNode;
 
-    """Set kids."""
     def set_kids(nodes: Sequence[UniNode]) -> UniNode;
-
-    """Set parent."""
     def set_parent(parent: UniNode) -> UniNode;
-
     def resolve_tok_range -> tuple[(Token, Token)];
     def gen_token(name: Tok, value: (str | None) = None) -> Token;
-    """Get all sub nodes of type."""
     def get_all_sub_nodes[T](typ: type[T], brute_force: bool = True) -> list[T];
-
-    """Get parent of type."""
     def find_parent_of_type[T](typ: type[T]) -> (T | None);
-
     def parent_of_type[T](typ: type[T]) -> T;
-    """Check if this node is in a client-side context.
-
-        This covers:
-        - Nodes inside an explicit cl {} block in a .jac file
-        - Nodes inside a function marked with CLIENT context in .cl.jac files
-        - Overridden by sv {} blocks (server takes precedence)
-
-        Uses single traversal for efficiency since this is called frequently.
-        """
     def in_client_context -> bool;
-
-    """Check if this node is in a native context.
-
-        This covers:
-        - Nodes inside an explicit na {} block in a .jac file
-        - Nodes inside a function marked with NATIVE context in .na.jac files
-        - Overridden by sv {} or cl {} blocks
-        """
     def in_native_context -> bool;
-
-    """Return dict representation of node."""
     def to_dict -> dict[(str, str)];
-
-    """Print ast."""
     def pp(depth: (int | None) = None) -> str;
-
-    """Print ast."""
     def printgraph -> str;
-
-    """Flatten ast."""
     def flatten -> list[UniNode];
-
     def unparse -> str;
 }
 
 """Symbol."""
 obj Symbol {
-    """Initialize."""
     def init(
         defn: NameAtom,
         access: SymbolAccess,
@@ -148,33 +104,23 @@ obj Symbol {
         imported: bool = False
     ) -> None;
 
-    """Get decl."""
     @property
     def decl -> NameAtom;
 
-    """Get name."""
     @property
     def sym_name -> str;
 
-    """Get sym_type."""
     @property
     def sym_type -> SymbolType;
 
-    """Return a full path of the symbol."""
     @property
     def sym_dotted_name -> str;
 
-    """Get symbol table."""
     @property
     def symbol_table -> (UniScopeNode | None);
 
-    """Add defn."""
     def add_defn(nd: NameAtom) -> None;
-
-    """Add use."""
     def add_use(nd: NameAtom) -> None;
-
-    """Repr."""
     def __repr__ -> str;
 }
 
@@ -195,30 +141,17 @@ obj UniScopeNode(UniNode) {
         names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
-    """Get type."""
     def get_type -> SymbolType;
-
-    """Get parent."""
     def get_parent -> (UniScopeNode | None);
-
     static def get_python_scoping_nodes -> tuple[(type[UniScopeNode], ...)] {
         return (Module, Enum, Archetype, Ability, ImplDef, Test);
     }
 
-    """Lookup a variable in the symbol table."""
     def lookup(
         name: str, deep: bool = True, incl_inner_scope: bool = False
     ) -> (Symbol | None);
 
-    """Lookup all overloads of a symbol in the symbol table."""
     def lookup_all(name: str, deep: bool = True) -> list[Symbol];
-
-    """Set a variable in the symbol table.
-
-        Returns original symbol as collision if single check fails, none
-otherwise.
-        Also updates node.sym to create pointer to symbol.
-        """
     def insert(
         nd: AstSymbolNode,
         access_spec: AstAccessNode | None | SymbolAccess = None,
@@ -227,16 +160,9 @@ otherwise.
         imported: bool = False
     ) -> (UniNode | None);
 
-    """Find a scope in the symbol table."""
     def find_scope(name: str) -> (UniScopeNode | None);
-
-    """Push a new scope onto the symbol table."""
     def link_kid_scope(key_node: UniScopeNode) -> UniScopeNode;
-
-    """Inherit symbol table."""
     def inherit_sym_tab(target_sym_tab: UniScopeNode) -> None;
-
-    """Insert into symbol table."""
     def def_insert(
         nd: AstSymbolNode,
         access_spec: AstAccessNode | None | SymbolAccess = None,
@@ -245,27 +171,15 @@ otherwise.
         imported: bool = False
     ) -> (Symbol | None);
 
-    """Link chain of containing names to symbol."""
     def chain_def_insert(node_list: list[AstSymbolNode]) -> None;
-
-    """Link to symbol."""
     def use_lookup(
         nd: AstSymbolNode, sym_table: (UniScopeNode | None) = None
     ) -> (Symbol | None);
 
-    """Link chain of containing names to symbol."""
     def chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None;
-
-    """Update python context for definition."""
     def update_py_ctx_for_def(nd: AstSymbolNode) -> None;
-
-    """Pretty print."""
     def sym_pp(depth: (int | None) = None) -> str;
-
-    """Generate dot graph for sym table."""
     def sym_printgraph -> str;
-
-    """Repr."""
     def __repr__ -> str;
 }
 
@@ -290,7 +204,6 @@ obj AstSymbolNode(UniNode) {
     @property
     def py_ctx_func -> type[ast3.AST];
 
-    """Get type symbol table."""
     @property
     def type_sym_tab -> (UniScopeNode | None);
 }
@@ -314,16 +227,9 @@ obj AstAccessNode(UniNode) {
 """Base class for nodes that can be marked with execution context
 (client/server)."""
 obj ContextAwareNode(UniNode) {
-    """Initialize with code context.
-
-        Args:
-            code_context: Code execution context (SERVER or CLIENT), defaults to
-SERVER
-        """
     has code_context: CodeContext by postinit;
 
     def postinit -> None;
-    """Return the original context token (cl or sv) if present on this node."""
     def _source_context_token -> (Token | None);
 }
 
@@ -356,16 +262,12 @@ obj WalkerStmtOnlyNode(UniNode) {
 
 """BasicBlockStmt node type for Jac Uniir."""
 obj UniCFGNode(UniNode) {
-    """Initialize basic block statement node."""
     has bb_in: list[UniCFGNode] by postinit,
         bb_out: list[UniCFGNode] by postinit,
         affected_symbols: set[str] by postinit;
 
     def postinit -> None;
-    """Get head by walking up the CFG iteratively."""
     def get_head -> UniCFGNode;
-
-    """Get tail by walking down the CFG iteratively."""
     def get_tail -> UniCFGNode;
 }
 
@@ -413,13 +315,11 @@ obj Expr(UniNode) {
         attached_tokens: (list[Token] | None) by postinit;
 
     def postinit -> None;
-    """Get type symbol table."""
     @property
     def type_sym_tab -> (UniScopeNode | None) {
         return self._type_sym_tab;
     }
 
-    """Set type symbol table."""
     @type_sym_tab.setter
     def type_sym_tab(type_sym_tab: UniScopeNode) -> None {
         self._type_sym_tab = type_sym_tab;
@@ -442,7 +342,6 @@ obj EnumBlockStmt(UniNode) {
 
 """CodeBlockStmt node type for Jac Ast."""
 obj CodeBlockStmt(UniCFGNode) {
-    """Initialize code block statement node."""
     def postinit -> None;
 }
 
@@ -480,7 +379,6 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     @property
     def sym_category -> SymbolType;
 
-    """Create symbol."""
     def create_symbol(
         access: SymbolAccess,
         parent_tab: (UniScopeNode | None) = None,
@@ -490,19 +388,16 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     @property
     def clean_type -> str;
 
-    """Get python context function."""
     @property
     def py_ctx_func -> type[ast3.expr_context] {
         return self._py_ctx_func;
     }
 
-    """Set python context function."""
     @py_ctx_func.setter
     def py_ctx_func(py_ctx_func: type[ast3.expr_context]) -> None {
         self._py_ctx_func = py_ctx_func;
     }
 
-    """Resolve semantic token."""
     @property
     def sem_token -> (tuple[(SemTokType, SemTokMod)] | None);
 }
@@ -533,22 +428,11 @@ obj Module(AstDocNode, UniScopeNode) {
         stub_only: bool = False;
 
     def postinit -> None;
-    """Get the base module path that this annex file belongs to.
-
-        Uses discover_base_file to find the base .jac file for annex files
-        (.impl.jac, .test.jac). Handles all discovery scenarios:
-        - Same directory: foo.impl.jac -> foo.jac
-        - Module-specific folder: foo.impl/bar.impl.jac -> foo.jac
-        - Shared folder: impl/foo.impl.jac -> foo.jac
-        """
     @property
     def annexable_by -> (str | None);
 
-    """Get all sub nodes of type."""
     def format -> str;
-
     def unparse(requires_format: bool = True) -> str;
-    """Create a stub module."""
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
@@ -563,7 +447,6 @@ obj Module(AstDocNode, UniScopeNode) {
         );
     }
 
-    """Return the full path of the module that contains this node."""
     static def get_href_path(nd: UniNode) -> str {
         parent = nd.find_parent_of_type(Module);
         mod_list: list[(Module | Archetype)] = [];
@@ -583,7 +466,6 @@ obj Module(AstDocNode, UniScopeNode) {
 
 """Whole Program node type for Jac Ast."""
 obj ProgramModule(UniNode) {
-    """Initialize whole program node."""
     has main_mod: (Module | None) = None;
 
     def postinit -> None;
@@ -676,15 +558,12 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         clib_decls: (Sequence[UniNode] | None) = None;
 
     def postinit -> None;
-    """Check if import is python."""
     @property
     def is_py -> bool;
 
-    """Check if import is jac."""
     @property
     def is_jac -> bool;
 
-    """Check if import is jac."""
     @property
     def __jac_detected -> bool;
 }
@@ -696,18 +575,13 @@ obj ModulePath(UniNode) {
         alias: (Name | None);
 
     def postinit -> None;
-    """Check if this modulepath is from import."""
     @property
     def is_import_from -> bool;
 
-    """Get path string."""
     @property
     def dot_path_str -> str;
 
-    """Convert an import target string into a relative file path."""
     def resolve_relative_path(target_item: (str | None) = None) -> str;
-
-    """Convert an import target string into a relative file path."""
     def resolve_relative_path_list -> list[str];
 }
 
@@ -723,15 +597,12 @@ obj ModuleItem(UniNode) {
         alias: (Name | None);
 
     def postinit -> None;
-    """Get import parent."""
     @property
     def from_parent -> Import;
 
-    """Get relevant module path."""
     @property
     def from_mod_path -> ModulePath;
 
-    """Resolve path of this item (e.g., 'ir' -> llvmlite/ir/__init__.py)."""
     def resolve_relative_path -> str;
 }
 
@@ -795,7 +666,6 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
     @property
     def is_method -> bool;
 
-    """Check if this ability is a class method."""
     @property
     def is_cls_method -> bool;
 
@@ -808,13 +678,7 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
     @property
     def is_genai_ability -> bool;
 
-    """Get the range of positional arguments for this ability.
-
-        Returns -1 for maximum number of arguments if there is an unpacked
-parameter (e.g., *args).
-        """
     def get_pos_argc_range -> tuple[(int, int)];
-
     def py_resolve_name -> str;
 }
 
@@ -828,9 +692,7 @@ obj FuncSignature(UniNode) {
         return_type: (Expr | None);
 
     def postinit -> None;
-    """Return all parameters in the declared order."""
     def get_parameters -> list[ParamVar];
-
     @property
     def is_static -> bool;
 
@@ -1019,7 +881,6 @@ obj DeleteStmt(CodeBlockStmt) {
     has target: Expr;
 
     def postinit -> None;
-    """Get Python AST targets (without setting ctx)."""
     @property
     def py_ast_targets -> list[ast3.AST];
 }
@@ -1048,7 +909,6 @@ obj VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
 
 """DisengageStmt node type for Jac Ast."""
 obj DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
-    """Initialize disengage statement node."""
     def postinit -> None;
 }
 
@@ -1347,10 +1207,7 @@ obj JsxElement(AtomExpr) {
         is_fragment: bool;
 
     def postinit -> None;
-    """Get the source line after the opening tag's '>' token (body start)."""
     def get_body_start_line -> (int | None);
-
-    """Get the source line of the closing tag's '</' token (body end)."""
     def get_body_end_line -> (int | None);
 }
 
@@ -1391,11 +1248,6 @@ obj JsxText(JsxChild) {
     has value: (str | Token);
 
     def postinit -> None;
-    """Normalize JSX text whitespace (single source of truth).
-
-    HTML-like rules: strip leading/trailing newline+whitespace,
-    collapse internal newline+whitespace sequences to a single space.
-    """
     def get_normalized_text -> str;
 }
 
@@ -1544,7 +1396,6 @@ obj Name(Token, NameAtom) {
         is_kwesc: bool = False
     ) -> None;
 
-    """Generate name from node."""
     static def gen_stub_from_node(
         nd: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
     ) -> Name {
@@ -1601,7 +1452,6 @@ obj Literal(Token, AtomExpr) {
         pos_end: int
     ) -> None;
 
-    """Return literal value in its python type."""
     @property
     def lit_value -> int | str | float | bool | None | Callable[
         ([], Any)
@@ -1614,7 +1464,6 @@ obj BuiltinType(Name, Literal) {
         SYMBOL_TYPE = SymbolType.VAR;
     }
 
-    """Return literal value in its python type."""
     @property
     def lit_value -> Callable[([], Any)];
 }
@@ -1686,7 +1535,6 @@ obj EmptyToken(Token) {
 
 """Semicolon node type for Jac Ast."""
 obj Semi(Token, CodeBlockStmt) {
-    """Initialize token."""
     def init(
         orig_src: Source,
         name: str,
@@ -1726,7 +1574,6 @@ obj CommentToken(Token) {
 """SourceString node type for Jac Ast."""
 obj Source(EmptyToken) {
     def init(source: str, mod_path: str) -> None;
-    """Return the source code as string."""
     @property
     def code -> str;
 }

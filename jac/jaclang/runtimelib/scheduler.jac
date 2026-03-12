@@ -34,7 +34,8 @@ obj Scheduler {
         _thread: (threading.Thread | None) = None,
         _running: bool = False,
         _stop_event: (threading.Event | None) = None,
-        _done_event: (threading.Event | None) = None;
+        _done_event: (threading.Event | None) = None,
+        dynamic_handler: (Callable | None) = None;
 
     static def instance -> Scheduler;
     def register(
