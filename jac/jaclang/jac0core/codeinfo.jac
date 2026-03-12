@@ -179,7 +179,6 @@ obj CodeGenTarget {
         _auto_promoted_native: bool = False,
         layout_registry: Any = None;
 
-    """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""
     @property
     def doc_ir(self: CodeGenTarget) -> Doc {
         if (self._doc_ir is None) {
@@ -189,7 +188,6 @@ obj CodeGenTarget {
         return self._doc_ir;
     }
 
-    """Set doc_ir value."""
     @doc_ir.setter
     def doc_ir(self: CodeGenTarget, value: Doc) -> None {
         self._doc_ir = value;
@@ -201,7 +199,6 @@ obj CodeLocInfo {
     has first_tok: Token,
         last_tok: Token;
 
-    """Get file source."""
     @property
     def orig_src(self: CodeLocInfo) -> Source {
         return self.first_tok.orig_src;

@@ -178,10 +178,7 @@ impl DeclImplMatchPass.validate_params_match(
             );
         } elif (params_decl and params_defn) {
             for idx in range(len(params_defn)) {
-                if ((par := params_decl[idx].parent) is not None) {
-                    loc_in_kid = par.kid.index(params_decl[idx]);
-                    par.kid[loc_in_kid] = params_defn[idx];
-                }
+                # Update params list only; keep decl's kid intact for hover/go-to-def.
                 params_decl[idx] = params_defn[idx];
             }
         }

@@ -148,36 +148,19 @@ obj JirWriter {
         self._inherited_scope_entries = [];
     }
 
-    """Serialize a Module to JIR bytes.
-
-    If sections is provided, TLV section data is appended after the compressed
-    AST payload (bytecode, MTIR, LLVM IR, interop).
-    """
     def write_module(
         module: Module, sections: (dict[int, bytes] | None) = None
     ) -> bytes;
 
-    """Post-order walk, assigning sequential IDs to nodes."""
     def _assign_ids(ir_node: UniNode) -> int;
-
-    """Get the ID for a node, or SENTINEL_NONE if None."""
     def _get_node_id(ir_node: (UniNode | None)) -> int;
-
-    """Serialize a single node to the buffer."""
     def _write_node(buf: bytearray, ir_node: UniNode) -> None;
-
-    """Serialize a Symbol inline."""
     def _write_symbol(buf: bytearray, sym: Symbol) -> None;
-
-    """Serialize a single constructor field by kind."""
     def _write_field(
         buf: bytearray, ir_node: UniNode, field_name: str, kind: int
     ) -> None;
 
-    """Serialize the link table."""
     def _write_link_table(buf: bytearray) -> None;
-
-    """Count total symbols in the module."""
     def _count_symbols(module: Module) -> int;
 }
 
@@ -202,45 +185,25 @@ obj JirReader {
         self._nodes = [];
     }
 
-    """Deserialize bytes into a Module tree. Returns None on failure."""
     def read_module(data: bytes) -> (Module | None);
-
-    """Scan data for trailing TLV sections after the compressed payload."""
     def _read_trailing_sections(data: bytes) -> dict[int, bytes];
-
-    """Create a Source node and set orig_src on all Token nodes."""
     def _wire_source(module: Module) -> None;
-
-    """Derive param_kind for ParamVar nodes from FuncSignature position."""
     def _fix_param_kinds -> None;
-
-    """Pre-cache type checks and enum mappings for fast deserialization."""
     def _init_caches -> None;
-
-    """Resolve a node ID to a node, handling sentinels."""
     def _resolve_node(node_id: int) -> (UniNode | None);
-
-    """Deserialize a single node. Returns new pos."""
     def _read_node(data: (bytes | memoryview), pos: int, idx: int) -> int;
-
-    """Read scope overlay data into a UniScopeNode."""
     def _read_scope_overlay(
         data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
     ) -> int;
 
-    """Read a Symbol from the stream. Returns (symbol_or_none, new_pos)."""
     def _read_symbol(data: (bytes | memoryview), pos: int) -> tuple;
-
-    """Read CFG overlay data into a UniCFGNode."""
     def _read_cfg_overlay(
         data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
     ) -> int;
 
-    """Read NameAtom overlay data."""
     def _read_name_atom_overlay(
         data: (bytes | memoryview), pos: int, na_node: NameAtom
     ) -> int;
 
-    """Read the link table and wire up deferred references."""
     def _read_link_table(data: (bytes | memoryview), pos: int) -> int;
 }

@@ -104,16 +104,9 @@ Strings are assigned sequential indices. The pool is serialized as:
 """
 class StringPool {
     def init(self: StringPool) -> None;
-    """Intern a string and return its pool index."""
     def intern(self: StringPool, s: str) -> int;
-
-    """Get string by pool index."""
     def get(self: StringPool, idx: int) -> str;
-
-    """Number of strings in pool."""
     def __len__(self: StringPool) -> int;
-
-    """Serialize the pool to bytes."""
     def serialize(self: StringPool) -> bytes;
 }
 
@@ -145,10 +138,7 @@ obj JirHeader {
         string_pool_size: int = 0,
         flags: int = 0;
 
-    """Serialize to 32 bytes."""
     def to_bytes(self: JirHeader) -> bytes;
-
-    """Quick validation: check magic, version, python version."""
     def is_compatible(self: JirHeader) -> bool;
 }
 

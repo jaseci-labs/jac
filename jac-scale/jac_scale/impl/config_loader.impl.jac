@@ -45,13 +45,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'docker_password': '',
             'namespace': 'default',
             'container_port': 8000,
-            'node_port': 30001,
             'mongodb_enabled': True,
             'redis_enabled': True,
             'redis_dashboard': False,
             'mongodb_dashboard': False,
-            'redis_insight_node_port': 30032,
-            'mongo_express_node_port': 30033,
             'mongo_express_username': 'admin',
             'mongo_express_password': 'admin',
             'redis_insight_username': 'admin',
@@ -60,6 +57,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'mongodb_root_password': 'password',
             'redis_username': 'admin',
             'redis_password': 'password',
+            # Ingress configuration
+            'ingress_node_port': 30080,
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,
@@ -101,8 +100,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
                 10.0
             ],
             'prometheus_admin_password': 'Adminpassword123',
-            'prometheus_node_port': 30090,
-            'grafana_node_port': 30300,
             'k8s_metrics_enabled': True
         },
         'admin': {
@@ -112,6 +109,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'default_password': 'changeme',
             'session_expiry_hours': 24,
             'require_password_reset': True
+        },
+        'scheduler': {
+            'system_user_password': 'system_secret',
+            'collection': 'scheduled_jobs'
         }
     };
 }
@@ -174,8 +175,6 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
     k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
-    k8s_config['prometheus_node_port'] = monitoring['prometheus_node_port'];
-    k8s_config['grafana_node_port'] = monitoring['grafana_node_port'];
     # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
     import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
@@ -275,11 +274,7 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
         'k8s_metrics_enabled': monitoring_config.get('k8s_metrics_enabled', True),
         'prometheus_admin_password': monitoring_config.get(
             'prometheus_admin_password', 'Adminpassword123'
-        ),
-        'prometheus_node_port': int(
-            monitoring_config.get('prometheus_node_port', 30090)
-        ),
-        'grafana_node_port': int(monitoring_config.get('grafana_node_port', 30300))
+        )
     };
 }
 
@@ -298,6 +293,17 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+"""Get scheduler configuration from jac.toml."""
+impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    scheduler_config = config.get('scheduler', {});
+    return {
+        'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
+        or scheduler_config.get('system_user_password', 'system_secret'),
+        'collection': scheduler_config.get('collection', 'scheduled_jobs')
+    };
 }
 
 """Get admin configuration from jac.toml."""

@@ -33,7 +33,7 @@ def _submit_form(page: Page) -> None {
 
 """Navigate to signup, fill form, and submit."""
 def _signup(page: Page, base_url: str, username: str, password: str) -> None {
-    page.goto(f"{base_url}/signup", wait_until="networkidle", timeout=60000);
+    page.goto(f"{base_url}/signup", wait_until="load", timeout=60000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
     _submit_form(page);
@@ -41,7 +41,7 @@ def _signup(page: Page, base_url: str, username: str, password: str) -> None {
 
 """Navigate to login, fill form, and submit."""
 def _login(page: Page, base_url: str, username: str, password: str) -> None {
-    page.goto(f"{base_url}/login", wait_until="networkidle", timeout=30000);
+    page.goto(f"{base_url}/login", wait_until="load", timeout=60000);
     page.wait_for_selector('input[type="text"]', timeout=30000);
     _fill_auth_form(page, username, password);
     _submit_form(page);
@@ -138,7 +138,7 @@ test "navigate without auth redirects to login" {
             context = browser.new_context();
             page = context.new_page();
             try {
-                page.goto(f"{url}/nested", wait_until="networkidle", timeout=60000);
+                page.goto(f"{url}/nested", wait_until="load", timeout=60000);
                 page.wait_for_timeout(2000);
                 assert "/login" in page.url.lower();
             } finally {
@@ -259,7 +259,7 @@ test "complete auth flow" {
                 _login(page, url, username, password);
                 assert "/login" not in page.url.lower();
 
-                page.goto(f"{url}/nested", wait_until="networkidle", timeout=30000);
+                page.goto(f"{url}/nested", wait_until="load", timeout=60000);
                 assert "/nested" in page.url.lower();
             } finally {
                 context.close();
@@ -291,7 +291,7 @@ test "auto cache prevents duplicate reader requests and invalidates on write" {
             try {
                 # Sign up to get authenticated and land on the home page
                 _signup(page, url, f"cache_e2e_{int(time.time())}", "cache_pass_123");
-                page.wait_for_load_state("networkidle");
+                page.wait_for_load_state("load");
                 page.wait_for_timeout(3000);
 
                 # ---- Track walker HTTP requests ----

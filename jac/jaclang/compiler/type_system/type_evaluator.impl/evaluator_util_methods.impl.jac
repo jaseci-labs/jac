@@ -315,6 +315,13 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
         if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
             return mod_item.name.sym;
         }
+        # Symbol not resolved yet - call get_type_of_module_item to set it up.
+        # This is needed when modules are loaded from JIR cache and their
+        # import statements haven't been processed by the type evaluator.
+        self.get_type_of_module_item(mod_item);
+        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
+            return mod_item.name.sym;
+        }
         return sym;
     }
     return sym;
@@ -332,6 +339,11 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
     return node_.name.type;
 }
 
+"""Extract TypeVar parameters from Generic[] base class.
+
+Pyright: Also validates that TypeVars aren't already in use by outer scopes.
+This is declaration-site validation, separate from use-site validation.
+"""
 impl TypeEvaluator._extract_type_params(
     node_: uni.Archetype
 ) -> list[types.TypeVarType] {
@@ -347,6 +359,10 @@ impl TypeEvaluator._extract_type_params(
         return type_params;
     }
 
+    # Get outer scope TypeVars for "already in use" validation
+    outer_type_params = self._get_outer_scope_type_params(node_);
+    outer_names = {tp.name for tp in outer_type_params};
+
     # Handle Python-style generics: obj Box(Generic[T])
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
@@ -361,12 +377,26 @@ impl TypeEvaluator._extract_type_params(
                 for val in type_vars.values {
                     type_var_type = self.get_type_of_expression(val);
                     if isinstance(type_var_type, types.TypeVarType) {
+                        # Validate: TypeVar not already in use by outer scope
+                        if type_var_type.name in outer_names {
+                            self.add_diagnostic(
+                                val,
+                                f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
+                            );
+                        }
                         type_params.append(type_var_type);
                     }
                 }
             } else {
                 type_var_type = self.get_type_of_expression(type_vars);
                 if isinstance(type_var_type, types.TypeVarType) {
+                    # Validate: TypeVar not already in use by outer scope
+                    if type_var_type.name in outer_names {
+                        self.add_diagnostic(
+                            type_vars,
+                            f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
+                        );
+                    }
                     type_params.append(type_var_type);
                 }
             }
@@ -651,4 +681,309 @@ impl TypeEvaluator._create_special_builtin_type(
     # Compute MRO: [SpecialType, BaseClass, ...]
     special_type.shared.mro = [special_type] + base_class.shared.mro;
     return special_type;
+}
+
+# -------------------------------------------------------------------------
+# TypeVar scope validation (Pyright: validateTypeVarUsage)
+# -------------------------------------------------------------------------
+"""Get TypeVar parameters from the IMMEDIATE enclosing class only.
+
+Unlike _get_enclosing_class_type_params which walked all parent classes,
+this only gets type_params from the directly enclosing class.
+TypeVars don't cascade into nested non-generic classes.
+"""
+impl TypeEvaluator._get_enclosing_class_type_params(
+    node_: uni.UniNode
+) -> list[types.TypeVarType] {
+    type_params: list[types.TypeVarType] = [];
+    current: uni.UniNode | None = node_;
+
+    while current {
+        if isinstance(current, uni.Archetype) {
+            # Get type params from ONLY this class's Generic[] base
+            class_type = self.get_type_of_class(current);
+            if class_type.shared.type_params {
+                for tp in class_type.shared.type_params {
+                    type_params.append(tp);
+                }
+            }
+            break;  # Only check immediate class, not parents
+        }
+        current = current.parent;
+    }
+    return type_params;
+}
+
+"""Get TypeVar parameters from a function's signature.
+
+Collects TypeVars used in parameter types and return type.
+Also recursively collects TypeVars from nested types like list[T].
+"""
+impl TypeEvaluator._get_function_type_params(
+    func: uni.Ability
+) -> list[types.TypeVarType] {
+    type_params: list[types.TypeVarType] = [];
+    if not isinstance(func.signature, uni.FuncSignature) {
+        return type_params;
+    }
+
+    # Helper to recursively extract TypeVars from type expressions
+    def collect_typevars(expr: uni.Expr) {
+        if isinstance(expr, uni.Name) {
+            t = self.get_type_of_expression(expr);
+            if isinstance(t, types.TypeVarType) {
+                type_params.append(t);
+            }
+        } elif isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
+            if isinstance(expr.right, uni.IndexSlice) {
+                for s in expr.right.slices {
+                    if s.start {
+                        collect_typevars(s.start);
+                    }
+                }
+            }
+        } elif isinstance(expr, uni.TupleVal) {
+            for v in expr.values {
+                collect_typevars(v);
+            }
+        } elif isinstance(expr, uni.BinaryExpr) {
+            collect_typevars(expr.left);
+            collect_typevars(expr.right);
+        }
+    }
+
+    # Check parameter types
+    for param in func.signature.get_parameters() {
+        if param.type_tag {
+            collect_typevars(param.type_tag.tag);
+        }
+    }
+
+    # Check return type
+    if func.signature.return_type {
+        collect_typevars(func.signature.return_type);
+    }
+
+    return type_params;
+}
+
+"""Recursively validate TypeVar usage in a type expression.
+
+Pyright: This traverses type annotations to find TypeVar usages
+and validates each one is in a valid scope.
+"""
+impl TypeEvaluator.validate_typevar_in_type_expr(expr: uni.Expr) -> None {
+    if isinstance(expr, uni.Name) {
+        resolved_type = self.get_type_of_expression(expr);
+        if isinstance(resolved_type, types.TypeVarType) {
+            self.validate_typevar_scope(expr, resolved_type);
+        }
+    } elif isinstance(expr, uni.AtomTrailer) {
+        # Handle generic types like list[T] - check the subscript
+        if not expr.is_attr and isinstance(expr.right, uni.IndexSlice) {
+            for slice in expr.right.slices {
+                if slice.start {
+                    self.validate_typevar_in_type_expr(slice.start);
+                }
+            }
+        }
+    } elif isinstance(expr, uni.TupleVal) {
+        # Handle tuple of types (e.g., Union[T, S])
+        for val in expr.values {
+            self.validate_typevar_in_type_expr(val);
+        }
+    } elif isinstance(expr, uni.BinaryExpr) {
+        # Handle union types with | operator (e.g., T | None)
+        self.validate_typevar_in_type_expr(expr.left);
+        self.validate_typevar_in_type_expr(expr.right);
+    }
+}
+
+"""Validate TypeVar variance in method parameters and return types.
+
+Pyright: Covariant TypeVars cannot be used in parameter types (input position).
+         Contravariant TypeVars cannot be used in return types (output position).
+         Only applies to DIRECT methods of generic classes (not nested functions).
+"""
+impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
+    # Only validate DIRECT methods of a generic class (not nested functions)
+    # Check if parent is directly the class (not another function)
+    if not isinstance(func.parent, uni.Archetype) {
+        return;
+    }
+    enclosing_class = func.parent;
+
+    # Get the class's type parameters
+    class_type = self.get_type_of_class(enclosing_class);
+    if not class_type or not class_type.shared or not class_type.shared.type_params {
+        return;
+    }
+
+    # Build map of class-scoped TypeVar names to their variance
+    class_tvars: dict[str, types.TypeVarType] = {};
+    for tp in class_type.shared.type_params {
+        class_tvars[tp.name] = tp;
+    }
+
+    # Helper to check variance - only direct TypeVar, not in unions for params
+    def check_expr(expr: uni.Expr, is_return: bool) -> None {
+        if isinstance(expr, uni.Name) {
+            resolved = self.get_type_of_expression(expr);
+            if isinstance(resolved, types.TypeVarType)
+            and resolved.name in class_tvars {
+                tv = class_tvars[resolved.name];
+                if is_return and tv.is_contravariant {
+                    self.add_diagnostic(
+                        expr,
+                        "Contravariant type variable cannot be used in return type"
+                    );
+                } elif not is_return and tv.is_covariant {
+                    self.add_diagnostic(
+                        expr,
+                        "Covariant type variable cannot be used in parameter type"
+                    );
+                }
+            }
+        } elif isinstance(expr, uni.BinaryExpr) and is_return {
+            # Only check unions for return types, not parameters
+            check_expr(expr.left, is_return);
+            check_expr(expr.right, is_return);
+        }
+        # Note: list[T] - T is in invariant position, so we don't recurse into subscripts
+    }
+
+    if not isinstance(func.signature, uni.FuncSignature) {
+        return;
+    }
+
+    # Check parameter types (covariant not allowed - direct usage only)
+    params = func.signature.get_parameters();
+    if params {
+        for param in params {
+            if param.type_tag and isinstance(param.type_tag.tag, uni.Expr) {
+                check_expr(param.type_tag.tag, False);
+            }
+        }
+    }
+
+    # Check return type (contravariant not allowed)
+    if func.signature.return_type {
+        check_expr(func.signature.return_type, True);
+    } else {
+        # Check inferred return type from return statements
+        for ret_stmt in func.get_all_sub_nodes(uni.ReturnStmt) {
+            if ret_stmt.expr and isinstance(ret_stmt.expr, uni.Name) {
+                resolved = self.get_type_of_expression(ret_stmt.expr);
+                if isinstance(resolved, types.TypeVarType)
+                and resolved.name in class_tvars {
+                    tv = class_tvars[resolved.name];
+                    if tv.is_contravariant {
+                        self.add_diagnostic(
+                            ret_stmt,
+                            "Contravariant type variable cannot be used in return type"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+"""Validate that a TypeVar is used in a valid scope.
+
+Pyright: validateTypeVarUsage / enforceClassTypeVarScope
+
+A TypeVar is valid if:
+1. Inside a function that uses it in parameters/return type
+2. Inside a class that declares it in Generic[T, ...] (ONLY that class, not parents)
+3. NOT valid: at module level or in nested non-generic class
+"""
+impl TypeEvaluator.validate_typevar_scope(
+    expr: uni.Expr, type_var: types.TypeVarType
+) -> None {
+    # Find IMMEDIATE enclosing scope (class or function)
+    enclosing_class: uni.Archetype | None = None;
+    enclosing_func: uni.Ability | None = None;
+    current: uni.UniNode | None = expr.parent;
+
+    while current {
+        if isinstance(current, uni.Archetype) and enclosing_class is None {
+            enclosing_class = current;
+        }
+        if isinstance(current, uni.Ability) and enclosing_func is None {
+            enclosing_func = current;
+        }
+        current = current.parent;
+    }
+
+    # Case 1: Inside a function - check if TypeVar is in function's signature
+    if enclosing_func {
+        func_type_params = self._get_function_type_params(enclosing_func);
+        for tp in func_type_params {
+            if tp.name == type_var.name {
+                return;  # Valid: TypeVar used in function signature
+
+            }
+        }
+        # TypeVar not in scope for this function
+        self.add_diagnostic(
+            expr, f'Type variable "{type_var.name}" has no meaning in this context'
+        );
+        return;
+    }
+
+    # Case 2: Inside a class (but not in a function) - check ONLY immediate class type_params
+    if enclosing_class {
+        class_type_params = self._get_enclosing_class_type_params(enclosing_class);
+        for tp in class_type_params {
+            if tp.name == type_var.name {
+                return;  # Valid: TypeVar declared in this class
+
+            }
+        }
+        # TypeVar not declared in this class
+        self.add_diagnostic(
+            expr, f'Type variable "{type_var.name}" has no meaning in this context'
+        );
+        return;
+    }
+
+    # Case 3: At module level (not in class or function)
+    self.add_diagnostic(
+        expr, f'Type variable "{type_var.name}" has no meaning in this context'
+    );
+}
+
+"""Get TypeVar parameters from ALL outer scopes (classes and functions).
+
+Pyright: Used for "TypeVar is already in use by outer scope" validation.
+This collects TypeVars from ALL parent classes and functions, not just immediate.
+
+Used when validating Generic[] declarations in nested classes.
+"""
+impl TypeEvaluator._get_outer_scope_type_params(
+    node_: uni.UniNode
+) -> list[types.TypeVarType] {
+    type_params: list[types.TypeVarType] = [];
+    current: uni.UniNode | None = node_.parent;
+
+    while current {
+        if isinstance(current, uni.Archetype) {
+            # Get type params from this outer class
+            class_type = self.get_type_of_class(current);
+            if class_type.shared.type_params {
+                for tp in class_type.shared.type_params {
+                    type_params.append(tp);
+                }
+            }
+        } elif isinstance(current, uni.Ability) {
+            # Get type params from enclosing function
+            func_params = self._get_function_type_params(current);
+            for tp in func_params {
+                type_params.append(tp);
+            }
+        }
+        current = current.parent;
+    }
+    return type_params;
 }

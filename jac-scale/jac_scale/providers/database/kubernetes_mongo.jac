@@ -173,10 +173,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
     Follows the same pattern as deploy(): pure spec construction, no API calls.
     """
     def deploy_dashboard(
-        cluster_env: str,
-        node_port: int,
-        username: str = 'admin',
-        password: str = 'admin'
+        username: str = 'admin', password: str = 'admin'
     ) -> dict[str, Any] {
         mongodb_service_name = f"{self.app_name}-mongodb-service";
         mongodb_secret_name = f"{self.app_name}-mongodb-secret";
@@ -235,6 +232,10 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                                     {
                                         'name': 'ME_CONFIG_BASICAUTH_PASSWORD',
                                         'value': password
+                                    },
+                                    {
+                                        'name': 'ME_CONFIG_SITE_BASEURL',
+                                        'value': '/db-dashboard/'
                                     }
                                 ],
                                 'resources': {
@@ -248,46 +249,20 @@ obj KubernetesMongoProvider(DatabaseProvider) {
             }
         };
 
-        if cluster_env == 'aws' {
-            express_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': f"{express_name}-service",
-                    'labels': {'app': express_name, 'managed': 'jac-scale'},
-                    'annotations': {
-                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
-                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
-                    }
-                },
-                'spec': {
-                    'type': 'LoadBalancer',
-                    'selector': {'app': express_name},
-                    'ports': [{'protocol': 'TCP', 'port': 80, 'targetPort': 8081}]
-                }
-            };
-        } else {
-            express_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': f"{express_name}-service",
-                    'labels': {'app': express_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'type': 'NodePort',
-                    'selector': {'app': express_name},
-                    'ports': [
-                        {
-                            'protocol': 'TCP',
-                            'port': 8081,
-                            'targetPort': 8081,
-                            'nodePort': node_port
-                        }
-                    ]
-                }
-            };
-        }
+        # Service: always ClusterIP — exposed via NGINX Ingress at /db-dashboard
+        express_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{express_name}-service",
+                'labels': {'app': express_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': express_name},
+                'ports': [{'protocol': 'TCP', 'port': 8081, 'targetPort': 8081}]
+            }
+        };
 
         return {
             'deployment': express_deployment,

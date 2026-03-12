@@ -26,44 +26,23 @@ obj HotReloader {
         _running: bool = False,
         _overlay_entry: bool = False;
 
-    """Start the hot reloader and begin watching for changes."""
     def start -> None;
-
-    """Stop the hot reloader and file watcher."""
     def stop -> None;
-
-    """Callback for file change events from the watcher."""
     def on_file_change(
         event: Any
     ) -> None;  # FileChangeEvent - using Any to avoid circular import
 
 
-    """Process a file change by classifying declarations and taking action."""
     def _process_change(file_path: str) -> None;
-
-    """Reload server-side module in sys.modules."""
     def _reload_server_module(file_path: str) -> None;
-
-    """Recompile client declarations to JavaScript."""
     def _recompile_client_code(
         file_path: str, visited: set | None = None, force: bool = True
     ) -> None;
 
-    """Get client and server declarations from a file."""
     def _classify_declarations(file_path: str) -> tuple[bool, bool];
-
-    """Convert file path to module name."""
     def _path_to_module(file_path: str) -> str;
-
-    """Convert a .jac file path to a .js filename."""
     def _get_js_filename(file_path: str) -> str;
-
-    """Emit a client-side error overlay for compilation errors."""
     def _emit_client_error_overlay(file_path: str, errors: str) -> None;
-
-    """Copy frontend files to compiled directory."""
     def _copy_frontend_files(file_path: str) -> None;
-
-    """Update the entry point to reflect changes in modules."""
     def _update_entry_point -> None;
 }
