@@ -21,6 +21,7 @@ impl JacShadcnPlugin.create_cmd -> None {
                 default="",
                 help="Initialize jac-shadcn theme from a registry URL (e.g. 'https://jac-shadcn.jaseci.org/theme?style=nova&theme=blue')"
             ),
+
         ],
         pre_hook=_handle_shadcn_add,
         source="jac-shadcn"

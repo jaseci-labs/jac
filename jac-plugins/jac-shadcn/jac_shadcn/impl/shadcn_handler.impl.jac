@@ -75,7 +75,7 @@ impl _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> 
 
 """Format a TOML key = value line, quoting the key if it contains special chars."""
 def _toml_line(key: str, ver: str) -> str {
-    needs_quote = ("@" in key or "/" in key or "-" in key or "." in key);
+    needs_quote = "@" in key or "/" in key or "-" in key or "." in key;
     if needs_quote {
         return '"' + key + '" = "' + ver + '"';
     }
@@ -90,10 +90,12 @@ def _dep_exists_in_toml(key: str, content: str) -> bool {
     unquoted_tab = key + "=";
     quoted = '"' + key + '"' + " =";
     quoted_tab = '"' + key + '"' + "=";
-    return (unquoted in content
+    return (
+        unquoted in content
         or unquoted_tab in content
         or quoted in content
-        or quoted_tab in content);
+        or quoted_tab in content
+    );
 }
 
 impl _update_npm_deps(config: Any, npm_deps: dict) -> None {
@@ -347,15 +349,7 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
 
     if "[jac-shadcn]" not in toml_content {
         shadcn_section = (
-            "\n[jac-shadcn]\n"
-            + 'style = "' + style + '"\n'
-            + 'baseColor = "' + base_color + '"\n'
-            + 'theme = "' + theme_color + '"\n'
-            + 'font = "' + font + '"\n'
-            + 'radius = "' + radius + '"\n'
-            + 'menuAccent = "' + menu_accent + '"\n'
-            + 'menuColor = "' + menu_color + '"\n'
-            + 'registry = "' + safe_registry_url + '"\n'
+            "\n[jac-shadcn]\n" + 'style = "' + style + '"\n' + 'baseColor = "' + base_color + '"\n' + 'theme = "' + theme_color + '"\n' + 'font = "' + font + '"\n' + 'radius = "' + radius + '"\n' + 'menuAccent = "' + menu_accent + '"\n' + 'menuColor = "' + menu_color + '"\n' + 'registry = "' + safe_registry_url + '"\n'
         );
         toml_content = toml_content + shadcn_section;
         with open(toml_path, "w") as f {
@@ -385,26 +379,32 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
     vite_config = theme_data.get("vite_config", {});
     if vite_config and "[plugins.client.vite]" not in toml_content {
         vite_section = (
-            '\n[plugins.client.vite]\n'
-            + 'plugins = ["tailwindcss()"]\n'
-            + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
+            '\n[plugins.client.vite]\n' + 'plugins = ["tailwindcss()"]\n' + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
         );
         toml_content = toml_content + vite_section;
         with open(toml_path, "w") as f {
             f.write(toml_content);
         }
-        console.print("  + Added [plugins.client.vite] Tailwind config to jac.toml", style="green");
+        console.print(
+            "  + Added [plugins.client.vite] Tailwind config to jac.toml",
+            style="green"
+        );
     }
 
     # Install default components (same set as jac create)
     default_components = theme_data.get("default_components", []);
     if default_components {
-        console.print("\n Installing default components (style: " + style + ")\n", style="bold cyan");
+        console.print(
+            "\n Installing default components (style: " + style + ")\n",
+            style="bold cyan"
+        );
 
         comp_added: list = [];
         comp_npm_deps: dict = {};
         for comp_name in default_components {
-            comp_data = _fetch_json(safe_registry_url + "/component/" + comp_name + "?style=" + style);
+            comp_data = _fetch_json(
+                safe_registry_url + "/component/" + comp_name + "?style=" + style
+            );
             if not comp_data or "error" in comp_data {
                 err_msg = str(comp_data.get("error", "Unknown error"))
                     if comp_data
