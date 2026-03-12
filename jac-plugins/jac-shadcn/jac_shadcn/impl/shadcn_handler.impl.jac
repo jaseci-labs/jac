@@ -73,6 +73,29 @@ impl _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> 
     return to_install;
 }
 
+"""Format a TOML key = value line, quoting the key if it contains special chars."""
+def _toml_line(key: str, ver: str) -> str {
+    needs_quote = ("@" in key or "/" in key or "-" in key or "." in key);
+    if needs_quote {
+        return '"' + key + '" = "' + ver + '"';
+    }
+    return key + ' = "' + ver + '"';
+}
+
+"""Check if a specific dep key already exists as a TOML key in content.
+Uses exact key matching to avoid 'clsx' matching 'clsx-utils'."""
+def _dep_exists_in_toml(key: str, content: str) -> bool {
+    # Check both quoted and unquoted forms
+    unquoted = key + " =";
+    unquoted_tab = key + "=";
+    quoted = '"' + key + '"' + " =";
+    quoted_tab = '"' + key + '"' + "=";
+    return (unquoted in content
+        or unquoted_tab in content
+        or quoted in content
+        or quoted_tab in content);
+}
+
 impl _update_npm_deps(config: Any, npm_deps: dict) -> None {
     if not npm_deps {
         return;
@@ -84,14 +107,42 @@ impl _update_npm_deps(config: Any, npm_deps: dict) -> None {
 
     for key in npm_deps {
         ver = npm_deps[key];
-        if key in content {
+        if _dep_exists_in_toml(key, content) {
             continue;
         }
         marker = "[dependencies.npm]";
         idx = content.find(marker);
         if idx >= 0 {
             insert_pos = idx + len(marker);
-            line = key + ' = "' + ver + '"';
+            line = _toml_line(key, ver);
+            content = content[:insert_pos] + "\n" + line + content[insert_pos:];
+        }
+    }
+
+    with open(toml_path, "w") as f {
+        f.write(content);
+    }
+}
+
+"""Patch a specific TOML section with key-value pairs. Creates the section if missing."""
+def _patch_toml_section(toml_path: Path, section_marker: str, deps: dict) -> None {
+    with open(toml_path, "r") as f {
+        content = f.read();
+    }
+
+    if section_marker not in content {
+        content = content + "\n" + section_marker + "\n";
+    }
+
+    for key in deps {
+        ver = deps[key];
+        if _dep_exists_in_toml(key, content) {
+            continue;
+        }
+        idx = content.find(section_marker);
+        if idx >= 0 {
+            insert_pos = idx + len(section_marker);
+            line = _toml_line(key, ver);
             content = content[:insert_pos] + "\n" + line + content[insert_pos:];
         }
     }
@@ -187,6 +238,16 @@ impl add_shadcn_components(config: Any, component_names: list) -> bool {
     }
 
     if all_npm_deps {
+        # Ensure [dependencies.npm] section exists before patching (#7)
+        toml_path = project_root / "jac.toml";
+        with open(toml_path, "r") as f {
+            toml_content = f.read();
+        }
+        if "[dependencies.npm]" not in toml_content {
+            with open(toml_path, "a") as f {
+                f.write("\n[dependencies.npm]\n");
+            }
+        }
         _update_npm_deps(config, all_npm_deps);
         console.print("\n  Updated jac.toml [dependencies.npm]", style="muted");
     }
@@ -234,13 +295,10 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
     menu_accent = query_params.get("menuAccent", ["subtle"])[0];
     menu_color = query_params.get("menuColor", ["default"])[0];
 
-    # Ensure the URL hits the /theme endpoint
-    fetch_url = registry_url + "/theme" + "?" + parsed.query if parsed.query else theme_url;
-    if "/theme" not in parsed.path {
-        fetch_url = registry_url + "/theme";
-        if parsed.query {
-            fetch_url = fetch_url + "?" + parsed.query;
-        }
+    # Build the /theme URL — always use /theme endpoint regardless of what path was given (#2, #3)
+    fetch_url = registry_url + "/theme";
+    if parsed.query {
+        fetch_url = fetch_url + "?" + parsed.query;
     }
 
     theme_data = _fetch_json(fetch_url);
@@ -249,10 +307,13 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
         return False;
     }
 
-    # Write global.css
+    # Write global.css — warn if overwriting (#5)
     global_css = theme_data.get("global_css", "");
     if global_css {
         css_path = project_root / "global.css";
+        if css_path.exists() {
+            console.warning("  Overwriting existing global.css with new theme");
+        }
         with open(css_path, "w") as f {
             f.write(global_css);
         }
@@ -275,6 +336,9 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
     ui_dir = project_root / "components" / "ui";
     ui_dir.mkdir(parents=True, exist_ok=True);
 
+    # Sanitize registry_url for TOML — strip any quotes (#6)
+    safe_registry_url = registry_url.replace('"', "");
+
     # Update jac.toml with [jac-shadcn] section
     toml_path = project_root / "jac.toml";
     with open(toml_path, "r") as f {
@@ -291,7 +355,7 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
             + 'radius = "' + radius + '"\n'
             + 'menuAccent = "' + menu_accent + '"\n'
             + 'menuColor = "' + menu_color + '"\n'
-            + 'registry = "' + registry_url + '"\n'
+            + 'registry = "' + safe_registry_url + '"\n'
         );
         toml_content = toml_content + shadcn_section;
         with open(toml_path, "w") as f {
@@ -300,15 +364,87 @@ impl init_shadcn_theme(config: Any, theme_url: str) -> bool {
         console.print("  + Added [jac-shadcn] section to jac.toml", style="green");
     }
 
-    # Update npm deps
+    # Update npm deps using the section patcher
     npm_deps = theme_data.get("npm_deps", {});
     if npm_deps {
-        _update_npm_deps(config, npm_deps);
+        _patch_toml_section(toml_path, "[dependencies.npm]", npm_deps);
         console.print("  + Updated [dependencies.npm] in jac.toml", style="green");
     }
 
+    # Update npm dev deps
+    npm_dev_deps = theme_data.get("npm_dev_deps", {});
+    if npm_dev_deps {
+        _patch_toml_section(toml_path, "[dependencies.npm.dev]", npm_dev_deps);
+        console.print("  + Updated [dependencies.npm.dev] in jac.toml", style="green");
+    }
+
+    # Add Vite/Tailwind plugin config if missing
+    with open(toml_path, "r") as f {
+        toml_content = f.read();
+    }
+    vite_config = theme_data.get("vite_config", {});
+    if vite_config and "[plugins.client.vite]" not in toml_content {
+        vite_section = (
+            '\n[plugins.client.vite]\n'
+            + 'plugins = ["tailwindcss()"]\n'
+            + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
+        );
+        toml_content = toml_content + vite_section;
+        with open(toml_path, "w") as f {
+            f.write(toml_content);
+        }
+        console.print("  + Added [plugins.client.vite] Tailwind config to jac.toml", style="green");
+    }
+
+    # Install default components (same set as jac create)
+    default_components = theme_data.get("default_components", []);
+    if default_components {
+        console.print("\n Installing default components (style: " + style + ")\n", style="bold cyan");
+
+        comp_added: list = [];
+        comp_npm_deps: dict = {};
+        for comp_name in default_components {
+            comp_data = _fetch_json(safe_registry_url + "/component/" + comp_name + "?style=" + style);
+            if not comp_data or "error" in comp_data {
+                err_msg = str(comp_data.get("error", "Unknown error"))
+                    if comp_data
+                    else "No response";
+                console.error("  x " + comp_name + ": " + err_msg);
+                continue;
+            }
+
+            filename = comp_data.get("file", comp_name + ".cl.jac");
+            content = comp_data.get("content", "");
+            out_path = ui_dir / filename;
+            with open(out_path, "w") as f {
+                f.write(content);
+            }
+
+            for dep in comp_data.get("npmDeps", []) {
+                if dep not in comp_npm_deps {
+                    comp_npm_deps[dep] = "*";
+                }
+            }
+
+            comp_added.append(comp_name);
+            console.print("  + " + comp_name, style="green");
+        }
+
+        # Update npm deps for component-specific dependencies
+        if comp_npm_deps {
+            _patch_toml_section(toml_path, "[dependencies.npm]", comp_npm_deps);
+        }
+
+        if comp_added {
+            console.print(
+                "\nInstalled " + str(len(comp_added)) + " component(s)",
+                style="bold green"
+            );
+        }
+    }
+
     console.print(
-        "\nTheme initialized! Run 'jac add --shadcn button card' to add components.",
+        "\nTheme initialized! You can add more components with 'jac add --shadcn button card'.",
         style="bold green"
     );
     return True;
