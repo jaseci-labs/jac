@@ -2,7 +2,7 @@
 
 **The Only Language You Need to Build Anything**
 
-Jac is a programming language designed for humans and AI to build together. It supersets Python and JavaScript with native compilation support, adding constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure. Jac imagines what should be abstracted away from the developer and automates it through the compiler and runtime.
+Jac is a programming language designed for humans and AI to build together. With clean, Python-like syntax, Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible) -- giving full access to every library in the PyPI, npm, and native ecosystems. Jac adds constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure. Jac imagines what should be abstracted away from the developer and automates it through the compiler and runtime.
 
 ```jac
 # A complete full-stack AI app in one file
@@ -274,11 +274,11 @@ Jac is designed for developers who want to build AI-powered applications without
 | **Startup Founder** | Ship complete products faster -- one language, one deploy command |
 | **AI/ML Engineer** | Native LLM integration without prompt engineering overhead |
 | **Full-Stack Developer** | React frontend + Python backend, no context switching |
-| **Python Developer** | Familiar syntax with powerful new capabilities (Jac supersets Python) |
+| **Python Developer** | Familiar syntax with powerful new capabilities (Jac compiles to Python bytecode -- all your libraries just work) |
 | **Student/Learner** | Modern language designed for clarity, with clean syntax AI models can read and write |
 
 !!! note "What You Should Know"
-    Jac supersets Python, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
+    Jac compiles to Python bytecode, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
 
 ---
 

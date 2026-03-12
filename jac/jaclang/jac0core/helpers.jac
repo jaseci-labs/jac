@@ -248,10 +248,7 @@ def pretty_print_source_location(
 
 """Jac debugger."""
 class Jdb(pdb.Pdb) {
-    """Initialize the Jac debugger."""
     def init(self: Jdb, *args: Any, **kwargs: Any) -> None;
-
-    """Check for breakpoint."""
     def has_breakpoint(self: Jdb, bytecode: bytes) -> bool;
 }
 
@@ -370,11 +367,9 @@ def _describe_nodes_list(objects: Sequence) -> str {
 obj DistFacade {
     has _dist: (object | None);
 
-    """Get the distribution/package name."""
     @property
     def project_name(self: DistFacade) -> str;
 
-    """Get the distribution version."""
     @property
     def version(self: DistFacade) -> str;
 }

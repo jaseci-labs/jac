@@ -2,11 +2,14 @@
 
 This page documents significant breaking changes in Jac and Jaseci that may affect your existing code or workflows. Use this information to plan and execute updates to your applications.
 
-## Latest Breaking Changes
+!!! note
+    MTLLM library is now deprecated and replaced by the byLLM package. In all places where `mtllm` was used before, it can be replaced with `byllm`.
 
-MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
+---
 
-### byllm 0.5.1: LiteLLM Minimum Version Raised to 1.81.15
+### Version 0.11.1 / byllm 0.5.1
+
+#### 1. LiteLLM Minimum Version Raised to 1.81.15
 
 The `litellm` dependency for byllm has been bumped from `>=1.75.5.post1,<1.80.0` to `>=1.81.15,<1.83.0`.
 
@@ -18,7 +21,11 @@ The `litellm` dependency for byllm has been bumped from `>=1.75.5.post1,<1.80.0`
 pip install "litellm>=1.81.15,<1.83.0"
 ```
 
-### Test Syntax Changed from Identifiers to String Descriptions
+---
+
+### Version 0.10.3
+
+#### 1. Test Syntax Changed from Identifiers to String Descriptions
 
 The `test` keyword now requires a **string description** instead of an identifier name. This gives tests more readable, natural-language names with spaces, punctuation, and proper casing.
 
@@ -59,7 +66,11 @@ test "walker visits all nodes" {
 
 **Migration:** Replace `test identifier_name {` with `test "identifier name" {` in all `.jac` files (convert underscores to spaces).
 
-### CLI Dependency Commands Redesigned (0.10.0)
+---
+
+### Version 0.10.2
+
+#### 1. CLI Dependency Commands Redesigned
 
 The `jac add`, `jac install`, `jac remove`, and `jac update` commands were redesigned. Key behavioral changes:
 
@@ -69,7 +80,11 @@ The `jac add`, `jac install`, `jac remove`, and `jac update` commands were redes
 - New `jac update` command for updating dependencies to latest compatible versions
 - Virtual environment is now at `.jac/venv/` instead of `.jac/packages/`
 
-### KWESC_NAME Syntax Changed from `<>` to Backtick
+---
+
+### Version 0.10.0
+
+#### 1. KWESC_NAME Syntax Changed from `<>` to Backtick
 
 Keyword-escaped names now use a backtick (`` ` ``) prefix instead of the angle-bracket (`<>`) prefix. This affects any identifier that uses a Jac keyword as a variable, field, or parameter name.
 
@@ -114,11 +129,11 @@ has `type: str = "default";
 
 **Migration:** Find and replace all `<>` keyword escape prefixes with `` ` `` in your `.jac` files.
 
-### Backtick Type Operator Removed
+#### 2. Backtick Type Operator Removed
 
 The backtick (`` ` ``) type operator (`TYPE_OP`) and `TypeRef` AST node have been removed from the language. This affects two areas: walker event signatures and filter comprehensions.
 
-#### Walker Entry/Exit Signatures
+##### Walker Entry/Exit Signatures
 
 The `` `root `` syntax for referencing the Root type is replaced with `Root` (capital R).
 
@@ -158,7 +173,7 @@ can start with Root | MyNode entry {
 }
 ```
 
-#### Filter Comprehensions
+##### Filter Comprehensions
 
 The typed filter syntax changes from `` (`?Type) `` and `` (`?Type:condition) `` to `(?:Type)` and `(?:Type, condition)`.
 
@@ -189,7 +204,11 @@ visit [-->](?:Year, year==2025);
 3. Replace `` (`?Type:condition) `` with `(?:Type, condition)` -- note the comma separator instead of colon
 4. The `root` keyword (lowercase, no backtick) for the root instance is unchanged -- `root spawn`, `root ++>`, etc. remain the same
 
-### BrowserRouter Migration (jac-client 0.2.12)
+---
+
+### Version 0.9.13 / jac-client 0.2.13
+
+#### 1. BrowserRouter Migration
 
 Client-side routing has migrated from `HashRouter` to `BrowserRouter`. URLs now use clean paths instead of hash-based URLs.
 
@@ -223,7 +242,11 @@ http://localhost:8000/user/123
 3. Ensure `base_route_app` is set in `jac.toml` `[serve]` section for direct navigation and page refresh to work
 4. If deploying as a static site, configure your hosting provider's SPA fallback
 
-### `--cl` Flag Replaced with `--npm` and `--use client`
+---
+
+### Version 0.9.9
+
+#### 1. `--cl` Flag Replaced with `--npm` and `--use client`
 
 The `--cl` flag has been removed from jac-client CLI commands and replaced with more descriptive alternatives.
 
@@ -262,7 +285,7 @@ jac remove lodash --npm
 - `jac remove --cl` → `jac remove --npm`
 - The `--skip` flag remains available for `jac create --use client --skip` to skip npm package installation
 
-### `.cl.jac` Files No Longer Auto-Imported as Annexes
+#### 2. `.cl.jac` Files No Longer Auto-Imported as Annexes
 
 Client module files (`.cl.jac`) are now treated as **standalone modules only**. Previously, `.cl.jac` files were automatically annexed to their corresponding `.jac` files (similar to `.impl.jac` files). This dual behavior has been removed to simplify the module system.
 
@@ -343,6 +366,8 @@ def:pub app -> JsxElement {
 
 **Note:** `.cl.jac` files can still have their own `.impl.jac` annexes for separating declarations from implementations.
 
+---
+
 ### Version 0.9.8
 
 #### 1. Walker Traversal Semantics Changed to Recursive DFS with Deferred Exits
@@ -416,6 +441,8 @@ walker MyWalker {
     }
 }
 ```
+
+---
 
 ### Version 0.9.5
 
@@ -537,13 +564,15 @@ my-project/
 - ShelfDB files moved to `.jac/data/`
 - New `[build].dir` config option allows customizing the base directory
 
+---
+
 ### Version 0.9.4
 
 #### 1. `let` Keyword Removed - Use Direct Assignment
 
 The `let` keyword has been removed from Jaclang. Variable declarations now use direct assignment syntax, aligning with Python's approach to variable binding.
 
-**Before**
+**Before:**
 
 ```jac
 with entry {
@@ -552,7 +581,7 @@ with entry {
 }
 ```
 
-**After**
+**After:**
 
 ```jac
 with entry {
@@ -569,13 +598,15 @@ with entry {
 
 > **Note for client-side code:** In `cl {}` blocks and `.cl.jac` files, prefer using `has` for reactive state (see v0.9.5 reactive state feature) instead of explicit `useState` destructuring.
 
+---
+
 ### Version 0.8.10
 
 #### 1. byLLM Imports Moved to `byllm.lib`
 
 All byLLM exports have been moved under the `byllm.lib` module to enable lazy loading and faster startup. Direct imports from `byllm` are removed.
 
-**Before**
+**Before:**
 
 ```jac
 import from byllm { Model }
@@ -583,7 +614,7 @@ import from byllm { Model }
 glob llm = Model(model_name="gpt-4o-mini", verbose=True);
 ```
 
-**After**
+**After:**
 
 ```jac
 import from byllm.lib { Model }
@@ -591,13 +622,15 @@ import from byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o-mini", verbose=True);
 ```
 
+---
+
 ### Version 0.8.8
 
 #### 1. `check` Keyword Removed - Use `assert` in Test Blocks
 
 The `check` keyword has been removed from Jaclang. All testing functionality is now unified under `assert` statements, which behave differently depending on context: raising exceptions in regular code and reporting test failures within `test` blocks.
 
-**Before**
+**Before:**
 
 ```jac
 glob a: int = 5;
@@ -623,7 +656,7 @@ test "function result" {
 }
 ```
 
-**After**
+**After:**
 
 ```jac
 glob a: int = 5;
@@ -658,13 +691,15 @@ test "function result" {
 
 This change unifies the testing and validation syntax, making the language more consistent while maintaining all testing capabilities.
 
+---
+
 ### Version 0.8.4
 
 #### 1. Global, Nonlocal Operators Updated to `global`, `nonlocal`
 
 This renaming aims to make the operator's purpose align with python, as `global`, `nonlocal` more aligned with python.
 
-**Before**
+**Before:**
 
 ```jac
 glob x = "Jaclang ";
@@ -689,7 +724,7 @@ with entry {
 }
 ```
 
-**After**
+**After:**
 
 ```jac
 glob x = "Jaclang ";
@@ -718,7 +753,7 @@ with entry {
 
 The mtllm library now uses a single unified Model class under the `mtllm.llm` module, instead of separate classes like `Gemini` and `OpenAI`. This simplifies usage and aligns model loading with HuggingFace-style naming conventions.
 
-**Before**
+**Before:**
 
 ```jac
 import from mtllm.llms { Gemini, OpenAI }
@@ -727,7 +762,7 @@ glob llm1 = Gemini(model_name="gemini-2.0-flash");
 glob llm2 = OpenAI();
 ```
 
-**After**
+**After:**
 
 ```jac
 import from mtllm.llm { Model }
@@ -736,13 +771,15 @@ glob llm1 = Model(model_name="gemini/gemini-2.0-flash");
 glob llm2 = Model(model_name="gpt-4o");
 ```
 
+---
+
 ### Version 0.8.1
 
-#### 1. `dotgen` builtin function is now name `printgraph`
+#### 1. `dotgen` Builtin Function Renamed to `printgraph`
 
 This renaming aims to make the function's purpose clearer, as `printgraph` more accurately reflects its action of outputting graph data, similar to how it can also output in JSON format. Also other formats may be added (like mermaid).
 
-**Before**
+**Before:**
 
 ```jac
 node N {has val: int;}
@@ -758,7 +795,7 @@ with entry {
 }
 ```
 
-**After**
+**After:**
 
 ```jac
 node N {has val: int;}
@@ -774,11 +811,11 @@ with entry {
 }
 ```
 
-#### 2. `ignore` feature is removed
+#### 2. `ignore` Feature Removed
 
-This removal aims to avoid being over specifc with data spatial features.
+This removal aims to avoid being over specific with object-spatial features.
 
-**Before**
+**Before:**
 
 ```jac
 node MyNode {
@@ -800,7 +837,7 @@ with entry {
 }
 ```
 
-**After**
+**After:**
 
 ```jac
 node MyNode {
@@ -824,9 +861,11 @@ with entry {
 }
 ```
 
-### Version 0.8.0 (Main branch since 5/5/2025)
+---
 
-#### 1. `impl` keyword introduced to simplify Implementation
+### Version 0.8.0
+
+#### 1. `impl` Keyword Introduced to Simplify Implementation
 
 The new `impl` keyword provides a simpler and more explicit way to implement abilities and methods for objects, nodes, edges, and other types. This replaces the previous more complex colon-based syntax for implementation.
 
@@ -864,7 +903,7 @@ impl calculate_distance(x: float, y: float) -> float {
 
 This change makes the implementation syntax more readable, eliminates ambiguity, and better aligns with object-oriented programming conventions by using the familiar dot notation to indicate which type a method belongs to.
 
-#### 2. Inheritance base classes specification syntax changed
+#### 2. Inheritance Base Classes Specification Syntax Changed
 
 The syntax for specifying inheritance has been updated from using colons to using parentheses, which better aligns with common object-oriented programming languages.
 
@@ -910,7 +949,7 @@ node AdminUser(BaseUser) {
 
 This change makes the inheritance syntax more intuitive and consistent with languages like Python, making it easier for developers to understand class hierarchies at a glance.
 
-#### 3. `def` keyword introduced
+#### 3. `def` Keyword Introduced
 
 Instead of using `can` keyword for all functions and abilities, `can` statements are only used for object-spatial abilities and `def` keyword must be used for traditional python like functions and methods.
 
@@ -964,9 +1003,9 @@ node Person {
 }
 ```
 
-#### 4. `visitor` keyword introduced
+#### 4. `visitor` Keyword Introduced
 
-Instead of using `here` keyword to represent the other object context while `self` is the self referencial context. Now `here` can only be used in walker abilities to reference a node or edge, and `visitor` must be used in nodes/edges to reference the walker context.
+Instead of using `here` keyword to represent the other object context while `self` is the self referential context. Now `here` can only be used in walker abilities to reference a node or edge, and `visitor` must be used in nodes/edges to reference the walker context.
 
 **Before (v0.7.x and earlier):**
 
@@ -1026,9 +1065,9 @@ This change makes the code more intuitive by clearly distinguishing between:
 - `visitor`: The walker interacting with a node/edge
 - `here`: Used only in walker abilities to reference the current node/edge being visited
 
-#### 5. Changes to lambda syntax and `lambda` instroduced
+#### 5. Lambda Syntax Updated
 
-Instead of using the `with x: int can x;` type syntax the updated lambda syntax now replaces `with` and `can` with `lambda` and `:` repsectively.
+Instead of using the `with x: int can x;` type syntax the updated lambda syntax now replaces `with` and `can` with `lambda` and `:` respectively.
 
 **Before (v0.7.x):**
 
@@ -1050,9 +1089,9 @@ with entry {
 
 This change brings Jac's lambda syntax closer to Python's familiar `lambda parameter: expression` pattern, making it more intuitive for developers coming from Python backgrounds while maintaining Jac's type annotations.
 
-#### 6. Data spatial arrow notation updated
+#### 6. Object-Spatial Arrow Notation Updated
 
-The syntax for typed arrow notations are updated as `-:MyEdge:->` and `+:MyEdge:+>` is now `->:MyEdge:->` and `+>:MyEdge:+> for reference and creations.
+The syntax for typed arrow notations are updated as `-:MyEdge:->` and `+:MyEdge:+>` is now `->:MyEdge:->` and `+>:MyEdge:+>` for reference and creations.
 
 **Before (v0.7.x):**
 
@@ -1070,7 +1109,7 @@ alice <+:Friendship:strength=0.9:<+ bob;
 
 This change was made to eliminate syntax conflicts with Python-style list slicing operations (e.g., `my_list[:-1]` was forced to be written `my_list[: -1]`). The new arrow notation provides clearer directional indication while ensuring that object-spatial operations don't conflict with the token parsing for common list operations.
 
-#### 7. Import `from` syntax updated for clarity
+#### 7. Import `from` Syntax Updated for Clarity
 
 The syntax for importing specific modules or components from a package has been updated to use curly braces for better readability and to align with modern language conventions.
 
@@ -1090,7 +1129,7 @@ import from utils { helper, math_utils, string_formatter };
 
 This new syntax using curly braces makes it clearer which modules are being imported from which package, especially when importing multiple items from different packages.
 
-#### 8. Import statement are auto resolved (no language hints needed)
+#### 8. Import Statements Auto-Resolved (No Language Hints Needed)
 
 The language-specific import syntax has been simplified by removing the explicit language annotations (`:py` and `:jac`). The compiler now automatically resolves imports based on context and file extensions.
 
@@ -1112,7 +1151,7 @@ import json, os, sys;
 
 This change simplifies the import syntax, making code cleaner while still maintaining the ability to import from both Python and Jac modules. The Jac compiler now intelligently determines the appropriate language context for each import.
 
-#### 9. `restrict` and `unrestrict` Interfaces to Jac Machine now `perm_grant` and `perm_revoke`
+#### 9. `restrict` and `unrestrict` Renamed to `perm_grant` and `perm_revoke`
 
 The permission management API has been renamed to better reflect its purpose and functionality.
 
