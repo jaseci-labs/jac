@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://www.jac-lang.org/assets/logo.png">
     <source media="(prefers-color-scheme: light)" srcset="https://www.jac-lang.org/assets/logo.png">
-    <img alt="Jaclang Programming Language: Unique and Powerful programming language that runs on top of Python"
+    <img alt="Jac Programming Language: compiles to Python bytecode, JavaScript, and native machine code"
          src="https://www.jac-lang.org/assets/logo.png"
          width="20%">
   </picture>
@@ -23,13 +23,13 @@ This is the main source code repository for the [Jac] programming language. It c
 
 ## What and Why is Jac?
 
-- **Native Superset of Python and TypeScript/JavaScript** - Jac is a native superset of both Python and TypeScript/JavaScript, meaning both ecosystems (PyPI and npm) are directly interoperable with Jac without any trickery (no interop interface needed). Every Jac program can be ejected to pure Python, and Python programs can be transpiled to Jac.
+- **Ecosystem-Native Multi-Target Compilation** - With Python-like syntax, Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible). This means every library in PyPI, npm, and native C ecosystems is directly usable from Jac without interop wrappers or foreign function interfaces. Every Jac program can also be ejected to readable Python, and Python programs can be transpiled to Jac.
 
 - **AI as a Programming Language Constructs** - Jac includes a novel (neurosymbolic) language construct that allows replacing code with generative AI models themselves. Jac's philosophy abstracts away prompt engineering. (Imagine taking a function body and swapping it out with a model.)
 
 - **New Modern Abstractions** - Jac introduces a paradigm that reasons about persistence and the notion of users as a language level construct. This enables writing simple programs for which no code changes are needed whether they run in a simple command terminal, or distributed across a large cloud. Jac's philosophy abstracts away dev ops and container/cloud configuration.
 
-- **Jac Improves on Python** - Jac makes multiple thoughtful quality-of-life improvements/additions to Python. These include new modern operators, new types of comprehensions, new ways of organizing modules (i.e., separating implementations from declarations), etc.
+- **Quality-of-Life Beyond Python** - Jac introduces modern operators, new comprehension forms, and module organization that separates declarations from implementations -- going beyond what Python offers while remaining familiar.
 
 ## Quick Start
 

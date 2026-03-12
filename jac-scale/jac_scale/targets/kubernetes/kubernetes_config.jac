@@ -8,7 +8,6 @@ obj KubernetesConfig(BaseConfig) {
         docker_username: str = '',
         docker_password: str = '',
         container_port: int = 8000,
-        node_port: int = 30001,
         mongodb_enabled: bool = True,
         redis_enabled: bool = True,
         cpu_request: (str | None) = None,
@@ -46,13 +45,9 @@ obj KubernetesConfig(BaseConfig) {
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
         prometheus_admin_password: str = 'Adminpassword123',
-        prometheus_node_port: int = 30090,
-        grafana_node_port: int = 30300,
         # Dashboard configuration
         redis_dashboard: bool = False,
         mongodb_dashboard: bool = False,
-        redis_insight_node_port: int = 30032,
-        mongo_express_node_port: int = 30033,
         mongo_express_username: str = 'admin',
         mongo_express_password: str = 'admin',
         redis_insight_username: str = 'admin',
@@ -60,7 +55,9 @@ obj KubernetesConfig(BaseConfig) {
         mongodb_root_username: str = 'admin',
         mongodb_root_password: str = 'password',
         redis_username: str = 'admin',
-        redis_password: str = 'password';
+        redis_password: str = 'password',
+        # Ingress configuration
+        ingress_node_port: int = 30080;
 
     override def to_dict -> dict[str, Any] {
         base = super.to_dict();
@@ -70,7 +67,6 @@ obj KubernetesConfig(BaseConfig) {
                 'docker_username': self.docker_username,
                 'docker_password': self.docker_password,
                 'container_port': self.container_port,
-                'node_port': self.node_port,
                 'mongodb_enabled': self.mongodb_enabled,
                 'redis_enabled': self.redis_enabled,
                 'cpu_request': self.cpu_request,
@@ -110,13 +106,9 @@ obj KubernetesConfig(BaseConfig) {
                 'monitoring_enabled': self.monitoring_enabled,
                 'k8s_metrics_enabled': self.k8s_metrics_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
-                'prometheus_node_port': self.prometheus_node_port,
-                'grafana_node_port': self.grafana_node_port,
                 # Dashboard configuration
                 'redis_dashboard': self.redis_dashboard,
                 'mongodb_dashboard': self.mongodb_dashboard,
-                'redis_insight_node_port': self.redis_insight_node_port,
-                'mongo_express_node_port': self.mongo_express_node_port,
                 'mongo_express_username': self.mongo_express_username,
                 'mongo_express_password': self.mongo_express_password,
                 'redis_insight_username': self.redis_insight_username,
@@ -124,7 +116,9 @@ obj KubernetesConfig(BaseConfig) {
                 'mongodb_root_username': self.mongodb_root_username,
                 'mongodb_root_password': self.mongodb_root_password,
                 'redis_username': self.redis_username,
-                'redis_password': self.redis_password
+                'redis_password': self.redis_password,
+                # Ingress configuration
+                'ingress_node_port': self.ingress_node_port
             }
         );
         return base;
@@ -138,7 +132,6 @@ obj KubernetesConfig(BaseConfig) {
             docker_username=config.get('docker_username', ''),
             docker_password=config.get('docker_password', ''),
             container_port=config.get('container_port', 8000),
-            node_port=config.get('node_port', 30001),
             mongodb_enabled=config.get('mongodb_enabled', True),
             redis_enabled=config.get('redis_enabled', True),
             cpu_request=config.get('cpu_request'),
@@ -176,12 +169,8 @@ obj KubernetesConfig(BaseConfig) {
             prometheus_admin_password=config.get(
                 'prometheus_admin_password', 'Adminpassword123'
             ),
-            prometheus_node_port=config.get('prometheus_node_port', 30090),
-            grafana_node_port=config.get('grafana_node_port', 30300),
             redis_dashboard=config.get('redis_dashboard', False),
             mongodb_dashboard=config.get('mongodb_dashboard', False),
-            redis_insight_node_port=config.get('redis_insight_node_port', 30032),
-            mongo_express_node_port=config.get('mongo_express_node_port', 30033),
             mongo_express_username=config.get('mongo_express_username', 'admin'),
             mongo_express_password=config.get('mongo_express_password', 'admin'),
             redis_insight_username=config.get('redis_insight_username', 'admin'),
@@ -189,7 +178,8 @@ obj KubernetesConfig(BaseConfig) {
             mongodb_root_username=config.get('mongodb_root_username', 'admin'),
             mongodb_root_password=config.get('mongodb_root_password', 'password'),
             redis_username=config.get('redis_username', 'admin'),
-            redis_password=config.get('redis_password', 'password')
+            redis_password=config.get('redis_password', 'password'),
+            ingress_node_port=config.get('ingress_node_port', 30080)
         );
     }
 }

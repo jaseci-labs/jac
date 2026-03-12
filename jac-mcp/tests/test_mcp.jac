@@ -22,6 +22,33 @@ test "server creation with custom config" {
     assert server.host == "0.0.0.0";
 }
 
+test "streamable-http transport initializes session manager and app" {
+    import from mcp.server { Server }
+    import from mcp.server.streamable_http_manager { StreamableHTTPSessionManager }
+    import from starlette.applications { Starlette }
+    import from starlette.routing { Mount }
+    import contextlib;
+
+    server = Server("test-server");
+    session_manager = StreamableHTTPSessionManager(
+        app=server, json_response=True, stateless=False
+    );
+    assert session_manager is not None;
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: object) -> object {
+        async with session_manager.run() {
+            yield ;
+        }
+    }
+
+    starlette_app = Starlette(
+        lifespan=lifespan, routes=[Mount("/mcp", app=session_manager.handle_request)]
+    );
+    assert starlette_app is not None;
+    assert starlette_app.routes[0].path == "/mcp";
+}
+
 # ── Plugin Config Tests ──
 test "get plugin metadata" {
     metadata = JacMcpPluginConfig.get_plugin_metadata();

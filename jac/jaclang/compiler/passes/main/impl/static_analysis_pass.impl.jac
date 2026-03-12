@@ -12,6 +12,10 @@ impl StaticAnalysisPass.after_pass -> None {
     self._check_unused_symbols(self.ir_in);
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
+    for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
+        self._check_undefined_names(annex_mod);
+        self._check_unreachable_code(annex_mod);
+    }
 }
 
 """Walk all scopes and warn on symbols that are defined but never used."""
@@ -72,12 +76,6 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
     }
     # Recurse into child scopes
     for kid in scope.kid_scope {
-        if isinstance(kid, uni.AstImplNeedingNode) {
-            if isinstance(kid.body, uni.ImplDef) {
-                self._check_unused_symbols(kid.body);
-                continue;
-            }
-        }
         self._check_unused_symbols(kid);
     }
 }
@@ -120,6 +118,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     # Collect all code body containers
     container_types = [
         uni.Ability,
+        uni.ImplDef,
         uni.IfStmt,
         uni.ElseStmt,
         uni.ElseIf,
