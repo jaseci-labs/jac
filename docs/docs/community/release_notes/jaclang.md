@@ -4,7 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.2 (Unreleased)
 
+- **Fix: Garbled Emojis and Markup in `jac --version` Banner**: Non-ASCII characters and emojis now render correctly in the version banner.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
+
 
 ## jaclang 0.12.1 (Latest Release)
 
