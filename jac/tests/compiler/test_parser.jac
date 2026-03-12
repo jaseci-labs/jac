@@ -134,19 +134,19 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
+    # Parser emits 'Missing ;' (treats 'new' as identifier, so 'new car(...)' is
+    # two expressions). ASTValidationPass then catches 'new' as a banned keyword.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 6;
+    assert len(prog.errors_had) == 4;
     expected_substrings = [
-        "The 'new' keyword is not supported in Jac",
-        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+        "Missing ';'",
         "Missing ';'",
         "The 'new' keyword is not supported in Jac",
-        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
-        "Missing ';'",
+        "The 'new' keyword is not supported in Jac",
 
     ];
     for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
@@ -156,21 +156,27 @@ test "new keyword errors" {
 }
 
 test "pass keyword errors" {
+    # ASTValidationPass catches all 17 occurrences of 'pass' with the same
+    # message. The 5 archetype body usages also produce 'Missing ;' from the
+    # parser (fixture omits semicolons for those, mimicking Python style).
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "pass_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 34;
-    expected_substrings = 17 * [
-        "'pass' keyword is not allowed in Jac",
-        "Jac does not allow this keyword in any syntactic position",
-
-    ];
-    for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
+    assert len(prog.errors_had) == 22;
+    keyword_errors = 0;
+    missing_semi = 0;
+    for alrt in prog.errors_had {
         pretty = alrt.pretty_print();
-        assert expected in pretty;
+        if "'pass' keyword is not allowed in Jac" in pretty {
+            keyword_errors += 1;
+        } elif "Missing ';'" in pretty {
+            missing_semi += 1;
+        }
     }
+    assert keyword_errors == 17;
+    assert missing_semi == 5;
 }
 
 test "multiple syntax errors" {

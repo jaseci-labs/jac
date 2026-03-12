@@ -13,8 +13,8 @@ This module contains the bootstrap-critical compiler passes:
 """
 
 from jaclang.jac0core.passes.annex_pass import JacAnnexPass
+from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
 from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
-from jaclang.jac0core.passes.interop_analysis_pass import InteropAnalysisPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
 from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
 from jaclang.jac0core.passes.pybc_gen_pass import PyBytecodeGenPass
@@ -25,6 +25,7 @@ from jaclang.jac0core.passes.uni_pass import UniPass
 
 __all__ = [
     "Alert",
+    "ASTValidationPass",
     "BaseTransform",
     "Transform",
     "UniPass",

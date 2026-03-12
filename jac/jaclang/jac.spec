@@ -139,7 +139,8 @@ atom ::=
     | multistring
     | builtin_type
     | special_ref
-    | (NAME | KWESC_NAME) NAME?
+    | NAME
+    | KWESC_NAME
     | "*" expression
     | "**" expression
     | paren_expr
@@ -427,6 +428,7 @@ archetype_member ::=
         | "impl" impl_def
         | PYNLINE
         | "with" (("entry" | "exit") "{" code_block_stmts "}")?
+        | NAME statement
     )?
 
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
