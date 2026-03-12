@@ -331,8 +331,26 @@ impl TypeEvaluator.match_args_to_params(
                 arg_params[arg] = matching_param;
             }
         } except Exception as e {
-            if not checking_overload and self._pass is not None {
-                self._pass.log_error(str(e), node_override=arg);
+            if not checking_overload {
+                err_msg = str(e);
+                if "Too many positional arguments" in err_msg {
+                    self.emit_diag(E1051, arg);
+                } elif "does not match any parameter" in err_msg {
+                    self.emit_diag(
+                        E1052,
+                        arg,
+                        name=arg.key.sym_name if isinstance(arg, uni.KWPair) else ""
+                    );
+                } elif "Positional only parameter" in err_msg {
+                    # Extract param name from "Positional only parameter 'X' cannot..."
+                    pname = err_msg.split("'")[1] if "'" in err_msg else "";
+                    self.emit_diag(E1056, arg, name=pname);
+                } elif "already matched" in err_msg {
+                    pname = err_msg.split("'")[1] if "'" in err_msg else "";
+                    self.emit_diag(E1057, arg, name=pname);
+                } elif self._pass is not None {
+                    self._pass.emit(E1051, node_override=arg);
+                }
             }
             argument_errors = True;
         }

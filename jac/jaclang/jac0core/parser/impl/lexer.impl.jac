@@ -139,12 +139,15 @@ impl Lexer.make_token(
     );
 }
 
-impl Lexer.error(message: str, start_line: int, start_col: int, start_pos: int) {
+impl Lexer.error(
+    message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
+) {
     self.error_count += 1;
     if self?.prog and self.prog is not None and hasattr(self.prog, "errors_had") {
         import from jaclang.jac0core.unitree { Token as UniToken, Source }
         import from jaclang.jac0core.codeinfo { CodeLocInfo }
         import from jaclang.jac0core.passes.transform { Alert }
+        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
         sloc = self.make_loc(start_line, start_col, start_pos);
         src = Source(self.source, mod_path=self.file_path);
         tok = UniToken(
@@ -159,7 +162,8 @@ impl Lexer.error(message: str, start_line: int, start_col: int, start_pos: int) 
             pos_end=sloc.pos_end
         );
         loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, loc, Lexer);
+        code = DIAGNOSTICS.get(code_str) if code_str else None;
+        alrt = Alert(message, loc, Lexer, code=code);
         self.prog.errors_had.append(alrt);
     }
 }
@@ -240,7 +244,13 @@ impl Lexer.skip_block_comment -> bool {
         }
         self.advance();
     }
-    self.error("Unterminated block comment", start_line, start_col, start_pos);
+    self.error(
+        "Unterminated block comment",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0101"
+    );
     return False;
 }
 
@@ -481,7 +491,11 @@ impl Lexer.scan_string(quote: str) -> Token {
             }
             if ch == "\n" {
                 self.error(
-                    "Unterminated string literal", start_line, start_col, start_pos
+                    "Unterminated string literal",
+                    start_line,
+                    start_col,
+                    start_pos,
+                    code_str="E0100"
                 );
                 return self.make_token(
                     TokenKind.ERROR, value, start_line, start_col, start_pos
@@ -499,7 +513,13 @@ impl Lexer.scan_string(quote: str) -> Token {
             value += self.advance();
         }
     }
-    self.error("Unterminated string literal", start_line, start_col, start_pos);
+    self.error(
+        "Unterminated string literal",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0100"
+    );
     return self.make_token(TokenKind.ERROR, value, start_line, start_col, start_pos);
 }
 
@@ -616,7 +636,13 @@ impl Lexer.scan_fstring_content -> Token {
             }
             # Non-triple f-strings can't have newlines
             if ch == "\n" {
-                self.error("Unterminated f-string", start_line, start_col, start_pos);
+                self.error(
+                    "Unterminated f-string",
+                    start_line,
+                    start_col,
+                    start_pos,
+                    code_str="E0102"
+                );
                 return self.make_token(
                     TokenKind.ERROR, value, start_line, start_col, start_pos
                 );
@@ -678,7 +704,9 @@ impl Lexer.scan_fstring_content -> Token {
             value += self.advance();
         }
     }
-    self.error("Unterminated f-string", start_line, start_col, start_pos);
+    self.error(
+        "Unterminated f-string", start_line, start_col, start_pos, code_str="E0102"
+    );
     return self.make_token(TokenKind.ERROR, value, start_line, start_col, start_pos);
 }
 
@@ -855,7 +883,11 @@ impl Lexer.scan_jsx_tag_token -> Token {
     }
     # Unknown - return error token
     self.error(
-        f"Unexpected character in JSX tag: '{ch}'", start_line, start_col, start_pos
+        f"Unexpected character in JSX tag: '{ch}'",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0106"
     );
     self.advance();
     return self.make_token(TokenKind.ERROR, ch, start_line, start_col, start_pos);
@@ -868,7 +900,13 @@ impl Lexer.scan_jsx_content -> Token {
     # is handled downstream by JsxText.get_normalized_text(). Whitespace-only
     # text nodes are filtered by the parser.
     if self.at_end() {
-        self.error("Unexpected end of JSX content", self.line, self.col, self.pos);
+        self.error(
+            "Unexpected end of JSX content",
+            self.line,
+            self.col,
+            self.pos,
+            code_str="E0104"
+        );
         return self.make_token(TokenKind.ERROR, "", self.line, self.col, self.pos);
     }
     start_line = self.line;
@@ -959,7 +997,13 @@ impl Lexer.scan_jsx_content -> Token {
         );
     }
     # Empty - shouldn't happen
-    self.error("Unexpected end of JSX content", start_line, start_col, start_pos);
+    self.error(
+        "Unexpected end of JSX content",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0104"
+    );
     return self.make_token(TokenKind.ERROR, "", start_line, start_col, start_pos);
 }
 
@@ -1087,7 +1131,13 @@ impl Lexer.scan_pynline -> Token {
         }
         code += self.advance();
     }
-    self.error("Unterminated inline Python block", start_line, start_col, start_pos);
+    self.error(
+        "Unterminated inline Python block",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0103"
+    );
     return self.make_token(TokenKind.ERROR, code, start_line, start_col, start_pos);
 }
 
@@ -1512,7 +1562,13 @@ impl Lexer.scan_operator -> Token {
 
     }
     # Unknown character
-    self.error(f"Unexpected character: '{ch}'", start_line, start_col, start_pos);
+    self.error(
+        f"Unexpected character: '{ch}'",
+        start_line,
+        start_col,
+        start_pos,
+        code_str="E0105"
+    );
     return self.make_token(TokenKind.ERROR, ch, start_line, start_col, start_pos);
 }
 
@@ -1623,7 +1679,8 @@ impl Lexer.tokenize -> list[Token] {
                 f"Lexer stuck at EOF in mode {mode} (pos={self.pos})",
                 self.line,
                 self.col,
-                self.pos
+                self.pos,
+                code_str="E0107"
             );
             tokens.append(
                 Token(

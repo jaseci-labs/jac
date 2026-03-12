@@ -88,16 +88,6 @@ class Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
         cancel_token: (Event | None) = None
     ) -> None;
 
-    """Pass Error."""
-    def log_error(
-        self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None;
-
-    """Pass Error."""
-    def log_warning(
-        self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None;
-
     """Emit a structured diagnostic."""
     def emit(
         self: Transform,

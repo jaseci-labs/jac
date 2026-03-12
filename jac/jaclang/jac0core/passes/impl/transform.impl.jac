@@ -155,32 +155,6 @@ impl Transform.init(
     super.init(ir_in, prog, cancel_token);
 }
 
-"""Log a compilation error."""
-impl Transform.log_error(
-    self: Transform, msg: str, node_override: (UniNode | None) = None
-) -> None {
-    alrt = Alert(
-        msg,
-        self.cur_node.loc if not node_override else node_override.loc,
-        self.__class__
-    );
-    self.errors_had.append(alrt);
-    self.prog.errors_had.append(alrt);
-}
-
-"""Log a compilation warning."""
-impl Transform.log_warning(
-    self: Transform, msg: str, node_override: (UniNode | None) = None
-) -> None {
-    alrt = Alert(
-        msg,
-        self.cur_node.loc if not node_override else node_override.loc,
-        self.__class__
-    );
-    self.warnings_had.append(alrt);
-    self.prog.warnings_had.append(alrt);
-}
-
 """Emit a structured diagnostic. Returns True if emitted (not suppressed)."""
 impl Transform.emit(
     self: Transform,

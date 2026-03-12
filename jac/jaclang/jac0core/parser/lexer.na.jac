@@ -56,7 +56,13 @@ obj Lexer {
         kind: TokenKind, value: str, start_line: int, start_col: int, start_pos: int
     ) -> Token;
 
-    def error(message: str, start_line: int, start_col: int, start_pos: int);
+    def error(
+        message: str,
+        start_line: int,
+        start_col: int,
+        start_pos: int,
+        code_str: str = ""
+    );
     # Character classification
     def is_digit(ch: str) -> bool;
     def is_hex_digit(ch: str) -> bool;

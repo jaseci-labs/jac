@@ -140,6 +140,7 @@ import from jaclang.jac0core.diagnostics {
     E0032,
     E0034,
     E0045,
+    E0046,
     E0047,
     W0060
 }
@@ -5393,7 +5394,7 @@ impl Parser._skip_semicolons{
 
 """Handle unexpected token error in archetype body."""
 impl Parser._error_unexpected_member{
-    self.error("Unexpected token in archetype body");
+    self.emit_diag(E0046);
     self.advance();
 }
 

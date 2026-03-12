@@ -82,6 +82,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0004 = _err("E0004", Category.SYNTAX, "Unexpected token in expression: '{got}'"),
      E0005 = _err("E0005", Category.SYNTAX, "Unexpected token '{token}'"),
      E0006 = _err("E0006", Category.SYNTAX, "Unexpected token"),
+     # Parser: keyword restrictions
      E0010 = _err(
          "E0010",
          Category.SYNTAX,
@@ -103,6 +104,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "'{keyword}' is a keyword and cannot be used as a {context} name (prefix with backtick to escape: `{keyword})"
      ),
+     # Parser: operator/expression errors
      E0020 = _err(
          "E0020",
          Category.SYNTAX,
@@ -119,6 +121,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Expected augmented assignment in for...to...by step"
      ),
+     # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
          "E0031",
@@ -138,6 +141,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"
      ),
+     # Parser: block/body requirements
      E0040 = _err(
          "E0040",
          Category.SYNTAX,
@@ -162,17 +166,20 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0046 = _err("E0046", Category.SYNTAX, "Unexpected token in archetype body"),
      E0047 = _err("E0047", Category.SYNTAX, "Expected '{{' or 'by' for impl body"),
+     # Parser: parameter list errors
      E0050 = _err("E0050", Category.SYNTAX, "Duplicate '{param}' in parameter list"),
      E0051 = _err(
          "E0051",
          Category.SYNTAX,
          "'{first}' must appear before '{second}' in parameter list"
      ),
+     # Parser: warnings
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
          "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
      ),
+     # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
      E0102 = _err("E0102", Category.SYNTAX, "Unterminated f-string"),
@@ -183,6 +190,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0107 = _err(
          "E0107", Category.SYNTAX, "Lexer stuck at EOF in mode {mode} (pos={pos})"
      ),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Type errors (E1xxx) — type checker and type evaluator
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+     # Assignment / return type mismatches
      E1001 = _err("E1001", Category.TYPE, "Cannot assign {actual} to {expected}"),
      E1002 = _err(
          "E1002", Category.TYPE, "Cannot return {actual}, expected {expected}"
@@ -197,6 +209,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Function '{name}' declared return type {ret_type} but may implicitly return None"
      ),
+     # Operator errors
      E1010 = _err(
          "E1010", Category.TYPE, "Operator \"{op}\" not supported for type \"{type}\""
      ),
@@ -205,12 +218,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Unsupported operand types for {op}: {left} and {right}"
      ),
+     # Iterability / callable
      E1020 = _err("E1020", Category.TYPE, "Cannot unpack non-iterable {type}"),
      E1021 = _err("E1021", Category.TYPE, "Type \"{type}\" is not iterable"),
      E1022 = _err(
          "E1022", Category.TYPE, "Type {type} is not iterable (no __iter__ method)"
      ),
      E1023 = _err("E1023", Category.TYPE, "Type \"{type}\" is not callable"),
+     # Attribute access
      E1030 = _err(
          "E1030", Category.TYPE, "Type \"{base_type}\" has no attribute \"{attr}\""
      ),
@@ -233,8 +248,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1035 = _err(
          "E1035", Category.TYPE, "Type \"{src}\" is not assignable to type \"{dest}\""
      ),
+     # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
+     # Function call errors
      E1050 = _err(
          "E1050",
          Category.TYPE,
@@ -259,6 +276,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "No matching overload found for method \"{method}\" with the given arguments"
      ),
+     E1056 = _err(
+         "E1056",
+         Category.TYPE,
+         "Positional only parameter '{name}' cannot be matched with a named argument"
+     ),
+     E1057 = _err("E1057", Category.TYPE, "Parameter '{name}' already matched"),
+     # TypeVar errors
      E1060 = _err(
          "E1060",
          Category.TYPE,
@@ -287,6 +311,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Type variable \"{name}\" has no meaning in this context"
      ),
+     # Callable type errors
      E1070 = _err(
          "E1070",
          Category.TYPE,
@@ -305,6 +330,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Callable accepts only two type arguments: parameter types and return type"
      ),
+     # Variance errors
      E1080 = _err(
          "E1080",
          Category.TYPE,
@@ -315,6 +341,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Covariant type variable cannot be used in parameter type"
      ),
+     # Exception / context manager / yield
      E1090 = _err(
          "E1090", Category.TYPE, "Cannot raise {type} (not an exception type)"
      ),
@@ -337,6 +364,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Field '{field}' declared 'by postinit' is never assigned in {arch}.postinit"
      ),
+     # Connection type errors
      E1096 = _err(
          "E1096", Category.TYPE, "Connection left operand must be a node instance"
      ),
@@ -349,10 +377,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot access attribute \"{attr}\" for type \"{type}\"; attribute is missing from {missing}"
      ),
+     # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Semantic errors/warnings (E2xxx/W2xxx)
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+     # Static analysis warnings
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),
      W2003 = _warn("W2003", Category.SEMANTIC, "'{name}' is defined but never used"),
+     # Semantic analysis errors
      E2004 = _err(
          "E2004",
          Category.SEMANTIC,
@@ -376,6 +411,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2008 = _err(
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),
+     # Def-impl match errors
      E2009 = _err(
          "E2009",
          Category.SEMANTIC,
@@ -390,6 +426,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2011", Category.SEMANTIC, "Parameter count mismatch for ability {name}."
      ),
      E2012 = _err("E2012", Category.SEMANTIC, "From the declaration of {name}."),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Lint warnings (W3xxx)
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      W3001 = _warn(
          "W3001",
          Category.LINT,
@@ -444,6 +483,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E3012 = _err(
          "E3012", Category.LINT, "Calling print() is disallowed by rule [no-print]"
      ),
+     # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
          "combine-has": "W3002",
@@ -458,6 +498,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "remove-import-semi": "W3011",
          "no-print": "E3012"
      },
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Codegen errors (E5xxx/W5xxx)
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+     # PyAST gen
      E5001 = _err(
          "E5001",
          Category.CODEGEN,
@@ -507,6 +552,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Walker spawn has more positional arguments than fields."
      ),
+     # Native compile
      E5020 = _err("E5020", Category.CODEGEN, "Native compilation failed: {error}"),
      W5021 = _warn("W5021", Category.CODEGEN, "C library not found: {path}"),
      W5022 = _warn(
@@ -519,6 +565,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W5025 = _warn(
          "W5025", Category.CODEGEN, "Failed to link native module {path}: {error}"
      ),
+     # Layout pass
      E5030 = _err(
          "E5030",
          Category.CODEGEN,
@@ -534,19 +581,28 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "obj '{arch}' field '{field}' has type '{type}' which is not layout-compatible."
      ),
+     # Bytecode gen
      E5040 = _err("E5040", Category.CODEGEN, "Unable to find ast for module {path}."),
      E5041 = _err("E5041", Category.CODEGEN, "Length mismatch in import names"),
      E5042 = _err("E5042", Category.CODEGEN, "Length mismatch in async for body"),
+     # Comment injection
      W5050 = _warn(
          "W5050",
          Category.CODEGEN,
          "Comment could not be placed precisely; emitting near the end of the formatted output: {preview}"
      ),
+     E5051 = _err(
+         "E5051",
+         Category.CODEGEN,
+         "Formatter displaced {count} comment(s) to end of file -- refusing to save (use 'jac format' to inspect)"
+     ),
+     # Native IR gen
      E5060 = _err(
          "E5060",
          Category.CODEGEN,
          "C library import declaration '{name}' must not have a body"
      ),
+     # Language server
      E5070 = _err("E5070", Category.CODEGEN, "Error during type check: {error}"),
      E5071 = _err("E5071", Category.CODEGEN, "Error during formatting: {error}"),
      W5072 = _warn(
@@ -554,87 +610,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Attribute error when accessing node attributes: {error}"
      ),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Internal compiler errors (E9xxx)
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}");
-# Parser: keyword restrictions
-
-# Parser: operator/expression errors
-
-# Parser: statement-level errors
-
-# Parser: block/body requirements
-
-# Parser: parameter list errors
-
-# Parser: warnings
-
-# Lexer errors
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Type errors (E1xxx) — type checker and type evaluator
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# Assignment / return type mismatches
-
-# Operator errors
-
-# Iterability / callable
-
-# Attribute access
-
-# Subscript / await
-
-# Function call errors
-
-# TypeVar errors
-
-# Callable type errors
-
-# Variance errors
-
-# Exception / context manager / yield
-
-# Connection type errors
-
-# Import warnings
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Semantic errors/warnings (E2xxx/W2xxx)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# Static analysis warnings
-
-# Semantic analysis errors
-
-# Def-impl match errors
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Lint warnings (W3xxx)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# Old kebab-case name -> code mapping for jac.toml backward compat
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Codegen errors (E5xxx/W5xxx)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# PyAST gen
-
-# ES AST gen
-
-# Native compile
-
-# Layout pass
-
-# Bytecode gen
-
-# PyAST load
-
-# Comment injection
-
-# Native IR gen
-
-# Language server
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Internal compiler errors (E9xxx)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
