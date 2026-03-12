@@ -1,10 +1,13 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.4 (Unreleased)
+## jac-mcp 0.1.5 (Unreleased)
+
+## jac-mcp 0.1.4 (Latest Release)
 
 - **Fix streamable HTTP transport method issue**: Refactors the server initialization logic for the `streamable-http` transport method.
+- 1 small change/refactor.
 
-## jac-mcp 0.1.3 (Latest Release)
+## jac-mcp 0.1.3
 
 - **Updated token definitions path**: Grammar resource now references `tokens.na.jac` (renamed from `tokens.jac`)
 - **Added backtick escaping pitfall**: New section documenting when keywords need backtick escaping and clarifying that special variable references (`self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`) are used directly without backticks

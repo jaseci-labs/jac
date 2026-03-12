@@ -191,13 +191,8 @@ obj _SetupProgress {
 
     def postinit -> None;
     def _get_jaclang_root -> str;
-    """Print the completion summary when the process exits."""
     def _atexit_handler -> None;
-
-    """Called when an internal jaclang module needs compilation (cache miss)."""
     def on_internal_compile(file_path: str) -> None;
-
-    """Whether we're currently in a first-run setup."""
     @property
     def is_active -> bool;
 }
@@ -308,51 +303,25 @@ obj JacCompiler {
 
     has _internal_program: (JacProgram | None) = None;
 
-    """Module hub for jaclang.* modules (lazily initialized)."""
     @property
     def internal_program -> JacProgram;
 
-    """Get the jaclang package root path."""
     @classmethod
     def _get_jaclang_root(cls: Any) -> str;
 
-    """Route jaclang.* files to internal_program, others to target_program."""
     def _resolve_program(file_path: str, target_program: JacProgram) -> JacProgram;
-
-    """Get native interop setup for a module.
-
-        Returns:
-            Tuple of (native_engine, interop_py_funcs_dict).
-            native_engine is None if no native code.
-            interop_py_funcs_dict is None if module not found in hub
-            (caller should not inject into module dict in this case).
-        """
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];
 
-    """Get native module layout metadata for auto-marshalling."""
     def get_native_layout(
         full_target: str, target_program: JacProgram
     ) -> (object | None);
 
-    """Get bytecode using 2-tier cache: in-memory -> JIR -> compile.
-
-        Tier 1: in-memory hub (py_bytecode already set).
-        Tier 2: JIR cache fast-path (read_bytecode_only, no AST deserialize).
-        Tier 2.5: precompiled JIR bundle shipped with the package.
-        Tier 3: full compile + atomic JIR write.
-        """
     def get_bytecode(
         full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
 
-    """Load native module from cached LLVM IR.
-
-        Creates a fresh MCJIT engine from the cached IR string and sets up
-        interop callbacks. This is much faster than full recompilation since
-        we skip the Jac-AST-LLVM IR pipeline.
-        """
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
@@ -360,12 +329,6 @@ obj JacCompiler {
         cached_interop: (dict | None)
     ) -> None;
 
-    """Load native module from cached post-optimization bitcode.
-
-        Parses the SEC_NATIVE_OBJ section which contains a platform header
-        followed by LLVM bitcode. Bitcode parsing is faster than text IR
-        parsing and the bitcode is already optimized.
-        """
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
@@ -373,18 +336,12 @@ obj JacCompiler {
         cached_interop: (dict | None)
     ) -> None;
 
-    """Restore side-effects (MTIR, native) from decoded JIR sections."""
     def _restore_sections(
         full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
     ) -> None;
 
-    """Walk up from a .jac file looking for a _precompiled/ JIR bundle."""
     def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None);
-
-    """Build a JSON-serializable interop dict from a compiled module."""
     def _build_interop_dict(result: uni.Module) -> dict;
-
-    """Parse source string into AST module."""
     def parse_str(
         source_str: str,
         file_path: str,
@@ -392,14 +349,6 @@ obj JacCompiler {
         cancel_token: (Event | None) = None
     ) -> uni.Module;
 
-    """Compile a Jac file into module AST.
-
-        Args:
-            file_path: Path to the Jac file to compile.
-            target_program: JacProgram to store compiled module in.
-            use_str: Optional source string instead of reading from file.
-            options: CompileOptions controlling compilation behavior.
-        """
     def compile(
         file_path: str,
         target_program: JacProgram,
@@ -407,7 +356,6 @@ obj JacCompiler {
         options: (CompileOptions | None) = None
     ) -> uni.Module;
 
-    """Build a Jac file with import dependency resolution."""
     def build(
         file_path: str,
         target_program: JacProgram,
@@ -415,7 +363,6 @@ obj JacCompiler {
         type_check: bool = False
     ) -> uni.Module;
 
-    """Run a list of passes on a module."""
     def run_schedule(
         mod: uni.Module,
         target_program: JacProgram,
@@ -423,11 +370,6 @@ obj JacCompiler {
         cancel_token: (Event | None) = None
     ) -> None;
 
-    """Parse a Jac file/string and optionally load annexes for tooling passes.
-
-    Shared scaffold for jac_file_formatter, jac_str_formatter, and jac_file_linter.
-    Returns (prog, current_mod) or (prog, None) if parse errors occurred.
-    """
     static def _prepare_tool_program(
         source_str: str,
         file_path: str,
@@ -435,16 +377,13 @@ obj JacCompiler {
         load_test_annexes: bool = False
     ) -> tuple[JacProgram, (uni.Module | None)];
 
-    """Format a Jac file."""
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
     ) -> JacProgram;
 
-    """Format a Jac source string."""
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram;
 
-    """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram;
 }

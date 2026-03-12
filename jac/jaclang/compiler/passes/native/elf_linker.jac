@@ -62,15 +62,11 @@ obj ArchConfig {
         glob_dat_rtype: int,
         gotpcrel_rtypes: set[int];
 
-    """Generate PLT[0] stub bytes (resolver trampoline)."""
     def build_plt0(got_plt_vaddr: int, plt_vaddr: int) -> bytes;
-
-    """Generate a single PLT[n] entry for an external function."""
     def build_plt_entry(
         entry_vaddr: int, got_entry_vaddr: int, idx: int, plt_vaddr: int
     ) -> bytes;
 
-    """Apply a relocation to the given buffer. Returns True if handled."""
     def apply_reloc(
         rtype: int,
         patch_buf: bytearray,
@@ -80,12 +76,10 @@ obj ArchConfig {
         patch_vaddr: int
     ) -> bool;
 
-    """Get the initial GOT.PLT entry address for lazy binding of PLT[idx]."""
     def get_lazy_bind_addr(
         plt_vaddr: int, plt0_size: int, idx: int, plt_entry_size: int
     ) -> int;
 
-    """Create an ArchConfig for the given ELF e_machine value, or None if unsupported."""
     static def from_e_machine(e_machine: int) -> (ArchConfig | None);
 }
 
@@ -102,7 +96,6 @@ obj ElfLinker {
         needed_libs: list[str],
         arch: (ArchConfig | None) = None;
 
-    """Parse a relocatable ELF object and link into an executable."""
     static def link(
         obj_bytes: bytes,
         output_path: str,
@@ -110,9 +103,6 @@ obj ElfLinker {
         crt_objects: list[bytes] = []
     ) -> bool;
 
-    """Parse the ELF relocatable object file."""
     def parse_object -> bool;
-
-    """Build the final ELF executable bytes."""
     def build_executable -> bytes;
 }

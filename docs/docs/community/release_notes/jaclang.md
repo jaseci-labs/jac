@@ -2,15 +2,20 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.1 (Unreleased)
+## jaclang 0.12.2 (Unreleased)
 
 - **Improve: `jac format` Grouped Error Summary for Syntax Errors**: `jac format` now displays a grouped `FAILURES` section (file path + error messages) and a `failed files` summary when files have syntax errors, consistent with `jac check` output. Previously, errors were printed inline without grouping.
+- **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
+
+## jaclang 0.12.1 (Latest Release)
+
+- **Automatic Jac Import Hook via `.pth` File**: Installing jaclang now automatically registers a lightweight lazy import finder at Python startup via a `.pth` file. This means `.jac` modules can be imported from Python without needing `import jaclang` first. Jac imports Just Work. The lazy finder adds ~0.1ms to non-Jac Python startup and only triggers the full jaclang bootstrap on first `.jac` import.
 - **Fix: TOML Serializer Preserves Special Chars and Env Vars**: Fixed two bugs in the `jac.toml` serializer triggered when programmatically saving config changes: (1) Table headers containing special characters (e.g., `[plugins.client.npm.auth."//npm.pkg.github.com/"]`) now retain proper quoting instead of being written unquoted, and (2) Environment variable placeholders like `${NODE_AUTH_TOKEN}` are preserved as-is instead of being interpolated to their runtime values. Previously, these bugs would corrupt `jac.toml` files when dependencies were auto-updated.
 - **Fix: With Statement Alias Type Inference**: `with open(...) as f` now correctly types `f` instead of `Unknown`. The type binding was moved from `exit_with_stmt` to `enter_with_stmt` so the alias type is set before the body is visited.
 - **Fix: Tuple Unpacking in For Loops**: `for (a, b, c) in list[tuple[A, B, C]]` now correctly infers types for unpacked variables instead of `UnknownType`.
 - **Refactor: `GUEST` Constant for Guest Username**: Added a `GUEST = '__guest__'` constant to `Constants` enum and replaced hardcoded `'__guest__'` strings in the stdlib HTTP server with `Con.GUEST.value` for improved maintainability and consistency.
 - **Fix: Native Cross-Module Global Variable Access**: Module-level globals declared in one `.na.jac` file are now correctly accessible from importing modules. Previously, accessing such a global caused a segfault at runtime.
-- 15 small refactors/changes.
+- 16 small refactors/changes.
 - **Fix: HMR Recursive recompilation**: Fixed client-side code recursive recompilation process, preventing cyclic recompilation, and ensuring that all dependencies are up to date.
 - **Fix: Errors in `.impl.jac` Files Now Reported by `jac check` and `jac run`**: Undefined names and unreachable code inside `.impl.jac` files were previously silently ignored. They are now correctly reported as warnings, pointing to the exact file and line.
 - **Fix: HTTP Server Authentication for Imported `:pub` Functions**: Fixed server incorrectly requiring authentication (401) for imported `:pub` functions. The server now inspects source file ASTs to determine access levels for imported function endpoints, matching the existing behavior for imported walkers.
@@ -37,7 +42,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Improved Internal sv Compiler Error Diagnostics**: Helper added that raises a structured ICE with source file, line, column, and node type instead of a bare `list index out of range`.
 - **Fix: Type Checker Crash on `Final[UnionType]`**: Fixed crash when type checking `Final[int | str]` annotations. Unwrapping `Final[T]` now correctly handles union types instead of failing with `'UnionType' has no attribute 'shared'`.
 
-## jaclang 0.12.0 (Latest Release)
+## jaclang 0.12.0
 
 - 27 small refactors/changes.
 

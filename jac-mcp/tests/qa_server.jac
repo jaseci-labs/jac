@@ -326,7 +326,7 @@ with entry {
     print("=" * 60);
 }
 
-# NOTE: Jac is a superset of Python -- Python syntax compiles but isn't idiomatic.
+# NOTE: Jac compiles to Python bytecode -- Python syntax compiles but isn't idiomatic.
 # validate_jac alone cannot reject Python-style code. This is by design.
 # The MCP server's defense is the pitfalls guide + system prompt + patterns,
 # not the validator rejecting Python syntax.

@@ -35,16 +35,9 @@ obj CommandGroups {
             "general"
         ];
 
-    """Get display name for a group."""
     def get_display_name(group: str) -> str;
-
-    """Get group order for sorting (lower = earlier)."""
     def get_order(group: str) -> int;
-
-    """Register a new group (for plugins)."""
     def register_group(name: str, display_name: str, order: int | None = None) -> None;
-
-    """Get all groups in display order."""
     def get_ordered_groups -> list[str];
 }
 
@@ -58,21 +51,13 @@ Provides methods for formatting:
 obj HelpFormatter {
     has groups: CommandGroups = CommandGroups();
 
-    """Format the main help message with grouped commands."""
     def format_main_help(
         commands: list[CommandSpec], prog: str = "jac", version: str | None = None
     ) -> str;
 
-    """Format help for a single command."""
     def format_command_help(spec: CommandSpec) -> str;
-
-    """Format argument list for a command."""
     def format_arguments(args: list[Arg], extra_args: list[Arg] | None = None) -> str;
-
-    """Format examples for a command."""
     def format_examples(examples: list[tuple[str, str]]) -> str;
-
-    """Format a usage line for a command."""
     def format_usage(spec: CommandSpec, prog: str = "jac") -> str;
 }
 

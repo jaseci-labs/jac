@@ -293,11 +293,7 @@ obj FunctionType(TypeBase) {
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
-    # --- Flag checking methods (following Pyright's pattern) ---
-    """Check if this is a gradual callable form (Callable[..., T])."""
     def is_gradual_callable_form -> bool;
-
-    """Check if this function type was created from a Callable annotation."""
     def is_from_callable_annotation -> bool;
 }
 

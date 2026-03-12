@@ -8,9 +8,10 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 # ============================================================
 # Learn Jac in Y Minutes
 # ============================================================
-# Jac is a superset of Python with graph-native programming,
-# object-spatial walkers, AI-native constructs, and full-stack
-# codespaces -- all with brace-delimited blocks.
+# Jac compiles to Python bytecode, JavaScript, and native machine code.
+# It features graph-native programming, object-spatial walkers,
+# AI-native constructs, and full-stack codespaces -- all with
+# brace-delimited blocks.
 # Run a file with: jac <filename>
 
 # ============================================================
