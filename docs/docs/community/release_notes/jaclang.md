@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.12.2 (Unreleased)
 
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
+- **ASTValidationPass: Post-Parse Semantic Checks**: Moved 12 semantic checks from the parser into a dedicated `ASTValidationPass` that runs after parsing, following the modern compiler pattern of "parse permissively, validate later". The parser now focuses purely on tree construction while the validation pass provides consistent, context-rich error messages for structural violations (e.g., `pass`/`new` keyword usage, parameter ordering, empty `match`/`switch`/`enum`/`try` bodies, walrus operator LHS).
 
 ## jaclang 0.12.1 (Latest Release)
 

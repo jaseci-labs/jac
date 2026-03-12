@@ -435,11 +435,6 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
     } elif tok.kind == TokenKind.KWESC_NAME {
         kwesc = True;
     }
-    # Reject Python/JS keywords that are not valid Jac identifiers
-    if val == "pass" {
-        self.error("'pass' keyword is not allowed in Jac");
-        self.error("Jac does not allow this keyword in any syntactic position");
-    }
     return Name(
         orig_src=self.get_source(),
         name=Tok.NAME.value,
@@ -797,10 +792,6 @@ impl Parser.parse_concurrent_expr -> Expr {
 impl Parser.parse_walrus_assign -> Expr {
     expr = self.parse_by_expr();
     if self.check(TokenKind.WALRUS_EQ) {
-        # Validate LHS is a named reference (Name or SpecialVarRef)
-        if not isinstance(expr, Name) and not isinstance(expr, SpecialVarRef) {
-            self.error("Walrus operator ':=' requires a simple name on the left side");
-        }
         walrus_tok = self.advance();
         value = self.parse_by_expr();
         op = self.make_uni_token(walrus_tok);
@@ -2007,16 +1998,6 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.NAME)
     or self.check(TokenKind.KWESC_NAME)
     or self.is_keyword_token() {
-        # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
-        # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
-        if self.check(TokenKind.NAME)
-        and self.current().value == "new"
-        and self.check_peek_any(TokenKind.NAME, TokenKind.KWESC_NAME) {
-            self.error("The 'new' keyword is not supported in Jac");
-            self.error(
-                "Use `Reflect.construct(target, argumentsList)` method to create new instances"
-            );
-        }
         tok = self.advance();
         if tok.kind != TokenKind.NAME and tok.kind != TokenKind.KWESC_NAME {
             return self.make_special_name(tok);
@@ -3457,9 +3438,6 @@ impl Parser._dispatch_decorated{
     is_impl = self.check(TokenKind.KW_IMPL);
     is_test = self.check(TokenKind.KW_TEST);
     self.pos = save_pos;  # Restore position
-    if has_abs_prefix {
-        self.error("'abs' is not a valid prefix modifier");
-    }
     if is_test {
         return self.parse_test();
     } elif is_ability {
@@ -3643,7 +3621,6 @@ impl Parser.parse_module_code -> ModuleCode {
     target_name = None;  # For :__main__ style target
     colon_uni = None;
     if self.check(TokenKind.KW_EXIT) {
-        self.error("Module-level 'with' blocks only support 'entry', not 'exit'");
         name_tok = self.advance();
         name = self.make_uni_token(name_tok);
     } elif self.check(TokenKind.KW_ENTRY) {
@@ -4046,7 +4023,6 @@ impl Parser.parse_for_stmt{
                 step_target, require_semi=False
             );
         } else {
-            self.error("Expected augmented assignment in for...to...by step");
             step_assign = Assignment(
                 target=[step_target],
                 value=None,
@@ -4148,9 +4124,6 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
-    }
-    if len(excepts) == 0 and finally_body is None {
-        self.error("try statement requires at least one except or finally block");
     }
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
@@ -4261,9 +4234,6 @@ impl Parser.parse_match_stmt -> MatchStmt {
     cases: list = [];
     while self.check(TokenKind.KW_CASE) {
         cases.append(self.parse_match_case());
-    }
-    if len(cases) == 0 {
-        self.error("match statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [match_uni, expr, lb_uni];
@@ -5124,9 +5094,7 @@ impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {
             }
             kid.append(self.make_uni_token(self.previous()));
         }
-        if len(items) == 0 {
-            self.error("import statement must specify at least one item");
-        }
+        # Empty import items validated by ASTValidationPass
     }
     rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     kid.append(rbrace_uni);
@@ -5393,6 +5361,12 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
+    # Parse bare names (e.g. 'pass') as expression statements so
+    # ASTValidationPass can provide targeted error messages.
+    if self.check(TokenKind.NAME) {
+        stmt = self.parse_statement();
+        return stmt;
+    }
     self._error_unexpected_member();
     return EmptyToken();
 }
@@ -5406,12 +5380,7 @@ impl Parser._skip_semicolons{
 
 """Handle unexpected token error in archetype body."""
 impl Parser._error_unexpected_member{
-    if self.check(TokenKind.NAME) and self.current().value == "pass" {
-        self.error("'pass' keyword is not allowed in Jac");
-        self.error("Jac does not allow this keyword in any syntactic position");
-    } else {
-        self.error("Unexpected token in archetype body");
-    }
+    self.error("Unexpected token in archetype body");
     self.advance();
 }
 
@@ -5783,47 +5752,7 @@ impl Parser.parse_func_signature -> FuncSignature {
             }
         }
     }
-    # Validate parameter ordering rules (use elif to report one error per separator)
-    has_slash = False;
-    has_star = False;
-    has_kwargs = False;
-    for k in kid {
-        if isinstance(k, UniToken) and k.name == Tok.DIV {
-            if has_slash {
-                self.error("Duplicate '/' in parameter list");
-            } elif has_star {
-                self.error("'/' must appear before '*' in parameter list");
-            } elif has_kwargs {
-                self.error("'/' must appear before '**kwargs' in parameter list");
-            }
-            has_slash = True;
-        } elif isinstance(k, UniToken) and k.name == Tok.STAR_MUL {
-            if has_star {
-                self.error("Duplicate '*' in parameter list");
-            } elif has_kwargs {
-                self.error("'*' must appear before '**kwargs' in parameter list");
-            }
-            has_star = True;
-        } elif isinstance(k, ParamVar) {
-            if k.unpack and k.unpack?.name {
-                if k.unpack.name == Tok.STAR_MUL {
-                    if has_star {
-                        self.error("Duplicate '*' in parameter list");
-                    } elif has_kwargs {
-                        self.error(
-                            "'*' must appear before '**kwargs' in parameter list"
-                        );
-                    }
-                    has_star = True;
-                } elif k.unpack.name == Tok.STAR_POW {
-                    if has_kwargs {
-                        self.error("Duplicate '**kwargs' in parameter list");
-                    }
-                    has_kwargs = True;
-                }
-            }
-        }
-    }
+    # Parameter ordering validation deferred to ASTValidationPass
     # Set param_kind on each ParamVar (default is NORMAL, must be overridden)
     for p in posonly_params {
         p.param_kind = ParamKind.POSONLY;
@@ -6020,9 +5949,7 @@ impl Parser.parse_enum -> Enum {
                 break;
             }
         }
-        if len(body) == 0 {
-            self.error("enum body must contain at least one member");
-        }
+        # Empty enum body validated by ASTValidationPass
         enum_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
         self.expect(TokenKind.SEMI);
@@ -6169,9 +6096,7 @@ impl Parser.parse_switch_stmt -> SwitchStmt {
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
         cases.append(self.parse_switch_case());
     }
-    if len(cases) == 0 {
-        self.error("switch statement requires at least one case");
-    }
+    # Empty switch validated by ASTValidationPass
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [switch_uni, target, lb_uni];
     kid.extend(cases);
