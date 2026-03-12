@@ -215,17 +215,28 @@ async def _async_start(srv: JacMcpServer) -> None {
         }
     } elif srv.transport == "streamable-http" {
         try {
-            import from mcp.server.streamable_http { StreamableHTTPServerTransport }
+            import from mcp.server.streamable_http_manager {
+                StreamableHTTPSessionManager
+            }
             import from starlette.applications { Starlette }
             import from starlette.routing { Mount }
+            import contextlib;
             import uvicorn;
 
-            transport_inst = StreamableHTTPServerTransport(
-                mcp_endpoint="/mcp", is_json_response_enabled=True
+            session_manager = StreamableHTTPSessionManager(
+                app=server, json_response=True, stateless=False
             );
 
+            @contextlib.asynccontextmanager
+            async def lifespan(app: object) -> object {
+                async with session_manager.run() {
+                    yield ;
+                }
+            }
+
             starlette_app = Starlette(
-                routes=[Mount("/mcp", app=transport_inst.handle_request), ]
+                lifespan=lifespan,
+                routes=[Mount("/mcp", app=session_manager.handle_request)]
             );
 
             config = uvicorn.Config(

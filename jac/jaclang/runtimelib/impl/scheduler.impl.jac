@@ -220,6 +220,15 @@ impl Scheduler._cron_field_matches(
 """Execute a single scheduled task."""
 impl Scheduler._execute(task: ScheduledTask) -> None {
     try {
+        if task.spec.trigger == ScheduleTrigger.DYNAMIC {
+            if self.dynamic_handler is None {
+                raise NotImplementedError(
+                    "Dynamic scheduling is not implemented in jaclang."
+                );
+            }
+            self.dynamic_handler(task);
+            return;
+        }
         if task.is_walker {
             import from jaclang { JacRuntimeInterface as Jac }
             walker_instance = task.target();

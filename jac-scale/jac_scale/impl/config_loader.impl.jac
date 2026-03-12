@@ -109,6 +109,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'default_password': 'changeme',
             'session_expiry_hours': 24,
             'require_password_reset': True
+        },
+        'scheduler': {
+            'system_user_password': 'system_secret',
+            'collection': 'scheduled_jobs'
         }
     };
 }
@@ -289,6 +293,17 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+"""Get scheduler configuration from jac.toml."""
+impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    scheduler_config = config.get('scheduler', {});
+    return {
+        'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
+        or scheduler_config.get('system_user_password', 'system_secret'),
+        'collection': scheduler_config.get('collection', 'scheduled_jobs')
+    };
 }
 
 """Get admin configuration from jac.toml."""

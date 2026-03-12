@@ -34,25 +34,12 @@ obj DependencyRegistry {
     has _types: dict[str, DependencyType] = {},
         _flag_map: dict[str, str] = {};
 
-    """Register a new dependency type from plugin hook data."""
     def register(dep_type_info: dict[(str, Any)]) -> None;
-
-    """Get dependency type by name (e.g., 'npm')."""
     def get_by_name(name: str) -> DependencyType | None;
-
-    """Get dependency type by CLI flag (e.g., '--cl')."""
     def get_by_flag(flag: str) -> DependencyType | None;
-
-    """Get all registered dependency types."""
     def get_all -> dict[str, DependencyType];
-
-    """Get all registered CLI flags."""
     def get_all_flags -> list[str];
-
-    """Check if a dependency type is registered."""
     def has_type(name: str) -> bool;
-
-    """Clear all registered types (for testing)."""
     def clear -> None;
 }
 

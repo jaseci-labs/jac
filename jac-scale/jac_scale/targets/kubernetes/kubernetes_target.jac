@@ -782,7 +782,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 app_name=app_name
             );
             if deployment_status is False {
-                raise Exception("Deployment failed: Application failed to deploy.");
+                raise Exception(f"Deployment failed: {deployment_details}");
             }
         }
         return deployment_details;
@@ -966,6 +966,21 @@ obj KubernetesTarget(DeploymentTarget) {
             details["delete_previous_existing_resources"] = "Successful";
             time.sleep(self.k8s_config.resource_deletion_wait);
 
+            # 12b. Start NGINX Ingress controller early so it boots in parallel with
+            # databases, app, HPA, and monitoring — minimising the wait in finish_ingress().
+            rbac_v1 = client.RbacAuthorizationV1Api();
+            networking_v1 = client.NetworkingV1Api();
+            ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
+            ingress_deployer.start_controller(
+                app_name,
+                namespace,
+                cluster_env,
+                apps_v1,
+                core_v1,
+                rbac_v1,
+                networking_v1
+            );
+
             # 13. Deploy databases
             self._deploy_databases(app_name, namespace, apps_v1, core_v1, cluster_env);
             details["deploy_databases"] = "Successful";
@@ -1003,21 +1018,18 @@ obj KubernetesTarget(DeploymentTarget) {
             monitoring.deploy(app_name, namespace, apps_v1, core_v1, cluster_env);
             details["deploy_monitoring"] = "Successful";
 
-            # 15b. Deploy NGINX Ingress controller + routing rules
-            rbac_v1 = client.RbacAuthorizationV1Api();
-            networking_v1 = client.NetworkingV1Api();
-            ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
-            ingress_deployer.deploy(
+            # 15b. Finish ingress: wait for NGINX controller readiness (started at step 12b)
+            # and deploy routing rules. The controller has been booting in parallel with
+            # databases, app, HPA, and monitoring so the wait is typically zero.
+            ingress_deployer.finish_ingress(
                 app_name,
                 namespace,
-                cluster_env,
                 self.k8s_config.container_port,
                 self.k8s_config.monitoring_enabled,
                 self.k8s_config.redis_dashboard,
                 self.k8s_config.mongodb_dashboard,
                 apps_v1,
                 core_v1,
-                rbac_v1,
                 networking_v1
             );
             details["deploy_ingress"] = "Successful";

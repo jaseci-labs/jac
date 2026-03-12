@@ -27,51 +27,12 @@ Handles the full command lifecycle:
 5. Return final exit code
 """
 obj CommandExecutor {
-    """Execute a command with its hooks.
-
-    Args:
-        spec: The command specification
-        args: Parsed arguments as a dictionary
-
-    Returns:
-        ExecutionResult with return code and any error
-    """
     def execute(spec: CommandSpec, args: dict[str, Any]) -> ExecutionResult;
-
-    """Run all pre-execution hooks for a command.
-
-    Args:
-        spec: The command specification
-        context: The hook context to pass to hooks
-
-    Returns:
-        True if all hooks succeeded, False if any hook cancelled execution
-    """
     def run_pre_hooks(spec: CommandSpec, context: HookContext) -> bool;
-
-    """Run all post-execution hooks for a command.
-
-    Args:
-        spec: The command specification
-        context: The hook context to pass to hooks
-        return_code: The return code from the handler
-
-    Returns:
-        Final return code (hooks may modify it)
-    """
     def run_post_hooks(
         spec: CommandSpec, context: HookContext, return_code: int
     ) -> int;
 
-    """Execute the command handler.
-
-    Args:
-        spec: The command specification
-        args: Arguments to pass to the handler
-
-    Returns:
-        Return code from handler (0 for success)
-    """
     def run_handler(spec: CommandSpec, args: dict[str, Any]) -> int;
 }
 

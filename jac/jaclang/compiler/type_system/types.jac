@@ -141,7 +141,8 @@ obj ModuleType(TypeBase) {
 obj TypeVarType(TypeBase) {
     has name: str = "",
         is_covariant: bool = False,
-        is_contravariant: bool = False;
+        is_contravariant: bool = False,
+        bound: (TypeBase | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
@@ -292,11 +293,7 @@ obj FunctionType(TypeBase) {
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
-    # --- Flag checking methods (following Pyright's pattern) ---
-    """Check if this is a gradual callable form (Callable[..., T])."""
     def is_gradual_callable_form -> bool;
-
-    """Check if this function type was created from a Callable annotation."""
     def is_from_callable_annotation -> bool;
 }
 

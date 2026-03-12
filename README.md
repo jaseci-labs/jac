@@ -32,11 +32,11 @@
 
 # Jaseci Ecosystem
 
-Jac is a programming language designed for humans and AI to build together. It supersets Python and JavaScript with native compilation support, adding constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure.
+Jac is a programming language designed for humans and AI to build together. With clean, Python-like syntax, Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible) -- giving full access to every library in the PyPI, npm, and native ecosystems. Jac adds constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure.
 
 This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
 
-- **[`jaclang`](jac/):** The Jac programming language -- supersets Python and JavaScript with native compilation support. (`pip install jaclang`)
+- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. (`pip install jaclang`)
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
 - **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
 - **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
@@ -56,7 +56,7 @@ Jac imagines what should be abstracted away from the developer and automates it 
 
 - **Full-Stack in One Language:** Build backend logic and frontend interfaces without switching languages. Write React-like components alongside your server code with seamless data flow between them.
 
-- **Python & JavaScript Superset:** Supersets both Python and JavaScript with native compilation support. Access the entire PyPI ecosystem (`numpy`, `pandas`, `torch`, etc.) and npm ecosystem (`react`, `vite`, `tailwind`, etc.) without friction.
+- **Ecosystem-Native Compilation:** Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible). Access the entire PyPI ecosystem (`numpy`, `pandas`, `torch`, etc.), npm ecosystem (`react`, `vite`, `tailwind`, etc.), and native C libraries without friction -- no interop layer, no wrappers.
 
 - **Graph-Native Domain Modeling:** Model complex domains as first-class graphs of objects and deploy agentic **walker** objects to traverse them, performing operations in-situ. No separate database setup or ORM required.
 

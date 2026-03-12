@@ -71,6 +71,15 @@ test "all reachable code produces no unreachable warnings" {
     assert len(unreachable_warnings) == 0 , f"Expected no unreachable warnings, got: {unreachable_warnings}";
 }
 
+test "impl file warnings: undefined name and unreachable code are reported" {
+    file_path = os.path.join(FIXTURES, "impl_checks.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    assert any("'bad_name' may be undefined" in w for w in warning_msgs) , f"Expected undefined name warning from impl file, got: {warning_msgs}";
+    assert any("Unreachable" in w for w in warning_msgs) , f"Expected unreachable code warning from impl file, got: {warning_msgs}";
+}
+
 test "classmethod and staticmethod on obj produce warnings" {
     file_path = os.path.join(FIXTURES, "classmethod_on_obj.jac");
     prog = JacProgram();

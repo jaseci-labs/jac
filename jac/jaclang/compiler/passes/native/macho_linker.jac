@@ -58,16 +58,12 @@ obj MachOLinker {
         cpu_type: int = 0,
         cpu_subtype: int = 0;
 
-    """Parse a relocatable Mach-O object and link into an executable."""
     static def link(
         obj_bytes: bytes,
         output_path: str,
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"]
     ) -> bool;
 
-    """Parse the Mach-O relocatable object file."""
     def parse_object -> bool;
-
-    """Build the final Mach-O executable bytes."""
     def build_executable -> bytes;
 }

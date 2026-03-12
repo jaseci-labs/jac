@@ -2,9 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.6 (Unreleased)
+## byllm 0.5.7 (Unreleased)
 
-## byllm 0.5.5 (Latest Release)
+## byllm 0.5.6 (Latest Release)
+
+## byllm 0.5.5
 
 - Small refactors/formatting fixes.
 

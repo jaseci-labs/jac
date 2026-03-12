@@ -24,7 +24,6 @@ class AccessLevel(IntEnum) {
         WRITE = 2;
     }
 
-    """Cast access level."""
     static def cast(val: int | str | AccessLevel) -> AccessLevel {
         if isinstance(val, int) {
             return AccessLevel(val);
@@ -112,13 +111,11 @@ obj ObjectSpatialPath {
     ) -> ObjectSpatialPath;
 
     def set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath;
-    """Set edge only mode (alias for set_edge_only)."""
     def `edge(self: ObjectSpatialPath) -> ObjectSpatialPath {
         self.edge_only = True;
         return self;
     }
 
-    """Set from visit mode."""
     def `visit(self: ObjectSpatialPath) -> ObjectSpatialPath {
         self.from_visit = True;
         return self;
@@ -221,7 +218,6 @@ class NodeArchetype(Archetype) {
         __jac_base__: ClassVar = True;
     }
 
-    """Create default anchor."""
     @cached_property
     def __jac__(self: NodeArchetype) -> NodeAnchor {
         return NodeAnchor(archetype=self, edges=[]);
@@ -244,7 +240,6 @@ class WalkerArchetype(Archetype) {
         reports: list[Any] = field(default_factory=`list);
     }
 
-    """Create default anchor."""
     @cached_property
     def __jac__(self: WalkerArchetype) -> WalkerAnchor {
         return WalkerAnchor(archetype=self);
@@ -257,7 +252,6 @@ class ObjectArchetype(Archetype) {
         __jac_base__: ClassVar = True;
     }
 
-    """Create default anchor."""
     @cached_property
     def __jac__(self: ObjectArchetype) -> ObjectAnchor {
         return ObjectAnchor(archetype=self);
