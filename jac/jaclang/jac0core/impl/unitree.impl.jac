@@ -2346,10 +2346,9 @@ impl String.lit_value -> str {
                 is_raw2 = 'r' in prefix2;
             }
             if not is_raw2 {
-                import codecs;
                 result = self.value;
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
+                    result = result.encode('raw_unicode_escape').decode('unicode_escape');
                 } except Exception {
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
@@ -2371,11 +2370,12 @@ impl String.lit_value -> str {
                 is_raw = 'r' in prefix;
             }
             if not is_raw {
-                import codecs;
                 result = self.value;
-                # Use codecs to decode all escape sequences (like \x1b, \n, \t, etc.)
+                # Use raw_unicode_escape encode then unicode_escape decode to correctly
+                # handle both escape sequences (\n, \t, \x1b, etc.) and non-ASCII
+                # Unicode chars (e.g. emojis) without double-encoding them.
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
+                    result = result.encode('raw_unicode_escape').decode('unicode_escape');
                 } except Exception {
                     # Fallback to manual handling if decode fails
                     placeholder = '\x00';
