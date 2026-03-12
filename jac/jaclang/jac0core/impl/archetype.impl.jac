@@ -9,14 +9,24 @@ impl Access.check(self: Access, anchor: str) -> (AccessLevel | None) {
 impl ObjectSpatialDestination.edge_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.edge or self.edge(arch));
+    return (
+        not self.edge
+        or (
+            isinstance(arch, self.edge)
+                if isinstance(self.edge, type)
+                else self.edge(arch)
+        )
+    );
 }
 
 """Filter node."""
 impl ObjectSpatialDestination.node_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.nd or self.nd(arch));
+    return (
+        not self.nd
+        or (isinstance(arch, self.nd) if isinstance(self.nd, type) else self.nd(arch))
+    );
 }
 
 """Override Init."""

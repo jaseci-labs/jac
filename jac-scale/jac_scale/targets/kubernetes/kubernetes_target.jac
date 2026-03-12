@@ -36,6 +36,7 @@ import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 import time;
 import from kubernetes { client, config as k8s_cluster_config }
 import from kubernetes.client.exceptions { ApiException }
+import from kubernetes.config.config_exception { ConfigException }
 
 """Kubernetes deployment target implementation."""
 obj KubernetesTarget(DeploymentTarget) {
@@ -771,7 +772,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     app_name=app_name
                 );
                 if not (deployment_status) {
-                    raise Exception("Deployment failed: Application failed to deploy.");
+                    raise Exception(f"Deployment failed: {deployment_details}");
                 }
             }
         } else {

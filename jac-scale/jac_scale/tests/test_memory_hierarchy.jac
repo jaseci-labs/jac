@@ -199,8 +199,9 @@ test "read and write" {
         post_request(base_url, "/walker/GetAllTasks", {}, token);
 
         redis_size_after_task_read = redis_client.dbsize();
-        assert redis_size_after_task_read == 9 , (
-            "Redis should have 9 entries (super root, guest user, admin, __system__, user, 2 task nodes, 2 edges)"
+        assert redis_size_after_task_read == 11 , (
+            "Redis should have 11 entries: 9 anchors (super root, guest user, admin, "
+            "__system__, user, 2 task nodes, 2 edges) + 2 GTI topology index keys"
         );
     } finally {
         # Teardown

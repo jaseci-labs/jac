@@ -4,6 +4,12 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.6 (Unreleased)
 
+- **SAM (Sparse Adjacency Matrix) Topology Invalidation via Redis Pub/Sub**: When Redis is available, a background daemon thread now subscribes to the `jac:topo:invalidate` channel. On each message, it calls `sam_invalidate(source_id)` to drop the local SAM bucket (the in-process cache that maps node/edge UUIDs to their qualified type names) keeping multi-instance deployments consistent after graph mutations. The thread is stopped gracefully on `ScaleTieredMemory.close()`.
+- **`MongoBackend.find_bulk()`**: New method that fetches multiple anchors by UUID list in a single MongoDB `$in` query, replacing N sequential `find_one()` calls. Used by the `edges_to_nodes()` scale fast path after a topology query resolves matching UUIDs. Missing or corrupted documents are silently skipped.
+- **Fix: Deployment failure now includes details**: Kubernetes deployment failures now surface `deployment_details` in the raised exception instead of the generic `"Application failed to deploy."` message, making root-cause diagnosis easier.
+- **Fix: NGINX Ingress controller deployment order**: Reverted the early-start parallel optimisation. NGINX Ingress is now deployed sequentially at the correct step (after monitoring), avoiding race conditions during fresh cluster deployments.
+- **[Internal] GTI Redis topology tests**: Added `test_gti_scale.jac` and `fixtures/gti_scale_app.jac` covering qualified type writes, MRO fan-out, typed traversal, edge-deletion invalidation, and `migrate_to_qualified_types` against live Redis + MongoDB testcontainers.
+
 ## jac-scale 0.2.5 (Latest Release)
 
 - **Fix: Walker Route OpenAPI Parameter Naming**: Fixed inconsistency where walker routes with node parameters used `{nd}` in URL paths but declared `node` in OpenAPI schema, causing FastAPI validation errors (`"Field required"` for parameter `node`). The OpenAPI schema now correctly uses `nd` to match the actual path variable and function parameter. This fixes requests to `/walker/{walker_name}/{node_id}` endpoints. Note: `node` is a reserved Jac keyword, so `nd` is used as the parameter name throughout.

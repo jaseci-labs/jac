@@ -219,6 +219,27 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
     }
 }
 
+"""Fetch multiple anchors by UUID list in a single MongoDB $in query."""
+impl MongoBackend.find_bulk(ids: list[UUID]) -> list[Anchor] {
+    if self.client is None or not ids {
+        return [];
+    }
+    id_strs = [str(uid) for uid in ids];
+    try {
+        docs = self.collection.find({'_id': {'$in': id_strs}});
+        result = [];
+        for doc in docs {
+            if (anchor := self._load_anchor(doc)) {
+                result.append(anchor);
+            }
+        }
+        return result;
+    } except Exception as e {
+        logger.debug(f"MongoDB find_bulk failed: {e}");
+        return [];
+    }
+}
+
 """Load anchor from raw MongoDB document."""
 impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     if 'data' not in raw {

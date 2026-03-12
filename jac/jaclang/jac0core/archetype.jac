@@ -60,8 +60,8 @@ glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
 @dataclass(eq=False, repr=False)
 obj ObjectSpatialDestination {
     has direction: EdgeDir,
-        `edge: (Callable[([Archetype], bool)] | None) = None,
-        nd: (Callable[([Archetype], bool)] | None) = None;
+        `edge: (Callable[([Archetype], bool)] | type | None) = None,
+        nd: (Callable[([Archetype], bool)] | type | None) = None;
 
     def edge_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
