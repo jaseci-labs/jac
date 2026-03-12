@@ -4,9 +4,9 @@
 
 ---
 
-## **Jac Supersets Python**
+## **Jac Compiles to Python Bytecode**
 
-Jac supersets Python and JavaScript, giving you full compatibility with both the PyPI and npm ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
+Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible), giving you full compatibility with the PyPI, npm, and native ecosystems. You can use your existing Python and JavaScript knowledge while accessing Jac's graph-based and object-spatial programming features.
 
 ### **How it Works: Transpilation to Native Python**
 
@@ -16,7 +16,7 @@ Jac programs execute on the standard Python runtime without requiring custom run
 * **Full Ecosystem Access:** All packages on PyPI, internal libraries, and Python development tools are compatible with Jac.
 * **Readable Output:** The transpiled Python code is clean and maintainable, enabling inspection, debugging, and understanding.
 
-The relationship between Jac and Python is analogous to that of TypeScript and JavaScript: a superset language that compiles to a widely-adopted base language.
+Jac's Python target compiles to standard Python bytecode, giving you native access to the entire Python ecosystem without interop layers or wrappers.
 
 **Example: From Jac to Python**
 
@@ -570,7 +570,7 @@ This pattern provides graph-based capabilities in pure Python without introducin
 
 ### **Key Takeaways**
 
-Jac's design as a Python superset enables complementary use of both languages rather than requiring a choice between them. Key characteristics include:
+Jac's Python bytecode compilation enables complementary use of both languages rather than requiring a choice between them. Key characteristics include:
 
 * **Incremental Adoption:** Projects can begin with Pattern 5 (pure Python + Jac library) and progressively adopt Pattern 1 (pure Jac) as requirements evolve
 * **Full Ecosystem Access:** All Python libraries, frameworks, and development tools remain compatible without modification
