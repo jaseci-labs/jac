@@ -7,7 +7,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Garbled Emojis and Markup in `jac --version` Banner**: Non-ASCII characters and emojis now render correctly in the version banner.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
 
-
 ## jaclang 0.12.1 (Latest Release)
 
 - **Automatic Jac Import Hook via `.pth` File**: Installing jaclang now automatically registers a lightweight lazy import finder at Python startup via a `.pth` file. This means `.jac` modules can be imported from Python without needing `import jaclang` first. Jac imports Just Work. The lazy finder adds ~0.1ms to non-Jac Python startup and only triggers the full jaclang bootstrap on first `.jac` import.
