@@ -2348,7 +2348,9 @@ impl String.lit_value -> str {
             if not is_raw2 {
                 result = self.value;
                 try {
-                    result = result.encode('raw_unicode_escape').decode('unicode_escape');
+                    result = result.encode('raw_unicode_escape').decode(
+                        'unicode_escape'
+                    );
                 } except Exception {
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
@@ -2375,7 +2377,9 @@ impl String.lit_value -> str {
                 # handle both escape sequences (\n, \t, \x1b, etc.) and non-ASCII
                 # Unicode chars (e.g. emojis) without double-encoding them.
                 try {
-                    result = result.encode('raw_unicode_escape').decode('unicode_escape');
+                    result = result.encode('raw_unicode_escape').decode(
+                        'unicode_escape'
+                    );
                 } except Exception {
                     # Fallback to manual handling if decode fails
                     placeholder = '\x00';
