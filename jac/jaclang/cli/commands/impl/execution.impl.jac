@@ -446,7 +446,7 @@ def _ensure_watchdog_installed -> bool {
     );
     installer = DependencyInstaller(config=config, verbose=False);
     if installer.install_package(["watchdog"]) {
-        console.success("  ✔ watchdog installed\n");
+        console.success("watchdog installed");
         return True;
     }
     console.error("\n  Error: Failed to install watchdog\n");
