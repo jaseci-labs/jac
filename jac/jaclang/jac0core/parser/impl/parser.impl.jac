@@ -133,29 +133,14 @@ import from jaclang.jac0core.diagnostics {
     E0004,
     E0005,
     E0006,
-    E0010,
-    E0011,
-    E0012,
     E0013,
-    E0020,
     E0021,
     E0022,
-    E0023,
     E0030,
-    E0031,
     E0032,
-    E0033,
     E0034,
-    E0040,
-    E0041,
-    E0042,
-    E0043,
-    E0044,
     E0045,
-    E0046,
     E0047,
-    E0050,
-    E0051,
     W0060
 }
 
@@ -470,11 +455,6 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
         kwesc = True;
     } elif tok.kind == TokenKind.KWESC_NAME {
         kwesc = True;
-    }
-    # Reject Python/JS keywords that are not valid Jac identifiers
-    if val == "pass" {
-        self.emit_diag(E0010, keyword="pass");
-        self.emit_diag(E0011);
     }
     return Name(
         orig_src=self.get_source(),
@@ -833,10 +813,6 @@ impl Parser.parse_concurrent_expr -> Expr {
 impl Parser.parse_walrus_assign -> Expr {
     expr = self.parse_by_expr();
     if self.check(TokenKind.WALRUS_EQ) {
-        # Validate LHS is a named reference (Name or SpecialVarRef)
-        if not isinstance(expr, Name) and not isinstance(expr, SpecialVarRef) {
-            self.emit_diag(E0020);
-        }
         walrus_tok = self.advance();
         value = self.parse_by_expr();
         op = self.make_uni_token(walrus_tok);
@@ -2043,14 +2019,6 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.NAME)
     or self.check(TokenKind.KWESC_NAME)
     or self.is_keyword_token() {
-        # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
-        # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
-        if self.check(TokenKind.NAME)
-        and self.current().value == "new"
-        and self.check_peek_any(TokenKind.NAME, TokenKind.KWESC_NAME) {
-            self.emit_diag(E0010, keyword="new");
-            self.emit_diag(E0012);
-        }
         tok = self.advance();
         if tok.kind != TokenKind.NAME and tok.kind != TokenKind.KWESC_NAME {
             return self.make_special_name(tok);
@@ -3488,9 +3456,6 @@ impl Parser._dispatch_decorated{
     is_impl = self.check(TokenKind.KW_IMPL);
     is_test = self.check(TokenKind.KW_TEST);
     self.pos = save_pos;  # Restore position
-    if has_abs_prefix {
-        self.emit_diag(E0033, modifier="abs");
-    }
     if is_test {
         return self.parse_test();
     } elif is_ability {
@@ -3674,7 +3639,6 @@ impl Parser.parse_module_code -> ModuleCode {
     target_name = None;  # For :__main__ style target
     colon_uni = None;
     if self.check(TokenKind.KW_EXIT) {
-        self.emit_diag(E0031);
         name_tok = self.advance();
         name = self.make_uni_token(name_tok);
     } elif self.check(TokenKind.KW_ENTRY) {
@@ -4072,7 +4036,6 @@ impl Parser.parse_for_stmt{
                 step_target, require_semi=False
             );
         } else {
-            self.emit_diag(E0023);
             step_assign = Assignment(
                 target=[step_target],
                 value=None,
@@ -4174,9 +4137,6 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
-    }
-    if len(excepts) == 0 and finally_body is None {
-        self.emit_diag(E0040);
     }
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
@@ -4287,9 +4247,6 @@ impl Parser.parse_match_stmt -> MatchStmt {
     cases: list = [];
     while self.check(TokenKind.KW_CASE) {
         cases.append(self.parse_match_case());
-    }
-    if len(cases) == 0 {
-        self.emit_diag(E0041);
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [match_uni, expr, lb_uni];
@@ -5150,9 +5107,7 @@ impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {
             }
             kid.append(self.make_uni_token(self.previous()));
         }
-        if len(items) == 0 {
-            self.emit_diag(E0044);
-        }
+        # Empty import items validated by ASTValidationPass
     }
     rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     kid.append(rbrace_uni);
@@ -5419,6 +5374,12 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
+    # Parse bare names (e.g. 'pass') as expression statements so
+    # ASTValidationPass can provide targeted error messages.
+    if self.check(TokenKind.NAME) {
+        stmt = self.parse_statement();
+        return stmt;
+    }
     self._error_unexpected_member();
     return EmptyToken();
 }
@@ -5432,12 +5393,7 @@ impl Parser._skip_semicolons{
 
 """Handle unexpected token error in archetype body."""
 impl Parser._error_unexpected_member{
-    if self.check(TokenKind.NAME) and self.current().value == "pass" {
-        self.emit_diag(E0010, keyword="pass");
-        self.emit_diag(E0011);
-    } else {
-        self.emit_diag(E0046);
-    }
+    self.error("Unexpected token in archetype body");
     self.advance();
 }
 
@@ -5807,45 +5763,7 @@ impl Parser.parse_func_signature -> FuncSignature {
             }
         }
     }
-    # Validate parameter ordering rules (use elif to report one error per separator)
-    has_slash = False;
-    has_star = False;
-    has_kwargs = False;
-    for k in kid {
-        if isinstance(k, UniToken) and k.name == Tok.DIV {
-            if has_slash {
-                self.emit_diag(E0050, param="/");
-            } elif has_star {
-                self.emit_diag(E0051, first="/", second="*");
-            } elif has_kwargs {
-                self.emit_diag(E0051, first="/", second="**kwargs");
-            }
-            has_slash = True;
-        } elif isinstance(k, UniToken) and k.name == Tok.STAR_MUL {
-            if has_star {
-                self.emit_diag(E0050, param="*");
-            } elif has_kwargs {
-                self.emit_diag(E0051, first="*", second="**kwargs");
-            }
-            has_star = True;
-        } elif isinstance(k, ParamVar) {
-            if k.unpack and k.unpack?.name {
-                if k.unpack.name == Tok.STAR_MUL {
-                    if has_star {
-                        self.emit_diag(E0050, param="*");
-                    } elif has_kwargs {
-                        self.emit_diag(E0051, first="*", second="**kwargs");
-                    }
-                    has_star = True;
-                } elif k.unpack.name == Tok.STAR_POW {
-                    if has_kwargs {
-                        self.emit_diag(E0050, param="**kwargs");
-                    }
-                    has_kwargs = True;
-                }
-            }
-        }
-    }
+    # Parameter ordering validation deferred to ASTValidationPass
     # Set param_kind on each ParamVar (default is NORMAL, must be overridden)
     for p in posonly_params {
         p.param_kind = ParamKind.POSONLY;
@@ -6039,9 +5957,7 @@ impl Parser.parse_enum -> Enum {
                 break;
             }
         }
-        if len(body) == 0 {
-            self.emit_diag(E0043);
-        }
+        # Empty enum body validated by ASTValidationPass
         enum_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
         self.expect(TokenKind.SEMI);
@@ -6188,9 +6104,7 @@ impl Parser.parse_switch_stmt -> SwitchStmt {
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
         cases.append(self.parse_switch_case());
     }
-    if len(cases) == 0 {
-        self.emit_diag(E0042);
-    }
+    # Empty switch validated by ASTValidationPass
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [switch_uni, target, lb_uni];
     kid.extend(cases);
