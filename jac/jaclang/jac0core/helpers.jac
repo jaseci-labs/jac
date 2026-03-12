@@ -246,6 +246,43 @@ def pretty_print_source_location(
     return pretty_dump[:-1];
 }
 
+"""Format related diagnostic spans for display under the main error."""
+def format_related_spans(
+    related: list[tuple[str, object]], *, colors: bool = False
+) -> str {
+    result = '';
+    for (label, loc) in related {
+        mod_path = loc.mod_path;
+        first_line = loc.first_line;
+        col_start = loc.col_start;
+        if colors {
+            result += f"\n{ANSIColors.CYAN}note{ANSIColors.END}: {label}";
+        } else {
+            result += f"\nnote: {label}";
+        }
+        if (mod_path != '') {
+            result += f"\n  --> {mod_path}:{first_line}:{col_start}";
+            try {
+                source = loc.orig_src.code;
+                span_dump = pretty_print_source_location(
+                    mod_path,
+                    source,
+                    first_line,
+                    loc.pos_start,
+                    loc.pos_end,
+                    colors=colors
+                );
+                if (span_dump != '') {
+                    result += '\n' + span_dump;
+                }
+            } except Exception {
+                ;
+            }
+        }
+    }
+    return result;
+}
+
 """Jac debugger."""
 class Jdb(pdb.Pdb) {
     def init(self: Jdb, *args: Any, **kwargs: Any) -> None;
