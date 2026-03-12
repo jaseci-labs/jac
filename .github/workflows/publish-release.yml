@@ -28,12 +28,12 @@ jobs:
       release_summary: ${{ steps.parse.outputs.release_summary }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -75,13 +75,13 @@ jobs:
       matrix: ${{ fromJson(needs.parse-release.outputs.precompile_matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
           submodules: ${{ matrix.submodules }}
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python_version }}
 
@@ -96,7 +96,7 @@ jobs:
         run: jac run jac/scripts/precompile_bytecode.jac ./${{ matrix.dir }}
 
       - name: Upload precompiled artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.precompile_artifact }}-${{ matrix.python_version }}
           path: ${{ matrix.precompile_path }}/
@@ -120,20 +120,20 @@ jobs:
       matrix: ${{ fromJson(needs.parse-release.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
           submodules: ${{ matrix.submodules }}
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       # Download precompiled artifacts for packages that need them
       - name: Download precompiled artifacts
         if: matrix.precompile == true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@v4
         with:
           path: ${{ matrix.precompile_path }}/
           pattern: ${{ matrix.precompile_artifact }}-*
@@ -164,7 +164,7 @@ jobs:
         run: python -m build
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: Packages-${{ matrix.pypi }}
           path: ${{ matrix.dir }}/dist/*
@@ -192,14 +192,14 @@ jobs:
 
       - name: Download package
         if: steps.check.outputs.skip != 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@v4
         with:
           name: Packages-${{ matrix.pypi }}
           path: dist
 
       - name: Publish to PyPI
         if: steps.check.outputs.skip != 'true'
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
@@ -210,12 +210,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -247,14 +247,14 @@ jobs:
 
       - name: Download package
         if: steps.check.outputs.skip != 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@v4
         with:
           name: Packages-${{ matrix.pypi }}
           path: dist
 
       - name: Publish to PyPI
         if: steps.check.outputs.skip != 'true'
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
@@ -265,12 +265,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -302,14 +302,14 @@ jobs:
 
       - name: Download package
         if: steps.check.outputs.skip != 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@v4
         with:
           name: Packages-${{ matrix.pypi }}
           path: dist
 
       - name: Publish to PyPI
         if: steps.check.outputs.skip != 'true'
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.15.0
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
@@ -331,7 +331,7 @@ jobs:
       jaseci_release_tag: ${{ steps.tags.outputs.jaseci_release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: true
@@ -393,7 +393,7 @@ jobs:
       contents: write
     steps:
       - name: Download all packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: Packages-*
