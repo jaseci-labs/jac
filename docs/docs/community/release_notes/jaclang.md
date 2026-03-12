@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.2 (Unreleased)
 
+- **Fix: Type Checker Runtime and Narrowing Improvements**: Four type checker fixes: (1) Removed `| None` from `ExecutionContext.mem` field to eliminate false-positive attribute access errors on `Memory | None` union types. (2) `@cached_property` decorated methods now correctly resolve their return type, matching existing `@property` behaviour. (3) `JacAccessValidation._resolve_anchor` now has an explicit return type `tuple[(Anchor, ExecutionContext)]`, fixing untyped-tuple errors at call sites. (4) Type narrowing via `get_narrowing_key` now correctly handles parenthesized expressions `(expr)` and walrus-operator assignments `(x := expr)`.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
 
 ## jaclang 0.12.1 (Latest Release)
