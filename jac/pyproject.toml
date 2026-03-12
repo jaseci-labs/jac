@@ -47,6 +47,7 @@ include = ["jaclang*"]
 jaclang = ["sitecustomize.py", "_precompiled/**/*.jir", "_precompiled/manifest.json"]
 
 [tool.setuptools]
+py-modules = ["_jac_finder"]
 include-package-data = true
 
 [build-system]
