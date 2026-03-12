@@ -103,6 +103,21 @@ class Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
         self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
     ) -> bool;
 
+    """Emit a structured diagnostic."""
+    def emit(
+        self: Transform,
+        diag: DiagnosticInfo,
+        node_override: (UniNode | None) = None,
+        related: (list[tuple[str, UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: Any
+    ) -> bool;
+
+    """Check if a diagnostic code is suppressed."""
+    def _is_suppressed(
+        self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    ) -> bool;
+
     """Pass Error."""
     def ice(
         self: Transform, msg: str = 'Something went horribly wrong!'

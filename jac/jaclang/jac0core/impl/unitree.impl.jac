@@ -480,13 +480,6 @@ impl UniScopeNode.link_kid_scope(key_node: UniScopeNode) -> UniScopeNode {
     return self.kid_scope[-1];
 }
 
-"""Inherit symbol table."""
-impl UniScopeNode.inherit_sym_tab(target_sym_tab: UniScopeNode) -> None {
-    for i in target_sym_tab.names_in_scope.values() {
-        self.def_insert(i.decl, access_spec=i.access);
-    }
-}
-
 """Insert into symbol table."""
 impl UniScopeNode.def_insert(
     nd: AstSymbolNode,

@@ -1,4 +1,4 @@
-"""Implementation for def_impl_match_pass constructs."""
+"""Implementation for decl_impl_match_pass constructs."""
 
 """Connect Decls and Defs."""
 impl DeclImplMatchPass.transform(

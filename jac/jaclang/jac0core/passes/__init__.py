@@ -7,14 +7,14 @@ This module contains the bootstrap-critical compiler passes:
 - pyast_gen_pass: Python AST generation (Jac -> Python)
 - pybc_gen_pass: Bytecode generation
 - annex_pass: Module annex loading
-- def_impl_match_pass: Declaration-implementation matching
+- decl_impl_match_pass: Declaration-implementation matching
 - semantic_analysis_pass: Semantic analysis
 - ast_gen/: Shared AST generation utilities
 """
 
 from jaclang.jac0core.passes.annex_pass import JacAnnexPass
 from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
-from jaclang.jac0core.passes.def_impl_match_pass import DeclImplMatchPass
+from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
 from jaclang.jac0core.passes.interop_analysis_pass import InteropAnalysisPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
 from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
