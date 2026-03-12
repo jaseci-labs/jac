@@ -4,7 +4,7 @@ Storage configuration comes from environment variables or jac.toml.
 """
 
 impl _run_topo_invalidate_subscriber(redis_url: str, stop_event: Event) -> None {
-    import from jaclang.runtimelib.sam_gti { sam_invalidate };
+    import from jaclang.runtimelib.sam_gti { sam_invalidate }
     client = None;
     try {
         client = redis.from_url(redis_url);
@@ -16,20 +16,21 @@ impl _run_topo_invalidate_subscriber(redis_url: str, stop_event: Event) -> None 
                 try {
                     source_id_str = (
                         msg['data'].decode()
-                        if isinstance(msg['data'], bytes)
-                        else msg['data']
+                            if isinstance(msg['data'], bytes)
+                            else msg['data']
                     );
                     sam_invalidate(UUID(source_id_str));
                 } except Exception {
-                    # never crash the subscriber thread
+                # never crash the subscriber thread
                 }
             }
         }
         pubsub.unsubscribe();
-    } except Exception {
-    } finally {
+    } except Exception { } finally {
         if client {
-            try { client.close(); } except Exception { }
+            try {
+                client.close();
+            } except Exception { }
         }
     }
 }
@@ -58,7 +59,7 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
             self._topo_subscriber = Thread(
                 target=_run_topo_invalidate_subscriber,
                 args=(redis_url, self._topo_stop_event),
-                daemon=True,    # dies with process, no cleanup needed
+                daemon=True,  # dies with process, no cleanup needed
                 name='jac-topo-invalidate'
             );
             self._topo_subscriber.start();

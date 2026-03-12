@@ -38,7 +38,6 @@ glob TOPO_PREFIX = "jac:topo";
 # ---------------------------------------------------------------------------
 # Shared helpers (mirrors test_memory_hierarchy.jac helpers)
 # ---------------------------------------------------------------------------
-
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
         s.bind(("", 0));
@@ -69,9 +68,7 @@ def start_server(jac_file: Path, port: int) -> subprocess.Popen {
         }
     }
     (stdout, stderr) = server.communicate(timeout=2);
-    raise RuntimeError(
-        f"jac start failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-    );
+    raise RuntimeError(f"jac start failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }
 
 def stop_server(server: subprocess.Popen) -> None {
@@ -84,11 +81,7 @@ def stop_server(server: subprocess.Popen) -> None {
 }
 
 def post_walker(base_url: str, walker_name: str, payload: dict) -> dict[str, Any] {
-    res = requests.post(
-        f"{base_url}/walker/{walker_name}",
-        json=payload,
-        timeout=5
-    );
+    res = requests.post(f"{base_url}/walker/{walker_name}", json=payload, timeout=5);
     assert res.status_code == 200 , (
         f"Walker {walker_name} failed: {res.status_code} - {res.text}"
     );
@@ -137,7 +130,7 @@ def teardown_containers(
     mongo_client: object
 ) -> None {
     stop_server(server);
-    system_dbs = {"admin", "config", "local"};
+    system_dbs = {"admin","config","local"};
     for db_name in mongo_client.list_database_names() {
         if db_name not in system_dbs {
             mongo_client.drop_database(db_name);
@@ -160,7 +153,6 @@ def teardown_containers(
 # ---------------------------------------------------------------------------
 # Group 1 — Qualified names in Redis
 # ---------------------------------------------------------------------------
-
 test "redis gti - qualified type names written to Redis after graph build" {
     if not GTI_JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing fixture: {GTI_JAC_FILE}");
@@ -240,7 +232,6 @@ test "redis gti - MRO fan-out writes BaseContent key for PostNode targets" {
 # ---------------------------------------------------------------------------
 # Group 2 — Typed traversal correctness via GTI
 # ---------------------------------------------------------------------------
-
 test "redis gti - QueryByBase returns only PostNode results, not OtherNode" {
     if not GTI_JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing fixture: {GTI_JAC_FILE}");
@@ -265,7 +256,6 @@ test "redis gti - QueryByBase returns only PostNode results, not OtherNode" {
 # ---------------------------------------------------------------------------
 # Group 3 — Edge deletion removes from Redis
 # ---------------------------------------------------------------------------
-
 test "redis gti - _gti_delete_edge_redis removes target from Redis key after del -->" {
     if not GTI_JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing fixture: {GTI_JAC_FILE}");
@@ -308,7 +298,6 @@ test "redis gti - _gti_delete_edge_redis removes target from Redis key after del
 # ---------------------------------------------------------------------------
 # Group 4 — migrate_to_qualified_types Redis path
 # ---------------------------------------------------------------------------
-
 test "redis gti - migrate_to_qualified_types flushes bare keys and rebuilds qualified" {
     if not GTI_JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing fixture: {GTI_JAC_FILE}");

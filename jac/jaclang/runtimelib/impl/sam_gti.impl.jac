@@ -43,7 +43,9 @@ impl get_type_mro(instance: object) -> list[str] {
     result = [];
     for cls in type(instance).__mro__ {
         mod = getattr(cls, '__module__', '') or '';
-        if mod.startswith('jaclang') or mod.startswith('builtins') or cls.__name__ == 'object' {
+        if mod.startswith('jaclang')
+        or mod.startswith('builtins')
+        or cls.__name__ == 'object' {
             break;
         }
         result.append(mod + '.' + getattr(cls, '__name__', ''));
@@ -371,9 +373,8 @@ impl rebuild_topology_index(mem: object) -> dict[str, str] {
 # ---------------------------------------------------------------------------
 # Scale backend globals + implementations
 # ---------------------------------------------------------------------------
-
-glob _TOPO_PREFIX: str = 'jac:topo';
-glob _TOPO_INVALIDATE_CHANNEL: str = 'jac:topo:invalidate';
+glob _TOPO_PREFIX: str = 'jac:topo',
+     _TOPO_INVALIDATE_CHANNEL: str = 'jac:topo:invalidate';
 
 impl _get_scale_topo(mem: object) -> (tuple | None) {
     try {
@@ -381,7 +382,7 @@ impl _get_scale_topo(mem: object) -> (tuple | None) {
             ScaleTieredMemory,
             RedisBackend,
             MongoBackend
-        };
+        }
     } except ImportError {
         return None;
     }
@@ -390,18 +391,19 @@ impl _get_scale_topo(mem: object) -> (tuple | None) {
     }
     l2 = getattr(mem, 'l2', None);
     l3 = getattr(mem, 'l3', None);
-    if (isinstance(l2, RedisBackend) and l2.redis_client is not None
-        and isinstance(l3, MongoBackend) and l3.client is not None) {
+    if (
+        isinstance(l2, RedisBackend)
+        and l2.redis_client is not None
+        and isinstance(l3, MongoBackend)
+        and l3.client is not None
+    ) {
         return (l2.redis_client, l3);
     }
     return None;
 }
 
 impl _gti_write_edge_redis(
-    redis_client: object,
-    eanch: object,
-    source: object,
-    target: object
+    redis_client: object, eanch: object, source: object, target: object
 ) -> None {
     src_str = str(source.id);
     tgt_str = str(target.id);
@@ -464,13 +466,9 @@ impl gti_query_targets_redis(
             e_key = f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}";
             raw = redis_client.sinter(n_key, e_key);
         } elif target_type {
-            raw = redis_client.smembers(
-                f"{_TOPO_PREFIX}:n:{src_str}:{target_type}"
-            );
+            raw = redis_client.smembers(f"{_TOPO_PREFIX}:n:{src_str}:{target_type}");
         } elif edge_type {
-            raw = redis_client.smembers(
-                f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}"
-            );
+            raw = redis_client.smembers(f"{_TOPO_PREFIX}:e:{src_str}:{edge_type}");
         } else {
             return None;
         }
@@ -486,7 +484,7 @@ impl sam_broadcast_invalidate(redis_client: object, source_id: UUID) -> None {
     try {
         redis_client.publish(_TOPO_INVALIDATE_CHANNEL, str(source_id));
     } except Exception {
-        # Fire-and-forget — don't fail the write path on pub/sub error.
+    # Fire-and-forget — don't fail the write path on pub/sub error.
     }
 }
 
@@ -562,6 +560,7 @@ impl migrate_to_qualified_types(mem: object) -> dict[str, str] {
             'backend': 'redis',
             'keys_flushed': str(deleted),
             'edges_rebuilt': str(count),
+
         };
     }
 

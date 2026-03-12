@@ -32,55 +32,45 @@ import from threading { Lock }
 import from uuid { UUID }
 
 glob __all__ = [
-    'sam_index',
-    '_stats',
-    '_qname',
-    '_get_lock',
-    'reset_stats',
-    'get_type_mro',
-    'sam_put',
-    'sam_invalidate',
-    'sam_query',
-    'sam_populate_from_gti',
-    'sam_clear',
-    '_get_sqlite',
-    '_gti_write_edge',
-    '_gti_delete_edge',
-    'gti_query_targets',
-    'rebuild_gti',
-    'rebuild_topology_index',
-    '_get_scale_topo',
-    '_gti_write_edge_redis',
-    '_gti_delete_edge_redis',
-    '_gti_delete_node_redis',
-    'gti_query_targets_redis',
-    'sam_broadcast_invalidate',
-    'rebuild_gti_redis',
-    'rebuild_topology_index_scale',
-    'migrate_to_qualified_types',
-];
+         'sam_index',
+         '_stats',
+         '_qname',
+         '_get_lock',
+         'reset_stats',
+         'get_type_mro',
+         'sam_put',
+         'sam_invalidate',
+         'sam_query',
+         'sam_populate_from_gti',
+         'sam_clear',
+         '_get_sqlite',
+         '_gti_write_edge',
+         '_gti_delete_edge',
+         'gti_query_targets',
+         'rebuild_gti',
+         'rebuild_topology_index',
+         '_get_scale_topo',
+         '_gti_write_edge_redis',
+         '_gti_delete_edge_redis',
+         '_gti_delete_node_redis',
+         'gti_query_targets_redis',
+         'sam_broadcast_invalidate',
+         'rebuild_gti_redis',
+         'rebuild_topology_index_scale',
+         'migrate_to_qualified_types',
 
-# ---------------------------------------------------------------------------
-# Process-level singleton
-# { source_id_str: { column_key: [target_id_str, ...] } }
-# column_key is prefixed: "n:NodeType" or "e:EdgeType"
-# ---------------------------------------------------------------------------
-
-glob sam_index: dict[str, dict[str, list[str]]] = defaultdict(
-    lambda: defaultdict(list)
-);
-
-# Per-source lock for thread-safe writes
-glob _locks: dict[str, Lock] = {};
-glob _locks_mu: Lock = Lock();
-
-# Test-visible counters (zero overhead branch in production)
-glob _stats: dict[str, int] = {
-    'sam_hits': 0,
-    'sam_misses': 0,
-    'gti_hits': 0,
-    'gti_misses': 0
-};
+     ],
+     sam_index: dict[str, dict[str, list[str]]] = defaultdict(
+         lambda : defaultdict(list)
+     ),
+     _locks: dict[str, Lock] = {},
+     _locks_mu: Lock = Lock(),
+     _stats: dict[str, int] = {
+         'sam_hits': 0,
+         'sam_misses': 0,
+         'gti_hits': 0,
+         'gti_misses': 0
+     };
 
 # ---------------------------------------------------------------------------
 # Qualified-name helper
@@ -251,7 +241,6 @@ def rebuild_topology_index(mem: object) -> dict[str, str];
 # ---------------------------------------------------------------------------
 # GTI scale backend: resolve (redis_client, MongoBackend) from mem
 # ---------------------------------------------------------------------------
-
 """Return (redis_client, MongoBackend) when ScaleTieredMemory has both
 Redis and MongoDB active, else None.
 
@@ -264,7 +253,6 @@ def _get_scale_topo(mem: object) -> (tuple | None);
 # ---------------------------------------------------------------------------
 # GTI scale write/delete hooks
 # ---------------------------------------------------------------------------
-
 """Write edge to Redis topology sets.
 
 For each MRO type of target.archetype, adds target_id to:
@@ -276,10 +264,7 @@ Uses a Redis pipeline (non-transactional) to batch all SADDs in one
 round-trip. Called from build_edge() after MongoDB anchor is committed.
 """
 def _gti_write_edge_redis(
-    redis_client: object,
-    eanch: object,
-    source: object,
-    target: object
+    redis_client: object, eanch: object, source: object, target: object
 ) -> None;
 
 """Remove a specific (source, target, edge) triple from Redis topology sets.
@@ -315,7 +300,6 @@ def _gti_delete_node_redis(redis_client: object, node_id: UUID) -> None;
 # ---------------------------------------------------------------------------
 # GTI scale query
 # ---------------------------------------------------------------------------
-
 """Query Redis topology sets for matching target UUIDs.
 
 Handles three cases:
@@ -339,7 +323,6 @@ def gti_query_targets_redis(
 # ---------------------------------------------------------------------------
 # SAM invalidation broadcast
 # ---------------------------------------------------------------------------
-
 """Publish a SAM invalidation message to all workers.
 
 All workers (including the caller) subscribe to 'jac:topo:invalidate'.
@@ -354,7 +337,6 @@ def sam_broadcast_invalidate(redis_client: object, source_id: UUID) -> None;
 # ---------------------------------------------------------------------------
 # GTI scale rebuild
 # ---------------------------------------------------------------------------
-
 """Reconstruct Redis topology from MongoDB anchor store.
 
 Two-pass scan of db._anchors:
@@ -369,7 +351,6 @@ def rebuild_gti_redis(redis_client: object, mongo_backend: object) -> int;
 # ---------------------------------------------------------------------------
 # Public scale rebuild API
 # ---------------------------------------------------------------------------
-
 """Rebuild Redis GTI from MongoDB, then clear SAM (will warm lazily).
 
 Scale equivalent of rebuild_topology_index().
@@ -380,7 +361,6 @@ def rebuild_topology_index_scale(mem: object) -> dict[str, str];
 # ---------------------------------------------------------------------------
 # One-time migration: bare type names → qualified type names
 # ---------------------------------------------------------------------------
-
 """Migrate existing GTI storage from bare type names to qualified names.
 
 Before this change, GTI stored bare class names ('Dog', 'Animal').
@@ -404,3 +384,12 @@ WARNING: There is a brief window during which GTI is empty.
          Run during a maintenance window or low-traffic period.
 """
 def migrate_to_qualified_types(mem: object) -> dict[str, str];
+# ---------------------------------------------------------------------------
+# Process-level singleton
+# { source_id_str: { column_key: [target_id_str, ...] } }
+# column_key is prefixed: "n:NodeType" or "e:EdgeType"
+# ---------------------------------------------------------------------------
+
+# Per-source lock for thread-safe writes
+
+# Test-visible counters (zero overhead branch in production)
