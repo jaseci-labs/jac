@@ -394,7 +394,9 @@ no-print                 → W3012
 
 ## Phase 6: LSP + CLI Polish
 
-STATUS: PENDING
+STATUS: DONE
+
+> DEVIATION: Added `code` and `source` optional fields to `lsp/types.jac` Diagnostic class since they were missing from the minimal LSP types implementation.
 
 ### Goal
 
