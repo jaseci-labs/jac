@@ -1,0 +1,2 @@
+include jaclang.pth
+include _jac_finder.py

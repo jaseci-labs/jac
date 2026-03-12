@@ -285,6 +285,13 @@ jobs:
     - name: Uninstall editable jaclang
       run: pip uninstall -y jaclang
 
+    - name: Clean egg-info to simulate fresh build (like publish-release)
+      run: |
+        rm -rf jac/jaclang.egg-info
+        rm -rf jac-client/*.egg-info
+        rm -rf jac-scale/*.egg-info
+        rm -rf jac-byllm/*.egg-info
+
     - name: Build and install packages
       run: |
         python -m build jac --wheel
