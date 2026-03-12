@@ -448,6 +448,33 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
     ];
 }
 
+"""Return formatted jac with lint auto-fix applied."""
+impl JacLangServer.formatted_jac_lintfix(file_path: str) -> list[lspt.TextEdit] {
+    document = self.workspace.get_text_document(file_path);
+    try {
+        prog = JacProgram.jac_str_formatter(
+            source_str=document.source, file_path=document.path, auto_lint=True
+        );
+        formatted_text = prog.mod.main.gen.jac
+            if not prog.errors_had
+            else document.source;
+    } except Exception as e {
+        self.log_error(f"Error during lintfix format: {e}");
+        formatted_text = document.source;
+    }
+    return [
+        lspt.TextEdit(
+            range=lspt.Range(
+                start=lspt.Position(line=0, character=0),
+                end=lspt.Position(
+                    line=(len(document.source.splitlines()) + 1), character=0
+                )
+            ),
+            new_text=formatted_text
+        )
+    ];
+}
+
 """Close module (didClose cleanup - remove sem_manager only)."""
 impl JacLangServer.close_module(uri: str) -> None {
     fs_path = uris.to_fs_path(uri);

@@ -23,6 +23,7 @@ import from .types {
     DidCloseTextDocumentParams,
     PositionEncodingKind,
     TextDocumentSyncKind,
+    WorkspaceEdit,
     TEXT_DOCUMENT_DID_OPEN,
     TEXT_DOCUMENT_DID_CHANGE,
     TEXT_DOCUMENT_DID_CLOSE,
@@ -33,6 +34,7 @@ import from .types {
     INITIALIZED,
     SHUTDOWN,
     EXIT,
+    WORKSPACE_APPLY_EDIT,
     WORKSPACE_SEMANTIC_TOKENS_REFRESH,
     METHOD_TO_PARAMS
 }
@@ -136,6 +138,7 @@ obj LanguageServer {
     def show_message(message: str, msg_type: Any = None) -> None;
     def show_message_log(message: str, msg_type: Any = None) -> None;
     def send_request(method: str, params: Any = None) -> None;
+    def apply_edit(edit: WorkspaceEdit) -> None;
     def shutdown -> None;
     # Internal transport methods
     def _send_notification(method: str, params: Any) -> None;

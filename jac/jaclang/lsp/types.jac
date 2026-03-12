@@ -25,6 +25,8 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      WORKSPACE_DID_CREATE_FILES = "workspace/didCreateFiles",
      WORKSPACE_DID_RENAME_FILES = "workspace/didRenameFiles",
      WORKSPACE_DID_DELETE_FILES = "workspace/didDeleteFiles",
+     WORKSPACE_EXECUTE_COMMAND = "workspace/executeCommand",
+     WORKSPACE_APPLY_EDIT = "workspace/applyEdit",
      WORKSPACE_SEMANTIC_TOKENS_REFRESH = "workspace/semanticTokens/refresh",
      INITIALIZE = "initialize",
      INITIALIZED = "initialized",
@@ -359,6 +361,15 @@ obj SemanticTokensLegend {
         token_modifiers: list[str] = [];
 }
 
+obj ExecuteCommandOptions {
+    has commands: list[str] = [];
+}
+
+obj ExecuteCommandParams {
+    has command: str = "",
+        arguments: Optional[list[Any]] = None;
+}
+
 obj FileOperationPattern {
     has glob: str = "";
 }
@@ -389,5 +400,6 @@ glob METHOD_TO_PARAMS: dict[str, type] = {
          TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL: SemanticTokensParams,
          WORKSPACE_DID_CREATE_FILES: CreateFilesParams,
          WORKSPACE_DID_RENAME_FILES: RenameFilesParams,
-         WORKSPACE_DID_DELETE_FILES: DeleteFilesParams
+         WORKSPACE_DID_DELETE_FILES: DeleteFilesParams,
+         WORKSPACE_EXECUTE_COMMAND: ExecuteCommandParams
      };
