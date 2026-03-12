@@ -440,7 +440,7 @@ impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
         ability = node_;
         if ability.decorators {
             for decorator in ability.decorators {
-                if isinstance(decorator, uni.Name) and decorator.value == "property" {
+                if isinstance(decorator, uni.Name) and decorator.value in ("property", "cached_property") {
                     return True;
                 }
             }

@@ -2713,6 +2713,19 @@ impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
             return f"{base_key}.{expr.right.value}";
         }
     }
+    # Unwrap parentheses: (expr) → recurse into inner expression
+    if isinstance(expr, uni.AtomUnit) and expr.value {
+        return self.get_narrowing_key(expr.value);
+    }
+    # Walrus operator: (x := expr) → narrow "x"
+    if (
+        isinstance(expr, uni.BinaryExpr)
+        and isinstance(expr.op, uni.Token)
+        and expr.op.name == "WALRUS_EQ"
+        and isinstance(expr.left, uni.Name)
+    ) {
+        return expr.left.value;
+    }
     return None;
 }
 
