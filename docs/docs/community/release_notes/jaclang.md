@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.1 (Unreleased)
+## jaclang 0.12.2 (Unreleased)
+
+## jaclang 0.12.1 (Latest Release)
 
 - **Automatic Jac Import Hook via `.pth` File**: Installing jaclang now automatically registers a lightweight lazy import finder at Python startup via a `.pth` file. This means `.jac` modules can be imported from Python without needing `import jaclang` first. Jac imports Just Work. The lazy finder adds ~0.1ms to non-Jac Python startup and only triggers the full jaclang bootstrap on first `.jac` import.
 - **Fix: TOML Serializer Preserves Special Chars and Env Vars**: Fixed two bugs in the `jac.toml` serializer triggered when programmatically saving config changes: (1) Table headers containing special characters (e.g., `[plugins.client.npm.auth."//npm.pkg.github.com/"]`) now retain proper quoting instead of being written unquoted, and (2) Environment variable placeholders like `${NODE_AUTH_TOKEN}` are preserved as-is instead of being interpolated to their runtime values. Previously, these bugs would corrupt `jac.toml` files when dependencies were auto-updated.
@@ -37,7 +39,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Improved Internal sv Compiler Error Diagnostics**: Helper added that raises a structured ICE with source file, line, column, and node type instead of a bare `list index out of range`.
 - **Fix: Type Checker Crash on `Final[UnionType]`**: Fixed crash when type checking `Final[int | str]` annotations. Unwrapping `Final[T]` now correctly handles union types instead of failing with `'UnionType' has no attribute 'shared'`.
 
-## jaclang 0.12.0 (Latest Release)
+## jaclang 0.12.0
 
 - 27 small refactors/changes.
 
