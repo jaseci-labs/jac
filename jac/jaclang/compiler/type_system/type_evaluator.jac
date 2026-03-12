@@ -9,7 +9,7 @@ PyrightReference:
 import ast as py_ast;
 import os;
 import from pathlib { Path }
-import from typing { Callable, TYPE_CHECKING, cast }
+import from typing { TYPE_CHECKING, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
@@ -30,8 +30,53 @@ import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
-# The callback type definition for the diagnostic messages.
-glob DiagnosticCallback = Callable[[uni.UniNode, str, bool], None];
+import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
+    E1001,
+    E1002,
+    E1003,
+    E1004,
+    E1010,
+    E1011,
+    E1020,
+    E1021,
+    E1022,
+    E1023,
+    E1030,
+    E1031,
+    E1032,
+    E1033,
+    E1034,
+    E1035,
+    E1040,
+    E1041,
+    E1050,
+    E1053,
+    E1054,
+    E1060,
+    E1061,
+    E1062,
+    E1063,
+    E1064,
+    E1065,
+    E1070,
+    E1071,
+    E1072,
+    E1073,
+    E1080,
+    E1081,
+    E1090,
+    E1091,
+    E1092,
+    E1093,
+    E1094,
+    E1095,
+    E1096,
+    E1097,
+    E1098,
+    E1099,
+    W1100
+}
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
@@ -106,7 +151,7 @@ obj TypeEvaluator {
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
     def get_none_type -> TypeBase;
-    def add_diagnostic(nd: uni.UniNode, message: str, warning: bool = False) -> None;
+    def emit_diag(diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object) -> None;
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;

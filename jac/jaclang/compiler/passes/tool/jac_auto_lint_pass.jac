@@ -23,15 +23,26 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.project.config { LintRule }
+import from jaclang.jac0core.diagnostics {
+    W3001,
+    W3002,
+    W3003,
+    W3004,
+    W3005,
+    W3006,
+    W3007,
+    W3008,
+    W3009,
+    W3010,
+    W3011,
+    E3012
+}
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
     def init(ir_in: uni.Module, prog: Any) -> None;
 
-    def _load_lint_config -> None;
-    def is_rule_enabled(rule: LintRule) -> bool;
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;

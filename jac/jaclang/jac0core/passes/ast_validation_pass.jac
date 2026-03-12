@@ -11,6 +11,19 @@ table or type information - only the raw AST structure.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
+import from jaclang.jac0core.diagnostics {
+    E0010,
+    E0020,
+    E0023,
+    E0031,
+    E0040,
+    E0041,
+    E0042,
+    E0043,
+    E0044,
+    E0050,
+    E0051
+}
 
 """Validates structural AST invariants after parsing."""
 class ASTValidationPass(UniPass) {

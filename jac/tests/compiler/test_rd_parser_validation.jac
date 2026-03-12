@@ -25,8 +25,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
         import from jaclang.jac0core.parser.parser { parse }
-        (module, parse_errors, lex_errors) = parse(source, file_path);
-        if lex_errors or parse_errors {
+        (module, had_error) = parse(source, file_path);
+        if had_error {
             return None;
         }
         return module;

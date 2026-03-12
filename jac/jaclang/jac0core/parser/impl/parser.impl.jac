@@ -124,6 +124,25 @@ import from jaclang.jac0core.unitree { JsxText, JsxExpression }
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
+import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
+    Severity,
+    E0001,
+    E0002,
+    E0003,
+    E0004,
+    E0005,
+    E0006,
+    E0013,
+    E0021,
+    E0022,
+    E0030,
+    E0032,
+    E0034,
+    E0045,
+    E0047,
+    W0060
+}
 
 impl Parser.current -> Token {
     if self.pos < self._tokens_len {
@@ -205,9 +224,9 @@ impl Parser.expect(kind: TokenKind) -> Token {
         TokenKind.SEMI,
         TokenKind.COMMA
     ) {
-        self.error(f"Missing '{kind.value}'");
+        self.emit_diag(E0002, token=kind.value);
     } else {
-        self.error(f"Expected '{kind.value}', got '{self.current().kind.value}'");
+        self.emit_diag(E0001, expected=kind.value, got=self.current().kind.value);
         # Advance past the unexpected token to guarantee forward progress
         return self.advance();
     }
@@ -221,66 +240,68 @@ impl Parser.consume_uni(kind: TokenKind) -> UniToken {
     return self.make_uni_token(tok);
 }
 
+impl Parser._make_alert(
+    message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+) -> Alert {
+    source = self.get_source();
+    tok = UniToken(
+        orig_src=source,
+        name="ERROR",
+        value="",
+        line=sloc.line,
+        end_line=sloc.end_line,
+        col_start=sloc.col_start,
+        col_end=sloc.col_end,
+        pos_start=sloc.pos_start,
+        pos_end=sloc.pos_end
+    );
+    loc = CodeLocInfo(tok, tok);
+    return Alert(message, loc, Parser, code=code);
+}
+
 impl Parser.error(message: str) {
     sloc = self.current().loc;
-    self.errors.append(ParseError(message=message, loc=sloc));
-    # Propagate to prog.errors_had as Alert if prog is available
+    self.error_count += 1;
     if self.prog is not None and hasattr(self.prog, "errors_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="ERROR",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, loc, Parser);
+        alrt = self._make_alert(message, sloc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.error_at(message: str, loc: SourceLoc) {
-    self.errors.append(ParseError(message=message, loc=loc));
+    self.error_count += 1;
     if self.prog is not None and hasattr(self.prog, "errors_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="ERROR",
-            value="",
-            line=loc.line,
-            end_line=loc.end_line,
-            col_start=loc.col_start,
-            col_end=loc.col_end,
-            pos_start=loc.pos_start,
-            pos_end=loc.pos_end
-        );
-        code_loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, code_loc, Parser);
+        alrt = self._make_alert(message, loc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.warn_at(message: str, loc: SourceLoc) {
     if self.prog is not None and hasattr(self.prog, "warnings_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="WARNING",
-            value="",
-            line=loc.line,
-            end_line=loc.end_line,
-            col_start=loc.col_start,
-            col_end=loc.col_end,
-            pos_start=loc.pos_start,
-            pos_end=loc.pos_end
-        );
-        code_loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, code_loc, Parser);
+        alrt = self._make_alert(message, loc);
+        self.prog.warnings_had.append(alrt);
+    }
+}
+
+impl Parser.emit_diag(
+    diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+) {
+    sloc = loc if loc is not None else self.current().loc;
+    msg = diag.format_message(**kwargs);
+    self.error_count += 1;
+    if self.prog is not None and hasattr(self.prog, "errors_had") {
+        alrt = self._make_alert(msg, sloc, code=diag);
+        self.prog.errors_had.append(alrt);
+    }
+}
+
+impl Parser.emit_warn(
+    diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+) {
+    sloc = loc if loc is not None else self.current().loc;
+    msg = diag.format_message(**kwargs);
+    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+        alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.warnings_had.append(alrt);
     }
 }
@@ -403,7 +424,7 @@ impl Parser.expect_name -> Token {
     if self.check_name() {
         return self.advance();
     }
-    self.error(f"Expected identifier, got '{self.current().kind.value}'");
+    self.emit_diag(E0003, got=self.current().kind.value);
     return self.current();
 }
 
@@ -1199,7 +1220,7 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.error("Expected :<+ or :+> to close connect operator");
+            self.emit_diag(E0021);
             return None;
         }
     }
@@ -1591,8 +1612,8 @@ impl Parser.parse_call_args(kid: list) -> list {
     }
     # Check for missing comma between arguments
     if not self.check(TokenKind.RPAREN) and not self.at_end() {
-        self.error("Missing ','");
-        self.error("Unexpected token");
+        self.emit_diag(E0002, token=",");
+        self.emit_diag(E0006);
         # Skip to RPAREN or end to recover
         while not self.check(TokenKind.RPAREN) and not self.at_end() {
             self.advance();
@@ -2030,7 +2051,7 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
         return self.parse_jsx_element();
     }
-    self.error(f"Unexpected token in expression: '{self.current().kind.value}'");
+    self.emit_diag(E0004, got=self.current().kind.value);
     return self.make_name(self.advance());
 }
 
@@ -2846,7 +2867,7 @@ impl Parser.parse_lambda_expr -> Expr {
         body = self.parse_code_block_stmts();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
-        self.error("Expected ':' or '{' after lambda parameters");
+        self.emit_diag(E0022);
         body = self.parse_expression();
     }
     if return_type {
@@ -2966,10 +2987,7 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
-        self.error(
-            f"'{kw}' is a keyword and cannot be used as a lambda parameter"
-            f" name (prefix with backtick to escape: {chr(96)}{kw})"
-        );
+        self.emit_diag(E0013, keyword=kw, context="lambda parameter");
         return None;
     } else {
         # No name follows - not a valid parameter
@@ -3250,7 +3268,7 @@ impl Parser.parse_jsx_child -> Expr {
 
 impl Parser.parse_element_stmt{
     if self.check(TokenKind.SEMI) {
-        self.error("Unexpected semicolon at module level");
+        self.emit_diag(E0030);
         self.advance();
         return None;
     }
@@ -3398,7 +3416,7 @@ impl Parser.parse_element_stmt{
     if self.check(TokenKind.KW_ASYNC) {
         return self._dispatch_async();
     }
-    self.error(f"Unexpected token '{self.current().value}'");
+    self.emit_diag(E0005, token=self.current().value);
     self.synchronize();
     return EmptyToken();
 }
@@ -3676,10 +3694,7 @@ impl Parser.parse_code_block_stmts -> list {
                 }
             }
             if is_docstring {
-                self.warn_at(
-                    'Docstrings in Jac go before the declaration, not inside the body. ' + 'Move this string before the enclosing test/can/obj/etc.',
-                    self.tokens[before].loc
-                );
+                self.emit_warn(W0060, loc=self.tokens[before].loc);
             }
             if not isinstance(stmt, Semi) {
                 checked_first = True;
@@ -3866,9 +3881,7 @@ impl Parser.parse_statement{
         TokenKind.KW_FINALLY,
         TokenKind.KW_CASE
     ) {
-        self.error(
-            "Unexpected '" + self.current().value + "' — " + "must follow its parent statement (if/try/match/switch)"
-        );
+        self.emit_diag(E0032, token=self.current().value);
         self.advance();
         return None;
     }
@@ -3910,7 +3923,7 @@ impl Parser.parse_statement{
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
     } else {
-        self.error("Missing ';'");
+        self.emit_diag(E0002, token=";");
     }
     return ExprStmt(expr=expr, in_fstring=False, kid=expr_kid);
 }
@@ -4604,7 +4617,7 @@ impl Parser.parse_literal_for_mapping{
         }
     }
     # Error fallback
-    self.error("Expected literal (INT, FLOAT, or STRING) as mapping pattern key");
+    self.emit_diag(E0045);
     return self.make_name(self.advance());
 }
 
@@ -5576,9 +5589,7 @@ impl Parser.parse_ability -> Ability {
             event=event_uni_tok, arch_tag_info=event_type, kid=sig_kid
         );
     } elif is_can {
-        self.error(
-            "Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"
-        );
+        self.emit_diag(E0034);
         signature = self.parse_func_signature();
     } else {
         signature = self.parse_func_signature();
@@ -5844,10 +5855,7 @@ impl Parser.parse_param_var -> ParamVar | None {
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
-        self.error(
-            f"'{kw}' is a keyword and cannot be used as a parameter"
-            f" name (prefix with backtick to escape: {chr(96)}{kw})"
-        );
+        self.emit_diag(E0013, keyword=kw, context="parameter");
         return None;
     } else {
         return None;
@@ -6332,7 +6340,7 @@ impl Parser.parse_impl_def -> ImplDef {
         body = self.parse_expression();
         self.expect(TokenKind.SEMI);
     } else {
-        self.error("Expected '{' or 'by' for impl body");
+        self.emit_diag(E0047);
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];
@@ -6762,11 +6770,13 @@ impl Parser.parse_report_stmt -> ReportStmt {
 }
 
 impl parse(
-    source: str, file_path: str = "<input>"
-) -> tuple[Module, list[ParseError], list[LexerError]] {
+    source: str, file_path: str = "<input>", prog: object | None = None
+) -> tuple[Module, bool] {
     lexer = Lexer(source=source, file_path=file_path);
+    lexer.prog = prog;
     tokens = lexer.tokenize();
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    return (module, parser.errors, lexer.errors);
+    had_error = parser.error_count > 0 or lexer.error_count > 0;
+    return (module, had_error);
 }

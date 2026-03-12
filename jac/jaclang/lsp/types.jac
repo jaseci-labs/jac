@@ -160,7 +160,9 @@ obj MarkupContent {
 obj Diagnostic {
     has range: Range = Range(),
         message: str = "",
-        severity: Optional[DiagnosticSeverity] = None;
+        severity: Optional[DiagnosticSeverity] = None,
+        code: Optional[str] = None,
+        source: Optional[str] = None;
 }
 
 # ---------------------------------------------------------------------------

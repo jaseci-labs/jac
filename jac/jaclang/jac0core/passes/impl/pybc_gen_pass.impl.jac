@@ -24,7 +24,7 @@ impl PyBytecodeGenPass.compile_module_to_bytecode(
     self: PyBytecodeGenPass, mod: uni.Module
 ) -> None {
     if (not mod.gen.py_ast or not isinstance(mod.gen.py_ast[0], ast3.Module)) {
-        self.log_error(f"Unable to find ast for module{mod.loc.mod_path}.");
+        self.emit(E5040, node_override=mod, path=mod.loc.mod_path);
         return;
     }
     root_node = mod.gen.py_ast[0];

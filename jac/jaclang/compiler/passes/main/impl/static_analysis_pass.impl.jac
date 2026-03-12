@@ -71,7 +71,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         }
         # Check unused: defined but never referenced
         if len(sym.uses) == 0 {
-            self.log_warning(f"'{name}' is defined but never used", sym.decl);
+            self.emit(W2003, node_override=sym.decl, name=name);
         }
     }
     # Recurse into child scopes
@@ -109,7 +109,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.find_parent_of_type(uni.ModulePath) is not None {
             continue;
         }
-        self.log_warning(f"Name '{name_nd.value}' may be undefined", name_nd);
+        self.emit(W2001, node_override=name_nd, name=name_nd.value);
     }
 }
 
@@ -143,7 +143,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
                 if isinstance(stmt, uni.Semi) {
                     continue;
                 }
-                self.log_warning("Unreachable code detected", stmt);
+                self.emit(W2002, node_override=stmt);
                 break;
             }
             if isinstance(stmt, (uni.ReturnStmt, uni.RaiseStmt)) {

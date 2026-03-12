@@ -17,15 +17,6 @@ enum LexerMode {
     JSX_CONTENT = "jsx_content"  # Between JSX tags
 }
 
-obj LexerError {
-    has message: str,
-        loc: SourceLoc;
-
-    def __str__ -> str {
-        return f"LexerError at line {self.loc.line}, col {self.loc.col_start}: {self.message}";
-    }
-}
-
 obj Lexer {
     has source: str,
         file_path: str = "<input>",
@@ -33,7 +24,7 @@ obj Lexer {
         line: int = 1,
         col: int = 1,
         _source_len: int = 0,
-        errors: list[LexerError] = [],
+        error_count: int = 0,
         mode_stack: list[LexerMode] = [],
         fstring_brace_depth: int = 0,  # Track nested braces in f-string expressions
         fstring_brace_depth_stack: list[int] = [],  # Stack for nested f-string brace depth
@@ -102,10 +93,8 @@ obj Lexer {
     def has_errors -> bool;
 }
 
-def tokenize(
-    source: str, file_path: str = "<input>"
-) -> tuple[list[Token], list[LexerError]] {
+def tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int] {
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
-    return (tokens, lexer.errors);
+    return (tokens, lexer.error_count);
 }

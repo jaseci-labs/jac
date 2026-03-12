@@ -1468,7 +1468,7 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> uni.Import {
         if isinstance(name, uni.ExprAsItem)
     ];
     if (len(valid_names) != len(names)) {
-        self.log_error('Length mismatch in import names');
+        self.emit(E5041);
     }
     paths = [];
     for name in valid_names {
@@ -2228,7 +2228,7 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> uni.IfStmt {
         if isinstance(stmt, uni.CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        self.log_error('Length mismatch in async for body');
+        self.emit(E5042);
     }
     body2 = valid_body;
     orelse = [self.convert(stmt) for stmt in nd.orelse];

@@ -140,11 +140,28 @@ impl Lexer.make_token(
 }
 
 impl Lexer.error(message: str, start_line: int, start_col: int, start_pos: int) {
-    self.errors.append(
-        LexerError(
-            message=message, loc=self.make_loc(start_line, start_col, start_pos)
-        )
-    );
+    self.error_count += 1;
+    if self?.prog and self.prog is not None and hasattr(self.prog, "errors_had") {
+        import from jaclang.jac0core.unitree { Token as UniToken, Source }
+        import from jaclang.jac0core.codeinfo { CodeLocInfo }
+        import from jaclang.jac0core.passes.transform { Alert }
+        sloc = self.make_loc(start_line, start_col, start_pos);
+        src = Source(self.source, mod_path=self.file_path);
+        tok = UniToken(
+            orig_src=src,
+            name="ERROR",
+            value="",
+            line=sloc.line,
+            end_line=sloc.end_line,
+            col_start=sloc.col_start,
+            col_end=sloc.col_end,
+            pos_start=sloc.pos_start,
+            pos_end=sloc.pos_end
+        );
+        loc = CodeLocInfo(tok, tok);
+        alrt = Alert(message, loc, Lexer);
+        self.prog.errors_had.append(alrt);
+    }
 }
 
 impl Lexer.is_digit(ch: str) -> bool {
@@ -1631,13 +1648,11 @@ impl Lexer.tokenize -> list[Token] {
 }
 
 impl Lexer.has_errors -> bool {
-    return len(self.errors) > 0;
+    return self.error_count > 0;
 }
 
-impl tokenize(
-    source: str, file_path: str = "<input>"
-) -> tuple[list[Token], list[LexerError]] {
+impl tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int] {
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
-    return (tokens, lexer.errors);
+    return (tokens, lexer.error_count);
 }
