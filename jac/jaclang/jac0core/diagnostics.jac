@@ -344,6 +344,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1097", Category.TYPE, "Connection right operand must be a node instance"
      ),
      E1098 = _err("E1098", Category.TYPE, "Connection type must be an edge instance"),
+     E1099 = _err(
+         "E1099",
+         Category.TYPE,
+         "Cannot access attribute \"{attr}\" for type \"{type}\"; attribute is missing from {missing}"
+     ),
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),

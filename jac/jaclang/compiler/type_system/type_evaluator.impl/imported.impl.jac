@@ -111,7 +111,7 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             if not Path(mod_path).exists() {
                 npath.type = types.UnknownType();
                 npath._sym_category = SymbolType.MODULE;
-                self.add_diagnostic(npath, 'Module not found', warning=True);
+                self.emit_diag(W1100, npath);
                 return npath.type;
             }
 

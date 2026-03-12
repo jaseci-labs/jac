@@ -4,6 +4,7 @@ Implementations for enum type checking utilities.
 import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.type_system { types }
+import from jaclang.jac0core.diagnostics { E1001 }
 
 with entry {
     if TYPE_CHECKING {
@@ -89,9 +90,11 @@ impl build_enum_members(
                 if enum_value_type
                 and isinstance(member_info.value_type, types.ClassType)
                 and member_info.value_type.shared != enum_value_type.shared {
-                    evaluator.add_diagnostic(
+                    evaluator.emit_diag(
+                        E1001,
                         stmt,
-                        f"Cannot assign {member_info.value_type} to enum member '{member_info.member_name}' of type {enum_value_type}"
+                        actual=str(member_info.value_type),
+                        expected=str(enum_value_type)
                     );
                 }
                 members[member_info.member_name] = member_info;

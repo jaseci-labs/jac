@@ -379,10 +379,7 @@ impl TypeEvaluator._extract_type_params(
                     if isinstance(type_var_type, types.TypeVarType) {
                         # Validate: TypeVar not already in use by outer scope
                         if type_var_type.name in outer_names {
-                            self.add_diagnostic(
-                                val,
-                                f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
-                            );
+                            self.emit_diag(E1062, val, name=type_var_type.name);
                         }
                         type_params.append(type_var_type);
                     }
@@ -392,10 +389,7 @@ impl TypeEvaluator._extract_type_params(
                 if isinstance(type_var_type, types.TypeVarType) {
                     # Validate: TypeVar not already in use by outer scope
                     if type_var_type.name in outer_names {
-                        self.add_diagnostic(
-                            type_vars,
-                            f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
-                        );
+                        self.emit_diag(E1062, type_vars, name=type_var_type.name);
                     }
                     type_params.append(type_var_type);
                 }
@@ -405,12 +399,12 @@ impl TypeEvaluator._extract_type_params(
     return type_params;
 }
 
-"""Add a diagnostic message to the program."""
-impl TypeEvaluator.add_diagnostic(
-    nd: uni.UniNode, message: str, warning: bool = False
+"""Emit a structured diagnostic via the pass."""
+impl TypeEvaluator.emit_diag(
+    diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object
 ) -> None {
-    if self.diagnostic_callback {
-        self.diagnostic_callback(nd, message, warning);
+    if self._pass is not None {
+        self._pass.emit(diag, node_override=nd, **kwargs);
     }
 }
 
@@ -487,10 +481,7 @@ impl TypeEvaluator._create_callable_type(
         type_arg_values = type_args_expr.values;
         if len(type_arg_values) == 0 {
             # Empty Callable[] - emit error and return gradual form
-            self.add_diagnostic(
-                error_node,
-                "Callable requires at least one type argument for return type"
-            );
+            self.emit_diag(E1070, error_node);
             return types.create_callable_type(
                 [], types.UnknownType(), is_gradual=True
             );
@@ -509,10 +500,7 @@ impl TypeEvaluator._create_callable_type(
             }
         } else {
             # Invalid first argument - should be [...] or ...
-            self.add_diagnostic(
-                first_arg,
-                "First argument to Callable must be a list of types [...] or ellipsis (...)"
-            );
+            self.emit_diag(E1071, first_arg);
             # Try to recover by treating it as a single parameter type
             # This handles cases like Callable[int, str] (incorrect but common mistake)
             param_type = self.get_type_of_expression(first_arg);
@@ -526,17 +514,12 @@ impl TypeEvaluator._create_callable_type(
             return_type = self._convert_to_instance(return_type);
         } else {
             # Missing return type
-            self.add_diagnostic(
-                error_node, "Callable requires a return type as second argument"
-            );
+            self.emit_diag(E1072, error_node);
             return_type = types.UnknownType();
         }
         # Check for extra arguments
         if len(type_arg_values) > 2 {
-            self.add_diagnostic(
-                type_arg_values[2],
-                "Callable accepts only two type arguments: parameter types and return type"
-            );
+            self.emit_diag(E1073, type_arg_values[2]);
         }
     } else {
         # Single type argument - could be:
@@ -833,15 +816,9 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
             and resolved.name in class_tvars {
                 tv = class_tvars[resolved.name];
                 if is_return and tv.is_contravariant {
-                    self.add_diagnostic(
-                        expr,
-                        "Contravariant type variable cannot be used in return type"
-                    );
+                    self.emit_diag(E1080, expr);
                 } elif not is_return and tv.is_covariant {
-                    self.add_diagnostic(
-                        expr,
-                        "Covariant type variable cannot be used in parameter type"
-                    );
+                    self.emit_diag(E1081, expr);
                 }
             }
         } elif isinstance(expr, uni.BinaryExpr) and is_return {
@@ -878,10 +855,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
                 and resolved.name in class_tvars {
                     tv = class_tvars[resolved.name];
                     if tv.is_contravariant {
-                        self.add_diagnostic(
-                            ret_stmt,
-                            "Contravariant type variable cannot be used in return type"
-                        );
+                        self.emit_diag(E1080, ret_stmt);
                     }
                 }
             }
@@ -926,9 +900,7 @@ impl TypeEvaluator.validate_typevar_scope(
             }
         }
         # TypeVar not in scope for this function
-        self.add_diagnostic(
-            expr, f'Type variable "{type_var.name}" has no meaning in this context'
-        );
+        self.emit_diag(E1065, expr, name=type_var.name);
         return;
     }
 
@@ -942,16 +914,12 @@ impl TypeEvaluator.validate_typevar_scope(
             }
         }
         # TypeVar not declared in this class
-        self.add_diagnostic(
-            expr, f'Type variable "{type_var.name}" has no meaning in this context'
-        );
+        self.emit_diag(E1065, expr, name=type_var.name);
         return;
     }
 
     # Case 3: At module level (not in class or function)
-    self.add_diagnostic(
-        expr, f'Type variable "{type_var.name}" has no meaning in this context'
-    );
+    self.emit_diag(E1065, expr, name=type_var.name);
 }
 
 """Get TypeVar parameters from ALL outer scopes (classes and functions).
