@@ -318,7 +318,11 @@ The counts above are estimates from a prior audit. The actual files are authorit
 
 ## Phase 5: Replace LintRule System
 
-STATUS: PENDING
+STATUS: DONE
+
+> DEVIATION: `LintConfig` was kept in config.jac for backward compatibility with jac.toml `[check.lint]` config parsing. Only `LintRule` enum was removed.
+>
+> DEVIATION: Lint select/ignore/default/all semantics moved into `_is_suppressed()` in transform.impl.jac rather than a separate config loading step. This unified all suppression logic into one place.
 
 ### Goal
 

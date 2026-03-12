@@ -253,6 +253,36 @@ impl Transform._is_suppressed(self: Transform, diag: DiagnosticInfo) -> bool {
                 return True;
             }
         }
+        # For lint codes, check lint select/ignore config
+        if diag.category.value == "lint" and check?.lint {
+            lint = check.lint;
+            reverse_aliases: dict[str, str] = {v: k for (k, v) in LINT_ALIASES.items()};
+            kebab_name = reverse_aliases.get(diag.code, None);
+            code_in_select = (
+                diag.code in lint.select
+                or (kebab_name is not None and kebab_name in lint.select)
+            );
+            code_in_ignore = (
+                diag.code in lint.ignore
+                or (kebab_name is not None and kebab_name in lint.ignore)
+            );
+            # no-print is the only non-default rule
+            non_default_codes: set[str] = {"E3012"};
+            enabled = False;
+            if "all" in lint.select {
+                enabled = True;
+            } elif "default" in lint.select {
+                enabled = (diag.code not in non_default_codes) or code_in_select;
+            } else {
+                enabled = code_in_select;
+            }
+            if code_in_ignore {
+                enabled = False;
+            }
+            if not enabled {
+                return True;
+            }
+        }
     } except Exception {
         # If config is not available, don't suppress
         return False;
