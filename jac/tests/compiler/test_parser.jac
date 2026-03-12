@@ -33,30 +33,30 @@ def file_to_str(file_path: str) -> str {
 }
 
 test "fstring escape brace" {
-    (module, parse_errors, lex_errors) = rd_parse('glob a=f"{{}}", not_b=4;', "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse('glob a=f"{{}}", not_b=4;', "");
+    assert not had_error;
 }
 
 test "parser fam" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("fam.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("fam.jac"), "");
+    assert not had_error;
 }
 
 test "staticmethod checks out" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("staticcheck.jac"), "");
+    (module, had_error) = rd_parse(load_fixture("staticcheck.jac"), "");
     out = module.pp();
-    assert not parse_errors and not lex_errors;
+    assert not had_error;
     assert "staticmethod" not in out;
 }
 
 test "parser kwesc" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("kwesc.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("kwesc.jac"), "");
+    assert not had_error;
 }
 
 test "parser mod doc test" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("mod_doc_test.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("mod_doc_test.jac"), "");
+    assert not had_error;
 }
 
 test "all ast has normalize" {
@@ -141,10 +141,10 @@ test "new keyword errors" {
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 6;
     expected_substrings = [
-        "The 'new' keyword is not supported in Jac",
+        "'new' is not supported in Jac",
         "Use `Reflect.construct(target, argumentsList)` method to create new instances",
         "Missing ';'",
-        "The 'new' keyword is not supported in Jac",
+        "'new' is not supported in Jac",
         "Use `Reflect.construct(target, argumentsList)` method to create new instances",
         "Missing ';'",
 
@@ -163,7 +163,7 @@ test "pass keyword errors" {
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 34;
     expected_substrings = 17 * [
-        "'pass' keyword is not allowed in Jac",
+        "'pass' is not supported in Jac",
         "Jac does not allow this keyword in any syntactic position",
 
     ];
@@ -203,12 +203,8 @@ test "jsx comprehensive fixture" {
         "client_jsx.jac"
     );
     source_text = Path(fixture_path).read_text(encoding="utf-8");
-    (module, parse_errors, lex_errors) = rd_parse(source_text, str(fixture_path));
-    combined_errors = parse_errors + lex_errors;
-    all_errors = [str(e) for e in combined_errors];
-    assert not parse_errors and not lex_errors , (
-        f"Parser reported errors for JSX fixture: {all_errors}"
-    );
+    (module, had_error) = rd_parse(source_text, str(fixture_path));
+    assert not had_error , "Parser reported errors for JSX fixture";
     tree_repr = module.pp();
 
     expected_snippets = {
@@ -495,11 +491,9 @@ def parser_file_test(rel_path: str) -> None {
         return;
     }
     source = file_to_str(filename);
-    (module, parse_errors, lex_errors) = rd_parse(source, filename);
+    (module, had_error) = rd_parse(source, filename);
     if os.path.basename(filename) not in FILES_EXPECTED_ERRORS {
-        assert not parse_errors and not lex_errors , (
-            f"{filename}: parse_errors={len(parse_errors)}, lex_errors={len(lex_errors)}"
-        );
+        assert not had_error , f"{filename}: parse errors detected";
     }
 }
 
