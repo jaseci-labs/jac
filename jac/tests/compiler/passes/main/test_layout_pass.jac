@@ -134,3 +134,21 @@ test "obj with Any field triggers warning" {
     found = any("layout-compatible" in w for w in warnings);
     assert found , f"Expected layout-compatible warning, got: {warnings}";
 }
+
+test "layout warnings report correct line numbers for fields" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "invalid_any_multifield.jac"))
+    );
+    layout_warnings = [
+        w
+        for w in (prog.warnings_had or [])
+        if "layout-compatible" in str(w)
+    ];
+    assert len(layout_warnings) == 2 , f"Expected 2 layout warnings, got {len(
+        layout_warnings
+    )}: {layout_warnings}";
+    warning_lines = sorted([w.loc.first_line for w in layout_warnings]);
+    # bad_field1 is on line 7, bad_field2 is on line 8
+    assert warning_lines == [7, 8] , f"Expected warnings on lines [7, 8], got {warning_lines}";
+}
