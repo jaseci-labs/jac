@@ -823,15 +823,20 @@ impl TypeEvaluator._collect_type_var_bindings(
 
     param_idx = 0;
     for arg in expr.params {
-        if isinstance(arg, uni.KWPair) and isinstance(arg.key, uni.Name) {
-            # Keyword argument
-            for param in params {
-                if param.name == arg.key.value and param.param_type {
-                    arg_type = self.get_type_of_expression(arg.value);
-                    self.assign_type_to_type_var(param.param_type, arg_type, bindings);
-                    break;
+        if isinstance(arg, uni.KWPair) {
+            # Keyword argument - get value for type, use key for param lookup
+            if isinstance(arg.key, uni.Name) {
+                for param in params {
+                    if param.name == arg.key.value and param.param_type {
+                        arg_type = self.get_type_of_expression(arg.value);
+                        self.assign_type_to_type_var(
+                            param.param_type, arg_type, bindings
+                        );
+                        break;
+                    }
                 }
             }
+            # Skip KWPair with non-Name keys (shouldn't happen in practice)
         } elif param_idx < len(params) {
             # Positional argument
             param = params[param_idx];
