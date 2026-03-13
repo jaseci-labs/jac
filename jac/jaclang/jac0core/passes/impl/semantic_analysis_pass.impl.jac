@@ -37,10 +37,7 @@ impl SemanticAnalysisPass._check_archetype(
                 if ((var.value is not None) or var.defer) {
                     found_default_init = True;
                 } elif found_default_init {
-                    self.log_error(
-                        f"Non default attribute '{var.name.value}' follows default attribute",
-                        node_override=var.name
-                    );
+                    self.emit(E2004, node_override=var.name, name=var.name.value);
                     break;
                 }
             }
@@ -67,27 +64,16 @@ impl SemanticAnalysisPass._check_archetype(
             }
         }
         if ((len(post_init_vars) != 0) and (postinit_method is None)) {
-            self.log_error(
-                'Missing "postinit" method required by un initialized attribute(s).',
-                node_override=post_init_vars[0].name_spec
-            );
+            self.emit(E2005, node_override=post_init_vars[0].name_spec);
         }
         arch_kind = nd.arch_type.value;
         for method in nd.get_methods() {
             for dec in (method.decorators or ()) {
                 if isinstance(dec, uni.Name) {
                     if dec.sym_name == 'classmethod' {
-                        self.log_warning(
-                            f"'@classmethod' decorator is not recommended in '{arch_kind}' definitions. "
-                            f"Use 'class def method_name(...)' syntax instead.",
-                            node_override=dec
-                        );
+                        self.emit(W2006, node_override=dec, kind=arch_kind);
                     } elif dec.sym_name == 'staticmethod' {
-                        self.log_warning(
-                            f"'@staticmethod' is not supported in '{arch_kind}' definitions. "
-                            f"Use the 'static' keyword instead (e.g., 'static def method_name').",
-                            node_override=dec
-                        );
+                        self.emit(W2007, node_override=dec, kind=arch_kind);
                     }
                 }
             }
@@ -103,7 +89,7 @@ impl SemanticAnalysisPass._update_ctx(
     } elif isinstance(nd, uni.AstSymbolNode) {
         nd.sym_tab.update_py_ctx_for_def(nd);
     } else {
-        self.log_error(f"Invalid target for context update: {type(nd).__name__}");
+        self.emit(E2008, target=type(nd).__name__);
     }
 }
 

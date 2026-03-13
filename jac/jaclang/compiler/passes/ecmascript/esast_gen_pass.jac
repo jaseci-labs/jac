@@ -34,6 +34,7 @@ import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
 }
+import from jaclang.jac0core.diagnostics { E5010, E5011, E5012, W5013, W5014 }
 
 glob _T = TypeVar('_T', bound=es.Node),
      ES_LOGICAL_OPS: dict[(Tok, str)] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},

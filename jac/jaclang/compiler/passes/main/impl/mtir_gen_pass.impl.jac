@@ -133,7 +133,7 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, uni.Enum) {
-        raise Exception(f"Symbol {symbol} is not an Enum.");
+        raise self.ice(f"Symbol {symbol} is not an Enum.");
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
@@ -165,7 +165,7 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                                 type_info = "bool";
                             } else {
                                 # Non-allowed type for enum value
-                                raise Exception(
+                                raise self.ice(
                                     f"Enum member '{member_name}' has invalid value type: {type(
                                         enum_stmt.value
                                     ).__name__}. "

@@ -21,8 +21,9 @@ import from threading { Event }
 import from typing { TYPE_CHECKING, TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.helpers { evaluate_version_condition }
+import from jaclang.jac0core.passes.transform { Transform }
 
 with entry {
     if TYPE_CHECKING {

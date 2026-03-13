@@ -11,6 +11,7 @@ import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.diagnostics { E5030, W5031, W5032 }
 
 """Set of primitive type names that have a known, fixed-size native layout.
 

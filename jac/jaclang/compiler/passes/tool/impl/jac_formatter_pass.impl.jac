@@ -116,7 +116,7 @@ impl JacFormatPass.format_doc_ir(
             align_spaces=child_align_spaces
         );
     } else {
-        raise ValueError(f"Unknown DocType: {type(doc_node)}");
+        raise self.ice(f"Unknown DocType: {type(doc_node)}");
     }
 }
 
@@ -198,7 +198,7 @@ impl JacFormatPass._probe_fits(
         } elif isinstance(cur, doc.IfBreak) {
             work.append((cur.flat_contents, lvl));
         } else {
-            raise ValueError(f"Unknown DocType in probe: {type(cur)}");
+            raise self.ice(f"Unknown DocType in probe: {type(cur)}");
         }
     }
     self._probe_cache[cache_key] = True;

@@ -91,7 +91,7 @@ test "obj hasvar initialization" {
         "    5 |     has var3: int;  # <-- This should be syntax error.",
         "      |         ^^^^",
         "    6 | }",
-        'Missing "postinit" method required by un initialized attribute(s).',
+        'Missing "postinit" method required by uninitialized attribute(s).',
         "    9 | obj Test2 {",
         "   10 |     has var1: str;",
         "   11 |     has var2: int by postinit;",

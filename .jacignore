@@ -27,7 +27,7 @@ context.impl.jac
 context.jac
 corelib_fmt.jac
 data_spatial_types.jac
-def_impl_match_pass.jac
+decl_impl_match_pass.jac
 defn_decl_mismatch.jac
 dependencies.jac
 dep_registry.jac
@@ -434,7 +434,7 @@ hmr.impl.jac
 client_runtime.impl.jac
 unitree.impl.jac
 sym_tab_build_pass.impl.jac
-def_impl_match_pass.impl.jac
+decl_impl_match_pass.impl.jac
 jsx_processor.jac
 test_it.jac
 client.impl.jac
