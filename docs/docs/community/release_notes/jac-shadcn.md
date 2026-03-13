@@ -6,16 +6,16 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ### Features
 
-- **`--init` for Existing Projects**: Initialize jac-shadcn theming in an existing Jac project using a URL with query parameters — same customization experience as `jac create`
+- **`--init` for Existing Projects**: Initialize jac-shadcn theming in an existing Jac project using a URL with query parameters -- same customization experience as `jac create`
   - `jac add --shadcn --init 'https://jac-shadcn.jaseci.org/theme?style=nova&baseColor=neutral&theme=orange&font=figtree'`
   - Sets up `global.css`, `lib/utils.cl.jac`, `[jac-shadcn]` config, npm deps, dev deps, and Vite/Tailwind plugin config
-  - Installs all default components automatically — matching parity with `jac create`
+  - Installs all default components automatically, matching parity with `jac create`
 - **Registry `/theme` Endpoint**: New GET endpoint returns theme config, global CSS, npm dependencies, and default component list for the `--init` workflow
 - **"Copy Init Command" on Registry Website**: New button in the customizer modal lets users copy the `--init` CLI command directly from [jac-shadcn.jaseci.org](https://jac-shadcn.jaseci.org)
 
 ### Bug Fixes
 
-- **TOML Greedy Substring Matching**: Fixed `clsx` matching `clsx-utils` and `tailwindcss` matching `@tailwindcss/vite` — now uses exact key matching via `_dep_exists_in_toml()`
+- **TOML Greedy Substring Matching**: Fixed `clsx` matching `clsx-utils` and `tailwindcss` matching `@tailwindcss/vite` . Now uses exact key matching via `_dep_exists_in_toml()`
 - **TOML Key Quoting**: Keys with special characters (`@`, `/`, `-`, `.`) are now properly quoted in TOML output
 - **Ternary Precedence Bug**: Fixed URL construction where `x + y if cond else z` bound incorrectly as `x + (y if cond else z)`
 - **Dark Mode Radius**: Custom radius values are now applied to both light and dark mode CSS variables (previously only light mode)
