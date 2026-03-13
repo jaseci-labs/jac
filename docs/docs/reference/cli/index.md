@@ -309,11 +309,17 @@ jac test [-h] [-t TEST_NAME] [-f FILTER] [-x] [-m MAXFAIL] [-d DIRECTORY] [-v] [
 # Run all tests in a file
 jac test main.jac
 
+# Run a specific test - spaces in name (quoted)
+jac test main.jac -t "my test name"
+
+# Run a specific test - underscores in name
+jac test main.jac -t my_test_name
+
 # Run tests in directory
 jac test -d tests/
 
-# Run specific test
-jac test main.jac -t my_test
+# Run all tests in current directory
+jac test
 
 # Stop on first failure
 jac test main.jac -x
@@ -321,6 +327,14 @@ jac test main.jac -x
 # Verbose output
 jac test main.jac -v
 ```
+
+**Error handling:**
+
+| Mistake | Error shown |
+|---------|-------------|
+| `jac test --test_name foo` (no file or directory) | `--test_name requires a filepath` |
+| `jac test missing.jac` (file doesn't exist) | `File not found: 'missing.jac'` |
+| `jac test main.jac -t foo bar` (unquoted multi-word) | hint to use quotes |
 
 ---
 

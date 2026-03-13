@@ -429,9 +429,28 @@ impl `test(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     Jac.setup();
+    # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
+    if (test_name and not filepath) {
+        console.error(
+            "Error: --test_name requires a filepath. "
+            "Running by name across all files is ambiguous.\n"
+            "Usage: jac test <file.jac> --test_name <name>"
+        );
+        return 1;
+    }
+    # e.g. jac test test_typevar.jac  (run from wrong directory)
+    if (filepath and not Path(filepath).exists()) {
+        console.error(
+            f"Error: File not found: '{filepath}'\n"
+            "Make sure you are in the correct directory or provide the full path.\n"
+            f"Usage: jac test /full/path/to/{filepath}"
+        );
+        return 1;
+    }
+    normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     failcount = Jac.run_test(
         filepath=filepath,
-        func_name=('test_' + test_name) if test_name else None,
+        func_name=('test_' + normalized_name) if normalized_name else None,
         filter=filter,
         xit=xit,
         maxfail=maxfail,
