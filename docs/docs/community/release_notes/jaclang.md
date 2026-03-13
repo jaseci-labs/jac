@@ -4,8 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.2 (Unreleased)
 
+- **Fix: Generic Iterator Type Inference**: `enumerate`, `zip`, and other generic iterators now correctly infer element types from their arguments. Previously, version-dependent overloads in typeshed caused type resolution to fail.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
-- 1 small refactors/changes.
+- 2 small refactors/changes.
 - **Fix: Formatter Comment Displacement in Multi-Assignment Globals**: Fixed a bug where `jac format` would displace comments inside multi-assignment `glob` declarations to the end of the file. The `CommentInjectionPass` now handles `GlobalVars` nodes (which use `Align` layout) alongside `ArchHas` nodes. Added safety error E5051 that blocks saving when comment displacement is detected.
 - **Inline Diagnostic Suppression**: Added `# jac:ignore[CODE]` syntax to suppress specific diagnostics on individual lines, giving developers fine-grained control over which warnings and errors to silence.
 - **Fix: Improved Error for Assigning to Built-in References**: Assigning to `root` or `super` (which compile to function calls, not variables) now emits a clear error `E0024` with help text suggesting backtick escaping, instead of crashing with a cryptic Python `ValueError`. Bytecode compilation failures are also now caught and reported as `E5043` with file and line context.
