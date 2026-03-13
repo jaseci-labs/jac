@@ -309,10 +309,10 @@ jac test [-h] [-t TEST_NAME] [-f FILTER] [-x] [-m MAXFAIL] [-d DIRECTORY] [-v] [
 # Run all tests in a file
 jac test main.jac
 
-# Run a specific test — spaces in name (quoted)
+# Run a specific test - spaces in name (quoted)
 jac test main.jac -t "my test name"
 
-# Run a specific test — underscores in name
+# Run a specific test - underscores in name
 jac test main.jac -t my_test_name
 
 # Run tests in directory
