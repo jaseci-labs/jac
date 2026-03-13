@@ -77,6 +77,7 @@ atomic_chain ::=
     atom (
         "." ("." | ".>" | "<.")? (NAME | KWESC_NAME)?
         | "(" (filter_compr_inner | assign_compr_inner | call_args ")")
+        | "[" filter_compr_bracket
         | ("?" | "[") "?"? index_slice
     )*
 
@@ -96,6 +97,9 @@ call_arg ::=
     | expression comprehension_clauses?
 
 filter_compr_inner ::= "?" (":" expression)? ","? (compare ("," compare)*)? ")"
+    # DEPRECATED: Use filter_compr_bracket instead
+
+filter_compr_bracket ::= "?" (":" expression)? ","? (compare ("," compare)*)? "]"
 
 assign_compr_inner ::=
     "=" ((NAME | KWESC_NAME) "=" expression ("," (NAME | KWESC_NAME) "=" expression)*)?
@@ -156,7 +160,7 @@ paren_expr ::=
         | expression (comprehension_clauses ")" | "," (expression ","?)* ")" | ")")
     )
 
-bracket_expr ::= "[" (edge_ref_chain | list_or_compr)
+bracket_expr ::= "[" (filter_compr_bracket | edge_ref_chain | list_or_compr)
 
 brace_expr ::= "{" dict_or_set
 

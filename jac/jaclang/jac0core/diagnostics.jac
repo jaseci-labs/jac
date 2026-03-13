@@ -197,6 +197,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
      ),
+     W0061 = _warn(
+         "W0061",
+         Category.SYNTAX,
+         "Parenthesized filter syntax '(?:...)' is deprecated. Use bracket syntax '[?:...]' instead.",
+         "Replace (?:Type, cond) with [?:Type, cond]"
+     ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
