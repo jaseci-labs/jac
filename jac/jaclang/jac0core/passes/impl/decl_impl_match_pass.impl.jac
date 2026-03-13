@@ -1,4 +1,4 @@
-"""Implementation for def_impl_match_pass constructs."""
+"""Implementation for decl_impl_match_pass constructs."""
 
 """Connect Decls and Defs."""
 impl DeclImplMatchPass.transform(
@@ -88,17 +88,11 @@ impl DeclImplMatchPass.connect_impls(
         if not decl_node {
             # Only log error if the archetype was found but the ability wasn't
             if len(name_of_links) > 0 {
-                self.log_error(
-                    f"Implementation could not be matched to a declaration.",
-                    sym.decl.name_of
-                );
+                self.emit(E2009, node_override=sym.decl.name_of);
             }
             continue;
         } elif (isinstance(decl_node, uni.Ability) and decl_node.is_abstract) {
-            self.log_warning(
-                f"Abstract ability {decl_node.py_resolve_name()} should not have a definition.",
-                decl_node
-            );
+            self.emit(W2010, node_override=decl_node, name=decl_node.py_resolve_name());
             continue;
         }
         if (
@@ -168,13 +162,13 @@ impl DeclImplMatchPass.validate_params_match(
         decl_count = len(params_decl) if params_decl else 0;
         defn_count = len(params_defn) if params_defn else 0;
         if (defn_count != decl_count) {
-            self.log_error(
-                f"Parameter count mismatch for ability {sym.sym_name}.",
-                sym.decl.name_of.name_spec
+            self.emit(
+                E2011, node_override=sym.decl.name_of.name_spec, name=sym.sym_name
             );
-            self.log_error(
-                f"From the declaration of {valid_decl.name_spec.sym_name}.",
-                valid_decl.name_spec
+            self.emit(
+                E2012,
+                node_override=valid_decl.name_spec,
+                name=valid_decl.name_spec.sym_name
             );
         } elif (params_decl and params_defn) {
             for idx in range(len(params_defn)) {

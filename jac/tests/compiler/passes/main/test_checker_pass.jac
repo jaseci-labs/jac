@@ -736,25 +736,25 @@ test "connect_filter" {
                                   ^^^^^
         """,
         """
-        Edge type "<class MyEdge>" has no member named "not_mem"
+        Member "not_mem" not found on type "<class MyEdge>"
             # Assign compr in edges
             a_inst +>: MyEdge : id=1,not_mem="some" :+> b_inst;  # Error
                                      ^^^^^^^
         """,
         """
-        Member "not_exist not found on type <class Book>"
+        Member "not_exist" not found on type "<class Book>"
             lst(=title="Parry Potter",author="K.J. Bowling",year=1997);  # Ok
             lst(=not_exist="some");  # Error
                  ^^^^^^^^^
         """,
         """
-        Type "Literal["Type Error"] is not assignable to type <class int>"
+        Type "Literal["Type Error"]" is not assignable to type "<class int>"
             lst(=not_exist="some");  # Error
             lst(=year="Type Error");  # Error
                       ^^^^^^^^^^^^
         """,
         """
-        Member "not_exists not found on type <class MyEdge>"
+        Member "not_exists" not found on type "<class MyEdge>"
             [->:MyEdge:id==1:->];  # Ok
             [->:MyEdge:not_exists>=1:->];  # Error
                        ^^^^^^^^^^
@@ -1444,7 +1444,7 @@ test "enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"jac\"] to enum member 'B' of type <class int>",
+        "Cannot assign Literal[\"jac\"] to <class int>",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
@@ -1474,9 +1474,9 @@ test "class_based_enum_type_checking" {
 
     expected_errors = [
         "Cannot assign <Tokens.FLOAT> to <class int>",
-        "Cannot assign Literal[\"1\"] to enum member 'FLOAT' of type <class int>",
-        "Cannot assign Literal[\"LSQUARE\"] to enum member 'LSQUARE' of type <class int>",
-        "Cannot assign Literal[\"RSQUARE\"] to enum member 'RSQUARE' of type <class int>"
+        "Cannot assign Literal[\"1\"] to <class int>",
+        "Cannot assign Literal[\"LSQUARE\"] to <class int>",
+        "Cannot assign Literal[\"RSQUARE\"] to <class int>"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
@@ -1988,4 +1988,57 @@ test "final_union_type_no_crash" {
     TypeCheckPass(ir_in=mod, prog=program);
     # Should complete without crashing - no errors expected
     assert len(program.errors_had) == 0;
+}
+
+# =============================================================================
+# Generic Type Inference Tests (Pyright-style)
+# =============================================================================
+"""Test enumerate() correctly infers element types from the iterable."""
+test "enumerate_type_inference" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_enumerate_type.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 2 errors: assigning int to str, and Item to int
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, got {len(
+        program.errors_had
+    )}";
+
+    # Verify the specific errors
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class int> to <class str>" in errors_str , "Expected error for idx: int assigned to str";
+    assert "Cannot assign <class Item> to <class int>" in errors_str , "Expected error for item: Item assigned to int";
+}
+
+"""Test generic class constructor infers type parameters from arguments."""
+test "generic_call_inference" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_generic_call_inference.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 2 errors: Item to str, and Item to int
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, got {len(
+        program.errors_had
+    )}";
+
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class Item> to <class str>" in errors_str , "Expected error for x: Item assigned to str";
+    assert "Cannot assign <class Item> to <class int>" in errors_str , "Expected error for result: Item assigned to int";
+}
+
+"""Test Self type resolution in method return types."""
+test "self_type_resolution" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_self_type.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 3 errors for enumerate, list, and dict Self returns
+    assert len(program.errors_had) == 3 , f"Expected 3 type errors, got {len(
+        program.errors_had
+    )}";
+
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class enumerate> to <class int>" in errors_str , "Expected error for enumerate.__iter__() Self return";
+    assert "Cannot assign <class list> to <class int>" in errors_str , "Expected error for list.copy() Self return";
+    assert "Cannot assign <class dict> to <class str>" in errors_str , "Expected error for dict.copy() Self return";
 }

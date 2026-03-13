@@ -11,6 +11,27 @@ table or type information - only the raw AST structure.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
+import from jaclang.jac0core.diagnostics {
+    E0010,
+    E0020,
+    E0023,
+    E0024,
+    E0031,
+    E0040,
+    E0041,
+    E0042,
+    E0043,
+    E0044,
+    E0050,
+    E0051,
+    E0055,
+    E0058,
+    E0062,
+    E0065,
+    E0066,
+    E0071,
+    E0075
+}
 
 """Validates structural AST invariants after parsing."""
 class ASTValidationPass(UniPass) {
@@ -24,4 +45,11 @@ class ASTValidationPass(UniPass) {
     def enter_import(self: ASTValidationPass, nd: uni.Import) -> None;
     def enter_enum(self: ASTValidationPass, nd: uni.Enum) -> None;
     def enter_switch_stmt(self: ASTValidationPass, nd: uni.SwitchStmt) -> None;
+    def enter_assignment(self: ASTValidationPass, nd: uni.Assignment) -> None;
+    # Context validity checks
+    def enter_yield_expr(self: ASTValidationPass, nd: uni.YieldExpr) -> None;
+    def enter_ctrl_stmt(self: ASTValidationPass, nd: uni.CtrlStmt) -> None;
+    def enter_non_local_stmt(self: ASTValidationPass, nd: uni.NonLocalStmt) -> None;
+    def enter_func_call(self: ASTValidationPass, nd: uni.FuncCall) -> None;
+    def enter_archetype(self: ASTValidationPass, nd: uni.Archetype) -> None;
 }

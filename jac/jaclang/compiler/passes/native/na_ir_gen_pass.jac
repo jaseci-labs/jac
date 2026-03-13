@@ -12,6 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
+import from jaclang.jac0core.diagnostics { E5060 }
 
 """Compile na-context Jac AST to LLVM IR using llvmlite.
 

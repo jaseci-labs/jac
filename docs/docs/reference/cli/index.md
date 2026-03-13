@@ -274,6 +274,15 @@ jac check myproject/ --ignore fixtures tests
 jac check . --ignore node_modules dist __pycache__
 ```
 
+Errors and warnings are displayed with structured diagnostic codes (e.g., `E1030`, `W2001`). You can suppress individual diagnostics inline with `# jac:ignore[CODE]`:
+
+<!-- jac-skip -->
+```jac
+x = some_func();  # jac:ignore[E1030]
+```
+
+See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
+
 ---
 
 ### jac test
@@ -347,6 +356,8 @@ jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
+>
+> **Safety**: If the formatter detects that comments were displaced (e.g., moved to the end of the file), it emits error `E5051` and refuses to save the file. Run `jac format <file> -s` to inspect the output without writing.
 
 ---
 
@@ -380,7 +391,7 @@ jac lint .
 jac lint . --ignore fixtures
 ```
 
-> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. All enabled rules are treated as errors.
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx--e3xxx) for the full list with diagnostic codes.
 
 ---
 

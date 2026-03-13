@@ -688,12 +688,12 @@ test "test_hover_types" {
         );
         lsp.type_check_file(overload_file);
         overload_cases = [
-            (4, 6, ["list"]),  # parts: list[str]
-            (5, 6, ["str"]),  # first: str (from list[str][0])
-            (6, 6, ["str"]),  # result: str (str + str)
-            (8, 6, ["list"]),  # parts2: list[str]
-            (9, 6, ["str"]),  # first3: str
-            (10, 6, ["str"]),  # result3: str
+            (4, 6, ["list"]),  # parts: list[str] or list[LiteralString]
+            (5, 6, ["str", "String"]),  # first: str or LiteralString
+            (6, 6, ["str", "String"]),  # result: str or LiteralString
+            (8, 6, ["list"]),  # parts2: list[str] or list[LiteralString]
+            (9, 6, ["str", "String"]),  # first3: str or LiteralString
+            (10, 6, ["str", "String"]),  # result3: str or LiteralString
 
         ];
         for (line, col, expected_list) in overload_cases {

@@ -12,9 +12,11 @@ impl StaticAnalysisPass.after_pass -> None {
     self._check_unused_symbols(self.ir_in);
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
+    self._check_semantic_patterns(self.ir_in);
     for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
         self._check_undefined_names(annex_mod);
         self._check_unreachable_code(annex_mod);
+        self._check_semantic_patterns(annex_mod);
     }
 }
 
@@ -71,7 +73,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         }
         # Check unused: defined but never referenced
         if len(sym.uses) == 0 {
-            self.log_warning(f"'{name}' is defined but never used", sym.decl);
+            self.emit(W2003, node_override=sym.decl, name=name);
         }
     }
     # Recurse into child scopes
@@ -109,7 +111,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.find_parent_of_type(uni.ModulePath) is not None {
             continue;
         }
-        self.log_warning(f"Name '{name_nd.value}' may be undefined", name_nd);
+        self.emit(W2001, node_override=name_nd, name=name_nd.value);
     }
 }
 
@@ -143,7 +145,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
                 if isinstance(stmt, uni.Semi) {
                     continue;
                 }
-                self.log_warning("Unreachable code detected", stmt);
+                self.emit(W2002, node_override=stmt);
                 break;
             }
             if isinstance(stmt, (uni.ReturnStmt, uni.RaiseStmt)) {
@@ -152,6 +154,117 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
             if isinstance(stmt, uni.CtrlStmt) {
                 found_terminator = True;
             }
+        }
+    }
+}
+
+"""Check semantic patterns: division by zero, None comparison, self-assignment,
+f-string without placeholders, redundant boolean comparison, overly broad except,
+return in finally, disengage outside walker."""
+impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
+    # W2070: division by zero
+    for nd in mod.get_all_sub_nodes(typ=uni.BinaryExpr, brute_force=True) {
+        if nd.op is not None and isinstance(nd.op, uni.Token) {
+            if nd.op.value in ("/", "//", "%") {
+                if isinstance(nd.right, uni.Int) and nd.right.value == "0" {
+                    self.emit(W2070, node_override=nd);
+                } elif isinstance(nd.right, uni.Float) and nd.right.value == "0.0" {
+                    self.emit(W2070, node_override=nd);
+                }
+            }
+        }
+    }
+
+    # W2058: None comparison with == or !=
+    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr, brute_force=True) {
+        for (i, op) in enumerate(nd.ops) {
+            if op.value in ("==", "!=") {
+                right = nd.rights[i] if i < len(nd.rights) else None;
+                left = nd.left if i == 0 else (nd.rights[i - 1] if i > 0 else None);
+                if isinstance(right, uni.Null) or isinstance(left, uni.Null) {
+                    self.emit(W2058, node_override=nd);
+                }
+            }
+        }
+    }
+
+    # W2063: self-assignment (x = x)
+    for nd in mod.get_all_sub_nodes(typ=uni.Assignment, brute_force=True) {
+        if nd.aug_op is not None or nd.value is None {
+            continue;
+        }
+        if len(nd.target) == 1 {
+            target = nd.target[0];
+            if isinstance(target, uni.Name) and isinstance(nd.value, uni.Name) {
+                if target.value == nd.value.value {
+                    self.emit(W2063, node_override=nd, name=target.value);
+                }
+            }
+        }
+    }
+
+    # W2074: f-string with no placeholders
+    for nd in mod.get_all_sub_nodes(typ=uni.FString, brute_force=True) {
+        has_expr = False;
+        for part in nd.parts {
+            if isinstance(part, uni.FormattedValue) {
+                has_expr = True;
+                break;
+            }
+        }
+        if not has_expr {
+            self.emit(W2074, node_override=nd);
+        }
+    }
+
+    # W2075: redundant boolean comparison (x == True, x == False)
+    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr, brute_force=True) {
+        for (i, op) in enumerate(nd.ops) {
+            if op.value in ("==", "!=", "is", "is not") {
+                right = nd.rights[i] if i < len(nd.rights) else None;
+                if isinstance(right, uni.Bool) {
+                    self.emit(W2075, node_override=nd);
+                }
+            }
+        }
+    }
+
+    # W2052: overly broad except (catching Exception or BaseException)
+    for nd in mod.get_all_sub_nodes(typ=uni.Except, brute_force=True) {
+        if nd.ex_type is not None and isinstance(nd.ex_type, uni.Name) {
+            if nd.ex_type.value in ("Exception", "BaseException") {
+                self.emit(W2052, node_override=nd, type=nd.ex_type.value);
+            }
+        }
+    }
+
+    # E2055: return in finally block
+    for nd in mod.get_all_sub_nodes(typ=uni.FinallyStmt, brute_force=True) {
+        for stmt in nd.body {
+            if isinstance(stmt, uni.ReturnStmt) {
+                self.emit(E2055, node_override=stmt);
+            }
+        }
+    }
+
+    # E2083: disengage outside walker
+    for nd in mod.get_all_sub_nodes(typ=uni.DisengageStmt, brute_force=True) {
+        # Walk up to find if we're inside a walker ability
+        in_walker = False;
+        parent = nd.parent;
+        while parent is not None {
+            if isinstance(parent, uni.Archetype) {
+                if parent.arch_type is not None
+                and isinstance(parent.arch_type, uni.Token)
+                and parent.arch_type.value == "walker" {
+                    in_walker = True;
+                }
+                break;
+            }
+            parent = parent.parent;
+        }
+        if not in_walker {
+            self.emit(E2083, node_override=nd);
         }
     }
 }

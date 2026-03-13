@@ -142,6 +142,7 @@ obj TypeVarType(TypeBase) {
     has name: str = "",
         is_covariant: bool = False,
         is_contravariant: bool = False,
+        is_self: bool = False,
         bound: (TypeBase | None) = None;
 
     with entry {
@@ -292,7 +293,6 @@ obj FunctionType(TypeBase) {
     def postinit -> None;
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
-    def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
     def is_gradual_callable_form -> bool;
     def is_from_callable_annotation -> bool;
 }

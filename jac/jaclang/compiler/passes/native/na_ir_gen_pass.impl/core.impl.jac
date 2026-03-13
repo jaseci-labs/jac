@@ -526,7 +526,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             try {
                 import from jaclang.jac0core.parser { parse as rd_parse }
                 source = open(resolved_path).read();
-                (imported_mod, _, _) = rd_parse(source, resolved_path, prog=self.prog);
+                (imported_mod, _) = rd_parse(source, resolved_path, prog=self.prog);
             } except Exception {
                 continue;
             }
@@ -749,10 +749,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
                 if decl.body is not None {
-                    self.log_error(
-                        f"C library import declaration '{fn_name}' "
-                        "must not have a body"
-                    );
+                    self.emit(E5060, name=fn_name);
                     continue;
                 }
                 self._declare_clib_ability(decl);

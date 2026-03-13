@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.6 (Unreleased)
 
+- **Fix: Desktop Target Asset Loading**: Fixed an issue where images and other static assets referenced with `/static/assets/` URLs were not loading in desktop (Tauri) builds. Assets are now correctly copied from `compiled/assets/` to `dist/static/assets/` during the build process, ensuring they are available when Tauri serves the frontend bundle. This fix applies to both `jac build --client desktop` and `jac start --client desktop` commands.
+
 ## jac-client 0.3.5 (Latest Release)
 
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.

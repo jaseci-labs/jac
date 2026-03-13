@@ -130,6 +130,47 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+"""
+Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
+
+This is the proper way to get a member's type from a specialized generic class.
+Instead of getting raw type then manually specializing, this does it in one place.
+"""
+impl TypeEvaluator.get_type_of_member(
+    member: Any, class_type: types.ClassType
+) -> TypeBase {
+    raw_type = self.get_type_of_symbol(member.symbol);
+    return self.specialize_member_type(raw_type, class_type);
+}
+
+"""
+Substitute TypeVars in a type using class's type_args. (Pyright: partiallySpecializeType)
+
+Examples:
+  - T with MyGeneric[Item] -> Item
+  - list[T] with MyGeneric[Item] -> list[Item]
+  - FunctionType with return T -> specialized return type
+  - Self -> class_type (always substituted)
+
+Uses the unified apply_solved_type_vars from type_utils.
+"""
+impl TypeEvaluator.specialize_member_type(
+    member_type: TypeBase, class_type: types.ClassType
+) -> TypeBase {
+    # Build TypeVar name -> concrete type mapping (Pyright: ConstraintSolution)
+    solution: dict[str, TypeBase] = {};
+    if class_type.shared.type_params and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    }
+
+    # Use unified apply_solved_type_vars (Pyright: applySolvedTypeVars)
+    return type_utils.apply_solved_type_vars(member_type, solution, class_type);
+}
+
 """Get the return type of __getattr__ if defined on the class.
 
 When a class defines __getattr__, any attribute access that doesn't match
@@ -148,23 +189,13 @@ impl TypeEvaluator._get_getattr_return_type(
     return None;
 }
 
-"""Convert a class type to an instance type."""
+"""Convert a class type to an instance type. (Pyright: convertToInstance)
+
+Delegates to the unified type_utils.convert_to_instance function.
+"""
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
-    # TODO: Grep pyright "Handle type[x] as a special case." They handle `type[x]` as a special case:
-    #
-    # foo: int = 42;       # <-- Here `int` is instantiable class and, become instance after this method.
-    # foo: type[int] = int # <-- Here `type[int]`, this should be `int` that's instantiable.
-    #
-    if jtype.is_instantiable_class() {
-        assert isinstance(jtype, types.ClassType);
-        return jtype.clone_as_instance();
-    }
-    # Handle UnionType: convert each member type to instance form.
-    if isinstance(jtype, types.UnionType) {
-        converted = [self._convert_to_instance(t) for t in jtype.types];
-        return types.UnionType(types=converted);
-    }
-    return jtype;
+    # Use unified convert_to_instance from type_utils
+    return type_utils.convert_to_instance(jtype);
 }
 
 """Check if a type is already represented in a list (using shared identity for ClassType)."""
@@ -379,10 +410,7 @@ impl TypeEvaluator._extract_type_params(
                     if isinstance(type_var_type, types.TypeVarType) {
                         # Validate: TypeVar not already in use by outer scope
                         if type_var_type.name in outer_names {
-                            self.add_diagnostic(
-                                val,
-                                f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
-                            );
+                            self.emit_diag(E1062, val, name=type_var_type.name);
                         }
                         type_params.append(type_var_type);
                     }
@@ -392,10 +420,7 @@ impl TypeEvaluator._extract_type_params(
                 if isinstance(type_var_type, types.TypeVarType) {
                     # Validate: TypeVar not already in use by outer scope
                     if type_var_type.name in outer_names {
-                        self.add_diagnostic(
-                            type_vars,
-                            f'TypeVar "{type_var_type.name}" is already in use by an outer scope'
-                        );
+                        self.emit_diag(E1062, type_vars, name=type_var_type.name);
                     }
                     type_params.append(type_var_type);
                 }
@@ -405,12 +430,12 @@ impl TypeEvaluator._extract_type_params(
     return type_params;
 }
 
-"""Add a diagnostic message to the program."""
-impl TypeEvaluator.add_diagnostic(
-    nd: uni.UniNode, message: str, warning: bool = False
+"""Emit a structured diagnostic via the pass."""
+impl TypeEvaluator.emit_diag(
+    diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object
 ) -> None {
-    if self.diagnostic_callback {
-        self.diagnostic_callback(nd, message, warning);
+    if self._pass is not None {
+        self._pass.emit(diag, node_override=nd, **kwargs);
     }
 }
 
@@ -487,10 +512,7 @@ impl TypeEvaluator._create_callable_type(
         type_arg_values = type_args_expr.values;
         if len(type_arg_values) == 0 {
             # Empty Callable[] - emit error and return gradual form
-            self.add_diagnostic(
-                error_node,
-                "Callable requires at least one type argument for return type"
-            );
+            self.emit_diag(E1070, error_node);
             return types.create_callable_type(
                 [], types.UnknownType(), is_gradual=True
             );
@@ -509,10 +531,7 @@ impl TypeEvaluator._create_callable_type(
             }
         } else {
             # Invalid first argument - should be [...] or ...
-            self.add_diagnostic(
-                first_arg,
-                "First argument to Callable must be a list of types [...] or ellipsis (...)"
-            );
+            self.emit_diag(E1071, first_arg);
             # Try to recover by treating it as a single parameter type
             # This handles cases like Callable[int, str] (incorrect but common mistake)
             param_type = self.get_type_of_expression(first_arg);
@@ -526,17 +545,12 @@ impl TypeEvaluator._create_callable_type(
             return_type = self._convert_to_instance(return_type);
         } else {
             # Missing return type
-            self.add_diagnostic(
-                error_node, "Callable requires a return type as second argument"
-            );
+            self.emit_diag(E1072, error_node);
             return_type = types.UnknownType();
         }
         # Check for extra arguments
         if len(type_arg_values) > 2 {
-            self.add_diagnostic(
-                type_arg_values[2],
-                "Callable accepts only two type arguments: parameter types and return type"
-            );
+            self.emit_diag(E1073, type_arg_values[2]);
         }
     } else {
         # Single type argument - could be:
@@ -557,17 +571,42 @@ impl TypeEvaluator._create_callable_type(
 
 """
 Returns the prefetched ClassType for special forms like Callable, Union, etc.
-This centralizes the special form lookup logic to avoid hardcoded string checks.
+
+Pyright reference: handleTypingStubTypeAnnotation (line 16807-16899)
+Pyright uses specialTypes Map to handle special form declarations in typing.pyi.
+When evaluating a type annotation like `Self: _SpecialForm`, Pyright creates a
+SpecialBuiltInClass with the appropriate aliasName.
+
+For Jac, we check if symbol_type is _SpecialForm (same shared as Callable),
+then switch on the name to return the appropriate type.
+
+IMPORTANT: Pyright does NOT follow import chains to resolve special forms like Self.
+Instead, it uses HARDCODED lookup in handleTypingStubTypeAnnotation():
+
+1. Check if file is typing stub (isTypingStubFile || isTypingExtensionsStubFile)
+2. Look up the name in a hardcoded 'specialTypes' map (typeEvaluator.ts:16821-16874)
+3. Create special type directly based on the name
+
+The specialTypes map includes:
+  - Self, Callable, Union, Optional, Final, Literal, Protocol, Generic,
+  - Type, ClassVar, Annotated, Concatenate, TypeGuard, Unpack, Required,
+  - NotRequired, Never, NoReturn, LiteralString, TypeIs, TypeForm, etc.
+
+This function implements similar logic: if symbol_type is _SpecialForm OR
+if we can't resolve the type but the symbol is from a typing stub, we
+match the name against known special forms and return the appropriate type.
 """
 impl TypeEvaluator._get_special_form_type(
     name: str, symbol_type: types.TypeBase
-) -> types.ClassType | None {
+) -> types.ClassType | types.TypeVarType | None {
     if not self.prefetch {
         return None;
     }
 
-    # Check if symbol_type is _SpecialForm (same shared as our prefetched callable_class)
-    # This handles types from typing.pyi and typing_extensions.pyi (now properly resolved)
+    # Check 1: symbol_type is _SpecialForm (original approach)
+    # Pyright: ClassType.isSpecialBuiltIn(classType) - checks SpecialBuiltIn flag
+    # In Jac, all special forms share the same _SpecialForm class from typing.pyi,
+    # so we check if symbol_type.shared matches callable_class.shared (both are _SpecialForm)
     is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
@@ -575,11 +614,42 @@ impl TypeEvaluator._get_special_form_type(
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
-    if not is_special_form {
+    # Check 2: symbol_type is Unknown but name is a known typing special form
+    # This handles the case where Self is imported through a chain:
+    #   builtins.pyi -> typing_extensions.pyi -> typing.pyi
+    # The import chain can't be resolved, but we know "Self" is a special form.
+    # Pyright handles this via hardcoded specialTypes map in handleTypingStubTypeAnnotation.
+    is_known_special_form_name = name in (
+        "Self",
+        "Callable",
+        "Protocol",
+        "Final",
+        "LiteralString",
+        "Union",
+        "Optional",
+        "Generic",
+        "Type",
+        "ClassVar",
+        "Annotated",
+        "Concatenate",
+        "TypeGuard",
+        "TypeIs",
+        "Unpack",
+        "Required",
+        "NotRequired",
+        "Never",
+        "NoReturn",
+        "Literal",
+        "TypeForm",
+
+    );
+
+    if not is_special_form and not is_known_special_form_name {
         return None;
     }
 
-    # Map special form names to their prefetched types
+    # Pyright: createSpecializedClassType switch on aliasedName (line 21074)
+    # Map special form names to their handling
     match name {
         case "Callable":
             return self.prefetch.callable_class;
@@ -593,6 +663,10 @@ impl TypeEvaluator._get_special_form_type(
         case "LiteralString":
             return self.prefetch.literal_string_class;
 
+        case "Self":
+            # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
+            return types.TypeVarType(name="Self", is_self=True);
+
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
 
@@ -600,6 +674,36 @@ impl TypeEvaluator._get_special_form_type(
         # case "Union": return self.prefetch.union_class;
         # case "Optional": return self.prefetch.optional_class;
 
+    }
+    return None;
+}
+
+"""
+Create Self type if symbol is typing.Self. (Pyright: createSelfType)
+
+Self is a special TypeVar that represents the current class type.
+Returns TypeVarType("Self") if the symbol type is _SpecialForm, None otherwise.
+
+NOTE: This function is now largely handled by _get_special_form_type which
+checks if the type is _SpecialForm and switches on the name.
+"""
+impl TypeEvaluator.create_self_type(
+    symbol_type: types.TypeBase
+) -> types.TypeVarType | None {
+    if not self.prefetch {
+        return None;
+    }
+    # Pyright: Check if symbol_type is _SpecialForm (same shared as Callable)
+    if not isinstance(symbol_type, types.ClassType) {
+        return None;
+    }
+    if not self.prefetch.callable_class
+    or not isinstance(self.prefetch.callable_class, types.ClassType) {
+        return None;
+    }
+    # Check if it's a _SpecialForm
+    if symbol_type.shared == self.prefetch.callable_class.shared {
+        return types.TypeVarType(name="Self", is_self=True);
     }
     return None;
 }
@@ -833,15 +937,9 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
             and resolved.name in class_tvars {
                 tv = class_tvars[resolved.name];
                 if is_return and tv.is_contravariant {
-                    self.add_diagnostic(
-                        expr,
-                        "Contravariant type variable cannot be used in return type"
-                    );
+                    self.emit_diag(E1080, expr);
                 } elif not is_return and tv.is_covariant {
-                    self.add_diagnostic(
-                        expr,
-                        "Covariant type variable cannot be used in parameter type"
-                    );
+                    self.emit_diag(E1081, expr);
                 }
             }
         } elif isinstance(expr, uni.BinaryExpr) and is_return {
@@ -878,10 +976,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
                 and resolved.name in class_tvars {
                     tv = class_tvars[resolved.name];
                     if tv.is_contravariant {
-                        self.add_diagnostic(
-                            ret_stmt,
-                            "Contravariant type variable cannot be used in return type"
-                        );
+                        self.emit_diag(E1080, ret_stmt);
                     }
                 }
             }
@@ -926,9 +1021,7 @@ impl TypeEvaluator.validate_typevar_scope(
             }
         }
         # TypeVar not in scope for this function
-        self.add_diagnostic(
-            expr, f'Type variable "{type_var.name}" has no meaning in this context'
-        );
+        self.emit_diag(E1065, expr, name=type_var.name);
         return;
     }
 
@@ -942,16 +1035,12 @@ impl TypeEvaluator.validate_typevar_scope(
             }
         }
         # TypeVar not declared in this class
-        self.add_diagnostic(
-            expr, f'Type variable "{type_var.name}" has no meaning in this context'
-        );
+        self.emit_diag(E1065, expr, name=type_var.name);
         return;
     }
 
     # Case 3: At module level (not in class or function)
-    self.add_diagnostic(
-        expr, f'Type variable "{type_var.name}" has no meaning in this context'
-    );
+    self.emit_diag(E1065, expr, name=type_var.name);
 }
 
 """Get TypeVar parameters from ALL outer scopes (classes and functions).

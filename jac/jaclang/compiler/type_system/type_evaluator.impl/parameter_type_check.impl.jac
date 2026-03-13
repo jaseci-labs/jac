@@ -17,9 +17,12 @@ impl TypeEvaluator.validate_arg_types(
         if not self.assign_type(arg_type, param.param_type) {
             has_errors = True;
             if not checking_overload {
-                self.add_diagnostic(
+                self.emit_diag(
+                    E1053,
                     arg,
-                    f"Cannot assign {arg_type} to parameter '{param.name}' of type {param.param_type}",
+                    actual=str(arg_type),
+                    name=param.name,
+                    expected=str(param.param_type)
                 );
             }
         }
@@ -68,12 +71,12 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                     return types.UnknownType();
                 }
                 # Bound type is not callable (no __call__ method)
-                self.add_diagnostic(expr, f'Type "{bound_type}" is not callable');
+                self.emit_diag(E1023, expr, type=str(bound_type));
                 return types.UnknownType();
             }
         }
         # Unbounded TypeVar - not callable
-        self.add_diagnostic(expr, f'Type "{caller_type.name}" is not callable');
+        self.emit_diag(E1023, expr, type=caller_type.name);
         return types.UnknownType();
     }
 
@@ -127,10 +130,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         if _fallback_result is not None {
             return _fallback_result;
         }
-        self.add_diagnostic(
-            expr,
-            "No matching overload found for the function call with the given arguments",
-        );
+        self.emit_diag(E1054, expr);
         return types.UnknownType();
     }
     if isinstance(caller_type, types.ClassType)
@@ -161,10 +161,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             type_var_name = _get_string_lit_value(first_arg) or "";
             if not type_var_name {
                 # Pyright: typeVarFirstArg
-                self.add_diagnostic(
-                    first_arg,
-                    "TypeVar() requires a string literal as the first argument"
-                );
+                self.emit_diag(E1063, first_arg);
             }
 
             # Count positional constraint arguments and extract variance kwargs
@@ -199,16 +196,11 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
             # Pyright: typeVarSingleConstraint
             if constraint_count == 1 and first_constraint_arg {
-                self.add_diagnostic(
-                    first_constraint_arg,
-                    "TypeVar requires at least two constrained types"
-                );
+                self.emit_diag(E1064, first_constraint_arg);
             }
         } else {
             # Pyright: typeVarFirstArg
-            self.add_diagnostic(
-                expr, "TypeVar() requires a string literal as the first argument"
-            );
+            self.emit_diag(E1063, expr);
         }
         return types.TypeVarType(
             name=type_var_name,
@@ -221,7 +213,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         isinstance(caller_type, types.ClassType)
         and caller_type.is_instantiable_class()
     ) {
-        validated = False;
+        matched_method: types.FunctionType | None = None;
         # NamedTuple: use synthesized __new__ with field parameters (not inherited tuple.__new__)
         if caller_type.is_namedtuple() {
             self._validate_constructor_method(
@@ -232,13 +224,13 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         if new_method := self._lookup_class_member(caller_type, "__new__") {
             is_from_object = new_method.class_type.shared.class_name == "object";
             if not is_from_object {
-                validated = self._validate_constructor_method(
+                matched_method = self._validate_constructor_method(
                     expr, self._get_method_with_overloads(new_method, caller_type)
                 );
             }
         }
         # Fall back to init if __new__ didn't have meaningful params
-        if not validated {
+        if matched_method is None {
             init_method = self._lookup_class_member(caller_type, "init");
             is_from_object = init_method
             and init_method.class_type.shared.class_name == "object";
@@ -246,8 +238,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             if init_method and not is_from_object {
                 # Get init type including overloads, then validate call args.
                 method_ty = self._get_method_with_overloads(init_method, caller_type);
-                validated = self._validate_constructor_method(expr, method_ty);
-                if not validated and expr.params {
+                matched_method = self._validate_constructor_method(expr, method_ty);
+                if matched_method is None and expr.params {
                     # Validate args for init without matching overload to emit arity errors.
                     init_sym_type = self.get_type_of_symbol(init_method.symbol);
                     if isinstance(init_sym_type, types.FunctionType) {
@@ -259,6 +251,21 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 self._validate_constructor_method(
                     expr, self._create_dataclass_init_method(caller_type)
                 );
+            }
+        }
+        # Infer type arguments for generic classes from call arguments.
+        # Use the matched overload for inference (important for zip, filter, etc.)
+        # Pyright: validateConstructorArgs uses matched __new__ overload
+        inferred_type_args = self._infer_type_args_from_method(
+            caller_type, expr, matched_method
+        );
+        if inferred_type_args {
+            has_inferred = any(
+                not isinstance(ta, types.UnknownType) for ta in inferred_type_args
+            );
+            if has_inferred {
+                specialized = caller_type.specialize_generics(inferred_type_args);
+                return specialized.clone_as_instance();
             }
         }
         return caller_type.clone_as_instance();
@@ -340,7 +347,25 @@ impl TypeEvaluator.match_args_to_params(
             }
         } except Exception as e {
             if not checking_overload {
-                self.add_diagnostic(arg, str(e));
+                err_msg = str(e);
+                if "Too many positional arguments" in err_msg {
+                    self.emit_diag(E1051, arg);
+                } elif "does not match any parameter" in err_msg {
+                    self.emit_diag(
+                        E1052,
+                        arg,
+                        name=arg.key.sym_name if isinstance(arg, uni.KWPair) else ""
+                    );
+                } elif "Positional only parameter" in err_msg {
+                    # Extract param name from "Positional only parameter 'X' cannot..."
+                    pname = err_msg.split("'")[1] if "'" in err_msg else "";
+                    self.emit_diag(E1056, arg, name=pname);
+                } elif "already matched" in err_msg {
+                    pname = err_msg.split("'")[1] if "'" in err_msg else "";
+                    self.emit_diag(E1057, arg, name=pname);
+                } elif self._pass is not None {
+                    self._pass.emit(E1051, node_override=arg);
+                }
             }
             argument_errors = True;
         }
@@ -351,10 +376,7 @@ impl TypeEvaluator.match_args_to_params(
         if not checking_overload {
             error_node = node_for_error or (arg_nodes[0] if arg_nodes else None);
             if error_node {
-                self.add_diagnostic(
-                    error_node,
-                    f"Not all required parameters were provided in the function call: {names}",
-                );
+                self.emit_diag(E1050, error_node, params=names);
             }
         }
     }
@@ -364,12 +386,17 @@ impl TypeEvaluator.match_args_to_params(
 }
 
 """
-Validate constructor method arguments. Handles both FunctionType and OverloadedType.
-Returns True if validation was performed (method has meaningful parameters), False otherwise.
+Validate constructor method call arguments.
+
+Returns the matched FunctionType overload (for __new__/__init__) or None.
+This allows the caller to use the matched overload's return type for
+classes like zip where __new__ returns a specialized type.
+
+Pyright equivalent: validateNewMethod / validateInitMethod
 """
 impl TypeEvaluator._validate_constructor_method(
     expr: uni.FuncCall, method_type: TypeBase
-) -> bool {
+) -> types.FunctionType | None {
     if isinstance(method_type, types.FunctionType) {
         has_params = len(method_type.parameters) > 0;
         if has_params
@@ -381,11 +408,12 @@ impl TypeEvaluator._validate_constructor_method(
             if not arg_param_match.argument_errors {
                 self.validate_arg_types(arg_param_match);
             }
-            return True;
+            return method_type;
         }
-        return False;
+        return None;
     }
     if isinstance(method_type, types.OverloadedType) {
+        matched_overload: types.FunctionType | None = None;
         for overload in method_type.overloads {
             arg_param_match = self.match_args_to_params(
                 expr.params, expr, overload, checking_overload=True
@@ -393,18 +421,19 @@ impl TypeEvaluator._validate_constructor_method(
 
             if not arg_param_match.argument_errors {
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
-                    return True;
+                    matched_overload = overload;
+                    break;
                 }
             }
         }
-        if method_type.overloads {
+        if matched_overload is None and method_type.overloads {
             self.match_args_to_params(
                 expr.params, expr, method_type.overloads[0], checking_overload=False
             );
         }
-        return True;
+        return matched_overload;
     }
-    return False;
+    return None;
 }
 
 """
@@ -437,4 +466,387 @@ impl TypeEvaluator._get_method_with_overloads(
         return types.OverloadedType(overloads=overloaded_fns);
     }
     return method_ty;
+}
+
+"""
+Assign a type to a TypeVar, collecting bindings.
+
+When param_type contains TypeVars and arg_type is concrete, extracts bindings.
+Example: param=Iterable[_T], arg=list[Item] -> bindings[_T] = Item
+"""
+impl TypeEvaluator.assign_type_to_type_var(
+    param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
+) -> None {
+    # Direct TypeVar binding
+    if isinstance(param_type, types.TypeVarType) {
+        if param_type.name and param_type.name not in bindings {
+            bindings[param_type.name] = self._convert_to_instance(arg_type);
+        }
+        return;
+    }
+
+    # Generic ClassType: match type_args recursively
+    if isinstance(param_type, types.ClassType)
+    and isinstance(arg_type, types.ClassType) {
+        param_type_args = param_type.private.type_args if param_type.private else [];
+        arg_type_args = self._get_type_args_for_base(arg_type, param_type);
+
+        for (i, pta) in enumerate(param_type_args) {
+            if i < len(arg_type_args) {
+                self.assign_type_to_type_var(pta, arg_type_args[i], bindings);
+            }
+        }
+    }
+}
+
+"""
+Get type_args from arg_type matching param_type's base class.
+
+Handles: list[Item] -> Iterable => returns [Item] (via MRO lookup)
+"""
+impl TypeEvaluator._get_type_args_for_base(
+    arg_type: types.ClassType, param_type: types.ClassType
+) -> list[TypeBase] {
+    # Direct match
+    if param_type.shared == arg_type.shared {
+        return arg_type.private.type_args if arg_type.private else [];
+    }
+
+    # Search MRO for matching base
+    for mro_cls in arg_type.shared.mro {
+        if mro_cls.shared == param_type.shared {
+            if mro_cls.private and mro_cls.private.type_args {
+                return mro_cls.private.type_args;
+            }
+            # MRO base not specialized - use arg_type's type_args
+            return arg_type.private.type_args if arg_type.private else [];
+        }
+    }
+    return [];
+}
+
+"""
+Infer type arguments for a generic class using the matched constructor overload.
+
+This is the preferred method when we have already matched an overload during
+constructor validation (e.g., for zip, filter with overloaded __new__).
+
+IMPORTANT: We use the RAW method type (with TypeVars preserved) for inference,
+not the specialized version. The specialized version has TypeVars replaced with
+Unknown when the class has no type_args yet (which is what we're trying to infer).
+
+Pyright equivalent: validateNewMethod uses the matched overload's return type
+to determine the specialized class type.
+"""
+impl TypeEvaluator._infer_type_args_from_method(
+    caller_type: types.ClassType,
+    expr: uni.FuncCall,
+    matched_method: types.FunctionType | None
+) -> list[TypeBase] {
+    # Skip if not generic or already has type_args
+    if not caller_type.shared.type_params {
+        return [];
+    }
+    if caller_type.private.type_args {
+        return caller_type.private.type_args;
+    }
+
+    # Find the raw constructor method that matches the call arguments.
+    # We need the RAW version (with TypeVars preserved) for inference.
+    init_method = self._find_matching_raw_constructor(caller_type, expr, matched_method);
+    if not init_method {
+        return [];
+    }
+
+    # Match args to params and collect TypeVar bindings
+    bindings = self._collect_type_var_bindings(init_method, expr);
+
+    # First, try direct binding from class type_params (works for enumerate)
+    direct_args = [
+        bindings.get(tp.name, types.UnknownType())
+        for tp in caller_type.shared.type_params
+        if tp.name
+    ];
+    if any(not isinstance(ta, types.UnknownType) for ta in direct_args) {
+        return direct_args;
+    }
+
+    # If direct binding failed, use return type approach (works for zip)
+    # The return type is e.g. zip[tuple[_T1, _T2]] - substitute TypeVars and use
+    ret_type = init_method.return_type;
+    if isinstance(ret_type, types.ClassType)
+    and ret_type.private
+    and ret_type.private.type_args {
+        substituted_args: list[TypeBase] = [];
+        for arg in ret_type.private.type_args {
+            substituted = self._substitute_type_vars(arg, bindings);
+            substituted_args.append(substituted);
+        }
+        if any(not isinstance(ta, types.UnknownType) for ta in substituted_args) {
+            return substituted_args;
+        }
+    }
+
+    return direct_args;
+}
+
+"""
+Substitute TypeVars in a type using bindings.
+"""
+impl TypeEvaluator._substitute_type_vars(
+    typ: types.TypeBase, bindings: dict[str, types.TypeBase]
+) -> types.TypeBase {
+    if isinstance(typ, types.TypeVarType) {
+        return bindings.get(typ.name, typ);
+    }
+    if isinstance(typ, types.ClassType) and typ.private and typ.private.type_args {
+        new_args = [
+            self._substitute_type_vars(arg, bindings) for arg in typ.private.type_args
+        ];
+        return typ.specialize_generics(new_args);
+    }
+    return typ;
+}
+
+"""
+Find the raw constructor method that matches the call arguments.
+
+For overloaded constructors (like zip.__new__), we need to find the overload
+that matches the argument count, then return the RAW version (with TypeVars).
+"""
+impl TypeEvaluator._find_matching_raw_constructor(
+    caller_type: types.ClassType,
+    expr: uni.FuncCall,
+    matched_method: types.FunctionType | None
+) -> types.FunctionType | None {
+    # Count call arguments
+    positional_arg_count = sum(
+        1
+        for arg in expr.params
+        if not isinstance(arg, uni.KWPair)
+    );
+    keyword_arg_names = set(
+        arg.key.value
+        for arg in expr.params
+        if isinstance(arg, uni.KWPair) and isinstance(arg.key, uni.Name)
+    );
+
+    # Dataclass synthesized init takes priority for dataclasses with keyword args
+    if caller_type.is_data_class() and keyword_arg_names {
+        dc_init = self._create_dataclass_init_method(caller_type);
+        if dc_init {
+            # Check if keyword args match dataclass fields
+            param_names = {
+                p.name
+                for p in dc_init.parameters
+                if not p.is_self
+            };
+            if keyword_arg_names.issubset(param_names) {
+                return dc_init;
+            }
+        }
+    }
+
+    # Try __new__ first (for builtins like zip, enumerate)
+    if new_member := self._lookup_class_member(caller_type, "__new__") {
+        if new_member.class_type.shared.class_name != "object" {
+            raw_type = self.get_type_of_symbol(new_member.symbol);
+            found = self._find_overload_by_arg_count(
+                raw_type, positional_arg_count, new_member.overloads
+            );
+            if found {
+                return found;
+            }
+        }
+    }
+
+    # Fall back to init/__init__
+    for name in ['init', '__init__'] {
+        if member := self._lookup_class_member(caller_type, name) {
+            if member.class_type.shared.class_name != "object" {
+                raw_type = self.get_type_of_symbol(member.symbol);
+                found = self._find_overload_by_arg_count(
+                    raw_type, positional_arg_count, member.overloads
+                );
+                if found {
+                    return found;
+                }
+            }
+        }
+    }
+
+    # Dataclass synthesized init (fallback for positional args)
+    if caller_type.is_data_class() {
+        return self._create_dataclass_init_method(caller_type);
+    }
+
+    return None;
+}
+
+"""Find overload matching argument count."""
+impl TypeEvaluator._find_overload_by_arg_count(
+    method_type: types.TypeBase, arg_count: int, overload_symbols: list
+) -> types.FunctionType | None {
+    # Collect all overloads (base + additional)
+    overloads: list[types.FunctionType] = [];
+    if isinstance(method_type, types.FunctionType) {
+        overloads.append(method_type);
+    }
+    for sym in overload_symbols {
+        ovl_type = self.get_type_of_symbol(sym);
+        if isinstance(ovl_type, types.FunctionType) {
+            overloads.append(ovl_type);
+        }
+    }
+
+    # Find overload with matching parameter count (excluding self/cls)
+    for ovl in overloads {
+        # Count non-self/cls, non-keyword-only parameters
+        positional_params = sum(
+            1
+            for p in ovl.parameters
+            if not p.is_self
+            and not p.is_cls
+            and p.param_kind != types.ParamKind.KWONLY
+        );
+        if positional_params == arg_count {
+            return ovl;
+        }
+    }
+
+    # If no exact match, return first with meaningful params
+    for ovl in overloads {
+        if any(not p.is_self and not p.is_cls for p in ovl.parameters) {
+            return ovl;
+        }
+    }
+
+    return None;
+}
+
+"""
+Infer type arguments for a generic class from constructor call.
+
+enumerate(items: list[Item]) -> enumerate[Item]
+MyGeneric(data=Item()) -> MyGeneric[Item]
+"""
+impl TypeEvaluator.infer_type_args(
+    caller_type: types.ClassType, expr: uni.FuncCall
+) -> list[TypeBase] {
+    # Skip if not generic or already has type_args
+    if not caller_type.shared.type_params {
+        return [];
+    }
+    if caller_type.private.type_args {
+        return caller_type.private.type_args;
+    }
+
+    # Get constructor method (init/__init__/__new__/dataclass)
+    init_method = self._get_constructor_for_inference(caller_type);
+    if not init_method {
+        return [];
+    }
+
+    # Match args to params and collect TypeVar bindings
+    bindings = self._collect_type_var_bindings(init_method, expr);
+
+    # Build type_args in order of type_params
+    return [
+        bindings.get(tp.name, types.UnknownType())
+        for tp in caller_type.shared.type_params
+        if tp.name
+    ];
+}
+
+"""
+Get constructor method for type inference.
+"""
+impl TypeEvaluator._get_constructor_for_inference(
+    caller_type: types.ClassType
+) -> types.FunctionType | None {
+    # Try init/__init__
+    for name in ['init', '__init__'] {
+        if member := self._lookup_class_member(caller_type, name) {
+            if member.class_type.shared.class_name != "object" {
+                method = self.get_type_of_symbol(member.symbol);
+                if isinstance(method, types.FunctionType)
+                and self._has_meaningful_params(method) {
+                    return method;
+                }
+            }
+        }
+    }
+
+    # Try __new__ (enumerate, zip, etc.)
+    if member := self._lookup_class_member(caller_type, "__new__") {
+        if member.class_type.shared.class_name != "object" {
+            method = self.get_type_of_symbol(member.symbol);
+            if isinstance(method, types.FunctionType)
+            and self._has_meaningful_params(method) {
+                return method;
+            }
+            if isinstance(method, types.OverloadedType) {
+                for overload in method.overloads {
+                    if self._has_meaningful_params(overload) {
+                        return overload;
+                    }
+                }
+            }
+        }
+    }
+
+    # Dataclass synthesized init
+    if caller_type.is_data_class() {
+        return self._create_dataclass_init_method(caller_type);
+    }
+
+    return None;
+}
+
+"""Check if method has meaningful params (not just self/cls)."""
+impl TypeEvaluator._has_meaningful_params(method: types.FunctionType) -> bool {
+    return any(not p.is_self and not p.is_cls for p in method.parameters);
+}
+
+"""
+Collect TypeVar bindings from matching call args to method params.
+"""
+impl TypeEvaluator._collect_type_var_bindings(
+    method: types.FunctionType, expr: uni.FuncCall
+) -> dict[str, TypeBase] {
+    bindings: dict[str, TypeBase] = {};
+    params = [
+        p
+        for p in method.parameters
+        if not p.is_self and not p.is_cls
+    ];
+
+    param_idx = 0;
+    for arg in expr.params {
+        if isinstance(arg, uni.KWPair) {
+            # Keyword argument - get value for type, use key for param lookup
+            if isinstance(arg.key, uni.Name) {
+                for param in params {
+                    if param.name == arg.key.value and param.param_type {
+                        arg_type = self.get_type_of_expression(arg.value);
+                        self.assign_type_to_type_var(
+                            param.param_type, arg_type, bindings
+                        );
+                        break;
+                    }
+                }
+            }
+            # Skip KWPair with non-Name keys (shouldn't happen in practice)
+        } elif param_idx < len(params) {
+            # Positional argument
+            param = params[param_idx];
+            if param.param_type {
+                arg_type = self.get_type_of_expression(arg);
+                self.assign_type_to_type_var(param.param_type, arg_type, bindings);
+            }
+            param_idx += 1;
+        }
+    }
+
+    return bindings;
 }

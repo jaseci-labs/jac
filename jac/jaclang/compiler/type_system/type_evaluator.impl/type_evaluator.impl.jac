@@ -332,10 +332,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 # Unknown base type: attribute access cannot be validated.
                 if isinstance(base_type, types.UnknownType) {
                     assert isinstance(expr.right, uni.Name);
-                    self.add_diagnostic(
-                        expr.right,
-                        f'Type is Unknown, cannot access attribute "{expr.right.value}"',
-                    );
+                    self.emit_diag(E1032, expr.right, attr=expr.right.value);
                     return types.UnknownType();
                 }
                 # Check for full expr narrowing: `if c.field is not None: use(c.field)`
@@ -434,9 +431,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             )
                         );
                         if not _has_tvars {
-                            self.add_diagnostic(
+                            self.emit_diag(
+                                E1030,
                                 expr.right,
-                                f'Type "{base_type}" has no attribute "{expr.right.value}"',
+                                base_type=str(base_type),
+                                attr=expr.right.value
                             );
                         }
                     }
@@ -478,17 +477,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             }
                         }
                         overloaded_ty: types.OverloadedType | None = None;
-                        member_ty = self.get_type_of_symbol(member.symbol);
+                        # Use get_type_of_member to properly specialize TypeVars (Pyright pattern)
+                        member_ty = self.get_type_of_member(member, base_type);
+
                         if isinstance(member_ty, types.FunctionType) {
-                            member_ty = member_ty.specialize(base_type);
                             overloaded_fns: list[types.FunctionType] = [member_ty];
                             for overload in member.overloads {
-                                overload_member_ty = self.get_type_of_symbol(overload);
-                                if isinstance(overload_member_ty, types.FunctionType) {
-                                    overload_member_ty = overload_member_ty.specialize(
-                                        base_type
-                                    );
-                                    overloaded_fns.append(overload_member_ty);
+                                overload_ty = self.specialize_member_type(
+                                    self.get_type_of_symbol(overload), base_type
+                                );
+                                if isinstance(overload_ty, types.FunctionType) {
+                                    overloaded_fns.append(overload_ty);
                                 }
                             }
                             if len(overloaded_fns) > 1 {
@@ -569,9 +568,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             )
                         );
                         if not _has_tvars {
-                            self.add_diagnostic(
+                            self.emit_diag(
+                                E1030,
                                 expr.right,
-                                f'"{base_type}" has no attribute "{expr.right.value}"',
+                                base_type=str(base_type),
+                                attr=expr.right.value
                             );
                         }
                     }
@@ -649,12 +650,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             }
                         }
                     }
-                    self.add_diagnostic(
+                    self.emit_diag(
+                        E1099,
                         expr.right,
-                        f'Cannot access attribute "{expr.right.value}" for type '
-                        f'"{base_type}"; attribute is missing from {", ".join(
-                            missing_types
-                        )}'
+                        attr=expr.right.value,
+                        type=str(base_type),
+                        missing=", ".join(missing_types)
                     );
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
@@ -670,11 +671,8 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 return self.get_type_of_symbol(member.symbol);
                             }
                             # Attribute not found on bound type
-                            self.add_diagnostic(
-                                expr,
-                                "Cannot access attribute \"" + attr_name + "\" for type \"" + str(
-                                    bound_type
-                                ) + "\""
+                            self.emit_diag(
+                                E1031, expr, attr=attr_name, type=str(bound_type)
                             );
                             return types.UnknownType();
                         } elif isinstance(bound_type, types.UnionType) {
@@ -684,11 +682,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                     if not self._lookup_object_member(
                                         member_type, attr_name
                                     ) {
-                                        self.add_diagnostic(
+                                        self.emit_diag(
+                                            E1031,
                                             expr,
-                                            "Cannot access attribute \"" + attr_name + "\" for type \"" + str(
-                                                member_type
-                                            ) + "\""
+                                            attr=attr_name,
+                                            type=str(member_type)
                                         );
                                     }
                                 }
@@ -714,10 +712,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         return types.UnknownType();
                     }
                     # Error: attribute not available on unbounded TypeVar
-                    self.add_diagnostic(
-                        expr,
-                        "Cannot access attribute \"" + attr_name + "\" for type \"" + base_type.name + "\""
-                    );
+                    self.emit_diag(E1031, expr, attr=attr_name, type=base_type.name);
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
@@ -726,10 +721,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             } elif isinstance(expr.right, uni.AssignCompr) {
                 # base_type should be a sequence of [T].
                 if not isinstance(base_type, types.ClassType) {
-                    self.add_diagnostic(
-                        expr,
-                        f'Cannot perform assignment comprehension on type "{base_type}"',
-                    );
+                    self.emit_diag(E1034, expr, type=str(base_type));
                     return base_type;
                 }
                 # TODO: Ensure the base_type is a Sequence[T], for now I'm only checking
@@ -745,17 +737,21 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             ) {
                                 self._set_symbol_to_expr(assign.key, member.symbol);
                             } else {
-                                self.add_diagnostic(
+                                self.emit_diag(
+                                    E1033,
                                     assign.key,
-                                    f'Member "{assign.key.sym_name}" not found on type "{sequence_of}"',
+                                    member=assign.key.sym_name,
+                                    type=str(sequence_of)
                                 );
                             }
                             dest_type = self.get_type_of_expression(assign.key);
                             src_type = self.get_type_of_expression(assign.value);
                             if not self.assign_type(src_type, dest_type) {
-                                self.add_diagnostic(
+                                self.emit_diag(
+                                    E1035,
                                     assign.value,
-                                    f'Type "{src_type}" is not assignable to type "{dest_type}"',
+                                    src=str(src_type),
+                                    dest=str(dest_type)
                                 );
                             }
                         }
@@ -905,16 +901,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 return result;
                             }
                             # Bound type is not subscriptable
-                            self.add_diagnostic(
-                                expr, f'Type "{bound_type}" is not subscriptable'
-                            );
+                            self.emit_diag(E1040, expr, type=str(bound_type));
                             return types.UnknownType();
                         }
                     }
                     # Unbounded TypeVar - not subscriptable
-                    self.add_diagnostic(
-                        expr, f'Type "{base_type.name}" is not subscriptable'
-                    );
+                    self.emit_diag(E1040, expr, type=base_type.name);
                     return types.UnknownType();
                 }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
@@ -957,13 +949,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         return result;
                     }
                     # Bound type is not awaitable
-                    self.add_diagnostic(
-                        expr, f'Type "{target_type.bound}" is not awaitable'
-                    );
+                    self.emit_diag(E1041, expr, type=str(target_type.bound));
                     return types.UnknownType();
                 }
                 # Unbounded TypeVar - not awaitable
-                self.add_diagnostic(expr, f'Type "{target_type.name}" is not awaitable');
+                self.emit_diag(E1041, expr, type=target_type.name);
                 return types.UnknownType();
             }
             # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
@@ -1046,17 +1036,13 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 return result;
                             }
                             # Bound type doesn't support this operator
-                            self.add_diagnostic(
-                                expr,
-                                f'Operator "{op_name}" not supported for type "{operand_type.bound}"'
+                            self.emit_diag(
+                                E1010, expr, op=op_name, type=str(operand_type.bound)
                             );
                             return types.UnknownType();
                         }
                         # Unbounded TypeVar
-                        self.add_diagnostic(
-                            expr,
-                            f'Operator "{op_name}" not supported for type "{operand_type.name}"'
-                        );
+                        self.emit_diag(E1010, expr, op=op_name, type=operand_type.name);
                         return types.UnknownType();
                     }
                     return operand_type;
@@ -1074,9 +1060,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         and (sym := filter_type.lookup_member_symbol(cmp.left.value)) {
                             self._set_symbol_to_expr(cmp.left, sym);
                         } else {
-                            self.add_diagnostic(
+                            self.emit_diag(
+                                E1033,
                                 cmp.left,
-                                f'Member "{cmp.left.value}" not found on type "{filter_type}"',
+                                member=cmp.left.value,
+                                type=str(filter_type)
                             );
                         }
 
@@ -1164,14 +1152,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # Check for function overloads
                     symbol_type = self.get_type_of_symbol(symbol);
-                    # --- Handle special forms from typing module ---
-                    # When a Name refers to a special form (e.g., Callable), return
-                    # the prefetched type which has alias_name set. This avoids creating
-                    # new ClassType instances for every usage.
-                    # Similar to Pyright's classType.priv.aliasName pattern.
+                    # Pyright: handleTypingStubTypeAnnotation / createSpecializedClassType
+                    # When a Name refers to a special form (e.g., Callable, Self), check if
+                    # the symbol's type is _SpecialForm and switch on the name.
+                    # For Self, returns TypeVarType("Self") directly.
                     if special_form := self._get_special_form_type(
                         symbol.sym_name, symbol_type
                     ) {
+                        # For TypeVarType (Self), return immediately
+                        if isinstance(special_form, types.TypeVarType) {
+                            return special_form;
+                        }
                         symbol_type = special_form;
                     }
                     # Use CFG-based narrowing for flow-sensitive type.
@@ -1343,23 +1334,32 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     collection_type = self.get_type_of_expression(
                         unpack_assignment.collection
                     );
-                    # Get the iterator's element type (similar to Pyright's getTypeOfIterator)
+                    # Get the iterator type from __iter__
                     iter_type = self.get_type_of_magic_method_call(
                         collection_type, "__iter__", [], unpack_assignment
                     );
                     elem_type: types.TypeBase | None = None;
-                    if isinstance(iter_type, types.ClassType)
-                    and len(iter_type.private.type_args) == 1 {
-                        elem_type = iter_type.private.type_args[0];
-                        # If element type is a TypeVar, specialize it using collection's type_args
-                        if isinstance(elem_type, types.TypeVarType)
-                        and isinstance(collection_type, types.ClassType)
-                        and collection_type.private.type_args {
-                            specialized = iter_type.specialize_generics(
-                                collection_type.private.type_args
-                            );
-                            if len(specialized.private.type_args) == 1 {
-                                elem_type = specialized.private.type_args[0];
+                    if isinstance(iter_type, types.ClassType) {
+                        # Get element type from __next__ - this gives the actual iteration element
+                        # For enumerate[Item], __next__ returns tuple[int, Item]
+                        next_type = self.get_type_of_magic_method_call(
+                            iter_type, "__next__", [], unpack_assignment
+                        );
+                        if next_type and not isinstance(next_type, types.UnknownType) {
+                            elem_type = self._convert_to_instance(next_type);
+                        } elif len(iter_type.private.type_args) == 1 {
+                            # Fallback: try to extract from type_args
+                            elem_type = iter_type.private.type_args[0];
+                            # If element type is a TypeVar, specialize it using collection's type_args
+                            if isinstance(elem_type, types.TypeVarType)
+                            and isinstance(collection_type, types.ClassType)
+                            and collection_type.private.type_args {
+                                specialized = iter_type.specialize_generics(
+                                    collection_type.private.type_args
+                                );
+                                if len(specialized.private.type_args) == 1 {
+                                    elem_type = specialized.private.type_args[0];
+                                }
                             }
                         }
                     }
@@ -1489,6 +1489,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     collection_type, "__iter__", [], node_.parent,
                 );
                 if isinstance(iter_type, types.ClassType) {
+                    # Get element type from __next__ method on the iterator.
+                    # This handles enumerate, zip, etc. where __next__ returns
+                    # complex types like tuple[int, _T].
+                    next_type = self.get_type_of_magic_method_call(
+                        iter_type, "__next__", [], node_.parent
+                    );
+                    if next_type and not isinstance(next_type, types.UnknownType) {
+                        result_type = self._convert_to_instance(next_type);
+                        node_.type = result_type;
+                        return result_type;
+                    }
+
+                    # Fallback: try to extract from type_args if __next__ didn't work
                     if len(iter_type.private.type_args) == 1 {
                         elem_type = iter_type.private.type_args[0];
                         # If element type is already concrete (e.g. Iterator[int]
@@ -2330,7 +2343,7 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     self.program = program;
     self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
     self.prefetch: PrefetchedTypes = PrefetchedTypes();
-    self.diagnostic_callback: DiagnosticCallback | None = None;
+    self._pass: object | None = None;
     self.builtins_module: uni.Module | None = None;
     # CFG-based type narrowing cache: (id(stmt_node), sym_name) -> narrowed_type.
     self._narrowing_cache: dict[tuple, types.TypeBase | None] = {};

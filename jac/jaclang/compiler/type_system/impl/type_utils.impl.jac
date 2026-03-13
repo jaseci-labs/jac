@@ -414,3 +414,138 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
 
     return flags;
 }
+
+# -------------------------------------------------------------------------
+# Type specialization utilities (Pyright: typeUtils.ts)
+# -------------------------------------------------------------------------
+"""
+Convert a type to its instance form. (Pyright: convertToInstance)
+"""
+impl convert_to_instance(ty: types.TypeBase) -> types.TypeBase {
+    if ty.is_instantiable_class() {
+        assert isinstance(ty, types.ClassType);
+        return ty.clone_as_instance();
+    }
+    # Handle UnionType: convert each member type to instance form
+    if isinstance(ty, types.UnionType) {
+        converted = [convert_to_instance(t) for t in ty.types];
+        return types.UnionType(types=converted);
+    }
+    return ty;
+}
+
+"""
+Apply type variable substitutions to a type.
+
+This is the unified function for TypeVar substitution. Handles all cases:
+- Direct TypeVarType -> lookup in solution
+- Self type -> class_type instance
+- Nested TypeVars in ClassType
+- UnionType -> specialize each member
+- FunctionType -> specialize parameters and return type
+"""
+impl apply_solved_type_vars(
+    ty: types.TypeBase,
+    solution: dict[str, types.TypeBase],
+    class_type: (types.ClassType | None) = None
+) -> types.TypeBase {
+    # Case 1: Direct TypeVar replacement
+    if isinstance(ty, types.TypeVarType) {
+        # Self TypeVar -> class_type instance (Pyright: isSynthesizedSelf)
+        if ty.is_self and class_type is not None {
+            return class_type.clone_as_instance();
+        }
+        # Regular TypeVar -> lookup in solution by name
+        if ty.name and ty.name in solution {
+            resolved = solution[ty.name];
+            return convert_to_instance(resolved);
+        }
+        # TypeVar not in solution -> check class type_args by index
+        if class_type is not None and ty.name {
+            for (idx, tp) in enumerate(class_type.shared.type_params) {
+                if tp.name == ty.name {
+                    if idx < len(class_type.private.type_args) {
+                        resolved = class_type.private.type_args[idx];
+                        return convert_to_instance(resolved);
+                    } else {
+                        # TypeVar found but no type_arg available -> Unknown
+                        return types.UnknownType();
+                    }
+                }
+            }
+        }
+        # TypeVar not resolved -> return as is
+        return ty;
+    }
+
+    # Case 2: FunctionType -> specialize parameters and return type
+    if isinstance(ty, types.FunctionType) {
+        return _apply_to_function(ty, solution, class_type);
+    }
+
+    # Case 3: ClassType with type_args -> recursively specialize nested TypeVars
+    if isinstance(ty, types.ClassType) and ty.private.type_args {
+        new_args: list[types.TypeBase] = [];
+        any_changed = False;
+        for type_arg in ty.private.type_args {
+            specialized = apply_solved_type_vars(type_arg, solution, class_type);
+            new_args.append(specialized);
+            if specialized is not type_arg {
+                any_changed = True;
+            }
+        }
+        if any_changed {
+            return ty.specialize_generics(new_args);
+        }
+    }
+
+    # Case 4: UnionType -> specialize each member
+    if isinstance(ty, types.UnionType) {
+        new_types = [apply_solved_type_vars(t, solution, class_type) for t in ty.types];
+        return types.UnionType(types=new_types);
+    }
+
+    return ty;
+}
+
+"""Helper to apply type vars to a FunctionType."""
+def _apply_to_function(
+    func: types.FunctionType,
+    solution: dict[str, types.TypeBase],
+    class_type: (types.ClassType | None)
+) -> types.FunctionType {
+    # Clone the function
+    clone = types.FunctionType(
+        func_name=func.func_name,
+        return_type=func.return_type,
+        parameters=[
+            types.Parameter(
+                name=param.name,
+                category=param.category,
+                param_type=param.param_type,
+                default_value=param.default_value,
+                is_self=param.is_self,
+                is_cls=param.is_cls,
+                param_kind=param.param_kind
+            ) for param in func.parameters
+        ]
+    );
+
+    # Specialize parameter types
+    for param in clone.parameters {
+        if param.param_type {
+            param.param_type = apply_solved_type_vars(
+                param.param_type, solution, class_type
+            );
+        }
+    }
+
+    # Specialize return type
+    if clone.return_type {
+        clone.return_type = apply_solved_type_vars(
+            clone.return_type, solution, class_type
+        );
+    }
+
+    return clone;
+}

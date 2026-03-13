@@ -56,9 +56,7 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
             and not isinstance(nd.expr, uni.Null)
             and is_toplevel_fn
         ) {
-            self.log_error(
-                "Return type annotation required when function returns a value", nd
-            );
+            self.emit(E1003, node_override=nd);
             return;
         }
         import from jaclang.compiler.type_system { types }
@@ -66,8 +64,11 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
         fn_type: types.FunctionType = fn_type_base;
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
         if not self.evaluator.assign_type(returning_type, return_type) {
-            self.log_error(
-                f"Cannot return {returning_type}, expected {fn_type.return_type}", nd
+            self.emit(
+                E1002,
+                node_override=nd,
+                actual=str(returning_type),
+                expected=str(fn_type.return_type)
             );
         }
     }
@@ -167,7 +168,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     right_type, "__iter__", [], nd.value
                 );
                 if iter_result is None {
-                    self.log_error(f"Cannot unpack non-iterable {right_type}", nd);
+                    self.emit(E1020, node_override=nd, type=str(right_type));
                 }
             }
             return;
@@ -189,19 +190,17 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 # Validation 1: TypeVar cannot be assigned to index expression
                 # e.g., my_dict["var"] = TypeVar("T5") is an error
                 if not isinstance(target, uni.Name) {
-                    self.log_error(
-                        f'TypeVar "{right_type.name}" must be assigned to a simple variable, '
-                        f'not an index or member expression',
-                        target
-                    );
+                    self.emit(E1060, node_override=target, name=right_type.name);
                 } else {
                     # Validation 2: TypeVar name must match the variable name
                     # e.g., T2 = TypeVar("T3") is an error
                     name_target: uni.Name = target;
                     if name_target.value != right_type.name {
-                        self.log_error(
-                            f'TypeVar name "{right_type.name}" must match the assigned variable name "{name_target.value}"',
-                            name_target
+                        self.emit(
+                            E1061,
+                            node_override=name_target,
+                            name=right_type.name,
+                            var=name_target.value
                         );
                     }
                 }
@@ -221,26 +220,29 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                         left_type.bound, op_name, [nd.value], nd
                     );
                     if result is None {
-                        self.log_error(
-                            f'Operator "{nd.aug_op.name}" not supported for type "{left_type.bound}"',
-                            nd
+                        self.emit(
+                            E1010,
+                            node_override=nd,
+                            op=nd.aug_op.name,
+                            type=str(left_type.bound)
                         );
                     }
                 } else {
-                    self.log_error(
-                        f'Operator "{nd.aug_op.name}" not supported for type "{left_type.bound}"',
-                        nd
+                    self.emit(
+                        E1010,
+                        node_override=nd,
+                        op=nd.aug_op.name,
+                        type=str(left_type.bound)
                     );
                 }
             } else {
                 # Unbounded TypeVar
-                self.log_error(
-                    f'Operator "{nd.aug_op.name}" not supported for type "{left_type.name}"',
-                    nd
+                self.emit(
+                    E1010, node_override=nd, op=nd.aug_op.name, type=left_type.name
                 );
             }
         } elif not self.evaluator.assign_type(right_type, left_type) {
-            self.log_error(f"Cannot assign {right_type} to {left_type}");
+            self.emit(E1001, actual=str(right_type), expected=str(left_type));
         }
         # Validate augmented assignment operator (+=, -=, etc.)
         if nd.aug_op is not None {
@@ -291,10 +293,12 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                             }
                         }
                         if result is None {
-                            self.log_error(
-                                f"Unsupported operand types for {nd.aug_op.value}: "
-                                f"{left_type} and {right_type}",
-                                nd
+                            self.emit(
+                                E1011,
+                                node_override=nd,
+                                op=nd.aug_op.value,
+                                left=str(left_type),
+                                right=str(right_type)
                             );
                         }
                     }
@@ -385,10 +389,11 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
             );
             if not self.evaluator.assign_type(none_type, ret_inst) {
                 if not self._body_always_returns(nd.body) {
-                    self.log_error(
-                        f"Function '{nd.name_spec.sym_name}' declared return type "
-                        f"{ret_type} but may implicitly return None",
-                        nd
+                    self.emit(
+                        E1004,
+                        node_override=nd,
+                        name=nd.name_spec.sym_name,
+                        ret_type=str(ret_type)
                     );
                 }
             }
@@ -529,21 +534,10 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
     self.ir_in.parent_scope = self.evaluator.builtins_module;
 }
 
-"""Add a diagnostic message to the pass."""
-impl TypeCheckPass._add_diagnostic(
-    self: TypeCheckPass, nd: uni.UniNode, message: str, warning: bool
-) -> None {
-    if warning {
-        self.log_warning(message, nd);
-    } else {
-        self.log_error(message, nd);
-    }
-}
-
 """Initialize the checker pass."""
 impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
-    self.evaluator.diagnostic_callback = self._add_diagnostic;
+    self.evaluator._pass = self;
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
 }
@@ -564,7 +558,12 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         if nd.value is not None and nd.type is not None {
             right_type = self.evaluator.get_type_of_expression(nd.value);
             if not self.evaluator.assign_type(right_type, nd.type) {
-                self.log_error(f"Cannot assign {right_type} to {nd.type}", nd);
+                self.emit(
+                    E1001,
+                    node_override=nd,
+                    actual=str(right_type),
+                    expected=str(nd.type)
+                );
             }
         }
     }
@@ -590,11 +589,11 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
                 collection_type.bound, "__iter__", [], nd.collection
             );
             if iter_result is None {
-                self.log_error(f'Type "{collection_type.bound}" is not iterable', nd);
+                self.emit(E1021, node_override=nd, type=str(collection_type.bound));
             }
         } else {
             # Unbounded TypeVar - not iterable
-            self.log_error(f'Type "{collection_type.name}" is not iterable', nd);
+            self.emit(E1021, node_override=nd, type=collection_type.name);
         }
         # Skip check for UnknownType and any-like types (Any, object)
         # Following Pyright's pattern: these types are assumed to be iterable.
@@ -611,9 +610,7 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
                 collection_type, "__iter__", [], nd.collection
             );
             if iter_result is None {
-                self.log_error(
-                    f"Type {collection_type} is not iterable (no __iter__ method)", nd
-                );
+                self.emit(E1022, node_override=nd, type=str(collection_type));
             }
         }
     }
@@ -635,9 +632,7 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
                 }
             }
             if not is_exception {
-                self.log_error(
-                    f"Cannot raise {cause_type} (not an exception type)", nd
-                );
+                self.emit(E1090, node_override=nd, type=str(cause_type));
             }
         }
     }
@@ -670,11 +665,7 @@ impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None
                 expr_type, "__enter__", [], ctx_item.expr
             );
             if enter_result is None {
-                self.log_error(
-                    f"Type {expr_type} cannot be used in 'with' statement "
-                    f"(no __enter__ method)",
-                    nd
-                );
+                self.emit(E1091, node_override=nd, type=str(expr_type));
             }
             # Check __exit__ method exists (required for context manager protocol).
             # Use direct member lookup instead of magic method call because
@@ -691,11 +682,7 @@ impl TypeCheckPass.exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None
                     ) is not None
                 );
                 if not has_exit and not expr_type.is_any_type() {
-                    self.log_error(
-                        f"Type {expr_type} cannot be used in 'with' statement "
-                        f"(no __exit__ method)",
-                        nd
-                    );
+                    self.emit(E1092, node_override=nd, type=str(expr_type));
                 }
             }
         }
@@ -735,9 +722,11 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
                 if not nd.with_from {
                     # Regular yield: check yielded value against declared return type
                     if not self.evaluator.assign_type(yielded_type, return_type) {
-                        self.log_error(
-                            f"Cannot yield {yielded_type}, expected {fn_type.return_type}",
-                            nd
+                        self.emit(
+                            E1093,
+                            node_override=nd,
+                            actual=str(yielded_type),
+                            expected=str(fn_type.return_type)
                         );
                     }
                 }
@@ -782,7 +771,7 @@ impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> No
             is_valid = True;  # Could contain nodes, don't over-diagnose
         }
         if not is_valid {
-            self.log_error(f"Visit target must be a node type, got {target_type}", nd);
+            self.emit(E1094, node_override=nd, type=str(target_type));
         }
     }
 }
@@ -841,10 +830,8 @@ impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, nd: uni.ImplDef) -> None {
     # Report missing assignments
     for (field_name, field_node) in deferred_fields.items() {
         if field_name not in assigned {
-            self.log_error(
-                f"Field '{field_name}' declared 'by postinit' is never assigned "
-                f"in {arch.name_spec.sym_name}.postinit",
-                nd
+            self.emit(
+                E1095, node_override=nd, field=field_name, arch=arch.name_spec.sym_name
             );
         }
     }

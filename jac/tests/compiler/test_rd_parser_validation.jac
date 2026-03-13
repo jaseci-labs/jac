@@ -25,8 +25,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
         import from jaclang.jac0core.parser.parser { parse }
-        (module, parse_errors, lex_errors) = parse(source, file_path);
-        if lex_errors or parse_errors {
+        (module, had_error) = parse(source, file_path);
+        if had_error {
             return None;
         }
         return module;
@@ -198,7 +198,9 @@ glob GAP_FILES = [
          "enum_empty_body": "enum Color { }",
          "walrus_complex_lhs": "with entry { (a + b) := 5; }",
          "walrus_call_lhs": "with entry { foo() := 5; }",
-         "walrus_subscript_lhs": "with entry { a[0] := 5; }"
+         "walrus_subscript_lhs": "with entry { a[0] := 5; }",
+         "assign_to_root": 'with entry { root = "s"; }',
+         "assign_to_super": "with entry { super = 1; }"
      };
 
 """Parse and run ASTValidationPass, returning True if errors were found."""

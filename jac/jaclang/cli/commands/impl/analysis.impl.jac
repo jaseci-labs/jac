@@ -165,6 +165,17 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                 err_count = len(prog.errors_had) or 1;
                 return (False, err_count, err_count);
             }
+            # Block on comment displacement errors (formatter bug)
+            has_format_error = any(
+                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
+            );
+            if has_format_error {
+                for error in prog.errors_had {
+                    console.error(f"{error}");
+                }
+                err_count = len(prog.errors_had);
+                return (False, err_count, err_count);
+            }
             # Count fixed warnings and unfixable errors
             fixed_count = 0;
             unfixable_count = 0;
@@ -275,11 +286,18 @@ impl format(
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
-            if prog.errors_had and not lintfix {
-                for error in prog.errors_had {
-                    console.error(f"{error}");
+            if prog.errors_had {
+                # Always block on comment displacement errors (formatter bug)
+                has_format_error = any(
+                    e.code is not None and e.code.code == "E5051"
+                    for e in prog.errors_had
+                );
+                if has_format_error or not lintfix {
+                    for error in prog.errors_had {
+                        console.error(f"{error}");
+                    }
+                    return (False, False, 0);
                 }
-                return (False, False, 0);
             }
             try {
                 formatted_code = prog.mod.main.gen.jac;
