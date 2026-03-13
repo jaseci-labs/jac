@@ -451,7 +451,7 @@ test "run specific test only" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.test(fixture_path("jactest_main.jac"), test_name="from_2_to_10");
+        analysis.test(fixture_path("jactest_main.jac"), test_name="from 2 to 10");
         stdout = captured.getvalue();
         stderr = captured_stderr.getvalue();
     } finally {

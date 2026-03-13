@@ -1260,7 +1260,7 @@ impl JacBasics.run_test(
                     JacTestCheck.reset();
                     JacRuntimeInterface.jac_import(target=file[:-4], base_path=root_dir);
                     JacTestCheck.run_test(
-                        xit, maxfail, verbose, os.path.abspath(file), func_name
+                        xit, maxfail, verbose, os.path.abspath(os.path.join(root_dir, file)), func_name
                     );
                 }
                 if (JacTestCheck.breaker and (xit or maxfail)) {
