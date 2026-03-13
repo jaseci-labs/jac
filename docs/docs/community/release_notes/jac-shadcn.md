@@ -2,7 +2,30 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of jac-shadcn. See also [Breaking Changes](../breaking-changes.md).
 
-## jac-shadcn 0.1.0 (Latest Release)
+## jac-shadcn 0.1.1 (Latest Release)
+
+### Features
+
+- **`--init` for Existing Projects**: Initialize jac-shadcn theming in an existing Jac project using a URL with query parameters — same customization experience as `jac create`
+  - `jac add --shadcn --init 'https://jac-shadcn.jaseci.org/theme?style=nova&baseColor=neutral&theme=orange&font=figtree'`
+  - Sets up `global.css`, `lib/utils.cl.jac`, `[jac-shadcn]` config, npm deps, dev deps, and Vite/Tailwind plugin config
+  - Installs all default components automatically — matching parity with `jac create`
+- **Registry `/theme` Endpoint**: New GET endpoint returns theme config, global CSS, npm dependencies, and default component list for the `--init` workflow
+- **"Copy Init Command" on Registry Website**: New button in the customizer modal lets users copy the `--init` CLI command directly from [jac-shadcn.jaseci.org](https://jac-shadcn.jaseci.org)
+
+### Bug Fixes
+
+- **TOML Greedy Substring Matching**: Fixed `clsx` matching `clsx-utils` and `tailwindcss` matching `@tailwindcss/vite` — now uses exact key matching via `_dep_exists_in_toml()`
+- **TOML Key Quoting**: Keys with special characters (`@`, `/`, `-`, `.`) are now properly quoted in TOML output
+- **Ternary Precedence Bug**: Fixed URL construction where `x + y if cond else z` bound incorrectly as `x + (y if cond else z)`
+- **Dark Mode Radius**: Custom radius values are now applied to both light and dark mode CSS variables (previously only light mode)
+- **`global.css` Silent Overwrite**: `--init` now warns before overwriting an existing `global.css`
+- **Registry URL Injection**: Sanitized user-provided URLs to prevent TOML injection via quote characters
+- **Missing `[dependencies.npm]` Guard**: `jac add --shadcn` now creates the `[dependencies.npm]` section if it doesn't exist before patching
+
+---
+
+## jac-shadcn 0.1.0
 
 Initial release of jac-shadcn, a Jac CLI plugin for managing [shadcn/ui](https://ui.shadcn.com)-style components in Jac projects.
 
