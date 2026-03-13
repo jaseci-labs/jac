@@ -59,25 +59,25 @@ impl TypeVarType.__str__ -> str {
     return "<TypeVar>";
 }
 
-"""Return the index of the given type variable in the class type."""
-impl FunctionType._index_of_type_param(
-    class_type: ClassType, type_var: TypeVarType
-) -> int {
-    for (idx, type_param) in enumerate(class_type.shared.type_params) {
-        # Compare by name instead of identity (Pyright uses scopeId + name)
-        if type_param.name and type_var.name and type_param.name == type_var.name {
-            return idx;
-        }
-        # Fallback to identity check for backwards compatibility
-        if type_param is type_var {
-            return idx;
+"""Specialize the function type based on the given class type. (Pyright: applySolvedTypeVars)
+
+Uses the unified apply_solved_type_vars from type_utils.
+"""
+impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
+    # Local import to avoid circular dependency at module load time
+    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
+
+    # Build solution from class type_args (Pyright: ConstraintSolution)
+    solution: dict[str, TypeBase] = {};
+    if class_type.shared.type_params and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                solution[tp.name] = class_type.private.type_args[idx];
+            }
         }
     }
-    return -1;
-}
 
-"""Specialize the function type based on the given class type."""
-impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
+    # Use unified apply_solved_type_vars (handles TypeVar, Self, nested types)
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
@@ -93,32 +93,23 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
             ) for param in self.parameters
         ]
     );
+
+    # Specialize parameter types
     for param in clone.parameters {
-        if (not param.param_type or not isinstance(param.param_type, TypeVarType)) {
-            continue;
-        }
-        idx = self._index_of_type_param(class_type, param.param_type);
-        if ((idx != -1) and (idx < len(class_type.private.type_args))) {
-            ty = class_type.private.type_args[idx];
-            ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
-            param.param_type = ty;
-        } elif idx != -1 {
-            # TypeVar found in class type params but no matching type_arg
-            # (bare generic like list without [int]). Degrade to Unknown.
-            param.param_type = UnknownType();
+        if param.param_type {
+            param.param_type = apply_solved_type_vars(
+                param.param_type, solution, class_type
+            );
         }
     }
-    if (clone.return_type and isinstance(clone.return_type, TypeVarType)) {
-        idx = self._index_of_type_param(class_type, clone.return_type);
-        if ((idx != -1) and (idx < len(class_type.private.type_args))) {
-            ty = class_type.private.type_args[idx];
-            ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
-            clone.return_type = ty;
-        } elif idx != -1 {
-            # TypeVar found but unresolved — degrade to Unknown.
-            clone.return_type = UnknownType();
-        }
+
+    # Specialize return type
+    if clone.return_type {
+        clone.return_type = apply_solved_type_vars(
+            clone.return_type, solution, class_type
+        );
     }
+
     return clone;
 }
 

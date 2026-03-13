@@ -42,12 +42,30 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
-"""Get symbol table."""
+"""Get symbol table.
+
+For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
+We skip unlinked scopes and return the first linked scope (or Module root).
+"""
 @property
 impl UniNode.sym_tab -> UniScopeNode {
-    return self
-        if isinstance(self, UniScopeNode)
-        else self.parent_of_type(UniScopeNode);
+    nd: (UniNode | None) = self;
+    # TODO: Refactor this wile doing JS symtab
+    while nd is not None {
+        if isinstance(nd, UniScopeNode) {
+            # Module is always valid (root scope)
+            if isinstance(nd, Module) {
+                return nd;
+            }
+            # Linked scope (has parent_scope set)
+            if nd.parent_scope is not None {
+                return nd;
+            }
+            # Unlinked scope - continue up
+        }
+        nd = nd.parent;
+    }
+    raise ValueError("No scope found");
 }
 
 """Add kid left."""

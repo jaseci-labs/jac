@@ -478,17 +478,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             }
                         }
                         overloaded_ty: types.OverloadedType | None = None;
-                        member_ty = self.get_type_of_symbol(member.symbol);
+                        # Use get_type_of_member to properly specialize TypeVars (Pyright pattern)
+                        member_ty = self.get_type_of_member(member, base_type);
+
                         if isinstance(member_ty, types.FunctionType) {
-                            member_ty = member_ty.specialize(base_type);
                             overloaded_fns: list[types.FunctionType] = [member_ty];
                             for overload in member.overloads {
-                                overload_member_ty = self.get_type_of_symbol(overload);
-                                if isinstance(overload_member_ty, types.FunctionType) {
-                                    overload_member_ty = overload_member_ty.specialize(
-                                        base_type
-                                    );
-                                    overloaded_fns.append(overload_member_ty);
+                                overload_ty = self.specialize_member_type(
+                                    self.get_type_of_symbol(overload), base_type
+                                );
+                                if isinstance(overload_ty, types.FunctionType) {
+                                    overloaded_fns.append(overload_ty);
                                 }
                             }
                             if len(overloaded_fns) > 1 {
@@ -1164,14 +1164,17 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # Check for function overloads
                     symbol_type = self.get_type_of_symbol(symbol);
-                    # --- Handle special forms from typing module ---
-                    # When a Name refers to a special form (e.g., Callable), return
-                    # the prefetched type which has alias_name set. This avoids creating
-                    # new ClassType instances for every usage.
-                    # Similar to Pyright's classType.priv.aliasName pattern.
+                    # Pyright: handleTypingStubTypeAnnotation / createSpecializedClassType
+                    # When a Name refers to a special form (e.g., Callable, Self), check if
+                    # the symbol's type is _SpecialForm and switch on the name.
+                    # For Self, returns TypeVarType("Self") directly.
                     if special_form := self._get_special_form_type(
                         symbol.sym_name, symbol_type
                     ) {
+                        # For TypeVarType (Self), return immediately
+                        if isinstance(special_form, types.TypeVarType) {
+                            return special_form;
+                        }
                         symbol_type = special_form;
                     }
                     # Use CFG-based narrowing for flow-sensitive type.
@@ -1343,23 +1346,32 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     collection_type = self.get_type_of_expression(
                         unpack_assignment.collection
                     );
-                    # Get the iterator's element type (similar to Pyright's getTypeOfIterator)
+                    # Get the iterator type from __iter__
                     iter_type = self.get_type_of_magic_method_call(
                         collection_type, "__iter__", [], unpack_assignment
                     );
                     elem_type: types.TypeBase | None = None;
-                    if isinstance(iter_type, types.ClassType)
-                    and len(iter_type.private.type_args) == 1 {
-                        elem_type = iter_type.private.type_args[0];
-                        # If element type is a TypeVar, specialize it using collection's type_args
-                        if isinstance(elem_type, types.TypeVarType)
-                        and isinstance(collection_type, types.ClassType)
-                        and collection_type.private.type_args {
-                            specialized = iter_type.specialize_generics(
-                                collection_type.private.type_args
-                            );
-                            if len(specialized.private.type_args) == 1 {
-                                elem_type = specialized.private.type_args[0];
+                    if isinstance(iter_type, types.ClassType) {
+                        # Get element type from __next__ - this gives the actual iteration element
+                        # For enumerate[Item], __next__ returns tuple[int, Item]
+                        next_type = self.get_type_of_magic_method_call(
+                            iter_type, "__next__", [], unpack_assignment
+                        );
+                        if next_type and not isinstance(next_type, types.UnknownType) {
+                            elem_type = self._convert_to_instance(next_type);
+                        } elif len(iter_type.private.type_args) == 1 {
+                            # Fallback: try to extract from type_args
+                            elem_type = iter_type.private.type_args[0];
+                            # If element type is a TypeVar, specialize it using collection's type_args
+                            if isinstance(elem_type, types.TypeVarType)
+                            and isinstance(collection_type, types.ClassType)
+                            and collection_type.private.type_args {
+                                specialized = iter_type.specialize_generics(
+                                    collection_type.private.type_args
+                                );
+                                if len(specialized.private.type_args) == 1 {
+                                    elem_type = specialized.private.type_args[0];
+                                }
                             }
                         }
                     }
@@ -1489,6 +1501,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     collection_type, "__iter__", [], node_.parent,
                 );
                 if isinstance(iter_type, types.ClassType) {
+                    # Get element type from __next__ method on the iterator.
+                    # This handles enumerate, zip, etc. where __next__ returns
+                    # complex types like tuple[int, _T].
+                    next_type = self.get_type_of_magic_method_call(
+                        iter_type, "__next__", [], node_.parent
+                    );
+                    if next_type and not isinstance(next_type, types.UnknownType) {
+                        result_type = self._convert_to_instance(next_type);
+                        node_.type = result_type;
+                        return result_type;
+                    }
+
+                    # Fallback: try to extract from type_args if __next__ didn't work
                     if len(iter_type.private.type_args) == 1 {
                         elem_type = iter_type.private.type_args[0];
                         # If element type is already concrete (e.g. Iterator[int]

@@ -1989,3 +1989,56 @@ test "final_union_type_no_crash" {
     # Should complete without crashing - no errors expected
     assert len(program.errors_had) == 0;
 }
+
+# =============================================================================
+# Generic Type Inference Tests (Pyright-style)
+# =============================================================================
+"""Test enumerate() correctly infers element types from the iterable."""
+test "enumerate_type_inference" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_enumerate_type.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 2 errors: assigning int to str, and Item to int
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, got {len(
+        program.errors_had
+    )}";
+
+    # Verify the specific errors
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class int> to <class str>" in errors_str , "Expected error for idx: int assigned to str";
+    assert "Cannot assign <class Item> to <class int>" in errors_str , "Expected error for item: Item assigned to int";
+}
+
+"""Test generic class constructor infers type parameters from arguments."""
+test "generic_call_inference" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_generic_call_inference.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 2 errors: Item to str, and Item to int
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, got {len(
+        program.errors_had
+    )}";
+
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class Item> to <class str>" in errors_str , "Expected error for x: Item assigned to str";
+    assert "Cannot assign <class Item> to <class int>" in errors_str , "Expected error for result: Item assigned to int";
+}
+
+"""Test Self type resolution in method return types."""
+test "self_type_resolution" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_gap_self_type.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Should have 3 errors for enumerate, list, and dict Self returns
+    assert len(program.errors_had) == 3 , f"Expected 3 type errors, got {len(
+        program.errors_had
+    )}";
+
+    errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
+    assert "Cannot assign <class enumerate> to <class int>" in errors_str , "Expected error for enumerate.__iter__() Self return";
+    assert "Cannot assign <class list> to <class int>" in errors_str , "Expected error for list.copy() Self return";
+    assert "Cannot assign <class dict> to <class str>" in errors_str , "Expected error for dict.copy() Self return";
+}

@@ -21,6 +21,8 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { SymbolAccess, Tokens }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
+import from jaclang.jac0core.helpers { evaluate_version_condition }
+
 """Jac Symbol table build pass."""
 class SymTabBuildPass(UniPass) {
     """Before pass."""
