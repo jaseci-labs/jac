@@ -238,7 +238,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             is_covariant=is_covariant,
             is_contravariant=is_contravariant,
             bound=bound_type,
-            constraints=constraint_types if constraint_types else None
+            constraints=constraint_types or None
         );
     }
     if (
