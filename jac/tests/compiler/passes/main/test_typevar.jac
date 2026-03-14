@@ -132,3 +132,32 @@ test "typevar6_bounded_operations" {
     assert 'is not iterable' in all_errors , "Expected iteration error for for _ in a";
     assert 'Cannot access attribute "do_other_stuff"' in all_errors , "Expected error for a.do_other_stuff() on Foo-bounded T1";
 }
+
+"""Test constrained TypeVar operation validation."""
+test "typevar7_constrained_operations" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Key TypeVar-related errors to verify (constraints check each type)
+    # Attribute access - Foo doesn't have var2
+    assert 'Cannot access attribute "var2" for type "<class Foo>"' in all_errors , "Expected attribute error for a.var2 (Foo has no var2)";
+
+    # Subscript - neither Foo nor Bar is subscriptable
+    assert 'is not subscriptable' in all_errors , "Expected subscript error for a[0]";
+
+    # Unary operator - neither Foo nor Bar supports __neg__
+    assert '__neg__' in all_errors and 'not supported' in all_errors , "Expected unary op error for -a";
+
+    # Await - neither Foo nor Bar is awaitable
+    assert 'is not awaitable' in all_errors , "Expected await error for await a";
+
+    # Iteration - neither Foo nor Bar is iterable
+    assert 'is not iterable' in all_errors , "Expected iteration error for for _ in a";
+
+    # Method access - Foo doesn't have do_other_stuff
+    assert 'Cannot access attribute "do_other_stuff" for type "<class Foo>"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
+}

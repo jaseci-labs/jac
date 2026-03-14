@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.2 (Unreleased)
 
+- **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types. Attribute access, calls, subscripts, binary/unary ops, augmented assignment, `await`, and iteration are checked for each constraint - so `a.var1` is ok if both `Foo` and `Bar` have `var1`, but `a.var2` errors if `Foo` lacks `var2`. One diagnostic is emitted per failing constraint type for precise feedback.
 - **Fix: Generic Iterator Type Inference**: `enumerate`, `zip`, and other generic iterators now correctly infer element types from their arguments. Previously, version-dependent overloads in typeshed caused type resolution to fail.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
 - 2 small refactors/changes.

@@ -137,13 +137,19 @@ obj ModuleType(TypeBase) {
     def __str__ -> str;
 }
 
-"""Represents a type variable."""
+"""Represents a type variable.
+
+TypeVarType supports two mutually exclusive constraint modes:
+1. bound - TypeVar("T", bound=Foo) means T can be Foo or any subclass
+2. constraints - TypeVar("T", Foo, Bar) means T must be exactly Foo or Bar
+"""
 obj TypeVarType(TypeBase) {
     has name: str = "",
         is_covariant: bool = False,
         is_contravariant: bool = False,
         is_self: bool = False,
-        bound: (TypeBase | None) = None;
+        bound: (TypeBase | None) = None,
+        constraints: (list[TypeBase] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
