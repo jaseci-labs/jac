@@ -142,7 +142,8 @@ import from jaclang.jac0core.diagnostics {
     E0045,
     E0046,
     E0047,
-    W0060
+    W0060,
+    W0061
 }
 
 impl Parser.current -> Token {
@@ -1392,6 +1393,7 @@ impl Parser.parse_atomic_chain -> Expr {
             # Check if this is filter_compr: (?...) or (?:Type, ...)
             if self.check_peek(TokenKind.NULL_OK) {
                 # Parse filter comprehension: (?val==10) or (?:Type, val==10)
+                self.emit_warn(W0061, loc=self.current().loc);
                 self.advance();  # consume LPAREN
                 filter_expr = self.parse_filter_compr_inner();
                 # Wrap in AtomTrailer
@@ -1442,6 +1444,18 @@ impl Parser.parse_atomic_chain -> Expr {
                 }
                 expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
             }
+        } elif self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
+            # Parse new bracket filter comprehension: [?val==10] or [?:Type, val==10]
+            self.advance();  # consume LSQUARE
+            filter_expr = self.parse_filter_compr_bracket();
+            kid = [expr, filter_expr];
+            expr = AtomTrailer(
+                target=expr,
+                right=filter_expr,
+                is_attr=False,
+                is_null_ok=False,
+                kid=kid
+            );
         } elif (
             self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE)
         )
@@ -1713,6 +1727,45 @@ impl Parser.parse_filter_compr_inner -> FilterCompr {
     }
     rp_uni = self.consume_uni(TokenKind.RPAREN);
     kid.append(rp_uni);
+    return FilterCompr(f_type=f_type, compares=compares, kid=kid);
+}
+
+impl Parser.parse_filter_compr_bracket -> FilterCompr {
+    # Parse bracket filter_compr after LSQUARE is consumed
+    # filter_compr: LSQUARE NULL_OK (COLON expression)? (COMMA compare)* RSQUARE
+    # Note: LSQUARE was already consumed by caller, use self.previous() for it
+    lsq_uni = self.make_uni_token(self.previous());
+    kid: list = [lsq_uni];
+    f_type = None;
+    # Consume ? (NULL_OK)
+    null_ok_uni = self.consume_uni(TokenKind.NULL_OK);
+    kid.append(null_ok_uni);
+    # Check for typed variant: [?:Type, ...]
+    if self.match_tok(TokenKind.COLON) {
+        kid.append(self.make_uni_token(self.previous()));
+        f_type = self.parse_expression();
+        kid.append(f_type);
+    }
+    # Parse filter_compare_list (separated by commas)
+    compares: list = [];
+    # After f_type, consume comma separator before comparisons
+    if f_type and self.match_tok(TokenKind.COMMA) {
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if not self.check(TokenKind.RSQUARE) {
+        # Parse comparison: expr cmp_op expr
+        comp = self.parse_compare();
+        compares.append(comp);
+        kid.append(comp);
+        while self.match_tok(TokenKind.COMMA) {
+            kid.append(self.make_uni_token(self.previous()));
+            comp = self.parse_compare();
+            compares.append(comp);
+            kid.append(comp);
+        }
+    }
+    rsq_uni = self.consume_uni(TokenKind.RSQUARE);
+    kid.append(rsq_uni);
     return FilterCompr(f_type=f_type, compares=compares, kid=kid);
 }
 
@@ -2121,10 +2174,14 @@ impl Parser.parse_paren_expr -> Expr {
 }
 
 impl Parser.parse_bracket_expr -> Expr {
-    # Consume [ then dispatch to edge_ref_chain vs list_or_compr.
+    # Consume [ then dispatch to edge_ref_chain, bracket filter, or list_or_compr.
     # Sub-parsers use self.previous() to get the [ token.
     self.expect(TokenKind.LSQUARE);
     # Dispatch based on lookahead (helper is _-prefixed, invisible to extractor).
+    if self.check(TokenKind.NULL_OK) {
+        # Bracket filter comprehension: [?val==10] or [?:Type, val==10]
+        return self.parse_filter_compr_bracket();
+    }
     if self._is_edge_ref_start() {
         return self.parse_edge_ref_chain();
     }
@@ -2456,6 +2513,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
             kid.append(edge_op_ref);
         }
         # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
+        # Note: (?:...) inside edge ref chain is NOT deprecated (brackets can't nest here)
         if self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
                 self.advance();
@@ -2522,9 +2580,17 @@ impl Parser.parse_edge_ref_chain -> Expr {
             chain.append(edge_op_ref);
             kid.append(edge_op_ref);
         }
-        # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
-        if self.check(TokenKind.LPAREN) {
+        # Check for bracket filter after edge operator: -->[?:A] or -->[?val==5]
+        if self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
+            self.advance();  # consume [
+            filter_expr = self.parse_filter_compr_bracket();
+            chain.append(filter_expr);
+            kid.append(filter_expr);
+        }
+        # Check for deprecated paren filter: -->(?:A) or -->(?val==5)
+        elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
+                self.emit_warn(W0061, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);

@@ -528,6 +528,69 @@ test "decorated test blocks" {
     assert not t.decorators;
 }
 
+test "bracket filter after edge ref" {
+    (mod, err) = rd_parse('walker W { can go with entry { visit [-->][?:Foo]; } }', "");
+    assert not err , "Failed to parse [-->][?:Foo]";
+}
+
+test "bracket filter with conditions" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { visit [-->][?:Foo, bar==5]; } }', ""
+    );
+    assert not err , "Failed to parse [-->][?:Foo, bar==5]";
+}
+
+test "bracket filter no type" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { visit [-->][?bar==5]; } }', ""
+    );
+    assert not err , "Failed to parse [-->][?bar==5]";
+}
+
+test "chained bracket filters" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { x = [root-->][?:Foo][?val==10]; } }', ""
+    );
+    assert not err , "Failed to parse chained bracket filters";
+}
+
+test "standalone bracket filter expr" {
+    (mod, err) = rd_parse('with entry { x = [?:Foo, a<3]; }', "");
+    assert not err , "Failed to parse standalone [?:Foo, a<3]";
+}
+
+test "bracket vs paren filter produce same AST" {
+    (mod_old, _) = rd_parse('with entry { x(?:Foo, a==5); }', "");
+    (mod_new, _) = rd_parse('with entry { x[?:Foo, a==5]; }', "");
+    # Find FilterCompr nodes in both trees
+    def find_fc(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) {
+            return nd;
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_fc(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    old_fc = find_fc(mod_old);
+    new_fc = find_fc(mod_new);
+    assert old_fc is not None , "Old syntax should produce FilterCompr";
+    assert new_fc is not None , "New syntax should produce FilterCompr";
+    assert len(old_fc.compares) == len(new_fc.compares) , "Both syntaxes should have same number of compares";
+}
+
+test "bracket filter on list" {
+    (mod, err) = rd_parse('with entry { print(my_list[?:MyObj, a<4]); }', "");
+    assert not err , "Failed to parse list bracket filter";
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
