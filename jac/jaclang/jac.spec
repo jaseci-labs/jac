@@ -97,7 +97,6 @@ call_arg ::=
     | expression comprehension_clauses?
 
 filter_compr_inner ::= "?" (":" expression)? ","? (compare ("," compare)*)? ")"
-    # DEPRECATED: Use filter_compr_bracket instead
 
 filter_compr_bracket ::= "?" (":" expression)? ","? (compare ("," compare)*)? "]"
 
@@ -174,7 +173,8 @@ edge_ref_chain ::=
         atomic_chain
     )? (
         edge_op_ref (
-            "(" (filter_compr_inner | expression ")")
+            "[" filter_compr_bracket
+            | "(" (filter_compr_inner | expression ")")
             | (NAME | KWESC_NAME | "self" | "root" | "here" | "super") atomic_chain
         )?
     )* "]"
