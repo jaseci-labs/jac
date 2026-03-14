@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.2 (Unreleased)
+## jaclang 0.12.3 (Unreleased)
+
+## jaclang 0.12.2 (Latest Release)
 
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.
 - **Fix: Generic Iterator Type Inference**: `enumerate`, `zip`, and other generic iterators now correctly infer element types from their arguments. Previously, version-dependent overloads in typeshed caused type resolution to fail.
@@ -17,7 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Layout Pass Warnings Report Correct Source Locations**: Layout-compatibility warnings (W5031, W5032) now point to the actual field declaration instead of line 1 of the file. The `_validate_obj_fields` method was not passing the field AST node to `emit`, causing it to fall back to the module root location.
 - **24 New Diagnostic Checks Across 3 Passes**: Added 24 new compiler diagnostics covering context validity, semantic analysis, and lint patterns. **ASTValidationPass** (7 checks): yield outside function (E0055), break/continue outside loop (E0058), nonlocal at module level (E0062), duplicate keyword argument (E0065), positional after keyword argument (E0066), bare except not last (E0071), duplicate base class (E0075). **StaticAnalysisPass** (8 checks): division by zero (W2070), None comparison with `==`/`!=` (W2058), self-assignment (W2063), f-string without placeholders (W2074), redundant boolean comparison (W2075), overly broad except (W2052), return in finally (E2055), disengage outside walker (E2083). **JacAutoLintPass** (9 checks): unnecessary pass (W3020), unnecessary else after return (W3021), nested if-to-elif (W3022), return-bool simplification (W3023), repeated condition (W3024), identical branches (W3025), too many parameters (W3030), `is` with literal (W3035), mutable default argument (W3036).
 
-## jaclang 0.12.1 (Latest Release)
+## jaclang 0.12.1
 
 - **Automatic Jac Import Hook via `.pth` File**: Installing jaclang now automatically registers a lightweight lazy import finder at Python startup via a `.pth` file. This means `.jac` modules can be imported from Python without needing `import jaclang` first. Jac imports Just Work. The lazy finder adds ~0.1ms to non-Jac Python startup and only triggers the full jaclang bootstrap on first `.jac` import.
 - **Fix: TOML Serializer Preserves Special Chars and Env Vars**: Fixed two bugs in the `jac.toml` serializer triggered when programmatically saving config changes: (1) Table headers containing special characters (e.g., `[plugins.client.npm.auth."//npm.pkg.github.com/"]`) now retain proper quoting instead of being written unquoted, and (2) Environment variable placeholders like `${NODE_AUTH_TOKEN}` are preserved as-is instead of being interpolated to their runtime values. Previously, these bugs would corrupt `jac.toml` files when dependencies were auto-updated.
