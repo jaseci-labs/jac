@@ -1262,9 +1262,8 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             if node_.type_tag {
                 annotation_type = self.get_type_of_expression(node_.type_tag.tag);
                 if node_.is_vararg {
-                    # FIXME: *args are actually a tuple, not a list. But tuples are
-                    # complicated to handle, so we'll use list for now. Will revisit this later.
-                    param_type = self.prefetch.list_class.clone_as_instance();
+                    # *args: T is typed as tuple[T, ...] (homogeneous variadic tuple)
+                    param_type = self.prefetch.tuple_class.clone_as_instance();
                     param_type.private.type_args = [annotation_type];
                     return param_type;
                 } elif node_.is_kwargs {

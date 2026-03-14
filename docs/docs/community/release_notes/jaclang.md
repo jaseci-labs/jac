@@ -6,7 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Fix: Generic Iterator Type Inference**: `enumerate`, `zip`, and other generic iterators now correctly infer element types from their arguments. Previously, version-dependent overloads in typeshed caused type resolution to fail.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
-- 2 small refactors/changes.
+- 3 small refactors/changes.
 - **Fix: Formatter Comment Displacement in Multi-Assignment Globals**: Fixed a bug where `jac format` would displace comments inside multi-assignment `glob` declarations to the end of the file. The `CommentInjectionPass` now handles `GlobalVars` nodes (which use `Align` layout) alongside `ArchHas` nodes. Added safety error E5051 that blocks saving when comment displacement is detected.
 - **Fix: `jac test` Robustness and `--test_name` Space Support**: `jac test myfile.jac --test_name "my test name"` previously ran 0 tests silently. It now works the same as `--test_name my_test_name`. Also improved error messages when the file is missing or `--test_name` is used without a filepath.
 - **Inline Diagnostic Suppression**: Added `# jac:ignore[CODE]` syntax to suppress specific diagnostics on individual lines, giving developers fine-grained control over which warnings and errors to silence.
