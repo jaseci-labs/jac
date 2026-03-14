@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.7 (Unreleased)
 
+- **Client-Side Error Reporting**: Added `__jacReportError` and `__jacInstallErrorHandlers` to the client runtime. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization to automatically capture unhandled JS errors and forward them to the server via `POST /cl/__error__`. The `ErrorBoundary` fallback component also reports caught errors. Entry file generation (`ViteCompiler`) now imports and calls `__jacInstallErrorHandlers()` on startup for both explicit and pages-based routing modes.
+
 ## jac-client 0.3.6 (Latest Release)
 
 - **Fix: Desktop Target Asset Loading**: Fixed an issue where images and other static assets referenced with `/static/assets/` URLs were not loading in desktop (Tauri) builds. Assets are now correctly copied from `compiled/assets/` to `dist/static/assets/` during the build process, ensuring they are available when Tauri serves the frontend bundle. This fix applies to both `jac build --client desktop` and `jac start --client desktop` commands.

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Client-Side Error Reporting**: Unhandled JavaScript errors and promise rejections in Jac client apps are now automatically captured and forwarded to the server via `POST /cl/__error__`, where they are logged through both the `jaclang.client_errors` logger and the dev console. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization, and the `ErrorBoundary` fallback component also reports caught errors. Works with both the stdlib HTTP server and jac-scale (FastAPI).
+
 ## jaclang 0.12.2 (Latest Release)
 
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.

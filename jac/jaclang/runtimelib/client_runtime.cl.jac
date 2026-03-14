@@ -135,3 +135,13 @@ def __jacRegisterClientModule(
 def useState(initialValue: Any) -> list;
 
 def useEffect(effectFn: Any, deps: list = []) -> None;
+
+# ============================================================================
+# Client Error Reporting
+# ============================================================================
+# Report client-side errors to the server for logging
+def __jacReportError(
+    message: str, stack: str = "", url: str = "", source: str = ""
+) -> None;
+# Install global error handlers (window.onerror, unhandledrejection)
+def __jacInstallErrorHandlers -> None;
