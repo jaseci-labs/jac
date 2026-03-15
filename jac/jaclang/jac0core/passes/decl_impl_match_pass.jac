@@ -63,6 +63,11 @@ links
         self: DeclImplMatchPass, impl_def: uni.ImplDef
     ) -> None;
 
+    """Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values)."""
+    def _resolve_module_level_symbols(
+        self: DeclImplMatchPass, module: uni.Module
+    ) -> None;
+
     """Populate self-member symbols from impl body to archetype's symbol table.
 
     When an impl file contains `self.x = value` assignments in a method, these

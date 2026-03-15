@@ -144,7 +144,7 @@ test "typevar7_constrained_operations" {
 
     # Key TypeVar-related errors to verify (constraints check each type)
     # Attribute access - Foo doesn't have var2
-    assert 'Cannot access attribute "var2" for type "<class Foo>"' in all_errors , "Expected attribute error for a.var2 (Foo has no var2)";
+    assert 'Cannot access attribute "var2" for type "Foo"' in all_errors , "Expected attribute error for a.var2 (Foo has no var2)";
 
     # Subscript - neither Foo nor Bar is subscriptable
     assert 'is not subscriptable' in all_errors , "Expected subscript error for a[0]";
@@ -159,5 +159,5 @@ test "typevar7_constrained_operations" {
     assert 'is not iterable' in all_errors , "Expected iteration error for for _ in a";
 
     # Method access - Foo doesn't have do_other_stuff
-    assert 'Cannot access attribute "do_other_stuff" for type "<class Foo>"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
+    assert 'Cannot access attribute "do_other_stuff" for type "Foo"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
 }

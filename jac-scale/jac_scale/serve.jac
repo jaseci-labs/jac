@@ -34,7 +34,7 @@ import from inspect { isgenerator }
 import from fastapi.responses { StreamingResponse }
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
-import from fastapi { WebSocket, WebSocketDisconnect }
+import from fastapi { WebSocket, WebSocketDisconnect }  # jac:runtime
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.scheduler { JacScaleScheduler }

@@ -7,6 +7,40 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Version 0.12.3
+
+#### 1. Automatic `TYPE_CHECKING` Import Guards
+
+The compiler now automatically detects imports that are only used in type annotations (parameter types, return types, field types) and wraps them in `if typing.TYPE_CHECKING:` guards in the generated Python output.
+
+**Impact:** Existing `if TYPE_CHECKING { ... }` blocks in Jac source still work, but are no longer necessary. You can simplify your code by replacing them with plain imports.
+
+**Before:**
+
+```jac
+import from typing { TYPE_CHECKING }
+
+with entry {
+    if TYPE_CHECKING {
+        import from mymodule { MyClass }
+    }
+}
+
+def process(item: MyClass) -> None { ... }
+```
+
+**After:**
+
+```jac
+import from mymodule { MyClass }
+
+def process(item: MyClass) -> None { ... }
+```
+
+The compiler detects that `MyClass` is only used in type annotation positions and automatically generates the `TYPE_CHECKING` guard. If `MyClass` is also used at runtime (e.g., `MyClass()`, `isinstance(x, MyClass)`), it remains a regular import.
+
+---
+
 ### Version 0.12.2
 
 #### 1. Filter Comprehension Syntax Changed from `(?:...)` to `[?:...]`

@@ -178,7 +178,9 @@ obj TypeEvaluator {
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
-    def get_type_of_expression(node_: uni.Expr) -> TypeBase;
+    def get_type_of_expression(
+        node_: uni.Expr, expected_type: TypeBase | None = None
+    ) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
@@ -228,7 +230,9 @@ obj TypeEvaluator {
         member_type: TypeBase, class_type: types.ClassType
     ) -> TypeBase;
     # Pyright equivalent function name = getTypeOfExpressionCore();
-    def _get_type_of_expression_core(expr: uni.Expr) -> TypeBase;
+    def _get_type_of_expression_core(
+        expr: uni.Expr, expected_type: TypeBase | None = None
+    ) -> TypeBase;
     # -----------------------------------------------------------------------------
     # Helper functions
     # -----------------------------------------------------------------------------
@@ -249,6 +253,14 @@ obj TypeEvaluator {
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
+    # --- Expected type helpers for bidirectional inference ---
+    def _get_expected_element_type(
+        expected_type: TypeBase | None, container_class: TypeBase
+    ) -> TypeBase | None;
+
+    def _get_expected_kv_types(
+        expected_type: TypeBase | None, dict_class: TypeBase
+    ) -> tuple[TypeBase, TypeBase] | None;
     # --- Special form handling (Callable, Union, etc.) ---
     # Returns the prefetched special form type if the name AND type match.
     # Verifies both name and that type is _SpecialForm to avoid conflicts
@@ -316,10 +328,6 @@ obj TypeEvaluator {
     def assign_type_to_type_var(
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
     ) -> None;
-
-    def _get_type_args_for_base(
-        arg_type: types.ClassType, param_type: types.ClassType
-    ) -> list[TypeBase];
 
     def infer_type_args(
         caller_type: types.ClassType, expr: uni.FuncCall

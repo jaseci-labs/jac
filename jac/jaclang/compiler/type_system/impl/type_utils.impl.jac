@@ -508,6 +508,137 @@ impl apply_solved_type_vars(
     return ty;
 }
 
+"""
+Resolve the concrete type args that src supplies to target_base through the MRO.
+
+Walks the inheritance chain, accumulating TypeVar bindings through intermediate
+classes so that multi-level generic inheritance is properly resolved.
+"""
+impl resolve_type_args_for_base(
+    src: types.ClassType, target_base: types.ClassType
+) -> list[types.TypeBase] {
+    # Direct match: same class, return its type_args directly
+    if src.shared == target_base.shared {
+        return src.private.type_args if src.private else [];
+    }
+
+    # Quick check: is target_base even in src's MRO?
+    found_in_mro = False;
+    for mro_cls in src.shared.mro {
+        if mro_cls.shared == target_base.shared {
+            found_in_mro = True;
+            break;
+        }
+    }
+    if not found_in_mro {
+        return [];
+    }
+
+    # Build cumulative TypeVar solution by walking the MRO.
+    # Start with src's own type_params -> type_args mapping.
+    solution: dict[str, types.TypeBase] = {};
+    if src.shared.type_params and src.private and src.private.type_args {
+        for (idx, tp) in enumerate(src.shared.type_params) {
+            if tp.name and idx < len(src.private.type_args) {
+                solution[tp.name] = src.private.type_args[idx];
+            }
+        }
+    }
+
+    # Walk the MRO (which includes src itself as first entry).
+    # For each class in the MRO, if it has type_params and type_args,
+    # resolve the type_args using the current solution and add new bindings.
+    for mro_cls in src.shared.mro {
+        if mro_cls.shared.type_params
+        and mro_cls.private
+        and mro_cls.private.type_args {
+            for (idx, tp) in enumerate(mro_cls.shared.type_params) {
+                if tp.name and idx < len(mro_cls.private.type_args) {
+                    arg = mro_cls.private.type_args[idx];
+                    # Resolve any TypeVars in this arg using accumulated solution
+                    resolved = apply_solved_type_vars(arg, solution);
+                    solution[tp.name] = resolved;
+                }
+            }
+        }
+
+        # When we reach the target base, extract its type_args with full substitution
+        if mro_cls.shared == target_base.shared {
+            if mro_cls.private and mro_cls.private.type_args {
+                return [
+                    apply_solved_type_vars(arg, solution)
+                    for arg in mro_cls.private.type_args
+                ];
+            }
+            # MRO entry has no type_args — try to resolve target's type_params
+            # from accumulated solution (handles cases like class Foo(Bar[T]))
+            if target_base.shared.type_params {
+                result: list[types.TypeBase] = [];
+                for tp in target_base.shared.type_params {
+                    if tp.name and tp.name in solution {
+                        result.append(solution[tp.name]);
+                    } else {
+                        result.append(types.UnknownType());
+                    }
+                }
+                # Only return if we resolved at least one param
+                if any(not isinstance(r, types.UnknownType) for r in result) {
+                    return result;
+                }
+            }
+            return [];
+        }
+    }
+    return [];
+}
+
+"""
+Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
+
+Walks the MRO accumulating bindings so that inherited TypeVars are resolved
+transitively. For example, if Box[int] extends Container[T] and Container[T]
+declares get() -> T, then build_type_var_solution(Box[int]) yields {U: int, T: int}.
+"""
+impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase] {
+    solution: dict[str, types.TypeBase] = {};
+
+    # Start with the class's own type_params -> type_args
+    if class_type.shared.type_params
+    and class_type.private
+    and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    }
+
+    # Walk MRO and accumulate base class TypeVar mappings.
+    # Only add NEW bindings — never overwrite a concrete binding with a TypeVar.
+    for mro_cls in class_type.shared.mro {
+        if mro_cls.shared.type_params
+        and mro_cls.private
+        and mro_cls.private.type_args {
+            for (idx, tp) in enumerate(mro_cls.shared.type_params) {
+                if tp.name and idx < len(mro_cls.private.type_args) {
+                    arg = mro_cls.private.type_args[idx];
+                    resolved = apply_solved_type_vars(arg, solution);
+                    # Only bind if the resolved value is concrete (not a TypeVar).
+                    # Never overwrite an existing concrete binding.
+                    if not isinstance(resolved, types.TypeVarType) {
+                        if tp.name not in solution
+                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            solution[tp.name] = resolved;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return solution;
+}
+
 """Helper to apply type vars to a FunctionType."""
 def _apply_to_function(
     func: types.FunctionType,

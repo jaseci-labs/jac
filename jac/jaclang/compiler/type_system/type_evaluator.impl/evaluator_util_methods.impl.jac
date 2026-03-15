@@ -157,15 +157,8 @@ Uses the unified apply_solved_type_vars from type_utils.
 impl TypeEvaluator.specialize_member_type(
     member_type: TypeBase, class_type: types.ClassType
 ) -> TypeBase {
-    # Build TypeVar name -> concrete type mapping (Pyright: ConstraintSolution)
-    solution: dict[str, TypeBase] = {};
-    if class_type.shared.type_params and class_type.private.type_args {
-        for (idx, tp) in enumerate(class_type.shared.type_params) {
-            if tp.name and idx < len(class_type.private.type_args) {
-                solution[tp.name] = class_type.private.type_args[idx];
-            }
-        }
-    }
+    # Build cumulative TypeVar solution by walking MRO (handles transitive bindings)
+    solution = type_utils.build_type_var_solution(class_type);
 
     # Use unified apply_solved_type_vars (Pyright: applySolvedTypeVars)
     return type_utils.apply_solved_type_vars(member_type, solution, class_type);
@@ -223,6 +216,57 @@ impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -
             result.append(ty);
         }
     }
+}
+
+"""Extract expected element type from an expected container type.
+
+If expected_type is a parameterized container (list[X], set[X]) matching
+the given container_class, return X. Otherwise return None.
+"""
+impl TypeEvaluator._get_expected_element_type(
+    expected_type: TypeBase | None, container_class: TypeBase
+) -> TypeBase | None {
+    if expected_type is None {
+        return None;
+    }
+    if (
+        isinstance(expected_type, types.ClassType)
+        and isinstance(container_class, types.ClassType)
+        and expected_type.shared == container_class.shared
+        and expected_type.private
+        and expected_type.private.type_args
+        and len(expected_type.private.type_args) >= 1
+    ) {
+        return self._convert_to_instance(expected_type.private.type_args[0]);
+    }
+    return None;
+}
+
+"""Extract expected key/value types from an expected dict type.
+
+If expected_type is dict[K, V] matching the given dict_class, return (K, V).
+Otherwise return None.
+"""
+impl TypeEvaluator._get_expected_kv_types(
+    expected_type: TypeBase | None, dict_class: TypeBase
+) -> tuple[TypeBase, TypeBase] | None {
+    if expected_type is None {
+        return None;
+    }
+    if (
+        isinstance(expected_type, types.ClassType)
+        and isinstance(dict_class, types.ClassType)
+        and expected_type.shared == dict_class.shared
+        and expected_type.private
+        and expected_type.private.type_args
+        and len(expected_type.private.type_args) >= 2
+    ) {
+        return (
+            self._convert_to_instance(expected_type.private.type_args[0]),
+            self._convert_to_instance(expected_type.private.type_args[1])
+        );
+    }
+    return None;
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {

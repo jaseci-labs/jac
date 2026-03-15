@@ -383,6 +383,21 @@ with entry {
 }
 ```
 
+### Type-Only Imports
+
+In Python, you often need to wrap imports in `if TYPE_CHECKING:` blocks to avoid circular imports when a type is only used in annotations. Jac handles this automatically -- just write a normal import and the compiler detects whether it's only used in type positions:
+
+```jac
+import from mymodule { MyClass }
+
+# MyClass only appears in type annotations, never instantiated here
+def process(item: MyClass) -> MyClass {
+    return item;
+}
+```
+
+The compiler automatically wraps `MyClass` in a `TYPE_CHECKING` guard in the generated Python output. If you later add runtime usage like `MyClass()`, it automatically becomes a regular import.
+
 ---
 
 ## Global Variables

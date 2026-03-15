@@ -139,3 +139,24 @@ def apply_solved_type_vars(
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None) = None
 ) -> types.TypeBase;
+
+"""
+Resolve the concrete type args that src supplies to target_base through the MRO.
+
+Walks the inheritance chain, accumulating TypeVar bindings through intermediate
+classes. For example, given:
+    class UniPass(ModuleCodegenPass) ...
+    class ModuleCodegenPass(Transform[Module, Module]) ...
+Calling resolve_type_args_for_base(UniPass_type, Transform_type) returns [Module, Module].
+"""
+def resolve_type_args_for_base(
+    src: types.ClassType, target_base: types.ClassType
+) -> list[types.TypeBase];
+
+"""
+Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
+
+Walks the MRO accumulating bindings so that inherited TypeVars are resolved
+transitively. Used by specialize_member_type and FunctionType.specialize.
+"""
+def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];

@@ -34,10 +34,8 @@ impl TypeCheckPass.exit_formatted_value(
 
 """Handle the return statement node."""
 impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
-    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
-    if nd.expr {
-        returning_type = self.evaluator.get_type_of_expression(nd.expr);
-    }
+    import from jaclang.compiler.type_system { types }
+
     if (fn := self.evaluator._get_enclosing_function(nd)) {
         # Check if return type annotation is missing.
         has_annotation = (
@@ -59,10 +57,22 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
             self.emit(E1003, node_override=nd);
             return;
         }
-        import from jaclang.compiler.type_system { types }
+
+        # Get the declared return type to pass as expected_type for bidirectional inference
         fn_type_base = self.evaluator.get_type_of_ability(fn);
         fn_type: types.FunctionType = fn_type_base;
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
+
+        returning_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_none_type()
+        );
+        if nd.expr {
+            # Pass return type as expected_type for bidirectional inference
+            returning_type = self.evaluator.get_type_of_expression(
+                nd.expr, expected_type=return_type
+            );
+        }
+
         if not self.evaluator.assign_type(returning_type, return_type) {
             self.emit(
                 E1002,
@@ -175,7 +185,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }
-        right_type = self.evaluator.get_type_of_expression(nd.value);
+        # Pass declared LHS type as expected_type for bidirectional inference
+        right_type = self.evaluator.get_type_of_expression(
+            nd.value, expected_type=left_type
+        );
 
         # Pyright: assignTypeToExpression() - TypeVar assignment validation
         # When RHS is a TypeVar() call, validate that:

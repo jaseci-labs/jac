@@ -309,6 +309,28 @@ obj Example {
 }
 ```
 
+#### Automatic `TYPE_CHECKING` Optimization
+
+The Jac compiler automatically detects imports that are **only used in type annotations** (parameter types, return types, field types) and wraps them in a `typing.TYPE_CHECKING` guard in the generated Python. This prevents circular imports and unnecessary runtime dependencies without any manual effort.
+
+```jac
+import from mymodule { MyClass }
+
+obj Example {
+    has ref: MyClass;  # MyClass only used as a type annotation
+}
+```
+
+The compiler sees that `MyClass` never appears in runtime code (no instantiation, no `isinstance` checks, etc.) and automatically generates:
+
+```python
+import typing
+if typing.TYPE_CHECKING:
+    from mymodule import MyClass
+```
+
+If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
+
 ### 3 Generic Types
 
 Jac will support generic type parameters using Python-style syntax (coming soon):

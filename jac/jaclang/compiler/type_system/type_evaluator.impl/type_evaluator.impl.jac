@@ -1,5 +1,7 @@
 """Core function to get the type of the expression."""
-impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
+impl TypeEvaluator._get_type_of_expression_core(
+    expr: uni.Expr, expected_type: TypeBase | None = None
+) -> TypeBase {
     match expr {
         # ----------------------------------------------------------------------
         # Prefetched types: These types may not have prefetched and we need to
@@ -128,8 +130,8 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         case uni.ListVal():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
-                # Infer element type from all list literal elements.
                 if isinstance(list_inst, types.ClassType) and expr.values {
+                    # Always infer element types bottom-up first.
                     elem_types: list[types.TypeBase] = [];
                     for _val in expr.values {
                         elem_type = self.get_type_of_expression(_val);
@@ -138,12 +140,41 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             elem_types.append(elem_type);
                         }
                     }
-                    if len(elem_types) == 1 {
-                        list_inst.private.type_args = [elem_types[0]];
-                    } elif len(elem_types) > 1 {
-                        list_inst.private.type_args = [
-                            types.UnionType(types=elem_types)
-                        ];
+                    # Bidirectional: if expected_type is list[X], adopt X only
+                    # when all inferred element types are assignable to X.
+                    expected_elem = self._get_expected_element_type(
+                        expected_type, self.prefetch.list_class
+                    );
+                    if expected_elem is not None and elem_types {
+                        all_compatible = True;
+                        for et in elem_types {
+                            if not self.assign_type(et, expected_elem) {
+                                all_compatible = False;
+                                break;
+                            }
+                        }
+                        if all_compatible {
+                            list_inst.private.type_args = [expected_elem];
+                        } else {
+                            # Elements don't match expected — use inferred types
+                            # so the caller can emit the real type mismatch error.
+                            if len(elem_types) == 1 {
+                                list_inst.private.type_args = [elem_types[0]];
+                            } elif len(elem_types) > 1 {
+                                list_inst.private.type_args = [
+                                    types.UnionType(types=elem_types)
+                                ];
+                            }
+                        }
+                    } else {
+                        # No expected type — use bottom-up inferred types
+                        if len(elem_types) == 1 {
+                            list_inst.private.type_args = [elem_types[0]];
+                        } elif len(elem_types) > 1 {
+                            list_inst.private.type_args = [
+                                types.UnionType(types=elem_types)
+                            ];
+                        }
                     }
                 }
                 return list_inst;
@@ -151,17 +182,170 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.DictVal():
             if self.prefetch and self.prefetch.dict_class {
-                return self._convert_to_instance(self.prefetch.dict_class);
+                dict_inst = self._convert_to_instance(self.prefetch.dict_class);
+                if isinstance(dict_inst, types.ClassType) and expr.kv_pairs {
+                    # Always infer key/value types bottom-up first.
+                    key_types: list[types.TypeBase] = [];
+                    val_types: list[types.TypeBase] = [];
+                    for _kv in expr.kv_pairs {
+                        if _kv.key {
+                            kt = self.get_type_of_expression(_kv.key);
+                            if not isinstance(kt, types.UnknownType)
+                            and not self._type_in_list(kt, key_types) {
+                                key_types.append(kt);
+                            }
+                        }
+                        vt = self.get_type_of_expression(_kv.value);
+                        if not isinstance(vt, types.UnknownType)
+                        and not self._type_in_list(vt, val_types) {
+                            val_types.append(vt);
+                        }
+                    }
+                    # Bidirectional: adopt expected K,V only if all entries match
+                    expected_kv = self._get_expected_kv_types(
+                        expected_type, self.prefetch.dict_class
+                    );
+                    if expected_kv is not None and (key_types or val_types) {
+                        all_ok = True;
+                        for kt in key_types {
+                            if not self.assign_type(kt, expected_kv[0]) {
+                                all_ok = False;
+                                break;
+                            }
+                        }
+                        if all_ok {
+                            for vt in val_types {
+                                if not self.assign_type(vt, expected_kv[1]) {
+                                    all_ok = False;
+                                    break;
+                                }
+                            }
+                        }
+                        if all_ok {
+                            dict_inst.private.type_args = list(expected_kv);
+                        } elif key_types or val_types {
+                            k_arg = key_types[0]
+                                if len(key_types) == 1
+                                else types.UnionType(types=key_types)
+                                    if key_types
+                                    else types.UnknownType();
+                            v_arg = val_types[0]
+                                if len(val_types) == 1
+                                else types.UnionType(types=val_types)
+                                    if val_types
+                                    else types.UnknownType();
+                            dict_inst.private.type_args = [k_arg, v_arg];
+                        }
+                    } elif key_types or val_types {
+                        k_arg = key_types[0]
+                            if len(key_types) == 1
+                            else types.UnionType(types=key_types)
+                                if key_types
+                                else types.UnknownType();
+                        v_arg = val_types[0]
+                            if len(val_types) == 1
+                            else types.UnionType(types=val_types)
+                                if val_types
+                                else types.UnknownType();
+                        dict_inst.private.type_args = [k_arg, v_arg];
+                    }
+                }
+                return dict_inst;
             }
 
         case uni.TupleVal():
             if self.prefetch and self.prefetch.tuple_class {
-                return self._convert_to_instance(self.prefetch.tuple_class);
+                tuple_inst = self._convert_to_instance(self.prefetch.tuple_class);
+                if isinstance(tuple_inst, types.ClassType) and expr.values {
+                    # Always infer element types bottom-up first.
+                    elem_types_t: list[types.TypeBase] = [];
+                    for _val in expr.values {
+                        et = self.get_type_of_expression(_val);
+                        if not isinstance(et, types.UnknownType) {
+                            elem_types_t.append(et);
+                        }
+                    }
+                    # Bidirectional: adopt expected type_args only if elements match
+                    if (
+                        isinstance(expected_type, types.ClassType)
+                        and isinstance(self.prefetch.tuple_class, types.ClassType)
+                        and expected_type.shared == self.prefetch.tuple_class.shared
+                        and expected_type.private
+                        and expected_type.private.type_args
+                        and elem_types_t
+                    ) {
+                        all_ok = True;
+                        exp_args = expected_type.private.type_args;
+                        for (i, et) in enumerate(elem_types_t) {
+                            exp_elem = exp_args[i]
+                                if i < len(exp_args)
+                                else exp_args[-1];
+                            if not self.assign_type(
+                                et, self._convert_to_instance(exp_elem)
+                            ) {
+                                all_ok = False;
+                                break;
+                            }
+                        }
+                        if all_ok {
+                            tuple_inst.private.type_args = expected_type.private.type_args;
+                        } else {
+                            tuple_inst.private.type_args = elem_types_t;
+                        }
+                    } elif elem_types_t {
+                        tuple_inst.private.type_args = elem_types_t;
+                    }
+                }
+                return tuple_inst;
             }
 
         case uni.SetVal():
             if self.prefetch and self.prefetch.set_class {
-                return self._convert_to_instance(self.prefetch.set_class);
+                set_inst = self._convert_to_instance(self.prefetch.set_class);
+                if isinstance(set_inst, types.ClassType) and expr.values {
+                    # Always infer element types bottom-up first.
+                    set_elem_types: list[types.TypeBase] = [];
+                    for _val in expr.values {
+                        et = self.get_type_of_expression(_val);
+                        if not isinstance(et, types.UnknownType)
+                        and not self._type_in_list(et, set_elem_types) {
+                            set_elem_types.append(et);
+                        }
+                    }
+                    # Bidirectional: adopt expected element type if all elements match
+                    expected_elem_s = self._get_expected_element_type(
+                        expected_type, self.prefetch.set_class
+                    );
+                    if expected_elem_s is not None and set_elem_types {
+                        all_ok = True;
+                        for et in set_elem_types {
+                            if not self.assign_type(et, expected_elem_s) {
+                                all_ok = False;
+                                break;
+                            }
+                        }
+                        if all_ok {
+                            set_inst.private.type_args = [expected_elem_s];
+                        } else {
+                            if len(set_elem_types) == 1 {
+                                set_inst.private.type_args = [set_elem_types[0]];
+                            } elif len(set_elem_types) > 1 {
+                                set_inst.private.type_args = [
+                                    types.UnionType(types=set_elem_types)
+                                ];
+                            }
+                        }
+                    } else {
+                        if len(set_elem_types) == 1 {
+                            set_inst.private.type_args = [set_elem_types[0]];
+                        } elif len(set_elem_types) > 1 {
+                            set_inst.private.type_args = [
+                                types.UnionType(types=set_elem_types)
+                            ];
+                        }
+                    }
+                }
+                return set_inst;
             }
 
         # Comprehension handlers (SetCompr/GenCompr before ListCompr since they inherit from it)
@@ -1775,6 +1959,39 @@ impl TypeEvaluator._assign_class(
     }
     # Check if src class is a subclass of dest class.
     if self.is_sub_class(dest_type, src_type) {
+        # If dest has type_args, verify src supplies compatible args through MRO.
+        if dest_type.private and dest_type.private.type_args {
+            src_args = type_utils.resolve_type_args_for_base(src_type, dest_type);
+            if src_args and len(src_args) == len(dest_type.private.type_args) {
+                for i in range(len(src_args)) {
+                    src_arg = self._convert_to_instance(src_args[i]);
+                    dest_arg = self._convert_to_instance(dest_type.private.type_args[i]);
+                    # Check variance: use TypeVar declaration if available
+                    tp = dest_type.shared.type_params[i]
+                        if (
+                            dest_type.shared.type_params
+                            and i < len(dest_type.shared.type_params)
+                        )
+                        else None;
+                    if tp and tp.is_covariant {
+                        # Covariant: src_arg must be subtype of dest_arg
+                        if not self.assign_type(src_arg, dest_arg) {
+                            return False;
+                        }
+                    } elif tp and tp.is_contravariant {
+                        # Contravariant: dest_arg must be subtype of src_arg
+                        if not self.assign_type(dest_arg, src_arg) {
+                            return False;
+                        }
+                    } else {
+                        # Invariant: must match both directions
+                        if not self.assign_type(src_arg, dest_arg) {
+                            return False;
+                        }
+                    }
+                }
+            }
+        }
         return True;
     }
     # Integers can be used where floats are expected.
@@ -2189,17 +2406,23 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             return True;
         }
     }
-    # --- Bare `type` assignment compatibility ---
-    # Handle assignment of any class type to bare `type` parameter.
-    # In Python's type system, bare `type` accepts any class (equivalent to type[Unknown]).
+    # --- type[X] and bare `type` assignment compatibility ---
+    # Handle parameterized type[X] (covariant) and bare type (accepts any class).
     if self.prefetch and self.prefetch.type_class {
         if isinstance(dest_type, types.ClassType)
         and isinstance(src_type, types.ClassType) {
-            # Check if dest_type is the `type` builtin (bare type annotation)
             if isinstance(self.prefetch.type_class, types.ClassType)
             and dest_type.shared == self.prefetch.type_class.shared {
-                # Any instantiable class type can be assigned to bare `type`.
                 if src_type.is_instantiable_class() {
+                    # Parameterized type[X]: check covariance
+                    if dest_type.private and dest_type.private.type_args {
+                        target_inner = self._convert_to_instance(
+                            dest_type.private.type_args[0]
+                        );
+                        src_inner = self._convert_to_instance(src_type);
+                        return self.assign_type(src_inner, target_inner);
+                    }
+                    # Bare type (no type_args): accept any instantiable class
                     return True;
                 }
             }
@@ -2232,18 +2455,28 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     return False;
 }
 
-"""Return the effective type of the expression."""
-impl TypeEvaluator.get_type_of_expression(node_: uni.Expr) -> TypeBase {
+"""Return the effective type of the expression.
+
+When expected_type is provided, it enables bidirectional type inference
+(Pyright: getTypeOfExpression with expectedType). Container literals
+use the expected type's type_args to produce a more precise result.
+"""
+impl TypeEvaluator.get_type_of_expression(
+    node_: uni.Expr, expected_type: TypeBase | None = None
+) -> TypeBase {
     # To support JS style IIFE, abilities should be treated as expressions.
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
+    # Use cached result if available, UNLESS expected_type is provided
+    # for a container literal that could benefit from bidirectional inference.
     if node_.type is not None {
-        return node_.type;
+        if expected_type is None
+        or not isinstance(node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal)) {
+            return node_.type;
+        }
     }
-    result = self._get_type_of_expression_core(node_);
-    # If the context has an expected type, pyright does a compatibility and set
-    # a diagnostics here, I don't understand why that might be necessary here.
+    result = self._get_type_of_expression_core(node_, expected_type);
     node_.type = result;
     return result;
 }
