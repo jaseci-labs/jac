@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Type Checker: `type[T]` Member Access**: Accessing class-level members (e.g., `ClassVar`) on `type[T]` parameters now works correctly. `cls: type[MyClass]` → `cls.my_class_var` resolves to `MyClass`'s members.
 - **Type Checker: Property Support**: `@property` and `@cached_property` now correctly type-check. Accessing `obj.my_property` returns the property's return type instead of `FunctionType`.
 - **Fix: Static Methods on Class-Based Enums**: Static methods on `IntEnum`/`StrEnum` classes now correctly return their declared type instead of `<Unknown>`.
 - **Type Checker: Generic Inheritance & Bidirectional Inference**: Added MRO-aware type argument resolution (`resolve_type_args_for_base`, `build_type_var_solution`) so multi-level generic inheritance chains are properly tracked. `_assign_class` now validates type args through the MRO with covariant/contravariant/invariant variance. `type[X]` annotations are now covariant (`type[SubClass]` assignable to `type[BaseClass]`). `FunctionType.specialize` and `specialize_member_type` use transitive TypeVar resolution. `infer_type_args` walks inherited constructors. Container literals (`list`, `dict`, `set`, `tuple`) now support bidirectional type inference via `expected_type` propagation from return statements, assignments, and function arguments, with element-level validation before adopting the expected type.

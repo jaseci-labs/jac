@@ -130,6 +130,57 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+"""Check if a ClassType is the builtin 'type' class with type arguments (type[T])."""
+impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
+    return (
+        class_type.is_builtin("type")
+        and class_type.private is not None
+        and class_type.private.type_args is not None
+        and len(class_type.private.type_args) >= 1
+    );
+}
+
+"""Get lookup type for member access. For type[T], returns T; otherwise returns original."""
+impl TypeEvaluator._get_type_for_member_lookup(
+    object_type: types.ClassType
+) -> types.ClassType {
+    # Check if this is type[T] (builtin 'type' class with type arguments)
+    if self._is_type_subscript(object_type) {
+        # Extract the inner type T from type[T]
+        inner_type = object_type.private.type_args[0];
+        # If the inner type is a ClassType, use it for member lookup
+        if isinstance(inner_type, types.ClassType) {
+            lookup_type = inner_type;
+            # Ensure we look up on the instantiable form (class, not instance)
+            # because we're accessing class-level members like ClassVar
+            if not lookup_type.is_instantiable() {
+                lookup_type = lookup_type.clone_as_class();
+            }
+            return lookup_type;
+        }
+    }
+    # Not type[T] or inner type is not a ClassType, return original
+    return object_type;
+}
+
+"""Get bound member from a class type. Handles type[T] by looking up on T."""
+impl TypeEvaluator.get_type_of_bound_member(
+    object_type: types.ClassType, member_name: str
+) -> type_utils.ClassMember | None {
+    # Determine if we're dealing with an instantiable class or an instance
+    object_type_is_instantiable = object_type.is_instantiable();
+
+    if object_type_is_instantiable {
+        # For instantiable classes (including type[T]), get the appropriate lookup type
+        # This handles type[T] by extracting T for member lookup
+        lookup_type = self._get_type_for_member_lookup(object_type);
+        return self._lookup_class_member(lookup_type, member_name);
+    } else {
+        # For class instances, look up object members
+        return self._lookup_object_member(object_type, member_name);
+    }
+}
+
 """
 Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
 

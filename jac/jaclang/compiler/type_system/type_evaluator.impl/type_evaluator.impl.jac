@@ -578,21 +578,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
                     assert isinstance(base_type, types.ClassType);
+                    # Get the type to use for member lookup, handling type[T] subscripts.
+                    # When base_type is type[T], lookup_type will be T instead of 'type'.
+                    lookup_type = self._get_type_for_member_lookup(base_type);
                     if member := self._lookup_class_member(
-                        base_type, expr.right.value
+                        lookup_type, expr.right.value
                     ) {
                         value = self._set_symbol_to_expr(expr.right, member.symbol);
                         # Handle direct enum member access (e.g., Color.RED)
-                        if base_type.is_enum_class() {
+                        if lookup_type.is_enum_class() {
                             member_name = expr.right.value;
                             # Return EnumMemberType for recognized enum members
                             if (
-                                base_type.shared.enum_members
-                                and member_name in base_type.shared.enum_members
+                                lookup_type.shared.enum_members
+                                and member_name in lookup_type.shared.enum_members
                             ) {
-                                member_info = base_type.shared.enum_members[member_name];
+                                member_info = lookup_type.shared.enum_members[
+                                    member_name
+                                ];
                                 return types.EnumMemberType(
-                                    enum_class=base_type,
+                                    enum_class=lookup_type,
                                     member_info=member_info,
                                     flags=types.TypeFlags.Instance
                                 );
@@ -605,20 +610,21 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
                     # (which cause false positives on generic types like list[T].append).
-                    if not base_type.is_any_type() {
+                    if not lookup_type.is_any_type() {
                         _has_tvars = (
-                            isinstance(base_type, types.ClassType)
-                            and base_type.private.type_args is not None
+                            isinstance(lookup_type, types.ClassType)
+                            and lookup_type.private is not None
+                            and lookup_type.private.type_args is not None
                             and any(
                                 isinstance(a, types.TypeVarType)
-                                for a in base_type.private.type_args
+                                for a in lookup_type.private.type_args
                             )
                         );
                         if not _has_tvars {
                             self.emit_diag(
                                 E1030,
                                 expr.right,
-                                base_type=str(base_type),
+                                base_type=str(lookup_type),
                                 attr=expr.right.value
                             );
                         }
@@ -626,6 +632,20 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
+                    # Special handling for type[T]: when accessing members on an instance of type
+                    # (i.e., a class object), we need to look up class-level members on T.
+                    # For example: cls: type[Archetype] → cls._jac_entry_funcs_ should resolve
+                    # to Archetype._jac_entry_funcs_, not type._jac_entry_funcs_.
+                    if self._is_type_subscript(base_type) {
+                        lookup_type = self._get_type_for_member_lookup(base_type);
+                        if member := self._lookup_class_member(
+                            lookup_type, expr.right.value
+                        ) {
+                            value = self._set_symbol_to_expr(expr.right, member.symbol);
+                            return value;
+                        }
+                        # If not found in T, fall through to check type's instance members
+                    }
                     if member := self._lookup_object_member(
                         base_type, expr.right.value
                     ) {
