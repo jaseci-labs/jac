@@ -9,6 +9,7 @@ impl CompileOptions.with_skip_native_engine(
         symtab_ir_only=self.symtab_ir_only,
         no_cgen=self.no_cgen,
         skip_native_engine=`skip,
+        force_target_program=self.force_target_program,
         cancel_token=self.cancel_token
     );
 }

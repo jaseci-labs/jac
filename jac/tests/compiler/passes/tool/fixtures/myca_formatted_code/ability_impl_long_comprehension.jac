@@ -9,7 +9,7 @@ walker update_graph {
 }
 
 impl update_graph.go_to_user{
-    visit [-->(?:user_root)](?jid==self.user_jid);
+    visit [-->[?:user_root]][?jid==self.user_jid];
     next = [-->];
     visit [
         i

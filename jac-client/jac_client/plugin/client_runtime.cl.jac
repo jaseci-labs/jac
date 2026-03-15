@@ -73,3 +73,12 @@ async def:pub __cachedEndpointCall(
 
 def:pub __invalidateEndpoint(endpoint_key: str) -> None;
 def:pub __overlaps(list1: list, list2: list) -> bool;
+
+# ============================================================================
+# Client Error Reporting
+# ============================================================================
+def:pub __jacReportError(
+    message: str, stack: str = "", url: str = "", source: str = ""
+) -> None;
+
+def:pub __jacInstallErrorHandlers -> None;

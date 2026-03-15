@@ -608,7 +608,11 @@ impl JacCompiler.compile(
             );
         }
     }
-    actual_program = self._resolve_program(file_path, target_program);
+    if options.force_target_program {
+        actual_program = target_program;
+    } else {
+        actual_program = self._resolve_program(file_path, target_program);
+    }
     actual_program._compile_options = options;
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);

@@ -478,6 +478,18 @@ test "W2050: missing return on non-None function" {
 test "W2052: overly broad except" {
     (prog, _) = compile_and_check("semantic_W2052_broad_except.jac");
     assert has_diagnostic_code(prog, "W2052", in_warnings=True);
+    # Verify underline is clamped to the token, not the entire Except block
+    for w in prog.warnings_had {
+        if "W2052" in w.msg {
+            output = w.pretty_print();
+            for line in output.split('\n') {
+                caret_count = line.count('^');
+                assert caret_count <= len("Exception") , f"Underline too wide ({caret_count} carets): {repr(
+                    line
+                )}";
+            }
+        }
+    }
 }
 
 test "E2055: return in finally block" {

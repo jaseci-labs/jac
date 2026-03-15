@@ -773,13 +773,13 @@ with entry {
     print([root ->:Friendship:since > 2018:->]);
 
     # Filter by node type
-    print([root -->](?:Person));             # Only Person nodes
+    print([root -->][?:Person]);             # Only Person nodes
 
     # Filter by node attribute
-    print([root -->](?age >= 18));           # Nodes with age >= 18
+    print([root -->][?age >= 18]);           # Nodes with age >= 18
 
     # Combined: type + attribute
-    print([root -->](?:Person, age > 25));
+    print([root -->][?:Person, age > 25]);
 
     # Get edge objects themselves (not target nodes)
     print([edge root -->]);                  # All edge objects
@@ -796,10 +796,10 @@ with entry {
 
 with entry {
     # Filter nodes by attribute
-    adults = [root -->](?age >= 18);
+    adults = [root -->][?age >= 18];
 
     # Assign: update matching nodes in-place
-    [root -->](?age >= 18)(=verified=True);
+    [root -->][?age >= 18](=verified=True);
 }
 
 
@@ -868,7 +868,7 @@ walker VisitDemo {
         visit [-->];                    # All outgoing nodes
         visit [<--];                    # All incoming nodes
         visit [<-->];                   # Both directions
-        visit [-->](?:Person);          # Type-filtered
+        visit [-->][?:Person];          # Type-filtered
         visit [->:Friendship:->];       # Via edge type
         visit [->:Friendship:since > 2020:->];  # Edge condition
 
@@ -1181,7 +1181,7 @@ node Todo {
 }
 
 def:pub get_todos() -> list {
-    return [{"title": t.title} for t in [root -->](?:Todo)];
+    return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
 # Client code (compiles to JavaScript/React)

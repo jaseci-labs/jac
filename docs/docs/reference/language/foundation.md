@@ -370,12 +370,12 @@ def process(data: list[int] | dict[str, int]) -> None {
 
 ### 6 Type References
 
-Type references are used in OSP operations like filtering graph traversals by node type. The `Root` keyword refers to the root node type in entry/exit clauses, and the `(?:TypeName)` syntax filters collections or traversals by type.
+Type references are used in OSP operations like filtering graph traversals by node type. The `Root` keyword refers to the root node type in entry/exit clauses, and the `[?:TypeName]` syntax filters collections or traversals by type.
 
 ```jac
 def example() {
     # In edge references
-    [-->](?:Person);  # Filter nodes by Person type
+    [-->][?:Person];  # Filter nodes by Person type
 }
 ```
 
@@ -1051,7 +1051,7 @@ obj Item {
 def example() {
     items = [Item(value=1), Item(value=-1), Item(value=2)];
     # The ? in filter comprehensions
-    valid_items = items(?value > 0);  # Filter where value > 0
+    valid_items = items[?value > 0];  # Filter where value > 0
 }
 ```
 

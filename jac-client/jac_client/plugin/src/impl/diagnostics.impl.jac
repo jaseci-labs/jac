@@ -1,12 +1,13 @@
 """Implementation of diagnostics module."""
 import os;
 import from pathlib { Path }
+import from jaclang.runtimelib.source_mapping {
+    read_source_snippet,
+    _scan_source_comments
+}
 
-# ============== Source Snippet Formatting ==============
-glob SNIPPET_ARROW_PREFIX = " -> ",
-     SNIPPET_SPACE_PREFIX = "    ",
-     SNIPPET_LINE_SEPARATOR = " | ",
-     HINT_JAC_SYNTAX = "Check your Jac syntax:\n  - Missing semicolons\n  - Unclosed braces or parentheses\n  - Invalid syntax in cl {{ }} blocks",
+# ============== Hint Messages ==============
+glob HINT_JAC_SYNTAX = "Check your Jac syntax:\n  - Missing semicolons\n  - Unclosed braces or parentheses\n  - Invalid syntax in cl {{ }} blocks",
      HINT_JS_SYNTAX = "Check for:\n  - Missing or extra braces { }\n  - Unclosed JSX tags\n  - Missing semicolons",
      HINT_IMPORT_PATH = "Check the import path for:\n  - Correct spelling and case\n  - File extension (.jac not needed)",
      HINT_CHECK_IMPORTS = "Check import statements for missing packages.",
@@ -19,29 +20,11 @@ glob SNIPPET_ARROW_PREFIX = " -> ",
      INTERNAL_ERROR_CODE = "JAC_CLIENT_INTERNAL";
 
 # ============== BuildContext ==============
+"""Read source lines around error location. Delegates to centralized source_mapping utility."""
 impl BuildContext.read_source_lines(
     file_path: str, line: int, context_lines: int = 2
 ) -> str {
-    try {
-        path = Path(file_path);
-        if not path.exists() {
-            return "";
-        }
-        lines = path.read_text(encoding="utf-8").splitlines();
-        start = max(0, line - context_lines - 1);
-        end = min(len(lines), line + context_lines);
-        snippet_lines: list[str] = [];
-        for i in range(start, end) {
-            line_num = i + 1;
-            prefix = SNIPPET_ARROW_PREFIX if line_num == line else SNIPPET_SPACE_PREFIX;
-            snippet_lines.append(
-                f"{prefix}{line_num:4}{SNIPPET_LINE_SEPARATOR}{lines[i]}"
-            );
-        }
-        return "\n".join(snippet_lines);
-    } except Exception {
-        return "";
-    }
+    return read_source_snippet(file_path, line, context_lines);
 }
 
 # ============== DiagnosticCollection ==============
@@ -576,6 +559,11 @@ def _scan_installed_packages(project_dir: Path) -> set[str] {
 def _create_build_context(
     error_output: str, project_dir: Path, source_map: dict[str, str] = {}
 ) -> BuildContext {
+    # Auto-populate source_map from compiled JS headers if not provided
+    if not source_map {
+        compiled_dir = project_dir / ".jac" / "client" / "compiled";
+        source_map = _scan_source_comments(compiled_dir);
+    }
     return BuildContext(
         error_output=error_output,
         source_map=source_map,

@@ -231,6 +231,13 @@ def pretty_print_source_location(
                 spaces += '\t' if (file_source[idx_pre] == '\t') else ' ';
             }
             err_token_len = pos_end - pos_start;
+            line_remaining = idx - pos_start;
+            if (line_remaining > 0 and err_token_len > line_remaining) {
+                err_token_len = line_remaining;
+            }
+            if (err_token_len < 1) {
+                err_token_len = 1;
+            }
             underline = '^' * err_token_len;
             if colors {
                 underline = f"{ANSIColors.RED}{underline}{ANSIColors.END}";

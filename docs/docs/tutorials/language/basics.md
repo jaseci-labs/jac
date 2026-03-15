@@ -474,7 +474,7 @@ with entry {
     root ++> Task(title="Write code");
 
     # Query connected nodes
-    tasks = [root-->](?:Task);
+    tasks = [root-->][?:Task];
     for t in tasks {
         print(t.title);
     }
@@ -486,7 +486,7 @@ Key differences from `obj`:
 - **`node`** instances can be connected in a graph with `++>`
 - **`root`** is a built-in starting node -- nodes connected to it persist across restarts
 - **`[root-->]`** queries all outgoing connections from root
-- **`(?:Task)`** filters by type
+- **`[?:Task]`** filters by type
 
 ---
 

@@ -61,9 +61,15 @@ impl check(
             return (False, 1, 0, [], []);
         }
         try {
+            import from jaclang.jac0core.compile_options { CompileOptions }
             console.print(f"  Checking {file_path}...");
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-            prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
+            prog.compile(
+                file_path=file_path,
+                options=CompileOptions(
+                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                )
+            );
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
             # Filter out errors/warnings from ignored files and non-.jac files
