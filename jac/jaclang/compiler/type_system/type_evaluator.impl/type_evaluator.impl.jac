@@ -3009,8 +3009,8 @@ impl TypeEvaluator.get_scope_narrowing(key: str) -> types.TypeBase | None {
 
 """Get a string key for an expression to use in narrowing.
 
-Handles both simple names (x) and attribute access chains (x.foo.bar).
-Returns None if the expression is not suitable for narrowing tracking.
+Handles simple names (x), attribute access chains (x.foo.bar), and walrus
+expressions (x := expr). Returns None if not suitable for narrowing.
 """
 impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
     if isinstance(expr, uni.Name) {
@@ -3022,6 +3022,15 @@ impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
         if base_key and isinstance(expr.right, uni.Name) {
             return f"{base_key}.{expr.right.value}";
         }
+    }
+    # Walrus operator: (x := expr) - use the target name as narrowing key
+    if (
+        isinstance(expr, uni.BinaryExpr)
+        and isinstance(expr.op, uni.Token)
+        and expr.op.name == "WALRUS_EQ"
+        and isinstance(expr.left, uni.Name)
+    ) {
+        return expr.left.value;
     }
     return None;
 }
@@ -3342,6 +3351,43 @@ impl TypeEvaluator._find_predicate_for(
                 return NarrowingPredicate(
                     sym_name=sym_name, narrow_type=none_inst, is_inverted=True
                 );
+            }
+        }
+    }
+    # Pattern 9: Walrus with is/is not None - (x := expr) is not None
+    # Handles: if (x := get_value()) is not None: use(x)
+    if (
+        isinstance(condition, uni.CompareExpr)
+        and len(condition.ops) == 1
+        and len(condition.rights) == 1
+        and isinstance(condition.rights[0], uni.Null)
+    ) {
+        # Unwrap AtomUnit (parentheses) from left side
+        left = condition.left;
+        if isinstance(left, uni.AtomUnit) and left.value {
+            left = left.value;
+        }
+        if (
+            isinstance(left, uni.BinaryExpr)
+            and isinstance(left.op, uni.Token)
+            and left.op.name == "WALRUS_EQ"
+            and isinstance(left.left, uni.Name)
+            and left.left.value == sym_name
+        ) {
+            op_name = condition.ops[0].name;
+            if self.prefetch and self.prefetch.none_type_class {
+                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                if op_name == Tok.KW_IS {
+                    # (x := expr) is None -> narrow to None
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=False
+                    );
+                } elif op_name == Tok.KW_ISN {
+                    # (x := expr) is not None -> exclude None
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                    );
+                }
             }
         }
     }

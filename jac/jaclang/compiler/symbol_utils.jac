@@ -119,9 +119,27 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
         }
     }
     # Pattern: x is None / x is not None — collect 'x'
+    # Also handles: (x := expr) is not None — collect 'x' from walrus
     elif isinstance(condition, uni.CompareExpr) {
-        if isinstance(condition.left, uni.Name) {
-            symbols.add(condition.left.value);
+        left = condition.left;
+        # Unwrap AtomUnit (parentheses)
+        if isinstance(left, uni.AtomUnit) {
+            inner = left.value;
+            if inner {
+                left = inner;
+            }
+        }
+        if isinstance(left, uni.Name) {
+            symbols.add(left.value);
+        } elif isinstance(left, uni.BinaryExpr) {
+            if (
+                isinstance(left.op, uni.Token)
+                and left.op.name == "WALRUS_EQ"
+                and isinstance(left.left, uni.Name)
+            ) {
+                # (x := expr) is not None -> collect 'x'
+                symbols.add(left.left.value);
+            }
         }
     }
     # Pattern: not <condition> — recurse
