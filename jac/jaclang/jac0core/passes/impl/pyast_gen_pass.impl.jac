@@ -3150,10 +3150,6 @@ impl PyastGenPass.exit_special_var_ref(
                 )
             )
         ];
-    } elif (nd.name == Tok.KW_ROOT) {
-        nd.gen.py_ast = [
-            self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
-        ];
     } else {
         nd.gen.py_ast = [
             self.sync(ast3.Name(id=self._py_name(nd), ctx=nd.py_ctx_func()))
