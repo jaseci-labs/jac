@@ -166,7 +166,6 @@ impl TypeEvaluator.get_type_of_bound_member(
     # TODO: Handle metaclass member lookups
     # TODO: Handle descriptor protocol (__get__, __set__)
     # TODO: Handle __getattr__ fallback when member not found
-
     object_type_is_instantiable = object_type.is_instantiable();
 
     if object_type_is_instantiable {
