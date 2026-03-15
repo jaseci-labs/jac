@@ -1495,7 +1495,9 @@ test "class_based_enum_type_checking" {
         "Cannot assign <Tokens.FLOAT> to int",
         "Cannot assign Literal[\"1\"] to int",
         "Cannot assign Literal[\"LSQUARE\"] to int",
-        "Cannot assign Literal[\"RSQUARE\"] to int"
+        "Cannot assign Literal[\"RSQUARE\"] to int",
+        "Cannot assign AccessLevel | NoneType to int",
+        "Cannot assign int to str"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(

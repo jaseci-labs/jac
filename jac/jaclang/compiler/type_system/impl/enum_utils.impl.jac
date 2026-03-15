@@ -72,10 +72,12 @@ impl build_enum_members(
     auto_value = 1;
     # Use symbol table to collect member declarations
     # Handles native enums, impl-based enums (enum Color; impl Color { RED=1 }), and class-based enums (e.g., StrEnum with `with entry {}`)
+    # Skip abilities/methods - they are NOT enum members
     all_stmts: list = [
         sym.decl.parent if isinstance(sym.decl.parent, uni.Assignment) else sym.decl
         for (name, sym) in enum_node.names_in_scope.items()
         if not is_excluded_enum_member_name(name)
+        and not isinstance(sym.decl.name_of, uni.Ability)
     ];
     for stmt in all_stmts {
         # Case 1: Assignment with explicit value (RED = 1)

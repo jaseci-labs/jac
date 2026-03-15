@@ -597,8 +597,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     flags=types.TypeFlags.Instance
                                 );
                             }
-                            # Fallback for unrecognized enum members
-                            return base_type.clone_as_instance();
+                            # For non-enum-member access (e.g., static methods),
+                            # fall through to return the actual member type
                         }
                         return value;
                     }
