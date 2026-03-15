@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.2 (Unreleased)
 
+- **Fix: `os.path.dirname()` Type Check Error**: Calling `os.path.dirname()` no longer fails with "No matching overload found". This also fixes other stdlib functions accessed through wildcard imports (e.g., `os.path`, `datetime`) that have multiple `@overload` signatures.
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.
 - **Fix: Generic Iterator Type Inference**: `enumerate`, `zip`, and other generic iterators now correctly infer element types from their arguments. Previously, version-dependent overloads in typeshed caused type resolution to fail.
 - **Scheduling: DYNAMIC Trigger Support**: `@schedule(trigger=DYNAMIC)` now attaches a spec and delegates execution to a registered `_dynamic_schedule_handler` (e.g. jac-scale) instead of raising `NotImplementedError`.
