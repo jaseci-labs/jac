@@ -200,14 +200,26 @@ Holds the private details of class type.
     obj ClassDetailsPrivate {
         has type_args: (list[TypeBase] | None) = None,
             # Alias name for special forms (e.g., "Callable", "Union").
-            # Similar to Pyright's classType.priv.aliasName.
             # This is set when loading special forms from typing module
             # to distinguish between different _SpecialForm instances.
             alias_name: (str | None) = None,
             # Literal value for Literal types (e.g., Literal["hello"], Literal[42]).
             # Similar to Pyright's classType.priv.literalValue.
             # When set, this ClassType represents a literal type like Literal["x"].
-            literal_value: (str | int | bool | None) = None;
+            literal_value: (str | int | bool | None) = None,
+            # Property class flag
+            # Set to True when this ClassType represents a @property or @cached_property
+            is_property_class: bool = False,
+            # Property getter info
+            # Stores the getter method type for properties
+            fget_info: (FunctionType | None) = None,
+            # Property setter info
+            fset_info: (FunctionType | None) = None,
+            # Property deleter info
+            fdel_info: (FunctionType | None) = None,
+            # Asymmetric descriptor flag
+            # True if getter and setter have different types
+            is_asymmetric_descriptor: bool = False;
 
         def postinit -> None;
     }
@@ -234,6 +246,10 @@ Holds the private details of class type.
     def clone_with_literal(value: (str | int | bool | None)) -> ClassType;
     def is_literal_type -> bool;
     def get_literal_value -> (str | int | bool | None);
+    # Property class support
+    def is_property_class -> bool;
+    # Get getter return type from property
+    def get_getter_type_from_property -> (TypeBase | None);
 }
 
 """Enumeration of parameter kinds."""

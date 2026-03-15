@@ -458,20 +458,57 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
-"""Check if a symbol represents a property."""
+"""Check if a symbol represents a property (@property or @cached_property)."""
 impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
     node_ = symbol.decl.name_of;
-    if isinstance(node_, uni.Ability) {
-        ability = node_;
-        if ability.decorators {
-            for decorator in ability.decorators {
-                if isinstance(decorator, uni.Name) and decorator.value == "property" {
-                    return True;
-                }
-            }
+    if not isinstance(node_, uni.Ability) {
+        return False;
+    }
+    ability = node_;
+    if not ability.decorators {
+        return False;
+    }
+    for decorator in ability.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if properties.is_property_decorator_type(decorator_type) {
+            return True;
+        }
+        if properties.is_cached_property_decorator_type(decorator_type) {
+            return True;
         }
     }
     return False;
+}
+
+"""Get the return type of a property's getter."""
+impl TypeEvaluator.get_getter_type_from_property(
+    symbol: uni.Symbol
+) -> (TypeBase | None) {
+    node_ = symbol.decl.name_of;
+    if not isinstance(node_, uni.Ability) {
+        return None;
+    }
+    ability = node_;
+    if not ability.decorators {
+        return None;
+    }
+    is_property_decorated = False;
+    for decorator in ability.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if properties.is_property_decorator_type(decorator_type)
+        or properties.is_cached_property_decorator_type(decorator_type) {
+            is_property_decorated = True;
+            break;
+        }
+    }
+    if not is_property_decorated {
+        return None;
+    }
+    func_type = self.get_type_of_ability(ability);
+    if not isinstance(func_type, types.FunctionType) {
+        return None;
+    }
+    return func_type.return_type;
 }
 
 """

@@ -1237,8 +1237,9 @@ test "property_type_checking" {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, "checker_property.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 4;
+    assert len(program.errors_had) == 6;
 
+    # @property errors
     assert_error_pretty_found(
         """
         wrong: str = foo.bar;  # <-- Error (int assigned to str)
@@ -1253,18 +1254,36 @@ test "property_type_checking" {
         program.errors_had[1].pretty_print()
     );
 
+    # @cached_property error
     assert_error_pretty_found(
         """
-        method: int = foo.regular_method;  # <-- Error (FunctionType assigned to int)
+        wrong_cached: int = foo.cached_val;  # <-- Error (str assigned to int)
     """,
         program.errors_had[2].pretty_print()
     );
 
+    # Regular method still returns FunctionType
+    assert_error_pretty_found(
+        """
+        method: int = foo.regular_method;  # <-- Error (FunctionType assigned to int)
+    """,
+        program.errors_had[3].pretty_print()
+    );
+
+    # @property in Bar
     assert_error_pretty_found(
         """
         wrong_val: str = bar_obj.value;  # <-- Error (int assigned to str)
     """,
-        program.errors_had[3].pretty_print()
+        program.errors_had[4].pretty_print()
+    );
+
+    # @cached_property in Bar
+    assert_error_pretty_found(
+        """
+        wrong_cached_num: str = bar_obj.cached_num;  # <-- Error (int assigned to str)
+    """,
+        program.errors_had[5].pretty_print()
     );
 }
 

@@ -376,6 +376,31 @@ impl ClassType.get_literal_value -> (str | int | bool | None) {
     return self.private.literal_value;
 }
 
+"""Check if this ClassType is a property class (@property or @cached_property)."""
+impl ClassType.is_property_class -> bool {
+    priv = self.private;
+    if priv is None {
+        return False;
+    }
+    return priv.is_property_class;
+}
+
+"""Get the return type of the property getter, or None if not a property."""
+impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
+    priv = self.private;
+    if priv is None {
+        return None;
+    }
+    if not priv.is_property_class {
+        return None;
+    }
+    fget = priv.fget_info;
+    if fget is None {
+        return None;
+    }
+    return fget.return_type;
+}
+
 """Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
     # Display literal types as Literal[value]

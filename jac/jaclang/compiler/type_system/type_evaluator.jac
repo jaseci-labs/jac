@@ -28,6 +28,7 @@ with entry {
 # Currently its not possible with jac+python hybrid repos.
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
+import from jaclang.compiler.type_system { properties }
 import from jaclang.compiler.type_system.types { TypeBase }
 
 import from jaclang.jac0core.diagnostics {
@@ -207,6 +208,8 @@ obj TypeEvaluator {
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
     def _is_symbol_property(symbol: uni.Symbol) -> bool;
+    # Property type utilities
+    def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
