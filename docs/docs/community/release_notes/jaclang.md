@@ -19,6 +19,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Diagnostic Underlines for Multi-Line Spans**: Fixed `jac check` rendering absurdly wide `^^^^^` underlines when a diagnostic pointed at a node spanning multiple lines (e.g., W2052 on an entire `except` block). The W2052 warning now points at the exception type name token instead of the whole block, and the underline renderer clamps caret width to the end of the source line for any multi-line span.
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
 - 2 small refactors/changes.
+- **Lintfix Improvement**: Add lintfix format to context menu in VS Code.
+
 
 ## jaclang 0.12.2 (Latest Release)
 
