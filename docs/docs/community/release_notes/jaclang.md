@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Type Checker: Walrus Operator Narrowing**: `if (x := expr) is not None:` and `if isinstance((x := expr), T):` now correctly narrow `x` inside the block.
 - **Type Checker: `type[T]` Member Access**: Accessing class-level members (e.g., `ClassVar`) on `type[T]` parameters now works correctly. `cls: type[MyClass]` → `cls.my_class_var` resolves to `MyClass`'s members.
 - **Type Checker: Property Support**: `@property` and `@cached_property` now correctly type-check. Accessing `obj.my_property` returns the property's return type instead of `FunctionType`.
 - **Fix: Static Methods on Class-Based Enums**: Static methods on `IntEnum`/`StrEnum` classes now correctly return their declared type instead of `<Unknown>`.
@@ -17,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Formatter Inline Comment Swallows Next Argument**: Fixed a bug where `jac format` would merge the next function argument into an inline comment when the comment appeared after a comma in a multi-line call (e.g., `candidate[:-4],  # strip trailing .jac` would absorb the following `os.path.abspath(base_dir)` into the comment text). The `CommentInjectionPass` now upgrades soft line breaks to hard line breaks when they follow an inline comment, ensuring subsequent tokens always start on a new line.
 - **Fix: Diagnostic Underlines for Multi-Line Spans**: Fixed `jac check` rendering absurdly wide `^^^^^` underlines when a diagnostic pointed at a node spanning multiple lines (e.g., W2052 on an entire `except` block). The W2052 warning now points at the exception type name token instead of the whole block, and the underline renderer clamps caret width to the end of the source line for any multi-line span.
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
+- 2 small refactors/changes.
 
 ## jaclang 0.12.2 (Latest Release)
 
@@ -60,12 +62,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Module-Level Overload Resolution**: `math.floor()`, `math.ceil()` and other module-level overloaded functions now correctly resolve all `@overload` signatures instead of only the first.
 - **Fix: Parameter Type Highlighting and Go-to-Definition**: Types used in function parameters (e.g. `uni.Module`) now highlight correctly and support go-to-definition in `.jac` declaration files.
 - **Stdlib Protocol Detection**: Added Pyright-style `ModuleSourceFlags` for production-grade stdlib type detection. Protocol types like `_SupportsFloor` and `_SupportsTrunc` are now properly recognized, enabling `math.floor(3.7)` and `math.trunc(4.9)` to type-check correctly.
-<<<<<<<<< Temporary merge branch 1
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
-=========
-
->>>>>>>>> Temporary merge branch 2
-
 - **Fix: `jac format --lintfix` File Deletion on Parse Errors**: Fixed a critical bug where `jac format --lintfix` would completely wipe out file contents when encountering parse errors. The formatter now preserves the original file when parse/lex errors are present, while still allowing files with type errors (but valid syntax) to be formatted normally. Added a safety check in `format_single_file()` that prevents writing empty formatted output to disk.
 - **CFG Build Pass Rewrite**: Rewrote the control flow graph construction pass from a fragile `to_connect` worklist design to a clean entry/exit visitor pattern with type-specific handlers (`exit_if_stmt`, `exit_while_stmt`, etc.). The new pass is stateless (no mutable pass-level state), explicitly handles 20 control flow constructs (vs 6 previously), and adds short-circuit boolean wiring for `and`/`or` conditions. Promoted `MatchCase`, `SwitchCase`, `Test`, and `BoolExpr` to CFG nodes for proper edge modeling. Fixes missing edges for `try/except/finally`, `with`, `switch/case`, `match/case`, and nested `if-without-else` inside compound statements. Unreachable code after `raise`/`disengage` is now correctly disconnected.
 - **Fix: Raw ANSI Codes in Error Output**: Fixed `[0;31m` escape fragments appearing as literal text in terminal error messages. `pretty_print(colors=True)` was injecting raw ANSI codes that conflicted with the Rich-based console from jac-super. Error formatting now delegates all styling to the console layer.

@@ -3029,8 +3029,8 @@ impl TypeEvaluator.get_scope_narrowing(key: str) -> types.TypeBase | None {
 
 """Get a string key for an expression to use in narrowing.
 
-Handles both simple names (x) and attribute access chains (x.foo.bar).
-Returns None if the expression is not suitable for narrowing tracking.
+Handles simple names (x), attribute access chains (x.foo.bar), and walrus
+expressions (x := expr). Returns None if not suitable for narrowing.
 """
 impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
     if isinstance(expr, uni.Name) {
@@ -3042,6 +3042,15 @@ impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
         if base_key and isinstance(expr.right, uni.Name) {
             return f"{base_key}.{expr.right.value}";
         }
+    }
+    # Walrus operator: (x := expr) - use the target name as narrowing key
+    if (
+        isinstance(expr, uni.BinaryExpr)
+        and isinstance(expr.op, uni.Token)
+        and expr.op.name == "WALRUS_EQ"
+        and isinstance(expr.left, uni.Name)
+    ) {
+        return expr.left.value;
     }
     return None;
 }
@@ -3235,17 +3244,31 @@ impl TypeEvaluator._find_predicate_for(
 
         }
     }
-    # Pattern 4: isinstance(x, T) or isinstance(x, (A, B, C))
+    # Pattern 4: isinstance(x, T), isinstance(x, (A, B, C)), or isinstance((x := expr), T)
     if (
         isinstance(condition, uni.FuncCall)
         and isinstance(condition.target, uni.Name)
         and condition.target.value == "isinstance"
         and len(condition.params) == 2
-        and isinstance(condition.params[0], uni.Name)
-        and not isinstance(condition.params[0], uni.KWPair)
         and not isinstance(condition.params[1], uni.KWPair)
     ) {
-        if condition.params[0].value == sym_name {
+        # Extract symbol name from first arg (handles walrus and parentheses)
+        first_arg = condition.params[0];
+        if isinstance(first_arg, uni.AtomUnit) and first_arg.value {
+            first_arg = first_arg.value;
+        }
+        extracted_name: str | None = None;
+        if isinstance(first_arg, uni.Name) {
+            extracted_name = first_arg.value;
+        } elif (
+            isinstance(first_arg, uni.BinaryExpr)
+            and isinstance(first_arg.op, uni.Token)
+            and first_arg.op.name == "WALRUS_EQ"
+            and isinstance(first_arg.left, uni.Name)
+        ) {
+            extracted_name = first_arg.left.value;
+        }
+        if extracted_name is not None and extracted_name == sym_name {
             type_arg = condition.params[1];
             # Check if it's a tuple of types: isinstance(x, (A, B, C))
             if isinstance(type_arg, uni.TupleVal) {
@@ -3362,6 +3385,43 @@ impl TypeEvaluator._find_predicate_for(
                 return NarrowingPredicate(
                     sym_name=sym_name, narrow_type=none_inst, is_inverted=True
                 );
+            }
+        }
+    }
+    # Pattern 9: Walrus with is/is not None - (x := expr) is not None
+    # Handles: if (x := get_value()) is not None: use(x)
+    if (
+        isinstance(condition, uni.CompareExpr)
+        and len(condition.ops) == 1
+        and len(condition.rights) == 1
+        and isinstance(condition.rights[0], uni.Null)
+    ) {
+        # Unwrap AtomUnit (parentheses) from left side
+        left = condition.left;
+        if isinstance(left, uni.AtomUnit) and left.value {
+            left = left.value;
+        }
+        if (
+            isinstance(left, uni.BinaryExpr)
+            and isinstance(left.op, uni.Token)
+            and left.op.name == "WALRUS_EQ"
+            and isinstance(left.left, uni.Name)
+            and left.left.value == sym_name
+        ) {
+            op_name = condition.ops[0].name;
+            if self.prefetch and self.prefetch.none_type_class {
+                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                if op_name == Tok.KW_IS {
+                    # (x := expr) is None -> narrow to None
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=False
+                    );
+                } elif op_name == Tok.KW_ISN {
+                    # (x := expr) is not None -> exclude None
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
+                    );
+                }
             }
         }
     }
