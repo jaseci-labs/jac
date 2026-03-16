@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Type Checking Enabled by Default**: All user modules are now type-checked during compilation. Bootstrap modules skip type checking automatically to avoid circular imports.
+- **Type Checker: Enum `.value`/`.name` Resolution**: Accessing `.value` or `.name` on enum instances now returns the correct type. For plain enums, the value type is inferred from members.
+- **Fix: Static Analysis False Positive on Attribute Access**: The "Name may be undefined" warning (W2001) no longer fires on attribute-access names (e.g., `obj.value`), which are member lookups, not standalone name references.
 - **Type Checker: Walrus Operator Narrowing**: `if (x := expr) is not None:` and `if isinstance((x := expr), T):` now correctly narrow `x` inside the block.
 - **Type Checker: `type[T]` Member Access**: Accessing class-level members (e.g., `ClassVar`) on `type[T]` parameters now works correctly. `cls: type[MyClass]` → `cls.my_class_var` resolves to `MyClass`'s members.
 - **Type Checker: Property Support**: `@property` and `@cached_property` now correctly type-check. Accessing `obj.my_property` returns the property's return type instead of `FunctionType`.

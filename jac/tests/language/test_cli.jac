@@ -1277,16 +1277,20 @@ test "config no project" {
     original_cwd = os.getcwd();
     os.chdir(tmp_path);
     try {
-        captured = io.StringIO();
+        captured_out = io.StringIO();
+        captured_err = io.StringIO();
         old_stdout = sys.stdout;
-        sys.stdout = captured;
+        old_stderr = sys.stderr;
+        sys.stdout = captured_out;
+        sys.stderr = captured_err;
         try {
             config_cmd.config(action="path");
         } finally {
             sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
         }
-        stdout = captured.getvalue();
-        assert "jac.toml" in stdout;
+        combined = captured_out.getvalue() + captured_err.getvalue();
+        assert "jac.toml" in combined;
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);

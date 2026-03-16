@@ -132,9 +132,9 @@ impl JacConsole.error(
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
     if self.use_color {
-        print(f"{YELLOW}{prefix}{RESET} {message}");
+        print(f"{YELLOW}{prefix}{RESET} {message}", file=sys.stderr);
     } else {
-        print(f"{prefix} {message}");
+        print(f"{prefix} {message}", file=sys.stderr);
     }
 }
 
