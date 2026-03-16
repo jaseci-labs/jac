@@ -226,3 +226,21 @@ test "impl has var type not shadowed" {
         );
     }
 }
+
+test "multi-inheritance impl match" {
+    # Tests impl matching for classes with multiple parents that are also base classes.
+    # Bug: lookup.defn[-1] returned Name ref from inheritance instead of Archetype.
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "multi_inherit_impl_match.jac")
+    );
+    assert not [
+        e
+        for e in out.errors_had
+        if "E2009" in str(e)
+    ];
+
+    # Verify impl methods are in symbol table
+    impl_mod = state.impl_mod[0];
+    assert "impl.MultiInheritanceClass.my_static_method" in impl_mod.sym_tab.names_in_scope;
+    assert "impl.MultiInheritanceClass.my_instance_method" in impl_mod.sym_tab.names_in_scope;
+}
