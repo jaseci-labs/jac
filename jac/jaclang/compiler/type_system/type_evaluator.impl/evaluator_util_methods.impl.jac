@@ -130,6 +130,52 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+"""Check if a ClassType is the builtin 'type' class with type arguments (type[T])."""
+impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
+    return (
+        class_type.is_builtin("type")
+        and class_type.private is not None
+        and class_type.private.type_args is not None
+        and len(class_type.private.type_args) >= 1
+    );
+}
+
+"""Get lookup type for member access. For type[T], returns T; otherwise returns original."""
+impl TypeEvaluator._get_type_for_member_lookup(
+    object_type: types.ClassType
+) -> types.ClassType {
+    if self._is_type_subscript(object_type) {
+        inner_type = object_type.private.type_args[0];
+        # TODO: Handle TypeVar case - should look up on TypeVar's bound/constraints
+        if isinstance(inner_type, types.ClassType) {
+            lookup_type = inner_type;
+            if not lookup_type.is_instantiable() {
+                lookup_type = lookup_type.clone_as_class();
+            }
+            return lookup_type;
+        }
+    }
+    return object_type;
+}
+
+"""Get bound member from a class type. Handles type[T] by looking up on T."""
+impl TypeEvaluator.get_type_of_bound_member(
+    object_type: types.ClassType, member_name: str
+) -> type_utils.ClassMember | None {
+    # TODO: Handle type[Any]/type[Unknown] - should return Any for member access
+    # TODO: Handle metaclass member lookups
+    # TODO: Handle descriptor protocol (__get__, __set__)
+    # TODO: Handle __getattr__ fallback when member not found
+    object_type_is_instantiable = object_type.is_instantiable();
+
+    if object_type_is_instantiable {
+        lookup_type = self._get_type_for_member_lookup(object_type);
+        return self._lookup_class_member(lookup_type, member_name);
+    } else {
+        return self._lookup_object_member(object_type, member_name);
+    }
+}
+
 """
 Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
 
