@@ -107,21 +107,53 @@ Handles isinstance, None checks, truthiness, walrus, boolean ops.
 """
 def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     symbols: set[str] = set();
-    # Pattern: isinstance(x, T) — collect 'x'
+    # Pattern: isinstance(x, T) or isinstance((x := expr), T) — collect 'x'
     if isinstance(condition, uni.FuncCall) {
         if (
             isinstance(condition.target, uni.Name)
             and condition.target.value == "isinstance"
             and len(condition.params) >= 1
-            and isinstance(condition.params[0], uni.Name)
         ) {
-            symbols.add(condition.params[0].value);
+            first_arg = condition.params[0];
+            # Unwrap parentheses
+            if isinstance(first_arg, uni.AtomUnit) and first_arg.value {
+                first_arg = first_arg.value;
+            }
+            if isinstance(first_arg, uni.Name) {
+                symbols.add(first_arg.value);
+            } elif (
+                isinstance(first_arg, uni.BinaryExpr)
+                and isinstance(first_arg.op, uni.Token)
+                and first_arg.op.name == "WALRUS_EQ"
+                and isinstance(first_arg.left, uni.Name)
+            ) {
+                # isinstance((x := expr), T) -> collect 'x'
+                symbols.add(first_arg.left.value);
+            }
         }
     }
     # Pattern: x is None / x is not None — collect 'x'
+    # Also handles: (x := expr) is not None — collect 'x' from walrus
     elif isinstance(condition, uni.CompareExpr) {
-        if isinstance(condition.left, uni.Name) {
-            symbols.add(condition.left.value);
+        left = condition.left;
+        # Unwrap AtomUnit (parentheses)
+        if isinstance(left, uni.AtomUnit) {
+            inner = left.value;
+            if inner {
+                left = inner;
+            }
+        }
+        if isinstance(left, uni.Name) {
+            symbols.add(left.value);
+        } elif isinstance(left, uni.BinaryExpr) {
+            if (
+                isinstance(left.op, uni.Token)
+                and left.op.name == "WALRUS_EQ"
+                and isinstance(left.left, uni.Name)
+            ) {
+                # (x := expr) is not None -> collect 'x'
+                symbols.add(left.left.value);
+            }
         }
     }
     # Pattern: not <condition> — recurse

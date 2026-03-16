@@ -42,12 +42,30 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
-"""Get symbol table."""
+"""Get symbol table.
+
+For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
+We skip unlinked scopes and return the first linked scope (or Module root).
+"""
 @property
 impl UniNode.sym_tab -> UniScopeNode {
-    return self
-        if isinstance(self, UniScopeNode)
-        else self.parent_of_type(UniScopeNode);
+    nd: (UniNode | None) = self;
+    # TODO: Refactor this wile doing JS symtab
+    while nd is not None {
+        if isinstance(nd, UniScopeNode) {
+            # Module is always valid (root scope)
+            if isinstance(nd, Module) {
+                return nd;
+            }
+            # Linked scope (has parent_scope set)
+            if nd.parent_scope is not None {
+                return nd;
+            }
+            # Unlinked scope - continue up
+        }
+        nd = nd.parent;
+    }
+    raise ValueError("No scope found");
 }
 
 """Add kid left."""
@@ -478,13 +496,6 @@ impl UniScopeNode.link_kid_scope(key_node: UniScopeNode) -> UniScopeNode {
     key_node.parent_scope = self;
     self.kid_scope.append(key_node);
     return self.kid_scope[-1];
-}
-
-"""Inherit symbol table."""
-impl UniScopeNode.inherit_sym_tab(target_sym_tab: UniScopeNode) -> None {
-    for i in target_sym_tab.names_in_scope.values() {
-        self.def_insert(i.decl, access_spec=i.access);
-    }
 }
 
 """Insert into symbol table."""
@@ -2503,6 +2514,7 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
     self.comments: list[CommentToken] = [];
+    self.inline_suppressions: dict[int, set[str]] = {};
 }
 
 """Return the source code as string."""

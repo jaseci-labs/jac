@@ -33,30 +33,30 @@ def file_to_str(file_path: str) -> str {
 }
 
 test "fstring escape brace" {
-    (module, parse_errors, lex_errors) = rd_parse('glob a=f"{{}}", not_b=4;', "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse('glob a=f"{{}}", not_b=4;', "");
+    assert not had_error;
 }
 
 test "parser fam" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("fam.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("fam.jac"), "");
+    assert not had_error;
 }
 
 test "staticmethod checks out" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("staticcheck.jac"), "");
+    (module, had_error) = rd_parse(load_fixture("staticcheck.jac"), "");
     out = module.pp();
-    assert not parse_errors and not lex_errors;
+    assert not had_error;
     assert "staticmethod" not in out;
 }
 
 test "parser kwesc" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("kwesc.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("kwesc.jac"), "");
+    assert not had_error;
 }
 
 test "parser mod doc test" {
-    (module, parse_errors, lex_errors) = rd_parse(load_fixture("mod_doc_test.jac"), "");
-    assert not parse_errors and not lex_errors;
+    (module, had_error) = rd_parse(load_fixture("mod_doc_test.jac"), "");
+    assert not had_error;
 }
 
 test "all ast has normalize" {
@@ -134,19 +134,19 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
+    # Parser emits 'Missing ;' (treats 'new' as identifier, so 'new car(...)' is
+    # two expressions). ASTValidationPass then catches 'new' as a banned keyword.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 6;
+    assert len(prog.errors_had) == 4;
     expected_substrings = [
-        "The 'new' keyword is not supported in Jac",
-        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
         "Missing ';'",
-        "The 'new' keyword is not supported in Jac",
-        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
         "Missing ';'",
+        "'new' is not supported in Jac",
+        "'new' is not supported in Jac",
 
     ];
     for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
@@ -156,21 +156,27 @@ test "new keyword errors" {
 }
 
 test "pass keyword errors" {
+    # ASTValidationPass catches all 17 occurrences of 'pass' with the same
+    # message. The 5 archetype body usages also produce 'Missing ;' from the
+    # parser (fixture omits semicolons for those, mimicking Python style).
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "pass_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 34;
-    expected_substrings = 17 * [
-        "'pass' keyword is not allowed in Jac",
-        "Jac does not allow this keyword in any syntactic position",
-
-    ];
-    for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
+    assert len(prog.errors_had) == 22;
+    keyword_errors = 0;
+    missing_semi = 0;
+    for alrt in prog.errors_had {
         pretty = alrt.pretty_print();
-        assert expected in pretty;
+        if "'pass' is not supported in Jac" in pretty {
+            keyword_errors += 1;
+        } elif "Missing ';'" in pretty {
+            missing_semi += 1;
+        }
     }
+    assert keyword_errors == 17;
+    assert missing_semi == 5;
 }
 
 test "multiple syntax errors" {
@@ -203,12 +209,8 @@ test "jsx comprehensive fixture" {
         "client_jsx.jac"
     );
     source_text = Path(fixture_path).read_text(encoding="utf-8");
-    (module, parse_errors, lex_errors) = rd_parse(source_text, str(fixture_path));
-    combined_errors = parse_errors + lex_errors;
-    all_errors = [str(e) for e in combined_errors];
-    assert not parse_errors and not lex_errors , (
-        f"Parser reported errors for JSX fixture: {all_errors}"
-    );
+    (module, had_error) = rd_parse(source_text, str(fixture_path));
+    assert not had_error , "Parser reported errors for JSX fixture";
     tree_repr = module.pp();
 
     expected_snippets = {
@@ -495,11 +497,9 @@ def parser_file_test(rel_path: str) -> None {
         return;
     }
     source = file_to_str(filename);
-    (module, parse_errors, lex_errors) = rd_parse(source, filename);
+    (module, had_error) = rd_parse(source, filename);
     if os.path.basename(filename) not in FILES_EXPECTED_ERRORS {
-        assert not parse_errors and not lex_errors , (
-            f"{filename}: parse_errors={len(parse_errors)}, lex_errors={len(lex_errors)}"
-        );
+        assert not had_error , f"{filename}: parse errors detected";
     }
 }
 
@@ -526,6 +526,69 @@ test "decorated test blocks" {
     t = mod.body[0];
     assert isinstance(t, uni.Test);
     assert not t.decorators;
+}
+
+test "bracket filter after edge ref" {
+    (mod, err) = rd_parse('walker W { can go with entry { visit [-->][?:Foo]; } }', "");
+    assert not err , "Failed to parse [-->][?:Foo]";
+}
+
+test "bracket filter with conditions" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { visit [-->][?:Foo, bar==5]; } }', ""
+    );
+    assert not err , "Failed to parse [-->][?:Foo, bar==5]";
+}
+
+test "bracket filter no type" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { visit [-->][?bar==5]; } }', ""
+    );
+    assert not err , "Failed to parse [-->][?bar==5]";
+}
+
+test "chained bracket filters" {
+    (mod, err) = rd_parse(
+        'walker W { can go with entry { x = [root-->][?:Foo][?val==10]; } }', ""
+    );
+    assert not err , "Failed to parse chained bracket filters";
+}
+
+test "standalone bracket filter expr" {
+    (mod, err) = rd_parse('with entry { x = [?:Foo, a<3]; }', "");
+    assert not err , "Failed to parse standalone [?:Foo, a<3]";
+}
+
+test "bracket vs paren filter produce same AST" {
+    (mod_old, _) = rd_parse('with entry { x(?:Foo, a==5); }', "");
+    (mod_new, _) = rd_parse('with entry { x[?:Foo, a==5]; }', "");
+    # Find FilterCompr nodes in both trees
+    def find_fc(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) {
+            return nd;
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_fc(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    old_fc = find_fc(mod_old);
+    new_fc = find_fc(mod_new);
+    assert old_fc is not None , "Old syntax should produce FilterCompr";
+    assert new_fc is not None , "New syntax should produce FilterCompr";
+    assert len(old_fc.compares) == len(new_fc.compares) , "Both syntaxes should have same number of compares";
+}
+
+test "bracket filter on list" {
+    (mod, err) = rd_parse('with entry { print(my_list[?:MyObj, a<4]); }', "");
+    assert not err , "Failed to parse list bracket filter";
 }
 
 with entry {

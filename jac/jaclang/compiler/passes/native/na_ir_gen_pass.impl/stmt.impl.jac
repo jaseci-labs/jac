@@ -83,6 +83,29 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
                             "dict", "remove", dict_val, [idx_val], dict_type_key
                         );
                     }
+                } else {
+                    # del list[i]  →  list.del_at(i)
+                    list_val_tmp = self._codegen_expr(target_expr.target);
+                    if list_val_tmp is not None {
+                        elem_type_name = self._infer_list_elem_type(list_val_tmp);
+                        if elem_type_name is not None {
+                            list_val = self._codegen_expr(target_expr.target);
+                            idx_node = slices[0];
+                            idx_val = self._codegen_expr(idx_node);
+                            if idx_val is None and idx_node?.start {
+                                idx_val = self._codegen_expr(idx_node.start);
+                            }
+                            if list_val is not None and idx_val is not None {
+                                self._dispatch_primitive_method(
+                                    "list",
+                                    "del_at",
+                                    list_val,
+                                    [idx_val],
+                                    elem_type_name
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }

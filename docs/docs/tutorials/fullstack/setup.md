@@ -51,7 +51,7 @@ node Todo {
 
 walker:pub get_todos {
     can fetch with Root entry {
-        for todo in [-->](?:Todo) {
+        for todo in [-->][?:Todo] {
             report todo;
         }
     }

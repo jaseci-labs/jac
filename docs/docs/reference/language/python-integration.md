@@ -76,6 +76,20 @@ The compiled output demonstrates how Jac's object-oriented features map to stand
 !!! note
     The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
 
+#### Automatic TYPE_CHECKING Guards
+
+The Jac compiler analyzes import usage and automatically wraps imports that are **only used in type annotations** inside `if typing.TYPE_CHECKING:` guards. This is a common Python pattern to avoid circular imports and reduce runtime overhead, but in Jac you never need to write it manually -- the compiler handles it for you.
+
+For example, if `MyClass` is only used as a type annotation (parameter type, return type, or field type) and never instantiated or used at runtime, the generated Python will include:
+
+```python
+import typing
+if typing.TYPE_CHECKING:
+    from mymodule import MyClass
+```
+
+This works because Jac always emits `from __future__ import annotations`, which makes all type annotations lazy strings that are never evaluated at runtime.
+
 ---
 
 ### **Seamless Interoperability: Import Jac Files Like Python Modules**

@@ -5,6 +5,15 @@ impl es_to_js(nd: (es.Node | None), indent: str = '  ') -> str {
     return generator.generate(nd);
 }
 
+"""Convert ESTree node to JS code and return both the code and a source line map."""
+impl es_to_js_with_map(
+    nd: (es.Node | None), indent: str = '  '
+) -> tuple[str, list[tuple[int, int, int]]] {
+    generator = JSCodeGenerator(indent=indent);
+    code = generator.generate(nd);
+    return (code, generator.line_map);
+}
+
 """Generate export all declaration."""
 impl JSCodeGenerator.gen_export_all_declaration(nd: es.ExportAllDeclaration) -> str {
     source = self.generate(nd.source);
@@ -643,13 +652,22 @@ impl JSCodeGenerator.gen_empty_statement(nd: es.EmptyStatement) -> str {
     return f"{self.indent()};";
 }
 
-"""Generate block statement."""
+"""Generate block statement with source mapping for inner statements."""
 impl JSCodeGenerator.gen_block_statement(nd: es.BlockStatement) -> str {
     if not nd.body {
         return '{}';
     }
     self.indent_level += 1;
-    body = '\n'.join(self.generate(stmt) for stmt in nd.body);
+    self._current_line += 1;  # Account for opening '{\n'
+    parts: list[str] = [];
+    for (i, stmt) in enumerate(nd.body) {
+        if i > 0 {
+            self._current_line += 1;  # '\n' separator from join()
+        }
+        code = self.generate(stmt);
+        parts.append(code);
+    }
+    body = '\n'.join(parts);
     self.indent_level -= 1;
     return f"{{\n{body}\n{self.indent()}}}";
 }
@@ -659,21 +677,53 @@ impl JSCodeGenerator.gen_expression_statement(nd: es.ExpressionStatement) -> str
     return f"{self.indent()}{self.generate(nd.expression)};";
 }
 
-"""Generate program."""
+"""Generate program, building a line map from output lines to source locations.
+Uses generate()'s built-in line tracking via _current_line and _line_to_src.
+"""
 impl JSCodeGenerator.gen_program(nd: es.Program) -> str {
-    return '\n'.join(self.generate(stmt) for stmt in nd.body);
+    self._current_line = 1;
+    self._line_to_src = {};
+    parts: list[str] = [];
+    for stmt in nd.body {
+        code = self.generate(stmt);
+        parts.append(code);
+        # Account for the '\n' separator join() adds between statements
+        self._current_line += 1;
+    }
+    self.line_map = [
+        (out_line, src[0], src[1])
+        for (out_line, src) in sorted(self._line_to_src.items())
+    ];
+    return '\n'.join(parts);
 }
 
-"""Generate JavaScript code for a node."""
+"""Generate JavaScript code for a node, recording source location at current output line."""
 impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
     import from jaclang.jac0core.helpers { pascal_to_snake }
     if (nd is None) {
         return '';
     }
+    # Record this node's source location at the current output line.
+    # First node wins — gives the outermost statement's location for that line.
+    if nd.loc and nd.loc.start and self._current_line not in self._line_to_src {
+        self._line_to_src[self._current_line] = (
+            nd.loc.start.line,
+            nd.loc.start.column
+        );
+    }
     method_name = f"gen_{pascal_to_snake(nd.type)}";
     method = getattr(self, method_name, None);
     if method {
-        return method(nd);
+        line_before = self._current_line;
+        result = method(nd);
+        # Only advance by newlines NOT already counted by nested generate() calls
+        total_newlines = result.count('\n');
+        already_counted = self._current_line - line_before;
+        remaining = total_newlines - already_counted;
+        if remaining > 0 {
+            self._current_line += remaining;
+        }
+        return result;
     } else {
         return f"/* Unsupported node type: {nd.type} */";
     }
@@ -688,4 +738,7 @@ impl JSCodeGenerator.indent -> str {
 impl JSCodeGenerator.init(indent: str = '  ') -> None {
     self.indent_str = indent;
     self.indent_level = 0;
+    self.line_map = [];
+    self._current_line = 1;
+    self._line_to_src = {};
 }

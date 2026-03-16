@@ -831,7 +831,10 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             );
         }
         config.check = CheckConfig(
-            print_errs=check_data.get("print_errs", True), lint=lint_config
+            print_errs=check_data.get("print_errs", True),
+            lint=lint_config,
+            suppress=check_data.get("suppress", []),
+            suppress_categories=check_data.get("suppress_categories", [])
         );
     }
     if "dot" in data {

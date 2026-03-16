@@ -516,6 +516,35 @@ test "complex objects field append" {
     assert f() == 3;
 }
 
+# --- TestNativeCrossModuleMethods ---
+# Regression tests for: _register_imported_archetype must forward-declare all
+# archetype methods so that method_funcs["Type.method"] is populated for
+# imported types.  Before the fix every cross-module method call was silently
+# dropped from the IR (value stayed null/0).
+test "cross-module method call once" {
+    (eng, _) = compile_native("na_method_import.na.jac");
+    f = get_func(eng, "test_imported_method_once", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "cross-module method call five times" {
+    (eng, _) = compile_native("na_method_import.na.jac");
+    f = get_func(eng, "test_imported_method_five", ctypes.c_int64);
+    assert f() == 5;
+}
+
+test "cross-module method call with argument" {
+    (eng, _) = compile_native("na_method_import.na.jac");
+    f = get_func(eng, "test_imported_method_with_arg", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "cross-module chained method calls" {
+    (eng, _) = compile_native("na_method_import.na.jac");
+    f = get_func(eng, "test_imported_chained_methods", ctypes.c_int64);
+    assert f() == 12;
+}
+
 # --- TestNativeBuiltins ---
 test "builtins char at" {
     (eng, _) = compile_native("builtins.na.jac");
@@ -2527,4 +2556,192 @@ test "cross module glob init: pushed values are readable" {
     get_second = get_func(eng, "get_second", ctypes.c_int64);
     assert get_first() == 42 , f"Expected 42, got {get_first()}";
     assert get_second() == 99 , f"Expected 99, got {get_second()}";
+}
+
+# ─── FIX 1: Transitive native imports linked via DFS ─────────────────────────
+# Before the fix, the linker only walked direct imports. A → B → C would
+# compile B but leave C's symbols unresolved at JIT link time.
+# jac-bun/issues/transitive-native-import-not-linked/
+test "transitive import: compiles without errors" {
+    # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
+    # All three modules must be linked for compilation to succeed.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "transitive import: function call through two import hops returns correct value" {
+    # run_transitive_test() → get_mid() → get_leaf() → 99
+    # All three functions must be linked for this to work.
+    (eng, _) = compile_native("fix_transitive_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_transitive_test", ctypes.c_int64);
+    assert run_fn() == 99 , f"Expected 99, got {run_fn()}";
+}
+
+test "transitive import: same result on repeated calls (no state corruption)" {
+    (eng, _) = compile_native("fix_transitive_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_transitive_test", ctypes.c_int64);
+    assert run_fn() == 99 , f"First call: expected 99, got {run_fn()}";
+    assert run_fn() == 99 , f"Second call: expected 99, got {run_fn()}";
+    assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
+}
+
+# ─── FIX 4: del list[i] shrinks the list ─────────────────────────────────────
+# Before the fix, `del container.field_list[i]` was silently dropped from
+# the IR — the element was never removed and the list length never changed.
+# jac-bun/issues/del-struct-field-list-no-shrink/
+test "del list item: length decrements after delete" {
+    # Container starts with [10, 20, 30]; after del items[2] length must be 2.
+    (eng, _) = compile_native("fix_del_list.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_del_shrinks_length", ctypes.c_int64);
+    result = f();
+    assert result == 2 , f"Expected length 2 after del, got {result}";
+}
+
+test "del list item: remaining elements shift left after delete" {
+    # After del items[0] from [10, 20, 30], items[0] must become 20.
+    (eng, _) = compile_native("fix_del_list.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_del_shifts_elements", ctypes.c_int64);
+    result = f();
+    assert result == 20 , f"Expected items[0]=20 after del, got {result}";
+}
+
+test "del list item: deleting only element yields empty list" {
+    # del items[0] from single-element list — length must become 0.
+    (eng, _) = compile_native("fix_del_list.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_del_last_element", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected length 0 after del, got {result}";
+}
+
+# ─── FIX 3a: Imported archetype methods registered in method_funcs ────────────
+# Before the fix, _forward_declare_method was never called for methods on
+# imported archetypes, so calls like `c.increment()` were silently dropped.
+# jac-bun/issues/imported-archetype-methods-not-in-method-funcs/
+test "imported archetype method: single increment returns 1" {
+    # Counter.increment() on an imported struct; expect 1 after one call.
+    (eng, _) = compile_native("fix_method_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_increment_once", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected 1, got {result}";
+}
+
+test "imported archetype method: double increment returns 2" {
+    # Two calls to increment() on the same Counter; expect 2.
+    (eng, _) = compile_native("fix_method_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_increment_twice", ctypes.c_int64);
+    result = f();
+    assert result == 2 , f"Expected 2, got {result}";
+}
+
+test "imported archetype method: add_delta returns updated value" {
+    # Counter starts at 5, add_delta(3); expect 8.
+    (eng, _) = compile_native("fix_method_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_add_delta", ctypes.c_int64);
+    result = f();
+    assert result == 8 , f"Expected 8, got {result}";
+}
+
+test "imported archetype method: independent instances do not share state" {
+    # Two counters accumulate independently; encoded as a*100 + b.
+    # a = 2 (incremented twice), b = 15 (start 10 + delta 5) → 215.
+    (eng, _) = compile_native("fix_method_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_two_counters", ctypes.c_int64);
+    result = f();
+    assert result == 215 , f"Expected 215 (a=2, b=15), got {result}";
+}
+
+# ─── FIX 3b: Cross-module fn arg where param type is from a third module ──────
+# When calling an imported function whose parameter type is itself defined in
+# a third module, the compiler emitted i64(0) instead of the correct struct*.
+# jac-bun/issues/cross-module-fn-arg-third-module-struct-as-i64/
+test "third module struct: compiles without type errors" {
+    # fix_third_entry imports from fix_third_a and fix_third_b.
+    # fix_third_b's read_value takes a DataA from fix_third_a — third-module struct.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_third_entry.na.jac")));
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert ir.gen.native_engine is not None , "No native engine";
+}
+
+test "third module struct: value field survives cross-module round-trip" {
+    # make_data_a(77, 3) → pass to read_value; expect 77.
+    (eng, _) = compile_native("fix_third_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_third_struct_value", ctypes.c_int64);
+    result = f();
+    assert result == 77 , f"Expected 77, got {result}";
+}
+
+test "third module struct: both fields correct after cross-module call" {
+    # make_data_a(77, 3) → read_sum (value+tag); expect 80.
+    (eng, _) = compile_native("fix_third_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_third_struct_sum", ctypes.c_int64);
+    result = f();
+    assert result == 80 , f"Expected 80, got {result}";
+}
+
+# ─── FIX 5: var_type_node populated for imported globals (subscript access) ───
+# Before the fix, _register_imported_globals did not store the type-annotation
+# AST node in var_type_node, so _resolve_ptr_elem_cast_type emitted i8* null
+# when accessing elements of cross-module list globals inline (ITEMS[i].field).
+# jac-bun/issues/cross-module-list-subscript-multilevel-field-access/
+test "cross-module subscript: compiles without errors" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_subscript_entry.na.jac")));
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert ir.gen.native_engine is not None , "No native engine";
+}
+
+test "cross-module subscript: inline ITEMS[0].value returns correct value" {
+    # push_item(42, 7) then ITEMS[0].value inline (no typed local); expect 42.
+    (eng, _) = compile_native("fix_subscript_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();  # initialises ITEMS glob in fix_subscript_outer
+    f = get_func(eng, "test_subscript_value", ctypes.c_int64);
+    result = f();
+    assert result == 42 , f"Expected 42, got {result}";
+}
+
+test "cross-module subscript: inline ITEMS[0].extra returns correct value" {
+    # push_item(42, 7) then ITEMS[0].extra inline; expect 7.
+    (eng, _) = compile_native("fix_subscript_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_subscript_extra", ctypes.c_int64);
+    result = f();
+    assert result == 7 , f"Expected 7, got {result}";
+}
+
+test "cross-module subscript: inline access to second item returns correct value" {
+    # push (42,7) then (99,3); ITEMS[1].value inline; expect 99.
+    (eng, _) = compile_native("fix_subscript_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_subscript_second_item", ctypes.c_int64);
+    result = f();
+    assert result == 99 , f"Expected 99, got {result}";
 }

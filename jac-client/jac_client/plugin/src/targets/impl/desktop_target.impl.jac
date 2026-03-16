@@ -1540,6 +1540,8 @@ impl DesktopTarget.build(
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
+    # Step 1.1: Copy assets to dist for desktop builds (Tauri serves from dist directly)
+    _copy_assets_to_dist(project_dir, web_bundle_path.parent);
     # Regenerate main.rs with latest TOML config (base_url may have changed since setup)
     _generate_main_rs(tauri_dir, api_base_url=toml_base_url);
     # Step 1.5: Bundle sidecar (optional - can be skipped if not needed)
@@ -1707,6 +1709,40 @@ def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
             );
         }
     }
+}
+
+"""Copy assets from compiled/assets to dist/static/assets for desktop builds.
+
+Desktop builds (Tauri) serve files directly from the dist folder,
+not via the Jac server. Assets are referenced with /static/assets/ URLs
+so we need to mirror that path structure in the dist folder.
+"""
+def _copy_assets_to_dist(project_dir: Path, dist_dir: Path) -> None {
+    client_dir = project_dir / '.jac' / 'client';
+    compiled_assets = client_dir / 'compiled' / 'assets';
+    # Mirror the /static/assets/ URL structure in dist
+    dist_static = dist_dir / 'static';
+    dist_assets = dist_static / 'assets';
+
+    if not compiled_assets.exists() {
+        return;  # No assets to copy
+
+    }
+
+    # Create static directory and copy assets
+    dist_static.mkdir(parents=True, exist_ok=True);
+    if dist_assets.exists() {
+        shutil.rmtree(dist_assets);
+    }
+    shutil.copytree(compiled_assets, dist_assets);
+
+    # Also copy styles.css to static/ if it exists in dist
+    dist_styles = dist_dir / 'styles.css';
+    if dist_styles.exists() {
+        shutil.copy2(dist_styles, dist_static / 'styles.css');
+    }
+
+    console.print("  ✔ Copied assets to dist/static/assets/", style="success");
 }
 
 """Update tauri.conf.json to point to the built web bundle."""
@@ -2475,6 +2511,8 @@ impl DesktopTarget.start(
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
+    # Step 1.5: Copy assets to dist for desktop (Tauri serves from dist directly)
+    _copy_assets_to_dist(project_dir, web_bundle_path.parent);
     # Step 2: Update tauri.conf.json to point to web bundle
     console.print("  Step 2: Updating Tauri configuration...", style="muted");
     _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);

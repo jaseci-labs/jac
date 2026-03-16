@@ -19,6 +19,7 @@ import ast as ast3;
 import marshal;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.diagnostics { E5040, E5043 }
 """Python and bytecode file printing pass."""
 class PyBytecodeGenPass(Transform[uni.Module, uni.Module]) {
     """Transform AST into Python bytecode."""

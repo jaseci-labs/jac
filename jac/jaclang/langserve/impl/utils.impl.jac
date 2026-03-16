@@ -409,7 +409,9 @@ impl gen_diagnostics(
         lspt.Diagnostic(
             range=create_range(error.loc),
             message=error.msg,
-            severity=lspt.DiagnosticSeverity.Error
+            severity=lspt.DiagnosticSeverity.Error,
+            code=error.code.code if error.code else None,
+            source="jac"
         )
         for error in errors
         if error.loc.mod_path == from_path
@@ -417,7 +419,9 @@ impl gen_diagnostics(
         lspt.Diagnostic(
             range=create_range(warning.loc),
             message=warning.msg,
-            severity=lspt.DiagnosticSeverity.Warning
+            severity=lspt.DiagnosticSeverity.Warning,
+            code=warning.code.code if warning.code else None,
+            source="jac"
         )
         for warning in warnings
         if warning.loc.mod_path == from_path

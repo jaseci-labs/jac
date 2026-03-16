@@ -124,6 +124,27 @@ import from jaclang.jac0core.unitree { JsxText, JsxExpression }
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
+import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
+    Severity,
+    E0001,
+    E0002,
+    E0003,
+    E0004,
+    E0005,
+    E0006,
+    E0013,
+    E0021,
+    E0022,
+    E0030,
+    E0032,
+    E0034,
+    E0045,
+    E0046,
+    E0047,
+    W0060,
+    W0061
+}
 
 impl Parser.current -> Token {
     if self.pos < self._tokens_len {
@@ -205,9 +226,9 @@ impl Parser.expect(kind: TokenKind) -> Token {
         TokenKind.SEMI,
         TokenKind.COMMA
     ) {
-        self.error(f"Missing '{kind.value}'");
+        self.emit_diag(E0002, token=kind.value);
     } else {
-        self.error(f"Expected '{kind.value}', got '{self.current().kind.value}'");
+        self.emit_diag(E0001, expected=kind.value, got=self.current().kind.value);
         # Advance past the unexpected token to guarantee forward progress
         return self.advance();
     }
@@ -221,66 +242,68 @@ impl Parser.consume_uni(kind: TokenKind) -> UniToken {
     return self.make_uni_token(tok);
 }
 
+impl Parser._make_alert(
+    message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+) -> Alert {
+    source = self.get_source();
+    tok = UniToken(
+        orig_src=source,
+        name="ERROR",
+        value="",
+        line=sloc.line,
+        end_line=sloc.end_line,
+        col_start=sloc.col_start,
+        col_end=sloc.col_end,
+        pos_start=sloc.pos_start,
+        pos_end=sloc.pos_end
+    );
+    loc = CodeLocInfo(tok, tok);
+    return Alert(message, loc, Parser, code=code);
+}
+
 impl Parser.error(message: str) {
     sloc = self.current().loc;
-    self.errors.append(ParseError(message=message, loc=sloc));
-    # Propagate to prog.errors_had as Alert if prog is available
+    self.error_count += 1;
     if self.prog is not None and hasattr(self.prog, "errors_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="ERROR",
-            value="",
-            line=sloc.line,
-            end_line=sloc.end_line,
-            col_start=sloc.col_start,
-            col_end=sloc.col_end,
-            pos_start=sloc.pos_start,
-            pos_end=sloc.pos_end
-        );
-        loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, loc, Parser);
+        alrt = self._make_alert(message, sloc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.error_at(message: str, loc: SourceLoc) {
-    self.errors.append(ParseError(message=message, loc=loc));
+    self.error_count += 1;
     if self.prog is not None and hasattr(self.prog, "errors_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="ERROR",
-            value="",
-            line=loc.line,
-            end_line=loc.end_line,
-            col_start=loc.col_start,
-            col_end=loc.col_end,
-            pos_start=loc.pos_start,
-            pos_end=loc.pos_end
-        );
-        code_loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, code_loc, Parser);
+        alrt = self._make_alert(message, loc);
         self.prog.errors_had.append(alrt);
     }
 }
 
 impl Parser.warn_at(message: str, loc: SourceLoc) {
     if self.prog is not None and hasattr(self.prog, "warnings_had") {
-        source = self.get_source();
-        tok = UniToken(
-            orig_src=source,
-            name="WARNING",
-            value="",
-            line=loc.line,
-            end_line=loc.end_line,
-            col_start=loc.col_start,
-            col_end=loc.col_end,
-            pos_start=loc.pos_start,
-            pos_end=loc.pos_end
-        );
-        code_loc = CodeLocInfo(tok, tok);
-        alrt = Alert(message, code_loc, Parser);
+        alrt = self._make_alert(message, loc);
+        self.prog.warnings_had.append(alrt);
+    }
+}
+
+impl Parser.emit_diag(
+    diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+) {
+    sloc = loc if loc is not None else self.current().loc;
+    msg = diag.format_message(**kwargs);
+    self.error_count += 1;
+    if self.prog is not None and hasattr(self.prog, "errors_had") {
+        alrt = self._make_alert(msg, sloc, code=diag);
+        self.prog.errors_had.append(alrt);
+    }
+}
+
+impl Parser.emit_warn(
+    diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+) {
+    sloc = loc if loc is not None else self.current().loc;
+    msg = diag.format_message(**kwargs);
+    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+        alrt = self._make_alert(msg, sloc, code=diag);
         self.prog.warnings_had.append(alrt);
     }
 }
@@ -403,7 +426,7 @@ impl Parser.expect_name -> Token {
     if self.check_name() {
         return self.advance();
     }
-    self.error(f"Expected identifier, got '{self.current().kind.value}'");
+    self.emit_diag(E0003, got=self.current().kind.value);
     return self.current();
 }
 
@@ -434,11 +457,6 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
         kwesc = True;
     } elif tok.kind == TokenKind.KWESC_NAME {
         kwesc = True;
-    }
-    # Reject Python/JS keywords that are not valid Jac identifiers
-    if val == "pass" {
-        self.error("'pass' keyword is not allowed in Jac");
-        self.error("Jac does not allow this keyword in any syntactic position");
     }
     return Name(
         orig_src=self.get_source(),
@@ -797,10 +815,6 @@ impl Parser.parse_concurrent_expr -> Expr {
 impl Parser.parse_walrus_assign -> Expr {
     expr = self.parse_by_expr();
     if self.check(TokenKind.WALRUS_EQ) {
-        # Validate LHS is a named reference (Name or SpecialVarRef)
-        if not isinstance(expr, Name) and not isinstance(expr, SpecialVarRef) {
-            self.error("Walrus operator ':=' requires a simple name on the left side");
-        }
         walrus_tok = self.advance();
         value = self.parse_by_expr();
         op = self.make_uni_token(walrus_tok);
@@ -1208,7 +1222,7 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.error("Expected :<+ or :+> to close connect operator");
+            self.emit_diag(E0021);
             return None;
         }
     }
@@ -1379,6 +1393,7 @@ impl Parser.parse_atomic_chain -> Expr {
             # Check if this is filter_compr: (?...) or (?:Type, ...)
             if self.check_peek(TokenKind.NULL_OK) {
                 # Parse filter comprehension: (?val==10) or (?:Type, val==10)
+                self.emit_warn(W0061, loc=self.current().loc);
                 self.advance();  # consume LPAREN
                 filter_expr = self.parse_filter_compr_inner();
                 # Wrap in AtomTrailer
@@ -1429,6 +1444,18 @@ impl Parser.parse_atomic_chain -> Expr {
                 }
                 expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
             }
+        } elif self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
+            # Parse new bracket filter comprehension: [?val==10] or [?:Type, val==10]
+            self.advance();  # consume LSQUARE
+            filter_expr = self.parse_filter_compr_bracket();
+            kid = [expr, filter_expr];
+            expr = AtomTrailer(
+                target=expr,
+                right=filter_expr,
+                is_attr=False,
+                is_null_ok=False,
+                kid=kid
+            );
         } elif (
             self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE)
         )
@@ -1600,8 +1627,8 @@ impl Parser.parse_call_args(kid: list) -> list {
     }
     # Check for missing comma between arguments
     if not self.check(TokenKind.RPAREN) and not self.at_end() {
-        self.error("Missing ','");
-        self.error("Unexpected token");
+        self.emit_diag(E0002, token=",");
+        self.emit_diag(E0006);
         # Skip to RPAREN or end to recover
         while not self.check(TokenKind.RPAREN) and not self.at_end() {
             self.advance();
@@ -1700,6 +1727,45 @@ impl Parser.parse_filter_compr_inner -> FilterCompr {
     }
     rp_uni = self.consume_uni(TokenKind.RPAREN);
     kid.append(rp_uni);
+    return FilterCompr(f_type=f_type, compares=compares, kid=kid);
+}
+
+impl Parser.parse_filter_compr_bracket -> FilterCompr {
+    # Parse bracket filter_compr after LSQUARE is consumed
+    # filter_compr: LSQUARE NULL_OK (COLON expression)? (COMMA compare)* RSQUARE
+    # Note: LSQUARE was already consumed by caller, use self.previous() for it
+    lsq_uni = self.make_uni_token(self.previous());
+    kid: list = [lsq_uni];
+    f_type = None;
+    # Consume ? (NULL_OK)
+    null_ok_uni = self.consume_uni(TokenKind.NULL_OK);
+    kid.append(null_ok_uni);
+    # Check for typed variant: [?:Type, ...]
+    if self.match_tok(TokenKind.COLON) {
+        kid.append(self.make_uni_token(self.previous()));
+        f_type = self.parse_expression();
+        kid.append(f_type);
+    }
+    # Parse filter_compare_list (separated by commas)
+    compares: list = [];
+    # After f_type, consume comma separator before comparisons
+    if f_type and self.match_tok(TokenKind.COMMA) {
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if not self.check(TokenKind.RSQUARE) {
+        # Parse comparison: expr cmp_op expr
+        comp = self.parse_compare();
+        compares.append(comp);
+        kid.append(comp);
+        while self.match_tok(TokenKind.COMMA) {
+            kid.append(self.make_uni_token(self.previous()));
+            comp = self.parse_compare();
+            compares.append(comp);
+            kid.append(comp);
+        }
+    }
+    rsq_uni = self.consume_uni(TokenKind.RSQUARE);
+    kid.append(rsq_uni);
     return FilterCompr(f_type=f_type, compares=compares, kid=kid);
 }
 
@@ -2007,16 +2073,6 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.NAME)
     or self.check(TokenKind.KWESC_NAME)
     or self.is_keyword_token() {
-        # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
-        # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
-        if self.check(TokenKind.NAME)
-        and self.current().value == "new"
-        and self.check_peek_any(TokenKind.NAME, TokenKind.KWESC_NAME) {
-            self.error("The 'new' keyword is not supported in Jac");
-            self.error(
-                "Use `Reflect.construct(target, argumentsList)` method to create new instances"
-            );
-        }
         tok = self.advance();
         if tok.kind != TokenKind.NAME and tok.kind != TokenKind.KWESC_NAME {
             return self.make_special_name(tok);
@@ -2049,7 +2105,7 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
         return self.parse_jsx_element();
     }
-    self.error(f"Unexpected token in expression: '{self.current().kind.value}'");
+    self.emit_diag(E0004, got=self.current().kind.value);
     return self.make_name(self.advance());
 }
 
@@ -2118,10 +2174,14 @@ impl Parser.parse_paren_expr -> Expr {
 }
 
 impl Parser.parse_bracket_expr -> Expr {
-    # Consume [ then dispatch to edge_ref_chain vs list_or_compr.
+    # Consume [ then dispatch to edge_ref_chain, bracket filter, or list_or_compr.
     # Sub-parsers use self.previous() to get the [ token.
     self.expect(TokenKind.LSQUARE);
     # Dispatch based on lookahead (helper is _-prefixed, invisible to extractor).
+    if self.check(TokenKind.NULL_OK) {
+        # Bracket filter comprehension: [?val==10] or [?:Type, val==10]
+        return self.parse_filter_compr_bracket();
+    }
     if self._is_edge_ref_start() {
         return self.parse_edge_ref_chain();
     }
@@ -2453,6 +2513,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
             kid.append(edge_op_ref);
         }
         # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
+        # Note: (?:...) inside edge ref chain is NOT deprecated (brackets can't nest here)
         if self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
                 self.advance();
@@ -2519,9 +2580,17 @@ impl Parser.parse_edge_ref_chain -> Expr {
             chain.append(edge_op_ref);
             kid.append(edge_op_ref);
         }
-        # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
-        if self.check(TokenKind.LPAREN) {
+        # Check for bracket filter after edge operator: -->[?:A] or -->[?val==5]
+        if self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
+            self.advance();  # consume [
+            filter_expr = self.parse_filter_compr_bracket();
+            chain.append(filter_expr);
+            kid.append(filter_expr);
+        }
+        # Check for deprecated paren filter: -->(?:A) or -->(?val==5)
+        elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
+                self.emit_warn(W0061, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2865,7 +2934,7 @@ impl Parser.parse_lambda_expr -> Expr {
         body = self.parse_code_block_stmts();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
-        self.error("Expected ':' or '{' after lambda parameters");
+        self.emit_diag(E0022);
         body = self.parse_expression();
     }
     if return_type {
@@ -2985,10 +3054,7 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
-        self.error(
-            f"'{kw}' is a keyword and cannot be used as a lambda parameter"
-            f" name (prefix with backtick to escape: {chr(96)}{kw})"
-        );
+        self.emit_diag(E0013, keyword=kw, context="lambda parameter");
         return None;
     } else {
         # No name follows - not a valid parameter
@@ -3269,7 +3335,7 @@ impl Parser.parse_jsx_child -> Expr {
 
 impl Parser.parse_element_stmt{
     if self.check(TokenKind.SEMI) {
-        self.error("Unexpected semicolon at module level");
+        self.emit_diag(E0030);
         self.advance();
         return None;
     }
@@ -3417,7 +3483,7 @@ impl Parser.parse_element_stmt{
     if self.check(TokenKind.KW_ASYNC) {
         return self._dispatch_async();
     }
-    self.error(f"Unexpected token '{self.current().value}'");
+    self.emit_diag(E0005, token=self.current().value);
     self.synchronize();
     return EmptyToken();
 }
@@ -3457,9 +3523,6 @@ impl Parser._dispatch_decorated{
     is_impl = self.check(TokenKind.KW_IMPL);
     is_test = self.check(TokenKind.KW_TEST);
     self.pos = save_pos;  # Restore position
-    if has_abs_prefix {
-        self.error("'abs' is not a valid prefix modifier");
-    }
     if is_test {
         return self.parse_test();
     } elif is_ability {
@@ -3643,7 +3706,6 @@ impl Parser.parse_module_code -> ModuleCode {
     target_name = None;  # For :__main__ style target
     colon_uni = None;
     if self.check(TokenKind.KW_EXIT) {
-        self.error("Module-level 'with' blocks only support 'entry', not 'exit'");
         name_tok = self.advance();
         name = self.make_uni_token(name_tok);
     } elif self.check(TokenKind.KW_ENTRY) {
@@ -3699,10 +3761,7 @@ impl Parser.parse_code_block_stmts -> list {
                 }
             }
             if is_docstring {
-                self.warn_at(
-                    'Docstrings in Jac go before the declaration, not inside the body. ' + 'Move this string before the enclosing test/can/obj/etc.',
-                    self.tokens[before].loc
-                );
+                self.emit_warn(W0060, loc=self.tokens[before].loc);
             }
             if not isinstance(stmt, Semi) {
                 checked_first = True;
@@ -3889,9 +3948,7 @@ impl Parser.parse_statement{
         TokenKind.KW_FINALLY,
         TokenKind.KW_CASE
     ) {
-        self.error(
-            "Unexpected '" + self.current().value + "' — " + "must follow its parent statement (if/try/match/switch)"
-        );
+        self.emit_diag(E0032, token=self.current().value);
         self.advance();
         return None;
     }
@@ -3933,7 +3990,7 @@ impl Parser.parse_statement{
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
     } else {
-        self.error("Missing ';'");
+        self.emit_diag(E0002, token=";");
     }
     return ExprStmt(expr=expr, in_fstring=False, kid=expr_kid);
 }
@@ -4046,7 +4103,6 @@ impl Parser.parse_for_stmt{
                 step_target, require_semi=False
             );
         } else {
-            self.error("Expected augmented assignment in for...to...by step");
             step_assign = Assignment(
                 target=[step_target],
                 value=None,
@@ -4148,9 +4204,6 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
-    }
-    if len(excepts) == 0 and finally_body is None {
-        self.error("try statement requires at least one except or finally block");
     }
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
@@ -4261,9 +4314,6 @@ impl Parser.parse_match_stmt -> MatchStmt {
     cases: list = [];
     while self.check(TokenKind.KW_CASE) {
         cases.append(self.parse_match_case());
-    }
-    if len(cases) == 0 {
-        self.error("match statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [match_uni, expr, lb_uni];
@@ -4634,7 +4684,7 @@ impl Parser.parse_literal_for_mapping{
         }
     }
     # Error fallback
-    self.error("Expected literal (INT, FLOAT, or STRING) as mapping pattern key");
+    self.emit_diag(E0045);
     return self.make_name(self.advance());
 }
 
@@ -5124,9 +5174,7 @@ impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {
             }
             kid.append(self.make_uni_token(self.previous()));
         }
-        if len(items) == 0 {
-            self.error("import statement must specify at least one item");
-        }
+        # Empty import items validated by ASTValidationPass
     }
     rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     kid.append(rbrace_uni);
@@ -5393,6 +5441,12 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
+    # Parse bare names (e.g. 'pass') as expression statements so
+    # ASTValidationPass can provide targeted error messages.
+    if self.check(TokenKind.NAME) {
+        stmt = self.parse_statement();
+        return stmt;
+    }
     self._error_unexpected_member();
     return EmptyToken();
 }
@@ -5406,12 +5460,7 @@ impl Parser._skip_semicolons{
 
 """Handle unexpected token error in archetype body."""
 impl Parser._error_unexpected_member{
-    if self.check(TokenKind.NAME) and self.current().value == "pass" {
-        self.error("'pass' keyword is not allowed in Jac");
-        self.error("Jac does not allow this keyword in any syntactic position");
-    } else {
-        self.error("Unexpected token in archetype body");
-    }
+    self.emit_diag(E0046);
     self.advance();
 }
 
@@ -5607,9 +5656,7 @@ impl Parser.parse_ability -> Ability {
             event=event_uni_tok, arch_tag_info=event_type, kid=sig_kid
         );
     } elif is_can {
-        self.error(
-            "Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"
-        );
+        self.emit_diag(E0034);
         signature = self.parse_func_signature();
     } else {
         signature = self.parse_func_signature();
@@ -5783,47 +5830,7 @@ impl Parser.parse_func_signature -> FuncSignature {
             }
         }
     }
-    # Validate parameter ordering rules (use elif to report one error per separator)
-    has_slash = False;
-    has_star = False;
-    has_kwargs = False;
-    for k in kid {
-        if isinstance(k, UniToken) and k.name == Tok.DIV {
-            if has_slash {
-                self.error("Duplicate '/' in parameter list");
-            } elif has_star {
-                self.error("'/' must appear before '*' in parameter list");
-            } elif has_kwargs {
-                self.error("'/' must appear before '**kwargs' in parameter list");
-            }
-            has_slash = True;
-        } elif isinstance(k, UniToken) and k.name == Tok.STAR_MUL {
-            if has_star {
-                self.error("Duplicate '*' in parameter list");
-            } elif has_kwargs {
-                self.error("'*' must appear before '**kwargs' in parameter list");
-            }
-            has_star = True;
-        } elif isinstance(k, ParamVar) {
-            if k.unpack and k.unpack?.name {
-                if k.unpack.name == Tok.STAR_MUL {
-                    if has_star {
-                        self.error("Duplicate '*' in parameter list");
-                    } elif has_kwargs {
-                        self.error(
-                            "'*' must appear before '**kwargs' in parameter list"
-                        );
-                    }
-                    has_star = True;
-                } elif k.unpack.name == Tok.STAR_POW {
-                    if has_kwargs {
-                        self.error("Duplicate '**kwargs' in parameter list");
-                    }
-                    has_kwargs = True;
-                }
-            }
-        }
-    }
+    # Parameter ordering validation deferred to ASTValidationPass
     # Set param_kind on each ParamVar (default is NORMAL, must be overridden)
     for p in posonly_params {
         p.param_kind = ParamKind.POSONLY;
@@ -5915,10 +5922,7 @@ impl Parser.parse_param_var -> ParamVar | None {
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
-        self.error(
-            f"'{kw}' is a keyword and cannot be used as a parameter"
-            f" name (prefix with backtick to escape: {chr(96)}{kw})"
-        );
+        self.emit_diag(E0013, keyword=kw, context="parameter");
         return None;
     } else {
         return None;
@@ -6020,9 +6024,7 @@ impl Parser.parse_enum -> Enum {
                 break;
             }
         }
-        if len(body) == 0 {
-            self.error("enum body must contain at least one member");
-        }
+        # Empty enum body validated by ASTValidationPass
         enum_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
         self.expect(TokenKind.SEMI);
@@ -6169,9 +6171,7 @@ impl Parser.parse_switch_stmt -> SwitchStmt {
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
         cases.append(self.parse_switch_case());
     }
-    if len(cases) == 0 {
-        self.error("switch statement requires at least one case");
-    }
+    # Empty switch validated by ASTValidationPass
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [switch_uni, target, lb_uni];
     kid.extend(cases);
@@ -6407,7 +6407,7 @@ impl Parser.parse_impl_def -> ImplDef {
         body = self.parse_expression();
         self.expect(TokenKind.SEMI);
     } else {
-        self.error("Expected '{' or 'by' for impl body");
+        self.emit_diag(E0047);
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];
@@ -6837,11 +6837,13 @@ impl Parser.parse_report_stmt -> ReportStmt {
 }
 
 impl parse(
-    source: str, file_path: str = "<input>"
-) -> tuple[Module, list[ParseError], list[LexerError]] {
+    source: str, file_path: str = "<input>", prog: object | None = None
+) -> tuple[Module, bool] {
     lexer = Lexer(source=source, file_path=file_path);
+    lexer.prog = prog;
     tokens = lexer.tokenize();
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    return (module, parser.errors, lexer.errors);
+    had_error = parser.error_count > 0 or lexer.error_count > 0;
+    return (module, had_error);
 }
