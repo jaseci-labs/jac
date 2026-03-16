@@ -27,13 +27,13 @@ walker filter_on_edge_get_node {
 
 walker filter_on_node_get_node {
     can filter with Root entry {
-        print([-->](?tag=="second"));
+        print([-->][?tag=="second"]);
     }
 }
 
 walker filter_on_node_get_edge {
     can filter with Root entry {
-        print([edge -->](?tag=="second"));
+        print([edge -->][?tag=="second"]);
     }
 }
 
@@ -49,7 +49,7 @@ walker filter_on_edge_visit {
 
 walker filter_on_node_visit {
     can filter with Root entry {
-        visit ([-->](?tag=="first"));
+        visit ([-->][?tag=="first"]);
     }
 
     can end with simple entry {

@@ -94,7 +94,11 @@ impl nacompile(filename: str, output: str = "") -> int {
             prog._auto_promote_native = True;
             prog._auto_promote_target = os.path.abspath(filename);
         }
-        options = CompileOptions(skip_native_engine=True);
+        # aot_mode=True: NativeCompilePass links all cross-module imports at IR
+        # level and runs the optimization pipeline, but skips MCJIT engine
+        # creation (which would consume the module). The resulting linked+optimised
+        # module is stored in ir_module.gen.llvm_ir for us to emit as object code.
+        options = CompileOptions(aot_mode=True);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");

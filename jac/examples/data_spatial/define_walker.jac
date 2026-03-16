@@ -17,6 +17,6 @@ impl W.create{
 
 with entry {
     root spawn W();
-    print([root-->-->(?:A)]);
-    print([root-->-->-->(?:A)]);
+    print([root-->-->[?:A]]);
+    print([root-->-->-->[?:A]]);
 }

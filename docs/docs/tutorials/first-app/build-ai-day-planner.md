@@ -332,7 +332,7 @@ print(task.title);  # "Buy groceries"
 
 **Filter Comprehensions**
 
-Before querying the graph, it's worth learning a Jac feature that works on *any* collection of objects, not just graph queries: **filter comprehensions**. Understanding this distinction is important -- filter comprehensions are a general-purpose tool that happens to work beautifully with graph queries. The `(?...)` syntax filters a list by field conditions, and `(?:Type)` filters by type:
+Before querying the graph, it's worth learning a Jac feature that works on *any* collection of objects, not just graph queries: **filter comprehensions**. Understanding this distinction is important -- filter comprehensions are a general-purpose tool that happens to work beautifully with graph queries. The `[?...]` syntax filters a list by field conditions, and `[?:Type]` filters by type:
 
 ```jac
 obj Dog { has name: str, age: int; }
@@ -346,15 +346,15 @@ with entry {
     ];
 
     # Filter by type -- keep only Dogs
-    dogs = pets(?:Dog);
+    dogs = pets[?:Dog];
     print(dogs);  # [Dog(name='Rex', age=5), Dog(name='Buddy', age=2)]
 
     # Filter by field condition
-    young = pets(?age < 4);
+    young = pets[?age < 4];
     print(young);  # [Cat(name='Whiskers', age=3), Dog(name='Buddy', age=2)]
 
     # Combined type + field filter
-    young_dogs = pets(?:Dog, age < 4);
+    young_dogs = pets[?:Dog, age < 4];
     print(young_dogs);  # [Dog(name='Buddy', age=2)]
 }
 ```
@@ -373,19 +373,19 @@ with entry {
     # Get ALL nodes connected from root
     everything = [root-->];
 
-    # Filter by node type -- same (?:Type) syntax
-    tasks = [root-->](?:Task);
+    # Filter by node type -- same [?:Type] syntax
+    tasks = [root-->][?:Task];
     for task in tasks {
         status = "done" if task.done else "pending";
         print(f"[{status}] {task.title}");
     }
 
     # Filter by field value
-    grocery_tasks = [root-->](?:Task, title == "Buy groceries");
+    grocery_tasks = [root-->][?:Task, title == "Buy groceries"];
 }
 ```
 
-`[root-->]` reads as "all nodes connected *from* root." The `(?:Task)` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `(?...)` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
+`[root-->]` reads as "all nodes connected *from* root." The `[?:Task]` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `[?...]` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
 
 Other directions work too:
 
@@ -399,7 +399,7 @@ Use `del` to remove a node from the graph:
 
 <!-- jac-skip -->
 ```jac
-for task in [root-->](?:Task) {
+for task in [root-->][?:Task] {
     if task.title == "Team standup at 10am" {
         del task;
     }
@@ -413,7 +413,7 @@ You can inspect the graph at any time by printing connected nodes:
 <!-- jac-skip -->
 ```jac
 print([root-->]);           # All nodes connected to root
-print([root-->](?:Task));   # Just Task nodes
+print([root-->][?:Task]);   # Just Task nodes
 ```
 
 This is useful when data isn't appearing as expected.
@@ -437,8 +437,8 @@ This is useful when data isn't appearing as expected.
     And filter queries by edge type:
 
     ```jac
-    scheduled_tasks = [root->:Scheduled:->](?:Task);
-    urgent = [root->:Scheduled:priority>=3:->](?:Task);
+    scheduled_tasks = [root->:Scheduled:->][?:Task];
+    urgent = [root->:Scheduled:priority>=3:->][?:Task];
     ```
 
     We won't use custom edges in this tutorial (default edges are sufficient), but they're useful for modeling relationships like social networks, org charts, and dependency graphs.
@@ -449,15 +449,15 @@ This is useful when data isn't appearing as expected.
 - **`has`** -- declares fields with types and optional defaults
 - **`root`** -- the built-in entry point of the graph, self-referential to the current runner
 - **`++>`** -- create a node and connect it with an edge
-- **`(?condition)`** -- filter comprehensions on any list of objects
-- **`(?:Type)`** -- typed filter comprehension, works on any collection
-- **`(?:Type, field == val)`** -- combined type and field filtering
+- **`[?condition]`** -- filter comprehensions on any list of objects
+- **`[?:Type]`** -- typed filter comprehension, works on any collection
+- **`[?:Type, field == val]`** -- combined type and field filtering
 - **`[root-->]`** -- query all connected nodes (returns a list, filterable like any other)
 - **`jid(node)`** -- get the built-in unique identifier of any node
 - **`del`** -- remove a node from the graph
 
 !!! example "Try It Yourself"
-    After creating three tasks, mark one as done (`task.done = True`), then use `[root-->](?:Task, done == False)` to list only pending tasks. Verify that the completed task doesn't appear.
+    After creating three tasks, mark one as done (`task.done = True`), then use `[root-->][?:Task, done == False]` to list only pending tasks. Verify that the completed task doesn't appear.
 
 ---
 
@@ -526,12 +526,12 @@ def:pub add_task(title: str) -> dict {
 
 """Get all tasks."""
 def:pub get_tasks -> list {
-    return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->](?:Task)];
+    return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
 }
 
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> dict {
-    for task in [root-->](?:Task) {
+    for task in [root-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
             return {"id": jid(task), "title": task.title, "done": task.done};
@@ -542,7 +542,7 @@ def:pub toggle_task(id: str) -> dict {
 
 """Delete a task."""
 def:pub delete_task(id: str) -> dict {
-    for task in [root-->](?:Task) {
+    for task in [root-->][?:Task] {
         if jid(task) == id {
             del task;
             return {"deleted": id};
@@ -581,10 +581,10 @@ task_data["done"] = True;   # Update a value
 <!-- jac-skip -->
 ```jac
 # Build a list of dicts from all Task nodes
-[{"id": jid(t), "title": t.title} for t in [root-->](?:Task)]
+[{"id": jid(t), "title": t.title} for t in [root-->][?:Task]]
 
 # With a filter condition
-[t.title for t in [root-->](?:Task) if not t.done]
+[t.title for t in [root-->][?:Task] if not t.done]
 ```
 
 **Run It**
@@ -919,12 +919,12 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
 
     """Get all tasks."""
     def:pub get_tasks -> list {
-        return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->](?:Task)];
+        return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
     }
 
     """Toggle a task's done status."""
     def:pub toggle_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
                 return {"id": jid(task), "title": task.title, "done": task.done};
@@ -935,7 +935,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
 
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -1157,13 +1157,13 @@ Also update `get_tasks` and `toggle_task` to include `"category"` in their retur
 def:pub get_tasks -> list {
     return [
         {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-        for t in [root-->](?:Task)
+        for t in [root-->][?:Task]
     ];
 }
 
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> dict {
-    for task in [root-->](?:Task) {
+    for task in [root-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
             return {
@@ -1234,7 +1234,7 @@ And three new endpoints:
 """Generate a shopping list from a meal description."""
 def:pub generate_list(meal: str) -> list {
     # Clear old items
-    for item in [root-->](?:ShoppingItem) {
+    for item in [root-->][?:ShoppingItem] {
         del item;
     }
     # Generate new ones
@@ -1262,13 +1262,13 @@ def:pub get_shopping_list -> list {
     return [
         {"name": s.name, "quantity": s.quantity, "unit": s.unit,
          "cost": s.cost, "carby": s.carby}
-        for s in [root-->](?:ShoppingItem)
+        for s in [root-->][?:ShoppingItem]
     ];
 }
 
 """Clear the shopping list."""
 def:pub clear_shopping_list -> dict {
-    for item in [root-->](?:ShoppingItem) {
+    for item in [root-->][?:ShoppingItem] {
         del item;
     }
     return {"cleared": True};
@@ -1539,13 +1539,13 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     def:pub get_tasks -> list {
         return [
             {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->](?:Task)
+            for t in [root-->][?:Task]
         ];
     }
 
     """Toggle a task's done status."""
     def:pub toggle_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
                 return {
@@ -1559,7 +1559,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -1572,7 +1572,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 
     """Generate a shopping list from a meal description."""
     def:pub generate_list(meal: str) -> list {
-        for item in [root-->](?:ShoppingItem) {
+        for item in [root-->][?:ShoppingItem] {
             del item;
         }
         ingredients = generate_shopping_list(meal);
@@ -1599,13 +1599,13 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
         return [
             {"name": s.name, "quantity": s.quantity, "unit": s.unit,
              "cost": s.cost, "carby": s.carby}
-            for s in [root-->](?:ShoppingItem)
+            for s in [root-->][?:ShoppingItem]
         ];
     }
 
     """Clear the shopping list."""
     def:pub clear_shopping_list -> dict {
-        for item in [root-->](?:ShoppingItem) {
+        for item in [root-->][?:ShoppingItem] {
             del item;
         }
         return {"cleared": True};
@@ -1992,13 +1992,13 @@ All the complete files are in the collapsible sections below. Create each file, 
     def:priv get_tasks -> list {
         return [
             {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->](?:Task)
+            for t in [root-->][?:Task]
         ];
     }
 
     """Toggle a task's done status."""
     def:priv toggle_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
                 return {
@@ -2012,7 +2012,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     """Delete a task."""
     def:priv delete_task(id: str) -> dict {
-        for task in [root-->](?:Task) {
+        for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -2025,7 +2025,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     """Generate a shopping list from a meal description."""
     def:priv generate_list(meal: str) -> list {
-        for item in [root-->](?:ShoppingItem) {
+        for item in [root-->][?:ShoppingItem] {
             del item;
         }
         ingredients = generate_shopping_list(meal);
@@ -2052,13 +2052,13 @@ All the complete files are in the collapsible sections below. Create each file, 
         return [
             {"name": s.name, "quantity": s.quantity, "unit": s.unit,
              "cost": s.cost, "carby": s.carby}
-            for s in [root-->](?:ShoppingItem)
+            for s in [root-->][?:ShoppingItem]
         ];
     }
 
     """Clear the shopping list."""
     def:priv clear_shopping_list -> dict {
-        for item in [root-->](?:ShoppingItem) {
+        for item in [root-->][?:ShoppingItem] {
             del item;
         }
         return {"cleared": True};
@@ -2675,7 +2675,7 @@ Compare this to the function version:
 ```jac
 def:priv get_tasks -> list {
     return [{"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->](?:Task)];
+            for t in [root-->][?:Task]];
 }
 ```
 
@@ -2715,7 +2715,7 @@ Both patterns achieve the same result. The design question is: where does the lo
 
 <!-- jac-skip -->
 ```jac
-visit [-->](?:Task);      # Visit only Task nodes
+visit [-->][?:Task];      # Visit only Task nodes
 visit [-->] else {         # Fallback if no nodes to visit
     report "No tasks found";
 };
@@ -3605,7 +3605,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 **Data & Types:** `node`, `edge`, `obj`, `enum`, `has`, `glob`, `sem`, type annotations, `str | None` unions
 
-**Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `(?:Type)` (filter), `jid()` (node identity), `del` (delete)
+**Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `[?:Type]` (filter), `jid()` (node identity), `del` (delete)
 
 **Functions:** `def`, `def:pub`, `def:priv`, `by llm()`, `lambda`, `async`/`await`
 

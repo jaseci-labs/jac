@@ -394,6 +394,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
 impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
+    # Guard: skip if already declared (duplicate Ability nodes or re-visited module)
+    if full_name in self.method_funcs {
+        return;
+    }
     sig = method.signature;
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None or sig is None {

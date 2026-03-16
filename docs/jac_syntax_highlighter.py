@@ -335,7 +335,7 @@ class JacLexer(RegexLexer):
                 r"(global|nonlocal|visitor|here|self|def|self|<i>|init|<sup>|super|root|impl|sem)",
                 Operator.Word,
             ),
-            (r"\?:|\?|:\+:|!=|==|<<|>>|:=|[-~+/*%=<>&^|.]", Operator),
+            (r"\[\?:|\[\?|\?\:|\?|:\+:|!=|==|<<|>>|:=|[-~+/*%=<>&^|.]", Operator),
             (r"[]{}:(),;[]", Punctuation),
             include("expr-keywords"),
             include("builtins"),

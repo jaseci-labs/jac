@@ -197,13 +197,12 @@ test "native layout tuple metadata for tokenize" {
     assert len(tl.element_types) == 2 , f"Expected 2 tuple elements, got {len(
         tl.element_types
     )}";
-    # Both elements should be List.ptr* (list of struct pointers)
+    # First element: list of Token structs, second element: i64 (error count)
     assert tl.element_types[0] == "List.ptr*" , f"Element 0: {tl.element_types[0]}";
-    assert tl.element_types[1] == "List.ptr*" , f"Element 1: {tl.element_types[1]}";
-    # Struct hints should identify Token and LexerError
-    assert tl.element_struct_hints[0] == "Token" , f"Hint 0: {tl.element_struct_hints[0]}";
-    assert tl.element_struct_hints[1] == "LexerError" , f"Hint 1: {tl.element_struct_hints[
-        1
+    assert tl.element_types[1] == "i64" , f"Element 1: {tl.element_types[1]}";
+    # Struct hint for first element should identify Token
+    assert tl.element_struct_hints[0] == "Token" , f"Hint 0: {tl.element_struct_hints[
+        0
     ]}";
 }
 
@@ -314,8 +313,8 @@ test "native tokenize returns correct tokens" {
     result = wrapper("x = 1;", "test.jac");
     assert isinstance(result, tuple) , f"Expected tuple, got {type(result)}";
     assert len(result) == 2;
-    (tokens, errors) = result;
-    assert len(errors) == 0 , f"Unexpected errors: {errors}";
+    (tokens, error_count) = result;
+    assert error_count == 0 , f"Unexpected errors: {error_count}";
     # Expected tokens: NAME('x'), EQ('='), INT('1'), SEMI(';'), EOF('')
     assert len(tokens) >= 5 , f"Expected >= 5 tokens, got {len(tokens)}";
     # Check token values

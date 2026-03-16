@@ -111,3 +111,65 @@ test "inner compr scope linking" {
     assert inner_compr.parent_scope is not None;
     assert inner_compr.lookup("pool", True) is not None;
 }
+
+"""Test that sys.version_info conditionals are evaluated during symbol table building.
+
+Pyright reference: staticExpressions.ts - evaluateStaticBoolLikeExpression
+This ensures symbols inside version conditionals like 'if sys.version_info >= (3, 11): Self: _SpecialForm'
+are properly registered when the condition is true for the current Python version.
+"""
+test "version conditional evaluation" {
+    import sys;
+    import ast as py_ast;
+    import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+    import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
+
+    # Test Python code with version conditionals
+    code = """
+import sys
+
+if sys.version_info >= (3, 11):
+    Self = "special_form_311"
+    Never = "never_311"
+
+if sys.version_info >= (3, 15):
+    Future = "future_315"
+
+Always = "always_available"
+""";
+
+    prog = JacProgram();
+    source = uni.Source(code, "test_version.py");
+    py_ast_node = py_ast.parse(code);
+
+    mod = PyastBuildPass(
+        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
+    ).ir_out;
+
+    SymTabBuildPass(ir_in=mod, prog=prog);
+
+    # Check which symbols are registered
+    # Use incl_inner_scope=True to search child scopes (if statements don't create namespaces in Python)
+    self_sym = mod.lookup("Self", deep=True, incl_inner_scope=True);
+    never_sym = mod.lookup("Never", deep=True, incl_inner_scope=True);
+    future_sym = mod.lookup("Future", deep=True, incl_inner_scope=True);
+    always_sym = mod.lookup("Always", deep=True, incl_inner_scope=True);
+
+    print(f"\nPython version: {sys.version_info.major}.{sys.version_info.minor}");
+    print(f"Self symbol: {self_sym}");
+    print(f"Never symbol: {never_sym}");
+    print(f"Future symbol: {future_sym}");
+    print(f"Always symbol: {always_sym}");
+
+    # Always should always be found
+    assert always_sym is not None , "Always should always be found";
+
+    # On Python 3.11+, Self and Never should be found
+    if sys.version_info >= (3, 11) {
+        assert self_sym is not None , "Self should be found on Python 3.11+";
+        assert never_sym is not None , "Never should be found on Python 3.11+";
+    }
+
+    # Future should NOT be found (requires Python 3.15+)
+    assert future_sym is None , "Future should NOT be found on Python < 3.15";
+}

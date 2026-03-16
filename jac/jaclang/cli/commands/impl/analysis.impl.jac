@@ -61,9 +61,15 @@ impl check(
             return (False, 1, 0, [], []);
         }
         try {
+            import from jaclang.jac0core.compile_options { CompileOptions }
             console.print(f"  Checking {file_path}...");
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-            prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
+            prog.compile(
+                file_path=file_path,
+                options=CompileOptions(
+                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                )
+            );
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
             # Filter out errors/warnings from ignored files and non-.jac files
@@ -163,6 +169,17 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                     console.error(f"{error}");
                 }
                 err_count = len(prog.errors_had) or 1;
+                return (False, err_count, err_count);
+            }
+            # Block on comment displacement errors (formatter bug)
+            has_format_error = any(
+                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
+            );
+            if has_format_error {
+                for error in prog.errors_had {
+                    console.error(f"{error}");
+                }
+                err_count = len(prog.errors_had);
                 return (False, err_count, err_count);
             }
             # Count fixed warnings and unfixable errors
@@ -275,11 +292,18 @@ impl format(
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
-            if prog.errors_had and not lintfix {
-                for error in prog.errors_had {
-                    console.error(f"{error}");
+            if prog.errors_had {
+                # Always block on comment displacement errors (formatter bug)
+                has_format_error = any(
+                    e.code is not None and e.code.code == "E5051"
+                    for e in prog.errors_had
+                );
+                if has_format_error or not lintfix {
+                    for error in prog.errors_had {
+                        console.error(f"{error}");
+                    }
+                    return (False, False, 0);
                 }
-                return (False, False, 0);
             }
             try {
                 formatted_code = prog.mod.main.gen.jac;
@@ -411,9 +435,28 @@ impl `test(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     Jac.setup();
+    # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
+    if (test_name and not filepath) {
+        console.error(
+            "Error: --test_name requires a filepath. "
+            "Running by name across all files is ambiguous.\n"
+            "Usage: jac test <file.jac> --test_name <name>"
+        );
+        return 1;
+    }
+    # e.g. jac test test_typevar.jac  (run from wrong directory)
+    if (filepath and not Path(filepath).exists()) {
+        console.error(
+            f"Error: File not found: '{filepath}'\n"
+            "Make sure you are in the correct directory or provide the full path.\n"
+            f"Usage: jac test /full/path/to/{filepath}"
+        );
+        return 1;
+    }
+    normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     failcount = Jac.run_test(
         filepath=filepath,
-        func_name=('test_' + test_name) if test_name else None,
+        func_name=('test_' + normalized_name) if normalized_name else None,
         filter=filter,
         xit=xit,
         maxfail=maxfail,

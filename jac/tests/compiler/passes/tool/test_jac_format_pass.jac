@@ -283,6 +283,51 @@ test "native block comments stay in place" {
     assert formatted == formatted2 , "Formatting of na {} block is not idempotent";
 }
 
+"""Regression: inline comment after a func-call argument swallowed the next
+argument because the soft line break after the comma collapsed to a space."""
+test "inline comment in func call args" {
+    source = (
+        'def foo -> None {\n'
+        '    x = bar(\n'
+        '        a[:-4],  # trim suffix\n'
+        '        baz(y)\n'
+        '    );\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+
+    # The inline comment must NOT swallow the next argument
+    comment_line = next(
+        (
+            ln
+            for ln in lines
+            if "# trim suffix" in ln
+        ),
+        None
+    );
+    assert comment_line is not None , "Inline comment was lost";
+    assert "baz" not in comment_line , (
+        "Next argument merged into comment line: " + repr(comment_line)
+    );
+
+    # baz(y) must appear on its own line
+    baz_line = next(
+        (
+            ln
+            for ln in lines
+            if "baz(y)" in ln
+        ),
+        None
+    );
+    assert baz_line is not None , ("Second argument 'baz(y)' was lost:\n" + formatted);
+
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

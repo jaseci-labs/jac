@@ -120,7 +120,7 @@ When your app serves multiple users, each user gets their **own isolated `root`*
 
 ### Querying the graph
 
-The `[-->]` syntax gives you a list of connected nodes, and Jac's filter comprehensions `(?...)` let you narrow the results:
+The `[-->]` syntax gives you a list of connected nodes, and Jac's filter comprehensions `[?...]` let you narrow the results:
 
 ```jac
 with entry {
@@ -128,10 +128,10 @@ with entry {
     everything = [root-->];
 
     # Filter by node type
-    tasks = [root-->](?:Task);
+    tasks = [root-->][?:Task];
 
     # Filter by field value
-    pending = [root-->](?:Task, done == False);
+    pending = [root-->][?:Task, done == False];
 }
 ```
 
@@ -147,7 +147,7 @@ with entry {
     root +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
 
     # Query through typed edges
-    urgent = [root->:Scheduled:priority>=3:->](?:Task);
+    urgent = [root->:Scheduled:priority>=3:->][?:Task];
 }
 ```
 
