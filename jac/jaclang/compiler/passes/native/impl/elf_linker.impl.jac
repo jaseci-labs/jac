@@ -7,6 +7,14 @@ Architecture is auto-detected from the object file.
 
 import struct;
 import os;
+import from jaclang.compiler.passes.native.linker_common {
+    _align,
+    _build_strtab,
+    _append_to_blob,
+    _resolve_seg_vaddr,
+    _find_patch_target,
+    _find_entry_vaddr
+}
 
 # ── ELF header ───────────────────────────────────────────────────
 glob ELFMAG = b"\x7fELF",
@@ -100,29 +108,6 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_GLOB_DAT = 1025,
      R_AARCH64_JUMP_SLOT = 1026,
      R_AARCH64_ABS64 = 257;
-
-
-# ── Helper: align to boundary ────────────────────────────────────
-def _align(value: int, alignment: int) -> int {
-    if alignment <= 1 {
-        return value;
-    }
-    return (value + alignment - 1) & ~(alignment - 1);
-}
-
-
-# ── Helper: build ELF string table ──────────────────────────────
-def _build_strtab(strings: list[str]) -> tuple[bytes, dict[str, int]] {
-    data = bytearray(b"\x00");
-    offsets: dict[str, int] = {};
-    for s in strings {
-        if s not in offsets {
-            offsets[s] = len(data);
-            data.extend(s.encode("utf-8") + b"\x00");
-        }
-    }
-    return (bytes(data), offsets);
-}
 
 
 # ── Helper: build ELF hash table ────────────────────────────────
@@ -628,37 +613,24 @@ impl ElfLinker.build_executable -> bytes {
     for sec in self.sections {
         if sec.typ == SHT_PROGBITS and (sec.flags & SHF_EXECINSTR) {
             if len(sec.data) > 0 {
-                aligned_off = _align(len(code_data), max(sec.align, 1));
-                code_data.extend(b"\x00" * (aligned_off - len(code_data)));
-                code_sections[sec.name] = (len(code_data), len(sec.data));
-                section_placement[sec_idx] = ("code", len(code_data));
-                code_data.extend(sec.data);
+                off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
+                code_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("code", off);
             }
         } elif sec.typ == SHT_PROGBITS
         and (sec.flags & SHF_ALLOC)
         and not (sec.flags & SHF_WRITE) {
             if len(sec.data) > 0 {
-                aligned_off = _align(len(rodata_blob), max(sec.align, 1));
-                rodata_blob.extend(b"\x00" * (aligned_off - len(rodata_blob)));
-                rodata_sections[sec.name] = (len(rodata_blob), len(sec.data));
-                section_placement[sec_idx] = ("rodata", len(rodata_blob));
-                rodata_blob.extend(sec.data);
+                off = _append_to_blob(rodata_blob, sec.data, sec.align, len(sec.data));
+                rodata_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("rodata", off);
             }
         } elif (sec.flags & SHF_WRITE) and (sec.flags & SHF_ALLOC) {
             alloc_size = sec.mem_size;
             if alloc_size > 0 {
-                aligned_off = _align(len(data_blob), max(sec.align, 1));
-                data_blob.extend(b"\x00" * (aligned_off - len(data_blob)));
-                data_sections[sec.name] = (len(data_blob), alloc_size);
-                section_placement[sec_idx] = ("data", len(data_blob));
-                if len(sec.data) > 0 {
-                    data_blob.extend(sec.data);
-                    if alloc_size > len(sec.data) {
-                        data_blob.extend(b"\x00" * (alloc_size - len(sec.data)));
-                    }
-                } else {
-                    data_blob.extend(b"\x00" * alloc_size);
-                }
+                off = _append_to_blob(data_blob, sec.data, sec.align, alloc_size);
+                data_sections[sec.name] = (off, alloc_size);
+                section_placement[sec_idx] = ("data", off);
             }
         }
         sec_idx += 1;
@@ -947,36 +919,30 @@ impl ElfLinker.build_executable -> bytes {
                 }
             }
             if local is not None {
-                (seg, seg_off) = local;
-                if seg == "code" {
-                    sym_addr = text_vaddr + seg_off;
-                } elif seg == "rodata" {
-                    sym_addr = rodata_vaddr + seg_off;
-                } elif seg == "data" {
-                    sym_addr = data_vaddr + seg_off;
-                }
+                sym_addr = _resolve_seg_vaddr(
+                    local[0], local[1], text_vaddr, rodata_vaddr, data_vaddr
+                );
             }
         }
 
         # Determine target buffer and base vaddr
-        target_is_code = rela.target_sec in code_sections;
-        target_is_data = rela.target_sec in data_sections;
-        target_is_rodata = rela.target_sec in rodata_sections;
-        if target_is_code {
-            sec_blob_off = code_sections[rela.target_sec][0];
-            patch_buf = code_bytes;
-            patch_base_vaddr = text_vaddr + sec_blob_off;
-        } elif target_is_data {
-            sec_blob_off = data_sections[rela.target_sec][0];
-            patch_buf = data_bytes;
-            patch_base_vaddr = data_vaddr + sec_blob_off;
-        } elif target_is_rodata {
-            sec_blob_off = rodata_sections[rela.target_sec][0];
-            patch_buf = rodata_bytes;
-            patch_base_vaddr = rodata_vaddr + sec_blob_off;
+        _pt = _find_patch_target(
+            rela.target_sec,
+            code_sections,
+            rodata_sections,
+            data_sections,
+            code_bytes,
+            rodata_bytes,
+            data_bytes,
+            text_vaddr,
+            rodata_vaddr,
+            data_vaddr
+        );
+        if _pt is not None {
+            (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
         } else {
-            sec_blob_off = 0;
             patch_buf = code_bytes;
+            sec_blob_off = 0;
             patch_base_vaddr = text_vaddr;
         }
         patch_off = sec_blob_off + rela.offset;
@@ -989,24 +955,7 @@ impl ElfLinker.build_executable -> bytes {
     }
 
     # ── Find entry point ──────────────────────────────────────────
-    # Look for _start (generated by nacompile via inline asm)
-    entry_vaddr = text_vaddr;
-    start_local = local_sym_map.get("_start");
-    if start_local is not None {
-        (seg, seg_off) = start_local;
-        if seg == "code" {
-            entry_vaddr = text_vaddr + seg_off;
-        }
-    } else {
-        # Fallback: look for main
-        main_local = local_sym_map.get("main");
-        if main_local is not None {
-            (seg, seg_off) = main_local;
-            if seg == "code" {
-                entry_vaddr = text_vaddr + seg_off;
-            }
-        }
-    }
+    entry_vaddr = _find_entry_vaddr(local_sym_map, text_vaddr);
 
     # ── Assemble the ELF file ────────────────────────────────────
     output = bytearray(total_file_size);

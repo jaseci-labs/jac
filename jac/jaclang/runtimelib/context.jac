@@ -30,7 +30,7 @@ Fields:
 - entry_node: Where walkers start traversal (defaults to user_root)
 """
 obj ExecutionContext {
-    has mem: Memory | None by postinit,
+    has mem: Memory by postinit,
         reports: list[Any] = [],
         custom: Any = MISSING,
         system_root: NodeAnchor | None by postinit,

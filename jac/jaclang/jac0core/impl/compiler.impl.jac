@@ -183,7 +183,23 @@ impl JacCompiler.get_bytecode(
     if is_internal {
         setup_progress.on_internal_compile(full_target);
     }
-    options = CompileOptions();
+    # Skip type checking when the type check infrastructure is not yet
+    # available. This happens during bootstrap: TypeCheckPass and
+    # TypeEvaluator are themselves internal modules that need compilation,
+    # so attempting to type-check before they're ready causes circular
+    # imports. Once bootstrap completes, all modules get type-checked.
+    can_typecheck = (
+        'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
+        and 'jaclang.compiler.type_system.type_evaluator' in sys.modules
+        and hasattr(
+            sys.modules['jaclang.compiler.passes.main.type_checker_pass'],
+            'TypeCheckPass'
+        )
+        and hasattr(
+            sys.modules['jaclang.compiler.type_system.type_evaluator'], 'TypeEvaluator'
+        )
+    );
+    options = CompileOptions(type_check=can_typecheck);
     result = self.compile(
         file_path=full_target, target_program=actual_program, options=options
     );

@@ -825,6 +825,13 @@ impl CommentInjectionPass._inject_into_parts(
                         or self._is_standalone_comment(next_part)
                     ) {
                         add_line = False;
+                        # A soft line after an inline comment can collapse
+                        # to a space, merging the next token into the
+                        # comment.  Upgrade it to hard so a line break is
+                        # guaranteed.
+                        if (isinstance(next_part, doc.Line) and not next_part.hard) {
+                            parts[look] = doc.Line(hard=True);
+                        }
                     }
                 }
                 result.append(

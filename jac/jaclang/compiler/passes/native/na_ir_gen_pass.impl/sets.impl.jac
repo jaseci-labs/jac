@@ -19,18 +19,10 @@ impl NaIRGenPass._emit_set_helpers(
     set_ptr_type = set_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
-    i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __set_new: create an empty set with capacity 8 ---
-    new_fnty = ir.FunctionType(set_ptr_type, []);
-    new_fn = ir.Function(self.llvm_module, new_fnty, name=f"__set_new_{elem_type_name}");
-    new_fn.linkage = "private";
-    bb = new_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
-    (set_ptr, _) = self._emit_rc_alloc_container(b, set_ptr_type, [elem_type]);
-    b.ret(set_ptr);
+    new_fn = self._emit_container_new_fn(
+        f"__set_new_{elem_type_name}", set_ptr_type, [elem_type]
+    );
     # --- __set_add: add element if not already present ---
     add_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type, elem_type]);
     add_fn = ir.Function(self.llvm_module, add_fnty, name=f"__set_add_{elem_type_name}");
@@ -38,16 +30,9 @@ impl NaIRGenPass._emit_set_helpers(
     add_fn.args[0].name = "set";
     add_fn.args[1].name = "elem";
     entry_bb = add_fn.append_basic_block("entry");
-    loop_cond_bb = add_fn.append_basic_block("loop.cond");
-    loop_body_bb = add_fn.append_basic_block("loop.body");
-    found_bb = add_fn.append_basic_block("found");
-    not_found_bb = add_fn.append_basic_block("not.found");
-    grow_bb = add_fn.append_basic_block("grow");
-    append_bb = add_fn.append_basic_block("append");
     b = ir.IRBuilder(entry_bb);
     s_arg = add_fn.args[0];
     e_arg = add_fn.args[1];
-    # Load len, cap, elems
     len_p2 = b.gep(s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
     cap_p2 = b.gep(s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
     elems_p2 = b.gep(
@@ -55,41 +40,24 @@ impl NaIRGenPass._emit_set_helpers(
     );
     cur_len = b.load(len_p2, name="len");
     elems_arr = b.load(elems_p2, name="elems");
-    # Allocate loop index
-    idx_alloca = b.alloca(i64, name="idx");
-    b.store(ir.Constant(i64, 0), idx_alloca);
-    b.branch(loop_cond_bb);
-    # Loop condition: idx < len
-    b.position_at_end(loop_cond_bb);
-    idx = b.load(idx_alloca, name="idx");
-    cmp = b.icmp_signed("<", idx, cur_len, name="cmp");
-    b.cbranch(cmp, loop_body_bb, not_found_bb);
-    # Loop body: compare element
-    b.position_at_end(loop_body_bb);
-    idx_body = b.load(idx_alloca, name="idx.body");
-    elem_ptr = b.gep(elems_arr, [idx_body], name="elem.ptr");
-    elem_val = b.load(elem_ptr, name="elem.val");
-    elem_eq = self._emit_key_comparison(b, elem_type, elem_val, e_arg, elem_size);
-    b.cbranch(elem_eq, found_bb, loop_cond_bb);
-    # Increment index before next iteration
-    b.position_before(b.block.terminator);
-    next_idx = b.add(idx_body, ir.Constant(i64, 1), name="next.idx");
-    b.store(next_idx, idx_alloca);
+    # Search for existing element
+    (found_b, not_found_b, _) = self._emit_linear_search_loop(
+        add_fn, b, e_arg, elems_arr, cur_len, elem_type, elem_size
+    );
     # Found: already exists, return
-    b.position_at_end(found_bb);
-    b.ret_void();
+    found_b.ret_void();
     # Not found: check capacity and append
-    b.position_at_end(not_found_bb);
-    cur_cap = b.load(cap_p2, name="cap");
-    need_grow = b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
-    b.cbranch(need_grow, grow_bb, append_bb);
+    grow_bb = add_fn.append_basic_block("grow");
+    append_bb = add_fn.append_basic_block("append");
+    cur_cap = not_found_b.load(cap_p2, name="cap");
+    need_grow = not_found_b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
+    not_found_b.cbranch(need_grow, grow_bb, append_bb);
     # Grow block
-    b.position_at_end(grow_bb);
+    b = ir.IRBuilder(grow_bb);
     self._emit_grow_array(b, elems_p2, elem_type, cur_len, cap_p2, cur_cap);
     b.branch(append_bb);
     # Append block
-    b.position_at_end(append_bb);
-    # Reload elems after possible grow
+    b = ir.IRBuilder(append_bb);
     elems_arr_app = b.load(elems_p2, name="elems.app");
     cur_len_app = b.load(len_p2, name="len.app");
     elem_slot = b.gep(elems_arr_app, [cur_len_app], name="elem.slot");
@@ -106,74 +74,28 @@ impl NaIRGenPass._emit_set_helpers(
     contains_fn.args[0].name = "set";
     contains_fn.args[1].name = "elem";
     entry_bb_c = contains_fn.append_basic_block("entry");
-    loop_cond_c = contains_fn.append_basic_block("loop.cond");
-    loop_body_c = contains_fn.append_basic_block("loop.body");
-    found_c = contains_fn.append_basic_block("found");
-    not_found_c = contains_fn.append_basic_block("not.found");
     b = ir.IRBuilder(entry_bb_c);
-    s_arg_c = contains_fn.args[0];
-    e_arg_c = contains_fn.args[1];
-    len_pc = b.gep(s_arg_c, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
+    len_pc = b.gep(
+        contains_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
+    );
     elems_pc = b.gep(
-        s_arg_c, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="elems.ptr"
+        contains_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+        name="elems.ptr"
     );
     len_c = b.load(len_pc, name="len");
     elems_c = b.load(elems_pc, name="elems");
-    idx_alloca_c = b.alloca(i64, name="idx");
-    b.store(ir.Constant(i64, 0), idx_alloca_c);
-    b.branch(loop_cond_c);
-    b.position_at_end(loop_cond_c);
-    idx_c = b.load(idx_alloca_c, name="idx");
-    cmp_c = b.icmp_signed("<", idx_c, len_c, name="cmp");
-    b.cbranch(cmp_c, loop_body_c, not_found_c);
-    b.position_at_end(loop_body_c);
-    idx_bc = b.load(idx_alloca_c, name="idx.body");
-    elem_ptr_c = b.gep(elems_c, [idx_bc], name="elem.ptr");
-    elem_val_c = b.load(elem_ptr_c, name="elem.val");
-    elem_eq_c = self._emit_key_comparison(b, elem_type, elem_val_c, e_arg_c, elem_size);
-    b.cbranch(elem_eq_c, found_c, loop_cond_c);
-    b.position_before(b.block.terminator);
-    next_idx_c = b.add(idx_bc, ir.Constant(i64, 1), name="next.idx");
-    b.store(next_idx_c, idx_alloca_c);
-    b.position_at_end(found_c);
-    b.ret(ir.Constant(ir.IntType(1), 1));
-    b.position_at_end(not_found_c);
-    b.ret(ir.Constant(ir.IntType(1), 0));
+    (found_b_c, not_found_b_c, _) = self._emit_linear_search_loop(
+        contains_fn, b, contains_fn.args[1], elems_c, len_c, elem_type, elem_size
+    );
+    found_b_c.ret(ir.Constant(ir.IntType(1), 1));
+    not_found_b_c.ret(ir.Constant(ir.IntType(1), 0));
     # --- __set_len: return len field ---
-    len_fnty = ir.FunctionType(i64, [set_ptr_type]);
-    len_fn = ir.Function(self.llvm_module, len_fnty, name=f"__set_len_{elem_type_name}");
-    len_fn.linkage = "private";
-    len_fn.args[0].name = "set";
-    bb_l = len_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_l);
-    lp = b.gep(
-        len_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
-    );
-    length = b.load(lp, name="len");
-    b.ret(length);
+    len_fn = self._emit_container_len_fn(f"__set_len_{elem_type_name}", set_ptr_type);
     # --- __rc_release_set_T: type-specific destructor ---
-    release_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
-    release_fn = ir.Function(
-        self.llvm_module, release_fnty, name=f"__rc_release_set_{elem_type_name}"
+    release_fn = self._emit_container_release_fn(
+        f"__rc_release_set_{elem_type_name}", set_ptr_type, [(2, elem_type)]
     );
-    release_fn.linkage = "private";
-    release_fn.args[0].name = "set";
-    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, set_ptr_type);
-    if isinstance(elem_type, ir.PointerType) {
-        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
-    }
-    # Free elems array
-    elems_p_f = b.gep(
-        release_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-        name="elems.ptr.f"
-    );
-    elems_f = b.load(elems_p_f, name="elems.f");
-    b.call(free_fn, [b.bitcast(elems_f, i8_ptr, name="elems.cast")]);
-    # Skip: bump allocator arena memory cannot be freed individually.
-    b.branch(done_bb);
-    b = ir.IRBuilder(done_bb);
-    b.ret_void();
     self.set_release_fns[elem_type_name] = release_fn;
     # Store helpers
     self.set_helpers[elem_type_name] = {
