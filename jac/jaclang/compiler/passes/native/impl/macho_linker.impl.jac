@@ -9,6 +9,14 @@ Includes ad-hoc code signing for arm64 macOS.
 import struct;
 import os;
 import hashlib;
+import from jaclang.compiler.passes.native.linker_common {
+    _align,
+    _build_strtab,
+    _append_to_blob,
+    _resolve_seg_vaddr,
+    _find_patch_target,
+    _find_entry_vaddr
+}
 
 # ── Mach-O header constants ──────────────────────────────────────
 glob MH_MAGIC_64 = 0xFEEDFACF,
@@ -102,15 +110,6 @@ glob CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0,
      CS_PAGE_SIZE_LOG2 = 12;
 
 
-# ── Helper: align to boundary ────────────────────────────────────
-def _align(value: int, alignment: int) -> int {
-    if alignment <= 1 {
-        return value;
-    }
-    return (value + alignment - 1) & ~(alignment - 1);
-}
-
-
 # ── Helper: encode ULEB128 ──────────────────────────────────────
 def _encode_uleb128(value: int) -> bytes {
     result = bytearray();
@@ -126,20 +125,6 @@ def _encode_uleb128(value: int) -> bytes {
         }
     }
     return bytes(result);
-}
-
-
-# ── Helper: build Mach-O string table ────────────────────────────
-def _build_strtab(strings: list[str]) -> tuple[bytes, dict[str, int]] {
-    data = bytearray(b" \x00");  # starts with space + nul (Mach-O convention)
-    offsets: dict[str, int] = {};
-    for s in strings {
-        if s not in offsets {
-            offsets[s] = len(data);
-            data.extend(s.encode("utf-8") + b"\x00");
-        }
-    }
-    return (bytes(data), offsets);
 }
 
 
@@ -551,30 +536,17 @@ impl MachOLinker.build_executable -> bytes {
 
         sec_key = f"{sec.segname}:{sec.name}";
         if is_text and len(sec.data) > 0 {
-            aligned_off = _align(len(code_data), max(sec.align, 1));
-            code_data.extend(b"\x00" * (aligned_off - len(code_data)));
-            code_sections[sec_key] = (len(code_data), len(sec.data));
-            sec_placement[sec_idx] = ("code", len(code_data));
-            code_data.extend(sec.data);
+            off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
+            code_sections[sec_key] = (off, len(sec.data));
+            sec_placement[sec_idx] = ("code", off);
         } elif is_rodata {
-            aligned_off = _align(len(rodata_data), max(sec.align, 1));
-            rodata_data.extend(b"\x00" * (aligned_off - len(rodata_data)));
-            rodata_sections[sec_key] = (len(rodata_data), len(sec.data));
-            sec_placement[sec_idx] = ("rodata", len(rodata_data));
-            rodata_data.extend(sec.data);
+            off = _append_to_blob(rodata_data, sec.data, sec.align, len(sec.data));
+            rodata_sections[sec_key] = (off, len(sec.data));
+            sec_placement[sec_idx] = ("rodata", off);
         } elif is_data and sec.size > 0 {
-            aligned_off = _align(len(data_data), max(sec.align, 1));
-            data_data.extend(b"\x00" * (aligned_off - len(data_data)));
-            data_sections[sec_key] = (len(data_data), sec.size);
-            sec_placement[sec_idx] = ("data", len(data_data));
-            if len(sec.data) > 0 {
-                data_data.extend(sec.data);
-                if sec.size > len(sec.data) {
-                    data_data.extend(b"\x00" * (sec.size - len(sec.data)));
-                }
-            } else {
-                data_data.extend(b"\x00" * sec.size);
-            }
+            off = _append_to_blob(data_data, sec.data, sec.align, sec.size);
+            data_sections[sec_key] = (off, sec.size);
+            sec_placement[sec_idx] = ("data", off);
         }
     }
 
@@ -909,7 +881,7 @@ impl MachOLinker.build_executable -> bytes {
     for name in all_extern_syms {
         strtab_names.append(name);
     }
-    (strtab_data, strtab_offsets) = _build_strtab(strtab_names);
+    (strtab_data, strtab_offsets) = _build_strtab(strtab_names, b" \x00");
 
     # Build nlist_64 entries: defined externals first, then undefined
     symtab_entries = bytearray();
@@ -1067,13 +1039,9 @@ impl MachOLinker.build_executable -> bytes {
                 place = local_sym_map.get(sym_name);
                 if place is not None {
                     (seg, seg_off) = place;
-                    if seg == "code" {
-                        sym_addr = text_sec_vaddr + seg_off;
-                    } elif seg == "rodata" {
-                        sym_addr = const_sec_vaddr + seg_off;
-                    } elif seg == "data" {
-                        sym_addr = data_sec_vaddr + seg_off;
-                    }
+                    sym_addr = _resolve_seg_vaddr(
+                        seg, seg_off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
+                    );
                 } elif sym_name in got_addr_map {
                     # External data (e.g. __stdinp): resolve via GOT
                     sym_addr = got_addr_map[sym_name];
@@ -1085,36 +1053,29 @@ impl MachOLinker.build_executable -> bytes {
             place = sec_placement.get(target_section_idx);
             if place is not None {
                 (seg, seg_off) = place;
-                if seg == "code" {
-                    sym_addr = text_sec_vaddr + seg_off;
-                } elif seg == "rodata" {
-                    sym_addr = const_sec_vaddr + seg_off;
-                } elif seg == "data" {
-                    sym_addr = data_sec_vaddr + seg_off;
-                }
+                sym_addr = _resolve_seg_vaddr(
+                    seg, seg_off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
+                );
             }
         }
 
         # Determine patch buffer
-        target_is_code = rel.target_sec in code_sections;
-        target_is_rodata = rel.target_sec in rodata_sections;
-        target_is_data = rel.target_sec in data_sections;
-
-        if target_is_code {
-            sec_off_in_blob = code_sections[rel.target_sec][0];
-            patch_buf = code_bytes;
-            patch_base_vaddr = text_sec_vaddr + sec_off_in_blob;
-        } elif target_is_rodata {
-            sec_off_in_blob = rodata_sections[rel.target_sec][0];
-            patch_buf = rodata_bytes;
-            patch_base_vaddr = const_sec_vaddr + sec_off_in_blob;
-        } elif target_is_data {
-            sec_off_in_blob = data_sections[rel.target_sec][0];
-            patch_buf = data_bytes;
-            patch_base_vaddr = data_sec_vaddr + sec_off_in_blob;
-        } else {
+        _pt = _find_patch_target(
+            rel.target_sec,
+            code_sections,
+            rodata_sections,
+            data_sections,
+            code_bytes,
+            rodata_bytes,
+            data_bytes,
+            text_sec_vaddr,
+            const_sec_vaddr,
+            data_sec_vaddr
+        );
+        if _pt is None {
             continue;
         }
+        (patch_buf, sec_off_in_blob, patch_base_vaddr) = _pt;
 
         patch_off = sec_off_in_blob + rel.address;
         patch_vaddr = patch_base_vaddr + rel.address;
@@ -1143,14 +1104,16 @@ impl MachOLinker.build_executable -> bytes {
     }
 
     # ── Find entry point (_main) ─────────────────────────────────
-    main_offset = 0;
-    main_place = local_sym_map.get("_main");
-    if main_place is not None {
-        (seg, seg_off) = main_place;
-        if seg == "code" {
-            main_offset = text_sec_foff + seg_off;
+    entry_off = _find_entry_vaddr(local_sym_map, text_sec_vaddr);
+    if entry_off == text_sec_vaddr {
+        _main_local = local_sym_map.get("_main");
+        if _main_local is not None and _main_local[0] == "code" {
+            entry_off = text_sec_vaddr + _main_local[1];
         }
     }
+    main_offset = entry_off - text_sec_vaddr + text_sec_foff
+        if entry_off >= text_sec_vaddr
+        else 0;
 
     # ── Assemble the Mach-O file ─────────────────────────────────
     # First pass: determine total file size for code signature
@@ -1428,13 +1391,9 @@ impl MachOLinker.build_executable -> bytes {
         place = local_sym_map.get(isym_name);
         if place is not None {
             (seg, seg_off) = place;
-            if seg == "code" {
-                isym_vaddr = text_sec_vaddr + seg_off;
-            } elif seg == "rodata" {
-                isym_vaddr = const_sec_vaddr + seg_off;
-            } elif seg == "data" {
-                isym_vaddr = data_sec_vaddr + seg_off;
-            }
+            isym_vaddr = _resolve_seg_vaddr(
+                seg, seg_off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
+            );
         }
         got_slot_foff = got_sec_foff + (num_extern_got + i) * 8;
         struct.pack_into("<Q", output, got_slot_foff, isym_vaddr);
