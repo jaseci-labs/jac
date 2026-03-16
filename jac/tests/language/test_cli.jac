@@ -626,13 +626,22 @@ test "param arg" {
         sys.stdout = old_stdout;
     }
 
-    stdout_value = captured.getvalue().split("\n");
-    assert stdout_value[-7] == "ULTIMATE_MIN: 1|def|2.5|0|test|100|0";
-    assert stdout_value[-6] == "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1";
-    assert stdout_value[-5] == "SEPARATORS: 42";
-    assert stdout_value[-4] == "EDGE_MIX: 1-test-2-True-1";
-    assert stdout_value[-3] == "RECURSIVE: 7 11";
-    assert stdout_value[-2] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1";
+    stdout_lines = [
+        l
+        for l in captured.getvalue().split("\n")
+        if l.strip()
+    ];
+    expected = [
+        "ULTIMATE_MIN: 1|def|2.5|0|test|100|0",
+        "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1",
+        "SEPARATORS: 42",
+        "EDGE_MIX: 1-test-2-True-1",
+        "RECURSIVE: 7 11",
+        "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
+    ];
+    for line in expected {
+        assert line in stdout_lines , f"Expected '{line}' in output";
+    }
 }
 
 test "caching issue" {

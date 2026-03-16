@@ -204,8 +204,12 @@ impl run(
             console.warning(f"{warning}");
         }
     }
-    if show_errors and (n_errors or n_warnings) {
-        console.print(f"\n{n_errors} error(s), {n_warnings} warning(s)", style="dim");
+    if n_errors or n_warnings {
+        console.print(
+            f"\n{n_errors} error(s), {n_warnings} warning(s) "
+            f"[diagnostics from first compile, cached for subsequent runs]",
+            style="dim"
+        );
     }
     sys.argv = original_argv;
     mach.close();
