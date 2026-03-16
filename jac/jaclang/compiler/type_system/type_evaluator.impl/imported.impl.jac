@@ -148,9 +148,17 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
     # "../os/path.pyi" and "/abs/os/path.pyi" are the same file but different strings.
     # resolve() converts both to "/abs/os/path.pyi" so hub always returns the same cached module.
     resolved_path = str(Path(path).resolve());
+    # Determine the correct hub: jaclang-internal imports (typeshed stubs,
+    # compiler modules, etc.) go to the compiler's internal hub so they
+    # don't pollute the user's module hub.
+    compiler = self.program._get_compiler();
+    target_program = compiler._resolve_program(resolved_path, self.program);
+    target_hub = target_program.mod.hub;
     mod: uni.Module;
     if resolved_path in self.program.mod.hub {
         mod = self.program.mod.hub[resolved_path];
+    } elif resolved_path in target_hub {
+        mod = target_hub[resolved_path];
     } else {
         # Try JIR cache first for .jac files
         jir_mod: (uni.Module | None) = None;
@@ -162,7 +170,7 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             if mod.parent_scope is None and mod is not self.builtins_module {
                 mod.parent_scope = self.builtins_module;
             }
-            self.program.mod.hub[resolved_path] = mod;
+            target_hub[resolved_path] = mod;
         } else {
             # Cache miss — full compile
             mod = self.program.compile(
@@ -171,7 +179,7 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             if mod.parent_scope is None and mod is not self.builtins_module {
                 mod.parent_scope = self.builtins_module;
             }
-            self.program.mod.hub[resolved_path] = mod;
+            target_hub[resolved_path] = mod;
             # Write JIR module cache for .jac files (best-effort).
             # Only write if no valid cache exists yet — symtab-only compiles
             # lack bytecode and must not overwrite a full cache that has it.
