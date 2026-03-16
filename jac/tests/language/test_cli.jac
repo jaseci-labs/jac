@@ -125,6 +125,57 @@ test "jac cli run" {
     assert "Hello World!" in stdout_value;
 }
 
+test "show errors flag" {
+    # Create a temp file with known type errors and a with entry block
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
+        tmp.write(
+            'glob x: str = 5;\n'
+            'glob y: int = "hello";\n'
+            'with entry { print("ran"); }\n'
+        );
+        tmp_path = tmp.name;
+    }
+    try {
+        # Without --show-errors: program runs, summary line shown, no detailed errors
+        captured_out = io.StringIO();
+        captured_err = io.StringIO();
+        sys.stdout = captured_out;
+        sys.stderr = captured_err;
+        try {
+            execution.run(tmp_path);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        stdout_val = captured_out.getvalue();
+        stderr_val = captured_err.getvalue();
+        combined = stdout_val + stderr_val;
+        assert "ran" in stdout_val , "Program should still execute";
+        assert "error(s)" in combined , "Summary line should appear";
+        assert "Cannot assign" not in combined , (
+            "Detailed errors should not appear without --show-errors"
+        );
+
+        # With --show-errors: detailed errors shown
+        captured_out2 = io.StringIO();
+        captured_err2 = io.StringIO();
+        sys.stdout = captured_out2;
+        sys.stderr = captured_err2;
+        try {
+            execution.run(tmp_path, show_errors=True);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        combined2 = captured_out2.getvalue() + captured_err2.getvalue();
+        assert "Cannot assign" in combined2 , (
+            "Detailed errors should appear with --show-errors"
+        );
+    } finally {
+        os.unlink(tmp_path);
+    }
+}
+
 test "jac cli run python file" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
