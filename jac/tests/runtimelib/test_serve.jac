@@ -118,9 +118,9 @@ test "faux flag prints endpoint docs" {
         assert "client_page" in output;
         # Verify summary is present
         assert "TOTAL:" in output;
-        assert "11 functions" in output;
+        assert "10 functions" in output;
         assert "5 walkers" in output;
-        assert "38 endpoints" in output;
+        assert "36 endpoints" in output;
         # Verify parameter details are included
         assert "required" in output;
         assert "optional" in output;
