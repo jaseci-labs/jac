@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
-- **Type Checker: Walrus Operator Narrowing**: `if (x := expr) is not None:` now correctly narrows `x` to exclude `None` inside the block.
+- **Type Checker: Walrus Operator Narrowing**: `if (x := expr) is not None:` and `if isinstance((x := expr), T):` now correctly narrow `x` inside the block.
 - **Type Checker: `type[T]` Member Access**: Accessing class-level members (e.g., `ClassVar`) on `type[T]` parameters now works correctly. `cls: type[MyClass]` → `cls.my_class_var` resolves to `MyClass`'s members.
 - **Type Checker: Property Support**: `@property` and `@cached_property` now correctly type-check. Accessing `obj.my_property` returns the property's return type instead of `FunctionType`.
 - **Fix: Static Methods on Class-Based Enums**: Static methods on `IntEnum`/`StrEnum` classes now correctly return their declared type instead of `<Unknown>`.
