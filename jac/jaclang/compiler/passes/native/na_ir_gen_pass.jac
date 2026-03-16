@@ -152,6 +152,35 @@ obj NaIRGenPass(ModuleCodegenPass) {
         container_arg: ir.Value,
         data_field_idx: int
     ) -> ir.IRBuilder;
+
+    def _emit_container_new_fn(
+        fn_name: str, container_ptr_type: ir.Type, data_types: list
+    ) -> ir.Function;
+
+    def _emit_container_len_fn(
+        fn_name: str, container_ptr_type: ir.Type
+    ) -> ir.Function;
+
+    def _emit_container_release_fn(
+        fn_name: str, container_ptr_type: ir.Type, data_fields: list
+    ) -> ir.Function;
+
+    def _emit_linear_search_loop(
+        func: ir.Function,
+        entry_builder: ir.IRBuilder,
+        search_val: ir.Value,
+        arr: ir.Value,
+        arr_len: ir.Value,
+        elem_type: ir.Type,
+        elem_size: int = 0
+    ) -> tuple;
+
+    def _emit_array_get_fn(
+        fn_name: str,
+        container_ptr_type: ir.Type,
+        elem_type: ir.Type,
+        data_field_idx: int
+    ) -> ir.Function;
     # Phase 4: Lists
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);

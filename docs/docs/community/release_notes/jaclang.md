@@ -18,7 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Formatter Inline Comment Swallows Next Argument**: Fixed a bug where `jac format` would merge the next function argument into an inline comment when the comment appeared after a comma in a multi-line call (e.g., `candidate[:-4],  # strip trailing .jac` would absorb the following `os.path.abspath(base_dir)` into the comment text). The `CommentInjectionPass` now upgrades soft line breaks to hard line breaks when they follow an inline comment, ensuring subsequent tokens always start on a new line.
 - **Fix: Diagnostic Underlines for Multi-Line Spans**: Fixed `jac check` rendering absurdly wide `^^^^^` underlines when a diagnostic pointed at a node spanning multiple lines (e.g., W2052 on an entire `except` block). The W2052 warning now points at the exception type name token instead of the whole block, and the underline renderer clamps caret width to the end of the source line for any multi-line span.
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
-- 1 small refactors/changes.
+- 2 small refactors/changes.
 
 ## jaclang 0.12.2 (Latest Release)
 
