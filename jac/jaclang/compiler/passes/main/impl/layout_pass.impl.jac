@@ -148,9 +148,7 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
             }
         }
         if candidate is None {
-            self.log_error(
-                f"Cannot compute C3 MRO for {class_name}: inconsistent hierarchy"
-            );
+            self.emit(E5030, name=class_name);
             return result;
         }
         result.append(candidate);
@@ -456,20 +454,13 @@ impl LayoutPass._validate_obj_fields(
         fname = var.name.value if var.name else "field";
         # All obj fields MUST have a type annotation
         if not var.type_tag or not var.type_tag.tag {
-            self.log_warning(
-                f"obj '{aname}' field '{fname}' has no type annotation. "
-                f"All obj fields require explicit types for CType struct layout."
-            );
+            self.emit(W5031, node_override=var, arch=aname, field=fname);
             continue;
         }
         type_node = var.type_tag.tag;
         if not self._is_layout_compatible_type(type_node, arch_map) {
             type_str = type_node?.unparse() or str(type_node);
-            self.log_warning(
-                f"obj '{aname}' field '{fname}' has type '{type_str}' which is not "
-                f"layout-compatible. obj fields must use primitive types, other obj "
-                f"types, enums, typed collections, or callable signatures."
-            );
+            self.emit(W5032, node_override=var, arch=aname, field=fname, type=type_str);
         }
     }
 }

@@ -1032,3 +1032,99 @@ test "comment no print disabled by default" {
     ];
     assert len(no_print_errors) == 0 , f"Expected no no-print errors by default, got: {no_print_errors}";
 }
+
+# ── Inline Suppression Tests ───────────────────────────────────────────
+test "inline suppress by code" {
+    input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
+
+    error_msgs = [e.msg for e in prog.errors_had];
+    no_print_errors = [
+        m
+        for m in error_msgs
+        if "[no-print]" in m
+    ];
+    # Line 4 suppressed by E3012, line 5 NOT suppressed => 1 error
+    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
+        no_print_errors
+    )}: {no_print_errors}";
+}
+
+test "inline suppress by alias" {
+    input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
+
+    error_msgs = [e.msg for e in prog.errors_had];
+    no_print_errors = [
+        m
+        for m in error_msgs
+        if "[no-print]" in m
+    ];
+    # Line 9 suppressed by alias "no-print", line 10 suppressed by multi-code
+    # Only line 5 should fire => 1 error total
+    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
+        no_print_errors
+    )}: {no_print_errors}";
+}
+
+test "inline suppress wrong code does not suppress" {
+    input_path = auto_lint_fixture_path("no_print.jac");
+
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
+
+    # no_print.jac has no jac:ignore comments, so all 2 errors should fire
+    error_msgs = [e.msg for e in prog.errors_had];
+    no_print_errors = [
+        m
+        for m in error_msgs
+        if "[no-print]" in m
+    ];
+    assert len(no_print_errors) == 2;
+}
+
+test "inline suppress multiple codes" {
+    input_path = auto_lint_fixture_path("inline_suppress.jac");
+
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
+
+    # Line 10 has # jac:ignore[E3012, W3001] - multiple codes
+    # The E3012 (no-print) should be suppressed on that line
+    error_msgs = [e.msg for e in prog.errors_had];
+    no_print_errors = [
+        m
+        for m in error_msgs
+        if "[no-print]" in m
+    ];
+    # Only line 5 should fire
+    assert len(no_print_errors) == 1;
+}

@@ -18,17 +18,27 @@ This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Pyth
 
 Pass flags after `--` to customize the install:
 
+**Core language only (no plugins):**
+
 ```bash
-# Core language only (no plugins)
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
+```
 
-# Specific version
+**Specific version:**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
+```
 
-# Standalone binary (self-contained, no Python/uv needed at runtime)
+**Standalone binary (self-contained, no Python/uv needed at runtime):**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --standalone
+```
 
-# Uninstall
+**Uninstall:**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --uninstall
 ```
 

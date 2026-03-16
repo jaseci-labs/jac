@@ -19,12 +19,12 @@ def:pub add_task(title: str) -> dict {
 
 """Get all tasks."""
 def:pub get_tasks -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](?:Task)];
+    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->][?:Task]];
 }
 
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> dict {
-    for task in [root-->](?:Task) {
+    for task in [root-->][?:Task] {
         if task.id == id {
             task.done = not task.done;
             return {"id": task.id, "title": task.title, "done": task.done};

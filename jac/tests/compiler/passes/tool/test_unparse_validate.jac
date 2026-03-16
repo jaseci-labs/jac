@@ -22,3 +22,24 @@ test "double unparse" {
         unified_diff(x.splitlines(), y.splitlines())
     );
 }
+
+test "filter compr unparses to bracket syntax" {
+    code_gen = JacProgram().compile(
+        use_str='with entry { x(?:Foo, a==5); }', file_path="t.jac"
+    );
+    unparsed = code_gen.unparse();
+    assert "[?" in unparsed , "Old (?:...) should unparse as [?:...] but got: " + unparsed;
+    assert "(?" not in unparsed , "Old (?:...) syntax should not appear in unparsed output: " + unparsed;
+}
+
+test "bracket filter unparse roundtrip" {
+    code_gen = JacProgram().compile(
+        use_str='with entry { x[?:Foo, a==5]; }', file_path="t.jac"
+    );
+    first = code_gen.unparse();
+    code_gen2 = JacProgram().compile(use_str=first, file_path="t.jac");
+    second = code_gen2.unparse();
+    assert first == second , "Bracket filter unparse roundtrip failed:\n" + "\n".join(
+        unified_diff(first.splitlines(), second.splitlines())
+    );
+}

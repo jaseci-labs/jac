@@ -2,9 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.8 (Unreleased)
+## jac-super 0.1.9 (Unreleased)
 
-## jac-super 0.1.7 (Latest Release)
+## jac-super 0.1.8 (Latest Release)
+
+## jac-super 0.1.7
 
 - **Style: Remove Bold from CLI Console Output**: Removed bold from all Rich theme entries and inline styles, keeping only color for a cleaner look.
 

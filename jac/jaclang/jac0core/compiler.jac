@@ -6,7 +6,7 @@ import os;
 import sys;
 import types;
 import from threading { Event }
-import from typing { TYPE_CHECKING, Any }
+import from typing { Any }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.jir {
     SEC_BYTECODE,
@@ -27,6 +27,7 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes {
+    ASTValidationPass,
     DeclImplMatchPass,
     InteropAnalysisPass,
     JacAnnexPass,
@@ -36,16 +37,11 @@ import from jaclang.jac0core.passes {
     SymTabBuildPass,
     Transform
 }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import from jaclang.jac0core.program { JacProgram }
 
 """Symbol table build schedule."""
 def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    return [SymTabBuildPass, DeclImplMatchPass];
+    return [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass];
 }
 
 glob _ir_sched_loading = False,
@@ -62,7 +58,12 @@ glob _ir_sched_loading = False,
 def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     global _ir_sched_loading;
     if _ir_sched_loading {
-        return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
+        return [
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass
+        ];
     }
     _ir_sched_loading = True;
     try {
@@ -73,6 +74,7 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
         return [
+            ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
@@ -81,7 +83,12 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             MTIRGenPass
         ];
     } except ImportError {
-        return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
+        return [
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass
+        ];
     } finally {
         _ir_sched_loading = False;
     }

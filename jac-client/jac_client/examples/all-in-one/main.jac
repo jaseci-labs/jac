@@ -53,7 +53,7 @@ walker create_test_data {
 # Walker: Read all test data
 walker read_test_data {
     can read with Root entry {
-        visit [-->(?:TestData)];
+        visit [-->[?:TestData]];
     }
 
     can report_data with exit {

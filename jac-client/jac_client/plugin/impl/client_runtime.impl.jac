@@ -456,6 +456,12 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
+    # Report error to server for logging
+    try {
+        errMsg = error.error.message if error.error else str(error);
+        errStack = error.error.stack if error.error else "";
+        __jacReportError(errMsg, errStack, "", "ErrorBoundary");
+    } except Exception { }
     return
         <div
             role="alert"
@@ -993,5 +999,67 @@ impl JacForm(props: dict) -> JsxElement {
                 {isSubmitting and "Submitting..."}{not isSubmitting and submitLabel}
             </button>
         </form>
+    );
+}
+
+# ============================================================================
+# Client Error Reporting
+# ============================================================================
+"""Report a client-side error to the server via POST /cl/__error__.
+Fires asynchronously and silently ignores failures (to avoid error loops).
+"""
+impl __jacReportError(
+    message: str, stack: str = "", url: str = "", source: str = ""
+) -> None {
+    try {
+        baseUrl = __getApiBaseUrl();
+        fetch(
+            f"{baseUrl}/cl/__error__",
+            {
+                "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "body": JSON.stringify(
+                    {
+                        "message": message,
+                        "stack": stack,
+                        "url": url or window.location.href,
+                        "source": source,
+                        "timestamp": Reflect.construct(Date, []).toISOString()
+                    }
+                )
+            }
+        );
+    } except Exception {
+    # Silently ignore - never let error reporting cause more errors
+    }
+}
+
+"""Install global error handlers to catch unhandled JS errors and rejections.
+Called once during app initialization.
+"""
+impl __jacInstallErrorHandlers -> None {
+    if window.__jacErrorHandlersInstalled {
+        return;
+    }
+    window.__jacErrorHandlersInstalled = True;
+    # Catch synchronous errors (e.g., TypeError, ReferenceError)
+    window.addEventListener(
+        "error",
+        lambda event: Any  -> None { __jacReportError(
+            event.message or "Unknown error",
+            event.error.stack if event.error else "",
+            event.filename or "",
+            "window.onerror"
+        );}
+    );
+    # Catch unhandled promise rejections (e.g., failed fetch, async errors)
+    window.addEventListener(
+        "unhandledrejection",
+        lambda event: Any  -> None { reason = event.reason;message = "";stack = "";if reason {
+            message = reason.message or str(reason);
+            stack = reason.stack or "";
+        } else {
+            message = "Unhandled promise rejection";
+        } __jacReportError(message, stack, "", "unhandledrejection");}
     );
 }

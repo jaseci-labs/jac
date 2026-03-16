@@ -145,7 +145,7 @@ with entry {
 }
 
 # Find all classrooms and explore them
-glob classrooms = [root-->(?:Classroom)];
+glob classrooms = [root-->[?:Classroom]];
 
 with entry {
     for classroom in classrooms {
@@ -154,7 +154,7 @@ with entry {
 }
 
 # Analyze all students
-glob students = [root-->-->(?:Student)];  # Find all students in the graph
+glob students = [root-->-->[?:Student]];  # Find all students in the graph
 
 with entry {
     if students {

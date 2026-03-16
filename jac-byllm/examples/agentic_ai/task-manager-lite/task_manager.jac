@@ -21,7 +21,7 @@ node TaskHandling {
     }
 
     def summarize_tasks -> str {
-        scheduled_tasks = [self-->(?:Task)];
+        scheduled_tasks = [self-->[?:Task]];
         return str(scheduled_tasks);
     }
 
@@ -104,7 +104,7 @@ walker task_manager {
         };
         for subtask in subtasks {
             node_type = node_map[subtask.agent_type];
-            routed_node = [-->(?:node_type)];
+            routed_node = [-->[?:node_type]];
             if not routed_node {
                 routed_node = here ++> node_type();
             }

@@ -157,7 +157,7 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
         non_empty = {
             k: v
             for (k, v) in overload_map.items()
-            if len(v) > 1
+            if v  # Preserve any overloads (was: len(v) > 1, which dropped single overloads)
         };
         _write_varint(buf, len(non_empty));
         for (sym_name, sym_list) in non_empty.items() {

@@ -30,7 +30,9 @@ from pathlib import Path
 
 def _signal_handler(signum, frame):
     """Handle signals and log them to stderr."""
-    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    sig_name = (
+        signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
+    )
     sys.stderr.write(f"[sidecar] Received signal: {sig_name} ({signum})\n")
     sys.stderr.flush()
     sys.exit(128 + signum)
