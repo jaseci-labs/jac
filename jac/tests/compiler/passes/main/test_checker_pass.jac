@@ -2186,12 +2186,7 @@ test "isinstance_ternary_narrowing" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-"""Test list() constructor type inference from Generator/Iterator types.
-
-list(Generator[Item, None, None]) should return list[Item], not list[NoneType].
-This tests proper TypeVar resolution through multi-level generic inheritance
-(Generator -> Iterator -> Iterable).
-"""
+"""Test list(Generator[T, _, _]) returns list[T]."""
 test "list_generator_type_inference" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_list_generator_inference.jac");
