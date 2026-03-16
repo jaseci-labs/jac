@@ -300,7 +300,7 @@ impl format(
                     for e in prog.errors_had
                 );
                 if has_format_error or not lintfix {
-                    return (False, False, 0, [str(e) for e in prog.errors_had]);
+                    return (False, False, 0, list(prog.errors_had));
                 }
             }
             try {
@@ -309,7 +309,7 @@ impl format(
 
                 if not formatted_code or len(formatted_code.strip()) == 0 {
                     if prog.errors_had {
-                        return (False, False, 0, [str(e) for e in prog.errors_had]);
+                        return (False, False, 0, list(prog.errors_had));
                     }
                 }
 
@@ -328,7 +328,7 @@ impl format(
                 }
             } except Exception {
                 # Can't produce formatted output (parse error)
-                return (False, False, 0, [str(e) for e in prog.errors_had]);
+                return (False, False, 0, list(prog.errors_had));
             }
             # Report auto-fixed lint warnings and unfixable lint errors
             lint_errors = 0;
