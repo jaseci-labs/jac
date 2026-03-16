@@ -2069,7 +2069,8 @@ impl TypeEvaluator._assign_class(
     if self.is_sub_class(dest_type, src_type) {
         # If dest has type_args, verify src supplies compatible args through MRO.
         if dest_type.private and dest_type.private.type_args {
-            src_args = type_utils.resolve_type_args_for_base(src_type, dest_type);
+            specialized = type_utils.specialize_for_base_class(src_type, dest_type);
+            src_args = specialized.private.type_args if specialized.private else [];
             if src_args and len(src_args) == len(dest_type.private.type_args) {
                 for i in range(len(src_args)) {
                     src_arg = self._convert_to_instance(src_args[i]);

@@ -141,22 +141,31 @@ def apply_solved_type_vars(
 ) -> types.TypeBase;
 
 """
-Resolve the concrete type args that src supplies to target_base through the MRO.
-
-Walks the inheritance chain, accumulating TypeVar bindings through intermediate
-classes. For example, given:
-    class UniPass(ModuleCodegenPass) ...
-    class ModuleCodegenPass(Transform[Module, Module]) ...
-Calling resolve_type_args_for_base(UniPass_type, Transform_type) returns [Module, Module].
-"""
-def resolve_type_args_for_base(
-    src: types.ClassType, target_base: types.ClassType
-) -> list[types.TypeBase];
-
-"""
 Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
 
 Walks the MRO accumulating bindings so that inherited TypeVars are resolved
 transitively. Used by specialize_member_type and FunctionType.specialize.
 """
 def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
+
+"""
+Build a simple type_params → type_args solution from a specialized class.
+
+PyrightRef: buildSolutionFromSpecializedClass (typeUtils.ts:2145)
+For Generator[Item, None, None], returns {_YieldT_co: Item, _SendT_contra: None, _ReturnT_co: None}
+"""
+def build_solution_from_specialized_class(
+    class_type: types.ClassType
+) -> dict[str, types.TypeBase];
+
+"""
+Specialize a base class using type args from the derived class.
+
+PyrightRef: specializeForBaseClass (typeUtils.ts:2184)
+Given Generator[Item, None, None] and base Iterator[_YieldT_co], returns Iterator[Item].
+This function walks base_classes recursively to correctly propagate TypeVar bindings
+through multi-level generic inheritance (e.g., Generator → Iterator → Iterable).
+"""
+def specialize_for_base_class(
+    src_type: types.ClassType, base_class: types.ClassType
+) -> types.ClassType;
