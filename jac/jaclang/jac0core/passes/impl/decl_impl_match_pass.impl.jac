@@ -57,14 +57,24 @@ impl DeclImplMatchPass.defn_lookup(
 
 """Find the archetype definition from a symbol's definitions.
 
-        When a class is used as a base class, its symbol may have multiple
-        definitions - the actual Archetype and Name references from inheritance.
-        This method finds the actual Archetype definition.
+        When a class is used as a base class or has forward declarations,
+        its symbol may have multiple definitions. This method finds the
+        Archetype with a body (not a forward declaration).
         """
 impl DeclImplMatchPass._find_archetype_defn(
     self: DeclImplMatchPass, lookup: Symbol
 ) -> (uni.NameAtom | None) {
-    # Iterate through definitions (like defn_lookup does) to find an Archetype
+    # First pass: find an Archetype with a body (not a forward declaration)
+    for defn_idx in range(len(lookup.defn)) {
+        candidate = lookup.defn[defn_idx];
+        if (
+            isinstance(candidate.name_of, uni.Archetype)
+            and candidate.name_of.body is not None
+        ) {
+            return candidate;
+        }
+    }
+    # Second pass: find any Archetype (including forward declarations)
     for defn_idx in range(len(lookup.defn)) {
         candidate = lookup.defn[defn_idx];
         if isinstance(candidate.name_of, uni.Archetype) {
