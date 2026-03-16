@@ -15,20 +15,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     list_ptr_type = list_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
-    i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __list_new_T: create an empty list with capacity 8 ---
-    new_fnty = ir.FunctionType(list_ptr_type, []);
-    new_fn = ir.Function(
-        self.llvm_module, new_fnty, name=f"__list_new_{elem_type_name}"
+    new_fn = self._emit_container_new_fn(
+        f"__list_new_{elem_type_name}", list_ptr_type, [elem_type]
     );
-    new_fn.linkage = "private";
-    bb = new_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
-    (list_ptr, _) = self._emit_rc_alloc_container(b, list_ptr_type, [elem_type]);
-    b.ret(list_ptr);
     # --- __list_append_T: append an element, growing if needed ---
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
     append_fn = ir.Function(
@@ -68,22 +58,9 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     b.store(new_len, len_p2);
     b.ret_void();
     # --- __list_get_T: return data[index] ---
-    get_fnty = ir.FunctionType(elem_type, [list_ptr_type, i64]);
-    get_fn = ir.Function(
-        self.llvm_module, get_fnty, name=f"__list_get_{elem_type_name}"
+    get_fn = self._emit_array_get_fn(
+        f"__list_get_{elem_type_name}", list_ptr_type, elem_type, 2
     );
-    get_fn.linkage = "private";
-    get_fn.args[0].name = "list";
-    get_fn.args[1].name = "index";
-    bb_g = get_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_g);
-    dp = b.gep(
-        get_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr"
-    );
-    d = b.load(dp, name="data");
-    ep = b.gep(d, [get_fn.args[1]], name="elem.ptr");
-    elem_val = b.load(ep, name="elem");
-    b.ret(elem_val);
     # --- __list_set_T: data[index] = val ---
     set_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, i64, elem_type]);
     set_fn = ir.Function(
@@ -103,44 +80,11 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     b.store(set_fn.args[2], ep2);
     b.ret_void();
     # --- __list_len_T: return len field ---
-    len_fnty = ir.FunctionType(i64, [list_ptr_type]);
-    len_fn = ir.Function(
-        self.llvm_module, len_fnty, name=f"__list_len_{elem_type_name}"
-    );
-    len_fn.linkage = "private";
-    len_fn.args[0].name = "list";
-    bb_l = len_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_l);
-    lp = b.gep(
-        len_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
-    );
-    length = b.load(lp, name="len");
-    b.ret(length);
+    len_fn = self._emit_container_len_fn(f"__list_len_{elem_type_name}", list_ptr_type);
     # --- __rc_release_list_T: type-specific destructor ---
-    release_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
-    release_fn = ir.Function(
-        self.llvm_module, release_fnty, name=f"__rc_release_list_{elem_type_name}"
+    release_fn = self._emit_container_release_fn(
+        f"__rc_release_list_{elem_type_name}", list_ptr_type, [(2, elem_type)]
     );
-    release_fn.linkage = "private";
-    release_fn.args[0].name = "list";
-    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, list_ptr_type);
-    # Free block: release elements if pointer, free data, free struct
-    if isinstance(elem_type, ir.PointerType) {
-        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
-    }
-    # Free data array (plain malloc'd)
-    data_p_f = b.gep(
-        release_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-        name="data.ptr.f"
-    );
-    data_f = b.load(data_p_f, name="data.f");
-    data_f_i8 = b.bitcast(data_f, i8_ptr, name="data.f.i8");
-    b.call(free_fn, [data_f_i8]);
-    # Skip: bump allocator arena memory cannot be freed individually.
-    b.branch(done_bb);
-    b = ir.IRBuilder(done_bb);
-    b.ret_void();
     self.list_release_fns[elem_type_name] = release_fn;
     # Store helpers
     self.list_helpers[elem_type_name] = {

@@ -2087,6 +2087,17 @@ test "self_type_resolution" {
     assert "Cannot assign dict" in errors_str and "to str" in errors_str , "Expected error for dict.copy() Self return";
 }
 
+"""Test walrus operator (:=) type narrowing with is not None."""
+test "walrus_operator_narrowing" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_walrus_narrowing.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 """Test type[T] subscript member access resolves to T's class members."""
 test "type_subscript_member_access" {
     program = JacProgram();

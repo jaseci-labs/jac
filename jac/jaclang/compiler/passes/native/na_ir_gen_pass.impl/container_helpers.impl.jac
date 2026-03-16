@@ -4,6 +4,150 @@ These extract common patterns that were previously duplicated across
 lists.impl.jac, dicts.impl.jac, and sets.impl.jac.
 """
 
+"""Create a container 'new' function that allocates an empty RC-managed container."""
+impl NaIRGenPass._emit_container_new_fn(
+    fn_name: str, container_ptr_type: ir.Type, data_types: list
+) -> ir.Function {
+    new_fnty = ir.FunctionType(container_ptr_type, []);
+    new_fn = ir.Function(self.llvm_module, new_fnty, name=fn_name);
+    new_fn.linkage = "private";
+    bb = new_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb);
+    result = self._emit_rc_alloc_container(b, container_ptr_type, data_types);
+    b.ret(result[0]);
+    return new_fn;
+}
+
+"""Create a container 'len' function that returns the len field (struct index 0)."""
+impl NaIRGenPass._emit_container_len_fn(
+    fn_name: str, container_ptr_type: ir.Type
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    i32 = ir.IntType(32);
+    len_fnty = ir.FunctionType(i64, [container_ptr_type]);
+    len_fn = ir.Function(self.llvm_module, len_fnty, name=fn_name);
+    len_fn.linkage = "private";
+    len_fn.args[0].name = "container";
+    bb = len_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb);
+    lp = b.gep(
+        len_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
+    );
+    b.ret(b.load(lp, name="len"));
+    return len_fn;
+}
+
+"""Create a container destructor with RC preamble, element release loops, and array cleanup.
+
+Args:
+    fn_name: Name for the release function
+    container_ptr_type: Pointer type of the container struct
+    data_fields: List of (field_index, elem_type) tuples for each data array
+"""
+impl NaIRGenPass._emit_container_release_fn(
+    fn_name: str, container_ptr_type: ir.Type, data_fields: list
+) -> ir.Function {
+    i32 = ir.IntType(32);
+    i8_ptr = ir.IntType(8).as_pointer();
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+    release_fnty = ir.FunctionType(ir.VoidType(), [container_ptr_type]);
+    release_fn = ir.Function(self.llvm_module, release_fnty, name=fn_name);
+    release_fn.linkage = "private";
+    release_fn.args[0].name = "container";
+    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, container_ptr_type);
+    for (field_idx, elem_type) in data_fields {
+        if isinstance(elem_type, ir.PointerType) {
+            b = self._emit_rc_release_elem_loop(
+                b, release_fn, release_fn.args[0], field_idx
+            );
+        }
+        data_p = b.gep(
+            release_fn.args[0],
+            [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
+            name=f"data{field_idx}.ptr.f"
+        );
+        data_f = b.load(data_p, name=f"data{field_idx}.f");
+        b.call(free_fn, [b.bitcast(data_f, i8_ptr, name=f"data{field_idx}.cast")]);
+    }
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    return release_fn;
+}
+
+"""Emit a linear search loop over a data array, comparing each element to a search value.
+
+Sets up: entry -> loop_cond -> loop_body -> (found | not_found)
+with an increment block for the loop counter.
+
+Returns (found_builder, not_found_builder, idx_alloca) where:
+- found_builder: IRBuilder at the found block (element matched at idx_alloca)
+- not_found_builder: IRBuilder at the not-found block (exhausted all elements)
+- idx_alloca: Alloca holding the matching index (valid in found block)
+"""
+impl NaIRGenPass._emit_linear_search_loop(
+    func: ir.Function,
+    entry_builder: ir.IRBuilder,
+    search_val: ir.Value,
+    arr: ir.Value,
+    arr_len: ir.Value,
+    elem_type: ir.Type,
+    elem_size: int = 0
+) -> tuple {
+    i64 = ir.IntType(64);
+    idx_alloca = entry_builder.alloca(i64, name="idx");
+    entry_builder.store(ir.Constant(i64, 0), idx_alloca);
+    loop_cond = func.append_basic_block("loop.cond");
+    loop_body = func.append_basic_block("loop.body");
+    incr_bb = func.append_basic_block("incr");
+    found_bb = func.append_basic_block("found");
+    not_found_bb = func.append_basic_block("not.found");
+    entry_builder.branch(loop_cond);
+    # Loop condition: idx < len
+    b = ir.IRBuilder(loop_cond);
+    idx = b.load(idx_alloca, name="idx");
+    cmp = b.icmp_signed("<", idx, arr_len, name="cmp");
+    b.cbranch(cmp, loop_body, not_found_bb);
+    # Loop body: load element, compare
+    b = ir.IRBuilder(loop_body);
+    idx_body = b.load(idx_alloca, name="idx.body");
+    elem_ptr = b.gep(arr, [idx_body], name="elem.ptr");
+    elem_val = b.load(elem_ptr, name="elem.val");
+    elem_eq = self._emit_key_comparison(b, elem_type, elem_val, search_val, elem_size);
+    b.cbranch(elem_eq, found_bb, incr_bb);
+    # Increment block
+    b = ir.IRBuilder(incr_bb);
+    idx_incr = b.load(idx_alloca, name="idx.incr");
+    next_idx = b.add(idx_incr, ir.Constant(i64, 1), name="next.idx");
+    b.store(next_idx, idx_alloca);
+    b.branch(loop_cond);
+    return (ir.IRBuilder(found_bb), ir.IRBuilder(not_found_bb), idx_alloca);
+}
+
+"""Create a function that returns element at index from a container data array."""
+impl NaIRGenPass._emit_array_get_fn(
+    fn_name: str, container_ptr_type: ir.Type, elem_type: ir.Type, data_field_idx: int
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    i32 = ir.IntType(32);
+    get_fnty = ir.FunctionType(elem_type, [container_ptr_type, i64]);
+    get_fn = ir.Function(self.llvm_module, get_fnty, name=fn_name);
+    get_fn.linkage = "private";
+    get_fn.args[0].name = "container";
+    get_fn.args[1].name = "index";
+    bb = get_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb);
+    dp = b.gep(
+        get_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, data_field_idx)],
+        name="data.ptr"
+    );
+    d = b.load(dp, name="data");
+    ep = b.gep(d, [get_fn.args[1]], name="elem.ptr");
+    b.ret(b.load(ep, name="elem"));
+    return get_fn;
+}
+
 """Emit an element/key comparison for container lookup.
 
 Dispatches based on type:
