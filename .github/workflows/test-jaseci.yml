@@ -31,7 +31,7 @@ jobs:
         pip install watchdog
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      run: pytest -x jac-client -n auto
+      run: pytest jac-client -n auto
 
   test-packages-and-docs:
     runs-on: ubuntu-latest
@@ -99,7 +99,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-byllm
+      run: pytest jac-byllm
 
     - name: Install docs dependencies
       run: pip install -e docs
@@ -109,7 +109,7 @@ jobs:
       working-directory: docs
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_docs.jac
+      run: pytest -q docs/tests/test_docs.jac
 
     - name: Install Playwright
       run: |
@@ -141,7 +141,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run jac-mcp tests
-      run: pytest -x jac-mcp -n auto
+      run: pytest jac-mcp -n auto
 
   test-scale:
     runs-on: ubuntu-latest
@@ -174,43 +174,43 @@ jobs:
 
     - name: Run Backend tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
+        pytest-vv -s jac-scale/jac_scale/tests/test_serve.jac
 
     - name: Run Webhook tests (without and with MongoDB)
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
+        pytest -vv -s jac-scale/jac_scale/tests/test_webhook.jac
 
     - name: Run Memory Hierarchy tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
+        pytest -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
 
     - name: Run jac-client examples
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
+        pytest jac-scale/jac_scale/tests/test_examples.jac
 
     - name: Run SSO tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.jac
+        pytest jac-scale/jac_scale/tests/test_sso.jac
 
     - name: Run admin API tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_admin.jac
+        pytest jac-scale/jac_scale/tests/test_admin.jac
 
     - name: Run MongoDB user manager tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
+        pytest jac-scale/jac_scale/tests/test_mongo_user_manager.jac
 
     - name: Run Serializer tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
+        pytest -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
     - name: Run Scheduling tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
+        pytest -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
     - name: Run RestSpec tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
+        pytest jac-scale/jac_scale/tests/test_restspec.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
@@ -255,8 +255,8 @@ jobs:
 
       - name: Run K8 tests
         run: |
-          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
+          pytest -s jac-scale/jac_scale/tests/test_k8s_utils.jac
+          pytest -s jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
     runs-on: ubuntu-latest
