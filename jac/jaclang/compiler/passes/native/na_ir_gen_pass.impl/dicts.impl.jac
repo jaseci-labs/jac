@@ -74,17 +74,11 @@ impl NaIRGenPass._emit_dict_helpers(
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     # --- __dict_new: create an empty dict with capacity 8 ---
-    new_fnty = ir.FunctionType(dict_ptr_type, []);
-    new_fn = ir.Function(
-        self.llvm_module, new_fnty, name=f"__dict_new_{key_type_name}_{val_type_name}"
+    new_fn = self._emit_container_new_fn(
+        f"__dict_new_{key_type_name}_{val_type_name}",
+        dict_ptr_type,
+        [key_type, val_type]
     );
-    new_fn.linkage = "private";
-    bb = new_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
-    (dict_ptr, _, _) = self._emit_rc_alloc_container(
-        b, dict_ptr_type, [key_type, val_type]
-    );
-    b.ret(dict_ptr);
     # --- __dict_set: set key=value (linear search, grow if needed) ---
     set_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type, key_type, val_type]);
     set_fn = ir.Function(
@@ -95,13 +89,6 @@ impl NaIRGenPass._emit_dict_helpers(
     set_fn.args[1].name = "key";
     set_fn.args[2].name = "val";
     entry_bb = set_fn.append_basic_block("entry");
-    loop_cond_bb = set_fn.append_basic_block("loop.cond");
-    loop_body_bb = set_fn.append_basic_block("loop.body");
-    incr_bb = set_fn.append_basic_block("incr");
-    found_bb = set_fn.append_basic_block("found");
-    not_found_bb = set_fn.append_basic_block("not.found");
-    grow_bb = set_fn.append_basic_block("grow");
-    append_bb = set_fn.append_basic_block("append");
     b = ir.IRBuilder(entry_bb);
     d_arg = set_fn.args[0];
     k_arg = set_fn.args[1];
@@ -114,41 +101,23 @@ impl NaIRGenPass._emit_dict_helpers(
     cur_len = b.load(len_p2, name="len");
     keys_arr = b.load(keys_p2, name="keys");
     vals_arr = b.load(vals_p2, name="vals");
-    # Allocate loop index
-    idx_alloca = b.alloca(i64, name="idx");
-    b.store(ir.Constant(i64, 0), idx_alloca);
-    b.branch(loop_cond_bb);
-    # Loop condition: idx < len
-    b.position_at_end(loop_cond_bb);
-    idx = b.load(idx_alloca, name="idx");
-    cmp = b.icmp_signed("<", idx, cur_len, name="cmp");
-    b.cbranch(cmp, loop_body_bb, not_found_bb);
-    # Loop body: compare key
-    b.position_at_end(loop_body_bb);
-    idx_body = b.load(idx_alloca, name="idx.body");
-    key_ptr = b.gep(keys_arr, [idx_body], name="key.ptr");
-    key_val = b.load(key_ptr, name="key.val");
-    key_eq = self._emit_key_comparison(b, key_type, key_val, k_arg, _key_sz);
-    b.cbranch(key_eq, found_bb, incr_bb);
-    # Increment block
-    b.position_at_end(incr_bb);
-    idx_incr = b.load(idx_alloca, name="idx.incr");
-    next_idx = b.add(idx_incr, ir.Constant(i64, 1), name="next.idx");
-    b.store(next_idx, idx_alloca);
-    b.branch(loop_cond_bb);
+    # Search for existing key
+    (found_b, not_found_b, idx_alloca) = self._emit_linear_search_loop(
+        set_fn, b, k_arg, keys_arr, cur_len, key_type, _key_sz
+    );
     # Found: update existing value
-    b.position_at_end(found_bb);
-    idx_found = b.load(idx_alloca, name="idx.found");
-    val_ptr_found = b.gep(vals_arr, [idx_found], name="val.ptr.found");
-    b.store(v_arg, val_ptr_found);
-    b.ret_void();
+    idx_found = found_b.load(idx_alloca, name="idx.found");
+    val_ptr_found = found_b.gep(vals_arr, [idx_found], name="val.ptr.found");
+    found_b.store(v_arg, val_ptr_found);
+    found_b.ret_void();
     # Not found: check capacity and append
-    b.position_at_end(not_found_bb);
-    cur_cap = b.load(cap_p2, name="cap");
-    need_grow = b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
-    b.cbranch(need_grow, grow_bb, append_bb);
+    grow_bb = set_fn.append_basic_block("grow");
+    append_bb = set_fn.append_basic_block("append");
+    cur_cap = not_found_b.load(cap_p2, name="cap");
+    need_grow = not_found_b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
+    not_found_b.cbranch(need_grow, grow_bb, append_bb);
     # Grow block: grow both keys and vals arrays
-    b.position_at_end(grow_bb);
+    b = ir.IRBuilder(grow_bb);
     self._emit_grow_array(b, keys_p2, key_type, cur_len, cap_p2, cur_cap);
     # Reload cap after first grow (cap_p2 was updated)
     new_cap = b.load(cap_p2, name="new.cap.reload");
@@ -168,8 +137,7 @@ impl NaIRGenPass._emit_dict_helpers(
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
     # Append block
-    b.position_at_end(append_bb);
-    # Reload keys/vals after possible grow
+    b = ir.IRBuilder(append_bb);
     keys_arr_app = b.load(keys_p2, name="keys.app");
     vals_arr_app = b.load(vals_p2, name="vals.app");
     cur_len_app = b.load(len_p2, name="len.app");
@@ -189,11 +157,6 @@ impl NaIRGenPass._emit_dict_helpers(
     get_fn.args[0].name = "dict";
     get_fn.args[1].name = "key";
     entry_bb_g = get_fn.append_basic_block("entry");
-    loop_cond_g = get_fn.append_basic_block("loop.cond");
-    loop_body_g = get_fn.append_basic_block("loop.body");
-    incr_g = get_fn.append_basic_block("incr");
-    found_g = get_fn.append_basic_block("found");
-    not_found_g = get_fn.append_basic_block("not.found");
     b = ir.IRBuilder(entry_bb_g);
     d_arg_g = get_fn.args[0];
     k_arg_g = get_fn.args[1];
@@ -207,58 +170,28 @@ impl NaIRGenPass._emit_dict_helpers(
     len_g = b.load(len_pg, name="len");
     keys_g = b.load(keys_pg, name="keys");
     vals_g = b.load(vals_pg, name="vals");
-    idx_alloca_g = b.alloca(i64, name="idx");
-    b.store(ir.Constant(i64, 0), idx_alloca_g);
-    b.branch(loop_cond_g);
-    # Loop cond
-    b.position_at_end(loop_cond_g);
-    idx_g = b.load(idx_alloca_g, name="idx");
-    cmp_g = b.icmp_signed("<", idx_g, len_g, name="cmp");
-    b.cbranch(cmp_g, loop_body_g, not_found_g);
-    # Loop body - compare key, don't increment here
-    b.position_at_end(loop_body_g);
-    idx_bg = b.load(idx_alloca_g, name="idx.body");
-    key_ptr_g = b.gep(keys_g, [idx_bg], name="key.ptr");
-    key_val_g = b.load(key_ptr_g, name="key.val");
-    key_eq_g = self._emit_key_comparison(b, key_type, key_val_g, k_arg_g, _key_sz);
-    b.cbranch(key_eq_g, found_g, incr_g);
-    # Increment block - only reached when not found
-    b.position_at_end(incr_g);
-    idx_incr = b.load(idx_alloca_g, name="idx.incr");
-    next_idx_g = b.add(idx_incr, ir.Constant(i64, 1), name="next.idx");
-    b.store(next_idx_g, idx_alloca_g);
-    b.branch(loop_cond_g);
-    # Found - idx_alloca still has the found index
-    b.position_at_end(found_g);
-    idx_fg = b.load(idx_alloca_g, name="idx.found");
-    val_ptr_fg = b.gep(vals_g, [idx_fg], name="val.ptr");
-    result_g = b.load(val_ptr_fg, name="result");
-    b.ret(result_g);
+    (found_b_g, not_found_b_g, idx_alloca_g) = self._emit_linear_search_loop(
+        get_fn, b, k_arg_g, keys_g, len_g, key_type, _key_sz
+    );
+    # Found: return value at index
+    idx_fg = found_b_g.load(idx_alloca_g, name="idx.found");
+    val_ptr_fg = found_b_g.gep(vals_g, [idx_fg], name="val.ptr");
+    result_g = found_b_g.load(val_ptr_fg, name="result");
+    found_b_g.ret(result_g);
     # Not found: return zero/null
-    b.position_at_end(not_found_g);
     if isinstance(val_type, ir.PointerType) {
-        b.ret(ir.Constant(val_type, None));
+        not_found_b_g.ret(ir.Constant(val_type, None));
     } elif val_type?.elements and val_type.elements {
         # Struct type (e.g. JacVal): return zeroed struct
         zero_elems = [ir.Constant(e, 0) for e in val_type.elements];
-        b.ret(ir.Constant(val_type, zero_elems));
+        not_found_b_g.ret(ir.Constant(val_type, zero_elems));
     } else {
-        b.ret(ir.Constant(val_type, 0));
+        not_found_b_g.ret(ir.Constant(val_type, 0));
     }
     # --- __dict_len: return len field ---
-    len_fnty = ir.FunctionType(i64, [dict_ptr_type]);
-    len_fn = ir.Function(
-        self.llvm_module, len_fnty, name=f"__dict_len_{key_type_name}_{val_type_name}"
+    len_fn = self._emit_container_len_fn(
+        f"__dict_len_{key_type_name}_{val_type_name}", dict_ptr_type
     );
-    len_fn.linkage = "private";
-    len_fn.args[0].name = "dict";
-    bb_l = len_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_l);
-    lp = b.gep(
-        len_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
-    );
-    length = b.load(lp, name="len");
-    b.ret(length);
     # --- __dict_contains: return 1 if key exists, 0 otherwise ---
     contains_fnty = ir.FunctionType(ir.IntType(1), [dict_ptr_type, key_type]);
     contains_fn = ir.Function(
@@ -270,119 +203,36 @@ impl NaIRGenPass._emit_dict_helpers(
     contains_fn.args[0].name = "dict";
     contains_fn.args[1].name = "key";
     entry_bb_c = contains_fn.append_basic_block("entry");
-    loop_cond_c = contains_fn.append_basic_block("loop.cond");
-    loop_body_c = contains_fn.append_basic_block("loop.body");
-    found_c = contains_fn.append_basic_block("found");
-    not_found_c = contains_fn.append_basic_block("not.found");
     b = ir.IRBuilder(entry_bb_c);
-    d_arg_c = contains_fn.args[0];
-    k_arg_c = contains_fn.args[1];
-    len_pc = b.gep(d_arg_c, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
+    len_pc = b.gep(
+        contains_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
+    );
     keys_pc = b.gep(
-        d_arg_c, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
+        contains_fn.args[0],
+        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+        name="keys.ptr"
     );
     len_c = b.load(len_pc, name="len");
     keys_c = b.load(keys_pc, name="keys");
-    idx_alloca_c = b.alloca(i64, name="idx");
-    b.store(ir.Constant(i64, 0), idx_alloca_c);
-    b.branch(loop_cond_c);
-    b.position_at_end(loop_cond_c);
-    idx_c = b.load(idx_alloca_c, name="idx");
-    cmp_c = b.icmp_signed("<", idx_c, len_c, name="cmp");
-    b.cbranch(cmp_c, loop_body_c, not_found_c);
-    b.position_at_end(loop_body_c);
-    idx_bc = b.load(idx_alloca_c, name="idx.body");
-    key_ptr_c = b.gep(keys_c, [idx_bc], name="key.ptr");
-    key_val_c = b.load(key_ptr_c, name="key.val");
-    key_eq_c = self._emit_key_comparison(b, key_type, key_val_c, k_arg_c, _key_sz);
-    b.cbranch(key_eq_c, found_c, loop_cond_c);
-    b.position_before(b.block.terminator);
-    next_idx_c = b.add(idx_bc, ir.Constant(i64, 1), name="next.idx");
-    b.store(next_idx_c, idx_alloca_c);
-    b.position_at_end(found_c);
-    b.ret(ir.Constant(ir.IntType(1), 1));
-    b.position_at_end(not_found_c);
-    b.ret(ir.Constant(ir.IntType(1), 0));
+    (found_b_c, not_found_b_c, _) = self._emit_linear_search_loop(
+        contains_fn, b, contains_fn.args[1], keys_c, len_c, key_type, _key_sz
+    );
+    found_b_c.ret(ir.Constant(ir.IntType(1), 1));
+    not_found_b_c.ret(ir.Constant(ir.IntType(1), 0));
     # --- __dict_get_key: return key at index i (for iteration) ---
-    get_key_fnty = ir.FunctionType(key_type, [dict_ptr_type, i64]);
-    get_key_fn = ir.Function(
-        self.llvm_module,
-        get_key_fnty,
-        name=f"__dict_get_key_{key_type_name}_{val_type_name}"
+    get_key_fn = self._emit_array_get_fn(
+        f"__dict_get_key_{key_type_name}_{val_type_name}", dict_ptr_type, key_type, 2
     );
-    get_key_fn.linkage = "private";
-    get_key_fn.args[0].name = "dict";
-    get_key_fn.args[1].name = "idx";
-    bb_gk = get_key_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_gk);
-    d_arg_gk = get_key_fn.args[0];
-    idx_arg_gk = get_key_fn.args[1];
-    keys_ptr_gk = b.gep(
-        d_arg_gk, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
-    );
-    keys_arr_gk = b.load(keys_ptr_gk, name="keys");
-    key_elem_ptr = b.gep(keys_arr_gk, [idx_arg_gk], name="key.elem.ptr");
-    key_result = b.load(key_elem_ptr, name="key.result");
-    b.ret(key_result);
     # --- __dict_get_val: return val at index i (for .items() iteration) ---
-    get_val_fnty = ir.FunctionType(val_type, [dict_ptr_type, i64]);
-    get_val_fn = ir.Function(
-        self.llvm_module,
-        get_val_fnty,
-        name=f"__dict_get_val_{key_type_name}_{val_type_name}"
+    get_val_fn = self._emit_array_get_fn(
+        f"__dict_get_val_{key_type_name}_{val_type_name}", dict_ptr_type, val_type, 3
     );
-    get_val_fn.linkage = "private";
-    get_val_fn.args[0].name = "dict";
-    get_val_fn.args[1].name = "idx";
-    bb_gv = get_val_fn.append_basic_block("entry");
-    b = ir.IRBuilder(bb_gv);
-    d_arg_gv = get_val_fn.args[0];
-    idx_arg_gv = get_val_fn.args[1];
-    vals_ptr_gv = b.gep(
-        d_arg_gv, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="vals.ptr"
-    );
-    vals_arr_gv = b.load(vals_ptr_gv, name="vals");
-    val_elem_ptr = b.gep(vals_arr_gv, [idx_arg_gv], name="val.elem.ptr");
-    val_result = b.load(val_elem_ptr, name="val.result");
-    b.ret(val_result);
     # --- __rc_release_dict_K_V: type-specific destructor ---
-    release_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
-    release_fn = ir.Function(
-        self.llvm_module,
-        release_fnty,
-        name=f"__rc_release_dict_{dict_key.replace(':', '_')}"
+    release_fn = self._emit_container_release_fn(
+        f"__rc_release_dict_{dict_key.replace(':', '_')}",
+        dict_ptr_type,
+        [(2, key_type), (3, val_type)]
     );
-    release_fn.linkage = "private";
-    release_fn.args[0].name = "dict";
-    (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, dict_ptr_type);
-    # Release pointer-typed keys if applicable (field index 2)
-    if isinstance(key_type, ir.PointerType) {
-        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 2);
-    }
-    # Release pointer-typed vals if applicable (field index 3)
-    if isinstance(val_type, ir.PointerType) {
-        b = self._emit_rc_release_elem_loop(b, release_fn, release_fn.args[0], 3);
-    }
-    # Free keys array
-    keys_p_f = b.gep(
-        release_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-        name="keys.ptr.f"
-    );
-    keys_f = b.load(keys_p_f, name="keys.f");
-    b.call(free_fn, [b.bitcast(keys_f, i8_ptr, name="keys.cast")]);
-    # Free vals array
-    vals_p_f = b.gep(
-        release_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 3)],
-        name="vals.ptr.f"
-    );
-    vals_f = b.load(vals_p_f, name="vals.f");
-    b.call(free_fn, [b.bitcast(vals_f, i8_ptr, name="vals.cast")]);
-    # Skip: bump allocator arena memory cannot be freed individually.
-    b.branch(done_bb);
-    b = ir.IRBuilder(done_bb);
-    b.ret_void();
     self.dict_release_fns[dict_key] = release_fn;
     # Store helpers
     self.dict_helpers[dict_key] = {

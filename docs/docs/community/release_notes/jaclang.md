@@ -4,10 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Type Checking Enabled by Default**: All user modules are now type-checked during compilation. Bootstrap modules skip type checking automatically to avoid circular imports.
+- **Type Checker: Enum `.value`/`.name` Resolution**: Accessing `.value` or `.name` on enum instances now returns the correct type. For plain enums, the value type is inferred from members.
+- **Fix: Static Analysis False Positive on Attribute Access**: The "Name may be undefined" warning (W2001) no longer fires on attribute-access names (e.g., `obj.value`), which are member lookups, not standalone name references.
 - **Type Checker: Walrus Operator Narrowing**: `if (x := expr) is not None:` and `if isinstance((x := expr), T):` now correctly narrow `x` inside the block.
 - **Type Checker: `type[T]` Member Access**: Accessing class-level members (e.g., `ClassVar`) on `type[T]` parameters now works correctly. `cls: type[MyClass]` → `cls.my_class_var` resolves to `MyClass`'s members.
 - **Type Checker: Property Support**: `@property` and `@cached_property` now correctly type-check. Accessing `obj.my_property` returns the property's return type instead of `FunctionType`.
 - **Fix: Static Methods on Class-Based Enums**: Static methods on `IntEnum`/`StrEnum` classes now correctly return their declared type instead of `<Unknown>`.
+- **Fix: Generic Constructor Type Inference**: `set(my_list)`, `enumerate(items)`, and similar generic constructors now correctly infer type parameters from iterable arguments (e.g., `set(list[Item])` → `set[Item]`). Previously returned unparameterized types.
 - **Type Checker: Generic Inheritance & Bidirectional Inference**: Added MRO-aware type argument resolution (`resolve_type_args_for_base`, `build_type_var_solution`) so multi-level generic inheritance chains are properly tracked. `_assign_class` now validates type args through the MRO with covariant/contravariant/invariant variance. `type[X]` annotations are now covariant (`type[SubClass]` assignable to `type[BaseClass]`). `FunctionType.specialize` and `specialize_member_type` use transitive TypeVar resolution. `infer_type_args` walks inherited constructors. Container literals (`list`, `dict`, `set`, `tuple`) now support bidirectional type inference via `expected_type` propagation from return statements, assignments, and function arguments, with element-level validation before adopting the expected type.
 - **Type Checker: Parameterized Types in Error Messages**: `ClassType.__str__` now displays type arguments for parameterized types (e.g., `list[int]`, `dict[str, bool]`) instead of bare class names. Error messages like `Cannot return <class list>, expected <class list>` now read `Cannot return list[Dog | Cat], expected list[int]`, making type mismatches immediately actionable.
 - **Client-Side Error Reporting**: Unhandled JavaScript errors and promise rejections in Jac client apps are now automatically captured and forwarded to the server via `POST /cl/__error__`, where they are logged through both the `jaclang.client_errors` logger and the dev console. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization, and the `ErrorBoundary` fallback component also reports caught errors. Works with both the stdlib HTTP server and jac-scale (FastAPI).
@@ -19,7 +23,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Diagnostic Underlines for Multi-Line Spans**: Fixed `jac check` rendering absurdly wide `^^^^^` underlines when a diagnostic pointed at a node spanning multiple lines (e.g., W2052 on an entire `except` block). The W2052 warning now points at the exception type name token instead of the whole block, and the underline renderer clamps caret width to the end of the source line for any multi-line span.
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
 - **CLI: `jac run --show-errors` Flag**: Added `-e` / `--show-errors` flag to `jac run` that displays type check errors and warnings after execution. When omitted, `jac run` now shows a summary line with error/warning counts (dimmed) so users know diagnostics exist. Full details are shown only when `-e` is passed.
-- 1 small refactors/changes.
+- 3 small refactors/changes.
 
 ## jaclang 0.12.2 (Latest Release)
 
