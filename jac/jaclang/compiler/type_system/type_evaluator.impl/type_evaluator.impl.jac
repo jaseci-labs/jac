@@ -1236,17 +1236,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                 (narrowing_key, narrowed_type) = isinstance_info;
                 self.add_scope_narrowing(narrowing_key, narrowed_type);
             } else {
-                # Also handle other narrowing patterns (None checks, truthiness)
                 self.process_condition(expr.condition);
             }
+            self._in_ternary_expr_depth += 1;
             true_type = self.get_type_of_expression(expr.value);
+            self._in_ternary_expr_depth -= 1;
             self.pop_narrowing_scope();
 
             # Evaluate false branch with inverse narrowing
             self.push_narrowing_scope();
             if isinstance_info {
                 (narrowing_key, narrowed_type) = isinstance_info;
-                # Get original type and exclude the isinstance type
                 original_type = self.get_type_of_symbol(
                     self._find_symbol_by_key(narrowing_key, expr.condition)
                 )
@@ -1261,7 +1261,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
             }
+            self._in_ternary_expr_depth += 1;
             false_type = self.get_type_of_expression(expr.else_value);
+            self._in_ternary_expr_depth -= 1;
             self.pop_narrowing_scope();
 
             unique_types: list[types.TypeBase] = [];
@@ -2522,11 +2524,11 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Check scope narrowing for Name nodes (isinstance narrowing in ternary/if).
-    # This takes precedence over cached type to support flow-sensitive narrowing.
-    if isinstance(node_, uni.Name) {
+    # Check scope narrowing for Name nodes ONLY in ternary expressions.
+    # Regular if/else uses CFG-based narrowing which correctly handles branches.
+    if isinstance(node_, uni.Name) and self._in_ternary_expr_depth > 0 {
         if scope_narrowed := self.get_scope_narrowing(node_.value) {
-            node_.type = scope_narrowed;  # Update cached type for hover info
+            node_.type = scope_narrowed;
             return scope_narrowed;
         }
     }
@@ -2709,6 +2711,11 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     # Scope-based narrowing stack for if/AND blocks (forward traversal).
     # Each scope is a dict mapping narrowing keys (e.g., "x", "x.foo") to types.
     self._narrowing_scope_stack: list[dict[str, types.TypeBase]] = [];
+    # TODO: This is a workaround. The correct fix is to utilize CFG-based narrowing
+    # for ternary expressions, similar to how if/else statements are handled.
+    # Currently, ternary uses scope-based narrowing for Names while if/else uses CFG.
+    # Once CFG properly covers ternary expressions, this counter can be removed.
+    self._in_ternary_expr_depth: int = 0;
     # Track symbols currently being narrowed to prevent recursive cycles.
     # Uses id(symbol) for unique identity, avoiding name collisions between
     # different symbols with the same name in different scopes.
