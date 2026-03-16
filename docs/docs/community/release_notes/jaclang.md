@@ -23,7 +23,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Cross-Module Method Calls**: Calling a method on a struct type imported from another `.na.jac` module (e.g., `lx.next_token()`, `c.increment()`) was silently dropped, leaving the target variable as a null pointer and producing runtime crashes. Methods on imported struct types are now correctly resolved and emitted.
 - 2 small refactors/changes.
 - **Fix: Garbled Emojis and Markup in `jac --version` Banner**: Non-ASCII characters and emojis now render correctly in the version banner.
--
 
 ## jaclang 0.12.2 (Latest Release)
 
