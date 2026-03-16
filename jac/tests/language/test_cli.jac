@@ -125,6 +125,57 @@ test "jac cli run" {
     assert "Hello World!" in stdout_value;
 }
 
+test "show errors flag" {
+    # Create a temp file with known type errors and a with entry block
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
+        tmp.write(
+            'glob x: str = 5;\n'
+            'glob y: int = "hello";\n'
+            'with entry { print("ran"); }\n'
+        );
+        tmp_path = tmp.name;
+    }
+    try {
+        # Without --show-errors: program runs, summary line shown, no detailed errors
+        captured_out = io.StringIO();
+        captured_err = io.StringIO();
+        sys.stdout = captured_out;
+        sys.stderr = captured_err;
+        try {
+            execution.run(tmp_path);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        stdout_val = captured_out.getvalue();
+        stderr_val = captured_err.getvalue();
+        combined = stdout_val + stderr_val;
+        assert "ran" in stdout_val , "Program should still execute";
+        assert "error(s)" in combined , "Summary line should appear";
+        assert "Cannot assign" not in combined , (
+            "Detailed errors should not appear without --show-errors"
+        );
+
+        # With --show-errors: detailed errors shown
+        captured_out2 = io.StringIO();
+        captured_err2 = io.StringIO();
+        sys.stdout = captured_out2;
+        sys.stderr = captured_err2;
+        try {
+            execution.run(tmp_path, show_errors=True);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        combined2 = captured_out2.getvalue() + captured_err2.getvalue();
+        assert "Cannot assign" in combined2 , (
+            "Detailed errors should appear with --show-errors"
+        );
+    } finally {
+        os.unlink(tmp_path);
+    }
+}
+
 test "jac cli run python file" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
@@ -575,13 +626,22 @@ test "param arg" {
         sys.stdout = old_stdout;
     }
 
-    stdout_value = captured.getvalue().split("\n");
-    assert stdout_value[-7] == "ULTIMATE_MIN: 1|def|2.5|0|test|100|0";
-    assert stdout_value[-6] == "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1";
-    assert stdout_value[-5] == "SEPARATORS: 42";
-    assert stdout_value[-4] == "EDGE_MIX: 1-test-2-True-1";
-    assert stdout_value[-3] == "RECURSIVE: 7 11";
-    assert stdout_value[-2] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1";
+    stdout_lines = [
+        l
+        for l in captured.getvalue().split("\n")
+        if l.strip()
+    ];
+    expected = [
+        "ULTIMATE_MIN: 1|def|2.5|0|test|100|0",
+        "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1",
+        "SEPARATORS: 42",
+        "EDGE_MIX: 1-test-2-True-1",
+        "RECURSIVE: 7 11",
+        "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
+    ];
+    for line in expected {
+        assert line in stdout_lines , f"Expected '{line}' in output";
+    }
 }
 
 test "caching issue" {

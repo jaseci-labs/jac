@@ -229,6 +229,8 @@ jac hello.jac
 
 Note: `jac` is shorthand for `jac run` -- both work identically.
 
+> **💡 Tip**: Add `-e` to see type check diagnostics: `jac -e hello.jac`. This shows errors and warnings without needing a separate `jac check`.
+
 **That's it!** You just ran your first Jac program.
 
 ---

@@ -90,6 +90,7 @@ impl run(
     main: bool = True,
     cache: bool = True,
     autonative: bool = False,
+    show_errors: bool = False,
     args: list = []
 ) -> int {
     _ensure_jac_runtime();
@@ -193,10 +194,22 @@ impl run(
         mach.close();
         return 1;
     }
-    if Jac.program.warnings_had {
+    n_errors = len(Jac.program.errors_had);
+    n_warnings = len(Jac.program.warnings_had);
+    if show_errors {
+        for error in Jac.program.errors_had {
+            console.error(error.pretty_print());
+        }
         for warning in Jac.program.warnings_had {
             console.warning(f"{warning}");
         }
+    }
+    if n_errors or n_warnings {
+        console.print(
+            f"\n{n_errors} error(s), {n_warnings} warning(s) "
+            f"[diagnostics from first compile, cached for subsequent runs]",
+            style="dim"
+        );
     }
     sys.argv = original_argv;
     mach.close();
