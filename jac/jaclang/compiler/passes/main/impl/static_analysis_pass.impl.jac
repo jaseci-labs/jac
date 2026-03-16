@@ -103,6 +103,11 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
+        # Skip attribute access names (right side of x.attr)
+        parent = name_nd.parent;
+        if isinstance(parent, uni.AtomTrailer) and parent.is_attr {
+            continue;
+        }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
             continue;

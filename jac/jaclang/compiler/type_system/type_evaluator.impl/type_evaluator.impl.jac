@@ -632,6 +632,46 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
+                    # Handle .value/.name on enum instances — DynamicClassAttribute
+                    # is not detected by the property check, so resolve these directly.
+                    if base_type.is_enum_class() {
+                        attr_name = expr.right.value;
+                        if attr_name in ('name', '_name_') {
+                            expr.right.type = self._convert_to_instance(
+                                self.prefetch.str_class
+                            );
+                            return expr.right.type;
+                        }
+                        if attr_name in ('value', '_value_') {
+                            val_type = base_type.shared.enum_value_type;
+                            # If no explicit value type (not StrEnum/IntEnum),
+                            # infer from members' common value type.
+                            if val_type is None and base_type.shared.enum_members {
+                                member_types = [
+                                    m.value_type
+                                    for m in base_type.shared.enum_members.values()
+                                    if m.value_type is not None
+                                ];
+                                if member_types
+                                and all(
+                                    isinstance(t, types.ClassType)
+                                    and isinstance(
+                                        member_types[0], types.ClassType
+                                    )
+                                    and t.shared == member_types[0].shared
+                                    for t in member_types
+                                ) {
+                                    val_type = member_types[0];
+                                }
+                            }
+                            if val_type is not None {
+                                expr.right.type = self._convert_to_instance(val_type);
+                            } else {
+                                expr.right.type = types.AnyType();
+                            }
+                            return expr.right.type;
+                        }
+                    }
                     # Special handling for type[T]: when accessing members on an instance of type
                     # (i.e., a class object), we need to look up class-level members on T.
                     # For example: cls: type[Archetype] → cls._jac_entry_funcs_ should resolve
@@ -2603,8 +2643,15 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     }
     # Convert to absolute path so this function and _import_module_from_path share the same hub key.
     resolved_path = str(Path(path).resolve());
+    # Route jaclang-internal stubs (typeshed, etc.) to the compiler's
+    # internal hub so they don't pollute the user's program hub.
+    compiler = self.program._get_compiler();
+    target_hub = compiler._resolve_program(resolved_path, self.program).mod.hub;
     if resolved_path in self.program.mod.hub {
         return self.program.mod.hub[resolved_path];
+    }
+    if resolved_path in target_hub {
+        return target_hub[resolved_path];
     }
     file_content = read_file_with_encoding(path);
     uni_source = uni.Source(file_content, path);
@@ -2613,7 +2660,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
         prog=self.program,
     ).ir_out;
     SymTabBuildPass(ir_in=mod, prog=self.program);
-    self.program.mod.hub[resolved_path] = mod;
+    target_hub[resolved_path] = mod;
     return mod;
 }
 
