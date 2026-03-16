@@ -174,7 +174,7 @@ jobs:
 
     - name: Run Backend tests
       run: |
-        pytest-vv -s jac-scale/jac_scale/tests/test_serve.jac
+        pytest -vv -s jac-scale/jac_scale/tests/test_serve.jac
 
     - name: Run Webhook tests (without and with MongoDB)
       run: |
