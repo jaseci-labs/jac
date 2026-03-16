@@ -181,8 +181,6 @@ impl DeclImplMatchPass.validate_params_match(
                 name=valid_decl.name_spec.sym_name
             );
         }
-        # Note: We intentionally do NOT replace params_decl items with params_defn.
-        # That would cause params vs kid mismatch, breaking JIR cache serialization.
     }
 }
 
