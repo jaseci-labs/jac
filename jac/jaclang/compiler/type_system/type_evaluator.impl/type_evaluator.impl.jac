@@ -1224,9 +1224,46 @@ impl TypeEvaluator._get_type_of_expression_core(
             return types.UnknownType();
 
         case uni.IfElseExpr():
+            # Evaluate condition first
             self.get_type_of_expression(expr.condition);
+
+            # Check for isinstance narrowing in the condition
+            isinstance_info = self._extract_isinstance_info(expr.condition);
+
+            # Evaluate true branch with narrowing applied
+            self.push_narrowing_scope();
+            if isinstance_info {
+                (narrowing_key, narrowed_type) = isinstance_info;
+                self.add_scope_narrowing(narrowing_key, narrowed_type);
+            } else {
+                # Also handle other narrowing patterns (None checks, truthiness)
+                self.process_condition(expr.condition);
+            }
             true_type = self.get_type_of_expression(expr.value);
+            self.pop_narrowing_scope();
+
+            # Evaluate false branch with inverse narrowing
+            self.push_narrowing_scope();
+            if isinstance_info {
+                (narrowing_key, narrowed_type) = isinstance_info;
+                # Get original type and exclude the isinstance type
+                original_type = self.get_type_of_symbol(
+                    self._find_symbol_by_key(narrowing_key, expr.condition)
+                )
+                    if self._find_symbol_by_key(narrowing_key, expr.condition)
+                    else None;
+                if original_type {
+                    excluded_type = self.exclude_type_from_union(
+                        original_type, narrowed_type
+                    );
+                    if excluded_type is not original_type {
+                        self.add_scope_narrowing(narrowing_key, excluded_type);
+                    }
+                }
+            }
             false_type = self.get_type_of_expression(expr.else_value);
+            self.pop_narrowing_scope();
+
             unique_types: list[types.TypeBase] = [];
             for branch_type in [true_type, false_type] {
                 self._collect_unique_types(branch_type, unique_types);
@@ -1434,10 +1471,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                         symbol_type = special_form;
                     }
                     # Use CFG-based narrowing for flow-sensitive type.
-                    # NOTE: We do NOT use scope-based narrowing for simple Name references
-                    # because it doesn't distinguish between true/else branches. The
-                    # CFG-based narrowing handles this correctly. Scope-based narrowing
-                    # is only used for member access (AtomTrailer) within AND expressions.
                     # Narrowed types represent variable values, so ensure
                     # they are instance types (not instantiable class types).
                     if narrowed := self.get_narrowed_type(symbol, expr) {
@@ -1551,6 +1584,7 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         case uni.Name():
             # ---- Handle pre-set type (e.g., from with statement alias) ----
             # If the type was already bound (e.g., by enter_with_stmt), return it.
+            # Note: Scope narrowing is checked in get_type_of_expression before caching.
             if node_.type is not None {
                 return node_.type;
             }
@@ -2488,6 +2522,14 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
+    # Check scope narrowing for Name nodes (isinstance narrowing in ternary/if).
+    # This takes precedence over cached type to support flow-sensitive narrowing.
+    if isinstance(node_, uni.Name) {
+        if scope_narrowed := self.get_scope_narrowing(node_.value) {
+            node_.type = scope_narrowed;  # Update cached type for hover info
+            return scope_narrowed;
+        }
+    }
     # Use cached result if available, UNLESS expected_type is provided
     # for a container literal that could benefit from bidirectional inference.
     if node_.type is not None {
@@ -3041,6 +3083,23 @@ impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
         base_key = self.get_narrowing_key(expr.target);
         if base_key and isinstance(expr.right, uni.Name) {
             return f"{base_key}.{expr.right.value}";
+        }
+    }
+    return None;
+}
+
+"""Find the symbol associated with a narrowing key from a condition expression.
+
+Used to get the original type of a variable for inverse narrowing in else branches.
+"""
+impl TypeEvaluator._find_symbol_by_key(
+    key: str, condition: uni.Expr
+) -> uni.Symbol | None {
+    # For isinstance(x, T), get the symbol from the first argument
+    if isinstance(condition, uni.FuncCall) and condition.params {
+        first_arg = condition.params[0];
+        if isinstance(first_arg, uni.Name) and first_arg.sym {
+            return first_arg.sym;
         }
     }
     return None;

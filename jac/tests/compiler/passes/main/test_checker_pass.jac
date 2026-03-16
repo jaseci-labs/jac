@@ -2097,3 +2097,14 @@ test "type_subscript_member_access" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+"""Test isinstance type narrowing in ternary expressions."""
+test "isinstance_ternary_narrowing" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_ternary.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
