@@ -23,15 +23,35 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.project.config { LintRule }
+import from jaclang.jac0core.diagnostics {
+    W3001,
+    W3002,
+    W3003,
+    W3004,
+    W3005,
+    W3006,
+    W3007,
+    W3008,
+    W3009,
+    W3010,
+    W3011,
+    E3012,
+    W3020,
+    W3021,
+    W3022,
+    W3023,
+    W3024,
+    W3025,
+    W3030,
+    W3035,
+    W3036
+}
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
     def init(ir_in: uni.Module, prog: Any) -> None;
 
-    def _load_lint_config -> None;
-    def is_rule_enabled(rule: LintRule) -> bool;
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
@@ -86,4 +106,22 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
+    # New lint checks (W3020-W3036)
+    def _check_unnecessary_pass(body: list, `node: uni.UniNode) -> None;
+    def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
+    def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
+    def _check_return_bool_simplification(nd: uni.IfStmt) -> None;
+    def _check_repeated_condition(nd: uni.IfStmt) -> None;
+    def _check_identical_branches(nd: uni.IfStmt) -> None;
+    def _check_too_many_params(nd: uni.FuncSignature) -> None;
+    def _check_is_with_literal(nd: uni.CompareExpr) -> None;
+    def _check_mutable_default(nd: uni.ParamVar) -> None;
+    def exit_if_stmt(nd: uni.IfStmt) -> None;
+    def enter_else_stmt(nd: uni.ElseStmt) -> None;
+    def exit_compare_expr(nd: uni.CompareExpr) -> None;
+    def exit_func_signature(nd: uni.FuncSignature) -> None;
+    def enter_param_var(nd: uni.ParamVar) -> None;
+    def exit_archetype(nd: uni.Archetype) -> None;
+    def exit_ability(ability_node: uni.Ability) -> None;
+    def _body_to_key(body: list) -> str;
 }

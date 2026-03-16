@@ -1,7 +1,9 @@
 """Implementation for runtime."""
 
 """Resolve the live anchor for an archetype from runtime memory."""
-impl JacAccessValidation._resolve_anchor(archetype: Archetype) -> tuple {
+impl JacAccessValidation._resolve_anchor(
+    archetype: Archetype
+) -> tuple[Anchor, ExecutionContext] {
     anchor = archetype.__jac__;
     jctx = JacRuntimeInterface.get_context();
     mem_anchor = jctx.mem.get(anchor.id);

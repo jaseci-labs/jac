@@ -488,8 +488,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         for s in ModuleCodegenPass.iter_context_stmts(self.ir_in)
         if isinstance(s, uni.Import)
     ];
-    # Track already-processed modules to avoid duplicates
+    # Resolve all imported modules, deduplicating by absolute path.
     processed_modules: set[str] = set();
+    imported_mods: list = [];
     for imp in imports {
         if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
             continue;
@@ -503,21 +504,16 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         } except Exception {
             continue;
         }
-        if resolved_path in processed_modules {
+        abs_key = os.path.abspath(resolved_path);
+        if abs_key in processed_modules {
             continue;
         }
-        processed_modules.add(resolved_path);
         # Look up the imported module in the hub (try both relative and absolute)
         imported_mod = self.prog.mod.hub.get(resolved_path);
         if imported_mod is None {
-            abs_path = os.path.abspath(resolved_path);
-            imported_mod = self.prog.mod.hub.get(abs_path);
+            imported_mod = self.prog.mod.hub.get(abs_key);
         }
-        # If not in hub, parse the imported .jac file to get its AST for type
-        # extraction. Use rd_parse directly (not parse_str) to avoid adding a
-        # parse-only module to the hub, which would prevent TypeCheckPass from
-        # properly compiling it with SymTabBuildPass later.
-        # Only parse .jac files — .py/.pyi stubs must use the Python parser.
+        # If not in hub, parse the imported .jac file for type extraction.
         if (
             imported_mod is None
             and resolved_path.endswith('.jac')
@@ -526,7 +522,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             try {
                 import from jaclang.jac0core.parser { parse as rd_parse }
                 source = open(resolved_path).read();
-                (imported_mod, _, _) = rd_parse(source, resolved_path, prog=self.prog);
+                (imported_mod, _) = rd_parse(source, resolved_path, prog=self.prog);
             } except Exception {
                 continue;
             }
@@ -534,8 +530,24 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if imported_mod is None {
             continue;
         }
-        # Walk the imported module for archetypes, enums, globals, functions
-        self._walk_imported_module(imported_mod);
+        processed_modules.add(abs_key);
+        imported_mods.append((resolved_path, imported_mod));
+    }
+    # ── Phase 1a: register ALL struct names (empty identified types) ─────────
+    # All struct names must exist in struct_types before any body is filled
+    # so that cross-module field/parameter type references (e.g.
+    # JSClosure.func: CompiledFunction) resolve correctly even when the
+    # defining module is walked after the referencing module.
+    for (_, imported_mod) in imported_mods {
+        self._walk_imported_module_type_names(imported_mod);
+    }
+    # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
+    for (_, imported_mod) in imported_mods {
+        self._walk_imported_module_types(imported_mod);
+    }
+    # ── Phase 2: forward-declare ALL abilities from ALL modules ──────────────
+    for (resolved_path, imported_mod) in imported_mods {
+        self._walk_imported_module_abilities(imported_mod);
         # Track path so _codegen_entry can emit __jac_glob_init_<safe_name>() calls
         if not self?._imported_na_paths {
             self._imported_na_paths: list = [];
@@ -548,9 +560,33 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
 """Walk an imported module's AST and register all type declarations."""
 impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
-    # Flatten all blocks; skip only CLIENT-context statements.
-    # Imported modules may be plain .jac (SERVER) or .na.jac (NATIVE);
-    # both need their types/enums registered for native compilation.
+    # Full walk (types + abilities) — kept for any direct callers.
+    self._walk_imported_module_type_names(imported_mod);
+    self._walk_imported_module_types(imported_mod);
+    self._walk_imported_module_abilities(imported_mod);
+}
+
+"""Phase-1a walk: register struct names only (empty identified types, no bodies)."""
+impl NaIRGenPass._walk_imported_module_type_names(imported_mod: uni.Module) -> None {
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) {
+            aname = stmt.name.value if stmt.name else None;
+            if aname is not None and aname not in self.struct_types {
+                struct_type = self.llvm_module.context.get_identified_type(aname);
+                self.struct_types[aname] = struct_type;
+            }
+        }
+    }
+}
+
+"""Phase-1b walk: fill struct bodies, register enums and globals."""
+impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
@@ -564,22 +600,82 @@ impl NaIRGenPass._walk_imported_module(imported_mod: uni.Module) -> None {
             self._codegen_enum(stmt);
         } elif isinstance(stmt, uni.GlobalVars) {
             self._register_imported_globals(stmt);
-        } elif isinstance(stmt, uni.Ability) {
+        }
+    }
+}
+
+"""Phase-2 walk: forward-declare imported abilities (all struct types already registered)."""
+impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> None {
+    # First: forward-declare methods on all imported archetypes.
+    # Must happen before module-level abilities so that method-call resolution
+    # finds every struct method in self.method_funcs.
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) {
+            self._forward_declare_archetype_methods(stmt);
+        }
+    }
+    # Second: forward-declare module-level functions.
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Ability) {
             self._forward_declare_imported_ability(stmt);
         }
     }
 }
 
-"""Register a single imported archetype: create struct type and define field layout."""
-impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
+"""Forward-declare all methods of a single imported archetype.
+Called during Phase 2 so all struct types from all modules are already registered.
+"""
+impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None {
     aname = arch.name.value if arch.name else None;
-    if aname is None or aname in self.struct_types {
+    if aname is None or arch.body is None {
         return;
     }
-    # Create identified struct type
-    struct_type = self.llvm_module.context.get_identified_type(aname);
-    self.struct_types[aname] = struct_type;
-    # Define struct body with full field layout
+    for stmt in arch.body {
+        if isinstance(stmt, uni.Ability) {
+            if stmt.signature is not None
+            and isinstance(stmt.signature, uni.FuncSignature) {
+                self._forward_declare_method(aname, stmt);
+            }
+        }
+    }
+}
+
+"""Register a single imported archetype: create struct type and define field layout only.
+Method forward-declarations are deferred to Phase 2 (_forward_declare_archetype_methods)
+so that param types from other imported modules are already in self.struct_types.
+"""
+impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
+    aname = arch.name.value if arch.name else None;
+    if aname is None {
+        return;
+    }
+    # Ensure the identified struct type exists (Phase 1a may have pre-created it).
+    if aname not in self.struct_types {
+        struct_type = self.llvm_module.context.get_identified_type(aname);
+        self.struct_types[aname] = struct_type;
+    }
+    # Guard: skip body fill if already done (e.g., called twice due to multiple
+    # import paths, or after Phase 1a + Phase 1b sequencing).
+    if not self?._struct_bodies_done {
+        self._struct_bodies_done: set[str] = set();
+    }
+    if aname in self._struct_bodies_done {
+        return;
+    }
+    self._struct_bodies_done.add(aname);
+    # Fill struct body with full field layout.
     self._codegen_archetype(arch);
 }
 
@@ -597,6 +693,9 @@ impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
             var_type: ir.Type = ir.IntType(64);
             if assign.type_tag and assign.type_tag.tag {
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
+                # Track type annotation node for chained subscript+field access
+                # e.g. ITEMS[i].field chains need the list[Outer] node to bitcast
+                self.var_type_node[var_name] = assign.type_tag.tag;
             }
             global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
             global_var.linkage = "external";
@@ -749,10 +848,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
                 if decl.body is not None {
-                    self.log_error(
-                        f"C library import declaration '{fn_name}' "
-                        "must not have a body"
-                    );
+                    self.emit(E5060, name=fn_name);
                     continue;
                 }
                 self._declare_clib_ability(decl);

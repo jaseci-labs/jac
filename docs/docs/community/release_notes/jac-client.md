@@ -2,9 +2,18 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.6 (Unreleased)
+## jac-client 0.3.7 (Unreleased)
 
-## jac-client 0.3.5 (Latest Release)
+- **Client-Side Error Reporting**: Added `__jacReportError` and `__jacInstallErrorHandlers` to the client runtime. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization to automatically capture unhandled JS errors and forward them to the server via `POST /cl/__error__`. The `ErrorBoundary` fallback component also reports caught errors. Entry file generation (`ViteCompiler`) now imports and calls `__jacInstallErrorHandlers()` on startup for both explicit and pages-based routing modes.
+- **Per-File Source Map Generation**: The client compiler now generates `.js.map` files for each compiled `.jac` module, mapping generated JS lines back to original `.jac` source locations. Source comment headers (`/* Source: path.jac */`) are paired with standard v3 source maps for full traceability.
+- **Diagnostics Source Map Auto-Population**: `BuildContext` now auto-populates its source map from compiled JS `/* Source: */` headers when none is provided, and delegates snippet reading to the centralized `source_mapping` module.
+- **Vite Source Map Chaining**: The `jac-source-mapper` Vite plugin now loads per-file `.js.map` files and returns them as input source maps during `transform`, enabling Vite/Rollup to chain `.jac` → compiled `.js` → bundled `client.js` mappings end-to-end.
+
+## jac-client 0.3.6 (Latest Release)
+
+- **Fix: Desktop Target Asset Loading**: Fixed an issue where images and other static assets referenced with `/static/assets/` URLs were not loading in desktop (Tauri) builds. Assets are now correctly copied from `compiled/assets/` to `dist/static/assets/` during the build process, ensuring they are available when Tauri serves the frontend bundle. This fix applies to both `jac build --client desktop` and `jac start --client desktop` commands.
+
+## jac-client 0.3.5
 
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
 - **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
@@ -69,7 +78,7 @@ This document provides a summary of new features, improvements, and bug fixes in
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
-- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all examples, docs, tests, and templates.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `[?:Type]` across all examples, docs, tests, and templates.
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 - **Watchdog auto-install test**: Added test coverage for automatic watchdog installation in dev mode.
 - **Updated tests for CLI dependency command redesign**: New `jac add` behavior (errors on missing `jac.toml` instead of silently succeeding). Verify `jac add --npm` works in projects with both pypi and npm dependencies.

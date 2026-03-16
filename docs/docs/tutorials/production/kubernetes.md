@@ -68,7 +68,7 @@ walker:pub add_todo {
 
 walker:pub list_todos {
     can fetch with Root entry {
-        todos = [-->](?:Todo);
+        todos = [-->][?:Todo];
         report [{"title": t.title, "done": t.done} for t in todos];
     }
 }

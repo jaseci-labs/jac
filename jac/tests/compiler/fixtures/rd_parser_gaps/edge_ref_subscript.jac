@@ -6,4 +6,4 @@ node Person {
 edge Knows;
 
 glob people = root ++> Person(name="Alice"),
-     friends = [people[0]->:Knows:->(?:Person)];
+     friends = [people[0]->:Knows:->[?:Person]];

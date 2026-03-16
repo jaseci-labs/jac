@@ -1,5 +1,6 @@
 """NGINX Ingress controller and Ingress resource deployer."""
 import time;
+import subprocess;
 import bcrypt;
 import from typing { Any }
 import from kubernetes { client }
@@ -492,7 +493,24 @@ obj IngressDeployer {
             );
         }
 
-        main_rule: dict = {'http': {'paths': paths}};
+        main_rule: dict;
+        if self.k8s_config.domain {
+            main_rule = {'host': self.k8s_config.domain, 'http': {'paths': paths}};
+        } else {
+            main_rule = {'http': {'paths': paths}};
+        }
+
+        ingress_annotations: dict = {
+            'nginx.ingress.kubernetes.io/proxy-body-size': '0',
+            'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
+            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600'
+        };
+        if self.k8s_config.domain {
+            ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
+        }
+        if self.k8s_config.cert_manager_email {
+            ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
+        }
 
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
@@ -501,11 +519,7 @@ obj IngressDeployer {
                 'name': ingress_name,
                 'namespace': namespace,
                 'labels': {'app': app_name, 'managed': 'jac-scale'},
-                'annotations': {
-                    'nginx.ingress.kubernetes.io/proxy-body-size': '0',
-                    'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-                    'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600'
-                }
+                'annotations': ingress_annotations
             },
             'spec': {'ingressClassName': ingress_class, 'rules': [main_rule]}
         };
@@ -598,22 +612,27 @@ obj IngressDeployer {
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-secret'] = ri_auth_secret_name;
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-realm'] = 'RedisInsight';
 
-            redis_rule: dict = {
-                'http': {
-                    'paths': [
-                        {
-                            'path': '/cache-dashboard(/|$)(.*)',
-                            'pathType': 'ImplementationSpecific',
-                            'backend': {
-                                'service': {
-                                    'name': f"{app_name}-redis-insight-service",
-                                    'port': {'number': 5540}
-                                }
-                            }
+            redis_rule: dict;
+            redis_paths = [
+                {
+                    'path': '/cache-dashboard(/|$)(.*)',
+                    'pathType': 'ImplementationSpecific',
+                    'backend': {
+                        'service': {
+                            'name': f"{app_name}-redis-insight-service",
+                            'port': {'number': 5540}
                         }
-                    ]
+                    }
                 }
-            };
+            ];
+            if self.k8s_config.domain {
+                redis_rule = {
+                    'host': self.k8s_config.domain,
+                    'http': {'paths': redis_paths}
+                };
+            } else {
+                redis_rule = {'http': {'paths': redis_paths}};
+            }
 
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
@@ -732,6 +751,298 @@ obj IngressDeployer {
         );
     }
 
+    """Install cert-manager and create a namespace-scoped letsencrypt-prod Issuer.
+
+    Idempotent: returns immediately if the Issuer already exists.
+    Uses kubectl apply for the cert-manager manifests (CRD-safe) and the
+    Kubernetes Python client for the Issuer resource.
+    """
+    def _install_cert_manager(
+        app_name: str,
+        namespace: str,
+        cert_manager_email: str,
+        core_v1: Any,
+        apps_v1: Any,
+        custom_api: Any
+    ) -> None {
+        # Idempotency: if Issuer already exists, nothing to do
+        try {
+            custom_api.get_namespaced_custom_object(
+                group='cert-manager.io',
+                version='v1',
+                namespace=namespace,
+                plural='issuers',
+                name='letsencrypt-prod'
+            );
+            if self.logger {
+                self.logger.info(
+                    "cert-manager Issuer 'letsencrypt-prod' already exists, skipping"
+                );
+            }
+            return;
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Install cert-manager manifests if namespace not present
+        try {
+            core_v1.read_namespace(name='cert-manager');
+            if self.logger {
+                self.logger.info("cert-manager namespace already exists");
+            }
+        } except ApiException as e {
+            if e.status == 404 {
+                if self.logger {
+                    self.logger.info("Installing cert-manager v1.14.5...");
+                }
+                result = subprocess.run(
+                    [
+                        'kubectl',
+                        'apply',
+                        '-f',
+                        'https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml'
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                );
+                if result.returncode != 0 {
+                    raise Exception(f"cert-manager install failed: {result.stderr}");
+                }
+                if self.logger {
+                    self.logger.info("cert-manager manifests applied");
+                }
+            } else {
+                raise;
+            }
+        }
+
+        # Wait for cert-manager webhook to be ready (up to 120 s)
+        if self.logger {
+            self.logger.info(
+                "Waiting for cert-manager webhook to be ready (up to 120s)..."
+            );
+        }
+        elapsed = 0;
+        while elapsed < 120 {
+            try {
+                d = apps_v1.read_namespaced_deployment(
+                    name='cert-manager-webhook', namespace='cert-manager'
+                );
+                if (d.status.ready_replicas or 0) >= 1 {
+                    if self.logger {
+                        self.logger.info(f"cert-manager webhook ready ({elapsed}s)");
+                    }
+                    break;
+                }
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+            time.sleep(5);
+            elapsed = elapsed + 5;
+        }
+
+        # Create namespace-scoped Issuer
+        ingress_class_name = f"{namespace}-{app_name}-nginx";
+        issuer_body = {
+            'apiVersion': 'cert-manager.io/v1',
+            'kind': 'Issuer',
+            'metadata': {
+                'name': 'letsencrypt-prod',
+                'namespace': namespace,
+                'labels': {'managed': 'jac-scale'}
+            },
+            'spec': {
+                'acme': {
+                    'server': 'https://acme-v02.api.letsencrypt.org/directory',
+                    'email': cert_manager_email,
+                    'privateKeySecretRef': {'name': 'letsencrypt-prod-key'},
+                    'solvers': [
+                        {
+                            'http01': {
+                                'ingress': {'ingressClassName': ingress_class_name}
+                            }
+                        }
+                    ]
+                }
+            }
+        };
+        try {
+            custom_api.create_namespaced_custom_object(
+                group='cert-manager.io',
+                version='v1',
+                namespace=namespace,
+                plural='issuers',
+                body=issuer_body
+            );
+            if self.logger {
+                self.logger.info(
+                    f"Created letsencrypt-prod Issuer for ingress class '{ingress_class_name}'"
+                );
+            }
+        } except ApiException as e {
+            if e.status != 409 {
+                raise;
+            }
+        }
+    }
+
+    """Patch the existing Ingress(es) with TLS annotations and wait for the certificate.
+
+    Must be called after _install_cert_manager(). Does not redeploy the application.
+    """
+    def enable_tls(
+        app_name: str,
+        namespace: str,
+        networking_v1: Any,
+        custom_api: Any,
+        core_v1: Any,
+        apps_v1: Any
+    ) -> None {
+        ingress_name = f"{app_name}-ingress";
+        redis_ingress_name = f"{app_name}-redis-insight-ingress";
+        tls_secret_name = f"{app_name}-tls";
+
+        # Read domain / email from Ingress annotations (written during deploy)
+        ingress = networking_v1.read_namespaced_ingress(
+            name=ingress_name, namespace=namespace
+        );
+        ann = ingress.metadata.annotations or {};
+        domain = ann.get('jac-scale/domain', '') or self.k8s_config.domain;
+        cert_email = ann.get('jac-scale/cert-email', '')
+        or self.k8s_config.cert_manager_email;
+
+        if not domain {
+            raise Exception(
+                "No domain found. Re-deploy with 'domain' set in KubernetesConfig."
+            );
+        }
+        if not cert_email {
+            raise Exception(
+                "No cert_manager_email found. Re-deploy with 'cert_manager_email' set in KubernetesConfig."
+            );
+        }
+
+        # Install cert-manager + create Issuer
+        self._install_cert_manager(
+            app_name, namespace, cert_email, core_v1, apps_v1, custom_api
+        );
+
+        # TLS patch applied to both Ingress resources
+        tls_annotations = {
+            'cert-manager.io/issuer': 'letsencrypt-prod',
+            'nginx.ingress.kubernetes.io/ssl-redirect': 'true',
+            'nginx.ingress.kubernetes.io/force-ssl-redirect': 'true',
+            'jac-scale/domain': domain
+        };
+        tls_spec = {'tls': [{'hosts': [domain], 'secretName': tls_secret_name}]};
+
+        # Patch main Ingress: add TLS + set host on existing rules
+        api_client = client.ApiClient();
+        current_ingress = networking_v1.read_namespaced_ingress(
+            name=ingress_name, namespace=namespace
+        );
+        ingress_dict = api_client.sanitize_for_serialization(current_ingress);
+        existing_rules = ingress_dict.get('spec', {}).get('rules', []);
+        updated_rules = [];
+        for rule in existing_rules {
+            rule['host'] = domain;
+            updated_rules.append(rule);
+        }
+        tls_spec['rules'] = updated_rules;
+        networking_v1.patch_namespaced_ingress(
+            name=ingress_name,
+            namespace=namespace,
+            body={'metadata': {'annotations': tls_annotations}, 'spec': tls_spec}
+        );
+        if self.logger {
+            self.logger.info(f"Patched '{ingress_name}' with TLS configuration");
+        }
+
+        # Patch RedisInsight Ingress if it exists (update its own rules with host)
+        try {
+            current_redis_ingress = networking_v1.read_namespaced_ingress(
+                name=redis_ingress_name, namespace=namespace
+            );
+            redis_ingress_dict = api_client.sanitize_for_serialization(
+                current_redis_ingress
+            );
+            existing_redis_rules = redis_ingress_dict.get('spec', {}).get('rules', []);
+            updated_redis_rules = [];
+            for rule in existing_redis_rules {
+                rule['host'] = domain;
+                updated_redis_rules.append(rule);
+            }
+            redis_tls_spec = {
+                'tls': [{'hosts': [domain], 'secretName': tls_secret_name}],
+                'rules': updated_redis_rules
+            };
+            networking_v1.patch_namespaced_ingress(
+                name=redis_ingress_name,
+                namespace=namespace,
+                body={
+                    'metadata': {'annotations': tls_annotations},
+                    'spec': redis_tls_spec
+                }
+            );
+            if self.logger {
+                self.logger.info(
+                    f"Patched '{redis_ingress_name}' with TLS configuration"
+                );
+            }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Poll Certificate CRD until Ready=True (up to 300 s)
+        if self.logger {
+            self.logger.info(
+                f"Waiting for TLS certificate '{tls_secret_name}' to be issued (up to 300s)..."
+            );
+        }
+        elapsed = 0;
+        while elapsed < 300 {
+            try {
+                cert = custom_api.get_namespaced_custom_object(
+                    group='cert-manager.io',
+                    version='v1',
+                    namespace=namespace,
+                    plural='certificates',
+                    name=tls_secret_name
+                );
+                for cond in cert.get('status', {}).get('conditions', []) {
+                    if cond.get('type') == 'Ready' and cond.get('status') == 'True' {
+                        if self.logger {
+                            self.logger.info(
+                                f"Certificate '{tls_secret_name}' is Ready ({elapsed}s)"
+                            );
+                        }
+                        return;
+                    }
+                }
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+            time.sleep(5);
+            elapsed = elapsed + 5;
+        }
+        if self.logger {
+            self.logger.warning(
+                f"Timeout: certificate '{tls_secret_name}' not Ready after 300s. "
+                "Check: kubectl describe certificate "
+                f"{tls_secret_name} -n {namespace}"
+            );
+        }
+    }
+
     """Tear down all ingress resources created by this deployer."""
     def destroy(
         app_name: str,
@@ -765,6 +1076,44 @@ obj IngressDeployer {
             namespace,
             'Secret'
         );
+
+        # Delete TLS secret, ACME private key, Certificate CRD, and Issuer
+        delete_if_exists(
+            core_v1.delete_namespaced_secret, f"{app_name}-tls", namespace, 'Secret'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_secret,
+            'letsencrypt-prod-key',
+            namespace,
+            'Secret'
+        );
+        try {
+            custom_api = client.CustomObjectsApi();
+            custom_api.delete_namespaced_custom_object(
+                group='cert-manager.io',
+                version='v1',
+                namespace=namespace,
+                plural='certificates',
+                name=f"{app_name}-tls"
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            custom_api.delete_namespaced_custom_object(
+                group='cert-manager.io',
+                version='v1',
+                namespace=namespace,
+                plural='issuers',
+                name='letsencrypt-prod'
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
 
         # Delete controller namespaced resources
         delete_if_exists(

@@ -11,5 +11,5 @@ def:pub create_item(name: str) -> dict {
 }
 
 def:pub list_items -> list {
-    return [{"id": i.id, "name": i.name} for i in [root-->](?:Item)];
+    return [{"id": i.id, "name": i.name} for i in [root-->][?:Item]];
 }

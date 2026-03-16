@@ -22,7 +22,7 @@ walker toggle_todo {
 
 walker read_todos {
     can read with Root entry {
-        visit [-->(?:Todo)];
+        visit [-->[?:Todo]];
     }
 
     can report_todos with exit {

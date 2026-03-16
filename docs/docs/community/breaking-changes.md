@@ -7,6 +7,78 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Version 0.12.3
+
+#### 1. Automatic `TYPE_CHECKING` Import Guards
+
+The compiler now automatically detects imports that are only used in type annotations (parameter types, return types, field types) and wraps them in `if typing.TYPE_CHECKING:` guards in the generated Python output.
+
+**Impact:** Existing `if TYPE_CHECKING { ... }` blocks in Jac source still work, but are no longer necessary. You can simplify your code by replacing them with plain imports.
+
+**Before:**
+
+```jac
+import from typing { TYPE_CHECKING }
+
+with entry {
+    if TYPE_CHECKING {
+        import from mymodule { MyClass }
+    }
+}
+
+def process(item: MyClass) -> None { ... }
+```
+
+**After:**
+
+```jac
+import from mymodule { MyClass }
+
+def process(item: MyClass) -> None { ... }
+```
+
+The compiler detects that `MyClass` is only used in type annotation positions and automatically generates the `TYPE_CHECKING` guard. If `MyClass` is also used at runtime (e.g., `MyClass()`, `isinstance(x, MyClass)`), it remains a regular import.
+
+---
+
+### Version 0.12.2
+
+#### 1. Filter Comprehension Syntax Changed from `(?:...)` to `[?:...]`
+
+The parenthesized filter comprehension syntax `(?:Type)` and `(?:Type, condition)` is now deprecated in favor of bracket syntax `[?:Type]` and `[?:Type, condition]`. The old syntax still parses but emits deprecation warning **W0061**. The formatter (`jac format`) automatically converts old syntax to new.
+
+**Before:**
+
+```jac
+# Standalone filter
+my_list(?:Foo, val < 3);
+
+# After edge traversal
+visit [-->](?:MyNode);
+
+# Inside edge ref chain
+visit [-->(?:MyNode)];
+```
+
+**After:**
+
+```jac
+# Standalone filter
+my_list[?:Foo, val < 3];
+
+# After edge traversal
+visit [-->][?:MyNode];
+
+# Inside edge ref chain
+visit [-->[?:MyNode]];
+```
+
+**Why:** The `[?` token sequence is unambiguous in all contexts, including nested inside edge ref chain brackets. Bracket syntax is consistent with how edge references already use `[...]`.
+
+**Migration:** Run `jac format` on your `.jac` files to auto-convert, or manually replace `(?:` with `[?:` and `(?` with `[?` (adjusting closing `)` to `]`).
+
+---
+
 ### Version 0.11.1 / byllm 0.5.1
 
 #### 1. LiteLLM Minimum Version Raised to 1.81.15
@@ -175,7 +247,7 @@ can start with Root | MyNode entry {
 
 ##### Filter Comprehensions
 
-The typed filter syntax changes from `` (`?Type) `` and `` (`?Type:condition) `` to `(?:Type)` and `(?:Type, condition)`.
+The typed filter syntax changes from `` (`?Type) `` and `` (`?Type:condition) `` to `[?:Type]` and `[?:Type, condition]`.
 
 **Before:**
 
@@ -191,18 +263,22 @@ visit [-->](`?Year:year==2025);
 
 ```jac
 # Type-only filter
-visit [-->](?:MyNode);
+visit [-->][?:MyNode];
 
 # Typed filter with comparison
-visit [-->](?:Year, year==2025);
+visit [-->][?:Year, year==2025];
 ```
+
+!!! note "Parenthesized syntax `(?:Type)` is deprecated"
+    The intermediate parenthesized syntax `(?:Type)` and `(?:Type, condition)` was introduced in v0.10.0 but has been replaced by the bracket syntax `[?:Type]` and `[?:Type, condition]` for consistency with edge reference brackets. If your code uses the `(?:...)` form, migrate to `[?:...]`.
 
 **Migration Steps:**
 
 1. Replace all `` `root `` with `Root` in walker `entry`/`exit` declarations
-2. Replace `` (`?Type) `` with `(?:Type)` in filter comprehensions
-3. Replace `` (`?Type:condition) `` with `(?:Type, condition)` -- note the comma separator instead of colon
-4. The `root` keyword (lowercase, no backtick) for the root instance is unchanged -- `root spawn`, `root ++>`, etc. remain the same
+2. Replace `` (`?Type) `` with `[?:Type]` in filter comprehensions
+3. Replace `` (`?Type:condition) `` with `[?:Type, condition]` -- note the comma separator instead of colon
+4. Replace any `(?:Type)` with `[?:Type]` and `(?:Type, condition)` with `[?:Type, condition]`
+5. The `root` keyword (lowercase, no backtick) for the root instance is unchanged -- `root spawn`, `root ++>`, etc. remain the same
 
 ---
 

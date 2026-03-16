@@ -2,8 +2,9 @@
 import time;
 import from abc { ABC, abstractmethod }
 import from threading { Event }
-import from typing { TYPE_CHECKING }
+import from typing { Any, TYPE_CHECKING }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
 import from jaclang.jac0core.log { logging }
 import from jaclang.jac0core.unitree { UniNode }
 
@@ -17,7 +18,13 @@ with entry {
 class Alert {
     """Initialize alert."""
     def init(
-        self: Alert, msg: str, loc: CodeLocInfo, from_pass: type[Transform]
+        self: Alert,
+        msg: str,
+        loc: CodeLocInfo,
+        from_pass: type[Transform],
+        code: DiagnosticInfo | None = None,
+        related: list[tuple[str, CodeLocInfo]] | None = None,
+        help_text: str | None = None
     ) -> None;
 
     """Return string representation of alert."""
@@ -81,15 +88,35 @@ class Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
         cancel_token: (Event | None) = None
     ) -> None;
 
-    """Pass Error."""
-    def log_error(
-        self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None;
+    """Emit a structured diagnostic."""
+    def emit(
+        self: Transform,
+        diag: DiagnosticInfo,
+        node_override: (UniNode | None) = None,
+        related: (list[tuple[str, UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: Any
+    ) -> bool;
 
-    """Pass Error."""
-    def log_warning(
-        self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None;
+    """Check if a diagnostic code is suppressed."""
+    def _is_suppressed(
+        self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    ) -> bool;
+
+    """Emit a structured diagnostic."""
+    def emit(
+        self: Transform,
+        diag: DiagnosticInfo,
+        node_override: (UniNode | None) = None,
+        related: (list[tuple[str, UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: Any
+    ) -> bool;
+
+    """Check if a diagnostic code is suppressed."""
+    def _is_suppressed(
+        self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    ) -> bool;
 
     """Pass Error."""
     def ice(

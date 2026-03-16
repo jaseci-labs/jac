@@ -54,9 +54,36 @@ impl InteropAnalysisPass._resolve_native_module(
     }
     # Strip leading dots from relative imports (e.g., '.tokens' → 'tokens')
     clean_name = module_name.lstrip('.');
+
+    # Fast path: literal flat filename (e.g. 'tokens' → 'tokens.na.jac').
+    # This mirrors Python's behaviour for a bare name with no dots.
     na_jac_path = os.path.join(base_dir, f"{clean_name}.na.jac");
     if os.path.exists(na_jac_path) {
         return f"{clean_name}.na";
+    }
+
+    # Slow path: dotted name → directory hierarchy, walk up to project root.
+    # Python treats dots in `import foo.bar.baz` as package separators, so
+    # `import from runtime.jsvalue { X }` must resolve to runtime/jsvalue.na.jac
+    # regardless of how deep the calling file is nested.
+    path_name = clean_name.replace('.', os.sep);
+    if path_name != clean_name {
+        search_dir = os.path.abspath(base_dir);
+        while True {
+            candidate = os.path.join(search_dir, f"{path_name}.na.jac");
+            if os.path.exists(candidate) {
+                # Return a path relative to base_dir so that na_compile_pass
+                # can reconstruct the absolute path via:
+                #   os.path.join(base_dir, source_mod_path + ".jac")
+                rel = os.path.relpath(candidate[:-4], os.path.abspath(base_dir));
+                return rel;
+            }
+            parent = os.path.dirname(search_dir);
+            if parent == search_dir {
+                break;  # reached filesystem root
+            }
+            search_dir = parent;
+        }
     }
     return None;
 }

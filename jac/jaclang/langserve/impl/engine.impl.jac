@@ -92,13 +92,17 @@ impl JacLangServer.type_check_file(
         }
 
         # Compile the main file
+        import from jaclang.jac0core.compile_options { CompileOptions }
         main_doc = self.workspace.get_text_document(uris.from_fs_path(main_path));
         build = self.compile(
-            use_str=main_doc.source,
             file_path=main_path,
-            type_check=True,
-            no_cgen=True,
-            cancel_token=cancel_token,
+            use_str=main_doc.source,
+            options=CompileOptions(
+                type_check=True,
+                no_cgen=True,
+                force_target_program=True,
+                cancel_token=cancel_token
+            )
         );
 
         if cancel_token and cancel_token.is_set() {
@@ -106,15 +110,9 @@ impl JacLangServer.type_check_file(
         }
         self.update_modules(main_path, build);
 
-        # Aggregate errors from internal_program (jaclang.* modules) if any
+        # Publish diagnostics to all involved files
         all_errors = list(self.errors_had);
         all_warnings = list(self.warnings_had);
-        if (self._compiler and self._compiler._internal_program) {
-            all_errors.extend(self._compiler._internal_program.errors_had);
-            all_warnings.extend(self._compiler._internal_program.warnings_had);
-        }
-
-        # Publish diagnostics to all involved files
         for f in files_to_check {
             self.publish_diagnostics(
                 uris.from_fs_path(f),
@@ -680,33 +678,14 @@ impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     with self._state_lock.write_lock() {
         self.module_manager.clear_alerts_for_file(file_path);
-        # Also clear from internal_program (jaclang.* modules) if it exists
-        if (self._compiler and self._compiler._internal_program) {
-            internal = self._compiler._internal_program;
-            internal.errors_had = [
-                e
-                for e in internal.errors_had
-                if e.loc.mod_path != file_path
-            ];
-            internal.warnings_had = [
-                w
-                for w in internal.warnings_had
-                if w.loc.mod_path != file_path
-            ];
-        }
     }
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
 impl JacLangServer.diagnostics -> dict[str, list] {
     with self._state_lock.read_lock() {
-        # Aggregate errors from internal_program (jaclang.* modules) if any
         all_errors = list(self.errors_had);
         all_warnings = list(self.warnings_had);
-        if (self._compiler and self._compiler._internal_program) {
-            all_errors.extend(self._compiler._internal_program.errors_had);
-            all_warnings.extend(self._compiler._internal_program.warnings_had);
-        }
         result = {};
         for file_path in self.mod.hub {
             uri = uris.from_fs_path(file_path);
