@@ -609,6 +609,98 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def emit_del_at(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        # del list[idx]: shift elements from idx+1 leftward, then decrement length.
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        helpers = p.list_helpers.get(ctx.type_key);
+        if helpers is None {
+            return None;
+        }
+        b = p.builder;
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        del_idx = args[0];
+        len_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"
+        );
+        cur_len = b.load(len_ptr, name="delat.len");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        # shift_start = del_idx + 1, computed in entry_bb before branch
+        shift_start = b.add(del_idx, ir.Constant(i64, 1), name="delat.start");
+        loop_bb = func.append_basic_block(name="delat.loop");
+        body_bb = func.append_basic_block(name="delat.body");
+        done_bb = func.append_basic_block(name="delat.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        si = b.phi(i64, name="delat.si");
+        si.add_incoming(shift_start, entry_bb);
+        at_end = b.icmp_unsigned(">=", si, cur_len, name="delat.end");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        val = b.call(helpers["get"], [target, si], name="delat.val");
+        prev = b.sub(si, ir.Constant(i64, 1), name="delat.prev");
+        b.call(helpers["set"], [target, prev, val]);
+        next_si = b.add(si, ir.Constant(i64, 1), name="delat.next");
+        si.add_incoming(next_si, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        new_len = b.sub(cur_len, ir.Constant(i64, 1), name="delat.newlen");
+        b.store(new_len, len_ptr);
+        return ir.Constant(i64, 0);
+    }
+
+    def emit_del_at(
+        self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+    ) -> (ir.Value | None) {
+        # del list[idx]: shift elements from idx+1 leftward, then decrement length.
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        helpers = p.list_helpers.get(ctx.type_key);
+        if helpers is None {
+            return None;
+        }
+        b = p.builder;
+        i32 = ir.IntType(32);
+        i64 = ir.IntType(64);
+        del_idx = args[0];
+        len_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"
+        );
+        cur_len = b.load(len_ptr, name="delat.len");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        # shift_start = del_idx + 1, computed in entry_bb before branch
+        shift_start = b.add(del_idx, ir.Constant(i64, 1), name="delat.start");
+        loop_bb = func.append_basic_block(name="delat.loop");
+        body_bb = func.append_basic_block(name="delat.body");
+        done_bb = func.append_basic_block(name="delat.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        si = b.phi(i64, name="delat.si");
+        si.add_incoming(shift_start, entry_bb);
+        at_end = b.icmp_unsigned(">=", si, cur_len, name="delat.end");
+        b.cbranch(at_end, done_bb, body_bb);
+        b.position_at_start(body_bb);
+        val = b.call(helpers["get"], [target, si], name="delat.val");
+        prev = b.sub(si, ir.Constant(i64, 1), name="delat.prev");
+        b.call(helpers["set"], [target, prev, val]);
+        next_si = b.add(si, ir.Constant(i64, 1), name="delat.next");
+        si.add_incoming(next_si, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        new_len = b.sub(cur_len, ir.Constant(i64, 1), name="delat.newlen");
+        b.store(new_len, len_ptr);
+        return ir.Constant(i64, 0);
+    }
+
     def emit_clear(
         self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
     ) -> (ir.Value | None);
@@ -929,7 +1021,327 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
 
     def emit_issubclass(
         self, ctx: NativeEmitCtx, args: list[ir.Value]
-    ) -> (ir.Value | None);
+    ) -> (ir.Value | None) {
+        return None;
+    }
+
+    def emit_type(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        return None;
+    }
+
+    def emit_id(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        arg_val = args[0];
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        if isinstance(arg_val.type, ir.PointerType) {
+            return b.ptrtoint(arg_val, i64, name="id.ptr");
+        }
+        if isinstance(arg_val.type, ir.IntType) {
+            return p._coerce_type(arg_val, i64);
+        }
+        return None;
+    }
+
+    def emit_hash(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        arg_val = args[0];
+        p = ctx.pass_ref;
+        b = p.builder;
+        i64 = ir.IntType(64);
+        # int hash = identity
+        if isinstance(arg_val.type, ir.IntType) {
+            return p._coerce_type(arg_val, i64);
+        }
+        # string hash = djb2
+        i8p = ir.IntType(8).as_pointer();
+        if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
+            i8 = ir.IntType(8);
+            func = b.basic_block.function;
+            entry_bb = b.basic_block;
+            loop_bb = func.append_basic_block(name="hash.loop");
+            body_bb = func.append_basic_block(name="hash.body");
+            done_bb = func.append_basic_block(name="hash.done");
+            b.branch(loop_bb);
+            b.position_at_start(loop_bb);
+            h = b.phi(i64, name="hash.h");
+            h.add_incoming(ir.Constant(i64, 5381), entry_bb);
+            idx = b.phi(i64, name="hash.idx");
+            idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+            cp = b.gep(arg_val, [idx], name="hash.cp");
+            ch = b.load(cp, name="hash.ch");
+            is_zero = b.icmp_unsigned("==", ch, ir.Constant(i8, 0), name="hash.end");
+            b.cbranch(is_zero, done_bb, body_bb);
+            b.position_at_start(body_bb);
+            ch_ext = b.zext(ch, i64, name="hash.chext");
+            h_shl5 = b.shl(h, ir.Constant(i64, 5), name="hash.shl5");
+            h_plus_h = b.add(h_shl5, h, name="hash.mul33");
+            h_next = b.add(h_plus_h, ch_ext, name="hash.next");
+            next_idx = b.add(idx, ir.Constant(i64, 1), name="hash.nextidx");
+            h.add_incoming(h_next, body_bb);
+            idx.add_incoming(next_idx, body_bb);
+            b.branch(loop_bb);
+            b.position_at_start(done_bb);
+            return h;
+        }
+        return None;
+    }
+
+    def emit_repr(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        arg_val = args[0];
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8p = ir.IntType(8).as_pointer();
+        i64 = ir.IntType(64);
+        rc_alloc_fn = p.rc_alloc_fn;
+        buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
+        snprintf = p._get_or_declare_extern(
+            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+        );
+        if isinstance(arg_val.type, ir.IntType) {
+            fmt = p._get_snprintf_fmt("%ld");
+            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
+            coerced = p._coerce_type(arg_val, i64);
+            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, coerced]);
+            return buf_ptr;
+        }
+        if isinstance(arg_val.type, ir.DoubleType) {
+            fmt = p._get_snprintf_fmt("%g");
+            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
+            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
+            return buf_ptr;
+        }
+        if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
+            fmt = p._get_snprintf_fmt("'%s'");
+            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
+            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
+            return buf_ptr;
+        }
+        return None;
+    }
+
+    def emit_chr(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        arg_val = args[0];
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8 = ir.IntType(8);
+        i64 = ir.IntType(64);
+        rc_alloc_fn = p.rc_alloc_fn;
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 2)], name="chr.buf");
+        byte_val = b.trunc(arg_val, i8, name="chr.byte");
+        b.store(byte_val, buf);
+        null_ptr = b.gep(buf, [ir.Constant(i64, 1)], name="chr.null_ptr");
+        b.store(ir.Constant(i8, 0), null_ptr);
+        return buf;
+    }
+
+    def emit_ord(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        arg_val = args[0];
+        b = ctx.pass_ref.builder;
+        byte_val = b.load(arg_val, name="ord.byte");
+        return b.zext(byte_val, ir.IntType(64), name="ord.val");
+    }
+
+    def emit_hex(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8p = ir.IntType(8).as_pointer();
+        i64 = ir.IntType(64);
+        rc_alloc_fn = p.rc_alloc_fn;
+        snprintf = p._get_or_declare_extern(
+            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+        );
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="hex.buf");
+        # Check if negative
+        arg_val = args[0];
+        zero = ir.Constant(i64, 0);
+        is_neg = b.icmp_signed("<", arg_val, zero, name="hex.neg");
+        abs_val = b.sub(zero, arg_val, name="hex.abs");
+        pos_val = b.select(is_neg, abs_val, arg_val, name="hex.pos");
+        fmt_pos = p._get_snprintf_fmt("0x%lx");
+        fmt_neg = p._get_snprintf_fmt("-0x%lx");
+        fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="hex.fmt.pos");
+        fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="hex.fmt.neg");
+        fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="hex.fmt");
+        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf");
+        return buf;
+    }
+
+    def emit_oct(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8p = ir.IntType(8).as_pointer();
+        i64 = ir.IntType(64);
+        rc_alloc_fn = p.rc_alloc_fn;
+        snprintf = p._get_or_declare_extern(
+            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+        );
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="oct.buf");
+        arg_val = args[0];
+        zero = ir.Constant(i64, 0);
+        is_neg = b.icmp_signed("<", arg_val, zero, name="oct.neg");
+        abs_val = b.sub(zero, arg_val, name="oct.abs");
+        pos_val = b.select(is_neg, abs_val, arg_val, name="oct.pos");
+        fmt_pos = p._get_snprintf_fmt("0o%lo");
+        fmt_neg = p._get_snprintf_fmt("-0o%lo");
+        fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="oct.fmt.pos");
+        fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="oct.fmt.neg");
+        fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="oct.fmt");
+        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf");
+        return buf;
+    }
+
+    def emit_bin(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if not args {
+            return None;
+        }
+        p = ctx.pass_ref;
+        b = p.builder;
+        i8 = ir.IntType(8);
+        i8p = i8.as_pointer();
+        i64 = ir.IntType(64);
+        rc_alloc_fn = p.rc_alloc_fn;
+        snprintf = p._get_or_declare_extern(
+            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+        );
+        # Allocate buffer: "0b" + up to 64 digits + sign + null = 68
+        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 68)], name="bin.buf");
+        arg_val = args[0];
+        zero = ir.Constant(i64, 0);
+        is_neg = b.icmp_signed("<", arg_val, zero, name="bin.neg");
+        abs_val = b.sub(zero, arg_val, name="bin.abs");
+        pos_val = b.select(is_neg, abs_val, arg_val, name="bin.pos");
+        is_zero = b.icmp_signed("==", arg_val, zero, name="bin.iszero");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        zero_bb = func.append_basic_block(name="bin.zero");
+        prefix_bb = func.append_basic_block(name="bin.prefix");
+        loop_bb = func.append_basic_block(name="bin.loop");
+        body_bb = func.append_basic_block(name="bin.body");
+        reverse_bb = func.append_basic_block(name="bin.reverse");
+        done_bb = func.append_basic_block(name="bin.done");
+        b.cbranch(is_zero, zero_bb, prefix_bb);
+        # Zero case: "0b0"
+        b.position_at_start(zero_bb);
+        fmt_zero = p._get_snprintf_fmt("0b0");
+        fmt_zero_ptr = b.bitcast(fmt_zero, i8p, name="bin.fmt.zero");
+        b.call(snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp");
+        b.branch(done_bb);
+        # Write prefix: "-0b" or "0b"
+        b.position_at_start(prefix_bb);
+        neg_ch = ir.Constant(i8, 45);  # '-'
+        zero_ch = ir.Constant(i8, 48);  # '0'
+        b_ch = ir.Constant(i8, 98);  # 'b'
+        # Write sign if negative
+        start_off_val = b.select(
+            is_neg, ir.Constant(i64, 1), ir.Constant(i64, 0), name="bin.start"
+        );
+        neg_ptr = b.gep(buf, [ir.Constant(i64, 0)], name="bin.neg.ptr");
+        b.store(b.select(is_neg, neg_ch, zero_ch, name="bin.first.ch"), neg_ptr);
+        zero_ptr = b.gep(buf, [start_off_val], name="bin.zero.ptr");
+        b.store(zero_ch, zero_ptr);
+        b_off = b.add(start_off_val, ir.Constant(i64, 1), name="bin.b.off");
+        b_ptr = b.gep(buf, [b_off], name="bin.b.ptr");
+        b.store(b_ch, b_ptr);
+        digit_start = b.add(b_off, ir.Constant(i64, 1), name="bin.digit.start");
+        b.branch(loop_bb);
+        # Extract digits (reverse order)
+        b.position_at_start(loop_bb);
+        val = b.phi(i64, name="bin.val");
+        off = b.phi(i64, name="bin.off");
+        val.add_incoming(pos_val, prefix_bb);
+        off.add_incoming(digit_start, prefix_bb);
+        is_done = b.icmp_unsigned("==", val, ir.Constant(i64, 0), name="bin.done.chk");
+        b.cbranch(is_done, reverse_bb, body_bb);
+        b.position_at_start(body_bb);
+        bit = b.and_(val, ir.Constant(i64, 1), name="bin.bit");
+        digit = b.trunc(
+            b.add(bit, ir.Constant(i64, 48), name="bin.digit.val"),
+            i8,
+            name="bin.digit"
+        );
+        digit_ptr = b.gep(buf, [off], name="bin.digit.ptr");
+        b.store(digit, digit_ptr);
+        new_val = b.lshr(val, ir.Constant(i64, 1), name="bin.new.val");
+        new_off = b.add(off, ir.Constant(i64, 1), name="bin.new.off");
+        val.add_incoming(new_val, body_bb);
+        off.add_incoming(new_off, body_bb);
+        b.branch(loop_bb);
+        # Reverse the digit portion and null-terminate
+        b.position_at_start(reverse_bb);
+        null_ptr = b.gep(buf, [off], name="bin.null.ptr");
+        b.store(ir.Constant(i8, 0), null_ptr);
+        # Reverse digits between digit_start and off-1
+        rev_entry = b.basic_block;
+        rev_loop = func.append_basic_block(name="bin.rev.loop");
+        rev_body = func.append_basic_block(name="bin.rev.body");
+        rev_done = func.append_basic_block(name="bin.rev.done");
+        end_idx = b.sub(off, ir.Constant(i64, 1), name="bin.end.idx");
+        b.branch(rev_loop);
+        b.position_at_start(rev_loop);
+        lo = b.phi(i64, name="bin.rev.lo");
+        hi = b.phi(i64, name="bin.rev.hi");
+        lo.add_incoming(digit_start, rev_entry);
+        hi.add_incoming(end_idx, rev_entry);
+        need_swap = b.icmp_signed("<", lo, hi, name="bin.rev.need");
+        b.cbranch(need_swap, rev_body, rev_done);
+        b.position_at_start(rev_body);
+        lo_ptr = b.gep(buf, [lo], name="bin.rev.lo.ptr");
+        hi_ptr = b.gep(buf, [hi], name="bin.rev.hi.ptr");
+        lo_ch = b.load(lo_ptr, name="bin.rev.lo.ch");
+        hi_ch = b.load(hi_ptr, name="bin.rev.hi.ch");
+        b.store(hi_ch, lo_ptr);
+        b.store(lo_ch, hi_ptr);
+        next_lo = b.add(lo, ir.Constant(i64, 1), name="bin.rev.next.lo");
+        next_hi = b.sub(hi, ir.Constant(i64, 1), name="bin.rev.next.hi");
+        lo.add_incoming(next_lo, rev_body);
+        hi.add_incoming(next_hi, rev_body);
+        b.branch(rev_loop);
+        b.position_at_start(rev_done);
+        b.branch(done_bb);
+        b.position_at_start(done_bb);
+        return buf;
+    }
+
+    def emit_pow(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None) {
+        if len(args) < 2 {
+            return None;
+        }
+        p = ctx.pass_ref;
+        base = args[0];
+        exp = args[1];
+        if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
+            return p._codegen_int_pow(base, exp);
+        }
+        if isinstance(base.type, ir.DoubleType)
+        and isinstance(exp.type, ir.DoubleType) {
+            pow_fn = p._get_or_declare_extern(
+                "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
+            );
+            return p.builder.call(pow_fn, [base, exp], name="pow.result");
+        }
+        return None;
+    }
 
     def emit_type(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None);
     def emit_id(self, ctx: NativeEmitCtx, args: list[ir.Value]) -> (ir.Value | None);

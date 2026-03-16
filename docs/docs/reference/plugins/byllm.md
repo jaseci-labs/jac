@@ -1584,7 +1584,7 @@ walker DocumentAgent {
     has query: str;
 
     can process with Root entry {
-        all_docs = [-->](?:Document);
+        all_docs = [-->][?:Document];
 
         for doc in all_docs {
             if self.query.lower() in doc.content.lower() {

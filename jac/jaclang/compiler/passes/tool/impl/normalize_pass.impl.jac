@@ -1516,19 +1516,22 @@ impl NormalizePass.enter_connect_op(nd: uni.ConnectOp) -> None {
 """Normalize FilterCompr kid list."""
 impl NormalizePass.enter_filter_compr(nd: uni.FilterCompr) -> None {
     new_kid: list[uni.UniNode] = [];
-    if not isinstance(nd.parent, uni.EdgeOpRef) {
-        new_kid.append(nd.gen_token(Tok.LPAREN));
+    is_edge_inline = isinstance(nd.parent, uni.EdgeOpRef);
+    # Opening delimiter
+    if not is_edge_inline {
+        # Bracket syntax [?...] — used everywhere except inline edge ops
+        new_kid.append(nd.gen_token(Tok.LSQUARE));
         new_kid.append(nd.gen_token(Tok.NULL_OK));
     }
     if nd.f_type {
-        if not isinstance(nd.parent, uni.EdgeOpRef) {
+        if not is_edge_inline {
             new_kid.append(nd.gen_token(Tok.COLON));
         }
         new_kid.append(nd.f_type);
     }
     if nd.compares {
         if nd.f_type {
-            if isinstance(nd.parent, uni.EdgeOpRef) {
+            if is_edge_inline {
                 new_kid.append(nd.gen_token(Tok.COLON));
             } else {
                 new_kid.append(nd.gen_token(Tok.COMMA));
@@ -1541,8 +1544,9 @@ impl NormalizePass.enter_filter_compr(nd: uni.FilterCompr) -> None {
             }
         }
     }
-    if not isinstance(nd.parent, uni.EdgeOpRef) {
-        new_kid.append(nd.gen_token(Tok.RPAREN));
+    # Closing delimiter
+    if not is_edge_inline {
+        new_kid.append(nd.gen_token(Tok.RSQUARE));
     }
     nd.set_kids(nodes=new_kid);
 }

@@ -162,7 +162,6 @@ obj UniScopeNode(UniNode) {
 
     def find_scope(name: str) -> (UniScopeNode | None);
     def link_kid_scope(key_node: UniScopeNode) -> UniScopeNode;
-    def inherit_sym_tab(target_sym_tab: UniScopeNode) -> None;
     def def_insert(
         nd: AstSymbolNode,
         access_spec: AstAccessNode | None | SymbolAccess = None,

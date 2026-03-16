@@ -21,11 +21,11 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
     for r in failed_results {
         console.print(separator(r['path'], char='_'));
         for e in r['errors'] {
-            console.error(f"{e}");
+            console.error(e.pretty_print());
         }
         if not nowarn and r['warnings'] {
             for w in r['warnings'] {
-                console.warning(f"{w}");
+                console.warning(w.pretty_print());
             }
         }
         console.print("");

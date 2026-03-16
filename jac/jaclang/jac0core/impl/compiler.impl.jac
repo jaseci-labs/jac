@@ -552,11 +552,8 @@ impl JacCompiler.parse_str(
         mod = py_ast_ret.ir_out;
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
-        (mod, parse_errors, lex_errors) = rd_parse(
-            source_str, file_path, prog=target_program
-        );
+        (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
         _recalculate_parents(mod);
-        had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
         if file_path.endswith('.cl.jac') {
             _coerce_client_module(mod);
         } elif file_path.endswith('.sv.jac') {
@@ -611,7 +608,11 @@ impl JacCompiler.compile(
             );
         }
     }
-    actual_program = self._resolve_program(file_path, target_program);
+    if options.force_target_program {
+        actual_program = target_program;
+    } else {
+        actual_program = self._resolve_program(file_path, target_program);
+    }
     actual_program._compile_options = options;
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);
@@ -696,11 +697,9 @@ impl JacCompiler._prepare_tool_program(
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.parser { parse as rd_parse }
     prog = JacProgram();
-    (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+    (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
     _recalculate_parents(current_mod);
-    if len(parse_errors) > 0 or len(lex_errors) > 0 {
-        prog.errors_had.extend(parse_errors);
-        prog.errors_had.extend(lex_errors);
+    if had_error {
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
     }
@@ -714,7 +713,7 @@ impl JacCompiler._prepare_tool_program(
             for annex_path in discover_annex_files(file_path, '.impl.jac') {
                 try {
                     annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
                     _recalculate_parents(annex_mod);
                     current_mod.impl_mod.append(annex_mod);
                 } except Exception {
@@ -726,7 +725,7 @@ impl JacCompiler._prepare_tool_program(
             for annex_path in discover_annex_files(file_path, '.test.jac') {
                 try {
                     annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
                     _recalculate_parents(annex_mod);
                     current_mod.test_mod.append(annex_mod);
                 } except Exception {

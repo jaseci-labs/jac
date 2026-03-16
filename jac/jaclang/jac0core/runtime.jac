@@ -82,7 +82,9 @@ glob plugin_manager = plugin.PluginManager('jac'),
 """Jac Access Validation Specs."""
 class JacAccessValidation {
     """Resolve the live anchor for an archetype from runtime memory."""
-    static def _resolve_anchor(archetype: Archetype) -> tuple;
+    static def _resolve_anchor(
+        archetype: Archetype
+    ) -> tuple[Anchor, ExecutionContext];
 
     """Check if current root has at least min_level access to target anchor."""
     static def _check_access(

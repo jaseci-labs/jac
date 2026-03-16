@@ -65,6 +65,7 @@ MICRO_JAC_FILES: list[str] = [
     "examples/micro/simple_walk_by_edge.jac",
     "examples/micro/type_hints.jac",
     "examples/micro/typed_filter_compr.jac",
+    "examples/micro/bracket_filter_compr.jac",
     "examples/myca/myca.jac",
     "examples/rpg_game/jac_impl/jac_impl_6/main.impl/level.impl.jac",
     "examples/rpg_game/jac_impl/jac_impl_6/main.jac",

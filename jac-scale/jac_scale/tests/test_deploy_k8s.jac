@@ -13,11 +13,15 @@ import from typing { Any }
 import from kubernetes { client, config }
 import from kubernetes.client.exceptions { ApiException }
 
+import unittest.mock;
+import from types { SimpleNamespace }
+
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
+import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 """Get current git repository URL, branch, and commit hash.
 
@@ -195,6 +199,7 @@ test "deploy all in one" {
     core_v1 = client.CoreV1Api();
     rbac_v1 = client.RbacAuthorizationV1Api();
     networking_v1 = client.NetworkingV1Api();
+    custom_api = client.CustomObjectsApi();
 
     namespace = "all-in-one";
     app_name = namespace;
@@ -1237,6 +1242,50 @@ test "deploy all in one" {
 
     print("NGINX Ingress controller cleanup verified");
 
+    # Verify TLS / cert-manager resource cleanup
+    tls_secret_name = f"{app_name}-tls";
+    try {
+        core_v1.read_namespaced_secret(name=tls_secret_name, namespace=namespace);
+        raise AssertionError("TLS Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for TLS Secret, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_secret(name='letsencrypt-prod-key', namespace=namespace);
+        raise AssertionError("ACME private key Secret should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for letsencrypt-prod-key Secret, got {e.status}";
+    }
+
+    try {
+        custom_api.get_namespaced_custom_object(
+            group='cert-manager.io',
+            version='v1',
+            namespace=namespace,
+            plural='certificates',
+            name=tls_secret_name
+        );
+        raise AssertionError("cert-manager Certificate CRD should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for Certificate CRD, got {e.status}";
+    }
+
+    try {
+        custom_api.get_namespaced_custom_object(
+            group='cert-manager.io',
+            version='v1',
+            namespace=namespace,
+            plural='issuers',
+            name='letsencrypt-prod'
+        );
+        raise AssertionError("cert-manager Issuer should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404 for Issuer, got {e.status}";
+    }
+
+    print("TLS / cert-manager resource cleanup verified");
+
     # Verify K8s Secret cleanup
     try {
         rbac_v1.read_cluster_role(name=cluster_role_name);
@@ -1352,8 +1401,6 @@ test "deployment target methods" {
     } except Exception {
         0;
     }
-
-    print("Deployment target methods tested");
 }
 
 """Test that redis.conf.template is included in package distribution."""
@@ -1377,4 +1424,100 @@ test "redis template file in package" {
             "Ensure it's included via pyproject.toml package-data"
         );
     }
+}
+
+# ---------------------------------------------------------------------------
+# Domain / TLS configuration tests (mocked - no live cluster required)
+# ---------------------------------------------------------------------------
+test "get service url switches between http and https based on tls state" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "myapp";
+    target_config["namespace"] = "default";
+    target_config["domain"] = "app.example.com";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes", target_config, logger
+    );
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+
+    # Case 1: TLS active -> https
+    tls_entry = SimpleNamespace(hosts=["app.example.com"], secret_name="myapp-tls");
+    mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
+        spec=SimpleNamespace(tls=[tls_entry])
+    );
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            return_value=mock_networking_v1
+        ) {
+            assert deployment_target.get_service_url("myapp") == "https://app.example.com";
+        }
+    }
+
+    # Case 2: no TLS yet -> http
+    mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
+        spec=SimpleNamespace(tls=[])
+    );
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            return_value=mock_networking_v1
+        ) {
+            assert deployment_target.get_service_url("myapp") == "http://app.example.com";
+        }
+    }
+}
+
+test "enable tls raises when no domain configured" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "myapp";
+    target_config["namespace"] = "default";
+    target_config["domain"] = "";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes", target_config, logger
+    );
+
+    # Return an ingress with no annotations so domain falls back to the empty
+    # config value, causing IngressDeployer.enable_tls to raise "No domain found"
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(annotations=None)
+    );
+
+    raised = False;
+    with unittest.mock.patch(
+        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            return_value=mock_networking_v1
+        ) {
+            with unittest.mock.patch(
+                "jac_scale.targets.kubernetes.kubernetes_target.client.CustomObjectsApi"
+            ) {
+                with unittest.mock.patch(
+                    "jac_scale.targets.kubernetes.kubernetes_target.client.CoreV1Api"
+                ) {
+                    with unittest.mock.patch(
+                        "jac_scale.targets.kubernetes.kubernetes_target.client.AppsV1Api"
+                    ) {
+                        try {
+                            deployment_target.enable_tls("myapp");
+                        } except Exception {
+                            raised = True;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert raised , "enable_tls should raise when no domain is configured";
 }

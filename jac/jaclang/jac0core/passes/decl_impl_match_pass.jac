@@ -21,6 +21,8 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
+import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012 }
+
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
     """Connect Decls and Defs."""
@@ -59,6 +61,11 @@ links
         """
     def _resolve_impl_body_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef
+    ) -> None;
+
+    """Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values)."""
+    def _resolve_module_level_symbols(
+        self: DeclImplMatchPass, module: uni.Module
     ) -> None;
 
     """Populate self-member symbols from impl body to archetype's symbol table.

@@ -37,7 +37,7 @@ node Task {
 
 walker:pub get_tasks {
     can fetch with Root entry {
-        tasks = [-->](?:Task);
+        tasks = [-->][?:Task];
         report [{"id": t.id, "title": t.title, "done": t.done} for t in tasks];
     }
 }
@@ -159,7 +159,7 @@ walker:pub get_user {
     has user_id: str;
 
     can fetch with Root entry {
-        for user in [-->](?:User) {
+        for user in [-->][?:User] {
             if user.id == self.user_id {
                 report {
                     "id": user.id,
@@ -230,8 +230,8 @@ import json;
 walker save_state {
     can save with Root entry {
         data = {
-            "users": [u.__dict__ for u in [-->](?:User)],
-            "posts": [p.__dict__ for p in [-->](?:Post)]
+            "users": [u.__dict__ for u in [-->][?:User]],
+            "posts": [p.__dict__ for p in [-->][?:Post]]
         };
 
         with open("state.json", "w") as f {
@@ -389,7 +389,7 @@ node User {
 # List all users
 walker:pub list_users {
     can fetch with Root entry {
-        users = [-->](?:User);
+        users = [-->][?:User];
         report [{
             "id": u.id,
             "name": u.name,
@@ -403,7 +403,7 @@ walker:pub get_user {
     has user_id: str;
 
     can fetch with Root entry {
-        for u in [-->](?:User) {
+        for u in [-->][?:User] {
             if u.id == self.user_id {
                 report {
                     "id": u.id,
@@ -442,7 +442,7 @@ walker:pub update_user {
     has email: str = "";
 
     can update with Root entry {
-        for u in [-->](?:User) {
+        for u in [-->][?:User] {
             if u.id == self.user_id {
                 if self.name { u.name = self.name; }
                 if self.email { u.email = self.email; }
@@ -459,7 +459,7 @@ walker:pub delete_user {
     has user_id: str;
 
     can remove with Root entry {
-        for u in [-->](?:User) {
+        for u in [-->][?:User] {
             if u.id == self.user_id {
                 del u;
                 report {"deleted": True};

@@ -65,7 +65,7 @@ walker update_session {
         utterance: str = "";
 
     can visit_session with Root entry {
-        visit [-->](?:session) else {
+        visit [-->][?:session] else {
             session_node = here ++> session();
             visit session_node[0];
         }
