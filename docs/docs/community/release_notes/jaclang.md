@@ -21,7 +21,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - 2 small refactors/changes.
 - **Lintfix Improvement**: Add lintfix format to context menu in VS Code.
 
-
 ## jaclang 0.12.2 (Latest Release)
 
 - **Fix: `os.path.dirname()` Type Check Error**: Calling `os.path.dirname()` no longer fails with "No matching overload found". This also fixes other stdlib functions accessed through wildcard imports (e.g., `os.path`, `datetime`) that have multiple `@overload` signatures.
