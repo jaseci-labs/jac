@@ -57,7 +57,7 @@ def test_nested_walrus() -> int {
     return 0;
 }
 
-# Test 5: Walrus with isinstance narrowing
+# Test 5: Walrus with isinstance narrowing (two-step)
 def test_walrus_isinstance() -> str {
     val: int | str | None = "test";
     if (x := val) is not None and isinstance(x, str) {
@@ -65,4 +65,29 @@ def test_walrus_isinstance() -> str {
         return x.upper();  # Should NOT error
     }
     return "";
+}
+
+# Test 6: isinstance with walrus inside - isinstance((x := expr), Type)
+obj Anchor {
+    has access: int = 0;
+}
+
+def get_optional_anchor() -> Anchor | None {
+    return Anchor();
+}
+
+def test_isinstance_walrus() -> int {
+    if isinstance((anchor := get_optional_anchor()), Anchor) {
+        # anchor should be narrowed to Anchor here, not Anchor | None
+        return anchor.access;  # Should NOT error
+    }
+    return -1;
+}
+
+# Test 7: isinstance walrus in compound condition
+def test_isinstance_walrus_compound(flag: bool) -> int {
+    if flag and isinstance((anchor := get_optional_anchor()), Anchor) {
+        return anchor.access;  # Should NOT error
+    }
+    return -1;
 }

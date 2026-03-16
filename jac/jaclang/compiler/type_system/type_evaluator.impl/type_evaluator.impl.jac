@@ -3244,17 +3244,31 @@ impl TypeEvaluator._find_predicate_for(
 
         }
     }
-    # Pattern 4: isinstance(x, T) or isinstance(x, (A, B, C))
+    # Pattern 4: isinstance(x, T), isinstance(x, (A, B, C)), or isinstance((x := expr), T)
     if (
         isinstance(condition, uni.FuncCall)
         and isinstance(condition.target, uni.Name)
         and condition.target.value == "isinstance"
         and len(condition.params) == 2
-        and isinstance(condition.params[0], uni.Name)
-        and not isinstance(condition.params[0], uni.KWPair)
         and not isinstance(condition.params[1], uni.KWPair)
     ) {
-        if condition.params[0].value == sym_name {
+        # Extract symbol name from first arg (handles walrus and parentheses)
+        first_arg = condition.params[0];
+        if isinstance(first_arg, uni.AtomUnit) and first_arg.value {
+            first_arg = first_arg.value;
+        }
+        extracted_name: str | None = None;
+        if isinstance(first_arg, uni.Name) {
+            extracted_name = first_arg.value;
+        } elif (
+            isinstance(first_arg, uni.BinaryExpr)
+            and isinstance(first_arg.op, uni.Token)
+            and first_arg.op.name == "WALRUS_EQ"
+            and isinstance(first_arg.left, uni.Name)
+        ) {
+            extracted_name = first_arg.left.value;
+        }
+        if extracted_name is not None and extracted_name == sym_name {
             type_arg = condition.params[1];
             # Check if it's a tuple of types: isinstance(x, (A, B, C))
             if isinstance(type_arg, uni.TupleVal) {
