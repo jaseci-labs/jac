@@ -62,7 +62,7 @@ walker ListCompletedTasks {
 
 walker GetTask {
     can fetch with Task entry {
-        return here;
+        report here;
     }
 }
 
@@ -94,7 +94,7 @@ def greet(name: str = "World") -> str {
 
 cl glob WELCOME_TITLE: str = "Runtime Test";
 
-cl def:pub client_page() {
+cl def:pub client_page() -> JsxElement {
     return <section class="welcome">
         <h1>
             {WELCOME_TITLE}
