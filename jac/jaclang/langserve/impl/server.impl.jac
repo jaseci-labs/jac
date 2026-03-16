@@ -139,9 +139,7 @@ impl formatting(
 }
 
 """Format the given document with lint auto-fix applied."""
-impl lintfix_formatting(
-    ls: JacLangServer, params: lspt.ExecuteCommandParams
-) -> None {
+impl lintfix_formatting(ls: JacLangServer, params: lspt.ExecuteCommandParams) -> None {
     if params.command == "jac.lintfixFormat" and params.arguments {
         uri = params.arguments[0];
         edits = ls.formatted_jac_lintfix(uri);
