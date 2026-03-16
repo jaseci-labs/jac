@@ -445,7 +445,7 @@ def _ensure_watchdog_installed -> bool {
         "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
     );
     installer = DependencyInstaller(config=config, verbose=False);
-    if installer.install_package(["watchdog"]) {
+    if installer.install_package(["watchdog>=3.0.0"]) {
         console.success("watchdog installed");
         return True;
     }
