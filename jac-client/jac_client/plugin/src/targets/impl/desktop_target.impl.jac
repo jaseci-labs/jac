@@ -2330,9 +2330,20 @@ def _bundle_sidecar_pyinstaller(
     # Determine output binary name
     binary_name = "jac-sidecar.exe" if is_windows else "jac-sidecar";
 
+    # Create entry script for PyInstaller (can't use -m syntax in spec)
+    entry_script = tauri_dir / "sidecar_entry.py";
+    with open(entry_script, "w") as f {
+        f.write('''#!/usr/bin/env python3
+# Entry point for PyInstaller-bundled sidecar
+from jac_client.plugin.src.targets.desktop.sidecar.main import main
+if __name__ == "__main__":
+    main()
+''');
+    }
+
     # Create PyInstaller spec file
     spec_path = tauri_dir / "jac-sidecar.spec";
-    spec_content = _generate_pyinstaller_spec(entry_file, project_dir, binary_name);
+    spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name);
     with open(spec_path, "w") as f {
         f.write(spec_content);
     }
@@ -2411,9 +2422,8 @@ def _bundle_sidecar_pyinstaller(
 }
 
 """Generate PyInstaller spec file for sidecar bundling."""
-def _generate_pyinstaller_spec(entry_file: Path, project_dir: Path, binary_name: str) -> str {
-    # Get the sidecar module path
-    sidecar_module = "jac_client.plugin.src.targets.desktop.sidecar.main";
+def _generate_pyinstaller_spec(entry_script: Path, project_dir: Path, binary_name: str) -> str {
+    # entry_script is the actual Python file to bundle (sidecar_entry.py)
 
     return f'''# -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for Jac Sidecar
@@ -2478,6 +2488,11 @@ try:
 except Exception:
     pass
 
+try:
+    datas += collect_data_files('jac_scale', include_py_files=True)
+except Exception:
+    pass
+
 # Add project .jac files
 project_dir = Path(r'{project_dir}')
 for jac_file in project_dir.rglob('*.jac'):
@@ -2492,9 +2507,13 @@ if jac_toml.exists():
 # Collect all submodules
 hiddenimports += collect_submodules('jaclang')
 hiddenimports += collect_submodules('jac_client')
+try:
+    hiddenimports += collect_submodules('jac_scale')
+except Exception:
+    pass
 
 a = Analysis(
-    ['-m', '{sidecar_module}'],
+    [r'{entry_script}'],
     pathex=[str(project_dir)],
     binaries=[],
     datas=datas,
@@ -2549,7 +2568,7 @@ python -m jac_client.plugin.src.targets.desktop.sidecar.main %*
 # Jac Sidecar Wrapper - Runs Jac backend using system Python
 # This requires Python and jaclang to be installed
 
-exec python -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
+exec python3 -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
 ''';
     }
 
