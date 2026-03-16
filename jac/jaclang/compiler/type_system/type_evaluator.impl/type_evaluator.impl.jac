@@ -1542,6 +1542,18 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
             return types.UnknownType();
 
+        case uni.EdgeRefTrailer():
+            # Edge traversal: [node-->], [node<--], [node->:Edge:->], etc.
+            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only)
+            # TODO: Infer more specific types from filters like [?:Profile]
+            if self.prefetch and self.prefetch.list_class {
+                list_type = self.prefetch.list_class.clone_as_instance();
+                # Return list[Any] so indexing returns Any (allows attribute access)
+                list_type.private.type_args = [types.AnyType()];
+                return list_type;
+            }
+            return types.UnknownType();
+
     }
     # TODO: More expressions.
     return types.UnknownType();
