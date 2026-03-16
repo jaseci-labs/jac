@@ -287,5 +287,5 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
     }
 
     assert result is True;
-    mock_installer.install_package.assert_called_once_with(["watchdog"]);
+    mock_installer.install_package.assert_called_once_with(["watchdog>=3.0.0"]);
 }
