@@ -1,12 +1,13 @@
-"""Fixture: impl matching with multi-inheritance classes used as base classes."""
+"""Reproduces E2009 bug: class reassignment causes impl matching to fail."""
 
-obj ParentA { has value_a: int = 1; }
-obj ParentB { has value_b: int = 2; }
-
-obj MultiInheritanceClass(ParentA, ParentB) {
-    static def my_static_method(x: int) -> int;
-    def my_instance_method -> int;
+class MyClass {
+    has value: int = 10;
+    def get_value -> int;
+}
+with entry {
+    (_, MyClass) = (1, MyClass);
 }
 
-# This creates a second defn reference for MultiInheritanceClass's symbol
-obj ChildClass(MultiInheritanceClass) { }
+impl MyClass.get_value -> int {
+    return self.value;
+}

@@ -227,9 +227,9 @@ test "impl has var type not shadowed" {
     }
 }
 
-test "multi-inheritance impl match" {
-    # Tests impl matching for classes with multiple parents that are also base classes.
-    # Bug: lookup.defn[-1] returned Name ref from inheritance instead of Archetype.
+test "class reassignment impl match" {
+    # Bug: class reassignment via tuple unpacking creates second defn (Name node).
+    # lookup.defn[-1] returned Name instead of Archetype, causing E2009.
     state = (out := JacProgram()).compile(
         os.path.join(FIXTURES, "multi_inherit_impl_match.jac")
     );
@@ -238,9 +238,5 @@ test "multi-inheritance impl match" {
         for e in out.errors_had
         if "E2009" in str(e)
     ];
-
-    # Verify impl methods are in symbol table
-    impl_mod = state.impl_mod[0];
-    assert "impl.MultiInheritanceClass.my_static_method" in impl_mod.sym_tab.names_in_scope;
-    assert "impl.MultiInheritanceClass.my_instance_method" in impl_mod.sym_tab.names_in_scope;
+    assert "impl.MyClass.get_value" in state.sym_tab.names_in_scope;
 }
