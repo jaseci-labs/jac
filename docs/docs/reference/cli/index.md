@@ -76,7 +76,7 @@ Execute a Jac file.
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [args ...]
+jac run [-h] [-m] [--no-main] [-c] [--no-cache] [-e] [--profile PROFILE] filename [args ...]
 ```
 
 | Option | Description | Default |
@@ -84,6 +84,7 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [ar
 | `filename` | Jac file to run | Required |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
+| `-e, --show-errors` | Show type check errors and warnings after execution | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
 | `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
 
@@ -101,9 +102,14 @@ jac run --no-cache main.jac
 # Pass arguments to the script
 jac run script.jac arg1 arg2
 
+# Run and show type check diagnostics
+jac run -e main.jac
+
 # Pass flag-like arguments to the script
 jac run script.jac --verbose --output result.txt
 ```
+
+> **Note**: `jac run` always prints a summary line with error and warning counts (if any). Use `-e` to see the full diagnostic details without running a separate `jac check`.
 
 **Passing arguments to scripts:**
 

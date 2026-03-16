@@ -718,6 +718,22 @@ test "test_hover_types" {
         defn = lsp.get_definition(stdlib_file, lspt.Position(5, 22));
         assert defn is not None , "Definition should be found for os.path.dirname";
         assert "posixpath.pyi" in defn.uri or "ntpath.pyi" in defn.uri , f"os.path.dirname go-to-def: expected posixpath/ntpath.pyi, got: {defn.uri}";
+
+        # isinstance narrowing in ternary: true branch should show narrowed type
+        ternary_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_isinstance_ternary.jac")
+        );
+        lsp.type_check_file(ternary_file);
+        # Line 8: result = [left] if isinstance(left, Node) else left;
+        # True branch: left should be narrowed to Node (column 15, 0-indexed: 14)
+        hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 14));
+        assert hover is not None , "Ternary true branch hover should exist";
+        assert "Node" in hover.contents.value , f"Ternary true branch: expected Node, got: {hover.contents.value}";
+        assert "list[Node]" not in hover.contents.value , f"Ternary true branch: should NOT contain list[Node], got: {hover.contents.value}";
+        # Else branch: left should be narrowed to list[Node] (column 53, 0-indexed: 52)
+        hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 52));
+        assert hover is not None , "Ternary else branch hover should exist";
+        assert "list[Node]" in hover.contents.value , f"Ternary else branch: expected list[Node], got: {hover.contents.value}";
     } finally {
         teardown_test();
     }
