@@ -2359,10 +2359,8 @@ impl String.lit_value -> str {
             if not is_raw2 {
                 result = self.value;
                 try {
-                    result = result.encode('raw_unicode_escape').decode(
-                        'unicode_escape'
-                    );
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
                     result = result.replace('\\n', '\n');
@@ -2384,14 +2382,12 @@ impl String.lit_value -> str {
             }
             if not is_raw {
                 result = self.value;
-                # Use raw_unicode_escape encode then unicode_escape decode to correctly
-                # handle both escape sequences (\n, \t, \x1b, etc.) and non-ASCII
-                # Unicode chars (e.g. emojis) without double-encoding them.
+                # Use ast3.literal_eval to correctly handle escape sequences (\n, \t,
+                # \x1b, etc.) and non-ASCII Unicode chars (e.g. emojis), consistent
+                # with how normal string literals are handled above.
                 try {
-                    result = result.encode('raw_unicode_escape').decode(
-                        'unicode_escape'
-                    );
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     # Fallback to manual handling if decode fails
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
