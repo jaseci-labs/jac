@@ -555,11 +555,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
     return solution;
 }
 
-"""
-Build a simple type_params → type_args solution from a specialized class.
-
-PyrightRef: buildSolutionFromSpecializedClass (typeUtils.ts:2145)
-"""
+"""Build type_params → type_args mapping from a specialized class."""
 impl build_solution_from_specialized_class(
     class_type: types.ClassType
 ) -> dict[str, types.TypeBase] {
@@ -570,8 +566,7 @@ impl build_solution_from_specialized_class(
     and class_type.private.type_args {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
-                # Don't overwrite existing entries - handles duplicate type_params
-                # (e.g., Generator has _YieldT_co twice from Iterator and Protocol)
+                # Skip duplicates (e.g., Generator has _YieldT_co twice)
                 if tp.name not in solution {
                     solution[tp.name] = class_type.private.type_args[idx];
                 }
@@ -582,19 +577,7 @@ impl build_solution_from_specialized_class(
     return solution;
 }
 
-"""
-Specialize a base class using type args from the derived class.
-
-PyrightRef: specializeForBaseClass (typeUtils.ts:2184)
-This walks base_classes recursively to correctly propagate TypeVar bindings
-through multi-level generic inheritance.
-
-For Generator[Item, None, None] → Iterable:
-1. Generator has base Iterator[_YieldT_co], solution = {_YieldT_co: Item}
-2. Apply to Iterator → Iterator[Item]
-3. Iterator has base Iterable[_T_co], solution = {_T_co: Item}
-4. Apply to Iterable → Iterable[Item]
-"""
+"""Specialize a base class using type args from the derived class."""
 impl specialize_for_base_class(
     src_type: types.ClassType, base_class: types.ClassType
 ) -> types.ClassType {
