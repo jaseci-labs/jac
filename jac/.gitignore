@@ -62,3 +62,7 @@ out.txt
 *.dat
 *.dir
 *.log
+
+.jac_ir
+
+.jac_ir

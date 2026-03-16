@@ -8,6 +8,7 @@ be called via ctypes.
 import llvmlite.binding as llvm;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.diagnostics { E5020, W5021, W5022, W5023, W5024, W5025 }
 
 """JIT compile LLVM IR module to native machine code."""
 obj NativeCompilePass(Transform) {

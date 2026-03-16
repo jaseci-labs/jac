@@ -688,12 +688,12 @@ test "test_hover_types" {
         );
         lsp.type_check_file(overload_file);
         overload_cases = [
-            (4, 6, ["list"]),  # parts: list[str]
-            (5, 6, ["str"]),  # first: str (from list[str][0])
-            (6, 6, ["str"]),  # result: str (str + str)
-            (8, 6, ["list"]),  # parts2: list[str]
-            (9, 6, ["str"]),  # first3: str
-            (10, 6, ["str"]),  # result3: str
+            (4, 6, ["list"]),  # parts: list[str] or list[LiteralString]
+            (5, 6, ["str", "String"]),  # first: str or LiteralString
+            (6, 6, ["str", "String"]),  # result: str or LiteralString
+            (8, 6, ["list"]),  # parts2: list[str] or list[LiteralString]
+            (9, 6, ["str", "String"]),  # first3: str or LiteralString
+            (10, 6, ["str", "String"]),  # result3: str or LiteralString
 
         ];
         for (line, col, expected_list) in overload_cases {
@@ -708,6 +708,16 @@ test "test_hover_types" {
             }
             assert found , f"Overload line {line}: expected one of {expected_list}, got: {hover.contents.value}";
         }
+
+        # Stdlib overload via wildcard import: os.path.dirname (from posixpath/ntpath import *)
+        stdlib_file = uris.from_fs_path(fixture_path("stdlib_overload.jac"));
+        lsp.type_check_file(stdlib_file);
+        hover = lsp.get_hover_info(stdlib_file, lspt.Position(5, 22));
+        assert hover is not None , "Hover should return info for os.path.dirname";
+        assert "dirname" in hover.contents.value , f"os.path.dirname: expected 'dirname', got: {hover.contents.value}";
+        defn = lsp.get_definition(stdlib_file, lspt.Position(5, 22));
+        assert defn is not None , "Definition should be found for os.path.dirname";
+        assert "posixpath.pyi" in defn.uri or "ntpath.pyi" in defn.uri , f"os.path.dirname go-to-def: expected posixpath/ntpath.pyi, got: {defn.uri}";
     } finally {
         teardown_test();
     }

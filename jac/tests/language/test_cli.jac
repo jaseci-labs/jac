@@ -227,7 +227,7 @@ test "jac cli error output has no raw ansi codes" {
     }
     output = captured_output.getvalue();
     # Ensure the error was actually reported
-    assert "The 'new' keyword is not supported in Jac" in output;
+    assert "'new' is not supported in Jac" in output;
     # Raw ANSI escape codes (\x1b[) must not appear in error output.
     # The console layer handles styling; pretty_print should not inject raw codes.
     assert "\x1b[" not in output , f"Raw ANSI escape codes found in error output:\n{repr(
@@ -451,7 +451,7 @@ test "run specific test only" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.test(fixture_path("jactest_main.jac"), test_name="from_2_to_10");
+        analysis.test(fixture_path("jactest_main.jac"), test_name="from 2 to 10");
         stdout = captured.getvalue();
         stderr = captured_stderr.getvalue();
     } finally {
@@ -1706,5 +1706,41 @@ test "jir_registry is up to date" {
     assert result == 0 , (
         "jir_registry.jac is out of date. "
         "Run `jac gen-jir-registry` to regenerate it."
+    );
+}
+
+test "jac check reports errors for files inside jaclang source tree" {
+    # Regression: _resolve_program routed jaclang-internal files to
+    # internal_program, so errors were invisible to the caller's JacProgram.
+    # force_target_program=True (set by jac check) fixes this.
+    internal_fixture = os.path.join(
+        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "prim_float.jac"
+    );
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.check([internal_fixture]);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # prim_float.jac has type errors (unary + returns Unknown) — check must
+    # report them even though the file lives inside the jaclang package.
+    assert result == 1 , (
+        "jac check should report errors for jaclang-internal files, "
+        f"but returned exit code {result}. Output:\n{combined}"
+    );
+    assert "failed" in combined.lower() , (
+        "Expected failure output for jaclang-internal file with type errors"
     );
 }

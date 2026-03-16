@@ -14,10 +14,11 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
     # Skip engine creation if this module is being compiled as an import
-    # during native cross-module linking. When compiling imported .na.jac
-    # modules, we only need their LLVM IR which will be linked into the
-    # main module's IR. The main module creates the single JIT engine that
-    # executes all linked native code.
+    # during native cross-module linking. We only need the LLVM IR here;
+    # the parent's _compile_and_link_native_imports will collect ALL
+    # transitive deps itself (DFS with a shared visited set) and link them
+    # into the single top-level module — so we must NOT link anything here
+    # to avoid duplicate symbols.
     if self.prog._compile_options.skip_native_engine {
         return ir_in;
     }
@@ -46,13 +47,11 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
                         if found {
                             llvm.load_library_permanently(found);
                         } else {
-                            self.log_warning(f"C library not found: {lib_path}");
+                            self.emit(W5021, path=lib_path);
                         }
                     }
                 } except Exception as lib_err {
-                    self.log_warning(
-                        f"Failed to load C library '{lib_path}': {lib_err}"
-                    );
+                    self.emit(W5022, path=lib_path, error=str(lib_err));
                 }
             }
         }
@@ -111,10 +110,17 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # and preserves the optimization work.
         module.gen.native_bitcode = mod.as_bitcode();
 
+        # AOT mode (used by nacompile): all imports are linked and the
+        # linked+optimised bitcode is stored above. Skip JIT engine creation
+        # so the module is not consumed and the caller can emit object code.
+        if self.prog._compile_options.aot_mode {
+            return ir_in;
+        }
+
         engine = llvm.create_mcjit_compiler(mod, target_machine);
         module.gen.native_engine = engine;
     } except Exception as e {
-        self.log_error(f"Native compilation failed: {e}");
+        self.emit(E5020, error=str(e));
     }
     return ir_in;
 }
@@ -125,29 +131,38 @@ impl NativeCompilePass._compile_and_link_native_imports(
 ) -> None {
     import os;
     import from jaclang.jac0core.codeinfo { NativeModuleInfo, NativeFunctionInfo }
-    # Keep track of linked modules to avoid duplicate linking
+    # Keep track of linked modules to avoid duplicate linking.
+    # Keyed by os.path.realpath so diamond deps (A→B→C, A→C) are linked once.
     linked_modules: dict = {};
+    # Work queue: (binding, base_dir). Seeded with direct imports; transitive
+    # deps are appended after each successful compile.
+    work_queue: list = [];
+    base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
     for binding in imports {
+        work_queue.append((binding, base_dir));
+    }
+    queue_idx = 0;
+    while queue_idx < len(work_queue) {
+        (binding, cur_base_dir) = work_queue[queue_idx];
+        queue_idx += 1;
         source_mod_path = binding.source_module;
-        if source_mod_path is None or source_mod_path in linked_modules {
+        if source_mod_path is None {
             continue;
         }
 
-        # Resolve the module path relative to current module
-        base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
-        # Handle .na suffix (convert to .na.jac if needed)
+        # Resolve the module path relative to the declaring module
         if source_mod_path.endswith(".na") {
-            full_path = os.path.join(base_dir, source_mod_path + ".jac");
+            full_path = os.path.join(cur_base_dir, source_mod_path + ".jac");
             if not os.path.exists(full_path) {
                 full_path = os.path.join(
-                    base_dir, source_mod_path.replace(".na", ".na.jac")
+                    cur_base_dir, source_mod_path.replace(".na", ".na.jac")
                 );
             }
         } else {
-            full_path = os.path.join(base_dir, source_mod_path);
+            full_path = os.path.join(cur_base_dir, source_mod_path);
             # Also check if a .na.jac version exists (e.g., tokens → tokens.na.jac)
             if not os.path.exists(full_path) {
-                na_path = os.path.join(base_dir, source_mod_path + ".na.jac");
+                na_path = os.path.join(cur_base_dir, source_mod_path + ".na.jac");
                 if os.path.exists(na_path) {
                     full_path = na_path;
                 }
@@ -155,9 +170,17 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if not os.path.exists(full_path) {
-            self.log_warning(f"Native module not found: {full_path}");
+            self.emit(W5023, path=full_path);
             continue;
         }
+
+        # Dedup by canonical path so different relative spellings of the
+        # same file are recognised as identical.
+        real_path = os.path.realpath(full_path);
+        if real_path in linked_modules {
+            continue;
+        }
+        linked_modules[real_path] = None;  # mark visited before compile
 
         # Compile the imported module to get its LLVM IR.
         # Use options with skip_native_engine=True to skip JIT engine creation.
@@ -168,13 +191,22 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 file_path=full_path, options=import_options
             );
         } except Exception as e {
-            self.log_warning(f"Failed to compile native module {full_path}: {e}");
+            self.emit(W5024, path=full_path, error=str(e));
             continue;
         }
 
         if imported_ir is None or imported_ir.gen.llvm_ir is None {
-            self.log_warning(f"Failed to compile native module: {full_path}");
+            self.emit(W5024, path=full_path, error="No LLVM IR generated");
             continue;
+        }
+
+        # Enqueue transitive deps of this module for DFS traversal.
+        dep_manifest = imported_ir.gen.interop_manifest;
+        if dep_manifest is not None {
+            dep_base = os.path.dirname(full_path);
+            for dep_binding in dep_manifest.native_cross_module_imports {
+                work_queue.append((dep_binding, dep_base));
+            }
         }
 
         try {
@@ -228,10 +260,10 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 mod_info.exported_functions[fname] = NativeFunctionInfo(name=fname);
             }
 
-            linked_modules[source_mod_path] = mod_info;
+            linked_modules[real_path] = mod_info;
             module.gen.interop_manifest.native_module_imports[source_mod_path] = mod_info;
         } except Exception as e {
-            self.log_warning(f"Failed to link native module {full_path}: {e}");
+            self.emit(W5025, path=full_path, error=str(e));
         }
     }
 }

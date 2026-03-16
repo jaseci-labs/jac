@@ -27,7 +27,7 @@ context.impl.jac
 context.jac
 corelib_fmt.jac
 data_spatial_types.jac
-def_impl_match_pass.jac
+decl_impl_match_pass.jac
 defn_decl_mismatch.jac
 dependencies.jac
 dep_registry.jac
@@ -60,7 +60,6 @@ helpers.jac
 help.jac
 image_types.jac
 impl_match_confused.jac
-import_all.jac
 import_symbol_type_infer.jac
 import_sym_test.jac
 infer_type_assignment.jac
@@ -104,7 +103,6 @@ plugin_config.jac
 plugin.jac
 precompile_bytecode.jac
 prim_builtins.jac
-prim_builtins_introspection.jac
 prim_dict.jac
 prim_float.jac
 prim_runtime_errors.jac
@@ -119,7 +117,6 @@ pyast_load_pass.impl.jac
 pyast_load_pass.jac
 pyjac_ast_link_pass.jac
 py_imp_test.jac
-random_check.jac
 registry.jac
 runtime_errors.na.jac
 runtime.jac
@@ -170,7 +167,6 @@ test_sem_tokens.jac
 test_serve.jac
 test_sso.jac
 test_storage.jac
-text_to_type.jac
 tools.impl.jac
 tools.jac
 transform.jac
@@ -258,7 +254,6 @@ test_deploy_k8s.jac
 test_restspec.jac
 with_llm_deprecated_method.jac
 yield_in_parens.jac
-test_types_str.jac
 test_checker_bugs.jac
 advanced_language_features.jac
 user_manager.jac
@@ -287,7 +282,6 @@ analysis.impl.jac
 analysis.jac
 annex_pass.jac
 asset_processor.jac
-async_with.jac
 base_ast_gen_pass.jac
 builtin.impl.jac
 builtin.jac
@@ -315,7 +309,6 @@ engine.impl.jac
 estree.impl.jac
 formatters.jac
 google_sso_provider.jac
-grammar_checker.jac
 grammar_extract_pass.impl.jac
 guess_game5.impl.jac
 guess_game6.impl.jac
@@ -434,7 +427,7 @@ hmr.impl.jac
 client_runtime.impl.jac
 unitree.impl.jac
 sym_tab_build_pass.impl.jac
-def_impl_match_pass.impl.jac
+decl_impl_match_pass.impl.jac
 jsx_processor.jac
 test_it.jac
 client.impl.jac
@@ -510,7 +503,6 @@ userService.cl.jac
 UsersPage.cl.jac
 useStorage.cl.jac
 websocket.jac
-with_as_clause.jac
 .jac
 access_mod_check.jac
 annex_pass.impl.jac
@@ -518,7 +510,6 @@ app.cl.jac
 asset_processor.impl.jac
 attack.impl.jac
 base_ast_gen_pass.impl.jac
-basic_class_pylike.jac
 bccache.jac
 budget_planner_ui.cl.jac
 BudgetContext.jac
@@ -526,7 +517,6 @@ calculator.jac
 calls.impl.jac
 category2_default_imports.jac
 category4_namespace_imports.jac
-chandra_bugs2.jac
 check_report.impl.jac
 check_report.jac
 circle_clean_tests.jac
@@ -567,7 +557,6 @@ funccall_genexpr.jac
 game_walker.impl.jac
 game.impl.jac
 globals.impl.jac
-gradeBook_object.jac
 guess_game3.impl.jac
 guess_game4.impl.jac
 has_frmt.jac

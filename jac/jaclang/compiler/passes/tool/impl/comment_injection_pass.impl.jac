@@ -516,8 +516,8 @@ impl CommentInjectionPass._handle_paren_comments(
 
 """Handle comment injection within bodies (functions, classes, etc)."""
 impl CommentInjectionPass._handle_body_comments(
-    nd: uni.UniNode, indent: doc.Indent
-) -> doc.Indent {
+    nd: uni.UniNode, container: (doc.Indent | doc.Align)
+) -> (doc.Indent | doc.Align) {
     body: (Sequence[uni.UniNode] | None) = None;
     if nd?.body {
         body = nd.body;
@@ -525,6 +525,8 @@ impl CommentInjectionPass._handle_body_comments(
         body = nd.children;
     } elif (isinstance(nd, uni.ArchHas) and nd.vars) {
         body = nd.vars;
+    } elif (isinstance(nd, uni.GlobalVars) and nd.assignments) {
+        body = nd.assignments;
     } elif (isinstance(nd, uni.DictVal) and nd.kv_pairs) {
         body = nd.kv_pairs;
     } elif (isinstance(nd, uni.ListVal) and nd.values) {
@@ -535,9 +537,9 @@ impl CommentInjectionPass._handle_body_comments(
     if (
         (body is None)
         or not isinstance(body, Sequence)
-        or not isinstance(indent.contents, doc.Concat)
+        or not isinstance(container.contents, doc.Concat)
     ) {
-        return indent;
+        return container;
     }
     body_start: (int | None) = next(
         (
@@ -574,7 +576,7 @@ impl CommentInjectionPass._handle_body_comments(
         body_start = nd.get_body_start_line();
         body_end = nd.get_body_end_line();
     }
-    if ((body_start is None) and isinstance(nd, uni.ArchHas)) {
+    if ((body_start is None) and isinstance(nd, (uni.ArchHas, uni.GlobalVars))) {
         body_start = next(
             (
                 (k.loc.last_line + 1)
@@ -629,13 +631,13 @@ impl CommentInjectionPass._handle_body_comments(
         );
     }
     if (body_start is None) {
-        return indent;
+        return container;
     }
     result: list[doc.DocType] = [];
     current_line: int = body_start;
     body_idx: int = 0;
     parts_with_standalone: list[doc.DocType] = [];
-    for part in indent.contents.parts {
+    for part in container.contents.parts {
         if isinstance(part, doc.Line) {
             parts_with_standalone.append(part);
             continue;
@@ -719,6 +721,9 @@ impl CommentInjectionPass._handle_body_comments(
                 }
             }
         }
+    }
+    if isinstance(container, doc.Align) {
+        return doc.Align(doc.Concat(result), container.n);
     }
     return doc.Indent(doc.Concat(result), ast_node=nd);
 }
@@ -820,6 +825,13 @@ impl CommentInjectionPass._inject_into_parts(
                         or self._is_standalone_comment(next_part)
                     ) {
                         add_line = False;
+                        # A soft line after an inline comment can collapse
+                        # to a space, merging the next token into the
+                        # comment.  Upgrade it to hard so a line break is
+                        # guaranteed.
+                        if (isinstance(next_part, doc.Line) and not next_part.hard) {
+                            parts[look] = doc.Line(hard=True);
+                        }
                     }
                 }
                 result.append(
@@ -958,6 +970,9 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             self._process(ctx, nd.break_contents), self._process(ctx, nd.flat_contents)
         );
     } elif isinstance(nd, doc.Align) {
+        if (isinstance(ctx, uni.GlobalVars) and len(ctx.assignments) > 1) {
+            return self._handle_body_comments(ctx, nd);
+        }
         return doc.Align(self._process(ctx, nd.contents), nd.n);
     }
     return nd;
@@ -980,17 +995,16 @@ impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
             if (len(info.token.value) > 50) {
                 comment_preview += '...';
             }
-            self.log_warning(
-                "Comment could not be placed precisely; emitting near the end of the formatted output: "
-                f"{comment_preview!r}",
-                node_override=info.token
-            );
+            self.emit(W5050, node_override=info.token, preview=repr(comment_preview));
         }
+        # Append to output so no comments are lost, but emit error to block file write
         sink: list[doc.DocType] = [processed];
         self._emit_standalone_comments(
             sink, leftovers, prev_item_line=ir_in.loc.last_line if ir_in.loc else None
         );
         processed = doc.Concat(sink);
+        # E5051 error prevents CLI/LSP from saving the corrupted output
+        self.emit(E5051, count=len(leftovers));
     }
     ir_in.gen.doc_ir = self._remove_redundant_lines(processed);
     # Process impl modules (.impl.jac files)

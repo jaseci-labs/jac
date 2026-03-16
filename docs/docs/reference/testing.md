@@ -293,7 +293,7 @@ node Person {
 
 walker FindAdults {
     can check with Root entry {
-        for person in [-->](?:Person) {
+        for person in [-->][?:Person] {
             if person.age >= 18 {
                 report person;
             }

@@ -61,7 +61,7 @@ import uuid;
 
 walker:pub get_tasks {
     can fetch with Root entry {
-        tasks = [-->](?:Task);
+        tasks = [-->][?:Task];
         report [
             {
                 "id": t.id,
@@ -97,7 +97,7 @@ walker:pub toggle_task {
     has task_id: str;
 
     can toggle with Root entry {
-        for task in [-->](?:Task) {
+        for task in [-->][?:Task] {
             if task.id == self.task_id {
                 task.completed = not task.completed;
                 report {"success": True, "completed": task.completed};
@@ -112,7 +112,7 @@ walker:pub delete_task {
     has task_id: str;
 
     can remove with Root entry {
-        for task in [-->](?:Task) {
+        for task in [-->][?:Task] {
             if task.id == self.task_id {
                 del task;
                 report {"success": True};
@@ -434,7 +434,7 @@ node Task {
 # === Backend: Walkers ===
 walker:pub get_tasks {
     can fetch with Root entry {
-        report [-->](?:Task);
+        report [-->][?:Task];
     }
 }
 
@@ -453,7 +453,7 @@ walker:pub toggle_task {
     has task_id: str;
 
     can toggle with Root entry {
-        for t in [-->](?:Task) {
+        for t in [-->][?:Task] {
             if t.id == self.task_id {
                 t.completed = not t.completed;
                 report t;

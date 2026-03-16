@@ -14,6 +14,7 @@ import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.diagnostics { W5050, E5051 }
 
 """Information about a pair of delimiters and their positions."""
 class DelimiterInfo(NamedTuple) {
@@ -80,7 +81,10 @@ obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
         parts: list[doc.DocType], ctx: uni.UniNode, *, drain_after: bool = False
     ) -> list[doc.DocType];
 
-    def _handle_body_comments(nd: uni.UniNode, indent: doc.Indent) -> doc.Indent;
+    def _handle_body_comments(
+        nd: uni.UniNode, container: (doc.Indent | doc.Align)
+    ) -> (doc.Indent | doc.Align);
+
     def _handle_paren_comments(
         items: (Sequence[uni.UniNode] | None), parts: list[doc.DocType]
     ) -> list[doc.DocType];
