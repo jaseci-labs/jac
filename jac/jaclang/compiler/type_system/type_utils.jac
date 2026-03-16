@@ -148,24 +148,12 @@ transitively. Used by specialize_member_type and FunctionType.specialize.
 """
 def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
 
-"""
-Build a simple type_params → type_args solution from a specialized class.
-
-PyrightRef: buildSolutionFromSpecializedClass (typeUtils.ts:2145)
-For Generator[Item, None, None], returns {_YieldT_co: Item, _SendT_contra: None, _ReturnT_co: None}
-"""
+"""Build type_params → type_args mapping from a specialized class."""
 def build_solution_from_specialized_class(
     class_type: types.ClassType
 ) -> dict[str, types.TypeBase];
 
-"""
-Specialize a base class using type args from the derived class.
-
-PyrightRef: specializeForBaseClass (typeUtils.ts:2184)
-Given Generator[Item, None, None] and base Iterator[_YieldT_co], returns Iterator[Item].
-This function walks base_classes recursively to correctly propagate TypeVar bindings
-through multi-level generic inheritance (e.g., Generator → Iterator → Iterable).
-"""
+"""Specialize a base class using type args from the derived class."""
 def specialize_for_base_class(
     src_type: types.ClassType, base_class: types.ClassType
 ) -> types.ClassType;
