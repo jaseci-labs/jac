@@ -2643,8 +2643,15 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     }
     # Convert to absolute path so this function and _import_module_from_path share the same hub key.
     resolved_path = str(Path(path).resolve());
+    # Route jaclang-internal stubs (typeshed, etc.) to the compiler's
+    # internal hub so they don't pollute the user's program hub.
+    compiler = self.program._get_compiler();
+    target_hub = compiler._resolve_program(resolved_path, self.program).mod.hub;
     if resolved_path in self.program.mod.hub {
         return self.program.mod.hub[resolved_path];
+    }
+    if resolved_path in target_hub {
+        return target_hub[resolved_path];
     }
     file_content = read_file_with_encoding(path);
     uni_source = uni.Source(file_content, path);
@@ -2653,7 +2660,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
         prog=self.program,
     ).ir_out;
     SymTabBuildPass(ir_in=mod, prog=self.program);
-    self.program.mod.hub[resolved_path] = mod;
+    target_hub[resolved_path] = mod;
     return mod;
 }
 
