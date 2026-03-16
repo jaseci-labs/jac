@@ -13,6 +13,7 @@ Options:
     --module-path PATH    Path to the .jac module file (default: main.jac)
     --port PORT          Port to bind the API server (default: 8000, 0 = auto)
     --base-path PATH     Base path for the project (default: current directory)
+    --data-path PATH     Writable path for runtime data (default: ~/.local/share/jac-app/.jac)
     --host HOST          Host to bind to (default: 127.0.0.1)
     --help               Show this help message
 """
@@ -20,9 +21,32 @@ Options:
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import socket
 import sys
 from pathlib import Path
+
+
+def _signal_handler(signum, frame):
+    """Handle signals and log them to stderr."""
+    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    sys.stderr.write(f"[sidecar] Received signal: {sig_name} ({signum})\n")
+    sys.stderr.flush()
+    sys.exit(128 + signum)
+
+
+# Register signal handlers early
+for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    try:
+        signal.signal(sig, _signal_handler)
+    except (OSError, ValueError):
+        pass  # Some signals can't be caught
+
+
+# Set JAC_USE_STDERR before any jaclang imports.
+# This redirects console output to stderr since Tauri closes stdout after reading the port.
+os.environ["JAC_USE_STDERR"] = "1"
 
 
 def _find_free_port(host: str = "127.0.0.1") -> int:
@@ -60,6 +84,12 @@ def main():
         type=str,
         default="127.0.0.1",
         help="Host to bind to (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--data-path",
+        type=str,
+        default=None,
+        help="Writable path for runtime data like database (default: ~/.local/share/jac-app/.jac)",
     )
 
     args = parser.parse_args()
@@ -123,9 +153,22 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
+    # Determine data path (writable location for runtime data)
+    if args.data_path:
+        data_path = Path(args.data_path).resolve()
+    else:
+        # Default: ~/.local/share/jac-app/.jac (Linux)
+        # This ensures we have a writable location even if base_path is read-only (e.g., AppImage)
+        data_path = Path.home() / ".local" / "share" / "jac-app"
+    data_path.mkdir(parents=True, exist_ok=True)
+
+    # Set JAC_DATA_PATH so the memory system uses writable data_path instead of read-only base_path
+    os.environ["JAC_DATA_PATH"] = str(data_path)
+
     # Create and start the API server
     try:
         # Get server class (allows plugins like jac-scale to provide enhanced server)
+        # Note: JAC_DATA_PATH env var is already set above for writable data storage
         server_class = Jac.get_api_server_class()
         server = server_class(
             module_name=module_name, port=port, base_path=str(base_path)
@@ -136,13 +179,10 @@ def main():
         sys.stdout.write(f"JAC_SIDECAR_PORT={port}\n")
         sys.stdout.flush()
 
-        # stderr: Tauri drops the stdout pipe after reading the port marker,
-        # so any further stdout writes raise BrokenPipeError.
-        console.print("Jac Sidecar starting...", style="bold")
-        console.print(f"  Module: {module_name}", style="muted")
-        console.print(f"  Base path: {base_path}", style="muted")
-        console.print(f"  Server: http://{args.host}:{port}", style="muted")
-        console.print("")
+        # Check if server was created properly
+        if server.server is None:
+            console.error("Server socket not created")
+            sys.exit(1)
 
         # Start the server (blocks until interrupted)
         # no_client=True: client bundle is already embedded in the Tauri webview

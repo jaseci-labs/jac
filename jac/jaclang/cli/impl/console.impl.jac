@@ -76,9 +76,18 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
     kwargs.pop('highlight', None);
     kwargs.pop('style', None);
     # Plain print - user data is never modified
-    print(*args, **kwargs);
+    try {
+        print(*args, **kwargs);
+    } except (BrokenPipeError, OSError) {
+        return;  # Silently ignore if pipe is broken
+    }
     # Flush for piped/subprocess output
-    sys.stdout.flush();
+    output_file = kwargs.get('file', sys.stdout);
+    try {
+        output_file.flush();
+    } except (BrokenPipeError, OSError) {
+        ;  # Ignore broken pipe errors (e.g., stdout closed in sidecar mode)
+    }
 }
 
 """Context manager for status during long operations."""
