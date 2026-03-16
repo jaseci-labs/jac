@@ -60,6 +60,9 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
 
         # Get the declared return type to pass as expected_type for bidirectional inference
         fn_type_base = self.evaluator.get_type_of_ability(fn);
+        if not isinstance(fn_type_base, types.FunctionType) {
+            return;
+        }
         fn_type: types.FunctionType = fn_type_base;
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
 
