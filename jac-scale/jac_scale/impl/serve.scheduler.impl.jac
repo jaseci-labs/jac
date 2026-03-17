@@ -1,3 +1,66 @@
+"""Extract Bearer token from request and validate. Returns (username, None) or (None, error_response)."""
+def _authenticate_request(
+    request: Request, user_manager: Any
+) -> tuple[str | None, TransportResponse | None] {
+    authorization = request.headers.get('Authorization');
+    token: (str | None) = None;
+    if (
+        authorization
+        and isinstance(authorization, str)
+        and authorization.startswith('Bearer ')
+    ) {
+        token = authorization[7:];
+    }
+    username = user_manager.validate_jwt_token(token) if token else None;
+    if not username {
+        return (
+            None,
+            TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Authorization required',
+                meta=Meta(extra={'http_status': 401})
+            )
+        );
+    }
+    return (username, None);
+}
+
+"""Validate trigger type and trigger-specific fields. Returns error response or None."""
+def _validate_trigger(
+    trigger: str, interval: Any, cron: Any, date: Any
+) -> TransportResponse | None {
+    valid_triggers = ['interval', 'cron', 'date'];
+    if trigger not in valid_triggers {
+        return TransportResponse.fail(
+            code='INVALID_REQUEST',
+            message=f'trigger must be one of: {valid_triggers}',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    if trigger == 'interval' and interval is None {
+        return TransportResponse.fail(
+            code='INVALID_REQUEST',
+            message='Field "interval" (seconds) is required for trigger="interval"',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    if trigger == 'cron' and not cron {
+        return TransportResponse.fail(
+            code='INVALID_REQUEST',
+            message='Field "cron" (5-field cron string) is required for trigger="cron"',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    if trigger == 'date' and not date {
+        return TransportResponse.fail(
+            code='INVALID_REQUEST',
+            message='Field "date" (ISO datetime string) is required for trigger="date"',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    return None;
+}
+
 """Register all /jobs REST endpoints on the server."""
 impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
     # POST /jobs — create a new dynamic scheduled job
@@ -105,23 +168,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
 """Build POST /jobs callback — creates a new dynamic scheduled job."""
 impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request) -> TransportResponse {
-        # Require authentication
-        authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
-        if (
-            authorization
-            and isinstance(authorization, str)
-            and authorization.startswith('Bearer ')
-        ) {
-            token = authorization[7:];
-        }
-        username = self.user_manager.validate_jwt_token(token) if token else None;
-        if not username {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required to manage scheduled jobs',
-                meta=Meta(extra={'http_status': 401})
-            );
+        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        if auth_err {
+            return auth_err;
         }
 
         # Parse request body
@@ -149,14 +198,10 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
             );
         }
 
-        # Validate trigger value
-        valid_triggers = ['interval', 'cron', 'date'];
-        if trigger not in valid_triggers {
-            return TransportResponse.fail(
-                code='INVALID_REQUEST',
-                message=f'trigger must be one of: {valid_triggers}',
-                meta=Meta(extra={'http_status': 400})
-            );
+        # Validate trigger type and trigger-specific fields
+        trigger_err = _validate_trigger(trigger, interval, cron_expr, date_str);
+        if trigger_err {
+            return trigger_err;
         }
 
         # Verify the walker/function exists and has @schedule(trigger=DYNAMIC)
@@ -196,29 +241,6 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
             );
         }
 
-        # Validate trigger-specific fields
-        if trigger == 'interval' and interval is None {
-            return TransportResponse.fail(
-                code='INVALID_REQUEST',
-                message='Field "interval" (seconds) is required for trigger="interval"',
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-        if trigger == 'cron' and not cron_expr {
-            return TransportResponse.fail(
-                code='INVALID_REQUEST',
-                message='Field "cron" (5-field cron string) is required for trigger="cron"',
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-        if trigger == 'date' and not date_str {
-            return TransportResponse.fail(
-                code='INVALID_REQUEST',
-                message='Field "date" (ISO datetime string) is required for trigger="date"',
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-
         try {
             root_id = self.user_manager.get_root_id(username);
             scheduler = JacScaleScheduler.instance();
@@ -248,23 +270,9 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
 """Build GET /jobs callback — lists all dynamic scheduled jobs."""
 impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request) -> TransportResponse {
-        # Require authentication
-        authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
-        if (
-            authorization
-            and isinstance(authorization, str)
-            and authorization.startswith('Bearer ')
-        ) {
-            token = authorization[7:];
-        }
-        username = self.user_manager.validate_jwt_token(token) if token else None;
-        if not username {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required to list scheduled jobs',
-                meta=Meta(extra={'http_status': 401})
-            );
+        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        if auth_err {
+            return auth_err;
         }
 
         try {
@@ -288,23 +296,9 @@ impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse
 """Build GET /jobs/{job_id} callback — retrieves a single dynamic job."""
 impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        # Require authentication
-        authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
-        if (
-            authorization
-            and isinstance(authorization, str)
-            and authorization.startswith('Bearer ')
-        ) {
-            token = authorization[7:];
-        }
-        username = self.user_manager.validate_jwt_token(token) if token else None;
-        if not username {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required',
-                meta=Meta(extra={'http_status': 401})
-            );
+        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        if auth_err {
+            return auth_err;
         }
 
         try {
@@ -334,23 +328,9 @@ impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] 
 """Build PUT /jobs/{job_id} callback — updates an existing dynamic job's schedule."""
 impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        # Require authentication
-        authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
-        if (
-            authorization
-            and isinstance(authorization, str)
-            and authorization.startswith('Bearer ')
-        ) {
-            token = authorization[7:];
-        }
-        username = self.user_manager.validate_jwt_token(token) if token else None;
-        if not username {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required',
-                meta=Meta(extra={'http_status': 401})
-            );
+        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        if auth_err {
+            return auth_err;
         }
 
         try {
@@ -376,13 +356,10 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
             );
         }
 
-        valid_triggers = ['interval', 'cron', 'date'];
-        if trigger not in valid_triggers {
-            return TransportResponse.fail(
-                code='INVALID_REQUEST',
-                message=f'trigger must be one of: {valid_triggers}',
-                meta=Meta(extra={'http_status': 400})
-            );
+        # Validate trigger type and trigger-specific fields
+        trigger_err = _validate_trigger(trigger, interval, cron_expr, date_str);
+        if trigger_err {
+            return trigger_err;
         }
 
         try {
@@ -418,23 +395,9 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
 """Build DELETE /jobs/{job_id} callback — deletes a dynamic scheduled job."""
 impl JacAPIServerScheduler.delete_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        # Require authentication
-        authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
-        if (
-            authorization
-            and isinstance(authorization, str)
-            and authorization.startswith('Bearer ')
-        ) {
-            token = authorization[7:];
-        }
-        username = self.user_manager.validate_jwt_token(token) if token else None;
-        if not username {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required',
-                meta=Meta(extra={'http_status': 401})
-            );
+        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        if auth_err {
+            return auth_err;
         }
 
         try {
