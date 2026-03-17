@@ -390,10 +390,6 @@ impl LanguageServer.start_io -> None {
             if msg is None {
                 break;
             }
-            # Skip client responses to our outbound requests (e.g. workspace/applyEdit)
-            if "result" in msg or "error" in msg {
-                continue;
-            }
             method = msg.get("method");
             msg_id = msg.get("id");
             params = msg.get("params", {});
@@ -511,11 +507,6 @@ impl LanguageServer.send_request(method: str, params: Any = None) -> None {
         body["params"] = to_dict(params);
     }
     self._write_message(body);
-}
-
-"""Send a workspace/applyEdit request to the client to apply edits."""
-impl LanguageServer.apply_edit(edit: WorkspaceEdit) -> None {
-    self.send_request("workspace/applyEdit", {"edit": to_dict(edit)});
 }
 
 """Graceful shutdown — override in subclass for cleanup."""
@@ -646,15 +637,6 @@ impl LanguageServer._build_capabilities -> dict {
     if file_ops {
         caps.setdefault("workspace", {});
         caps["workspace"]["fileOperations"] = file_ops;
-    }
-    # Execute command provider
-    if "workspace/executeCommand" in self._features {
-        options = self._feature_options.get("workspace/executeCommand");
-        if options is not None {
-            caps["executeCommandProvider"] = to_dict(options);
-        } else {
-            caps["executeCommandProvider"] = True;
-        }
     }
     return caps;
 }
