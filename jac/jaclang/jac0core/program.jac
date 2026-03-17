@@ -1,8 +1,4 @@
-"""Jac Program module.
-
-This module provides the JacProgram class which holds the state of a compiled
-Jac program. The actual compilation is performed by JacCompiler.
-"""
+"""Jac Program module."""
 import types;
 import from threading { Event }
 import from typing { TYPE_CHECKING }
@@ -19,34 +15,28 @@ with entry {
     }
 }
 
-"""JacProgram holds the state of a compiled Jac program."""
-class JacProgram {
-    """Initialize the JacProgram object."""
-    def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
+"""Holds the state of a compiled Jac program."""
+obj JacProgram {
+    has mod: uni.ProgramModule by postinit,
+        py_raise_map: dict[(str, str)] by postinit,
+        mtir_map: dict[(str, Info)] by postinit,
+        errors_had: list[Alert] by postinit,
+        warnings_had: list[Alert] by postinit,
+        type_evaluator: (TypeEvaluator | None) = None,
+        _compiler: (JacCompiler | None) = None,
+        _compile_options: CompileOptions by postinit,
+        _native_cache: dict by postinit;
 
-    """Get a JacCompiler instance configured with this program's cache."""
-    def _get_compiler(self: JacProgram) -> JacCompiler;
-
-    """Return the type evaluator, creating one if needed."""
-    def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
-
-    """Clear all type information from the program."""
-    def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
-
-    """Get the bytecode for a specific module."""
-    def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
-
-    """Parse source string into an AST module."""
+    def postinit -> None;
+    def _get_compiler -> JacCompiler;
+    def get_type_evaluator -> TypeEvaluator;
+    def clear_type_system(clear_hub: bool = False) -> None;
+    def get_bytecode(full_target: str) -> (types.CodeType | None);
     def parse_str(
-        self: JacProgram,
-        source_str: str,
-        file_path: str,
-        cancel_token: (Event | None) = None
+        source_str: str, file_path: str, cancel_token: (Event | None) = None
     ) -> uni.Module;
 
-    """Compile a Jac file into a module AST."""
     def compile(
-        self: JacProgram,
         file_path: str,
         use_str: (str | None) = None,
         no_cgen: bool = False,
@@ -56,23 +46,16 @@ class JacProgram {
         options: (CompileOptions | None) = None
     ) -> uni.Module;
 
-    """Build a Jac file with import dependency resolution."""
     def build(
-        self: JacProgram,
-        file_path: str,
-        use_str: (str | None) = None,
-        type_check: bool = False
+        file_path: str, use_str: (str | None) = None, type_check: bool = False
     ) -> uni.Module;
 
-    """Run a schedule of passes on a module."""
     def run_schedule(
-        self: JacProgram,
         mod: uni.Module,
         passes: list[type[Transform[uni.Module, uni.Module]]],
         cancel_token: (Event | None) = None
     ) -> None;
 
-    """Format a Jac file and return the JacProgram."""
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
     ) -> JacProgram {
@@ -80,7 +63,6 @@ class JacProgram {
         return JacCompiler.jac_file_formatter(file_path, auto_lint);
     }
 
-    """Format a Jac string and return the JacProgram."""
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
@@ -88,7 +70,6 @@ class JacProgram {
         return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint);
     }
 
-    """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram {
         import from jaclang.jac0core.compiler { JacCompiler }
         return JacCompiler.jac_file_linter(file_path);

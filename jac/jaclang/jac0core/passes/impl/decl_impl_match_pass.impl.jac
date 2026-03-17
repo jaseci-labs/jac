@@ -208,6 +208,19 @@ impl DeclImplMatchPass.validate_params_match(
                 node_override=valid_decl.name_spec,
                 name=valid_decl.name_spec.sym_name
             );
+        } elif (params_decl and params_defn) {
+            for idx in range(len(params_decl)) {
+                decl_name = params_decl[idx].name.value;
+                impl_name = params_defn[idx].name.value;
+                if decl_name != impl_name {
+                    self.emit(
+                        W2013,
+                        node_override=params_defn[idx].name,
+                        decl_name=decl_name,
+                        impl_name=impl_name
+                    );
+                }
+            }
         }
     }
 }

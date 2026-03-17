@@ -1,27 +1,16 @@
 """Implementation for program constructs."""
 
-"""Initialize the JacProgram object.
-
-    Args:
-        main_mod: Optional main module to initialize with.
-        bytecode_cache: Optional custom bytecode cache. If None, uses default.
-    """
-impl JacProgram.init(
-    self: JacProgram, main_mod: (uni.ProgramModule | None) = None
-) -> None {
-    self.mod: uni.ProgramModule = main_mod or uni.ProgramModule();
-    self.py_raise_map: dict[(str, str)] = {};
-    self.mtir_map: dict[(str, Info)] = {};
-    self.errors_had: list[Alert] = [];
-    self.warnings_had: list[Alert] = [];
-    self.type_evaluator: (TypeEvaluator | None) = None;
-    self._compiler: (JacCompiler | None) = None;
-    self._compile_options: CompileOptions = CompileOptions();
-    self._native_cache: dict = {};
+impl JacProgram.postinit -> None {
+    self.mod = uni.ProgramModule();
+    self.py_raise_map = {};
+    self.mtir_map = {};
+    self.errors_had = [];
+    self.warnings_had = [];
+    self._compile_options = CompileOptions();
+    self._native_cache = {};
 }
 
-"""Get a JacCompiler instance for this program."""
-impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
+impl JacProgram._get_compiler -> JacCompiler {
     if self._compiler {
         return self._compiler;
     }
@@ -30,8 +19,7 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     return self._compiler;
 }
 
-"""Return the type evaluator, creating one if needed."""
-impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
+impl JacProgram.get_type_evaluator -> TypeEvaluator {
     import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
     if not self.type_evaluator {
         self.type_evaluator = TypeEvaluator(program=self);
@@ -39,8 +27,7 @@ impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
     return self.type_evaluator;
 }
 
-"""Clear all type information from the program."""
-impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> None {
+impl JacProgram.clear_type_system(clear_hub: bool = False) -> None {
     self.type_evaluator = None;
     if clear_hub {
         self.mod.hub.clear();
@@ -53,26 +40,17 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-"""Get the bytecode for a specific module."""
-impl JacProgram.get_bytecode(
-    self: JacProgram, full_target: str
-) -> (types.CodeType | None) {
+impl JacProgram.get_bytecode(full_target: str) -> (types.CodeType | None) {
     return self._get_compiler().get_bytecode(full_target, self);
 }
 
-"""Parse source string into an AST module."""
 impl JacProgram.parse_str(
-    self: JacProgram,
-    source_str: str,
-    file_path: str,
-    cancel_token: (Event | None) = None
+    source_str: str, file_path: str, cancel_token: (Event | None) = None
 ) -> uni.Module {
     return self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
 }
 
-"""Compile a Jac file into a module AST."""
 impl JacProgram.compile(
-    self: JacProgram,
     file_path: str,
     use_str: (str | None) = None,
     no_cgen: bool = False,
@@ -94,19 +72,13 @@ impl JacProgram.compile(
     );
 }
 
-"""Build a Jac file with import dependency resolution."""
 impl JacProgram.build(
-    self: JacProgram,
-    file_path: str,
-    use_str: (str | None) = None,
-    type_check: bool = False
+    file_path: str, use_str: (str | None) = None, type_check: bool = False
 ) -> uni.Module {
     return self._get_compiler().build(file_path, self, use_str, type_check=type_check);
 }
 
-"""Run a schedule of passes on a module."""
 impl JacProgram.run_schedule(
-    self: JacProgram,
     mod: uni.Module,
     passes: list[type[Transform[uni.Module, uni.Module]]],
     cancel_token: (Event | None) = None

@@ -345,23 +345,20 @@ test "jac impl err" {
     assert f'"{path_to_file}", line 2' in stdout_value;
 }
 
-test "param name diff" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
-    sys.stderr = captured_output;
-    try {
-        execution.run(fixture_path("decl_defn_param_name.jac"));
-    } except Exception {
-        _ = None;
-    }
-    sys.stdout = sys.__stdout__;
-    sys.stderr = sys.__stderr__;
-
-    expected_stdout_values = ("short_name = 42", "p1 = 64 , p2 = foobar");
-    output = captured_output.getvalue();
-    for exp in expected_stdout_values {
-        assert exp in output;
-    }
+test "param name diff warns" {
+    import from jaclang.jac0core.program { JacProgram }
+    prog = JacProgram();
+    prog.compile(fixture_path("decl_defn_param_name.jac"), no_cgen=True);
+    warn_msgs = [str(w) for w in prog.warnings_had];
+    assert any(
+        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in warn_msgs
+    ) , (f"Expected param name mismatch warning for method1, got: {warn_msgs}");
+    assert any("'param1'" in m and "'p1'" in m for m in warn_msgs) , (
+        f"Expected param name mismatch warning for method2 param1, got: {warn_msgs}"
+    );
+    assert any("'param2'" in m and "'p2'" in m for m in warn_msgs) , (
+        f"Expected param name mismatch warning for method2 param2, got: {warn_msgs}"
+    );
 }
 
 test "jac test err" {
