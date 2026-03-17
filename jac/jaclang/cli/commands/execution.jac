@@ -100,7 +100,7 @@ def enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    `root: str = "",
+    root: str = "",
     nd: str = ""
 ) -> int;
 

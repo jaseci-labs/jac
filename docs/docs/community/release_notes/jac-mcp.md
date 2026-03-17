@@ -3,6 +3,7 @@
 ## jac-mcp 0.1.6 (Unreleased)
 
 - **Fix SSE transport method issue**
+- **Fix CompilerBridge tools returning incorrect results**: `check_syntax`, `validate_jac`, and `get_ast` now use the compiler's structured diagnostics and parse API to correctly detect errors and return real AST output
 
 ## jac-mcp 0.1.5 (Latest Release)
 

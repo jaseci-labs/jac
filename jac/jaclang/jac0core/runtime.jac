@@ -314,7 +314,7 @@ class JacBasics {
     static def commit(anchor: Anchor | Archetype | None = None) -> None;
 
     """Purge current or target graph."""
-    static def reset_graph(`root: (Root | None) = None) -> int;
+    static def reset_graph(root: (Root | None) = None) -> int;
 
     """Get object given id."""
     static def get_object(id: str) -> (Archetype | None);
@@ -452,7 +452,7 @@ system,
     static def safe_subscript(`obj: Any, key: Any) -> Any;
 
     """Jac's root getter."""
-    static def `root -> Root;
+    static def root -> Root;
 
     """Get all the roots."""
     static def get_all_root -> list[Root];

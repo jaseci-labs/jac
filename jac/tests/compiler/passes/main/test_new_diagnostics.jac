@@ -168,6 +168,33 @@ test "E0117: mixed tabs and spaces" {
 #  Infrastructure: INFRA-8 for E0055-E0058
 #  Milestone: 1 (Context Validity) + 4 (Parser/Lexer Hardening)
 # ══════════════════════════════════════════════════════════════════
+test "E0052: missing type annotation on parameter" {
+    (has_err, prog) = parse_and_validate('def foo(x) { }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0052"));
+}
+
+test "E0052: missing type annotation on multiple params" {
+    (has_err, prog) = parse_and_validate('def foo(x, y) { }');
+    assert has_err or (prog is not None and count_diagnostic_code(prog, "E0052") == 2);
+}
+
+test "E0052: typed parameter is valid" {
+    (has_err, _) = parse_and_validate('def foo(x: int) -> int { return x; }');
+    assert not has_err;
+}
+
+test "E0052: lambda params do not require annotations" {
+    (has_err, _) = parse_and_validate('with entry { f = lambda x: x + 1; }');
+    assert not has_err;
+}
+
+test "E0052: method self param requires annotation" {
+    (has_err, _) = parse_and_validate(
+        'obj Foo { def bar(self: Foo, x: int) -> int { return x; } }'
+    );
+    assert not has_err;
+}
+
 test "E0053: duplicate *args" {
     pytest.skip("E0053 not yet implemented");
     (has_err, _) = parse_and_validate('def foo(*a: int, *b: str) { }');
