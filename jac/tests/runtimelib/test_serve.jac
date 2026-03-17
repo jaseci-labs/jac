@@ -161,8 +161,15 @@ test "faux flag with littlex example" {
         import from jaclang.jac0core.constructs { WalkerArchetype }
         mod_name = os.path.splitext(os.path.basename(littlex_path))[0];
         loaded_mod = Jac.loaded_modules.get(mod_name);
+        import sys as _sys;
         debug_lines = [f"loaded_modules keys: {list(Jac.loaded_modules.keys())}"];
         debug_lines.append(f"mod_name: {mod_name}, loaded_mod: {loaded_mod}");
+        debug_lines.append(f"in_sys_modules: {mod_name in _sys.modules}");
+        if mod_name in _sys.modules {
+            sm = _sys.modules[mod_name];
+            debug_lines.append(f"sys.modules[{mod_name}]: {sm}");
+            debug_lines.append(f"sys.modules file: {getattr(sm, '__file__', 'N/A')}");
+        }
         if loaded_mod {
             types_in_mod = [
                 (n, type(o).__name__, [b.__name__ for b in o.__bases__])
