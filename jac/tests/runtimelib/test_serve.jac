@@ -144,14 +144,22 @@ test "faux flag with littlex example" {
         port = get_free_port();
         Jac.set_base_path(tmpdir);
         captured_output = io.StringIO();
+        captured_errors = io.StringIO();
         with suppress(SystemExit) {
-            with redirect_stdout(captured_output) {
-                execution.start(filename=littlex_path, port=port, main=True, faux=True);
+            with redirect_stderr(captured_errors) {
+                with redirect_stdout(captured_output) {
+                    execution.start(
+                        filename=littlex_path, port=port, main=True, faux=True
+                    );
+                }
             }
         }
         output = captured_output.getvalue();
+        errors = captured_errors.getvalue();
         # Verify that littleX endpoints are discovered
-        assert "WALKERS" in output;
+        assert "WALKERS" in output , (
+            f"Expected 'WALKERS' in output.\nSTDOUT:\n{output}\nSTDERR:\n{errors}"
+        );
         # Check for key littleX walkers
         littlex_walkers = ["update_profile", "get_profile", "create_tweet", "load_feed"];
         for w in littlex_walkers {
