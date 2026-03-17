@@ -1,6 +1,8 @@
 """Implementation for program constructs."""
 
-impl JacProgram.init(main_mod: (uni.ProgramModule | None) = None) -> None {
+impl JacProgram.init(
+    self: JacProgram, main_mod: (uni.ProgramModule | None) = None
+) -> None {
     self.mod: uni.ProgramModule = main_mod or uni.ProgramModule();
     self.py_raise_map: dict[(str, str)] = {};
     self.mtir_map: dict[(str, Info)] = {};
@@ -12,7 +14,7 @@ impl JacProgram.init(main_mod: (uni.ProgramModule | None) = None) -> None {
     self._native_cache: dict = {};
 }
 
-impl JacProgram._get_compiler -> JacCompiler {
+impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     if self._compiler {
         return self._compiler;
     }
@@ -21,7 +23,7 @@ impl JacProgram._get_compiler -> JacCompiler {
     return self._compiler;
 }
 
-impl JacProgram.get_type_evaluator -> TypeEvaluator {
+impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
     import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
     if not self.type_evaluator {
         self.type_evaluator = TypeEvaluator(program=self);
@@ -29,7 +31,7 @@ impl JacProgram.get_type_evaluator -> TypeEvaluator {
     return self.type_evaluator;
 }
 
-impl JacProgram.clear_type_system(clear_hub: bool = False) -> None {
+impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> None {
     self.type_evaluator = None;
     if clear_hub {
         self.mod.hub.clear();
@@ -42,17 +44,23 @@ impl JacProgram.clear_type_system(clear_hub: bool = False) -> None {
     }
 }
 
-impl JacProgram.get_bytecode(full_target: str) -> (types.CodeType | None) {
+impl JacProgram.get_bytecode(
+    self: JacProgram, full_target: str
+) -> (types.CodeType | None) {
     return self._get_compiler().get_bytecode(full_target, self);
 }
 
 impl JacProgram.parse_str(
-    source_str: str, file_path: str, cancel_token: (Event | None) = None
+    self: JacProgram,
+    source_str: str,
+    file_path: str,
+    cancel_token: (Event | None) = None
 ) -> uni.Module {
     return self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
 }
 
 impl JacProgram.compile(
+    self: JacProgram,
     file_path: str,
     use_str: (str | None) = None,
     no_cgen: bool = False,
@@ -75,12 +83,16 @@ impl JacProgram.compile(
 }
 
 impl JacProgram.build(
-    file_path: str, use_str: (str | None) = None, type_check: bool = False
+    self: JacProgram,
+    file_path: str,
+    use_str: (str | None) = None,
+    type_check: bool = False
 ) -> uni.Module {
     return self._get_compiler().build(file_path, self, use_str, type_check=type_check);
 }
 
 impl JacProgram.run_schedule(
+    self: JacProgram,
     mod: uni.Module,
     passes: list[type[Transform[uni.Module, uni.Module]]],
     cancel_token: (Event | None) = None

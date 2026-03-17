@@ -15,23 +15,22 @@ with entry {
     }
 }
 
-"""Holds the state of a compiled Jac program.
-
-Uses class (not obj) because JacLangServer subclasses it and calls
-JacProgram.init(self) explicitly — dataclass __init__ from obj would
-conflict with that pattern.
-"""
+"""Holds the state of a compiled Jac program."""
 class JacProgram {
-    def init(main_mod: (uni.ProgramModule | None) = None) -> None;
-    def _get_compiler -> JacCompiler;
-    def get_type_evaluator -> TypeEvaluator;
-    def clear_type_system(clear_hub: bool = False) -> None;
-    def get_bytecode(full_target: str) -> (types.CodeType | None);
+    def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
+    def _get_compiler(self: JacProgram) -> JacCompiler;
+    def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
+    def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def parse_str(
-        source_str: str, file_path: str, cancel_token: (Event | None) = None
+        self: JacProgram,
+        source_str: str,
+        file_path: str,
+        cancel_token: (Event | None) = None
     ) -> uni.Module;
 
     def compile(
+        self: JacProgram,
         file_path: str,
         use_str: (str | None) = None,
         no_cgen: bool = False,
@@ -42,10 +41,14 @@ class JacProgram {
     ) -> uni.Module;
 
     def build(
-        file_path: str, use_str: (str | None) = None, type_check: bool = False
+        self: JacProgram,
+        file_path: str,
+        use_str: (str | None) = None,
+        type_check: bool = False
     ) -> uni.Module;
 
     def run_schedule(
+        self: JacProgram,
         mod: uni.Module,
         passes: list[type[Transform[uni.Module, uni.Module]]],
         cancel_token: (Event | None) = None
