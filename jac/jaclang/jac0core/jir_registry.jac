@@ -53,7 +53,7 @@ glob NODE_SPECS: tuple = (
              is_cfg=True,
              is_name_atom=False,
              fields=(
-                 FieldDesc(name="body", kind=6),
+                 FieldDesc(name="body", kind=5),
                  FieldDesc(name="is_async", kind=2),
                  FieldDesc(name="doc", kind=6),
                  FieldDesc(name="access", kind=6),
@@ -110,7 +110,7 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="doc", kind=6),
                  FieldDesc(name="is_async", kind=2),
-                 FieldDesc(name="body", kind=6),
+                 FieldDesc(name="body", kind=5),
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="name", kind=4),
@@ -545,7 +545,7 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="doc", kind=6),
                  FieldDesc(name="is_async", kind=2),
-                 FieldDesc(name="body", kind=6),
+                 FieldDesc(name="body", kind=5),
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="name", kind=4),

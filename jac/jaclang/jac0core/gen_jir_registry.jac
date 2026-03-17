@@ -23,6 +23,8 @@ glob MANUAL_FIELDS: dict[str, list] = {
          ],
 
      },
+     # body field from AstImplNeedingNode[T] is (Sequence | ImplDef | None), must be NODE_LIST
+     BODY_NODE_LIST_CLASSES: set = {"Archetype","Ability","Enum"},
      FIELD_KINDS: dict[str, int] = {
          "STRING": 0,
          "INT": 1,
@@ -186,7 +188,12 @@ def generate -> str {
             ] {
                 ann_str = ann_str.replace(prefix, "");
             }
-            kind_val = classify_type(ann_str);
+            # body field from AstImplNeedingNode[T] needs NODE_LIST (can be list or single node)
+            if pname == "body" and name in BODY_NODE_LIST_CLASSES {
+                kind_val = FIELD_KINDS["NODE_LIST"];
+            } else {
+                kind_val = classify_type(ann_str);
+            }
             field_parts.append(f'FieldDesc(name="{pname}", kind={kind_val})');
         }
 
