@@ -502,18 +502,18 @@ impl JacLangServer.get_hover_info(
     return None;
 }
 
-"""Return formatted jac."""
-impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
+"""Shared helper: format a document, optionally with lint auto-fix."""
+impl JacLangServer._format_document(file_path: str, auto_lint: bool = False) -> list[lspt.TextEdit] {
     document = self.workspace.get_text_document(file_path);
     try {
         prog = JacProgram.jac_str_formatter(
-            source_str=document.source, file_path=document.path
+            source_str=document.source, file_path=document.path, auto_lint=auto_lint
         );
         formatted_text = prog.mod.main.gen.jac
             if not prog.errors_had
             else document.source;
     } except Exception as e {
-        self.log_error(f"'Error during formatting: '{e}");
+        self.log_error(f"Error during {'lintfix ' if auto_lint else ''}formatting: {e}");
         formatted_text = document.source;
     }
     return [
@@ -529,31 +529,14 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
     ];
 }
 
+"""Return formatted jac."""
+impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
+    return self._format_document(file_path);
+}
+
 """Return formatted jac with lint auto-fix applied."""
 impl JacLangServer.formatted_jac_lintfix(file_path: str) -> list[lspt.TextEdit] {
-    document = self.workspace.get_text_document(file_path);
-    try {
-        prog = JacProgram.jac_str_formatter(
-            source_str=document.source, file_path=document.path, auto_lint=True
-        );
-        formatted_text = prog.mod.main.gen.jac
-            if not prog.errors_had
-            else document.source;
-    } except Exception as e {
-        self.log_error(f"Error during lintfix format: {e}");
-        formatted_text = document.source;
-    }
-    return [
-        lspt.TextEdit(
-            range=lspt.Range(
-                start=lspt.Position(line=0, character=0),
-                end=lspt.Position(
-                    line=(len(document.source.splitlines()) + 1), character=0
-                )
-            ),
-            new_text=formatted_text
-        )
-    ];
+    return self._format_document(file_path, auto_lint=True);
 }
 
 """Close module (didClose cleanup - remove sem_manager only)."""
