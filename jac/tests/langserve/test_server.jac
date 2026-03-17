@@ -844,3 +844,56 @@ test "test_go_to_definition_import_module_path_and_item" {
         teardown_test();
     }
 }
+
+test "test_cross_module_imported_func_no_false_errors" {
+    setup_test();
+    try {
+        lsp = create_server();
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # There should be no diagnostics on line 5 (the call site).
+        # Previously, JIR cache corruption caused FunctionType to have 0 params,
+        # which produced false "wrong number of arguments" errors.
+        diags = lsp.diagnostics.get(caller_file, []);
+        call_line_diags = [
+            d
+            for d in diags
+            if d.range.start.line == 4
+        ];
+        assert len(call_line_diags) == 0 , f"Expected no errors on call line, got: "
+        f"{[d.message for d in call_line_diags]}";
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_cross_module_imported_func_sem_token" {
+    import from jaclang.jac0core.constant { JacSemTokenType }
+    setup_test();
+    try {
+        lsp = create_server();
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # "greet_user" on line 3 (import) should have FUNCTION sem token, not PROPERTY.
+        import_tok = lsp.get_token_at_position(caller_file, lspt.Position(2, 35));
+        assert import_tok is not None , "Expected token at import line";
+        sem = import_tok.sem_token;
+        assert sem is not None , "Expected sem_token for imported function";
+        assert sem[0] == JacSemTokenType.FUNCTION , (
+            f"Expected FUNCTION sem token for imported function, got: {sem[0]}"
+        );
+
+        # "greet_user" on line 5 (call site) should also have FUNCTION sem token.
+        call_tok = lsp.get_token_at_position(caller_file, lspt.Position(4, 14));
+        assert call_tok is not None , "Expected token at call site";
+        call_sem = call_tok.sem_token;
+        assert call_sem is not None , "Expected sem_token for function call";
+        assert call_sem[0] == JacSemTokenType.FUNCTION , (
+            f"Expected FUNCTION sem token at call site, got: {call_sem[0]}"
+        );
+    } finally {
+        teardown_test();
+    }
+}

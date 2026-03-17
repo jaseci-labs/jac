@@ -208,11 +208,6 @@ impl DeclImplMatchPass.validate_params_match(
                 node_override=valid_decl.name_spec,
                 name=valid_decl.name_spec.sym_name
             );
-        } elif (params_decl and params_defn) {
-            for idx in range(len(params_defn)) {
-                # Update params list only; keep decl's kid intact for hover/go-to-def.
-                params_decl[idx] = params_defn[idx];
-            }
         }
     }
 }
