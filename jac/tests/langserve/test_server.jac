@@ -810,3 +810,37 @@ test "test_namedtuple_hover" {
         teardown_test();
     }
 }
+
+test "test_go_to_definition_import_module_path_and_item" {
+    setup_test();
+    try {
+        lsp = create_server();
+        import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"));
+        lsp.type_check_file(import_file);
+
+        # Line 3: import from mypkg_deep.utils.helpers { greet, greeting }
+        # Test module path segments (each should navigate to the module/directory)
+        positions = [
+            # "mypkg_deep" in module path → namespace package dir
+            (3, 15, "local_imports/mypkg_deep"),
+            # "utils" in module path → namespace package dir
+            (3, 25, "local_imports/mypkg_deep/utils"),
+            # "helpers" in module path → module file at 0:0
+            (3, 31, "local_imports/mypkg_deep/utils/helpers.jac"),
+            # "greet" in { greet, greeting } → definition in helpers.jac
+            (3, 41, "local_imports/mypkg_deep/utils/helpers.jac"),
+            # "greeting" in { greet, greeting } → definition in helpers.jac
+            (3, 48, "local_imports/mypkg_deep/utils/helpers.jac"),
+
+        ];
+
+        for (line, char, expected) in positions {
+            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
+            assert def_loc is not None , f"Definition at line {line}, col {char} not found";
+            assert expected in str(def_loc) , f"Expected '{expected}' in definition for "
+            f"line {line}, char {char}, got: {def_loc}";
+        }
+    } finally {
+        teardown_test();
+    }
+}

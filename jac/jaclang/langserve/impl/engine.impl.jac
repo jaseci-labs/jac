@@ -287,6 +287,8 @@ impl JacLangServer.get_references(
 impl JacLangServer.get_definition(
     file_path: str, position: lspt.Position
 ) -> Optional[lspt.Location] {
+    import from pathlib { Path }
+
     def make_location(node_: uni.UniNode, is_module: bool = False) -> lspt.Location {
         mod_path = node_.type.file_uri if is_module else node_.loc.mod_path;
         decl_range = (
@@ -298,6 +300,15 @@ impl JacLangServer.get_definition(
                 )
         );
         return lspt.Location(uri=uris.from_fs_path(str(mod_path)), range=decl_range);
+    }
+    def make_module_location(file_path_str: str) -> lspt.Location {
+        return lspt.Location(
+            uri=uris.from_fs_path(file_path_str),
+            range=lspt.Range(
+                start=lspt.Position(line=0, character=0),
+                end=lspt.Position(line=0, character=0)
+            )
+        );
     }
     node_selected = self.get_token_at_position(file_path, position);
     if not node_selected {
@@ -311,6 +322,78 @@ impl JacLangServer.get_definition(
     if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
         if isinstance(parent.body, uni.ImplDef) {
             return make_location(parent.body.sym.decl);
+        }
+    }
+    ####################################################################
+    ##         Import-aware goto-def (module paths & imported items)  ##
+    ####################################################################
+    # When the cursor is on a module path segment or an imported item,
+    # use direct module resolution as the primary strategy. This is
+    # resilient to partial type evaluation failures.
+    if isinstance(parent, uni.ModulePath) {
+        # Cursor is on a segment of a module path (e.g., "cli" in "jaclang.cli.console")
+        # First try type-based resolution (fast, already computed)
+        if node_type and isinstance(node_type, ModuleType) {
+            return make_location(node_selected, is_module=True);
+        }
+        # Fallback: resolve the module path segment directly via the resolver.
+        import_node = parent.parent_of_type(uni.Import) if parent else None;
+        if import_node and parent.path {
+            try {
+                idx = `list(parent.path).index(node_selected);
+                path_list = parent.resolve_relative_path_list();
+                if idx < len(path_list) {
+                    resolved = path_list[idx];
+                    if Path(resolved).exists() {
+                        return make_module_location(resolved);
+                    }
+                }
+            } except (ValueError, Exception) as e {
+                self.log_py(f"Error resolving module path segment: {e}");
+            }
+        }
+    }
+    if isinstance(parent, uni.ModuleItem) and isinstance(node_selected, uni.Name) {
+        # Cursor is on an imported item name (e.g., "console" in "{ console }")
+        # If the item is a module (e.g., "uris" in "from jaclang.lsp { uris }"),
+        # defer to the type-based handler below which handles ModuleType correctly.
+        if node_type and isinstance(node_type, ModuleType) {
+            return make_location(node_selected, is_module=True);
+        }
+        # Check if sym was already linked to the remote definition by type checker
+        if (
+            node_selected.sym
+            and node_selected.sym.defn
+            and node_selected.sym.defn[0].loc.mod_path != node_selected.loc.mod_path
+        ) {
+            decl = node_selected.sym.defn[0];
+            return make_location(decl);
+        }
+        # Fallback: resolve the target module and look up the symbol directly.
+        import_node = parent.parent_of_type(uni.Import) if parent else None;
+        if import_node and import_node.from_loc {
+            try {
+                mod_path = import_node.from_loc.resolve_relative_path();
+                if Path(mod_path).exists() and not Path(mod_path).is_dir() {
+                    # Try to find the symbol in the target module's hub entry
+                    resolved_path = str(Path(mod_path).resolve());
+                    with self._state_lock.read_lock() {
+                        target_mod = self.mod.hub.get(resolved_path);
+                    }
+                    if target_mod {
+                        sym = target_mod.lookup(
+                            node_selected.value, deep=True, incl_inner_scope=True
+                        );
+                        if sym and sym.defn {
+                            return make_location(sym.defn[0]);
+                        }
+                    }
+                    # If symbol not found in hub, at least navigate to the module
+                    return make_module_location(mod_path);
+                }
+            } except Exception as e {
+                self.log_py(f"Error resolving imported item: {e}");
+            }
         }
     }
     ####################################################################

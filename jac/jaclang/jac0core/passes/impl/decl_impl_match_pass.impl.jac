@@ -55,6 +55,36 @@ impl DeclImplMatchPass.defn_lookup(
     return None;
 }
 
+"""Find the archetype definition from a symbol's definitions.
+
+        When a class is used as a base class or has forward declarations,
+        its symbol may have multiple definitions. This method finds the
+        Archetype with a body (not a forward declaration).
+        """
+impl DeclImplMatchPass._find_archetype_defn(
+    self: DeclImplMatchPass, lookup: Symbol
+) -> (uni.NameAtom | None) {
+    # First pass: find an Archetype with a body (not a forward declaration)
+    for defn_idx in range(len(lookup.defn)) {
+        candidate = lookup.defn[defn_idx];
+        if (
+            isinstance(candidate.name_of, uni.Archetype)
+            and candidate.name_of.body is not None
+        ) {
+            return candidate;
+        }
+    }
+    # Second pass: find any Archetype (including forward declarations)
+    for defn_idx in range(len(lookup.defn)) {
+        candidate = lookup.defn[defn_idx];
+        if isinstance(candidate.name_of, uni.Archetype) {
+            return candidate;
+        }
+    }
+    # Fallback to last definition if no Archetype found
+    return lookup.defn[-1] if lookup.defn else None;
+}
+
 """Connect implementations from source symbol table to declarations in
 target symbol table.
 
@@ -80,16 +110,14 @@ impl DeclImplMatchPass.connect_impls(
         }
         decl_node = self.defn_lookup(lookup)
             if ((len(arch_refs) == 1) and lookup)
-            else lookup.defn[-1] if lookup else None;
+            else self._find_archetype_defn(lookup) if lookup else None;
         name_of_links.append(decl_node) if decl_node else None;
         for name in arch_refs[1:] {
             if decl_node {
                 lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
                     if decl_node.name_of.sym_tab
                     else None;
-                decl_node = self.defn_lookup(lookup)
-                    if ((len(arch_refs) == 1) and lookup)
-                    else lookup.defn[-1] if lookup else None;
+                decl_node = lookup.defn[-1] if lookup else None;
                 name_of_links.append(decl_node) if decl_node else None;
             } else {
                 break;
