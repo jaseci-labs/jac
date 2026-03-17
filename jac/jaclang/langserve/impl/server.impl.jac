@@ -61,7 +61,7 @@ impl run_lang_server -> None {
     )(
         semantic_tokens_full
     );
-    server.feature(lspt.JAC_LINTFIX_FORMAT)(lintfix_formatting);
+    server.feature(lspt.TEXT_DOCUMENT_LINTFIX_FORMATTING)(lintfix_formatting);
     server.start_io();
 }
 

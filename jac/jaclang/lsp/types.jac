@@ -25,7 +25,7 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      WORKSPACE_DID_CREATE_FILES = "workspace/didCreateFiles",
      WORKSPACE_DID_RENAME_FILES = "workspace/didRenameFiles",
      WORKSPACE_DID_DELETE_FILES = "workspace/didDeleteFiles",
-     JAC_LINTFIX_FORMAT = "jac/lintfixFormat",
+     TEXT_DOCUMENT_LINTFIX_FORMATTING = "jac/lintfixFormat",
      WORKSPACE_SEMANTIC_TOKENS_REFRESH = "workspace/semanticTokens/refresh",
      INITIALIZE = "initialize",
      INITIALIZED = "initialized",
@@ -393,5 +393,5 @@ glob METHOD_TO_PARAMS: dict[str, type] = {
          WORKSPACE_DID_CREATE_FILES: CreateFilesParams,
          WORKSPACE_DID_RENAME_FILES: RenameFilesParams,
          WORKSPACE_DID_DELETE_FILES: DeleteFilesParams,
-         JAC_LINTFIX_FORMAT: DocumentFormattingParams
+         TEXT_DOCUMENT_LINTFIX_FORMATTING: DocumentFormattingParams
      };
