@@ -165,6 +165,16 @@ obj KubernetesTarget(DeploymentTarget) {
 
         # Base setup
         commands.append('export DEBIAN_FRONTEND=noninteractive');
+        # Disable apt sandbox: CAP_SETUID/CAP_SETGID are dropped in the container
+        # security context, so apt cannot drop privileges to the _apt user.
+        commands.append(
+            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        );
+        # Remove repos that don't exist yet on Debian testing (trixie) to prevent
+        # apt-get update from failing with "no Release file" errors.
+        commands.append(
+            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+        );
         commands.append('apt-get update');
 
         # Install base packages (curl and unzip needed for Bun installation)
@@ -248,11 +258,48 @@ obj KubernetesTarget(DeploymentTarget) {
         command: (list[str] | None) = None,
         working_dir: (str | None) = None,
         volume_mounts: (list[dict[(str, Any)]] | None) = None,
-        secret_ref_name: (str | None) = None
+        secret_ref_name: (str | None) = None,
+        needs_root: bool = False
     ) -> dict[(str, Any)] {
+        # Containers that install packages at runtime (apt-get, pip) need root
+        # and a writable filesystem. Pre-built image containers can be fully locked down.
+        if needs_root {
+            # Drop ALL then add back only what apt/pip need at runtime:
+            #   CHOWN       — chown files during package post-install scripts
+            #   DAC_OVERRIDE — access _apt-owned /var/lib/apt/lists/partial/
+            #   FOWNER      — chmod directories not owned by the running uid
+            #   FSETID      — preserve SUID/SGID bits written by package scripts
+            #   SETUID/SETGID — some package post-install scripts switch uid/gid
+            security_context = {
+                'readOnlyRootFilesystem': False,
+                'allowPrivilegeEscalation': False,
+                'capabilities': {
+                    'drop': ['ALL'],
+                    'add': [
+                        'CHOWN',
+                        'DAC_OVERRIDE',
+                        'FOWNER',
+                        'FSETID',
+                        'SETUID',
+                        'SETGID'
+                    ]
+                },
+                'seccompProfile': {'type': 'RuntimeDefault'}
+            };
+        } else {
+            security_context = {
+                'runAsNonRoot': True,
+                'runAsUser': 1000,
+                'readOnlyRootFilesystem': True,
+                'allowPrivilegeEscalation': False,
+                'capabilities': {'drop': ['ALL']},
+                'seccompProfile': {'type': 'RuntimeDefault'}
+            };
+        }
         container_config = {
             'name': app_name,
             'image': image,
+            'securityContext': security_context,
             'ports': [{'containerPort': self.k8s_config.container_port}],
             'env': self.env_list,
             'readinessProbe': probe_configs['readiness'],
@@ -306,18 +353,30 @@ obj KubernetesTarget(DeploymentTarget) {
         build_container = {
             'name': 'build-app',
             'image': self.k8s_config.busybox_image,
+            'securityContext': {
+                'runAsNonRoot': True,
+                'runAsUser': 1000,
+                'readOnlyRootFilesystem': False,
+                'allowPrivilegeEscalation': False,
+                'capabilities': {'drop': ['ALL']},
+                'seccompProfile': {'type': 'RuntimeDefault'}
+            },
             'command': [
                 'sh',
                 '-c',
                 f"until wget -q -O {self.k8s_config.app_mount_path}/code.tar.gz {code_server_url}; do sleep 2; done && tar xzf {self.k8s_config.app_mount_path}/code.tar.gz -C {self.k8s_config.app_mount_path}/ && rm {self.k8s_config.app_mount_path}/code.tar.gz"
             ],
             'volumeMounts': [
-                {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path}
+                {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path},
+                {'name': 'tmp', 'mountPath': '/tmp'}
             ]
         };
 
         # Only emptyDir - no PVC mount on app pods, so they can schedule on any node
-        volumes = [{'name': 'app-code', 'emptyDir': {}}];
+        volumes = [
+            {'name': 'app-code', 'emptyDir': {}},
+            {'name': 'tmp', 'emptyDir': {}}
+        ];
 
         return {'volumes': volumes, 'build_container': build_container};
     }
@@ -329,6 +388,32 @@ obj KubernetesTarget(DeploymentTarget) {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
         pvc_name = f"{app_name}-code-pvc";
+        code_server_sa_name = f"{code_server_name}-sa";
+
+        # ServiceAccount for code-server
+        code_server_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': code_server_sa_name,
+                'namespace': namespace,
+                'labels': {** code_server_labels, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=code_server_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=code_server_sa
+                );
+            } else {
+                raise;
+            }
+        }
 
         # Code-server Deployment spec
         deployment_body = {
@@ -345,14 +430,29 @@ obj KubernetesTarget(DeploymentTarget) {
                 'template': {
                     'metadata': {'labels': code_server_labels},
                     'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': code_server_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
                         'containers': [
                             {
                                 'name': 'code-server',
                                 'image': self.k8s_config.busybox_image,
+                                # readOnlyRootFilesystem=False: busybox httpd writes
+                                # the tarball to /tmp before serving it.
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 1000,
+                                    'readOnlyRootFilesystem': False,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']},
+                                    'seccompProfile': {'type': 'RuntimeDefault'}
+                                },
                                 'command': [
                                     'sh',
                                     '-c',
-                                    f"tar czf /tmp/code.tar.gz -C {self.k8s_config.workspace_path} --exclude='.jac' . && httpd -f -p 8080 -h /tmp"
+                                    f"echo 'Code-server starting' && tar czf /tmp/code.tar.gz -C {self.k8s_config.workspace_path} --exclude='.jac' . && echo 'Tar completed' && httpd -f -p 8080 -h /tmp"
                                 ],
                                 'ports': [{'containerPort': 8080}],
                                 'volumeMounts': [
@@ -436,6 +536,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 'kubernetes_mongo', self, {'app_name': app_name}
             );
             mongo_result = mongo_provider.deploy({});
+            self._apply_provider_service_account(
+                mongo_result['service_account'], namespace, core_v1
+            );
             self.env_list.append(
                 {
                     'name': 'MONGODB_URI',
@@ -492,6 +595,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     username=self.k8s_config.mongo_express_username,
                     password=self.k8s_config.mongo_express_password
                 );
+                self._apply_provider_service_account(
+                    express_result['service_account'], namespace, core_v1
+                );
                 try {
                     apps_v1.patch_namespaced_deployment(
                         name=express_result['deployment_name'],
@@ -538,6 +644,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 'kubernetes_redis', self, {'app_name': app_name}
             );
             redis_result = redis_provider.deploy({});
+            self._apply_provider_service_account(
+                redis_result['service_account'], namespace, core_v1
+            );
             self.env_list.append(
                 {
                     'name': 'REDIS_URL',
@@ -688,6 +797,9 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             if self.k8s_config.redis_dashboard {
                 insight_result = redis_provider.deploy_dashboard();
+                self._apply_provider_service_account(
+                    insight_result['service_account'], namespace, core_v1
+                );
                 try {
                     apps_v1.patch_namespaced_deployment(
                         name=insight_result['deployment_name'],
@@ -727,6 +839,286 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
+    """Create a dedicated ServiceAccount with no automounted token for a deployment."""
+    def _create_service_account(
+        sa_name: str, app_label: str, namespace: str, core_v1: Any
+    ) -> None {
+        sa_body = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': sa_name,
+                'namespace': namespace,
+                'labels': {'app': app_label, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(name=sa_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=sa_body
+                );
+                if self.logger {
+                    self.logger.info(
+                        f"Created ServiceAccount '{sa_name}' in namespace '{namespace}'"
+                    );
+                }
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Apply or replace a service-account resource created by a provider (mongo/redis).
+
+    Provider-returned service accounts have no namespace in their metadata; this
+    helper injects it and creates/skips if it already exists.
+    """
+    def _apply_provider_service_account(
+        sa_spec: dict[str, Any], namespace: str, core_v1: Any
+    ) -> None {
+        sa_spec['metadata']['namespace'] = namespace;
+        sa_name = sa_spec['metadata']['name'];
+        try {
+            core_v1.read_namespaced_service_account(name=sa_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=sa_spec
+                );
+                if self.logger {
+                    self.logger.info(
+                        f"Created ServiceAccount '{sa_name}' in namespace '{namespace}'"
+                    );
+                }
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Generate and apply NetworkPolicies for the app namespace.
+
+    Creates separate policies for each component to enforce proper isolation:
+      - Main app: allows ingress on container port, allows egress to DNS and intra-namespace
+      - MongoDB: allows ingress on 27017 from main app, allows egress to DNS and intra-namespace
+      - Redis: allows ingress on 6379 from main app, allows egress to DNS and intra-namespace
+      - Other components: deny all ingress, allow egress to DNS and intra-namespace
+    """
+    def _deploy_network_policy(
+        app_name: str, namespace: str, networking_v1: Any
+    ) -> None {
+        # Common egress rules for all policies
+        common_egress_rules = [
+            # DNS — explicit kube-system selector so CNIs that evaluate policy
+            # before DNAT (e.g. Flannel) can reach kube-dns.
+            {
+                'to': [
+                    {
+                        'namespaceSelector': {
+                            'matchLabels': {
+                                'kubernetes.io/metadata.name': 'kube-system'
+                            }
+                        }
+                    }
+                ],
+                'ports': [
+                    {'protocol': 'UDP', 'port': 53},
+                    {'protocol': 'TCP', 'port': 53}
+                ]
+            },
+            # All pods within the same namespace
+            {'to': [{'podSelector': {}}]},
+            # External HTTPS — needed for pip/apt installs during runtime setup
+            {
+                'ports': [
+                    {'protocol': 'TCP', 'port': 443},
+                    {'protocol': 'TCP', 'port': 80}
+                ]
+            }
+        ];
+
+        # Define policies for each component
+        policies = [
+            {
+                'name': f"{app_name}-network-policy",
+                'pod_selector': {'matchLabels': {'app': app_name}},
+                'ingress_rules': [
+                    # App container port — accepts traffic from NodePort/LoadBalancer
+                    {
+                        'ports': [
+                            {'protocol': 'TCP', 'port': self.k8s_config.container_port}
+                        ]
+                    }
+                ]
+            },
+            {
+                'name': f"{app_name}-mongodb-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-mongodb"}},
+                'ingress_rules': [
+                    # MongoDB port — accepts traffic from main app and mongo-express dashboard
+                    {
+                        'from': [
+                            {'podSelector': {'matchLabels': {'app': app_name}}},
+                            {
+                                'podSelector': {
+                                    'matchLabels': {'app': f"{app_name}-mongo-express"}
+                                }
+                            }
+                        ],
+                        'ports': [{'protocol': 'TCP', 'port': 27017}]
+                    }
+                ]
+            },
+            {
+                'name': f"{app_name}-redis-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-redis"}},
+                'ingress_rules': [
+                    # Redis port — accepts traffic from main app and RedisInsight dashboard
+                    {
+                        'from': [
+                            {'podSelector': {'matchLabels': {'app': app_name}}},
+                            {
+                                'podSelector': {
+                                    'matchLabels': {'app': f"{app_name}-redis-insight"}
+                                }
+                            }
+                        ],
+                        'ports': [{'protocol': 'TCP', 'port': 6379}]
+                    }
+                ]
+            },
+            # Prometheus — allow grafana to query on port 9090
+            {
+                'name': f"{app_name}-prometheus-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-prometheus"}},
+                'ingress_rules': [
+                    {
+                        'from': [
+                            {
+                                'podSelector': {
+                                    'matchLabels': {'app': f"{app_name}-grafana"}
+                                }
+                            }
+                        ],
+                        'ports': [{'protocol': 'TCP', 'port': 9090}]
+                    }
+                ]
+            },
+            # Grafana — allow ingress controller to reach it on port 3000 (/grafana route)
+            {
+                'name': f"{app_name}-grafana-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-grafana"}},
+                'ingress_rules': [{'ports': [{'protocol': 'TCP', 'port': 3000}]}]
+            },
+            {
+                'name': f"{app_name}-code-server-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-code-server"}},
+                'ingress_rules': [
+                    # Code-server port — accepts traffic from main app
+                    {
+                        'from': [{'podSelector': {'matchLabels': {'app': app_name}}}],
+                        'ports': [{'protocol': 'TCP', 'port': 8080}]
+                    }
+                ]
+            },
+            # kube-state-metrics — allow prometheus to scrape on port 8080
+            {
+                'name': f"{app_name}-kube-state-metrics-network-policy",
+                'pod_selector': {
+                    'matchLabels': {'app': f"{app_name}-kube-state-metrics"}
+                },
+                'ingress_rules': [
+                    {
+                        'from': [
+                            {
+                                'podSelector': {
+                                    'matchLabels': {'app': f"{app_name}-prometheus"}
+                                }
+                            }
+                        ],
+                        'ports': [{'protocol': 'TCP', 'port': 8080}]
+                    }
+                ]
+            },
+            # node-exporter — allow prometheus to scrape on port 9100
+            {
+                'name': f"{app_name}-node-exporter-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-node-exporter"}},
+                'ingress_rules': [
+                    {
+                        'from': [
+                            {
+                                'podSelector': {
+                                    'matchLabels': {'app': f"{app_name}-prometheus"}
+                                }
+                            }
+                        ],
+                        'ports': [{'protocol': 'TCP', 'port': 9100}]
+                    }
+                ]
+            },
+            # mongo-express — allow ingress controller to reach it on port 8081 (/db-dashboard route)
+            {
+                'name': f"{app_name}-mongo-express-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-mongo-express"}},
+                'ingress_rules': [{'ports': [{'protocol': 'TCP', 'port': 8081}]}]
+            },
+            # redis-insight — allow ingress controller to reach it on port 5540
+            {
+                'name': f"{app_name}-redis-insight-network-policy",
+                'pod_selector': {'matchLabels': {'app': f"{app_name}-redis-insight"}},
+                'ingress_rules': [{'ports': [{'protocol': 'TCP', 'port': 5540}]}]
+            }
+        ];
+
+        for policy_config in policies {
+            network_policy = {
+                'apiVersion': 'networking.k8s.io/v1',
+                'kind': 'NetworkPolicy',
+                'metadata': {
+                    'name': policy_config['name'],
+                    'namespace': namespace,
+                    'labels': {'app': app_name, 'managed': 'jac-scale'}
+                },
+                'spec': {
+                    'podSelector': policy_config['pod_selector'],
+                    'policyTypes': ['Ingress', 'Egress'],
+                    'ingress': policy_config['ingress_rules'],
+                    'egress': common_egress_rules
+                }
+            };
+
+            try {
+                networking_v1.read_namespaced_network_policy(
+                    name=policy_config['name'], namespace=namespace
+                );
+                networking_v1.replace_namespaced_network_policy(
+                    name=policy_config['name'],
+                    namespace=namespace,
+                    body=network_policy
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    networking_v1.create_namespaced_network_policy(
+                        namespace=namespace, body=network_policy
+                    );
+                    if self.logger {
+                        self.logger.info(
+                            f"Created NetworkPolicy '{policy_config[
+                                'name'
+                            ]}' in namespace '{namespace}'"
+                        );
+                    }
+                } else {
+                    raise;
+                }
+            }
+        }
+    }
+
     """Wait for deployment to be ready and check status."""
     def _wait_for_deployment(
         app_name: str, namespace: str, health_check_path: str, cluster_env: str
@@ -743,8 +1135,11 @@ obj KubernetesTarget(DeploymentTarget) {
                     k8s_cluster_config.load_incluster_config();
                 }
                 core_v1 = client.CoreV1Api();
+                # The app service is ClusterIP; the NLB is on the NGINX ingress
+                # controller's LoadBalancer service — same source as get_service_url().
+                ingress_svc_name = f"{app_name}-ingress-nginx-service";
                 service_obj = core_v1.read_namespaced_service(
-                    f"{app_name}-service", namespace
+                    ingress_svc_name, namespace
                 );
                 nlb_ingress = service_obj.status.load_balancer.ingress;
                 if (nlb_ingress and (len(nlb_ingress) > 0)) {
@@ -753,7 +1148,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 } else {
                     if self.logger {
                         self.logger.info(
-                            f"NLB is being provisioned. Run 'kubectl get svc {app_name}-service -n {namespace}' to get the endpoint."
+                            f"NLB is being provisioned. Run 'kubectl get svc {ingress_svc_name} -n {namespace}' to get the endpoint."
                         );
                     }
                 }
@@ -766,6 +1161,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 (deployment_status, deployment_details) = check_deployment_status(
                     self.k8s_config.ingress_node_port,
                     path,
+                    max_retries=48,
                     nlb_url=nlb_url,
                     namespace=namespace,
                     app_name=app_name
@@ -847,6 +1243,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             apps_v1 = client.AppsV1Api();
             core_v1 = client.CoreV1Api();
+            networking_v1 = client.NetworkingV1Api();
             check_K8s_status();
             ensure_namespace_exists(namespace);
 
@@ -927,13 +1324,20 @@ obj KubernetesTarget(DeploymentTarget) {
                         {
                             'name': 'app-code',
                             'mountPath': self.k8s_config.app_mount_path
-                        }
+                        },
+                        {'name': 'tmp', 'mountPath': '/tmp'}
                     ],
-                    secret_ref_name=secret_ref_name
+                    secret_ref_name=secret_ref_name,
+                    needs_root=True
                 );
             }
 
-            # 11. Build service and deployment
+            # 11. Create dedicated ServiceAccount for the app
+            app_sa_name = f"{app_name}-sa";
+            self._create_service_account(app_sa_name, app_name, namespace, core_v1);
+            details["create_service_account"] = "Successful";
+
+            # 11b. Build service and deployment
             service = self._build_service_config(
                 app_name, cluster_env, health_check_path
             );
@@ -951,6 +1355,11 @@ obj KubernetesTarget(DeploymentTarget) {
                     'template': {
                         'metadata': {'labels': {'app': app_name}},
                         'spec': {
+                            'automountServiceAccountToken': False,
+                            'serviceAccountName': app_sa_name,
+                            'securityContext': {
+                                'seccompProfile': {'type': 'RuntimeDefault'}
+                            },
                             'initContainers': init_containers,
                             'containers': [container_config],
                             'volumes': volumes
@@ -984,6 +1393,10 @@ obj KubernetesTarget(DeploymentTarget) {
             # 13. Deploy databases
             self._deploy_databases(app_name, namespace, apps_v1, core_v1, cluster_env);
             details["deploy_databases"] = "Successful";
+            # 13b. Apply NetworkPolicy for the app pod
+            self._deploy_network_policy(app_name, namespace, networking_v1);
+            details["deploy_network_policy"] = "Successful";
+
             # 14. Deploy main application
             if self.logger {
                 self.logger.info(f'Deploying Jaseci-app app...');
@@ -1335,6 +1748,40 @@ obj KubernetesTarget(DeploymentTarget) {
             namespace,
             'PersistentVolumeClaim'
         );
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-sa",
+            namespace,
+            'ServiceAccount'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-code-server-sa",
+            namespace,
+            'ServiceAccount'
+        );
+        networking_v1 = client.NetworkingV1Api();
+        # Delete all NetworkPolicies for this app
+        network_policy_names = [
+            f"{app_name}-network-policy",
+            f"{app_name}-mongodb-network-policy",
+            f"{app_name}-redis-network-policy",
+            f"{app_name}-prometheus-network-policy",
+            f"{app_name}-grafana-network-policy",
+            f"{app_name}-code-server-network-policy",
+            f"{app_name}-kube-state-metrics-network-policy",
+            f"{app_name}-node-exporter-network-policy",
+            f"{app_name}-mongo-express-network-policy",
+            f"{app_name}-redis-insight-network-policy"
+        ];
+        for policy_name in network_policy_names {
+            delete_if_exists(
+                networking_v1.delete_namespaced_network_policy,
+                policy_name,
+                namespace,
+                'NetworkPolicy'
+            );
+        }
     }
 
     def _destroy_database(
@@ -1354,6 +1801,12 @@ obj KubernetesTarget(DeploymentTarget) {
             'Service'
         );
         delete_k8s_secret(core_v1, namespace, f"{app_name}-mongodb-secret");
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-mongodb-sa",
+            namespace,
+            'ServiceAccount'
+        );
     }
 
     def _destroy_cache(
@@ -1376,6 +1829,12 @@ obj KubernetesTarget(DeploymentTarget) {
             'ConfigMap'
         );
         delete_k8s_secret(core_v1, namespace, f"{app_name}-redis-secret");
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-redis-sa",
+            namespace,
+            'ServiceAccount'
+        );
     }
 
     def _destroy_dashboard(
@@ -1412,6 +1871,18 @@ obj KubernetesTarget(DeploymentTarget) {
             f"{insight_name}-auth",
             namespace,
             'Secret'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-mongo-express-sa",
+            namespace,
+            'ServiceAccount'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{app_name}-redis-insight-sa",
+            namespace,
+            'ServiceAccount'
         );
     }
 

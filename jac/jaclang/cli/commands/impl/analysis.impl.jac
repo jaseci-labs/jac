@@ -270,6 +270,7 @@ impl format(
     }
     # Track unformatted files for check mode
     unformatted_files: list[str] = [];
+    failed_results: list = [];
     def write_formatted_code(code: str, target_path: str) -> None {
         if to_screen {
             console.print(code);
@@ -283,12 +284,12 @@ impl format(
             }
         }
     }
-    def format_single_file(file_path: str) -> tuple[bool, bool, int] {
-        # Returns (success, changed, lint_error_count)
+    def format_single_file(file_path: str) -> tuple[bool, bool, int, list] {
+        # Returns (success, changed, lint_error_count, syntax_errors)
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
-            return (False, False, 0);
+            return (False, False, 0, []);
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
@@ -299,10 +300,7 @@ impl format(
                     for e in prog.errors_had
                 );
                 if has_format_error or not lintfix {
-                    for error in prog.errors_had {
-                        console.error(f"{error}");
-                    }
-                    return (False, False, 0);
+                    return (False, False, 0, list(prog.errors_had));
                 }
             }
             try {
@@ -311,10 +309,7 @@ impl format(
 
                 if not formatted_code or len(formatted_code.strip()) == 0 {
                     if prog.errors_had {
-                        for error in prog.errors_had {
-                            console.error(f"{error}");
-                        }
-                        return (False, False, 0);
+                        return (False, False, 0, list(prog.errors_had));
                     }
                 }
 
@@ -333,10 +328,7 @@ impl format(
                 }
             } except Exception {
                 # Can't produce formatted output (parse error)
-                for error in prog.errors_had {
-                    console.error(f"{error}");
-                }
-                return (False, False, 0);
+                return (False, False, 0, list(prog.errors_had));
             }
             # Report auto-fixed lint warnings and unfixable lint errors
             lint_errors = 0;
@@ -349,10 +341,9 @@ impl format(
                     lint_errors += 1;
                 }
             }
-            return (True, changed, lint_errors);
+            return (True, changed, lint_errors, []);
         } except Exception as e {
-            console.error(f"Error formatting '{file_path}': {e}");
-            return (False, False, 0);
+            return (False, False, 0, [f"Error formatting '{file_path}': {e}"]);
         }
     }
     total_files = 0;
@@ -362,16 +353,24 @@ impl format(
     (all_files, had_path_errors) = _iter_jac_files(paths);
     for file_path in all_files {
         total_files += 1;
-        (success, changed, errors) = format_single_file(file_path);
+        (success, changed, errors, syntax_errors) = format_single_file(file_path);
         total_errors += errors;
         if not success {
             failed_files += 1;
+            failed_results.append(
+                {'path': file_path, 'errors': syntax_errors, 'warnings': []}
+            );
         } elif changed {
             changed_files += 1;
             if check {
                 unformatted_files.append(file_path);
             }
         }
+    }
+    # Print syntax error summary grouped by file
+    if failed_results {
+        print_failures(failed_results);
+        print_failed_summary(failed_results);
     }
     # In check mode, report all issues together
     if check {

@@ -2185,3 +2185,14 @@ test "isinstance_ternary_narrowing" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+"""Test list(Generator[T, _, _]) returns list[T]."""
+test "list_generator_type_inference" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_list_generator_inference.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}

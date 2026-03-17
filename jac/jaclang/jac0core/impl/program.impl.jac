@@ -1,11 +1,5 @@
 """Implementation for program constructs."""
 
-"""Initialize the JacProgram object.
-
-    Args:
-        main_mod: Optional main module to initialize with.
-        bytecode_cache: Optional custom bytecode cache. If None, uses default.
-    """
 impl JacProgram.init(
     self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
@@ -20,7 +14,6 @@ impl JacProgram.init(
     self._native_cache: dict = {};
 }
 
-"""Get a JacCompiler instance for this program."""
 impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     if self._compiler {
         return self._compiler;
@@ -30,7 +23,6 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     return self._compiler;
 }
 
-"""Return the type evaluator, creating one if needed."""
 impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
     import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
     if not self.type_evaluator {
@@ -39,7 +31,6 @@ impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
     return self.type_evaluator;
 }
 
-"""Clear all type information from the program."""
 impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> None {
     self.type_evaluator = None;
     if clear_hub {
@@ -53,14 +44,12 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-"""Get the bytecode for a specific module."""
 impl JacProgram.get_bytecode(
     self: JacProgram, full_target: str
 ) -> (types.CodeType | None) {
     return self._get_compiler().get_bytecode(full_target, self);
 }
 
-"""Parse source string into an AST module."""
 impl JacProgram.parse_str(
     self: JacProgram,
     source_str: str,
@@ -70,7 +59,6 @@ impl JacProgram.parse_str(
     return self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
 }
 
-"""Compile a Jac file into a module AST."""
 impl JacProgram.compile(
     self: JacProgram,
     file_path: str,
@@ -94,7 +82,6 @@ impl JacProgram.compile(
     );
 }
 
-"""Build a Jac file with import dependency resolution."""
 impl JacProgram.build(
     self: JacProgram,
     file_path: str,
@@ -104,7 +91,6 @@ impl JacProgram.build(
     return self._get_compiler().build(file_path, self, use_str, type_check=type_check);
 }
 
-"""Run a schedule of passes on a module."""
 impl JacProgram.run_schedule(
     self: JacProgram,
     mod: uni.Module,
