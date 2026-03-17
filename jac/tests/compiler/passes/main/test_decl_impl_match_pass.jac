@@ -226,3 +226,17 @@ test "impl has var type not shadowed" {
         );
     }
 }
+
+test "class reassignment impl match" {
+    # Bug: class reassignment via tuple unpacking creates second defn (Name node).
+    # lookup.defn[-1] returned Name instead of Archetype, causing E2009.
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "multi_inherit_impl_match.jac")
+    );
+    assert not [
+        e
+        for e in out.errors_had
+        if "E2009" in str(e)
+    ];
+    assert "impl.MyClass.get_value" in state.sym_tab.names_in_scope;
+}
