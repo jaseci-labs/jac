@@ -139,3 +139,21 @@ def apply_solved_type_vars(
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None) = None
 ) -> types.TypeBase;
+
+"""
+Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
+
+Walks the MRO accumulating bindings so that inherited TypeVars are resolved
+transitively. Used by specialize_member_type and FunctionType.specialize.
+"""
+def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
+
+"""Build type_params → type_args mapping from a specialized class."""
+def build_solution_from_specialized_class(
+    class_type: types.ClassType
+) -> dict[str, types.TypeBase];
+
+"""Specialize a base class using type args from the derived class."""
+def specialize_for_base_class(
+    src_type: types.ClassType, base_class: types.ClassType
+) -> types.ClassType;

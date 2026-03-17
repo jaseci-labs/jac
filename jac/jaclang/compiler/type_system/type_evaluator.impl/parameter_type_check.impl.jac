@@ -8,10 +8,13 @@ impl TypeEvaluator.validate_arg_types(
         if param is None or param.param_type is None {
             continue;
         }
+        # Pass param type as expected_type for bidirectional inference
         if isinstance(arg, uni.KWPair) {
-            arg_type = self.get_type_of_expression(arg.value);
+            arg_type = self.get_type_of_expression(
+                arg.value, expected_type=param.param_type
+            );
         } else {
-            arg_type = self.get_type_of_expression(arg);
+            arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
         if not self.assign_type(arg_type, param.param_type) {
@@ -40,8 +43,31 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
-    # TypeVar handling - use bound type if available (Pyright: typeVar6)
+    # TypeVar handling - use bound/constraints if available
     if isinstance(caller_type, types.TypeVarType) {
+        # Constrained TypeVar - check all constraint types
+        if caller_type.constraints {
+            for constraint_type in caller_type.constraints {
+                if isinstance(constraint_type, types.ClassType) {
+                    call_member = self._lookup_class_member(constraint_type, "__call__");
+                    if call_member {
+                        # Validate call arguments against this constraint's __call__
+                        call_type = self.get_type_of_symbol(call_member.symbol);
+                        if isinstance(call_type, types.FunctionType) {
+                            arg_param_match = self.match_args_to_params(
+                                expr.params, expr, call_type
+                            );
+                            if not arg_param_match.argument_errors {
+                                self.validate_arg_types(arg_param_match);
+                            }
+                        }
+                    } else {
+                        self.emit_diag(E1023, expr, type=str(constraint_type));
+                    }
+                }
+            }
+            return types.UnknownType();
+        }
         if caller_type.bound {
             # Bounded TypeVar - check if bound type has __call__
             bound_type = caller_type.bound;
@@ -155,6 +181,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         is_covariant = False;
         is_contravariant = False;
         bound_type: types.TypeBase | None = None;
+        constraint_types: list[types.TypeBase] = [];
 
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
@@ -188,6 +215,13 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                     }
                     continue;
                 }
+                # Collect constraint types (positional args after the name)
+                constraint_type = self.get_type_of_expression(arg);
+                if isinstance(constraint_type, types.ClassType)
+                and constraint_type.is_instantiable() {
+                    constraint_type = constraint_type.clone_as_instance();
+                }
+                constraint_types.append(constraint_type);
                 constraint_count += 1;
                 if first_constraint_arg is None {
                     first_constraint_arg = arg;
@@ -206,7 +240,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             name=type_var_name,
             is_covariant=is_covariant,
             is_contravariant=is_contravariant,
-            bound=bound_type
+            bound=bound_type,
+            constraints=constraint_types or None
         );
     }
     if (
@@ -489,7 +524,8 @@ impl TypeEvaluator.assign_type_to_type_var(
     if isinstance(param_type, types.ClassType)
     and isinstance(arg_type, types.ClassType) {
         param_type_args = param_type.private.type_args if param_type.private else [];
-        arg_type_args = self._get_type_args_for_base(arg_type, param_type);
+        specialized = type_utils.specialize_for_base_class(arg_type, param_type);
+        arg_type_args = specialized.private.type_args if specialized.private else [];
 
         for (i, pta) in enumerate(param_type_args) {
             if i < len(arg_type_args) {
@@ -499,31 +535,6 @@ impl TypeEvaluator.assign_type_to_type_var(
     }
 }
 
-"""
-Get type_args from arg_type matching param_type's base class.
-
-Handles: list[Item] -> Iterable => returns [Item] (via MRO lookup)
-"""
-impl TypeEvaluator._get_type_args_for_base(
-    arg_type: types.ClassType, param_type: types.ClassType
-) -> list[TypeBase] {
-    # Direct match
-    if param_type.shared == arg_type.shared {
-        return arg_type.private.type_args if arg_type.private else [];
-    }
-
-    # Search MRO for matching base
-    for mro_cls in arg_type.shared.mro {
-        if mro_cls.shared == param_type.shared {
-            if mro_cls.private and mro_cls.private.type_args {
-                return mro_cls.private.type_args;
-            }
-            # MRO base not specialized - use arg_type's type_args
-            return arg_type.private.type_args if arg_type.private else [];
-        }
-    }
-    return [];
-}
 
 """
 Infer type arguments for a generic class using the matched constructor overload.
@@ -741,18 +752,68 @@ impl TypeEvaluator.infer_type_args(
         return caller_type.private.type_args;
     }
 
-    # Get constructor method (init/__init__/__new__/dataclass)
+    # Try own constructor first
     init_method = self._get_constructor_for_inference(caller_type);
-    if not init_method {
-        return [];
+    if init_method {
+        bindings = self._collect_type_var_bindings(init_method, expr);
+        direct_args = [
+            bindings.get(tp.name, types.UnknownType())
+            for tp in caller_type.shared.type_params
+            if tp.name
+        ];
+        if any(not isinstance(ta, types.UnknownType) for ta in direct_args) {
+            return direct_args;
+        }
     }
 
-    # Match args to params and collect TypeVar bindings
-    bindings = self._collect_type_var_bindings(init_method, expr);
+    # Walk MRO for inherited constructors and translate bindings
+    for mro_cls in caller_type.shared.mro {
+        if mro_cls.shared == caller_type.shared {
+            continue;
+        }
+        inherited_init = self._get_constructor_for_inference(mro_cls);
+        if inherited_init {
+            bindings = self._collect_type_var_bindings(inherited_init, expr);
+            if bindings {
+                # Translate base class TypeVar names to our TypeVar names.
+                # If base declares T and we inherit as MyClass[U](Base[U]),
+                # then binding {T: int} should become {U: int}.
+                translated: dict[str, TypeBase] = {};
+                if mro_cls.private
+                and mro_cls.private.type_args
+                and mro_cls.shared.type_params {
+                    # Build reverse map: base TypeVar name -> type_arg expression
+                    for (idx, base_tp) in enumerate(mro_cls.shared.type_params) {
+                        if base_tp.name and base_tp.name in bindings {
+                            bound_type = bindings[base_tp.name];
+                            # The type_arg at this position tells us which of our TypeVars maps here
+                            if idx < len(mro_cls.private.type_args) {
+                                arg = mro_cls.private.type_args[idx];
+                                if isinstance(arg, types.TypeVarType) and arg.name {
+                                    translated[arg.name] = bound_type;
+                                }
+                            }
+                        }
+                    }
+                }
+                if not translated {
+                    # No translation needed — TypeVar names may match directly
+                    translated = bindings;
+                }
+                result = [
+                    translated.get(tp.name, types.UnknownType())
+                    for tp in caller_type.shared.type_params
+                    if tp.name
+                ];
+                if any(not isinstance(ta, types.UnknownType) for ta in result) {
+                    return result;
+                }
+            }
+        }
+    }
 
-    # Build type_args in order of type_params
     return [
-        bindings.get(tp.name, types.UnknownType())
+        types.UnknownType()
         for tp in caller_type.shared.type_params
         if tp.name
     ];

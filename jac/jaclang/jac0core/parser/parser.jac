@@ -45,7 +45,8 @@ import from jaclang.jac0core.diagnostics {
     E0047,
     E0050,
     E0051,
-    W0060
+    W0060,
+    W0061
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -462,6 +463,7 @@ obj Parser {
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
     def parse_filter_compr_inner -> FilterCompr;
+    def parse_filter_compr_bracket -> FilterCompr;
     def parse_assign_compr_inner -> AssignCompr;
     def parse_atom_literal -> Expr;
     def parse_multistring -> Expr;

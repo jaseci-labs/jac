@@ -1073,12 +1073,24 @@ impl UnparsePass.exit_connect_op(nd: uni.ConnectOp) -> None {
     nd.gen.jac = _join_kids(nd);
 }
 
-"""FilterCompr: produce (?:Type, cmp1, cmp2) or edge-inner Type:cmp syntax."""
+"""FilterCompr: produce [?:Type, cmp] outside, (?:Type, cmp) inside edge chains, or edge-inner Type:cmp syntax."""
 impl UnparsePass.exit_filter_compr(nd: uni.FilterCompr) -> None {
     parts: list[str] = [];
-    is_inner = isinstance(nd.parent, uni.EdgeOpRef);
-    if not is_inner {
-        parts.append("(?");
+    is_edge_inline = isinstance(nd.parent, uni.EdgeOpRef);
+    if is_edge_inline {
+        # Inside edge operator: ->:Type:cmp:-> — no delimiters
+        if nd.f_type {
+            parts.append(nd.f_type.gen.jac);
+        }
+        if nd.compares {
+            if nd.f_type {
+                parts.append(":");
+            }
+            parts.append(", ".join([c.gen.jac for c in nd.compares]));
+        }
+    } else {
+        # Bracket syntax [?:Type, cmp] — used everywhere except inline edge ops
+        parts.append("[?");
         if nd.f_type {
             parts.append(":");
             parts.append(nd.f_type.gen.jac);
@@ -1089,17 +1101,7 @@ impl UnparsePass.exit_filter_compr(nd: uni.FilterCompr) -> None {
             }
             parts.append(", ".join([c.gen.jac for c in nd.compares]));
         }
-        parts.append(")");
-    } else {
-        if nd.f_type {
-            parts.append(nd.f_type.gen.jac);
-        }
-        if nd.compares {
-            if nd.f_type {
-                parts.append(":");
-            }
-            parts.append(", ".join([c.gen.jac for c in nd.compares]));
-        }
+        parts.append("]");
     }
     nd.gen.jac = "".join(parts);
 }

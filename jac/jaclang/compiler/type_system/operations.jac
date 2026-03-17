@@ -170,16 +170,32 @@ def get_type_of_binary_operation(
     left_type = evaluator.get_type_of_expression(expr.left);
     right_type = evaluator.get_type_of_expression(expr.right);
 
-    # TypeVar binary operation handling (Pyright: typeVar5/6)
+    # TypeVar binary operation handling
     # Check BEFORE is_any_type since TypeVar.is_any_type() returns True
     # EXCEPT for | operator which is used for union types (T | int)
     if isinstance(expr.op, uni.Token)
     and expr.op.name in BINARY_OPERATOR_MAP
     and expr.op.name != Tok.BW_OR {
         if isinstance(left_type, jtypes.TypeVarType) {
+            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+            # Constrained TypeVar - check all constraint types
+            if left_type.constraints {
+                for constraint_type in left_type.constraints {
+                    if isinstance(constraint_type, jtypes.ClassType) {
+                        result = evaluator.get_type_of_magic_method_call(
+                            constraint_type, magic, [expr.right], None
+                        );
+                        if not result {
+                            evaluator.emit_diag(
+                                E1010, expr, op=magic, type=str(constraint_type)
+                            );
+                        }
+                    }
+                }
+                return jtypes.UnknownType();
+            }
             if left_type.bound and isinstance(left_type.bound, jtypes.ClassType) {
                 # Bounded TypeVar - use bound type for magic method lookup
-                (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
                 result = evaluator.get_type_of_magic_method_call(
                     left_type.bound, magic, [expr.right], None
                 );
@@ -191,14 +207,29 @@ def get_type_of_binary_operation(
                 return jtypes.UnknownType();
             }
             # Unbounded TypeVar
-            (magic, _) = BINARY_OPERATOR_MAP[expr.op.name];
             evaluator.emit_diag(E1010, expr, op=magic, type=left_type.name);
             return jtypes.UnknownType();
         }
         if isinstance(right_type, jtypes.TypeVarType) {
+            (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+            # Constrained TypeVar - check all constraint types
+            if right_type.constraints {
+                for constraint_type in right_type.constraints {
+                    if isinstance(constraint_type, jtypes.ClassType) {
+                        result = evaluator.get_type_of_magic_method_call(
+                            constraint_type, rmagic, [expr.left], None
+                        );
+                        if not result {
+                            evaluator.emit_diag(
+                                E1010, expr, op=rmagic, type=str(constraint_type)
+                            );
+                        }
+                    }
+                }
+                return jtypes.UnknownType();
+            }
             if right_type.bound and isinstance(right_type.bound, jtypes.ClassType) {
                 # Bounded TypeVar - use bound type for magic method lookup
-                (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
                 result = evaluator.get_type_of_magic_method_call(
                     right_type.bound, rmagic, [expr.left], None
                 );
@@ -210,7 +241,6 @@ def get_type_of_binary_operation(
                 return jtypes.UnknownType();
             }
             # Unbounded TypeVar
-            (_, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
             evaluator.emit_diag(E1010, expr, op=rmagic, type=right_type.name);
             return jtypes.UnknownType();
         }
@@ -293,8 +323,8 @@ def get_type_of_binary_operation(
             );
         }
         # Check whether a type is a valid node operand for connections.
-        # Accepts: node instances, UnionType where all members are node instances,
-        # AnyType, and UnknownType (not enough info to diagnose).
+        # Accepts: node instances, list of node instances, UnionType where all
+        # members are valid, AnyType, and UnknownType (not enough info to diagnose).
         def is_valid_node_operand(t: jtypes.TypeBase) -> bool {
             if t.is_any_type() or isinstance(t, jtypes.UnknownType) {
                 return True;
@@ -304,6 +334,16 @@ def get_type_of_binary_operation(
             }
             if isinstance(t, jtypes.UnionType) {
                 return all(is_valid_node_operand(m) for m in t.types);
+            }
+            # Also accept list of node instances (runtime accepts list[NodeArchetype])
+            if isinstance(t, jtypes.ClassType)
+            and t.is_builtin()
+            and t.shared.class_name == "list" {
+                if t.private.type_args and len(t.private.type_args) > 0 {
+                    return is_valid_node_operand(t.private.type_args[0]);
+                }
+                return True;  # Unparameterized list - allow
+
             }
             return False;
         }
@@ -389,8 +429,20 @@ def get_type_of_binary_operation(
                     }
                 }
             }
+            # Connect operator returns list of nodes (right operand)
+            if evaluator.prefetch and evaluator.prefetch.list_class {
+                list_type = evaluator.prefetch.list_class.clone_as_instance();
+                if isinstance(list_type, jtypes.ClassType) {
+                    list_type.private.type_args = [right_type];
+                    return list_type;
+                }
+            }
             return right_type;
         }
+    }
+    # Spawn operator: node spawn Walker() returns the walker instance
+    if isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_SPAWN {
+        return right_type;
     }
     #  walrus assignment
     if isinstance(expr.op, uni.Token) and expr.op.name == Tok.WALRUS_EQ {

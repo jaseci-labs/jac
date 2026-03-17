@@ -65,17 +65,13 @@ Uses the unified apply_solved_type_vars from type_utils.
 """
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     # Local import to avoid circular dependency at module load time
-    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
-
-    # Build solution from class type_args (Pyright: ConstraintSolution)
-    solution: dict[str, TypeBase] = {};
-    if class_type.shared.type_params and class_type.private.type_args {
-        for (idx, tp) in enumerate(class_type.shared.type_params) {
-            if tp.name and idx < len(class_type.private.type_args) {
-                solution[tp.name] = class_type.private.type_args[idx];
-            }
-        }
+    import from jaclang.compiler.type_system.type_utils {
+        apply_solved_type_vars,
+        build_type_var_solution
     }
+
+    # Build cumulative TypeVar solution by walking MRO (handles transitive bindings)
+    solution = build_type_var_solution(class_type);
 
     # Use unified apply_solved_type_vars (handles TypeVar, Self, nested types)
     clone = FunctionType(
@@ -376,6 +372,31 @@ impl ClassType.get_literal_value -> (str | int | bool | None) {
     return self.private.literal_value;
 }
 
+"""Check if this ClassType is a property class (@property or @cached_property)."""
+impl ClassType.is_property_class -> bool {
+    priv = self.private;
+    if priv is None {
+        return False;
+    }
+    return priv.is_property_class;
+}
+
+"""Get the return type of the property getter, or None if not a property."""
+impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
+    priv = self.private;
+    if priv is None {
+        return None;
+    }
+    if not priv.is_property_class {
+        return None;
+    }
+    fget = priv.fget_info;
+    if fget is None {
+        return None;
+    }
+    return fget.return_type;
+}
+
 """Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
     # Display literal types as Literal[value]
@@ -386,7 +407,12 @@ impl ClassType.__str__ -> str {
         }
         return f"Literal[{lit_val}]";
     }
-    return f"<class {self.shared.class_name}>";
+    # Include type_args in display for parameterized types (e.g., list[int], dict[str, bool])
+    if self.private and self.private.type_args {
+        args_str = ", ".join(str(arg) for arg in self.private.type_args);
+        return f"{self.shared.class_name}[{args_str}]";
+    }
+    return f"{self.shared.class_name}";
 }
 
 """Initialize the class type."""

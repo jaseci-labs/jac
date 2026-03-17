@@ -104,5 +104,5 @@ test "all type str methods" {
         class_name="TestClass", symbol_table=mock_module, mro=[]
     );
     class_type = types.ClassType(shared=shared);
-    assert str(class_type) == "<class TestClass>";
+    assert str(class_type) == "TestClass";
 }

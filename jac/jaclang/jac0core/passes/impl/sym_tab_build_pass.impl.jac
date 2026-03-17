@@ -192,11 +192,22 @@ impl SymTabBuildPass._exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) 
     }
     self._bind_import_path_symbols(import_all_module_path_node);
     if module {
+        # Copy symbols from names_in_scope (primary definitions)
         for sym in module.names_in_scope.values() {
             if (sym.access != SymbolAccess.PRIVATE) {
                 sym_table_to_update.def_insert(
                     sym.defn[0], single_decl='import absorb', imported=True
                 );
+            }
+        }
+        # Copy overloaded function symbols from names_in_scope_overload
+        for (name, overload_syms) in module.names_in_scope_overload.items() {
+            for sym in overload_syms {
+                if (sym.access != SymbolAccess.PRIVATE) {
+                    sym_table_to_update.def_insert(
+                        sym.defn[0], single_decl='import absorb', imported=True
+                    );
+                }
             }
         }
     }

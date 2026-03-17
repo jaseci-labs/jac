@@ -34,10 +34,8 @@ impl TypeCheckPass.exit_formatted_value(
 
 """Handle the return statement node."""
 impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
-    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
-    if nd.expr {
-        returning_type = self.evaluator.get_type_of_expression(nd.expr);
-    }
+    import from jaclang.compiler.type_system { types }
+
     if (fn := self.evaluator._get_enclosing_function(nd)) {
         # Check if return type annotation is missing.
         has_annotation = (
@@ -59,10 +57,25 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
             self.emit(E1003, node_override=nd);
             return;
         }
-        import from jaclang.compiler.type_system { types }
+
+        # Get the declared return type to pass as expected_type for bidirectional inference
         fn_type_base = self.evaluator.get_type_of_ability(fn);
+        if not isinstance(fn_type_base, types.FunctionType) {
+            return;
+        }
         fn_type: types.FunctionType = fn_type_base;
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
+
+        returning_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_none_type()
+        );
+        if nd.expr {
+            # Pass return type as expected_type for bidirectional inference
+            returning_type = self.evaluator.get_type_of_expression(
+                nd.expr, expected_type=return_type
+            );
+        }
+
         if not self.evaluator.assign_type(returning_type, return_type) {
             self.emit(
                 E1002,
@@ -175,7 +188,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         } else {
             left_type = self.evaluator.get_type_of_expression(target);
         }
-        right_type = self.evaluator.get_type_of_expression(nd.value);
+        # Pass declared LHS type as expected_type for bidirectional inference
+        right_type = self.evaluator.get_type_of_expression(
+            nd.value, expected_type=left_type
+        );
 
         # Pyright: assignTypeToExpression() - TypeVar assignment validation
         # When RHS is a TypeVar() call, validate that:
@@ -207,14 +223,32 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
         }
 
-        # Augmented assignment TypeVar check (Pyright: typeVar5/6)
-        # e.g., a += 3 where a is TypeVar is an error (unless bound supports it)
+        # Augmented assignment TypeVar check
+        # e.g., a += 3 where a is TypeVar is an error (unless bound/constraints support it)
         if nd.aug_op and isinstance(left_type, types.TypeVarType) {
-            if left_type.bound and isinstance(left_type.bound, types.ClassType) {
+            import from jaclang.compiler.type_system { operations }
+            op_name = operations.AUG_OPERATOR_MAP.get(nd.aug_op.name);
+            # Constrained TypeVar - check all constraint types
+            if left_type.constraints {
+                for constraint_type in left_type.constraints {
+                    if isinstance(constraint_type, types.ClassType) {
+                        if op_name {
+                            result = self.evaluator.get_type_of_magic_method_call(
+                                constraint_type, op_name, [nd.value], None
+                            );
+                            if result is None {
+                                self.emit(
+                                    E1010,
+                                    node_override=nd,
+                                    op=nd.aug_op.name,
+                                    type=str(constraint_type)
+                                );
+                            }
+                        }
+                    }
+                }
+            } elif left_type.bound and isinstance(left_type.bound, types.ClassType) {
                 # Bounded TypeVar - check if bound supports __iadd__ (etc)
-                # Use operations module to check via magic method lookup
-                import from jaclang.compiler.type_system { operations }
-                op_name = operations.AUG_OPERATOR_MAP.get(nd.aug_op.name);
                 if op_name {
                     result = self.evaluator.get_type_of_magic_method_call(
                         left_type.bound, op_name, [nd.value], nd
@@ -582,7 +616,19 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
     collection_type = self.evaluator.get_type_of_expression(nd.collection);
     # Check TypeVarType before is_any_type() — TypeVars are any-like but still need special handling.
     if isinstance(collection_type, types.TypeVarType) {
-        if collection_type.bound
+        # Constrained TypeVar - check all constraint types
+        if collection_type.constraints {
+            for constraint_type in collection_type.constraints {
+                if isinstance(constraint_type, types.ClassType) {
+                    iter_result = self.evaluator.get_type_of_magic_method_call(
+                        constraint_type, "__iter__", [], None
+                    );
+                    if iter_result is None {
+                        self.emit(E1021, node_override=nd, type=str(constraint_type));
+                    }
+                }
+            }
+        } elif collection_type.bound
         and isinstance(collection_type.bound, types.ClassType) {
             # Bounded TypeVar - check if bound type has __iter__
             iter_result = self.evaluator.get_type_of_magic_method_call(

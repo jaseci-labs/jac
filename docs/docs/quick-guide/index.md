@@ -17,12 +17,12 @@ def categorize(title: str) -> Category
     by llm();
 
 def:pub get_todos -> list {
-    if not [root-->](?:Todo) {
+    if not [root-->][?:Todo] {
         root ++> Todo(title="Buy groceries");
         root ++> Todo(title="Finish report");
     }
     return [{"title": t.title, "category": str(categorize(t.title)).split(".")[-1]}
-            for t in [root-->](?:Todo)];
+            for t in [root-->][?:Todo]];
 }
 
 cl def:pub app() -> JsxElement {
@@ -228,6 +228,8 @@ jac hello.jac
 ```
 
 Note: `jac` is shorthand for `jac run` -- both work identically.
+
+> **💡 Tip**: Add `-e` to see type check diagnostics: `jac -e hello.jac`. This shows errors and warnings without needing a separate `jac check`.
 
 **That's it!** You just ran your first Jac program.
 

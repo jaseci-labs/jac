@@ -292,7 +292,50 @@ class JacTestItem(pytest.Item):
             self._test_case.runTest()
 
     def repr_failure(self, excinfo: pytest.ExceptionInfo[BaseException]) -> str:
-        return str(excinfo.getrepr())
+        # Build a concise traceback showing only test-relevant frames
+        # (the test file itself) plus the final error, filtering out
+        # pytest/pluggy/venv internals AND jaclang compiler internals.
+        import linecache
+
+        lines: list[str] = []
+        tb = excinfo.tb
+        # Collect frames from the test file and immediate test code only.
+        test_entries: list[tuple[str, int, str, str]] = []
+        last_entry: tuple[str, int, str, str] | None = None
+        while tb is not None:
+            frame = tb.tb_frame
+            filename = frame.f_code.co_filename
+            lineno = frame.f_lineno
+            funcname = frame.f_code.co_name
+            tb = tb.tb_next
+            src_line = ""
+            with contextlib.suppress(Exception):
+                src_line = linecache.getline(filename, lineno).strip()
+            entry = (filename, lineno, funcname, src_line)
+            last_entry = entry
+            # Skip non-project frames.
+            if any(s in filename for s in (".venv/", "site-packages/", "/unittest/")):
+                continue
+            # Keep frames from test files, skip jaclang internals.
+            if "/jaclang/" in filename and "/tests/" not in filename:
+                continue
+            test_entries.append(entry)
+
+        for filename, lineno, funcname, src_line in test_entries:
+            lines.append(f"  {filename}:{lineno} in {funcname}")
+            if src_line:
+                lines.append(f"    {src_line}")
+
+        # Show where the error actually occurred if it's not already shown.
+        if last_entry and (not test_entries or last_entry != test_entries[-1]):
+            filename, lineno, funcname, src_line = last_entry
+            lines.append(f"  {filename}:{lineno} in {funcname}")
+            if src_line:
+                lines.append(f"    {src_line}")
+
+        # Append the exception message.
+        lines.append(f"E   {excinfo.typename}: {excinfo.value}")
+        return "\n".join(lines)
 
     def reportinfo(self) -> tuple[Path, None, str]:
         return self.path, None, self.name

@@ -130,6 +130,52 @@ impl TypeEvaluator._lookup_class_member(
     return None;
 }
 
+"""Check if a ClassType is the builtin 'type' class with type arguments (type[T])."""
+impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
+    return (
+        class_type.is_builtin("type")
+        and class_type.private is not None
+        and class_type.private.type_args is not None
+        and len(class_type.private.type_args) >= 1
+    );
+}
+
+"""Get lookup type for member access. For type[T], returns T; otherwise returns original."""
+impl TypeEvaluator._get_type_for_member_lookup(
+    object_type: types.ClassType
+) -> types.ClassType {
+    if self._is_type_subscript(object_type) {
+        inner_type = object_type.private.type_args[0];
+        # TODO: Handle TypeVar case - should look up on TypeVar's bound/constraints
+        if isinstance(inner_type, types.ClassType) {
+            lookup_type = inner_type;
+            if not lookup_type.is_instantiable() {
+                lookup_type = lookup_type.clone_as_class();
+            }
+            return lookup_type;
+        }
+    }
+    return object_type;
+}
+
+"""Get bound member from a class type. Handles type[T] by looking up on T."""
+impl TypeEvaluator.get_type_of_bound_member(
+    object_type: types.ClassType, member_name: str
+) -> type_utils.ClassMember | None {
+    # TODO: Handle type[Any]/type[Unknown] - should return Any for member access
+    # TODO: Handle metaclass member lookups
+    # TODO: Handle descriptor protocol (__get__, __set__)
+    # TODO: Handle __getattr__ fallback when member not found
+    object_type_is_instantiable = object_type.is_instantiable();
+
+    if object_type_is_instantiable {
+        lookup_type = self._get_type_for_member_lookup(object_type);
+        return self._lookup_class_member(lookup_type, member_name);
+    } else {
+        return self._lookup_object_member(object_type, member_name);
+    }
+}
+
 """
 Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
 
@@ -157,15 +203,8 @@ Uses the unified apply_solved_type_vars from type_utils.
 impl TypeEvaluator.specialize_member_type(
     member_type: TypeBase, class_type: types.ClassType
 ) -> TypeBase {
-    # Build TypeVar name -> concrete type mapping (Pyright: ConstraintSolution)
-    solution: dict[str, TypeBase] = {};
-    if class_type.shared.type_params and class_type.private.type_args {
-        for (idx, tp) in enumerate(class_type.shared.type_params) {
-            if tp.name and idx < len(class_type.private.type_args) {
-                solution[tp.name] = class_type.private.type_args[idx];
-            }
-        }
-    }
+    # Build cumulative TypeVar solution by walking MRO (handles transitive bindings)
+    solution = type_utils.build_type_var_solution(class_type);
 
     # Use unified apply_solved_type_vars (Pyright: applySolvedTypeVars)
     return type_utils.apply_solved_type_vars(member_type, solution, class_type);
@@ -223,6 +262,57 @@ impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -
             result.append(ty);
         }
     }
+}
+
+"""Extract expected element type from an expected container type.
+
+If expected_type is a parameterized container (list[X], set[X]) matching
+the given container_class, return X. Otherwise return None.
+"""
+impl TypeEvaluator._get_expected_element_type(
+    expected_type: TypeBase | None, container_class: TypeBase
+) -> TypeBase | None {
+    if expected_type is None {
+        return None;
+    }
+    if (
+        isinstance(expected_type, types.ClassType)
+        and isinstance(container_class, types.ClassType)
+        and expected_type.shared == container_class.shared
+        and expected_type.private
+        and expected_type.private.type_args
+        and len(expected_type.private.type_args) >= 1
+    ) {
+        return self._convert_to_instance(expected_type.private.type_args[0]);
+    }
+    return None;
+}
+
+"""Extract expected key/value types from an expected dict type.
+
+If expected_type is dict[K, V] matching the given dict_class, return (K, V).
+Otherwise return None.
+"""
+impl TypeEvaluator._get_expected_kv_types(
+    expected_type: TypeBase | None, dict_class: TypeBase
+) -> tuple[TypeBase, TypeBase] | None {
+    if expected_type is None {
+        return None;
+    }
+    if (
+        isinstance(expected_type, types.ClassType)
+        and isinstance(dict_class, types.ClassType)
+        and expected_type.shared == dict_class.shared
+        and expected_type.private
+        and expected_type.private.type_args
+        and len(expected_type.private.type_args) >= 2
+    ) {
+        return (
+            self._convert_to_instance(expected_type.private.type_args[0]),
+            self._convert_to_instance(expected_type.private.type_args[1])
+        );
+    }
+    return None;
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {
@@ -458,20 +548,57 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
-"""Check if a symbol represents a property."""
+"""Check if a symbol represents a property (@property or @cached_property)."""
 impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
     node_ = symbol.decl.name_of;
-    if isinstance(node_, uni.Ability) {
-        ability = node_;
-        if ability.decorators {
-            for decorator in ability.decorators {
-                if isinstance(decorator, uni.Name) and decorator.value == "property" {
-                    return True;
-                }
-            }
+    if not isinstance(node_, uni.Ability) {
+        return False;
+    }
+    ability = node_;
+    if not ability.decorators {
+        return False;
+    }
+    for decorator in ability.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if properties.is_property_decorator_type(decorator_type) {
+            return True;
+        }
+        if properties.is_cached_property_decorator_type(decorator_type) {
+            return True;
         }
     }
     return False;
+}
+
+"""Get the return type of a property's getter."""
+impl TypeEvaluator.get_getter_type_from_property(
+    symbol: uni.Symbol
+) -> (TypeBase | None) {
+    node_ = symbol.decl.name_of;
+    if not isinstance(node_, uni.Ability) {
+        return None;
+    }
+    ability = node_;
+    if not ability.decorators {
+        return None;
+    }
+    is_property_decorated = False;
+    for decorator in ability.decorators {
+        decorator_type = self.get_type_of_expression(decorator);
+        if properties.is_property_decorator_type(decorator_type)
+        or properties.is_cached_property_decorator_type(decorator_type) {
+            is_property_decorated = True;
+            break;
+        }
+    }
+    if not is_property_decorated {
+        return None;
+    }
+    func_type = self.get_type_of_ability(ability);
+    if not isinstance(func_type, types.FunctionType) {
+        return None;
+    }
+    return func_type.return_type;
 }
 
 """

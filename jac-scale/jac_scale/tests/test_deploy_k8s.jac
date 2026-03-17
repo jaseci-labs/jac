@@ -20,6 +20,7 @@ import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
@@ -245,9 +246,10 @@ test "deploy all in one" {
 
     result = deployment_target.deploy(app_config);
     details = result.details;
-    assert len(details) == 11;
+    print(f"Deployment result details: {details}");
+    print(f"Deployment status: {result.message}");
     assert result.success is True;
-    print(f"Deployment successful: {result.message}");
+    assert len(details) == 13;
 
     full_status = deployment_target.get_full_status(app_name);
     assert full_status is not None;
@@ -501,8 +503,8 @@ test "deploy all in one" {
     assert grafana_deploy.spec.replicas == 1;
     grafana_container = grafana_deploy.spec.template.spec.containers[0];
     assert grafana_container.image == "grafana/grafana:latest";
-    assert len(grafana_container.volume_mounts) == 3;
-    print(f"Grafana Deployment '{grafana_name}' exists with 3 volume mounts");
+    assert len(grafana_container.volume_mounts) == 5;
+    print(f"Grafana Deployment '{grafana_name}' exists with 5 volume mounts");
 
     grafana_service = core_v1.read_namespaced_service(
         name=f"{grafana_name}-service", namespace=namespace
@@ -618,6 +620,45 @@ test "deploy all in one" {
     assert code_server_service.spec.type == "ClusterIP";
     assert code_server_service.spec.ports[0].port == 8080;
     print("Code-server service verified: ClusterIP on port 8080");
+
+    # Validate NetworkPolicies were created
+    network_policy_names = [
+        f"{app_name}-network-policy",
+        f"{app_name}-mongodb-network-policy",
+        f"{app_name}-redis-network-policy",
+        f"{app_name}-prometheus-network-policy",
+        f"{app_name}-grafana-network-policy",
+        f"{app_name}-code-server-network-policy",
+        f"{app_name}-kube-state-metrics-network-policy",
+        f"{app_name}-node-exporter-network-policy",
+        f"{app_name}-mongo-express-network-policy",
+        f"{app_name}-redis-insight-network-policy"
+    ];
+    for policy_name in network_policy_names {
+        policy = networking_v1.read_namespaced_network_policy(
+            name=policy_name, namespace=namespace
+        );
+        assert policy.metadata.name == policy_name;
+        assert policy.spec.policy_types == ["Ingress", "Egress"];
+        print(f"NetworkPolicy '{policy_name}' exists with correct policy types");
+    }
+
+    # Validate MongoDB/Redis NetworkPolicy ingress allows dashboard pods
+    mongo_policy = networking_v1.read_namespaced_network_policy(
+        name=f"{app_name}-mongodb-network-policy", namespace=namespace
+    );
+    mongo_ingress = mongo_policy.spec.ingress[0];
+    mongo_from = [f.pod_selector.match_labels for f in mongo_ingress._from];
+    assert {'app': app_name} in mongo_from;
+    assert {'app': f"{app_name}-mongo-express"} in mongo_from;
+
+    redis_policy = networking_v1.read_namespaced_network_policy(
+        name=f"{app_name}-redis-network-policy", namespace=namespace
+    );
+    redis_ingress = redis_policy.spec.ingress[0];
+    redis_from = [f.pod_selector.match_labels for f in redis_ingress._from];
+    assert {'app': app_name} in redis_from;
+    assert {'app': f"{app_name}-redis-insight"} in redis_from;
 
     # Validate K8s Secret was created with correct data
     secret = core_v1.read_namespaced_secret(
@@ -877,8 +918,59 @@ test "deploy all in one" {
     }
     assert pvc_deleted , "code-pvc should have been deleted within 60s of application component destroy";
 
+    # Verify app ServiceAccount is gone
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-sa", namespace=namespace
+        );
+        raise AssertionError(
+            "App ServiceAccount should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify code-server ServiceAccount is gone
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-code-server-sa", namespace=namespace
+        );
+        raise AssertionError(
+            "Code-server ServiceAccount should have been deleted by application component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify NetworkPolicies are gone
+    networking_v1 = client.NetworkingV1Api();
+    network_policy_names = [
+        f"{app_name}-network-policy",
+        f"{app_name}-mongodb-network-policy",
+        f"{app_name}-redis-network-policy",
+        f"{app_name}-prometheus-network-policy",
+        f"{app_name}-grafana-network-policy",
+        f"{app_name}-code-server-network-policy",
+        f"{app_name}-kube-state-metrics-network-policy",
+        f"{app_name}-node-exporter-network-policy",
+        f"{app_name}-mongo-express-network-policy",
+        f"{app_name}-redis-insight-network-policy"
+    ];
+    for policy_name in network_policy_names {
+        try {
+            networking_v1.read_namespaced_network_policy(
+                name=policy_name, namespace=namespace
+            );
+            raise AssertionError(
+                f"NetworkPolicy '{policy_name}' should have been deleted by application component destroy"
+            );
+        } except ApiException as e {
+            assert e.status == 404 , f"Expected 404 for {policy_name}, got {e.status}";
+        }
+    }
+
     print(
-        "Application component (HPA + Deployment + Service + Secret + code-server + PVCs) removed"
+        "Application component (HPA + Deployment + Service + Secret + code-server + PVCs + SAs + NetworkPolicies) removed"
     );
 
     # Verify cache and database are still running
@@ -965,7 +1057,19 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    print("Cache component (Redis Deployment + Service + ConfigMap) removed");
+    # Verify Redis ServiceAccount is gone
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-redis-sa", namespace=namespace
+        );
+        raise AssertionError(
+            "Redis ServiceAccount should have been deleted by cache component destroy"
+        );
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Cache component (Redis Deployment + Service + ConfigMap + SA) removed");
 
     # Verify database is still running
     try {
@@ -1059,6 +1163,25 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
+    # Verify dashboard ServiceAccounts are gone
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-mongo-express-sa", namespace=namespace
+        );
+        raise AssertionError("mongo-express ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-redis-insight-sa", namespace=namespace
+        );
+        raise AssertionError("RedisInsight ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
     print("Dashboard (RedisInsight + mongo-express) cleanup verified");
 
     # Verify monitoring stack cleanup
@@ -1137,6 +1260,16 @@ test "deploy all in one" {
         } except ApiException as e {
             assert e.status == 404 , f"Expected 404 for '{cm_name}', got {e.status}";
         }
+    }
+
+    # Verify MongoDB ServiceAccount is gone
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-mongodb-sa", namespace=namespace
+        );
+        raise AssertionError("MongoDB ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
@@ -1288,6 +1421,24 @@ test "deploy all in one" {
 
     # Verify K8s Secret cleanup
     try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-prometheus-sa", namespace=namespace
+        );
+        raise AssertionError("Prometheus ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{app_name}-grafana-sa", namespace=namespace
+        );
+        raise AssertionError("Grafana ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
         rbac_v1.read_cluster_role(name=cluster_role_name);
         raise AssertionError("kube-state-metrics ClusterRole should have been deleted");
     } except ApiException as e {
@@ -1318,7 +1469,7 @@ test "deploy all in one" {
     }
 
     print(
-        "Monitoring component (Prometheus + Grafana + kube-state-metrics + node-exporter) cleanup verified"
+        "Monitoring component (Prometheus + Grafana + kube-state-metrics + node-exporter + SAs) cleanup verified"
     );
 
     # Verify namespace was deleted (since it is not 'default')
@@ -1368,7 +1519,7 @@ test "early exit" {
     failure_message = result.message;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
-    assert len(details) == 10;
+    assert len(details) == 12;
     assert result.success is False;
     assert failure_message is not None and "Containers restarted" in failure_message;
 }
@@ -1426,6 +1577,185 @@ test "redis template file in package" {
     }
 }
 
+
+# Unit tests for security hardening patterns (dict construction)
+# These tests do not require a live Kubernetes cluster.
+
+# Verify database provider manifests include secure container security contexts.
+test "kubernetes database provider security context" {
+    mongo_provider = DatabaseProviderFactory.create(
+        'kubernetes_mongo', None, {'app_name': 'test-app'}
+    );
+    mongo_deploy = mongo_provider.deploy();
+    mongo_container = mongo_deploy['deployment']['spec']['template']['spec'][
+        'containers'
+    ][0];
+    mongo_sc = mongo_container['securityContext'];
+    assert mongo_sc['runAsNonRoot'] is True;
+    assert mongo_sc['readOnlyRootFilesystem'] is True;
+    assert mongo_sc['allowPrivilegeEscalation'] is False;
+    assert mongo_sc['capabilities']['drop'] == ['ALL'];
+    assert mongo_sc['seccompProfile']['type'] == 'RuntimeDefault';
+
+    redis_provider = DatabaseProviderFactory.create(
+        'kubernetes_redis', None, {'app_name': 'test-app'}
+    );
+    redis_deploy = redis_provider.deploy();
+    redis_container = redis_deploy['deployment']['spec']['template']['spec'][
+        'containers'
+    ][0];
+    redis_sc = redis_container['securityContext'];
+    assert redis_sc['runAsNonRoot'] is True;
+    assert redis_sc['readOnlyRootFilesystem'] is True;
+    assert redis_sc['allowPrivilegeEscalation'] is False;
+    assert redis_sc['capabilities']['drop'] == ['ALL'];
+    assert redis_sc['seccompProfile']['type'] == 'RuntimeDefault';
+
+    # ServiceAccounts should not auto-mount tokens
+    assert mongo_deploy['service_account']['automountServiceAccountToken'] is False;
+    assert redis_deploy['service_account']['automountServiceAccountToken'] is False;
+}
+
+# Fake networking client for use in kubernetes target security policy dicts test.
+obj FakeNetworkingV1 {
+    has created_policies: list = [];
+
+    def read_namespaced_network_policy(name: str, namespace: str) {
+        e = ApiException();
+        e.status = 404;
+        raise e;
+    }
+
+    def create_namespaced_network_policy(namespace: str, body: dict[(str, Any)]) {
+        self.created_policies.append(body);
+    }
+
+    def replace_namespaced_network_policy(
+        name: str, namespace: str, body: dict[(str, Any)]
+    ) {
+        # Not used in this test
+        self.created_policies.append(body);
+    }
+}
+
+# Verify KubernetesTarget container/security settings and NetworkPolicy structure.
+test "kubernetes target security policy dicts" {
+    # Build a target with default config
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'test-app';
+    target_config['namespace'] = 'test-ns';
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    # Verify container security context produced by _build_container_config
+    probe_configs = deployment_target._build_probe_config('/health');
+    resources = deployment_target._build_resource_config();
+    container = deployment_target._build_container_config(
+        'test-app',
+        'example/image:latest',
+        probe_configs,
+        resources,
+        secret_ref_name='test-secret'
+    );
+    sc = container['securityContext'];
+    assert sc['runAsNonRoot'] is True;
+    assert sc['readOnlyRootFilesystem'] is True;
+    assert sc['allowPrivilegeEscalation'] is False;
+    assert sc['capabilities']['drop'] == ['ALL'];
+    assert sc['seccompProfile']['type'] == 'RuntimeDefault';
+
+    # Verify NetworkPolicy dict structure via deploy function (using fake client)
+    app_name = 'test-app';
+    namespace = 'test-ns';
+
+    fake_net = FakeNetworkingV1();
+    deployment_target._deploy_network_policy(app_name, namespace, fake_net);
+
+    # Should have created all component policies
+    expected_policy_names = [
+        f"{app_name}-network-policy",
+        f"{app_name}-mongodb-network-policy",
+        f"{app_name}-redis-network-policy",
+        f"{app_name}-prometheus-network-policy",
+        f"{app_name}-grafana-network-policy",
+        f"{app_name}-code-server-network-policy",
+        f"{app_name}-kube-state-metrics-network-policy",
+        f"{app_name}-node-exporter-network-policy",
+
+    ];
+    created_names = [p['metadata']['name'] for p in fake_net.created_policies];
+    for name in expected_policy_names {
+        assert name in created_names;
+    }
+
+    # Verify common metadata/structure for all policies
+    for p in fake_net.created_policies {
+        assert p['metadata']['labels']['app'] == app_name;
+        assert p['metadata']['labels']['managed'] == 'jac-scale';
+        assert p['spec']['policyTypes'] == ['Ingress', 'Egress'];
+        assert p['spec']['podSelector']['matchLabels']['app'] is not None;
+        # Egress should include DNS access to kube-system
+        egress_rules = p['spec']['egress'];
+        assert any(
+            rule.get('to', [])[0].get('namespaceSelector', {}).get(
+                'matchLabels', {}
+            ).get(
+                'kubernetes.io/metadata.name'
+            ) == 'kube-system'
+            for rule in egress_rules
+            if rule.get('to')
+        );
+    }
+
+    # Verify app policy allows inbound traffic on correct container port
+    app_policy = next(
+        (
+            p
+            for p in fake_net.created_policies
+            if p['metadata']['name'] == f"{app_name}-network-policy"
+        ),
+        None
+    );
+    assert app_policy is not None;
+    app_ports = app_policy['spec']['ingress'][0]['ports'];
+    assert app_ports[0]['port'] == deployment_target.k8s_config.container_port;
+
+    # Verify MongoDB and Redis policies allow traffic from both app and dashboard pods.
+    mongo_policy = next(
+        (
+            p
+            for p in fake_net.created_policies
+            if p['metadata']['name'] == f"{app_name}-mongodb-network-policy"
+        ),
+        None
+    );
+    assert mongo_policy is not None;
+    mongo_from = mongo_policy['spec']['ingress'][0]['from'];
+    assert {'podSelector': {'matchLabels': {'app': app_name}}} in mongo_from;
+    assert {
+        'podSelector': {'matchLabels': {'app': f"{app_name}-mongo-express"}}
+    } in mongo_from;
+    assert mongo_policy['spec']['ingress'][0]['ports'][0]['port'] == 27017;
+
+    redis_policy = next(
+        (
+            p
+            for p in fake_net.created_policies
+            if p['metadata']['name'] == f"{app_name}-redis-network-policy"
+        ),
+        None
+    );
+    assert redis_policy is not None;
+    redis_from = redis_policy['spec']['ingress'][0]['from'];
+    assert {'podSelector': {'matchLabels': {'app': app_name}}} in redis_from;
+    assert {
+        'podSelector': {'matchLabels': {'app': f"{app_name}-redis-insight"}}
+    } in redis_from;
+    assert redis_policy['spec']['ingress'][0]['ports'][0]['port'] == 6379;
+}
 # ---------------------------------------------------------------------------
 # Domain / TLS configuration tests (mocked - no live cluster required)
 # ---------------------------------------------------------------------------

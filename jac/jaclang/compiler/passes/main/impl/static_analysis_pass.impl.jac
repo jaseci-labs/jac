@@ -103,6 +103,11 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
+        # Skip attribute access names (right side of x.attr)
+        parent = name_nd.parent;
+        if isinstance(parent, uni.AtomTrailer) and parent.is_attr {
+            continue;
+        }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
             continue;
@@ -233,7 +238,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     for nd in mod.get_all_sub_nodes(typ=uni.Except, brute_force=True) {
         if nd.ex_type is not None and isinstance(nd.ex_type, uni.Name) {
             if nd.ex_type.value in ("Exception", "BaseException") {
-                self.emit(W2052, node_override=nd, type=nd.ex_type.value);
+                self.emit(W2052, node_override=nd.ex_type, type=nd.ex_type.value);
             }
         }
     }

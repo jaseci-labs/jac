@@ -37,7 +37,25 @@ impl start_cli -> None {
     # to the script — no '--' separator needed.
     script_args = _extract_script_args(registry);
     # Parse arguments
-    args = parser.parse_args();
+    (args, unknown) = parser.parse_known_args();
+    if unknown {
+        # e.g. jac test file.jac --test_name typevar5 unbounded operations
+        #      sys.argv[1] → "test"
+        cmd = sys.argv[1] if len(sys.argv) > 1 else '';
+        if cmd == 'test' and any(not u.startswith('-') for u in unknown) {
+            console.error(
+                f"unrecognized arguments: {' '.join(
+                    unknown
+                )}\n"
+                "hint: use quotes for multi-word test names:\n"
+                "  jac test <file.jac> --test_name \"my test name\"\n"
+                "  jac test <file.jac> --test_name my_test_name"
+            );
+        } else {
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}");
+        }
+        sys.exit(2);
+    }
     # Handle --version flag
     if args.version {
         import from jaclang.cli.banners { print_version_banner }

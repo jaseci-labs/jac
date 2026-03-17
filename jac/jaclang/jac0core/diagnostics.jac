@@ -197,6 +197,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
      ),
+     W0061 = _warn(
+         "W0061",
+         Category.SYNTAX,
+         "Parenthesized filter syntax '(?:...)' is deprecated. Use bracket syntax '[?:...]' instead.",
+         "Replace (?:Type, cond) with [?:Type, cond]"
+     ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
@@ -481,6 +487,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2011", Category.SEMANTIC, "Parameter count mismatch for ability {name}."
      ),
      E2012 = _err("E2012", Category.SEMANTIC, "From the declaration of {name}."),
+     W2013 = _warn(
+         "W2013",
+         Category.SEMANTIC,
+         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

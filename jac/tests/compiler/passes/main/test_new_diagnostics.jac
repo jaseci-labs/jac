@@ -478,6 +478,18 @@ test "W2050: missing return on non-None function" {
 test "W2052: overly broad except" {
     (prog, _) = compile_and_check("semantic_W2052_broad_except.jac");
     assert has_diagnostic_code(prog, "W2052", in_warnings=True);
+    # Verify underline is clamped to the token, not the entire Except block
+    for w in prog.warnings_had {
+        if "W2052" in w.msg {
+            output = w.pretty_print();
+            for line in output.split('\n') {
+                caret_count = line.count('^');
+                assert caret_count <= len("Exception") , f"Underline too wide ({caret_count} carets): {repr(
+                    line
+                )}";
+            }
+        }
+    }
 }
 
 test "E2055: return in finally block" {
@@ -644,6 +656,65 @@ test "E5080: unsupported feature in backend" {
     pytest.skip("E5080 not yet implemented");
     # Placeholder — needs a feature that exists in one backend but not another
     assert False , "E5080 test needs backend-specific fixture";
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PARSER DEPRECATION WARNINGS (W0061)
+# ══════════════════════════════════════════════════════════════════
+test "W0061: deprecated paren filter syntax" {
+    (prog, _) = compile_only("parser_W0061_deprecated_paren_filter.jac");
+    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "Old (?:...) filter syntax should emit W0061 deprecation warning";
+}
+
+test "W0061: bracket filter no warning" {
+    (prog, _) = compile_only("parser_W0061_bracket_filter_ok.jac");
+    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "New [?:...] bracket filter syntax should not emit W0061";
+}
+
+test "W0061: multiple deprecated filters emit multiple warnings" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }',
+        file_path="test.jac"
+    );
+    assert count_diagnostic_code(prog, "W0061", in_warnings=True) == 2 , "Each deprecated filter occurrence should emit its own W0061";
+}
+
+test "W0061: edge ref with deprecated filter" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='walker W { can go with entry { visit [-->](?:Foo); } }',
+        file_path="test.jac"
+    );
+    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "Deprecated filter inside edge ref should emit W0061";
+}
+
+test "W0061: edge ref with bracket filter no warning" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='walker W { can go with entry { visit [-->][?:Foo]; } }',
+        file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "Bracket filter after edge ref should not emit W0061";
+}
+
+test "W0061: filter inside edge chain warns" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='walker W { can go with entry { visit [-->(?:Foo)]; } }',
+        file_path="test.jac"
+    );
+    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "(?:...) inside edge chain should also emit W0061 deprecation";
+}
+
+test "W0061: bracket filter inside edge chain no warning" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='walker W { can go with entry { visit [-->[?:Foo]]; } }',
+        file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "Bracket filter [?:...] inside edge chain should not emit W0061";
 }
 
 
