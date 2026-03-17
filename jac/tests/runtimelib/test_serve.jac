@@ -1,5 +1,6 @@
 """Tests for jac serve-related functionality (unit tests and faux mode only)."""
 
+import inspect;
 import io;
 import os;
 import socket;
@@ -156,9 +157,35 @@ test "faux flag with littlex example" {
         }
         output = captured_output.getvalue();
         errors = captured_errors.getvalue();
+        # Debug: inspect the loaded module
+        import from jaclang.jac0core.constructs { WalkerArchetype }
+        mod_name = os.path.splitext(os.path.basename(littlex_path))[0];
+        loaded_mod = Jac.loaded_modules.get(mod_name);
+        debug_lines = [f"loaded_modules keys: {list(Jac.loaded_modules.keys())}"];
+        debug_lines.append(f"mod_name: {mod_name}, loaded_mod: {loaded_mod}");
+        if loaded_mod {
+            types_in_mod = [
+                (n, type(o).__name__, [b.__name__ for b in o.__bases__])
+                for (n, o) in inspect.getmembers(loaded_mod)
+                if isinstance(o, type) and not n.startswith('_')
+            ];
+            debug_lines.append(f"types: {types_in_mod[:10]}");
+            walker_check = [
+                (
+                    n,
+                    issubclass(o, WalkerArchetype),
+                    id(WalkerArchetype),
+                    [id(b) for b in o.__mro__]
+                )
+                for (n, o) in inspect.getmembers(loaded_mod)
+                if isinstance(o, type) and 'walker' in str(o.__bases__).lower()
+            ];
+            debug_lines.append(f"walker_check: {walker_check[:5]}");
+        }
+        debug_info = '\n'.join(debug_lines);
         # Verify that littleX endpoints are discovered
         assert "WALKERS" in output , (
-            f"Expected 'WALKERS' in output.\nSTDOUT:\n{output}\nSTDERR:\n{errors}"
+            f"Expected 'WALKERS' in output.\nSTDOUT:\n{output}\nSTDERR:\n{errors}\nDEBUG:\n{debug_info}"
         );
         # Check for key littleX walkers
         littlex_walkers = ["update_profile", "get_profile", "create_tweet", "load_feed"];
