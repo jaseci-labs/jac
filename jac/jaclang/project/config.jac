@@ -126,6 +126,19 @@ obj StorageConfig {
         create_dirs: bool = True;
 }
 
+"""SAM (Sparse Adjacency Matrix) strategy settings from [sam] section.
+
+strategy:
+  - "gti": SAM backed by GTI topology index (Redis at scale, SQLite locally)
+  - "anchor": SAM backed by arch_cls type metadata on anchor documents (MongoDB)
+  - "none": No optimization, original edge-list loop
+gti_degree_threshold: minimum number of edges before GTI indexing activates (gti only)
+"""
+obj SamConfig {
+    has strategy: str = "none",
+        gti_degree_threshold: int = 10;
+}
+
 """Environment configuration from [environment] section."""
 obj EnvironmentConfig {
     has default_profile: str = "";
@@ -161,6 +174,7 @@ obj JacConfig {
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
         storage: StorageConfig = StorageConfig(),
+        sam: SamConfig = SamConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         # Dependencies

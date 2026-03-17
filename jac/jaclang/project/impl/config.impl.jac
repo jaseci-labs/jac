@@ -205,6 +205,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
+        "sam": self.sam,
         "environment": self.environment
     };
     for (section, obj) in section_map.items() {
@@ -316,6 +317,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
+        "sam": self.sam,
         "environment": self.environment
     };
     for (section, obj) in section_map.items() {
@@ -861,6 +863,13 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             storage_type=storage_data.get("type", "local"),
             base_path=storage_data.get("base_path", "./storage"),
             create_dirs=storage_data.get("create_dirs", True)
+        );
+    }
+    if "sam" in data {
+        sam_data = data["sam"];
+        config.sam = SamConfig(
+            strategy=sam_data.get("strategy", "none"),
+            gti_degree_threshold=sam_data.get("gti_degree_threshold", 10)
         );
     }
     if "plugins" in data {

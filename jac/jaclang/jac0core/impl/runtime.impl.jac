@@ -216,9 +216,258 @@ impl JacNode.get_edges_with_node(
 impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
+    import from jaclang.runtimelib.sam_gti {
+        _get_sqlite,
+        _get_scale_topo,
+        gti_query_targets,
+        gti_query_targets_redis,
+        sam_populate_from_gti,
+        sam_query
+    }
+    import from jaclang.project.config { get_config }
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
+    ctx = JacRuntimeInterface.get_context();
+    _cfg = get_config();
+    _strategy = _cfg.sam.strategy if _cfg else "none";
+    _sqlite_active: bool = _get_sqlite(ctx.mem) is not None;
+    _scale = _get_scale_topo(ctx.mem);
+    DEGREE_THRESHOLD: int = _cfg.sam.gti_degree_threshold if _cfg else 10;
+    import sys;
+    import from pathlib { Path }
+    def _cls_to_key(cls: type) -> str {
+        mod_name = getattr(cls, '__module__', '') or '';
+        cls_name = getattr(cls, '__name__', '') or '';
+        mod = sys.modules.get(mod_name);
+        if mod is not None {
+            mod_file = str(getattr(mod, '__file__', '') or '');
+            if mod_file {
+                stem = Path(mod_file).stem;
+                for suffix in ['.impl', '.cl', '.sv'] {
+                    if stem.endswith(suffix) {
+                        stem = stem[:-len(suffix)];
+                        break;
+                    }
+                }
+                return stem + '.' + cls_name;
+            }
+        }
+        local_mod = mod_name.rsplit('.', 1)[-1] if '.' in mod_name else mod_name;
+        return local_mod + '.' + cls_name;
+    }
     for nd in origin {
         nanch = nd.__jac__;
+        # --- SAM fast path (shared by gti and anchor strategies) ---
+        target_type_name = _cls_to_key(destination.nd)
+            if isinstance(destination.nd, type)
+            else None;
+        edge_type_name = _cls_to_key(destination.edge)
+            if isinstance(destination.edge, type)
+            else None;
+        use_index = (
+            _strategy != "none"
+            and nanch.is_populated()
+            and (target_type_name is not None or edge_type_name is not None)
+            and destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
+            and len(nanch.edges) > DEGREE_THRESHOLD
+        );
+        if use_index {
+            target_ids: (list[str] | None) = None;
+            if target_type_name and edge_type_name {
+                # Combined filter: intersect "n:NodeType" and "e:EdgeType" columns
+                n_col = 'n:' + target_type_name;
+                e_col = 'e:' + edge_type_name;
+                node_ids = sam_query(nanch.id, n_col);
+                edge_ids = sam_query(nanch.id, e_col);
+                if node_ids is None or edge_ids is None {
+                    # SAM miss — populate from backend
+                    if _strategy == "gti" {
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_n = gti_query_targets_redis(
+                                redis_client, nanch.id, None, target_type_name
+                            );
+                            gt_e = gti_query_targets_redis(
+                                redis_client, nanch.id, edge_type_name, None
+                            );
+                        } else {
+                            gt_n = gti_query_targets(
+                                ctx.mem, nanch.id, None, target_type_name
+                            );
+                            gt_e = gti_query_targets(
+                                ctx.mem, nanch.id, edge_type_name, None
+                            );
+                        }
+                        if gt_n is not None {
+                            sam_populate_from_gti(nanch.id, [(t, n_col) for t in gt_n]);
+                        }
+                        if gt_e is not None {
+                            sam_populate_from_gti(nanch.id, [(t, e_col) for t in gt_e]);
+                        }
+                        node_ids = gt_n if gt_n is not None else [];
+                        edge_ids = gt_e if gt_e is not None else [];
+                    } elif _strategy == "anchor" {
+                        # Iterate edge stubs, check arch_cls strings
+                        n_matches: list[str] = [];
+                        e_matches: list[str] = [];
+                        gt_rows: list[tuple[str, str]] = [];
+                        for stub in nanch.edges {
+                            tgt = stub.target;
+                            if tgt is None or tgt.id == nanch.id {
+                                continue;
+                            }
+                            tid_str = str(tgt.id);
+                            # Check node type match via arch_cls
+                            if tgt.arch_cls and target_type_name in tgt.arch_cls {
+                                n_matches.append(tid_str);
+                                gt_rows.append((tid_str, n_col));
+                            }
+                            # Check edge type match via arch_cls
+                            if stub.arch_cls and edge_type_name in stub.arch_cls {
+                                e_matches.append(tid_str);
+                                gt_rows.append((tid_str, e_col));
+                            }
+                        }
+                        if gt_rows {
+                            sam_populate_from_gti(nanch.id, gt_rows);
+                        }
+                        node_ids = n_matches;
+                        edge_ids = e_matches;
+                    }
+                }
+                target_ids = list(set(node_ids) & set(edge_ids));
+            } elif target_type_name {
+                # Node-type filter only: "n:NodeType"
+                n_col = 'n:' + target_type_name;
+                target_ids = sam_query(nanch.id, n_col);
+                if target_ids is None {
+                    # SAM miss — populate from backend
+                    if _strategy == "gti" {
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_ids = gti_query_targets_redis(
+                                redis_client,
+                                nanch.id,
+                                edge_type_name,
+                                target_type_name
+                            );
+                        } else {
+                            gt_ids = gti_query_targets(
+                                ctx.mem, nanch.id, edge_type_name, target_type_name
+                            );
+                        }
+                        if gt_ids is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(tid, n_col) for tid in gt_ids]
+                            );
+                            target_ids = gt_ids;
+                        }
+                    } elif _strategy == "anchor" {
+                        # Iterate edge stubs, match target arch_cls
+                        matches: list[str] = [];
+                        gt_rows: list[tuple[str, str]] = [];
+                        for stub in nanch.edges {
+                            tgt = stub.target;
+                            if tgt is None or tgt.id == nanch.id {
+                                continue;
+                            }
+                            if tgt.arch_cls and target_type_name in tgt.arch_cls {
+                                tid_str = str(tgt.id);
+                                matches.append(tid_str);
+                                gt_rows.append((tid_str, n_col));
+                            }
+                        }
+                        if gt_rows {
+                            sam_populate_from_gti(nanch.id, gt_rows);
+                        }
+                        target_ids = matches;
+                    }
+                }
+            } else {
+                # Edge-type filter only: "e:EdgeType"
+                e_col = 'e:' + edge_type_name;
+                target_ids = sam_query(nanch.id, e_col);
+                if target_ids is None {
+                    # SAM miss — populate from backend
+                    if _strategy == "gti" {
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            gt_ids = gti_query_targets_redis(
+                                redis_client, nanch.id, edge_type_name, None
+                            );
+                        } else {
+                            gt_ids = gti_query_targets(
+                                ctx.mem, nanch.id, edge_type_name, None
+                            );
+                        }
+                        if gt_ids is not None {
+                            sam_populate_from_gti(
+                                nanch.id, [(tid, e_col) for tid in gt_ids]
+                            );
+                            target_ids = gt_ids;
+                        }
+                    } elif _strategy == "anchor" {
+                        # Iterate edge stubs, match edge arch_cls
+                        matches: list[str] = [];
+                        gt_rows: list[tuple[str, str]] = [];
+                        for stub in nanch.edges {
+                            tgt = stub.target;
+                            if tgt is None or tgt.id == nanch.id {
+                                continue;
+                            }
+                            if stub.arch_cls and edge_type_name in stub.arch_cls {
+                                tid_str = str(tgt.id);
+                                matches.append(tid_str);
+                                gt_rows.append((tid_str, e_col));
+                            }
+                        }
+                        if gt_rows {
+                            sam_populate_from_gti(nanch.id, gt_rows);
+                        }
+                        target_ids = matches;
+                    }
+                }
+            }
+            if target_ids is not None {
+                if _scale is not None {
+                    # Bulk fetch from MongoDB
+                    (_, mongo_backend) = _scale;
+                    uuids: list[UUID] = [];
+                    for id_str in target_ids {
+                        try {
+                            uuids.append(UUID(id_str));
+                        } except ValueError {
+                            continue;
+                        }
+                    }
+                    for anchor in mongo_backend.find_bulk(uuids) {
+                        ctx.mem.__mem__[anchor.id] = anchor;
+                        if anchor.archetype
+                        and JacRuntimeInterface.check_read_access(anchor) {
+                            nodes[anchor] = anchor.archetype;
+                        }
+                    }
+                } else {
+                    # SQLite / in-memory path
+                    for id_str in target_ids {
+                        try {
+                            uid = UUID(id_str);
+                        } except ValueError {
+                            continue;
+                        }
+                        target = ctx.mem.get(uid);
+                        if (
+                            target
+                            and target.archetype
+                            and JacRuntimeInterface.check_read_access(target)
+                        ) {
+                            nodes[target] = target.archetype;
+                        }
+                    }
+                }
+                continue;  # skip edge-list loop for this node
+            }
+        }
+        # --- Existing edge-list loop (fallback) ---
         for anchor in nanch.edges {
             if (
                 (source := anchor.source)
@@ -251,12 +500,45 @@ impl JacNode.edges_to_nodes(
 
 """Remove reference without checking sync status."""
 impl JacNode.remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
+    import from jaclang.runtimelib.sam_gti {
+        _get_sqlite,
+        _get_scale_topo,
+        _gti_delete_edge,
+        _gti_delete_edge_redis,
+        sam_invalidate,
+        sam_broadcast_invalidate
+    }
+    import from jaclang.project.config { get_config }
     for (idx, ed) in enumerate(nd.edges) {
         if (ed.id == `edge.id) {
             nd.edges.pop(idx);
             break;
         }
     }
+    # SAM + GTI invalidation hooks (strategy-dependent)
+    _cfg = get_config();
+    _strategy = _cfg.sam.strategy if _cfg else "none";
+    if _strategy == "gti" {
+        _mem = JacRuntimeInterface.get_context().mem;
+        _scale = _get_scale_topo(_mem);
+        if _scale is not None {
+            (redis_client, _) = _scale;
+            _gti_delete_edge_redis(
+                redis_client,
+                nd.id,
+                `edge.target.id,
+                `edge.target.archetype,
+                `edge.archetype
+            );
+            sam_broadcast_invalidate(redis_client, nd.id);
+        } elif _get_sqlite(_mem) is not None {
+            sam_invalidate(nd.id);
+            _gti_delete_edge(mem=_mem, edge_id=`edge.id);
+        }
+    } elif _strategy == "anchor" {
+        sam_invalidate(nd.id);
+    }
+    # "none" strategy: no invalidation needed
 }
 
 """Detach edge from nodes."""
@@ -1472,12 +1754,58 @@ impl JacBasics.build_edge(
 ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)] {
     ct = conn_type or GenericEdge;
     def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype {
+        import from jaclang.runtimelib.sam_gti {
+            _get_sqlite,
+            _get_scale_topo,
+            _gti_write_edge,
+            _gti_write_edge_redis,
+            sam_put,
+            sam_broadcast_invalidate,
+            get_type_mro
+        }
+        import from jaclang.project.config { get_config }
         `edge = ct() if isinstance(ct, `type) else ct;
         eanch = `edge.__jac__=EdgeAnchor(
-            archetype=`edge, source=source, target=target, is_undirected=is_undirected
+            archetype=`edge,
+            source=source,
+            target=target,
+            is_undirected=is_undirected,
+            arch_cls=get_type_mro(`edge)
         );
+        # Backfill arch_cls on source/target if not already set (legacy anchors)
+        if not source.arch_cls and source.is_populated() {
+            source.arch_cls = get_type_mro(source.archetype);
+        }
+        if not target.arch_cls and target.is_populated() {
+            target.arch_cls = get_type_mro(target.archetype);
+        }
         source.edges.append(eanch);
         target.edges.append(eanch);
+        # SAM + GTI write hooks (strategy-dependent)
+        _cfg = get_config();
+        _strategy = _cfg.sam.strategy if _cfg else "none";
+        if _strategy == "gti" {
+            _mem = JacRuntimeInterface.get_context().mem;
+            _scale = _get_scale_topo(_mem);
+            if _scale is not None {
+                (redis_client, _) = _scale;
+                _gti_write_edge_redis(redis_client, eanch, source, target);
+                if is_undirected {
+                    _gti_write_edge_redis(redis_client, eanch, target, source);
+                }
+                sam_broadcast_invalidate(redis_client, source.id);
+                if is_undirected {
+                    sam_broadcast_invalidate(redis_client, target.id);
+                }
+            } elif _get_sqlite(_mem) is not None {
+                sam_put(source.id, target.id, target.archetype, eanch.archetype);
+                if is_undirected {
+                    sam_put(target.id, source.id, source.archetype, eanch.archetype);
+                }
+                _gti_write_edge(mem=_mem, eanch=eanch, source=source, target=target);
+            }
+        }
+        # "anchor" and "none" strategies do not write to GTI on build_edge
         if conn_assign {
             for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {
                 if hasattr(`edge, fld) {
@@ -1528,6 +1856,17 @@ impl JacBasics.save(`obj: (Archetype | Anchor)) -> None {
 
 """Destroy multiple objects passed in a tuple or list."""
 impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None {
+    import from jaclang.runtimelib.sam_gti {
+        _get_sqlite,
+        _get_scale_topo,
+        _gti_delete_node,
+        _gti_delete_node_redis,
+        sam_invalidate,
+        sam_broadcast_invalidate
+    }
+    import from jaclang.project.config { get_config }
+    _cfg = get_config();
+    _strategy = _cfg.sam.strategy if _cfg else "none";
     obj_list = objs if isinstance(objs, `list) else [objs];
     for `obj in obj_list {
         if not isinstance(`obj, (Archetype, Anchor)) {
@@ -1535,12 +1874,27 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
         }
         anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
         if JacRuntimeInterface.check_write_access(anchor) {
+            _mem = JacRuntimeInterface.get_context().mem;
             match anchor {
                 case NodeAnchor():
                     for `edge in anchor.edges[:] {
                         JacRuntimeInterface.destroy([`edge]);
                     }
+                    if _strategy == "gti" {
+                        _scale = _get_scale_topo(_mem);
+                        if _scale is not None {
+                            (redis_client, _) = _scale;
+                            _gti_delete_node_redis(redis_client, anchor.id);
+                            sam_broadcast_invalidate(redis_client, anchor.id);
+                        } elif _get_sqlite(_mem) is not None {
+                            _gti_delete_node(mem=_mem, node_id=anchor.id);
+                            sam_invalidate(anchor.id);
+                        }
+                    } elif _strategy == "anchor" {
+                        sam_invalidate(anchor.id);
+                    }
 
+                # "none" strategy: no cleanup needed
                 case EdgeAnchor():
                     JacRuntimeInterface.detach(anchor);
 

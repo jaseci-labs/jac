@@ -9,14 +9,24 @@ impl Access.check(self: Access, anchor: str) -> (AccessLevel | None) {
 impl ObjectSpatialDestination.edge_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.edge or self.edge(arch));
+    return (
+        not self.edge
+        or (
+            isinstance(arch, self.edge)
+                if isinstance(self.edge, type)
+                else self.edge(arch)
+        )
+    );
 }
 
 """Filter node."""
 impl ObjectSpatialDestination.node_filter(
     self: ObjectSpatialDestination, arch: Archetype
 ) -> bool {
-    return (not self.nd or self.nd(arch));
+    return (
+        not self.nd
+        or (isinstance(arch, self.nd) if isinstance(self.nd, type) else self.nd(arch))
+    );
 }
 
 """Override Init."""
@@ -131,6 +141,7 @@ impl Anchor.make_stub(self: Anchor) -> TANCH {
     if self.is_populated() {
         unloaded = object.__new__(self.__class__);
         unloaded.id = self.id;
+        unloaded.arch_cls = self.arch_cls;
         return unloaded;
     }
     return self;
@@ -148,6 +159,11 @@ impl Anchor.populate(self: Anchor) -> None {
 
 """Trigger load if detects unloaded state."""
 impl Anchor.__getattr__(self: Anchor, name: str) -> object {
+    # Safety fallback: arch_cls may be missing on anchors created via __new__ paths
+    if name == "arch_cls" {
+        self.arch_cls = [];
+        return self.arch_cls;
+    }
     if not self.is_populated() {
         self.populate();
         if not self.is_populated() {
@@ -173,16 +189,21 @@ impl Anchor.__getstate__(self: Anchor) -> dict[(str, Any)] {
             'archetype': unlinked,
             'root': self.root,
             'access': self.access,
-            'persistent': self.persistent
+            'persistent': self.persistent,
+            'arch_cls': self.arch_cls
         };
     } else {
-        return {'id': self.id};
+        return {'id': self.id, 'arch_cls': self.arch_cls};
     }
 }
 
 """Deserialize Anchor."""
 impl Anchor.__setstate__(self: Anchor, state: dict[(str, Any)]) -> None {
     self.__dict__.update(state);
+    # Ensure arch_cls exists for anchors restored from pre-arch_cls storage
+    if "arch_cls" not in self.__dict__ {
+        self.arch_cls = [];
+    }
     if (self.is_populated() and self.archetype) {
         self.archetype.__jac__ = self;
         self.hash = hash(dumps(self));
@@ -302,7 +323,10 @@ impl GenericEdge.__repr__(self: GenericEdge) -> str {
 """Create default anchor."""
 @cached_property
 impl Root.__jac__(self: Root) -> NodeAnchor {
-    return NodeAnchor(archetype=self, persistent=True, edges=[]);
+    import from jaclang.runtimelib.sam_gti { get_type_mro }
+    return NodeAnchor(
+        archetype=self, persistent=True, edges=[], arch_cls=get_type_mro(self)
+    );
 }
 
 """Override repr for archetype."""

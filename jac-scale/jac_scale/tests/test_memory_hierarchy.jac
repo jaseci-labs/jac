@@ -200,7 +200,9 @@ test "read and write" {
 
         redis_size_after_task_read = redis_client.dbsize();
         assert redis_size_after_task_read == 9 , (
-            "Redis should have 9 entries (super root, guest user, admin, __system__, user, 2 task nodes, 2 edges)"
+            "Redis should have 9 entries: 9 anchors (super root, guest user, admin, "
+            "__system__, user, 2 task nodes, 2 edges). GTI topology index keys are "
+            "not created when sam.strategy is 'none' (default)"
         );
     } finally {
         # Teardown

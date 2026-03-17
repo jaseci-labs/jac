@@ -3308,6 +3308,13 @@ impl PyastGenPass.exit_connect_op(self: PyastGenPass, nd: uni.ConnectOp) -> None
 }
 
 impl PyastGenPass.exit_filter_compr(self: PyastGenPass, nd: uni.FilterCompr) -> None {
+    # Pure type filter with no where conditions: emit the type class directly.
+    # At runtime, isinstance(destination.nd, type) detects this, allowing the
+    # SAM/GTI fast path to extract the type name without compiler help.
+    if (nd.f_type and not nd.compares) {
+        nd.gen.py_ast = [self.sync(nd.f_type.gen.py_ast[0])];
+        return;
+    }
     iter_name = 'i';
     comprs: list[(ast3.Compare | ast3.Call)] = [
         self.sync(

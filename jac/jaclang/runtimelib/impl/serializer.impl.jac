@@ -67,7 +67,8 @@ impl Serializer._serialize_value(
             'id': str(val.id),
             'root': str(val.root) if val.root else None,
             'persistent': val.persistent,
-            'access': Serializer._serialize_value(val.access, include_type, api_mode)
+            'access': Serializer._serialize_value(val.access, include_type, api_mode),
+            'arch_cls': val.arch_cls
         };
         if val.is_populated() {
             arch = val.archetype;
@@ -191,6 +192,7 @@ impl Serializer._id_to_stub(anchor_cls: type, id_str: str) -> (Anchor | None) {
     try {
         stub = anchor_cls.__new__(anchor_cls);
         stub.id = UUID(id_str);
+        stub.arch_cls = [];
         return stub;
     } except Exception as e {
         logger.error(
@@ -211,6 +213,7 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
         anchor.root = UUID(data['root']) if data.get('root') else None;
         anchor.persistent = data.get('persistent', False);
         anchor.access = Serializer._deserialize_permission(data.get('access'));
+        anchor.arch_cls = data.get('arch_cls', []);
 
         if (arch_data := data.get('archetype')) {
             anchor.archetype = Serializer._deserialize_archetype(arch_data, anchor);
