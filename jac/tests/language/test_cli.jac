@@ -927,6 +927,44 @@ test "format preserves file on syntax error" {
     }
 }
 
+test "format prints error messages and summary for syntax error file" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.format([fixture_path("test_syntax_err.jac")]);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # Should exit with code 1 (syntax errors fail the command)
+    assert result == 1 , "format should exit with code 1 for syntax error file";
+
+    # Should show FAILURES section header
+    assert "FAILURES" in combined , "should display FAILURES section for syntax errors";
+
+    # Failed file path should appear in the FAILURES section
+    assert "test_syntax_err.jac" in combined , "should show file path in FAILURES section";
+
+    # Actual syntax error messages should appear in stderr
+    assert len(stderr.strip()) > 0 , "should print syntax error messages to stderr";
+
+    # failed files summary section should appear
+    assert "failed files" in combined , "should display failed files summary";
+
+    # Summary line should mention error count
+    assert "error" in combined , "should show error count in failed files summary";
+}
+
 test "format --lintfix preserves file on parse error" {
     with tempfile.TemporaryDirectory() as tmpdir {
         test_file = os.path.join(tmpdir, "parse_error.jac");

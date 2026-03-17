@@ -37,9 +37,9 @@ def print_version_banner(version: str) -> None {
     console.print(
         (logo_lines[5] + f"                Platform: {platform_short}"), style='cyan'
     );
-    console.print(f'\n📚 Documentation: [url]{JAC_DOCS_URL}[/url]');
-    console.print(f'💬 Community:     [url]{JAC_DISCORD_URL}[/url]');
-    console.print(f'🐛 Issues:        [url]{JAC_ISSUES_URL}[/url]');
+    console.print(f'\n📚 Documentation: {JAC_DOCS_URL}');
+    console.print(f'💬 Community:     {JAC_DISCORD_URL}');
+    console.print(f'🐛 Issues:        {JAC_ISSUES_URL}');
     # Show installed plugins
     try {
         import from jaclang.jac0core.runtime { plugin_manager }
