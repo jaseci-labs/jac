@@ -30,6 +30,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Impl Matching with Forward Declarations**: `impl MyClass.method` now correctly matches declarations when `MyClass` has forward declarations or is reassigned elsewhere. Previously failed with E2009.
 - **Fix: Goto Definition for Import Paths and Imported Items**: Goto definition now works correctly on all parts of an import statement. Previously, intermediate path segments failed to resolve because each was resolved independently; now the full dotted path is resolved once and intermediate paths are derived by walking up the directory tree.
 - **Fix: JIR Cache Corrupted Function Signatures**: The decl/impl matching pass replaced parameter nodes with references outside the AST tree, causing JIR serialization to drop all parameter info. Imported functions loaded from cache appeared to have zero parameters, producing false argument-count errors and incorrect semantic highlighting.
+- **Fix: User Module JIR Cache Now Project-Local**: User module `.jir` cache files are now stored in the project's `.jac/cache/` directory (or `.jac/cache/` next to the source file when outside a project) instead of the global `~/.cache/jac/jir/modules/` directory. Compiler and bootstrap caches remain global.
 - 3 small refactors/changes.
 
 ## jaclang 0.12.2 (Latest Release)

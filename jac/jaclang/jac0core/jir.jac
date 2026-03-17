@@ -242,9 +242,33 @@ def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
     return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
 }
 
+"""Get the cache directory for a module based on its origin.
+
+Files inside the active project use the project's .jac/cache/ dir.
+Standalone files (no project) use .jac/cache/ relative to the source.
+Everything else (installed packages, plugins) uses the global cache.
+"""
+def _get_module_cache_dir(source_path: str) -> Path {
+    resolved = Path(source_path).resolve();
+    try {
+        config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
+        cfg = config_mod.get_config();
+        if cfg is not None and cfg.is_valid() and cfg.project_root is not None {
+            try {
+                resolved.relative_to(cfg.project_root);
+                return cfg.get_cache_dir();
+            } except ValueError { }
+            # Source is outside project — use global cache
+            return get_jir_cache_dir() / 'modules';
+        }
+    } except Exception { }
+    # No project context — use .jac/cache/ next to source
+    return resolved.parent / ".jac" / "cache";
+}
+
 """Get the cache path for a user module."""
 def get_module_cache_path(source_path: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'modules';
+    cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
