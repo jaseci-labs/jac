@@ -135,14 +135,14 @@ impl did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None
 impl formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
-    return ls.formatted_jac(params.text_document.uri);
+    return ls.format_document(params.text_document.uri);
 }
 
 """Format the given document with lint auto-fix applied."""
 impl lintfix_formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
-    return ls.formatted_jac_lintfix(params.text_document.uri);
+    return ls.format_document(params.text_document.uri, auto_lint=True);
 }
 
 impl debug(msg: str) -> None {

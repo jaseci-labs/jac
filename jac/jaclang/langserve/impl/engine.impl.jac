@@ -502,8 +502,10 @@ impl JacLangServer.get_hover_info(
     return None;
 }
 
-"""Shared helper: format a document, optionally with lint auto-fix."""
-impl JacLangServer._format_document(file_path: str, auto_lint: bool = False) -> list[lspt.TextEdit] {
+"""Format a document, optionally with lint auto-fix applied."""
+impl JacLangServer.format_document(
+    file_path: str, auto_lint: bool = False
+) -> list[lspt.TextEdit] {
     document = self.workspace.get_text_document(file_path);
     try {
         prog = JacProgram.jac_str_formatter(
@@ -527,16 +529,6 @@ impl JacLangServer._format_document(file_path: str, auto_lint: bool = False) -> 
             new_text=formatted_text
         )
     ];
-}
-
-"""Return formatted jac."""
-impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
-    return self._format_document(file_path);
-}
-
-"""Return formatted jac with lint auto-fix applied."""
-impl JacLangServer.formatted_jac_lintfix(file_path: str) -> list[lspt.TextEdit] {
-    return self._format_document(file_path, auto_lint=True);
 }
 
 """Close module (didClose cleanup - remove sem_manager only)."""
