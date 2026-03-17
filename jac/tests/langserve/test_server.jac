@@ -906,10 +906,10 @@ test "test_format_document_lintfix" {
         file_uri = uris.from_fs_path(fixture_path("format_lintfix.jac"));
         lsp.type_check_file(file_uri);
         edits = lsp.format_document(file_uri, auto_lint=True);
-        assert edits is not None and len(edits) > 0, "Expected text edits from lintfix format_document";
+        assert edits is not None and len(edits) > 0 , "Expected text edits from lintfix format_document";
         lintfixed = edits[0].new_text;
         expected = open(fixture_path("format_lintfix_expected.jac")).read();
-        assert lintfixed == expected, (
+        assert lintfixed == expected , (
             f"Lintfix output does not match expected.\nGOT:\n{lintfixed}\nEXPECTED:\n{expected}"
         );
     } finally {
