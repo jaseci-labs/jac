@@ -300,13 +300,18 @@ test "check pods restarted selector and return values" {
         f"{app_name}-redis-insight"
     ];
 
-    # --- Case 1: no restarts → False, single API call with correct selector ---
-    clean = unittest.mock.MagicMock();
-    clean.restart_count = 0;
+    # --- Case 1: pod running stable (no crash loop) → False, single API call with correct selector ---
+    clean_container = unittest.mock.MagicMock();
+    clean_container.state = unittest.mock.MagicMock();  # FIX: assign state as MagicMock
+    clean_container.state.waiting = None;  # pod not waiting
+    clean_container.restart_count = 0;  # no restarts
+
     pod_clean = unittest.mock.MagicMock();
-    pod_clean.status.container_statuses = [clean];
+    pod_clean.status.container_statuses = [clean_container];
+
     resp_clean = unittest.mock.MagicMock();
     resp_clean.items = [pod_clean];
+
     fake_v1 = unittest.mock.MagicMock();
     fake_v1.list_namespaced_pod.return_value = resp_clean;
 
@@ -323,13 +328,21 @@ test "check pods restarted selector and return values" {
         assert label in selector , f"Label '{label}' missing from selector '{selector}'";
     }
 
-    # --- Case 2: one pod restarted → True ---
-    restarted = unittest.mock.MagicMock();
-    restarted.restart_count = 1;
-    pod_restarted = unittest.mock.MagicMock();
-    pod_restarted.status.container_statuses = [restarted];
+    # --- Case 2: one pod in CrashLoopBackOff → True ---
+    crash_container = unittest.mock.MagicMock();
+    crash_state = unittest.mock.MagicMock();
+    crash_state.reason = "CrashLoopBackOff";
+    crash_container.state = unittest.mock.MagicMock();  # FIX: assign state as MagicMock
+    crash_container.state.waiting = crash_state;
+    crash_container.state.running = None;  # ensure not running so selector returns True
+    crash_container.restart_count = 1;
+
+    pod_crash = unittest.mock.MagicMock();
+    pod_crash.status.container_statuses = [crash_container];
+
     resp_restarted = unittest.mock.MagicMock();
-    resp_restarted.items = [pod_clean, pod_restarted];
+    resp_restarted.items = [pod_crash];
+
     fake_v1.list_namespaced_pod.return_value = resp_restarted;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
@@ -339,4 +352,28 @@ test "check pods restarted selector and return values" {
     }
 
     assert result_true is True;
+
+    # --- Case 3: restart_count=1 but pod is currently running (e.g. MongoDB/Redis
+    #             readOnlyRootFilesystem restart-then-stabilise) → False ---
+    stabilised_container = unittest.mock.MagicMock();
+    stabilised_container.state = unittest.mock.MagicMock();
+    stabilised_container.state.waiting = None;
+    stabilised_container.state.running = unittest.mock.MagicMock();  # currently running
+    stabilised_container.restart_count = 1;
+
+    pod_stabilised = unittest.mock.MagicMock();
+    pod_stabilised.status.container_statuses = [stabilised_container];
+
+    resp_stabilised = unittest.mock.MagicMock();
+    resp_stabilised.items = [pod_stabilised];
+
+    fake_v1.list_namespaced_pod.return_value = resp_stabilised;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            result_stabilised = check_pods_restarted(namespace, app_name);
+        }
+    }
+
+    assert result_stabilised is False , "pod that restarted once but is now running should not be flagged as crashed";
 }

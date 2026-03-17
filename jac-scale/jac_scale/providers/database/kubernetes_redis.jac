@@ -189,7 +189,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'labels': {
                     'app': redis_name,
                     'component': 'cache',
-                    'managed-by': 'jac-scale'
+                    'managed': 'jac-scale'
                 }
             },
             'stringData': {
@@ -208,7 +208,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'labels': {
                     'app': redis_name,
                     'component': 'cache',
-                    'managed-by': 'jac-scale'
+                    'managed': 'jac-scale'
                 },
                 'annotations': {
                     'config-hash': config_hash,
@@ -216,6 +216,21 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 }
             },
             'data': {'redis.conf': redis_conf_content}
+        };
+
+        redis_sa_name = f"{redis_name}-sa";
+        redis_service_account = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': redis_sa_name,
+                'labels': {
+                    'app': redis_name,
+                    'component': 'cache',
+                    'managed': 'jac-scale'
+                }
+            },
+            'automountServiceAccountToken': False
         };
 
         # Create Redis Deployment
@@ -227,7 +242,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'labels': {
                     'app': redis_name,
                     'component': 'cache',
-                    'managed-by': 'jac-scale'
+                    'managed': 'jac-scale'
                 }
             },
             'spec': {
@@ -235,7 +250,11 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'selector': {'matchLabels': {'app': redis_name}},
                 'template': {
                     'metadata': {
-                        'labels': {'app': redis_name, 'component': 'cache'},
+                        'labels': {
+                            'app': redis_name,
+                            'component': 'cache',
+                            'managed': 'jac-scale'
+                        },
                         'annotations': {
                             # This annotation triggers pod restart when config changes
                             'redis-config-hash': config_hash,
@@ -243,10 +262,23 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                         }
                     },
                     'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': redis_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
                         'containers': [
                             {
                                 'name': 'redis',
                                 'image': 'redis:7.2',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 999,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']},
+                                    'seccompProfile': {'type': 'RuntimeDefault'}
+                                },
                                 'ports': [
                                     {'containerPort': redis_port, 'name': 'redis'}
                                 ],
@@ -280,7 +312,8 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                                         'name': 'redis-config',
                                         'mountPath': '/etc/redis',
                                         'readOnly': True
-                                    }
+                                    },
+                                    {'name': 'tmp', 'mountPath': '/tmp'}
                                 ],
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '128Mi'},
@@ -312,7 +345,8 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                             {
                                 'name': 'redis-config',
                                 'configMap': {'name': redis_config_name}
-                            }
+                            },
+                            {'name': 'tmp', 'emptyDir': {}}
                         ]
                     }
                 }
@@ -356,6 +390,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
             'configmap': redis_configmap,
             'deployment': redis_deployment,
             'service': redis_service,
+            'service_account': redis_service_account,
             'connection_string': self.connection_string,
             'secret_name': redis_secret_name,
             'service_name': redis_service_name,
@@ -392,6 +427,13 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return {
             'name': 'wait-for-redis',
             'image': wait_image,
+            'securityContext': {
+                'runAsNonRoot': True,
+                'runAsUser': 1000,
+                'readOnlyRootFilesystem': True,
+                'allowPrivilegeEscalation': False,
+                'capabilities': {'drop': ['ALL']}
+            },
             'command': [
                 'sh',
                 '-c',
@@ -415,12 +457,30 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         # RedisInsight always listens on 5540. Auth is enforced by the ingress controller.
         service_port = 5540;
 
+        insight_sa_name = f"{insight_name}-sa";
+        insight_service_account = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': insight_sa_name,
+                'labels': {'app': insight_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+
         # RedisInsight v3 supports RI_REDIS_HOST / RI_REDIS_PORT env vars to
         # pre-seed a database connection on first start (no manual setup needed).
         containers = [
             {
                 'name': 'redisinsight',
                 'image': 'redis/redisinsight:3.2.0',
+                'securityContext': {
+                    'runAsNonRoot': True,
+                    'runAsUser': 1000,
+                    'readOnlyRootFilesystem': True,
+                    'allowPrivilegeEscalation': False,
+                    'capabilities': {'drop': ['ALL']}
+                },
                 'ports': [{'containerPort': 5540}],
                 'env': [
                     {'name': 'RI_REDIS_HOST', 'value': redis_service_name},
@@ -431,12 +491,27 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                     # Static asset paths are handled separately by the ingress sub_filter.
                     {'name': 'RIPROXYPATH', 'value': '/cache-dashboard'}
                 ],
+                'volumeMounts': [
+                    {'name': 'insight-data', 'mountPath': '/data'},
+                    {'name': 'tmp', 'mountPath': '/tmp'}
+                ],
                 'resources': {
                     'requests': {'cpu': '100m', 'memory': '128Mi'},
                     'limits': {'cpu': '500m', 'memory': '512Mi'}
                 }
             }
         ];
+
+        pod_spec = {
+            'automountServiceAccountToken': False,
+            'serviceAccountName': insight_sa_name,
+            'securityContext': {'seccompProfile': {'type': 'RuntimeDefault'}},
+            'containers': containers,
+            'volumes': [
+                {'name': 'insight-data', 'emptyDir': {}},
+                {'name': 'tmp', 'emptyDir': {}}
+            ]
+        };
 
         insight_deployment = {
             'apiVersion': 'apps/v1',
@@ -450,7 +525,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'selector': {'matchLabels': {'app': insight_name}},
                 'template': {
                     'metadata': {'labels': {'app': insight_name}},
-                    'spec': {'containers': containers}
+                    'spec': pod_spec
                 }
             }
         };
@@ -478,6 +553,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return {
             'deployment': insight_deployment,
             'service': insight_service,
+            'service_account': insight_service_account,
             'deployment_name': insight_name,
             'service_name': f"{insight_name}-service"
         };
