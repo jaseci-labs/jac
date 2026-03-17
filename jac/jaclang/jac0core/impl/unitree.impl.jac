@@ -2399,11 +2399,10 @@ impl String.lit_value -> str {
                 is_raw2 = 'r' in prefix2;
             }
             if not is_raw2 {
-                import codecs;
                 result = self.value;
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
                     result = result.replace('\\n', '\n');
@@ -2424,12 +2423,13 @@ impl String.lit_value -> str {
                 is_raw = 'r' in prefix;
             }
             if not is_raw {
-                import codecs;
                 result = self.value;
-                # Use codecs to decode all escape sequences (like \x1b, \n, \t, etc.)
+                # Use ast3.literal_eval to correctly handle escape sequences (\n, \t,
+                # \x1b, etc.) and non-ASCII Unicode chars (e.g. emojis), consistent
+                # with how normal string literals are handled above.
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     # Fallback to manual handling if decode fails
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);

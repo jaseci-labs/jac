@@ -11,6 +11,7 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
          JAC_ROOT, "tests", "langserve", "fixtures", "circle_pure_err.jac"
      ),
      EDGE_CASES_FILE = os.path.join(FIXTURES, "console_edge_cases.jac"),
+     FSTRING_ENCODING_FILE = os.path.join(FIXTURES, "fstring_encoding.jac"),
      ESC = '\x1b[';
 
 """Run jac and return (stdout, stderr) tuple."""
@@ -60,6 +61,29 @@ test "error messages are readable" {
     (stdout, stderr) = run_jac(['run', ERR_FILE]);
     combined = stdout + stderr;
     assert 'Error' in combined or 'error' in combined or '✖' in combined;
+}
+
+# =============================================================================
+# Encoding: escape sequences and non-ASCII chars in f-strings (raw_unicode_escape fix)
+# =============================================================================
+test "fstring escape sequences are decoded correctly" {
+    (stdout, _) = run_jac(['run', FSTRING_ENCODING_FILE]);
+    assert 'ESC_NEWLINE:\nhello world' in stdout , "\\n escape not decoded in f-string";
+    assert 'ESC_TAB:\there world' in stdout , "\\t escape not decoded in f-string";
+    assert 'ESC_ANSI:\x1b[0mworld' in stdout , "\\x1b escape not decoded in f-string";
+    assert 'UNICODE_A:A world' in stdout , "\\uXXXX escape not decoded in f-string";
+    assert 'CHINESE:你好 world' in stdout , "Chinese chars garbled in f-string";
+    assert 'ARABIC:مرحبا world' in stdout , "Arabic chars garbled in f-string";
+}
+
+test "4-byte emoji literals in f-strings are not garbled" {
+    (stdout, _) = run_jac(['run', FSTRING_ENCODING_FILE]);
+    assert 'EMOJI_BOOK:📚 world' in stdout , "📚 garbled in f-string";
+    assert 'EMOJI_CHAT:💬 world' in stdout , "💬 garbled in f-string";
+    assert 'EMOJI_BUG:🐛 world' in stdout , "🐛 garbled in f-string";
+    assert 'EMOJI_ROCKET:🚀 world' in stdout , "🚀 garbled in f-string";
+    assert '📚 world 💬' in stdout , "emoji mixed with escape sequence garbled in f-string";
+    assert '\xc3\xb0' not in stdout , "double-encoded emoji byte found — raw_unicode_escape fix regression";
 }
 
 # =============================================================================
