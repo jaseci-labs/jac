@@ -860,6 +860,13 @@ impl NameAtom.sem_token -> (tuple[(SemTokType, SemTokMod)] | None) {
         return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
     }
     if self.sym {
+        # Before falling through to PROPERTY, check if the node's resolved type
+        # is a function/overloaded type. This handles imported functions where
+        # sym.decl.name_of is a plain Name (import alias) rather than Ability.
+        if self.type is not None
+        and type(self.type).__name__ in ('FunctionType', 'OverloadedType') {
+            return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
+        }
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
     # Handle __getattr__ dynamic attributes (explicitly marked by type checker)
