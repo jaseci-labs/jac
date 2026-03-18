@@ -4,8 +4,7 @@ import from pickle { dumps, loads }
 
 """Add an edge with MRO fan-out. O(M) where M = len(target_mro)."""
 impl TopologyIndex.add_edge(
-    source_id: UUID, target_id: UUID,
-    target_mro: list[str], edge_type: str
+    source_id: UUID, target_id: UUID, target_mro: list[str], edge_type: str
 ) -> None {
     src = str(source_id);
     tgt = str(target_id);
@@ -85,8 +84,7 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
 
 """Query targets from a source by node type and/or edge type. O(1) per lookup."""
 impl TopologyIndex.query_targets(
-    source_id: UUID, node_type: (str | None) = None,
-    edge_type: (str | None) = None
+    source_id: UUID, node_type: (str | None) = None, edge_type: (str | None) = None
 ) -> set[UUID] {
     src = str(source_id);
     bucket = self.sam.get(src);
@@ -110,7 +108,11 @@ impl TopologyIndex.query_targets(
     if n_col is not None and e_col is not None {
         # Intersect
         e_set = set(e_col);
-        return {UUID(s) for s in n_col if s in e_set};
+        return {
+            UUID(s)
+            for s in n_col
+            if s in e_set
+        };
     }
     if n_col is not None {
         return {UUID(s) for s in n_col};
@@ -121,7 +123,9 @@ impl TopologyIndex.query_targets(
     # No filter — return all targets across all columns (deduplicated)
     all_ids: set[str] = set();
     for col in bucket.values() {
-        for s in col { all_ids.add(s); }
+        for s in col {
+            all_ids.add(s);
+        }
     }
     return {UUID(s) for s in all_ids};
 }
@@ -193,8 +197,7 @@ impl TopologyIndex.__len__ -> int {
 """String representation."""
 impl TopologyIndex.__repr__ -> str {
     total_entries = sum(
-        sum(len(col) for col in bucket.values())
-        for bucket in self.sam.values()
+        sum(len(col) for col in bucket.values()) for bucket in self.sam.values()
     );
     return f"TopologyIndex(sources={len(self.sam)}, entries={total_entries})";
 }

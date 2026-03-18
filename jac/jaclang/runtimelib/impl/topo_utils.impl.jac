@@ -41,7 +41,10 @@ impl _type_name(`obj: object) -> str {
 """Get the MRO type names for a node/edge archetype."""
 impl _get_type_mro(`obj: object) -> list[str] {
     import from jaclang.jac0core.archetype {
-        NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype
+        NodeArchetype,
+        EdgeArchetype,
+        WalkerArchetype,
+        Archetype
     }
     stop_classes = (NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype, object);
     mro_names: list[str] = [];
@@ -77,13 +80,15 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     }
     # Add edge with MRO fan-out
     idx.add_edge(
-        source.id, target.id,
+        source.id,
+        target.id,
         _get_type_mro(target.archetype),
         _type_name(`edge.archetype)
     );
     if `edge.is_undirected {
         idx.add_edge(
-            target.id, source.id,
+            target.id,
+            source.id,
             _get_type_mro(source.archetype),
             _type_name(`edge.archetype)
         );

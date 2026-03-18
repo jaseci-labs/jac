@@ -4,7 +4,6 @@ import from uuid { uuid4, UUID }
 import from jaclang.runtimelib.topology_index { TopologyIndex }
 
 # ── Basic SAM operations ─────────────────────────────────────────────
-
 test "add edge and query by node type" {
     idx = TopologyIndex();
     r = uuid4();
@@ -69,7 +68,6 @@ test "remove node drops all references" {
 }
 
 # ── MRO / Inheritance ────────────────────────────────────────────────
-
 test "mro fan-out indexes parent type" {
     idx = TopologyIndex();
     r = uuid4();
@@ -80,9 +78,9 @@ test "mro fan-out indexes parent type" {
     idx.add_edge(r, p2, ["PostNode", "BaseContent"], "E");
     idx.add_edge(r, c1, ["CommentNode", "BaseContent"], "E");
 
-    assert idx.query_targets(r, node_type="PostNode") == {p1, p2};
+    assert idx.query_targets(r, node_type="PostNode") == {p1,p2};
     assert idx.query_targets(r, node_type="CommentNode") == {c1};
-    assert idx.query_targets(r, node_type="BaseContent") == {p1, p2, c1};
+    assert idx.query_targets(r, node_type="BaseContent") == {p1,p2,c1};
 }
 
 test "mro fan-out large graph" {
@@ -111,7 +109,6 @@ test "mro fan-out large graph" {
 }
 
 # ── Chain resolution ─────────────────────────────────────────────────
-
 test "resolve chain single hop" {
     idx = TopologyIndex();
     r = uuid4();
@@ -149,11 +146,10 @@ test "resolve chain inheritance" {
     idx.add_edge(r, p, ["PostNode", "BaseContent"], "E");
     idx.add_edge(r, c, ["CommentNode", "BaseContent"], "E");
     idx.add_edge(r, o, ["OtherNode"], "E");
-    assert idx.resolve_chain({r}, [("E", "BaseContent", 2)]) == {p, c};
+    assert idx.resolve_chain({r}, [("E", "BaseContent", 2)]) == {p,c};
 }
 
 # ── Serialization ────────────────────────────────────────────────────
-
 test "encode decode round trip" {
     idx = TopologyIndex();
     r = uuid4();
@@ -172,7 +168,7 @@ test "cross root ids" {
     n1 = uuid4();
     n2 = uuid4();
     idx.node_owners[str(n2)] = foreign;
-    cross = idx.get_cross_root_ids({n1, n2});
+    cross = idx.get_cross_root_ids({n1,n2});
     assert cross[foreign] == {n2};
     assert n1 not in cross.get(foreign, set());
 }

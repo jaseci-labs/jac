@@ -292,7 +292,9 @@ test "index supports inheritance — parent type query returns subtypes" {
 
         # Parent type query — must return all subtypes (3 Post + 2 Comment = 5)
         base = [r-->[?:BaseContent]];
-        assert len(base) == 5 , f"Expected 5 BaseContent (3 Post + 2 Comment), got {len(base)}";
+        assert len(base) == 5 , f"Expected 5 BaseContent (3 Post + 2 Comment), got {len(
+            base
+        )}";
 
         # Unfiltered
         all_nodes = [r-->];
