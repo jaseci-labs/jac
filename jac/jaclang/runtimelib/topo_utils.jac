@@ -19,13 +19,16 @@ def _get_root_anchor(anchor: Any) -> Any;
 """Get the archetype class name."""
 def _type_name(`obj: object) -> str;
 
+"""Get the MRO type names for a node/edge archetype (user-defined types only)."""
+def _get_type_mro(`obj: object) -> list[str];
+
 """Called after an edge is created between source and target."""
 def on_edge_created(source: Any, target: Any, `edge: Any) -> None;
 
 """Called when an edge is destroyed."""
 def on_edge_destroyed(source: Any, target: Any, `edge: Any) -> None;
 
-"""Called when a node is saved/persisted. Ensures it's in the root's index."""
+"""Called when a node is saved/persisted (no-op for SAM — index builds at edge time)."""
 def on_node_saved(node_anchor: Any) -> None;
 
 """Called when a node is destroyed."""
@@ -39,5 +42,5 @@ the type-only filters in a path chain. Returns set of target UUIDs
 if planning succeeded, or None to fall back to normal approach."""
 def plan_query(path: Any) -> (set[UUID] | None);
 
-"""Load nodes by UUID set, preserving edge-list order from origin nodes."""
+"""Load nodes by UUID set via direct fetch."""
 def batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list[Any];

@@ -242,30 +242,39 @@ impl EdgeAnchor.is_populated(self: EdgeAnchor) -> bool {
     return 'source' in d and 'target' in d and 'archetype' in d;
 }
 
-"""Serialize Node Anchor."""
+"""Serialize Node Anchor — encodes topology index to bytes only here."""
 impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state['edges'] = [`edge.make_stub() for `edge in self.edges];
-        if self.topology_index_data is not None {
+        # Encode live index to bytes for persistence
+        if self._topology_index_cache is not None {
+            state['topology_index_data'] = self._topology_index_cache.encode();
+        } elif self.topology_index_data is not None {
             state['topology_index_data'] = self.topology_index_data;
         }
     }
+    # Never pickle the live cache object
+    state.pop('_topology_index_cache', None);
     return state;
 }
 
-"""Get decoded topology index (lazy-decoded from blob)."""
+"""Get topology index — returns cached live object, decodes from bytes only once."""
 impl NodeAnchor.get_topology_index(self: NodeAnchor) -> Any {
     import from jaclang.runtimelib.topology_index { TopologyIndex }
+    if self._topology_index_cache is not None {
+        return self._topology_index_cache;
+    }
     if self.topology_index_data {
-        return TopologyIndex.decode(self.topology_index_data);
+        self._topology_index_cache = TopologyIndex.decode(self.topology_index_data);
+        return self._topology_index_cache;
     }
     return TopologyIndex();
 }
 
-"""Set topology index from TopologyIndex object (encodes to blob)."""
+"""Set topology index — stores live object directly, no encoding."""
 impl NodeAnchor.set_topology_index(self: NodeAnchor, index: Any) -> None {
-    self.topology_index_data = index.encode();
+    self._topology_index_cache = index;
 }
 
 """Serialize Edge Anchor."""
