@@ -31,8 +31,8 @@ obj TopologyIndex {
 
     def add_edge(
         source_id: UUID, target_id: UUID,
-        target_mro: list[str], source_mro: list[str],
-        edge_type: str
+        target_mro: list[str], edge_type: str,
+        source_mro: list[str] = []
     ) -> None;
 
     def remove_edge(source_id: UUID, target_id: UUID) -> None;

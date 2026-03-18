@@ -15,8 +15,8 @@ can _get_col(bucket: dict[str, tuple[list[str], list[str]]], key: str) -> tuple[
 """Add an edge with MRO fan-out, populating both forward and reverse entries."""
 impl TopologyIndex.add_edge(
     source_id: UUID, target_id: UUID,
-    target_mro: list[str], source_mro: list[str],
-    edge_type: str
+    target_mro: list[str], edge_type: str,
+    source_mro: list[str] = []
 ) -> None {
     src = str(source_id);
     tgt = str(target_id);

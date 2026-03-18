@@ -85,16 +85,16 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
         source.id,
         target.id,
         tgt_mro,
-        src_mro,
-        _type_name(`edge.archetype)
+        _type_name(`edge.archetype),
+        src_mro
     );
     if `edge.is_undirected {
         idx.add_edge(
             target.id,
             source.id,
             src_mro,
-            tgt_mro,
-            _type_name(`edge.archetype)
+            _type_name(`edge.archetype),
+            tgt_mro
         );
     }
     root_anchor.set_topology_index(idx);

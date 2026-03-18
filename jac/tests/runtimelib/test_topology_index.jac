@@ -8,7 +8,7 @@ test "add edge and query by node type" {
     idx = TopologyIndex();
     r = uuid4();
     n1 = uuid4();
-    idx.add_edge(r, n1, ["NodeA"], ["Root"], "EdgeX");
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX", ["Root"]);
     result = idx.query_targets(r, node_type="NodeA");
     assert result == {n1};
 }
@@ -17,7 +17,7 @@ test "add edge and query by edge type" {
     idx = TopologyIndex();
     r = uuid4();
     n1 = uuid4();
-    idx.add_edge(r, n1, ["NodeA"], ["Root"], "EdgeX");
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX", ["Root"]);
     result = idx.query_targets(r, edge_type="EdgeX");
     assert result == {n1};
 }
@@ -27,8 +27,8 @@ test "combined node + edge type query" {
     r = uuid4();
     n1 = uuid4();
     n2 = uuid4();
-    idx.add_edge(r, n1, ["NodeA"], ["Root"], "EdgeX");
-    idx.add_edge(r, n2, ["NodeA"], ["Root"], "EdgeY");
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX", ["Root"]);
+    idx.add_edge(r, n2, ["NodeA"], "EdgeY", ["Root"]);
     result = idx.query_targets(r, node_type="NodeA", edge_type="EdgeX");
     assert result == {n1};
 }
@@ -37,7 +37,7 @@ test "nonexistent type returns empty" {
     idx = TopologyIndex();
     r = uuid4();
     n1 = uuid4();
-    idx.add_edge(r, n1, ["NodeA"], ["Root"], "EdgeX");
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX", ["Root"]);
     assert idx.query_targets(r, node_type="NodeB") == set();
     assert idx.query_targets(r, edge_type="EdgeZ") == set();
 }
@@ -46,7 +46,7 @@ test "remove edge clears target from all columns" {
     idx = TopologyIndex();
     r = uuid4();
     n1 = uuid4();
-    idx.add_edge(r, n1, ["NodeA", "Base"], ["Root"], "EdgeX");
+    idx.add_edge(r, n1, ["NodeA", "Base"], "EdgeX", ["Root"]);
     assert idx.query_targets(r, node_type="Base") == {n1};
     idx.remove_edge(r, n1);
     assert idx.query_targets(r, node_type="NodeA") == set();
@@ -59,9 +59,9 @@ test "remove node drops all references" {
     r = uuid4();
     n1 = uuid4();
     n2 = uuid4();
-    idx.add_edge(r, n1, ["A"], ["Root"], "E");
-    idx.add_edge(r, n2, ["B"], ["Root"], "E");
-    idx.add_edge(n1, n2, ["B"], ["A"], "E");
+    idx.add_edge(r, n1, ["A"], "E", ["Root"]);
+    idx.add_edge(r, n2, ["B"], "E", ["Root"]);
+    idx.add_edge(n1, n2, ["B"], "E", ["A"]);
     idx.remove_node(n1);
     assert idx.query_targets(r, node_type="A") == set();
     assert idx.query_targets(r, node_type="B") == {n2};
@@ -74,9 +74,9 @@ test "mro fan-out indexes parent type" {
     p1 = uuid4();
     p2 = uuid4();
     c1 = uuid4();
-    idx.add_edge(r, p1, ["PostNode", "BaseContent"], ["Root"], "E");
-    idx.add_edge(r, p2, ["PostNode", "BaseContent"], ["Root"], "E");
-    idx.add_edge(r, c1, ["CommentNode", "BaseContent"], ["Root"], "E");
+    idx.add_edge(r, p1, ["PostNode", "BaseContent"], "E", ["Root"]);
+    idx.add_edge(r, p2, ["PostNode", "BaseContent"], "E", ["Root"]);
+    idx.add_edge(r, c1, ["CommentNode", "BaseContent"], "E", ["Root"]);
 
     assert idx.query_targets(r, node_type="PostNode") == {p1,p2};
     assert idx.query_targets(r, node_type="CommentNode") == {c1};
@@ -92,13 +92,13 @@ test "mro fan-out large graph" {
     for i in range(100) {
         nid = uuid4();
         if i < 30 {
-            idx.add_edge(r, nid, ["PostNode", "BaseContent"], ["Root"], "EdgeX");
+            idx.add_edge(r, nid, ["PostNode", "BaseContent"], "EdgeX", ["Root"]);
             post_ids.append(nid);
         } elif i < 50 {
-            idx.add_edge(r, nid, ["CommentNode", "BaseContent"], ["Root"], "EdgeX");
+            idx.add_edge(r, nid, ["CommentNode", "BaseContent"], "EdgeX", ["Root"]);
             comment_ids.append(nid);
         } else {
-            idx.add_edge(r, nid, ["OtherNode"], ["Root"], "EdgeX");
+            idx.add_edge(r, nid, ["OtherNode"], "EdgeX", ["Root"]);
             other_ids.append(nid);
         }
     }
@@ -116,10 +116,10 @@ test "resolve chain single hop" {
     for i in range(100) {
         nid = uuid4();
         if i < 10 {
-            idx.add_edge(r, nid, ["NodeA"], ["Root"], "EdgeX");
+            idx.add_edge(r, nid, ["NodeA"], "EdgeX", ["Root"]);
             a_ids.append(nid);
         } else {
-            idx.add_edge(r, nid, ["NodeB"], ["Root"], "EdgeX");
+            idx.add_edge(r, nid, ["NodeB"], "EdgeX", ["Root"]);
         }
     }
     assert idx.resolve_chain({r}, [("EdgeX", "NodeA", 2)]) == set(a_ids);
@@ -131,9 +131,9 @@ test "resolve chain multi hop" {
     a = uuid4();
     b = uuid4();
     c = uuid4();
-    idx.add_edge(r, a, ["A"], ["Root"], "E1");
-    idx.add_edge(a, b, ["B"], ["A"], "E2");
-    idx.add_edge(b, c, ["C"], ["B"], "E3");
+    idx.add_edge(r, a, ["A"], "E1", ["Root"]);
+    idx.add_edge(a, b, ["B"], "E2", ["A"]);
+    idx.add_edge(b, c, ["C"], "E3", ["B"]);
     assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)]) == {c};
 }
 
@@ -143,9 +143,9 @@ test "resolve chain inheritance" {
     p = uuid4();
     c = uuid4();
     o = uuid4();
-    idx.add_edge(r, p, ["PostNode", "BaseContent"], ["Root"], "E");
-    idx.add_edge(r, c, ["CommentNode", "BaseContent"], ["Root"], "E");
-    idx.add_edge(r, o, ["OtherNode"], ["Root"], "E");
+    idx.add_edge(r, p, ["PostNode", "BaseContent"], "E", ["Root"]);
+    idx.add_edge(r, c, ["CommentNode", "BaseContent"], "E", ["Root"]);
+    idx.add_edge(r, o, ["OtherNode"], "E", ["Root"]);
     assert idx.resolve_chain({r}, [("E", "BaseContent", 2)]) == {p,c};
 }
 
@@ -155,8 +155,8 @@ test "query sources returns incoming neighbours" {
     r = uuid4();
     a = uuid4();
     b = uuid4();
-    idx.add_edge(r, a, ["A"], ["Root"], "E");
-    idx.add_edge(b, a, ["A"], ["B"], "E");
+    idx.add_edge(r, a, ["A"], "E", ["Root"]);
+    idx.add_edge(b, a, ["A"], "E", ["B"]);
     sources = idx.query_sources(a);
     assert sources == {r, b};
 }
@@ -166,8 +166,8 @@ test "query sources by node type" {
     r = uuid4();
     a = uuid4();
     b = uuid4();
-    idx.add_edge(r, a, ["A"], ["Root"], "E");
-    idx.add_edge(b, a, ["A"], ["B"], "E");
+    idx.add_edge(r, a, ["A"], "E", ["Root"]);
+    idx.add_edge(b, a, ["A"], "E", ["B"]);
     assert idx.query_sources(a, node_type="Root") == {r};
     assert idx.query_sources(a, node_type="B") == {b};
 }
@@ -177,8 +177,8 @@ test "resolve chain IN direction" {
     r = uuid4();
     a = uuid4();
     b = uuid4();
-    idx.add_edge(r, a, ["A"], ["Root"], "E");
-    idx.add_edge(r, b, ["B"], ["Root"], "E");
+    idx.add_edge(r, a, ["A"], "E", ["Root"]);
+    idx.add_edge(r, b, ["B"], "E", ["Root"]);
     # From a, go IN → should find r
     assert idx.resolve_chain({a}, [(None, None, 1)]) == {r};
     # From a, go IN with edge type E → should find r
@@ -189,7 +189,7 @@ test "remove edge clears reverse entries" {
     idx = TopologyIndex();
     r = uuid4();
     a = uuid4();
-    idx.add_edge(r, a, ["A"], ["Root"], "E");
+    idx.add_edge(r, a, ["A"], "E", ["Root"]);
     assert idx.query_sources(a) == {r};
     idx.remove_edge(r, a);
     assert idx.query_sources(a) == set();
@@ -200,7 +200,7 @@ test "encode decode round trip" {
     idx = TopologyIndex();
     r = uuid4();
     n1 = uuid4();
-    idx.add_edge(r, n1, ["PostNode", "BaseContent"], ["Root"], "EdgeX");
+    idx.add_edge(r, n1, ["PostNode", "BaseContent"], "EdgeX", ["Root"]);
 
     decoded = TopologyIndex.decode(idx.encode());
     assert decoded.query_targets(r, node_type="BaseContent") == {n1};
