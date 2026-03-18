@@ -1523,12 +1523,12 @@ test "enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
+        "B = \"jac\"",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
         "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        "impl_shape_ok: str = ShapeType.SQUARE.name",
         "func_wrong_type: str = process_color"
     ];
 
@@ -1553,8 +1553,11 @@ test "class_based_enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"1\"] to Tokens",
+        "Cannot assign <Tokens.FLOAT> to int",
         "Cannot assign Literal[\"1\"] to int",
+        "Cannot assign Literal[\"LSQUARE\"] to int",
+        "Cannot assign Literal[\"RSQUARE\"] to int",
+        "Cannot assign <AccessLevel.READ> to str",
         "Cannot assign AccessLevel | NoneType to int",
         "Cannot assign int to str"
     ];
