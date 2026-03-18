@@ -1315,10 +1315,21 @@ impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
 
 """Jac's apply_dir stmt feature."""
 impl JacBasics.refs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+    post_filter: (Callable[([Archetype], bool)] | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
+    }
+    # Fuse post_filter into the last destination's node filter
+    if post_filter is not None and path.destinations {
+        last = path.destinations[-1];
+        if last.nd is None {
+            last.nd = post_filter;
+        } else {
+            orig_nd = last.nd;
+            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+        }
     }
     # Try topology index optimization for non-edge-only queries
     if not path.edge_only {

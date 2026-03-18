@@ -410,7 +410,8 @@ system,
 
     """Jac's apply_dir stmt feature."""
     static def refs(
-        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+        post_filter: (Callable[([Archetype], bool)] | None) = None
     ) -> list[NodeArchetype] | list[EdgeArchetype] | list[
         (NodeArchetype | EdgeArchetype)
     ];

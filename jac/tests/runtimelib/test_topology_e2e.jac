@@ -134,6 +134,87 @@ test "index returns empty for non-matching edge type" {
     }
 }
 
+test "post-hoc filter fused with edge-op produces same results" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        r = root;
+        Jac.save(r);
+        for i in range(10) {
+            r +>: EdgeX :+> TypeA(val=i);
+        }
+        for i in range(90) {
+            r +>: EdgeX :+> TypeB(val=i);
+        }
+        Jac.save(r);
+
+        # Inline filter (already optimized)
+        inline = sorted([n.val for n in [r->:EdgeX:->[?:TypeA]]]);
+
+        # Post-hoc filter (should be fused and produce same results)
+        posthoc = sorted([n.val for n in [r->:EdgeX:->][?:TypeA]]);
+
+        assert inline == posthoc , f"Inline vs post-hoc differ: {inline} vs {posthoc}";
+        assert len(inline) == 10;
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "nested post-hoc filter as origin of outer edge-op" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        r = root;
+        Jac.save(r);
+        # root -> TypeA via EdgeX, TypeA -> TypeB via EdgeY
+        for i in range(5) {
+            a = TypeA(val=i);
+            r +>: EdgeX :+> a;
+            a +>: EdgeY :+> TypeB(val=i * 10);
+        }
+        # root -> TypeB via EdgeX (decoys)
+        for i in range(20) {
+            r +>: EdgeX :+> TypeB(val=100 + i);
+        }
+        Jac.save(r);
+
+        # Inline multi-hop: get TypeB behind TypeA
+        inline = sorted([n.val for n in [r->:EdgeX:->[?:TypeA]->:EdgeY:->[?:TypeB]]]);
+
+        # Nested: post-hoc filter TypeA, then use as origin for EdgeY hop
+        type_a_nodes = [r->:EdgeX:->][?:TypeA];
+        nested = sorted([n.val for n in [type_a_nodes->:EdgeY:->[?:TypeB]]]);
+
+        assert inline == nested , f"Inline vs nested differ: {inline} vs {nested}";
+        assert inline == [0, 10, 20, 30, 40];
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
 test "index built on root with null root field" {
     tmpdir = mkdtemp();
     orig_base = JacRuntime.base_path_dir;

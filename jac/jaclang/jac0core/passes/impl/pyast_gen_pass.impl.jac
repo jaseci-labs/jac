@@ -2867,28 +2867,49 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
             self.emit(E5008);
         }
     } elif isinstance(nd.right, uni.FilterCompr) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.jaclib_obj('filter_on'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='items',
-                                value=cast(ast3.expr, self.py_ast_val(nd.target))
-                            )
-                        ),
-                        self.sync(
-                            ast3.keyword(
-                                arg='func',
-                                value=cast(ast3.expr, self.py_ast_val(nd.right))
-                            )
-                        )
-                    ]
+        # Fusion: if target is an EdgeRefTrailer (non-edge-only, non-async),
+        # inject the filter as a post_filter kwarg on the refs() call instead
+        # of wrapping with filter_on(). This enables the topology index to
+        # optimize the type filter.
+        if (
+            isinstance(nd.target, uni.EdgeRefTrailer)
+            and not nd.target.edges_only
+            and not nd.target.is_async
+        ) {
+            target_py = cast(ast3.Call, self.py_ast_val(nd.target));
+            target_py.keywords.append(
+                self.sync(
+                    ast3.keyword(
+                        arg='post_filter',
+                        value=cast(ast3.expr, self.py_ast_val(nd.right))
+                    )
                 )
-            )
-        ];
+            );
+            nd.gen.py_ast = [target_py];
+        } else {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.jaclib_obj('filter_on'),
+                        args=[],
+                        keywords=[
+                            self.sync(
+                                ast3.keyword(
+                                    arg='items',
+                                    value=cast(ast3.expr, self.py_ast_val(nd.target))
+                                )
+                            ),
+                            self.sync(
+                                ast3.keyword(
+                                    arg='func',
+                                    value=cast(ast3.expr, self.py_ast_val(nd.right))
+                                )
+                            )
+                        ]
+                    )
+                )
+            ];
+        }
     } elif isinstance(nd.right, uni.AssignCompr) {
         nd.gen.py_ast = [
             self.sync(
