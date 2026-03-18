@@ -213,6 +213,7 @@ max_tokens = 0                    # Max response tokens (0 = no limit)
 [plugins.byllm.litellm]
 local_cost_map = true             # Use local cost map
 drop_params = true                # Drop unsupported params per provider
+debug = false                     # Enable verbose LiteLLM logging
 ```
 
 **`[plugins.byllm.model]` options:**
@@ -238,6 +239,7 @@ drop_params = true                # Drop unsupported params per provider
 |-----|------|---------|-------------|
 | `local_cost_map` | bool | `true` | Use local cost map instead of fetching from remote |
 | `drop_params` | bool | `true` | Silently drop parameters unsupported by the chosen provider |
+| `debug` | bool | `false` | Enable verbose LiteLLM logging (HTTP requests, retries, headers). When `false`, LiteLLM's internal loggers are silenced. Exceptions are always logged via byLLM's own logger regardless of this setting |
 
 **Minimal setup** -- just set your API key and go:
 
