@@ -3,7 +3,9 @@
 import from pickle { dumps, loads }
 
 """Helper: get or create a column (tuple of (in, out) lists) in a bucket."""
-can _get_col(bucket: dict[str, tuple[list[str], list[str]]], key: str) -> tuple[list[str], list[str]] {
+def _get_col(
+    bucket: dict[str, tuple[list[str], list[str]]], key: str
+) -> tuple[list[str], list[str]] {
     col = bucket.get(key);
     if col is None {
         col = ([], []);
@@ -14,10 +16,15 @@ can _get_col(bucket: dict[str, tuple[list[str], list[str]]], key: str) -> tuple[
 
 """Add an edge with MRO fan-out, populating both forward and reverse entries."""
 impl TopologyIndex.add_edge(
-    source_id: UUID, target_id: UUID,
-    target_mro: list[str], edge_type: str,
-    source_mro: list[str] = []
+    source_id: UUID,
+    target_id: UUID,
+    target_mro: list[str],
+    edge_type: str,
+    source_mro: (list[str] | None) = None
 ) -> None {
+    if source_mro is None {
+        source_mro = [];
+    }
     src = str(source_id);
     tgt = str(target_id);
 
@@ -149,7 +156,11 @@ impl TopologyIndex.query_targets(
     }
     if n_out is not None and e_out is not None {
         e_set = set(e_out);
-        return {UUID(s) for s in n_out if s in e_set};
+        return {
+            UUID(s)
+            for s in n_out
+            if s in e_set
+        };
     }
     if n_out is not None {
         return {UUID(s) for s in n_out};
@@ -194,7 +205,11 @@ impl TopologyIndex.query_sources(
     }
     if n_in is not None and e_in is not None {
         e_set = set(e_in);
-        return {UUID(s) for s in n_in if s in e_set};
+        return {
+            UUID(s)
+            for s in n_in
+            if s in e_set
+        };
     }
     if n_in is not None {
         return {UUID(s) for s in n_in};
@@ -284,7 +299,8 @@ impl TopologyIndex.__len__ -> int {
 """String representation."""
 impl TopologyIndex.__repr__ -> str {
     total_entries = sum(
-        sum(len(col[0]) + len(col[1]) for col in bucket.values()) for bucket in self.sam.values()
+        sum(len(col[0]) + len(col[1]) for col in bucket.values())
+        for bucket in self.sam.values()
     );
     return f"TopologyIndex(nodes={len(self.sam)}, entries={total_entries})";
 }

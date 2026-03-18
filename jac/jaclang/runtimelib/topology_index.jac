@@ -30,9 +30,11 @@ obj TopologyIndex {
         node_owners: dict[str, UUID] = {};
 
     def add_edge(
-        source_id: UUID, target_id: UUID,
-        target_mro: list[str], edge_type: str,
-        source_mro: list[str] = []
+        source_id: UUID,
+        target_id: UUID,
+        target_mro: list[str],
+        edge_type: str,
+        source_mro: (list[str] | None) = None
     ) -> None;
 
     def remove_edge(source_id: UUID, target_id: UUID) -> None;
@@ -40,6 +42,7 @@ obj TopologyIndex {
     def query_targets(
         source_id: UUID, node_type: (str | None) = None, edge_type: (str | None) = None
     ) -> set[UUID];
+
     def query_sources(
         target_id: UUID, node_type: (str | None) = None, edge_type: (str | None) = None
     ) -> set[UUID];

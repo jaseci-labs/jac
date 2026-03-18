@@ -81,20 +81,10 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     # Add edge with MRO fan-out (populates both forward and reverse entries)
     src_mro = _get_type_mro(source.archetype);
     tgt_mro = _get_type_mro(target.archetype);
-    idx.add_edge(
-        source.id,
-        target.id,
-        tgt_mro,
-        _type_name(`edge.archetype),
-        src_mro
-    );
+    idx.add_edge(source.id, target.id, tgt_mro, _type_name(`edge.archetype), src_mro);
     if `edge.is_undirected {
         idx.add_edge(
-            target.id,
-            source.id,
-            src_mro,
-            _type_name(`edge.archetype),
-            tgt_mro
+            target.id, source.id, src_mro, _type_name(`edge.archetype), tgt_mro
         );
     }
     root_anchor.set_topology_index(idx);

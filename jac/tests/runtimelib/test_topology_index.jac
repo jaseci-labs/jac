@@ -158,7 +158,7 @@ test "query sources returns incoming neighbours" {
     idx.add_edge(r, a, ["A"], "E", ["Root"]);
     idx.add_edge(b, a, ["A"], "E", ["B"]);
     sources = idx.query_sources(a);
-    assert sources == {r, b};
+    assert sources == {r,b};
 }
 
 test "query sources by node type" {
