@@ -974,6 +974,27 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Error: attribute not available on unbounded TypeVar
                     self.emit_diag(E1031, expr, attr=attr_name, type=base_type.name);
                     return types.UnknownType();
+                } elif isinstance(
+                    base_type, (types.FunctionType, types.OverloadedType)
+                ) {
+                    # All functions are instances of types.FunctionType at runtime.
+                    # Delegate attribute lookup to the prefetched FunctionType class.
+                    # TODO: Add is_method_type() check and use method_class for bound methods.
+                    if self.prefetch and self.prefetch.function_class {
+                        assert isinstance(self.prefetch.function_class, types.ClassType);
+                        if member := self._lookup_object_member(
+                            self.prefetch.function_class.clone_as_instance(),
+                            expr.right.value
+                        ) {
+                            self._set_symbol_to_expr(expr.right, member.symbol);
+                            return self.get_type_of_symbol(member.symbol);
+                        }
+                    }
+                    # Attribute not found on FunctionType
+                    self.emit_diag(
+                        E1031, expr, attr=expr.right.value, type=str(base_type)
+                    );
+                    return types.UnknownType();
                 }
             } elif expr.is_null_ok {
                 # TODO:
@@ -2655,7 +2676,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.classmethod_class = get_builtin_type("classmethod");
     self.prefetch.union_type_class = get_types_type("UnionType");
     # self.prefetch.awaitable_class =
-    # self.prefetch.function_class =
+    self.prefetch.function_class = get_types_type("FunctionType");
     # self.prefetch.method_class =
     self.prefetch.tuple_class = get_builtin_type("tuple");
     self.prefetch.bool_class = get_builtin_type("bool");
