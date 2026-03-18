@@ -1225,10 +1225,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     subscript_arg = expr.right.slices[0].start;
                 }
-                return self.get_type_of_magic_method_call(
+                if result := self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
-                )
-                or types.UnknownType();
+                ) {
+                    return result;
+                }
+                # Subscript on Any should return Any, not Unknown
+                if self.is_any_type(base_type) {
+                    return self.prefetch.any_class;
+                }
+                return types.UnknownType();
             }
 
         case uni.AtomUnit():

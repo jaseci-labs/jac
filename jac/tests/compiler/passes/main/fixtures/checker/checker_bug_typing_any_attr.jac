@@ -19,6 +19,16 @@ def test_any_attr_access(val: Any) -> None {
     val.method();  # <-- Ok
 }
 
-def test_any_subscript(d: Any) -> None {
-    _ = d.get('key');  # <-- Ok
+def test_any_subscript(val: Any) -> None {
+    _ = val.get('key');  # <-- Ok
+    _ = val[0];  # <-- Ok (subscript returns Any)
+    _ = val[0].attr;  # <-- Ok (subscript then attr)
+    _ = val['key'].nested[0].deep;  # <-- Ok (mixed access)
+}
+
+def test_any_calls(val: Any) -> None {
+    _ = val();  # <-- Ok (call returns Any)
+    _ = val().attr;  # <-- Ok (call then attr)
+    _ = val.method().result;  # <-- Ok (method call then attr)
+    _ = val()()[0].foo.bar();  # <-- Ok (complex chain)
 }
