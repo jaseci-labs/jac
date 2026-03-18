@@ -109,13 +109,21 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             }
 
             if not Path(mod_path).exists() {
-                npath.type = types.UnknownType();
+                # For intermediate path segments (not the last), skip rather than
+                # bail out. Namespace packages and directory-based imports may not
+                # resolve individually but the full path (last segment) may still
+                # resolve correctly.
                 npath._sym_category = SymbolType.MODULE;
+                if idx < len(node_.path) - 1 {
+                    continue;
+                }
+                npath.type = types.UnknownType();
                 self.emit_diag(W1100, npath);
                 return npath.type;
             }
 
             if Path(mod_path).is_dir() {
+                npath._sym_category = SymbolType.MODULE;
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(mod_path);

@@ -25,7 +25,7 @@ import from typing { Any }
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 8;
+glob FORMAT_VERSION: int = 9;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
@@ -242,9 +242,45 @@ def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
     return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
 }
 
+"""Get the cache directory for a module based on its origin.
+
+1. Source inside sys.prefix or jaclang package (installed/editable) → global cache
+2. Source inside active project root → project .jac/cache/
+3. Otherwise (standalone user file) → .jac/cache/ next to source
+"""
+glob _jaclang_pkg_dir: str = str(Path(__file__).resolve().parent.parent);
+
+def _get_module_cache_dir(source_path: str) -> Path {
+    resolved = Path(source_path).resolve();
+    resolved_str = str(resolved);
+    # Installed or editable-installed packages always use global cache
+    if resolved_str.startswith(_jaclang_pkg_dir + os.sep) {
+        return get_jir_cache_dir() / 'modules';
+    }
+    try {
+        resolved.relative_to(sys.prefix);
+        return get_jir_cache_dir() / 'modules';
+    } except ValueError { }
+    # Check for active project context
+    try {
+        config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
+        cfg = config_mod.get_config();
+        if cfg is not None and cfg.is_valid() and cfg.project_root is not None {
+            try {
+                resolved.relative_to(cfg.project_root);
+                return cfg.get_cache_dir();
+            } except ValueError { }
+            # Source is outside project — use global cache
+            return get_jir_cache_dir() / 'modules';
+        }
+    } except Exception { }
+    # No project context — use .jac/cache/ next to source
+    return resolved.parent / ".jac" / "cache";
+}
+
 """Get the cache path for a user module."""
 def get_module_cache_path(source_path: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'modules';
+    cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
@@ -353,9 +389,10 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
     return header + empty_payload + section_bytes;
 }
 
-"""Check whether a module's JIR cache is still valid via mtime comparison.
+"""Check whether a module's JIR cache is still valid.
 
-The cache is valid if it exists and is newer than the source file and
+The cache is valid if it exists, was written by a compatible compiler
+version (same jaclang + Python), and is newer than the source file and
 all its annex files (impl, test) and variant files (sv, cl, na).
 """
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
@@ -364,6 +401,15 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         return False;
     }
     try {
+        # Check header compatibility (jaclang version, Python version)
+        header_bytes: bytes = cache_path.read_bytes()[:HEADER_SIZE];
+        header = parse_header(header_bytes);
+        if header is None {
+            return False;
+        }
+        if not header.is_compatible() {
+            return False;
+        }
         cache_mtime = os.path.getmtime(cache_path);
         if cache_mtime <= os.path.getmtime(source_path) {
             return False;

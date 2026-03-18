@@ -38,7 +38,8 @@ import from jaclang.jac0core.diagnostics {
     E5005,
     E5006,
     E5007,
-    E5008
+    E5008,
+    W0062
 }
 
 glob T = TypeVar('T', bound=ast3.AST),

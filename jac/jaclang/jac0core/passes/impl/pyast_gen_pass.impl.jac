@@ -2867,28 +2867,49 @@ impl PyastGenPass.exit_atom_trailer(self: PyastGenPass, nd: uni.AtomTrailer) -> 
             self.emit(E5008);
         }
     } elif isinstance(nd.right, uni.FilterCompr) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.jaclib_obj('filter_on'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='items',
-                                value=cast(ast3.expr, self.py_ast_val(nd.target))
-                            )
-                        ),
-                        self.sync(
-                            ast3.keyword(
-                                arg='func',
-                                value=cast(ast3.expr, self.py_ast_val(nd.right))
-                            )
-                        )
-                    ]
+        # Fusion: if target is an EdgeRefTrailer (non-edge-only, non-async),
+        # inject the filter as a post_filter kwarg on the refs() call instead
+        # of wrapping with filter_on(). This enables the topology index to
+        # optimize the type filter.
+        if (
+            isinstance(nd.target, uni.EdgeRefTrailer)
+            and not nd.target.edges_only
+            and not nd.target.is_async
+        ) {
+            target_py = cast(ast3.Call, self.py_ast_val(nd.target));
+            target_py.keywords.append(
+                self.sync(
+                    ast3.keyword(
+                        arg='post_filter',
+                        value=cast(ast3.expr, self.py_ast_val(nd.right))
+                    )
                 )
-            )
-        ];
+            );
+            nd.gen.py_ast = [target_py];
+        } else {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.jaclib_obj('filter_on'),
+                        args=[],
+                        keywords=[
+                            self.sync(
+                                ast3.keyword(
+                                    arg='items',
+                                    value=cast(ast3.expr, self.py_ast_val(nd.target))
+                                )
+                            ),
+                            self.sync(
+                                ast3.keyword(
+                                    arg='func',
+                                    value=cast(ast3.expr, self.py_ast_val(nd.right))
+                                )
+                            )
+                        ]
+                    )
+                )
+            ];
+        }
     } elif isinstance(nd.right, uni.AssignCompr) {
         nd.gen.py_ast = [
             self.sync(
@@ -3149,10 +3170,6 @@ impl PyastGenPass.exit_special_var_ref(
                     keywords=[]
                 )
             )
-        ];
-    } elif (nd.name == Tok.KW_ROOT) {
-        nd.gen.py_ast = [
-            self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
         ];
     } else {
         nd.gen.py_ast = [
@@ -3552,6 +3569,21 @@ impl PyastGenPass.exit_name(self: PyastGenPass, nd: uni.Name) -> None {
             nd.gen.py_ast = [resolved];
             return;
         }
+    }
+    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is None) {
+        is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+        if not is_root_call {
+            # Bare `root` usage — emit deprecation, compile as root() call
+            self.emit(W0062, node_override=nd);
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[])
+                )
+            ];
+            return;
+        }
+        # Explicit root() call — just resolve the name from jaclib
+        self.jaclib_imports.add('root');
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);

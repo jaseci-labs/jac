@@ -125,7 +125,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0024",
          Category.SYNTAX,
          "Cannot assign to '{name}' -- it is a built-in reference, not a variable",
-         help="Use a different variable name, or use backtick escaping (e.g. `root) to create a local variable with the same name."
+         help="Use a different variable name, or use backtick escaping (e.g. `super) to create a local variable with the same name."
      ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
@@ -179,6 +179,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "'{first}' must appear before '{second}' in parameter list"
      ),
+     E0052 = _err(
+         "E0052",
+         Category.SYNTAX,
+         "Parameter '{name}' is missing a type annotation",
+         help="All function and method parameters require explicit type annotations in Jac."
+     ),
      # Parser: context validity
      E0055 = _err(
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
@@ -202,6 +208,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Parenthesized filter syntax '(?:...)' is deprecated. Use bracket syntax '[?:...]' instead.",
          "Replace (?:Type, cond) with [?:Type, cond]"
+     ),
+     W0062 = _warn(
+         "W0062",
+         Category.SYNTAX,
+         "Bare 'root' is deprecated. Use 'root()' instead.",
+         "'root' is now a builtin function — call it explicitly as 'root()'"
      ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
@@ -487,6 +499,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2011", Category.SEMANTIC, "Parameter count mismatch for ability {name}."
      ),
      E2012 = _err("E2012", Category.SEMANTIC, "From the declaration of {name}."),
+     W2013 = _warn(
+         "W2013",
+         Category.SEMANTIC,
+         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

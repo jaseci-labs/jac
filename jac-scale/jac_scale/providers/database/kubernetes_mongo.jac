@@ -53,10 +53,26 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                 'template': {
                     'metadata': {'labels': {'app': mongodb_name}},
                     'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': f"{mongodb_name}-sa",
+                        'securityContext': {
+                            'runAsNonRoot': True,
+                            'runAsUser': 999,
+                            'fsGroup': 999,
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
                         'containers': [
                             {
                                 'name': 'mongodb',
                                 'image': 'mongo:6.0',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 999,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']},
+                                    'seccompProfile': {'type': 'RuntimeDefault'}
+                                },
                                 'ports': [{'containerPort': mongodb_port}],
                                 'env': [
                                     {
@@ -82,9 +98,18 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                                     {
                                         'name': mongodb_volume_name,
                                         'mountPath': '/data/db'
+                                    },
+                                    {'name': 'tmp', 'mountPath': '/tmp'},
+                                    {
+                                        'name': 'mongo-run',
+                                        'mountPath': '/var/run/mongodb'
                                     }
                                 ]
                             }
+                        ],
+                        'volumes': [
+                            {'name': 'tmp', 'emptyDir': {}},
+                            {'name': 'mongo-run', 'emptyDir': {}}
                         ]
                     }
                 },
@@ -120,12 +145,23 @@ obj KubernetesMongoProvider(DatabaseProvider) {
             }
         };
 
+        mongodb_service_account = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': f"{mongodb_name}-sa",
+                'labels': {'app': mongodb_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+
         self.connection_string = connection_string;
 
         return {
             'secret': mongodb_secret,
             'deployment': mongodb_statefulset,
             'service': mongodb_service,
+            'service_account': mongodb_service_account,
             'connection_string': self.connection_string,
             'secret_name': mongodb_secret_name,
             'service_name': mongodb_service_name
@@ -159,6 +195,13 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         return {
             'name': 'wait-for-mongodb',
             'image': wait_image,
+            'securityContext': {
+                'runAsNonRoot': True,
+                'runAsUser': 1000,
+                'readOnlyRootFilesystem': True,
+                'allowPrivilegeEscalation': False,
+                'capabilities': {'drop': ['ALL']}
+            },
             'command': [
                 'sh',
                 '-c',
@@ -179,6 +222,17 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         mongodb_secret_name = f"{self.app_name}-mongodb-secret";
         express_name = f"{self.app_name}-mongo-express";
 
+        express_sa_name = f"{express_name}-sa";
+        express_service_account = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': express_sa_name,
+                'labels': {'app': express_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+
         express_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
@@ -192,10 +246,23 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                 'template': {
                     'metadata': {'labels': {'app': express_name}},
                     'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': express_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
                         'containers': [
                             {
                                 'name': 'mongo-express',
                                 'image': 'mongo-express:1.0.2-20',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 1000,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']},
+                                    'seccompProfile': {'type': 'RuntimeDefault'}
+                                },
                                 'ports': [{'containerPort': 8081}],
                                 'env': [
                                     {
@@ -241,9 +308,11 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '128Mi'},
                                     'limits': {'cpu': '500m', 'memory': '256Mi'}
-                                }
+                                },
+                                'volumeMounts': [{'name': 'tmp', 'mountPath': '/tmp'}]
                             }
-                        ]
+                        ],
+                        'volumes': [{'name': 'tmp', 'emptyDir': {}}]
                     }
                 }
             }
@@ -267,6 +336,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         return {
             'deployment': express_deployment,
             'service': express_service,
+            'service_account': express_service_account,
             'deployment_name': express_name,
             'service_name': f"{express_name}-service"
         };

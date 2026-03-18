@@ -249,7 +249,6 @@ obj TypeEvaluator {
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
-    def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;

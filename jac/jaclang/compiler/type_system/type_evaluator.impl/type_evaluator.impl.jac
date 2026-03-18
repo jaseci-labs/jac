@@ -746,6 +746,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if prop_return_type := self.get_getter_type_from_property(
                             member.symbol
                         ) {
+                            # Resolve Self and TypeVars using the base class type
+                            prop_return_type = self.specialize_member_type(
+                                prop_return_type, base_type
+                            );
                             member.symbol.add_use(expr.right);
                             expr.right.type = prop_return_type;
                             return expr.right.type;
@@ -1430,9 +1434,6 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.Name() | uni.SpecialVarRef():
             if isinstance(expr, uni.SpecialVarRef) {
-                if expr.name == Tok.KW_ROOT {
-                    return self._get_type_of_root(expr);
-                }
                 # Handle "here" and "visitor" special name ref.
                 if expr.name in (Tok.KW_HERE, Tok.KW_VISITOR) {
                     if (method := self._get_enclosing_method(expr)) {

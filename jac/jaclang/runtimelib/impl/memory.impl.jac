@@ -158,6 +158,7 @@ impl SqliteMemory.postinit -> None {
     self.__gc__ = set();
     # Connection is lazily initialized on first write
     self.__conn__ = None;
+    self.l3_fetch_count = 0;
 }
 
 """Lazily initialize SQLite connection when first needed."""
@@ -209,6 +210,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         );
         if (row := cursor.fetchone()) {
             try {
+                self.l3_fetch_count += 1;
                 anchor = loads(row[0]);
                 # Promote to memory cache
                 self.__mem__[id] = anchor;
@@ -576,6 +578,23 @@ impl TieredMemory.`has(id: UUID) -> bool {
         return True;
     }
     return False;
+}
+
+"""Get L3 fetch count for testing/instrumentation."""
+impl TieredMemory.get_l3_fetch_count -> int {
+    import from jaclang.runtimelib.memory { SqliteMemory }
+    if isinstance(self.l3, SqliteMemory) {
+        return self.l3.l3_fetch_count;
+    }
+    return 0;
+}
+
+"""Reset L3 fetch count for testing/instrumentation."""
+impl TieredMemory.reset_l3_fetch_count -> None {
+    import from jaclang.runtimelib.memory { SqliteMemory }
+    if isinstance(self.l3, SqliteMemory) {
+        self.l3.l3_fetch_count = 0;
+    }
 }
 
 """Commit - syncs L3 persistence if available."""
