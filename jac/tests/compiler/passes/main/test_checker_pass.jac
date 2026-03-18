@@ -1522,13 +1522,21 @@ test "enum_type_checking" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
+    # Expected errors:
+    # 1. DerivedEnum.B = "jac" (IntEnum requires int)
+    # 2. name_err: int = Color.RED.name (str to int)
+    # 3. value_err: str = Color.BLUE.value (int to str)
+    # 4. value_status_val_err: int = Status.ACTIVE.value (str to int)
+    # 5. auto_val_err: str = AutoValueTest.THIRD.value (int to str)
+    # 6. impl_shape_name_err: int = ShapeType.SQUARE.name (str to int)
+    # 7. func_wrong_type: process_color("not a color") (str not Color)
     expected_errors = [
+        "B = \"jac\"",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
         "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        "impl_shape_ok: str = ShapeType.SQUARE.name",
         "func_wrong_type: str = process_color"
     ];
 
