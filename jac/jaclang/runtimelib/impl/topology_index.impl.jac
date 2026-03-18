@@ -2,77 +2,117 @@
 
 import from pickle { dumps, loads }
 
-"""Add an edge with MRO fan-out. O(M) where M = len(target_mro)."""
+"""Helper: get or create a column (tuple of (in, out) lists) in a bucket."""
+can _get_col(bucket: dict[str, tuple[list[str], list[str]]], key: str) -> tuple[list[str], list[str]] {
+    col = bucket.get(key);
+    if col is None {
+        col = ([], []);
+        bucket[key] = col;
+    }
+    return col;
+}
+
+"""Add an edge with MRO fan-out, populating both forward and reverse entries."""
 impl TopologyIndex.add_edge(
-    source_id: UUID, target_id: UUID, target_mro: list[str], edge_type: str
+    source_id: UUID, target_id: UUID,
+    target_mro: list[str], source_mro: list[str],
+    edge_type: str
 ) -> None {
     src = str(source_id);
     tgt = str(target_id);
-    bucket = self.sam.get(src);
-    if bucket is None {
-        bucket = {};
-        self.sam[src] = bucket;
+
+    # --- source bucket: outgoing (index 1) under target types ---
+    src_bucket = self.sam.get(src);
+    if src_bucket is None {
+        src_bucket = {};
+        self.sam[src] = src_bucket;
     }
-    # Index under each MRO type name
     for t in target_mro {
-        key = "n:" + t;
-        col = bucket.get(key);
-        if col is None {
-            col = [];
-            bucket[key] = col;
-        }
-        if tgt not in col {
-            col.append(tgt);
+        col = _get_col(src_bucket, "n:" + t);
+        if tgt not in col[1] {
+            col[1].append(tgt);
         }
     }
-    # Index under edge type
-    ekey = "e:" + edge_type;
-    col = bucket.get(ekey);
-    if col is None {
-        col = [];
-        bucket[ekey] = col;
+    ecol = _get_col(src_bucket, "e:" + edge_type);
+    if tgt not in ecol[1] {
+        ecol[1].append(tgt);
     }
-    if tgt not in col {
-        col.append(tgt);
+
+    # --- target bucket: incoming (index 0) under source types ---
+    tgt_bucket = self.sam.get(tgt);
+    if tgt_bucket is None {
+        tgt_bucket = {};
+        self.sam[tgt] = tgt_bucket;
+    }
+    for t in source_mro {
+        col = _get_col(tgt_bucket, "n:" + t);
+        if src not in col[0] {
+            col[0].append(src);
+        }
+    }
+    ecol = _get_col(tgt_bucket, "e:" + edge_type);
+    if src not in ecol[0] {
+        ecol[0].append(src);
     }
 }
 
-"""Remove all index entries for a target from a source (coarse invalidation)."""
+"""Remove all index entries for an edge between source and target."""
 impl TopologyIndex.remove_edge(source_id: UUID, target_id: UUID) -> None {
     src = str(source_id);
     tgt = str(target_id);
-    bucket = self.sam.get(src);
-    if bucket is None {
-        return;
-    }
-    empty_keys: list[str] = [];
-    for (key, col) in bucket.items() {
-        if tgt in col {
-            col.remove(tgt);
+
+    # Remove target from source's OUT lists
+    src_bucket = self.sam.get(src);
+    if src_bucket is not None {
+        empty_keys: list[str] = [];
+        for (key, col) in src_bucket.items() {
+            if tgt in col[1] {
+                col[1].remove(tgt);
+            }
+            if not col[0] and not col[1] {
+                empty_keys.append(key);
+            }
         }
-        if not col {
-            empty_keys.append(key);
+        for key in empty_keys {
+            del src_bucket[key];
         }
     }
-    for key in empty_keys {
-        del bucket[key];
+
+    # Remove source from target's IN lists
+    tgt_bucket = self.sam.get(tgt);
+    if tgt_bucket is not None {
+        empty_keys: list[str] = [];
+        for (key, col) in tgt_bucket.items() {
+            if src in col[0] {
+                col[0].remove(src);
+            }
+            if not col[0] and not col[1] {
+                empty_keys.append(key);
+            }
+        }
+        for key in empty_keys {
+            del tgt_bucket[key];
+        }
     }
 }
 
 """Remove a node — drop its bucket and remove from all other buckets."""
 impl TopologyIndex.remove_node(node_id: UUID) -> None {
     nid = str(node_id);
-    # Drop outgoing bucket
+    # Drop own bucket
     self.sam.pop(nid, None);
     self.node_owners.pop(nid, None);
-    # Remove from all incoming references
-    for (src, bucket) in list(self.sam.items()) {
+    # Remove from all other buckets (both IN and OUT lists)
+    for (_, bucket) in list(self.sam.items()) {
         empty_keys: list[str] = [];
         for (key, col) in bucket.items() {
-            if nid in col {
-                col.remove(nid);
+            if nid in col[0] {
+                col[0].remove(nid);
             }
-            if not col {
+            if nid in col[1] {
+                col[1].remove(nid);
+            }
+            if not col[0] and not col[1] {
                 empty_keys.append(key);
             }
         }
@@ -82,7 +122,7 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
     }
 }
 
-"""Query targets from a source by node type and/or edge type. O(1) per lookup."""
+"""Query outgoing targets from a source. O(1) per lookup."""
 impl TopologyIndex.query_targets(
     source_id: UUID, node_type: (str | None) = None, edge_type: (str | None) = None
 ) -> set[UUID] {
@@ -91,46 +131,88 @@ impl TopologyIndex.query_targets(
     if bucket is None {
         return set();
     }
-    n_col: (list[str] | None) = None;
-    e_col: (list[str] | None) = None;
+    n_out: (list[str] | None) = None;
+    e_out: (list[str] | None) = None;
     if node_type is not None {
-        n_col = bucket.get("n:" + node_type);
-        if n_col is None {
+        col = bucket.get("n:" + node_type);
+        if col is None {
             return set();
         }
+        n_out = col[1];
     }
     if edge_type is not None {
-        e_col = bucket.get("e:" + edge_type);
-        if e_col is None {
+        col = bucket.get("e:" + edge_type);
+        if col is None {
             return set();
         }
+        e_out = col[1];
     }
-    if n_col is not None and e_col is not None {
-        # Intersect
-        e_set = set(e_col);
-        return {
-            UUID(s)
-            for s in n_col
-            if s in e_set
-        };
+    if n_out is not None and e_out is not None {
+        e_set = set(e_out);
+        return {UUID(s) for s in n_out if s in e_set};
     }
-    if n_col is not None {
-        return {UUID(s) for s in n_col};
+    if n_out is not None {
+        return {UUID(s) for s in n_out};
     }
-    if e_col is not None {
-        return {UUID(s) for s in e_col};
+    if e_out is not None {
+        return {UUID(s) for s in e_out};
     }
-    # No filter — return all targets across all columns (deduplicated)
+    # No filter — return all outgoing across all columns (deduplicated)
     all_ids: set[str] = set();
     for col in bucket.values() {
-        for s in col {
+        for s in col[1] {
             all_ids.add(s);
         }
     }
     return {UUID(s) for s in all_ids};
 }
 
-"""Resolve a multi-hop chain. Each hop uses O(1) SAM lookup."""
+"""Query incoming sources to a target. O(1) per lookup."""
+impl TopologyIndex.query_sources(
+    target_id: UUID, node_type: (str | None) = None, edge_type: (str | None) = None
+) -> set[UUID] {
+    tgt = str(target_id);
+    bucket = self.sam.get(tgt);
+    if bucket is None {
+        return set();
+    }
+    n_in: (list[str] | None) = None;
+    e_in: (list[str] | None) = None;
+    if node_type is not None {
+        col = bucket.get("n:" + node_type);
+        if col is None {
+            return set();
+        }
+        n_in = col[0];
+    }
+    if edge_type is not None {
+        col = bucket.get("e:" + edge_type);
+        if col is None {
+            return set();
+        }
+        e_in = col[0];
+    }
+    if n_in is not None and e_in is not None {
+        e_set = set(e_in);
+        return {UUID(s) for s in n_in if s in e_set};
+    }
+    if n_in is not None {
+        return {UUID(s) for s in n_in};
+    }
+    if e_in is not None {
+        return {UUID(s) for s in e_in};
+    }
+    # No filter — return all incoming across all columns (deduplicated)
+    all_ids: set[str] = set();
+    for col in bucket.values() {
+        for s in col[0] {
+            all_ids.add(s);
+        }
+    }
+    return {UUID(s) for s in all_ids};
+}
+
+"""Resolve a multi-hop chain. O(1) SAM lookup per hop per direction."""
 impl TopologyIndex.resolve_chain(
     origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
 ) -> set[UUID] {
@@ -144,6 +226,11 @@ impl TopologyIndex.resolve_chain(
         if direction in (2, 3) {
             for oid in current {
                 next_ids |= self.query_targets(oid, node_type, edge_type);
+            }
+        }
+        if direction in (1, 3) {
+            for oid in current {
+                next_ids |= self.query_sources(oid, node_type, edge_type);
             }
         }
         current = next_ids;
@@ -189,7 +276,7 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     return idx;
 }
 
-"""Number of source nodes with index entries."""
+"""Number of nodes with index entries."""
 impl TopologyIndex.__len__ -> int {
     return len(self.sam);
 }
@@ -197,7 +284,7 @@ impl TopologyIndex.__len__ -> int {
 """String representation."""
 impl TopologyIndex.__repr__ -> str {
     total_entries = sum(
-        sum(len(col) for col in bucket.values()) for bucket in self.sam.values()
+        sum(len(col[0]) + len(col[1]) for col in bucket.values()) for bucket in self.sam.values()
     );
-    return f"TopologyIndex(sources={len(self.sam)}, entries={total_entries})";
+    return f"TopologyIndex(nodes={len(self.sam)}, entries={total_entries})";
 }

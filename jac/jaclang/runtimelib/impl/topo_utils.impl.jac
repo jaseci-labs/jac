@@ -78,18 +78,22 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     if target.root and target.root != root_anchor.id {
         idx.node_owners[str(target.id)] = target.root;
     }
-    # Add edge with MRO fan-out
+    # Add edge with MRO fan-out (populates both forward and reverse entries)
+    src_mro = _get_type_mro(source.archetype);
+    tgt_mro = _get_type_mro(target.archetype);
     idx.add_edge(
         source.id,
         target.id,
-        _get_type_mro(target.archetype),
+        tgt_mro,
+        src_mro,
         _type_name(`edge.archetype)
     );
     if `edge.is_undirected {
         idx.add_edge(
             target.id,
             source.id,
-            _get_type_mro(source.archetype),
+            src_mro,
+            tgt_mro,
             _type_name(`edge.archetype)
         );
     }
@@ -213,11 +217,46 @@ impl plan_query(path: Any) -> (set[UUID] | None) {
     return idx.resolve_chain(origin_ids, chain);
 }
 
-"""Load nodes by UUID set — direct fetch, no edge walking."""
+"""Load nodes by UUID set, preserving edge-list order when origin is given."""
 impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list[Any] {
     import from jaclang { JacRuntimeInterface as Jac }
     ctx = Jac.get_context();
     import from jaclang.jac0core.archetype { NodeAnchor }
+
+    if origin {
+        seen: set = set();
+        result = [];
+        for nd in origin {
+            nanch = nd.__jac__;
+            for eanch in nanch.edges {
+                tgt = eanch.target;
+                if tgt and tgt.id in node_ids and tgt.id not in seen {
+                    seen.add(tgt.id);
+                    anchor = ctx.mem.get(tgt.id);
+                    if (
+                        isinstance(anchor, NodeAnchor)
+                        and anchor.archetype
+                        and Jac.check_read_access(anchor)
+                    ) {
+                        result.append(anchor.archetype);
+                    }
+                }
+                src = eanch.source;
+                if src and src.id in node_ids and src.id not in seen {
+                    seen.add(src.id);
+                    anchor = ctx.mem.get(src.id);
+                    if (
+                        isinstance(anchor, NodeAnchor)
+                        and anchor.archetype
+                        and Jac.check_read_access(anchor)
+                    ) {
+                        result.append(anchor.archetype);
+                    }
+                }
+            }
+        }
+        return result;
+    }
 
     result = [];
     for nid in node_ids {
