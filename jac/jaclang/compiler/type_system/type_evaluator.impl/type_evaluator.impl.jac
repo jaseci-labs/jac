@@ -610,7 +610,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
                     # (which cause false positives on generic types like list[T].append).
-                    if not lookup_type.is_any_type() {
+                    if not self.is_any_type(lookup_type) {
                         _has_tvars = (
                             isinstance(lookup_type, types.ClassType)
                             and lookup_type.private is not None
@@ -632,6 +632,22 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
+                    # Unwrap Final[T] to T for attribute access: Final is a write-once
+                    # qualifier, not a distinct type; member lookup should go to T.
+                    # TODO: Handle non-ClassType inner (e.g. Final[int | str]).
+                    # TODO: Consider centralizing unwrap logic for all type qualifiers.
+                    if (
+                        self.prefetch.final_class is not None
+                        and isinstance(self.prefetch.final_class, types.ClassType)
+                        and base_type.shared == self.prefetch.final_class.shared
+                        and base_type.private is not None
+                        and base_type.private.type_args
+                    ) {
+                        inner = base_type.private.type_args[0];
+                        if isinstance(inner, types.ClassType) {
+                            base_type = inner;
+                        }
+                    }
                     # Handle .value/.name on enum instances — DynamicClassAttribute
                     # is not detected by the property check, so resolve these directly.
                     if base_type.is_enum_class() {
@@ -786,7 +802,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args.
-                    if not base_type.is_any_type() {
+                    if not self.is_any_type(base_type) {
                         _has_tvars = (
                             isinstance(base_type, types.ClassType)
                             and base_type.private.type_args is not None
