@@ -302,7 +302,7 @@ obj Dog {
 class Cat {
     has name: str = "Unnamed";
 
-    def meow(self) {
+    def meow(self: Cat) {
         print(f"{self.name} says Meow!");
     }
 }

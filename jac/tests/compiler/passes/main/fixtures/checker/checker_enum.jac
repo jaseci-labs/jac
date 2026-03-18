@@ -17,6 +17,10 @@ impl ShapeType{
     SQUARE = "square"
 }
 
+def process_color(c: Color) -> str {
+    return c.name;
+}
+
 glob name_ok: str = Color.RED.name,
      name_err: int = Color.RED.name,  # Error: str assigned to int
      value_ok: int = Color.BLUE.value,

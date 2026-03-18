@@ -524,7 +524,8 @@ impl TypeEvaluator.assign_type_to_type_var(
     if isinstance(param_type, types.ClassType)
     and isinstance(arg_type, types.ClassType) {
         param_type_args = param_type.private.type_args if param_type.private else [];
-        arg_type_args = type_utils.resolve_type_args_for_base(arg_type, param_type);
+        specialized = type_utils.specialize_for_base_class(arg_type, param_type);
+        arg_type_args = specialized.private.type_args if specialized.private else [];
 
         for (i, pta) in enumerate(param_type_args) {
             if i < len(arg_type_args) {

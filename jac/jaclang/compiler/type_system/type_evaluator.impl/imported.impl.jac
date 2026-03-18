@@ -109,13 +109,21 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             }
 
             if not Path(mod_path).exists() {
-                npath.type = types.UnknownType();
+                # For intermediate path segments (not the last), skip rather than
+                # bail out. Namespace packages and directory-based imports may not
+                # resolve individually but the full path (last segment) may still
+                # resolve correctly.
                 npath._sym_category = SymbolType.MODULE;
+                if idx < len(node_.path) - 1 {
+                    continue;
+                }
+                npath.type = types.UnknownType();
                 self.emit_diag(W1100, npath);
                 return npath.type;
             }
 
             if Path(mod_path).is_dir() {
+                npath._sym_category = SymbolType.MODULE;
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(mod_path);
@@ -148,9 +156,17 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
     # "../os/path.pyi" and "/abs/os/path.pyi" are the same file but different strings.
     # resolve() converts both to "/abs/os/path.pyi" so hub always returns the same cached module.
     resolved_path = str(Path(path).resolve());
+    # Determine the correct hub: jaclang-internal imports (typeshed stubs,
+    # compiler modules, etc.) go to the compiler's internal hub so they
+    # don't pollute the user's module hub.
+    compiler = self.program._get_compiler();
+    target_program = compiler._resolve_program(resolved_path, self.program);
+    target_hub = target_program.mod.hub;
     mod: uni.Module;
     if resolved_path in self.program.mod.hub {
         mod = self.program.mod.hub[resolved_path];
+    } elif resolved_path in target_hub {
+        mod = target_hub[resolved_path];
     } else {
         # Try JIR cache first for .jac files
         jir_mod: (uni.Module | None) = None;
@@ -162,7 +178,7 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             if mod.parent_scope is None and mod is not self.builtins_module {
                 mod.parent_scope = self.builtins_module;
             }
-            self.program.mod.hub[resolved_path] = mod;
+            target_hub[resolved_path] = mod;
         } else {
             # Cache miss — full compile
             mod = self.program.compile(
@@ -171,27 +187,32 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             if mod.parent_scope is None and mod is not self.builtins_module {
                 mod.parent_scope = self.builtins_module;
             }
-            self.program.mod.hub[resolved_path] = mod;
+            target_hub[resolved_path] = mod;
             # Write JIR module cache for .jac files (best-effort).
+            # Only write if no valid cache exists yet — symtab-only compiles
+            # lack bytecode and must not overwrite a full cache that has it.
             if resolved_path.endswith('.jac') {
                 try {
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
+                        is_module_cache_valid,
                         SEC_BYTECODE
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
-                    cache_path.parent.mkdir(parents=True, exist_ok=True);
-                    writer = JirWriter();
-                    sections: (dict[int, bytes] | None) = None;
-                    bc = getattr(mod.gen, 'py_bytecode', None);
-                    if bc is not None {
-                        sections = {SEC_BYTECODE: bc};
+                    if not is_module_cache_valid(resolved_path, cache_path) {
+                        cache_path.parent.mkdir(parents=True, exist_ok=True);
+                        writer = JirWriter();
+                        sections: (dict[int, bytes] | None) = None;
+                        bc = getattr(mod.gen, 'py_bytecode', None);
+                        if bc is not None {
+                            sections = {SEC_BYTECODE: bc};
+                        }
+                        jir_bytes = writer.write_module(mod, sections=sections);
+                        tmp_path = cache_path.with_suffix('.tmp');
+                        tmp_path.write_bytes(jir_bytes);
+                        tmp_path.rename(cache_path);
                     }
-                    jir_bytes = writer.write_module(mod, sections=sections);
-                    tmp_path = cache_path.with_suffix('.tmp');
-                    tmp_path.write_bytes(jir_bytes);
-                    tmp_path.rename(cache_path);
                 } except Exception {
                     ;
                 }

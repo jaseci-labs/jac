@@ -614,7 +614,7 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
 """Remove backtick escaping from SpecialVarRef's underlying name.
 
 SpecialVarRef wraps special keywords like init, postinit, self, super,
-root, here, visitor. The underlying Name should never have backtick escaping
+here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {

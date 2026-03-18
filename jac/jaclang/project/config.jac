@@ -29,7 +29,8 @@ obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
-        autonative: bool = False;
+        autonative: bool = False,
+        topology_index: bool = True;
 }
 
 """Native compilation settings from [build.native] section."""

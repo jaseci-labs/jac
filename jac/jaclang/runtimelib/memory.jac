@@ -152,7 +152,8 @@ obj SqliteMemory(PersistentMemory) {
     has path: str,
         __mem__: dict[UUID, Anchor] by postinit,
         __gc__: set[Anchor] by postinit,
-        __conn__: (sqlite3.Connection | None) by postinit;
+        __conn__: (sqlite3.Connection | None) by postinit,
+        l3_fetch_count: int by postinit;
 
     def postinit -> None;
     # Lazy connection initialization - DB only created when data is written
@@ -206,6 +207,8 @@ obj TieredMemory(VolatileMemory) {
         l3: (PersistentMemory | None) by postinit,
         use_cache: bool = False;
 
+    def get_l3_fetch_count -> int;
+    def reset_l3_fetch_count -> None;
     def postinit -> None;
     # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);

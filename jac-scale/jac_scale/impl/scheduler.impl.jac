@@ -1,6 +1,8 @@
 """Silence APScheduler's verbose logs on instantiation."""
 impl JacScaleScheduler.postinit -> None {
     logging.getLogger('apscheduler').setLevel(logging.ERROR);
+    # Ensure each instance gets its own dict (avoid mutable default sharing)
+    self._in_memory_jobs = {};
 }
 
 """Return or create the module-level singleton JacScaleScheduler."""
@@ -131,6 +133,7 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
         cron = job_data.get('cron');
         date = job_data.get('date');
         username = job_data.get('created_by', self._system_username);
+        is_walker = job_data.get('is_walker', True);
         if name {
             try {
                 self._schedule_apscheduler_job(
@@ -140,7 +143,8 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
                     interval=interval,
                     cron=cron,
                     date=date,
-                    username=username
+                    username=username,
+                    is_walker=is_walker
                 );
                 logger.debug(f"Restored dynamic job: {name} (id={job_id})");
             } except Exception as e {
@@ -167,7 +171,12 @@ impl JacScaleScheduler.create_job(
     }
 
     job_id = str(uuid4());
-    now_str = datetime.datetime.utcnow().isoformat();
+    now_str = datetime.datetime.now(datetime.timezone.utc).isoformat();
+
+    # Resolve whether this is a walker or function once, persist it
+    introspector = self._server.introspector if self._server else None;
+    is_walker = name in (introspector._walkers or {}) if introspector else False;
+
     job_data: dict = {
         '_id': job_id,
         'name': name,
@@ -177,6 +186,7 @@ impl JacScaleScheduler.create_job(
         'date': date,
         'created_by': created_by,
         'root_id': root_id,
+        'is_walker': is_walker,
         'created_at': now_str,
         'status': 'active'
     };
@@ -189,7 +199,8 @@ impl JacScaleScheduler.create_job(
         interval=interval,
         cron=cron,
         date=date,
-        username=created_by
+        username=created_by,
+        is_walker=is_walker
     );
 
     # Persist to DB (MongoDB or in-memory)
@@ -207,12 +218,21 @@ impl JacScaleScheduler.list_jobs -> list[dict] {
 
 """Get a single dynamic job by ID."""
 impl JacScaleScheduler.get_job(job_id: str) -> (dict | None) {
-    for job in self._load_jobs_from_db() {
-        if str(job.get('_id', '')) == job_id {
-            return job;
+    if self._db is not None {
+        try {
+            doc = self._db.find_one(
+                self._collection, {'_id': job_id, 'status': 'active'}
+            );
+            if doc {
+                doc['_id'] = str(doc['_id']);
+                return doc;
+            }
+            return None;
+        } except Exception as e {
+            logger.warning(f"MongoDB find_one failed, using in-memory: {e}");
         }
     }
-    return None;
+    return self._in_memory_jobs.get(job_id);
 }
 
 """Update schedule for an existing dynamic job."""
@@ -230,19 +250,22 @@ impl JacScaleScheduler.update_job(
 
     name = existing.get('name', '');
     username = existing.get('created_by', self._system_username);
+    is_walker = existing.get('is_walker', True);
     updates = {
         'trigger': trigger,
         'interval': interval,
         'cron': cron,
         'date': date,
-        'updated_at': datetime.datetime.utcnow().isoformat()
+        'updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
     };
 
     # Remove old APScheduler job and re-add with new schedule
     if self._apscheduler is not None {
         try {
             self._apscheduler.remove_job(job_id);
-        } except Exception { }
+        } except Exception as e {
+            logger.debug(f"Could not remove old APScheduler job {job_id}: {e}");
+        }
         self._schedule_apscheduler_job(
             job_id=job_id,
             name=name,
@@ -250,7 +273,8 @@ impl JacScaleScheduler.update_job(
             interval=interval,
             cron=cron,
             date=date,
-            username=username
+            username=username,
+            is_walker=is_walker
         );
     }
 
@@ -268,7 +292,9 @@ impl JacScaleScheduler.delete_job(job_id: str) -> bool {
     if self._apscheduler is not None {
         try {
             self._apscheduler.remove_job(job_id);
-        } except Exception { }
+        } except Exception as e {
+            logger.debug(f"Could not remove APScheduler job {job_id}: {e}");
+        }
     }
     result = self._delete_job_from_db(job_id);
     if result {
@@ -341,16 +367,12 @@ impl JacScaleScheduler._schedule_apscheduler_job(
     interval: (float | None),
     cron: (str | None),
     date: (str | None),
-    username: str
+    username: str,
+    is_walker: bool = True
 ) -> None {
     if self._apscheduler is None {
         raise RuntimeError("APScheduler is not initialized");
     }
-
-    # Determine whether it's a walker or function for execution routing.
-    # Use raw _walkers — get_walkers() filters out scheduled items.
-    introspector = self._server.introspector if self._server else None;
-    is_walker = name in (introspector._walkers or {}) if introspector else False;
 
     def job_func -> None {
         self._execute_task(name, username, is_walker);

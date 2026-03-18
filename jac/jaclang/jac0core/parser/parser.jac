@@ -261,7 +261,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_DISENGAGE: Tok.KW_DISENGAGE.value,
          TokenKind.KW_HERE: Tok.KW_HERE.value,
          TokenKind.KW_VISITOR: Tok.KW_VISITOR.value,
-         TokenKind.KW_ROOT: Tok.KW_ROOT.value,
          TokenKind.KW_ASYNC: Tok.KW_ASYNC.value,
          TokenKind.KW_AWAIT: Tok.KW_AWAIT.value,
          TokenKind.KW_FLOW: Tok.KW_FLOW.value,

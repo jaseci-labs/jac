@@ -125,6 +125,57 @@ test "jac cli run" {
     assert "Hello World!" in stdout_value;
 }
 
+test "show errors flag" {
+    # Create a temp file with known type errors and a with entry block
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
+        tmp.write(
+            'glob x: str = 5;\n'
+            'glob y: int = "hello";\n'
+            'with entry { print("ran"); }\n'
+        );
+        tmp_path = tmp.name;
+    }
+    try {
+        # Without --show-errors: program runs, summary line shown, no detailed errors
+        captured_out = io.StringIO();
+        captured_err = io.StringIO();
+        sys.stdout = captured_out;
+        sys.stderr = captured_err;
+        try {
+            execution.run(tmp_path);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        stdout_val = captured_out.getvalue();
+        stderr_val = captured_err.getvalue();
+        combined = stdout_val + stderr_val;
+        assert "ran" in stdout_val , "Program should still execute";
+        assert "error(s)" in combined , "Summary line should appear";
+        assert "Cannot assign" not in combined , (
+            "Detailed errors should not appear without --show-errors"
+        );
+
+        # With --show-errors: detailed errors shown
+        captured_out2 = io.StringIO();
+        captured_err2 = io.StringIO();
+        sys.stdout = captured_out2;
+        sys.stderr = captured_err2;
+        try {
+            execution.run(tmp_path, show_errors=True);
+        } finally {
+            sys.stdout = sys.__stdout__;
+            sys.stderr = sys.__stderr__;
+        }
+        combined2 = captured_out2.getvalue() + captured_err2.getvalue();
+        assert "Cannot assign" in combined2 , (
+            "Detailed errors should appear with --show-errors"
+        );
+    } finally {
+        os.unlink(tmp_path);
+    }
+}
+
 test "jac cli run python file" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
@@ -294,23 +345,20 @@ test "jac impl err" {
     assert f'"{path_to_file}", line 2' in stdout_value;
 }
 
-test "param name diff" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
-    sys.stderr = captured_output;
-    try {
-        execution.run(fixture_path("decl_defn_param_name.jac"));
-    } except Exception {
-        _ = None;
-    }
-    sys.stdout = sys.__stdout__;
-    sys.stderr = sys.__stderr__;
-
-    expected_stdout_values = ("short_name = 42", "p1 = 64 , p2 = foobar");
-    output = captured_output.getvalue();
-    for exp in expected_stdout_values {
-        assert exp in output;
-    }
+test "param name diff warns" {
+    import from jaclang.jac0core.program { JacProgram }
+    prog = JacProgram();
+    prog.compile(fixture_path("decl_defn_param_name.jac"), no_cgen=True);
+    warn_msgs = [str(w) for w in prog.warnings_had];
+    assert any(
+        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in warn_msgs
+    ) , (f"Expected param name mismatch warning for method1, got: {warn_msgs}");
+    assert any("'param1'" in m and "'p1'" in m for m in warn_msgs) , (
+        f"Expected param name mismatch warning for method2 param1, got: {warn_msgs}"
+    );
+    assert any("'param2'" in m and "'p2'" in m for m in warn_msgs) , (
+        f"Expected param name mismatch warning for method2 param2, got: {warn_msgs}"
+    );
 }
 
 test "jac test err" {
@@ -575,13 +623,22 @@ test "param arg" {
         sys.stdout = old_stdout;
     }
 
-    stdout_value = captured.getvalue().split("\n");
-    assert stdout_value[-7] == "ULTIMATE_MIN: 1|def|2.5|0|test|100|0";
-    assert stdout_value[-6] == "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1";
-    assert stdout_value[-5] == "SEPARATORS: 42";
-    assert stdout_value[-4] == "EDGE_MIX: 1-test-2-True-1";
-    assert stdout_value[-3] == "RECURSIVE: 7 11";
-    assert stdout_value[-2] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1";
+    stdout_lines = [
+        l
+        for l in captured.getvalue().split("\n")
+        if l.strip()
+    ];
+    expected = [
+        "ULTIMATE_MIN: 1|def|2.5|0|test|100|0",
+        "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1",
+        "SEPARATORS: 42",
+        "EDGE_MIX: 1-test-2-True-1",
+        "RECURSIVE: 7 11",
+        "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
+    ];
+    for line in expected {
+        assert line in stdout_lines , f"Expected '{line}' in output";
+    }
 }
 
 test "caching issue" {
@@ -865,6 +922,44 @@ test "format preserves file on syntax error" {
             );
         }
     }
+}
+
+test "format prints error messages and summary for syntax error file" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.format([fixture_path("test_syntax_err.jac")]);
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # Should exit with code 1 (syntax errors fail the command)
+    assert result == 1 , "format should exit with code 1 for syntax error file";
+
+    # Should show FAILURES section header
+    assert "FAILURES" in combined , "should display FAILURES section for syntax errors";
+
+    # Failed file path should appear in the FAILURES section
+    assert "test_syntax_err.jac" in combined , "should show file path in FAILURES section";
+
+    # Actual syntax error messages should appear in stderr
+    assert len(stderr.strip()) > 0 , "should print syntax error messages to stderr";
+
+    # failed files summary section should appear
+    assert "failed files" in combined , "should display failed files summary";
+
+    # Summary line should mention error count
+    assert "error" in combined , "should show error count in failed files summary";
 }
 
 test "format --lintfix preserves file on parse error" {
@@ -1277,16 +1372,20 @@ test "config no project" {
     original_cwd = os.getcwd();
     os.chdir(tmp_path);
     try {
-        captured = io.StringIO();
+        captured_out = io.StringIO();
+        captured_err = io.StringIO();
         old_stdout = sys.stdout;
-        sys.stdout = captured;
+        old_stderr = sys.stderr;
+        sys.stdout = captured_out;
+        sys.stderr = captured_err;
         try {
             config_cmd.config(action="path");
         } finally {
             sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
         }
-        stdout = captured.getvalue();
-        assert "jac.toml" in stdout;
+        combined = captured_out.getvalue() + captured_err.getvalue();
+        assert "jac.toml" in combined;
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
@@ -1743,4 +1842,38 @@ test "jac check reports errors for files inside jaclang source tree" {
     assert "failed" in combined.lower() , (
         "Expected failure output for jaclang-internal file with type errors"
     );
+}
+
+"""Regression: JIR cache must preserve Archetype.body for generic type inference."""
+test "jir cache preserves generic type inference" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        with open(os.path.join(tmpdir, "lib.jac"), "w") as f {
+            f.write("obj Box[T] { has value: T; def get -> T { return self.value; } }");
+        }
+        with open(os.path.join(tmpdir, "main.jac"), "w") as f {
+            f.write(
+                "import from lib { Box }\nwith entry { print(Box(value=42).get() + 1); }"
+            );
+        }
+        main_path = os.path.join(tmpdir, "main.jac");
+        # Run check twice: first creates cache, second uses it
+        outputs: list[str] = [];
+        for _ in range(2) {
+            JacRuntime.program = JacProgram();
+            (cap_out, cap_err, old_out, old_err) = _capture_output();
+            try {
+                analysis.check([main_path]);
+                outputs.append(cap_out.getvalue() + cap_err.getvalue());
+            } finally {
+                _restore_output(old_out, old_err);
+            }
+        }
+        # E1055 appears if Box[int].get() returns Unknown due to lost type info
+        assert "No matching overload" not in outputs[1] , f"JIR cache lost type info:\n{outputs[
+            1
+        ]}";
+    }
 }

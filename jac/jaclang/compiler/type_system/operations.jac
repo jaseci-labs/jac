@@ -323,8 +323,8 @@ def get_type_of_binary_operation(
             );
         }
         # Check whether a type is a valid node operand for connections.
-        # Accepts: node instances, UnionType where all members are node instances,
-        # AnyType, and UnknownType (not enough info to diagnose).
+        # Accepts: node instances, list of node instances, UnionType where all
+        # members are valid, AnyType, and UnknownType (not enough info to diagnose).
         def is_valid_node_operand(t: jtypes.TypeBase) -> bool {
             if t.is_any_type() or isinstance(t, jtypes.UnknownType) {
                 return True;
@@ -334,6 +334,16 @@ def get_type_of_binary_operation(
             }
             if isinstance(t, jtypes.UnionType) {
                 return all(is_valid_node_operand(m) for m in t.types);
+            }
+            # Also accept list of node instances (runtime accepts list[NodeArchetype])
+            if isinstance(t, jtypes.ClassType)
+            and t.is_builtin()
+            and t.shared.class_name == "list" {
+                if t.private.type_args and len(t.private.type_args) > 0 {
+                    return is_valid_node_operand(t.private.type_args[0]);
+                }
+                return True;  # Unparameterized list - allow
+
             }
             return False;
         }
@@ -419,8 +429,20 @@ def get_type_of_binary_operation(
                     }
                 }
             }
+            # Connect operator returns list of nodes (right operand)
+            if evaluator.prefetch and evaluator.prefetch.list_class {
+                list_type = evaluator.prefetch.list_class.clone_as_instance();
+                if isinstance(list_type, jtypes.ClassType) {
+                    list_type.private.type_args = [right_type];
+                    return list_type;
+                }
+            }
             return right_type;
         }
+    }
+    # Spawn operator: node spawn Walker() returns the walker instance
+    if isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_SPAWN {
+        return right_type;
     }
     #  walrus assignment
     if isinstance(expr.op, uni.Token) and expr.op.name == Tok.WALRUS_EQ {

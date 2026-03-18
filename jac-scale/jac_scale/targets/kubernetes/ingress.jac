@@ -240,10 +240,23 @@ obj IngressDeployer {
                     'metadata': {'labels': {'app': controller_name}},
                     'spec': {
                         'serviceAccountName': controller_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
                         'containers': [
                             {
                                 'name': 'controller',
                                 'image': 'registry.k8s.io/ingress-nginx/controller:v1.12.0',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 101,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {
+                                        'drop': ['ALL'],
+                                        'add': ['NET_BIND_SERVICE']
+                                    },
+                                    'seccompProfile': {'type': 'RuntimeDefault'}
+                                },
                                 'args': [
                                     '/nginx-ingress-controller',
                                     f"--ingress-class={ingress_class_name}",
@@ -275,6 +288,26 @@ obj IngressDeployer {
                                     {'name': 'https', 'containerPort': 443},
                                     {'name': 'webhook', 'containerPort': 8443}
                                 ],
+                                'readinessProbe': {
+                                    'httpGet': {
+                                        'path': '/healthz',
+                                        'port': 10254,
+                                        'scheme': 'HTTP'
+                                    },
+                                    'initialDelaySeconds': 10,
+                                    'periodSeconds': 10,
+                                    'failureThreshold': 3
+                                },
+                                'livenessProbe': {
+                                    'httpGet': {
+                                        'path': '/healthz',
+                                        'port': 10254,
+                                        'scheme': 'HTTP'
+                                    },
+                                    'initialDelaySeconds': 10,
+                                    'periodSeconds': 10,
+                                    'failureThreshold': 3
+                                },
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '90Mi'},
                                     'limits': {'cpu': '500m', 'memory': '256Mi'}
@@ -423,7 +456,7 @@ obj IngressDeployer {
             elapsed = elapsed + poll;
         }
         if self.logger {
-            self.logger.warning(
+            self.logger.warn(
                 f"NGINX controller '{controller_name}' not ready after {max_wait}s, proceeding anyway"
             );
         }

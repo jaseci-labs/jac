@@ -21,7 +21,7 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
-import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012 }
+import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012, W2013 }
 
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
@@ -30,6 +30,16 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
 
     """Lookup a definition in a symbol table."""
     def defn_lookup(self: DeclImplMatchPass, lookup: Symbol) -> (uni.NameAtom | None);
+
+    """Find the archetype definition from a symbol's definitions.
+
+        When a class is used as a base class, its symbol may have multiple
+        definitions - the actual Archetype and Name references from inheritance.
+        This method finds the actual Archetype definition.
+        """
+    def _find_archetype_defn(
+        self: DeclImplMatchPass, lookup: Symbol
+    ) -> (uni.NameAtom | None);
 
     """Connect implementations from source symbol table to declarations in
 target symbol table.

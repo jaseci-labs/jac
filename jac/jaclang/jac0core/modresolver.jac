@@ -275,18 +275,18 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         target_cl_jac = actual_parts[-1] + '.cl.jac';
         target_py = actual_parts[-1] + '.py';
         target_js = actual_parts[-1] + '.js';
-        for (`root, _, files) in os.walk(jacpath) {
+        for (root, _, files) in os.walk(jacpath) {
             if (target_jac in files) {
-                return (os.path.join(`root, target_jac), 'jac');
+                return (os.path.join(root, target_jac), 'jac');
             }
             if (target_cl_jac in files) {
-                return (os.path.join(`root, target_cl_jac), 'jac');
+                return (os.path.join(root, target_cl_jac), 'jac');
             }
             if (target_py in files) {
-                return (os.path.join(`root, target_py), 'py');
+                return (os.path.join(root, target_py), 'py');
             }
             if (target_js in files) {
-                return (os.path.join(`root, target_js), 'js');
+                return (os.path.join(root, target_js), 'js');
             }
         }
     }

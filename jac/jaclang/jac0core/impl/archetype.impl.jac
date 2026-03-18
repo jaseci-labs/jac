@@ -247,8 +247,25 @@ impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state['edges'] = [`edge.make_stub() for `edge in self.edges];
+        if self.topology_index_data is not None {
+            state['topology_index_data'] = self.topology_index_data;
+        }
     }
     return state;
+}
+
+"""Get decoded topology index (lazy-decoded from blob)."""
+impl NodeAnchor.get_topology_index(self: NodeAnchor) -> Any {
+    import from jaclang.runtimelib.topology_index { TopologyIndex }
+    if self.topology_index_data {
+        return TopologyIndex.decode(self.topology_index_data);
+    }
+    return TopologyIndex();
+}
+
+"""Set topology index from TopologyIndex object (encodes to blob)."""
+impl NodeAnchor.set_topology_index(self: NodeAnchor, index: Any) -> None {
+    self.topology_index_data = index.encode();
 }
 
 """Serialize Edge Anchor."""
