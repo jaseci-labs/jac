@@ -4,6 +4,14 @@ import from typing { Any }
 import tempfile;
 import os;
 import threading;
+"""Extract line, col, and message from an Alert object."""
+def _extract_error_info(alert: object) -> dict[str, Any] {
+    return {
+        "line": alert?.loc?.first_line or 0,
+        "col": alert?.loc?.col_start or 0,
+        "message": alert?.msg or str(alert)
+    };
+}
 
 """Run a function with timeout protection."""
 impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
@@ -62,7 +70,7 @@ impl CompilerBridge.parse_snippet(
 
             errors: list[dict] = [];
             for e in program.errors_had {
-                errors.append({"line": 0, "col": 0, "message": str(e)});
+                errors.append(_extract_error_info(e));
             }
 
             valid = len(errors) == 0 and ir is not None;
@@ -118,10 +126,10 @@ impl CompilerBridge.typecheck_snippet(
             errors: list[dict] = [];
             warnings: list[dict] = [];
             for e in program.errors_had {
-                errors.append({"line": 0, "col": 0, "message": str(e)});
+                errors.append(_extract_error_info(e));
             }
             for w in program.warnings_had {
-                warnings.append({"line": 0, "col": 0, "message": str(w)});
+                warnings.append(_extract_error_info(w));
             }
 
             valid = len(errors) == 0 and ir is not None;
@@ -271,7 +279,7 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, A
 
             errors: list[dict] = [];
             for e in program.errors_had {
-                errors.append({"line": 0, "col": 0, "message": str(e)});
+                errors.append(_extract_error_info(e));
             }
 
             if ir is None {
