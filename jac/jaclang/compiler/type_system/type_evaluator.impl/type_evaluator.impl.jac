@@ -629,6 +629,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
                         }
                     }
+                    # Attribute access on Any should return Any, not Unknown
+                    if self.is_any_type(lookup_type) {
+                        return self.prefetch.any_class;
+                    }
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
@@ -823,6 +827,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 attr=expr.right.value
                             );
                         }
+                    }
+                    # Attribute access on Any should return Any, not Unknown
+                    if self.is_any_type(base_type) {
+                        return self.prefetch.any_class;
                     }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
