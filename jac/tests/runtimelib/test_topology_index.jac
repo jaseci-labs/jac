@@ -1,163 +1,169 @@
-"""Unit tests for the TopologyIndex data structure."""
+"""Unit tests for the SAM TopologyIndex data structure."""
 
 import from uuid { uuid4, UUID }
 import from jaclang.runtimelib.topology_index { TopologyIndex }
 
-# ── Encoding ─────────────────────────────────────────────────────────
-test "encode decode round trip" {
-    idx = TopologyIndex();
-    root_id = uuid4();
-    n1 = uuid4();
-    n2 = uuid4();
-    idx.add_node(root_id, "Root");
-    idx.add_node(n1, "NodeA");
-    idx.add_node(n2, "NodeB");
-    idx.add_edge(root_id, n1, "EdgeX");
-    idx.add_edge(n1, n2, "EdgeY");
+# ── Basic SAM operations ─────────────────────────────────────────────
 
-    decoded = TopologyIndex.decode(idx.encode());
-
-    assert decoded.type_table == ["Root", "NodeA", "NodeB", "EdgeX", "EdgeY"];
-    assert len(decoded.node_table) == 3;
-    assert len(decoded.adj_list) == 2;
-}
-
-test "cross root preserved through encoding" {
-    idx = TopologyIndex();
-    foreign_root = uuid4();
-    n1 = uuid4();
-    idx.add_node(uuid4(), "Root");
-    idx.add_node(n1, "NodeA", owner_root=foreign_root);
-
-    decoded = TopologyIndex.decode(idx.encode());
-    assert decoded.node_table[1][2] == foreign_root;
-}
-
-test "large graph under 1MB" {
-    idx = TopologyIndex();
-    node_ids = [uuid4() for _ in range(10000)];
-    types = ["TypeA", "TypeB", "TypeC", "TypeD", "TypeE"];
-    for (i, nid) in enumerate(node_ids) {
-        idx.add_node(nid, types[i % len(types)]);
-    }
-    for i in range(50000) {
-        idx.add_edge(node_ids[i % 10000], node_ids[(i * 7 + 3) % 10000], "Edge");
-    }
-    data = idx.encode();
-    assert len(data) < 1000000;
-    decoded = TopologyIndex.decode(data);
-    assert len(decoded.node_table) == 10000;
-    assert len(decoded.adj_list) == 50000;
-}
-
-test "unknown version returns empty index" {
-    decoded = TopologyIndex.decode(b"\x99\x00\x00\x00\x00\x00\x00\x00\x00");
-    assert len(decoded) == 0;
-}
-
-# ── Mutation ─────────────────────────────────────────────────────────
-test "add node idempotent" {
-    idx = TopologyIndex();
-    nid = uuid4();
-    assert idx.add_node(nid, "A") == idx.add_node(nid, "A");
-    assert len(idx.node_table) == 1;
-}
-
-test "remove node removes its edges" {
-    idx = TopologyIndex();
-    n1 = uuid4();
-    n2 = uuid4();
-    n3 = uuid4();
-    idx.add_node(n1, "A");
-    idx.add_node(n2, "B");
-    idx.add_node(n3, "C");
-    idx.add_edge(n1, n2, "E");
-    idx.add_edge(n2, n3, "E");
-    idx.add_edge(n1, n3, "E");
-    idx.remove_node(n2);
-    assert len(idx.adj_list) == 1;
-}
-
-test "remove edge by type" {
-    idx = TopologyIndex();
-    n1 = uuid4();
-    n2 = uuid4();
-    idx.add_node(n1, "A");
-    idx.add_node(n2, "B");
-    idx.add_edge(n1, n2, "EdgeX");
-    idx.add_edge(n1, n2, "EdgeY");
-    idx.remove_edge(n1, n2, "EdgeX");
-    assert len(idx.adj_list) == 1;
-    assert idx.type_table[idx.adj_list[0][1]] == "EdgeY";
-}
-
-# ── Query ────────────────────────────────────────────────────────────
-def build_fan_graph -> tuple[TopologyIndex, UUID, list[UUID], list[UUID]] {
+test "add edge and query by node type" {
     idx = TopologyIndex();
     r = uuid4();
-    idx.add_node(r, "Root");
-    a_ids: list[UUID] = [];
-    b_ids: list[UUID] = [];
-    for i in range(100) {
-        nid = uuid4();
-        if i < 10 {
-            idx.add_node(nid, "NodeA");
-            a_ids.append(nid);
-        } else {
-            idx.add_node(nid, "NodeB");
-            b_ids.append(nid);
-        }
-        idx.add_edge(r, nid, "EdgeX");
-    }
-    return (idx, r, a_ids, b_ids);
+    n1 = uuid4();
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX");
+    result = idx.query_targets(r, node_type="NodeA");
+    assert result == {n1};
 }
 
-test "type filter narrows fanout" {
-    (idx, r, a_ids, _) = build_fan_graph();
-    assert idx.resolve_chain({r}, [("EdgeX", "NodeA", 2)]) == set(a_ids);
+test "add edge and query by edge type" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX");
+    result = idx.query_targets(r, edge_type="EdgeX");
+    assert result == {n1};
+}
+
+test "combined node + edge type query" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    n2 = uuid4();
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX");
+    idx.add_edge(r, n2, ["NodeA"], "EdgeY");
+    result = idx.query_targets(r, node_type="NodeA", edge_type="EdgeX");
+    assert result == {n1};
 }
 
 test "nonexistent type returns empty" {
-    (idx, r, _, _) = build_fan_graph();
-    assert idx.resolve_chain({r}, [("EdgeX", "NodeC", 2)]) == set();
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    idx.add_edge(r, n1, ["NodeA"], "EdgeX");
+    assert idx.query_targets(r, node_type="NodeB") == set();
+    assert idx.query_targets(r, edge_type="EdgeZ") == set();
 }
 
-test "deep chain" {
+test "remove edge clears target from all columns" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    idx.add_edge(r, n1, ["NodeA", "Base"], "EdgeX");
+    assert idx.query_targets(r, node_type="Base") == {n1};
+    idx.remove_edge(r, n1);
+    assert idx.query_targets(r, node_type="NodeA") == set();
+    assert idx.query_targets(r, node_type="Base") == set();
+    assert idx.query_targets(r, edge_type="EdgeX") == set();
+}
+
+test "remove node drops all references" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    n2 = uuid4();
+    idx.add_edge(r, n1, ["A"], "E");
+    idx.add_edge(r, n2, ["B"], "E");
+    idx.add_edge(n1, n2, ["B"], "E");
+    idx.remove_node(n1);
+    assert idx.query_targets(r, node_type="A") == set();
+    assert idx.query_targets(r, node_type="B") == {n2};
+}
+
+# ── MRO / Inheritance ────────────────────────────────────────────────
+
+test "mro fan-out indexes parent type" {
+    idx = TopologyIndex();
+    r = uuid4();
+    p1 = uuid4();
+    p2 = uuid4();
+    c1 = uuid4();
+    idx.add_edge(r, p1, ["PostNode", "BaseContent"], "E");
+    idx.add_edge(r, p2, ["PostNode", "BaseContent"], "E");
+    idx.add_edge(r, c1, ["CommentNode", "BaseContent"], "E");
+
+    assert idx.query_targets(r, node_type="PostNode") == {p1, p2};
+    assert idx.query_targets(r, node_type="CommentNode") == {c1};
+    assert idx.query_targets(r, node_type="BaseContent") == {p1, p2, c1};
+}
+
+test "mro fan-out large graph" {
+    idx = TopologyIndex();
+    r = uuid4();
+    post_ids: list[UUID] = [];
+    comment_ids: list[UUID] = [];
+    other_ids: list[UUID] = [];
+    for i in range(100) {
+        nid = uuid4();
+        if i < 30 {
+            idx.add_edge(r, nid, ["PostNode", "BaseContent"], "EdgeX");
+            post_ids.append(nid);
+        } elif i < 50 {
+            idx.add_edge(r, nid, ["CommentNode", "BaseContent"], "EdgeX");
+            comment_ids.append(nid);
+        } else {
+            idx.add_edge(r, nid, ["OtherNode"], "EdgeX");
+            other_ids.append(nid);
+        }
+    }
+    base_result = idx.query_targets(r, node_type="BaseContent");
+    assert len(base_result) == 50;
+    assert base_result == set(post_ids) | set(comment_ids);
+    assert len(base_result & set(other_ids)) == 0;
+}
+
+# ── Chain resolution ─────────────────────────────────────────────────
+
+test "resolve chain single hop" {
+    idx = TopologyIndex();
+    r = uuid4();
+    a_ids: list[UUID] = [];
+    for i in range(100) {
+        nid = uuid4();
+        if i < 10 {
+            idx.add_edge(r, nid, ["NodeA"], "EdgeX");
+            a_ids.append(nid);
+        } else {
+            idx.add_edge(r, nid, ["NodeB"], "EdgeX");
+        }
+    }
+    assert idx.resolve_chain({r}, [("EdgeX", "NodeA", 2)]) == set(a_ids);
+}
+
+test "resolve chain multi hop" {
     idx = TopologyIndex();
     r = uuid4();
     a = uuid4();
     b = uuid4();
     c = uuid4();
-    for (nid, t) in [(r, "Root"), (a, "A"), (b, "B"), (c, "C")] {
-        idx.add_node(nid, t);
-    }
-    idx.add_edge(r, a, "E1");
-    idx.add_edge(a, b, "E2");
-    idx.add_edge(b, c, "E3");
+    idx.add_edge(r, a, ["A"], "E1");
+    idx.add_edge(a, b, ["B"], "E2");
+    idx.add_edge(b, c, ["C"], "E3");
     assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)]) == {c};
 }
 
-test "multi hop selective" {
+test "resolve chain inheritance" {
     idx = TopologyIndex();
     r = uuid4();
-    idx.add_node(r, "Root");
-    a_ids: list[UUID] = [];
-    b_ids: list[UUID] = [];
-    for i in range(100) {
-        a = uuid4();
-        idx.add_node(a, "NodeA");
-        idx.add_edge(r, a, "E1");
-        a_ids.append(a);
-    }
-    for i in range(5) {
-        b = uuid4();
-        idx.add_node(b, "NodeB");
-        idx.add_edge(a_ids[i], b, "E2");
-        b_ids.append(b);
-    }
-    assert idx.resolve_chain({r}, [("E1", "NodeA", 2), ("E2", "NodeB", 2)]) == set(
-        b_ids
-    );
+    p = uuid4();
+    c = uuid4();
+    o = uuid4();
+    idx.add_edge(r, p, ["PostNode", "BaseContent"], "E");
+    idx.add_edge(r, c, ["CommentNode", "BaseContent"], "E");
+    idx.add_edge(r, o, ["OtherNode"], "E");
+    assert idx.resolve_chain({r}, [("E", "BaseContent", 2)]) == {p, c};
+}
+
+# ── Serialization ────────────────────────────────────────────────────
+
+test "encode decode round trip" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n1 = uuid4();
+    idx.add_edge(r, n1, ["PostNode", "BaseContent"], "EdgeX");
+
+    decoded = TopologyIndex.decode(idx.encode());
+    assert decoded.query_targets(r, node_type="BaseContent") == {n1};
+    assert decoded.query_targets(r, node_type="PostNode") == {n1};
+    assert decoded.query_targets(r, edge_type="EdgeX") == {n1};
 }
 
 test "cross root ids" {
@@ -165,10 +171,8 @@ test "cross root ids" {
     foreign = uuid4();
     n1 = uuid4();
     n2 = uuid4();
-    idx.add_node(uuid4(), "Root");
-    idx.add_node(n1, "A");
-    idx.add_node(n2, "B", owner_root=foreign);
-    cross = idx.get_cross_root_ids({n1,n2});
+    idx.node_owners[str(n2)] = foreign;
+    cross = idx.get_cross_root_ids({n1, n2});
     assert cross[foreign] == {n2};
     assert n1 not in cross.get(foreign, set());
 }

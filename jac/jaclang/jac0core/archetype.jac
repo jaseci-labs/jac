@@ -162,7 +162,8 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        topology_index_data: (bytes | None) = None;
+        topology_index_data: (bytes | None) = None,
+        _topology_index_cache: (Any | None) = None;
 
     def __getstate__(self: NodeAnchor) -> dict[(str, object)];
     def is_populated(self: NodeAnchor) -> bool;

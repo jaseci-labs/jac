@@ -43,9 +43,7 @@ test "topology index survives anchor serialization" {
     anchor = r.__jac__;
     idx = TopologyIndex();
     n1 = uuid4();
-    idx.add_node(anchor.id, "Root");
-    idx.add_node(n1, "NodeA");
-    idx.add_edge(anchor.id, n1, "EdgeX");
+    idx.add_edge(anchor.id, n1, ["NodeA"], "EdgeX");
     anchor.set_topology_index(idx);
 
     state = anchor.__getstate__();
@@ -54,6 +52,6 @@ test "topology index survives anchor serialization" {
     restored = object.__new__(NodeAnchor);
     restored.__setstate__(state);
     decoded = restored.get_topology_index();
-    assert len(decoded.adj_list) == 1;
-    assert len(decoded.node_table) == 2;
+    assert len(decoded.sam) > 0;
+    assert decoded.query_targets(anchor.id, node_type="NodeA") == {n1};
 }
