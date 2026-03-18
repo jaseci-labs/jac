@@ -24,6 +24,8 @@ glob MANUAL_FIELDS: dict[str, list] = {
 
      },
      # body field from AstImplNeedingNode[T] is (Sequence | ImplDef | None), must be NODE_LIST
+     # TODO: Remove this override by specifying T in unitree.jac, e.g.:
+     #   obj Archetype(..., AstImplNeedingNode[Sequence[ArchBlockStmt] | ImplDef], ...)
      BODY_NODE_LIST_CLASSES: set = {"Archetype","Ability","Enum"},
      FIELD_KINDS: dict[str, int] = {
          "STRING": 0,

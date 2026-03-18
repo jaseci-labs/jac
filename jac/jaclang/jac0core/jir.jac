@@ -389,9 +389,10 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
     return header + empty_payload + section_bytes;
 }
 
-"""Check whether a module's JIR cache is still valid via mtime comparison.
+"""Check whether a module's JIR cache is still valid.
 
-The cache is valid if it exists and is newer than the source file and
+The cache is valid if it exists, was written by a compatible compiler
+version (same jaclang + Python), and is newer than the source file and
 all its annex files (impl, test) and variant files (sv, cl, na).
 """
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
@@ -400,6 +401,15 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         return False;
     }
     try {
+        # Check header compatibility (jaclang version, Python version)
+        header_bytes: bytes = cache_path.read_bytes()[:HEADER_SIZE];
+        header = parse_header(header_bytes);
+        if header is None {
+            return False;
+        }
+        if not header.is_compatible() {
+            return False;
+        }
         cache_mtime = os.path.getmtime(cache_path);
         if cache_mtime <= os.path.getmtime(source_path) {
             return False;
