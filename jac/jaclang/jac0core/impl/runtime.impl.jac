@@ -907,12 +907,12 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(`root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = `root.__jac__ if `root else ctx.user_root;
+    ranchor = root.__jac__ if root else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
@@ -1460,7 +1460,7 @@ impl JacBasics.safe_subscript(`obj: Any, key: Any) -> Any {
 }
 
 """Jac's root getter."""
-impl JacBasics.`root -> Root {
+impl JacBasics.root -> Root {
     return JacRuntime.get_context().get_root();
 }
 

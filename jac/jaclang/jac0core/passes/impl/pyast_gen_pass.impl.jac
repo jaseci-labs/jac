@@ -3150,10 +3150,6 @@ impl PyastGenPass.exit_special_var_ref(
                 )
             )
         ];
-    } elif (nd.name == Tok.KW_ROOT) {
-        nd.gen.py_ast = [
-            self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
-        ];
     } else {
         nd.gen.py_ast = [
             self.sync(ast3.Name(id=self._py_name(nd), ctx=nd.py_ctx_func()))
@@ -3552,6 +3548,21 @@ impl PyastGenPass.exit_name(self: PyastGenPass, nd: uni.Name) -> None {
             nd.gen.py_ast = [resolved];
             return;
         }
+    }
+    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is None) {
+        is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+        if not is_root_call {
+            # Bare `root` usage — emit deprecation, compile as root() call
+            self.emit(W0062, node_override=nd);
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[])
+                )
+            ];
+            return;
+        }
+        # Explicit root() call — just resolve the name from jaclib
+        self.jaclib_imports.add('root');
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);

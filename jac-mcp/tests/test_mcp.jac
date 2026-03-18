@@ -300,6 +300,15 @@ test "parse valid code" {
     assert isinstance(result, dict);
     assert "valid" in result;
     assert "errors" in result;
+    assert result["valid"] == True;
+    assert len(result["errors"]) == 0;
+}
+
+test "parse invalid code" {
+    result = CompilerBridge.parse_snippet("this is not valid @@@ !!!");
+    assert isinstance(result, dict);
+    assert result["valid"] == False;
+    assert len(result["errors"]) > 0;
 }
 
 test "parse empty code" {
@@ -313,6 +322,30 @@ test "input size limit" {
     assert result["valid"] == False;
     assert len(result["errors"]) > 0;
     assert "size" in result["errors"][0]["message"].lower();
+}
+
+test "get ast tree format" {
+    result = CompilerBridge.get_ast_snippet("obj Foo { has x: int = 5; }", "tree");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == True;
+    assert "Foo" in result["ast"];
+}
+
+test "get ast json format" {
+    result = CompilerBridge.get_ast_snippet("obj Foo { has x: int = 5; }", "json");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == True;
+    assert "Module" in result["ast"];
+}
+
+test "get ast invalid code" {
+    result = CompilerBridge.get_ast_snippet("this is not valid @@@ !!!", "tree");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == False;
+    assert len(result.get("errors", [])) > 0;
 }
 
 test "format valid code" {

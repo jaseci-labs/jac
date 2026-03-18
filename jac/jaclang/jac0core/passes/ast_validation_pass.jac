@@ -24,6 +24,7 @@ import from jaclang.jac0core.diagnostics {
     E0044,
     E0050,
     E0051,
+    E0052,
     E0055,
     E0058,
     E0062,
@@ -46,6 +47,8 @@ class ASTValidationPass(UniPass) {
     def enter_enum(self: ASTValidationPass, nd: uni.Enum) -> None;
     def enter_switch_stmt(self: ASTValidationPass, nd: uni.SwitchStmt) -> None;
     def enter_assignment(self: ASTValidationPass, nd: uni.Assignment) -> None;
+    # Type annotation checks
+    def enter_param_var(self: ASTValidationPass, nd: uni.ParamVar) -> None;
     # Context validity checks
     def enter_yield_expr(self: ASTValidationPass, nd: uni.YieldExpr) -> None;
     def enter_ctrl_stmt(self: ASTValidationPass, nd: uni.CtrlStmt) -> None;

@@ -608,7 +608,7 @@ impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
 
 """Pretty print."""
 impl UniScopeNode.sym_pp(depth: (int | None) = None) -> str {
-    return print_symtab_tree(`root=self, depth=depth);
+    return print_symtab_tree(root=self, depth=depth);
 }
 
 """Generate dot graph for sym table."""
@@ -2294,8 +2294,6 @@ impl SpecialVarRef.py_resolve_name -> str {
         return 'props';
     } elif (self.orig.name == Tok.KW_SUPER) {
         return 'super';
-    } elif (self.orig.name == Tok.KW_ROOT) {
-        return Con.ROOT.value;
     } elif (self.orig.name == Tok.KW_HERE) {
         return Con.HERE.value;
     } elif (self.orig.name == Tok.KW_VISITOR) {
