@@ -1843,3 +1843,37 @@ test "jac check reports errors for files inside jaclang source tree" {
         "Expected failure output for jaclang-internal file with type errors"
     );
 }
+
+"""Regression: JIR cache must preserve Archetype.body for generic type inference."""
+test "jir cache preserves generic type inference" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        with open(os.path.join(tmpdir, "lib.jac"), "w") as f {
+            f.write("obj Box[T] { has value: T; def get -> T { return self.value; } }");
+        }
+        with open(os.path.join(tmpdir, "main.jac"), "w") as f {
+            f.write(
+                "import from lib { Box }\nwith entry { print(Box(value=42).get() + 1); }"
+            );
+        }
+        main_path = os.path.join(tmpdir, "main.jac");
+        # Run check twice: first creates cache, second uses it
+        outputs: list[str] = [];
+        for _ in range(2) {
+            JacRuntime.program = JacProgram();
+            (cap_out, cap_err, old_out, old_err) = _capture_output();
+            try {
+                analysis.check([main_path]);
+                outputs.append(cap_out.getvalue() + cap_err.getvalue());
+            } finally {
+                _restore_output(old_out, old_err);
+            }
+        }
+        # E1055 appears if Box[int].get() returns Unknown due to lost type info
+        assert "No matching overload" not in outputs[1] , f"JIR cache lost type info:\n{outputs[
+            1
+        ]}";
+    }
+}

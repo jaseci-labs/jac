@@ -119,6 +119,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if isinstance(parent, uni.AtomTrailer) and parent.is_attr {
             continue;
         }
+        # Skip keyword argument keys (e.g., `name` in `name="check"`)
+        if isinstance(parent, uni.KWPair) and parent.key is name_nd {
+            continue;
+        }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
             continue;

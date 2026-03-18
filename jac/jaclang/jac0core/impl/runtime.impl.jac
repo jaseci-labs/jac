@@ -1315,11 +1315,50 @@ impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
 
 """Jac's apply_dir stmt feature."""
 impl JacBasics.refs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+    post_filter: (Callable[([Archetype], bool)] | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
     }
+    # Fuse post_filter into the last destination's node filter
+    if post_filter is not None and path.destinations {
+        last = path.destinations[-1];
+        if last.nd is None {
+            last.nd = post_filter;
+        } else {
+            orig_nd = last.nd;
+            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+        }
+    }
+    # Try topology index optimization for non-edge-only queries
+    if not path.edge_only {
+        import from jaclang.runtimelib.topo_utils { plan_query, batch_load_nodes }
+        planned_ids = plan_query(path);
+        if planned_ids is not None {
+            # Index resolved which nodes survive type filters.
+            # For single-hop, preserve edge-list order via origin walk.
+            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
+            destinations = path.destinations[:-1]
+                if path.edge_only
+                else path.destinations;
+            use_origin = path.origin if len(destinations) <= 1 else None;
+            nodes = batch_load_nodes(planned_ids, origin=use_origin);
+            destinations = path.destinations;
+            if destinations {
+                last_dest = destinations[-1];
+                if last_dest.nd {
+                    nodes = [
+                        n
+                        for n in nodes
+                        if last_dest.node_filter(n)
+                    ];
+                }
+            }
+            return nodes;
+        }
+    }
+    # Fallback: original approach
     origin = path.origin;
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
     while destinations {
@@ -1496,6 +1535,8 @@ impl JacBasics.build_edge(
         if (source.persistent or target.persistent) {
             JacRuntimeInterface.save(eanch);
         }
+        import from jaclang.runtimelib.topo_utils { on_edge_created }
+        on_edge_created(source, target, eanch);
         return `edge;
     }
     return builder;
@@ -1512,6 +1553,8 @@ impl JacBasics.save(`obj: (Archetype | Anchor)) -> None {
     jctx.mem.put(anchor);
     match anchor {
         case NodeAnchor():
+            import from jaclang.runtimelib.topo_utils { on_node_saved }
+            on_node_saved(anchor);
             for ed in anchor.edges {
                 if (ed.is_populated() and not ed.persistent) {
                     JacRuntimeInterface.save(ed);
@@ -1548,11 +1591,19 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
                     }
 
                 case EdgeAnchor():
+                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
+                    if anchor.is_populated() {
+                        on_edge_destroyed(anchor.source, anchor.target, anchor);
+                    }
                     JacRuntimeInterface.detach(anchor);
 
                 case _:
                     ;
 
+            }
+            if isinstance(anchor, NodeAnchor) {
+                import from jaclang.runtimelib.topo_utils { on_node_destroyed }
+                on_node_destroyed(anchor);
             }
             JacRuntimeInterface.get_context().mem.delete(anchor.id);
         }
