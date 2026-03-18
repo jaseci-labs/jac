@@ -1553,8 +1553,11 @@ test "class_based_enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"1\"] to Tokens",
+        "Cannot assign <Tokens.FLOAT> to int",
         "Cannot assign Literal[\"1\"] to int",
+        "Cannot assign Literal[\"LSQUARE\"] to int",
+        "Cannot assign Literal[\"RSQUARE\"] to int",
+        "Cannot assign <AccessLevel.READ> to str",
         "Cannot assign AccessLevel | NoneType to int",
         "Cannot assign int to str"
     ];

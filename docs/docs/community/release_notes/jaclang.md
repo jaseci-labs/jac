@@ -36,6 +36,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: False "Name may be undefined" on Keyword Arguments**: The static analysis pass (W2001) incorrectly flagged keyword argument names (e.g., `name=` in `func(name="check")`) as potentially undefined variables. Keyword argument keys are now skipped.
 - **Fix: User Module JIR Cache Now Project-Local**: User module `.jir` cache files are now stored in the project's `.jac/cache/` directory (or `.jac/cache/` next to the source file when outside a project) instead of the global `~/.cache/jac/jir/modules/` directory. Compiler and bootstrap caches remain global.
 - **Enforce Type Annotations on Function Parameters (E0052)**: The `ASTValidationPass` now reports an error when a function or method parameter is missing a type annotation. Lambda parameters are exempt (types are inferred). This catches missing annotations early during AST validation, before the type checker runs.
+- **Fix: IntEnum/StrEnum Member Type Checking**: `IntEnum` and `StrEnum` members now work correctly as function arguments and variable assignments. Previously, code like `check_level(AccessLevel.READ)` incorrectly failed with "Cannot assign int to AccessLevel".
 - 3 small refactors/changes.
 
 ## jaclang 0.12.2 (Latest Release)
