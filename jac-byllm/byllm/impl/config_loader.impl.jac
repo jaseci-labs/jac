@@ -25,7 +25,7 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
             'verbose': False
         },
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
-        'litellm': {'local_cost_map': True, 'drop_params': True},
+        'litellm': {'local_cost_map': True, 'drop_params': True, 'debug': False},
         'system_prompt': ''
     };
 }
@@ -63,7 +63,8 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
     litellm_config = config.get('litellm', {});
     return {
         'local_cost_map': bool(litellm_config.get('local_cost_map', True)),
-        'drop_params': bool(litellm_config.get('drop_params', True))
+        'drop_params': bool(litellm_config.get('drop_params', True)),
+        'debug': bool(litellm_config.get('debug', False))
     };
 }
 
