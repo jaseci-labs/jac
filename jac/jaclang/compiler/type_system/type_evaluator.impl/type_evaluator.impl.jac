@@ -630,7 +630,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                     # Attribute access on Any should return Any, not Unknown
-                    if self.is_any_type(lookup_type) {
+                    if self.is_any_type(lookup_type)
+                    and self.prefetch.any_class is not None {
                         return self.prefetch.any_class;
                     }
                     return types.UnknownType();
@@ -829,7 +830,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                     # Attribute access on Any should return Any, not Unknown
-                    if self.is_any_type(base_type) {
+                    if self.is_any_type(base_type)
+                    and self.prefetch.any_class is not None {
                         return self.prefetch.any_class;
                     }
                     return types.UnknownType();
@@ -1140,6 +1142,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return types.UnknownType();
                     }
                 }
+                # Subscript on Any should return Any, not Unknown (check before generic
+                # specialization to avoid Any's subscript returning Any[Unknown])
+                if self.is_any_type(base_type) and self.prefetch.any_class is not None {
+                    return self.prefetch.any_class;
+                }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
@@ -1229,10 +1236,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     base_type, "__getitem__", [subscript_arg], expr
                 ) {
                     return result;
-                }
-                # Subscript on Any should return Any, not Unknown
-                if self.is_any_type(base_type) {
-                    return self.prefetch.any_class;
                 }
                 return types.UnknownType();
             }
@@ -1833,6 +1836,13 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
             if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
+
+                # Iterating over Any yields Any (any-like types allow all operations)
+                if self.is_any_type(collection_type)
+                and self.prefetch.any_class is not None {
+                    node_.type = self.prefetch.any_class;
+                    return self.prefetch.any_class;
+                }
 
                 # Special handling for NamedTuple iteration
                 # Iterating over a NamedTuple yields its field values
@@ -2604,6 +2614,10 @@ use the expected type's type_args to produce a more precise result.
 impl TypeEvaluator.get_type_of_expression(
     node_: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
+    # Guard against None node
+    if node_ is None {
+        return types.UnknownType();
+    }
     # To support JS style IIFE, abilities should be treated as expressions.
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
