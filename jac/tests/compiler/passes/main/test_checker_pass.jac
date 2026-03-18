@@ -1343,6 +1343,31 @@ test "property_type_checking" {
     );
 }
 
+test "property_self_return_type_resolution" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_self_return.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Only 2 errors: assigning Path to int
+    assert len(program.errors_had) == 2;
+
+    assert_error_pretty_found(
+        """
+        wrong: int = p.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        wrong_chained: int = p.parent.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
