@@ -107,9 +107,10 @@ Defaults for `jac run`:
 
 ```toml
 [run]
-session = ""        # Session name for persistence
-main = true         # Run as main module
-cache = true        # Use bytecode cache
+session = ""            # Session name for persistence
+main = true             # Run as main module
+cache = true            # Use bytecode cache
+topology_index = true   # Build topology index for graph query optimization
 ```
 
 ---
@@ -526,6 +527,7 @@ pytest = ">=8.0.0"
 [run]
 main = true
 cache = true
+topology_index = true
 
 [serve]
 port = 8000
