@@ -857,7 +857,9 @@ test "exception logging works with debug disabled" {
             with unittest.mock.patch("litellm.completion", side_effect=auth_err) {
                 raised = False;
                 try {
-                    model.model_call_no_stream({"model": "gpt-4o-mini", "messages": []});
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
                 } except AuthenticationError as e {
                     raised = True;
                     assert "Invalid API key" in str(e);
@@ -885,12 +887,16 @@ test "exception logging works with debug enabled" {
         ) {
             model = Model(model_name="gpt-4o-mini");
             rate_err = litellm.exceptions.RateLimitError(
-                message="Rate limit exceeded", llm_provider="openai", model="gpt-4o-mini"
+                message="Rate limit exceeded",
+                llm_provider="openai",
+                model="gpt-4o-mini"
             );
             with unittest.mock.patch("litellm.completion", side_effect=rate_err) {
                 raised = False;
                 try {
-                    model.model_call_no_stream({"model": "gpt-4o-mini", "messages": []});
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
                 } except RateLimitError as e {
                     raised = True;
                     assert "Rate limit" in str(e);
@@ -917,37 +923,49 @@ test "all exception types log and propagate regardless of debug" {
             clear=True
         ) {
             model = Model(model_name="gpt-4o-mini");
-
             # AuthenticationError
-            with unittest.mock.patch("litellm.completion", side_effect=litellm.exceptions.AuthenticationError(
-                message="bad key", llm_provider="openai", model="gpt-4o-mini"
-            )) {
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.AuthenticationError(
+                    message="bad key", llm_provider="openai", model="gpt-4o-mini"
+                )
+            ) {
                 raised = False;
                 try {
-                    model.model_call_no_stream({"model": "gpt-4o-mini", "messages": []});
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
                 } except AuthenticationError {
                     raised = True;
                 }
                 assert raised , "AuthenticationError should propagate";
             }
-
             # RateLimitError
-            with unittest.mock.patch("litellm.completion", side_effect=litellm.exceptions.RateLimitError(
-                message="quota exceeded", llm_provider="openai", model="gpt-4o-mini"
-            )) {
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.RateLimitError(
+                    message="quota exceeded",
+                    llm_provider="openai",
+                    model="gpt-4o-mini"
+                )
+            ) {
                 raised = False;
                 try {
-                    model.model_call_no_stream({"model": "gpt-4o-mini", "messages": []});
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
                 } except RateLimitError {
                     raised = True;
                 }
                 assert raised , "RateLimitError should propagate";
             }
-
             # NotFoundError
-            with unittest.mock.patch("litellm.completion", side_effect=litellm.exceptions.NotFoundError(
-                message="model not found", model="gpt-fake", llm_provider="openai"
-            )) {
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.NotFoundError(
+                    message="model not found", model="gpt-fake", llm_provider="openai"
+                )
+            ) {
                 raised = False;
                 try {
                     model.model_call_no_stream({"model": "gpt-fake", "messages": []});
@@ -956,7 +974,6 @@ test "all exception types log and propagate regardless of debug" {
                 }
                 assert raised , "ModelNotFoundError should propagate";
             }
-
             # Verify all three were logged
             log_value = log_output.getvalue();
             assert "LLM AuthenticationError" in log_value , f"Should log AuthenticationError, got: {log_value}";
