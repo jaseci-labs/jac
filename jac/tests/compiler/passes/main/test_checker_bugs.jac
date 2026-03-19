@@ -4,18 +4,20 @@ Each test documents behavior that was buggy and has since been fixed.
 They now serve as regression guards to prevent re-introduction of these bugs.
 
 Bug index:
-  #1  - 'is'/'in' operators return UnknownType (missing return)
-  #3  - List element type inference only considers first element
-  #6  - MRO linearization is not C3 (diamond inheritance)
-  #7  - Protocol checking compares only method names, not signatures
-  #8  - DictVal/TupleVal/SetVal have no type inference
-  #11 - BoolExpr (and/or) always returns last operand's type
-  #12 - CompareExpr has no handler (returns UnknownType)
-  #13 - IfExpr (ternary) has no handler (returns UnknownType)
-  #15 - No generic type argument checking (list[int] -> list[str])
-  #21 - _get_method_with_overloads doesn't specialize the base method
-  #22 - Tuple unpacking in for loops returns UnknownType
-  #23 - With statement alias typed as Unknown (wrong traversal order)
+  #1      - 'is'/'in' operators return UnknownType (missing return)
+  #3      - List element type inference only considers first element
+  #6      - MRO linearization is not C3 (diamond inheritance)
+  #7      - Protocol checking compares only method names, not signatures
+  #8      - DictVal/TupleVal/SetVal have no type inference
+  #11     - BoolExpr (and/or) always returns last operand's type
+  #12     - CompareExpr has no handler (returns UnknownType)
+  #13     - IfExpr (ternary) has no handler (returns UnknownType)
+  #15     - No generic type argument checking (list[int] -> list[str])
+  #21     - _get_method_with_overloads doesn't specialize the base method
+  #22     - Tuple unpacking in for loops returns UnknownType
+  #23     - With statement alias typed as Unknown (wrong traversal order)
+  #ANY-1  - typing.Any attribute access incorrectly raises E1030
+  #FINAL-1 - Final[T] not unwrapped for attribute access
 """
 
 import os;
@@ -290,4 +292,29 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
     assert len(program.errors_had) == 5 , f"Bug #22: Tuple unpacking in for loops returns UnknownType. "
     f"Expected 5 type errors but got {len(program.errors_had)}. "
     f"for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
+}
+
+# =========================================================================
+# Bug #ANY-1: typing.Any attribute access incorrectly raises E1030
+#
+# TypeBase.is_any_type() missed ClassType-wrapped typing.Any.
+# E1030 guards called lookup_type.is_any_type() (simple) instead of
+# self.is_any_type() (TypeEvaluator, checks prefetch.any_class).
+# =========================================================================
+test "bug_any1_typing_any_attr_access" {
+    program = compile_and_check("checker_bug_typing_any_attr.jac");
+    assert len(program.errors_had) == 0 , f"Bug #ANY-1: attribute access on typing.Any raised E1030 "
+    f"({len(program.errors_had)} errors). Any must allow all attribute access.";
+}
+
+# =========================================================================
+# Bug #FINAL-1: Final[T] not unwrapped for attribute access
+#
+# Member lookup ran against Final instead of T, so Final[list[int]].count
+# raised E1030. Unwrapping existed for assignment checks but not attr access.
+# =========================================================================
+test "bug_final1_final_unwrap_for_attr_access" {
+    program = compile_and_check("checker_bug_final_unwrap_attr.jac");
+    assert len(program.errors_had) == 0 , f"Bug #FINAL-1: attribute access on Final[T] raised E1030 "
+    f"({len(program.errors_had)} errors). Final[T] must unwrap to T for member lookup.";
 }
