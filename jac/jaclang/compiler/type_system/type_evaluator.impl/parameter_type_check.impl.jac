@@ -608,7 +608,8 @@ impl TypeEvaluator.assign_type_to_type_var(
     # Handle type[T] pattern: param is type[T] and arg is type[X] (Instantiable class)
     # Bind T = X so generic functions like find_parent_of_type[T](typ: type[T]) -> T
     # resolve correctly when called with a concrete class.
-    if (isinstance(param_type, types.ClassType)
+    if (
+        isinstance(param_type, types.ClassType)
         and isinstance(arg_type, types.ClassType)
         and param_type.shared
         and param_type.shared.class_name == "type"

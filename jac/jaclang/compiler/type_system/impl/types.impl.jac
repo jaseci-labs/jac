@@ -118,9 +118,7 @@ The solution maps TypeVar names to concrete types (e.g., {"T": Ability}).
 impl FunctionType.specialize_func_type_vars(
     solution: dict[(str, TypeBase)]
 ) -> FunctionType {
-    import from jaclang.compiler.type_system.type_utils {
-        apply_solved_type_vars
-    }
+    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
 
     clone = FunctionType(
         func_name=self.func_name,
@@ -143,17 +141,13 @@ impl FunctionType.specialize_func_type_vars(
     # Specialize parameter types
     for param in clone.parameters {
         if param.param_type {
-            param.param_type = apply_solved_type_vars(
-                param.param_type, solution
-            );
+            param.param_type = apply_solved_type_vars(param.param_type, solution);
         }
     }
 
     # Specialize return type
     if clone.return_type {
-        clone.return_type = apply_solved_type_vars(
-            clone.return_type, solution
-        );
+        clone.return_type = apply_solved_type_vars(clone.return_type, solution);
     }
 
     return clone;
