@@ -3651,10 +3651,13 @@ impl TypeEvaluator._apply_narrowing(
             base_type = self.get_type_of_symbol(symbol);
         }
         result = self.exclude_type_from_union(base_type, predicate.narrow_type);
-        # If exclusion didn't change the type (non-union), return None to indicate
-        # no narrowing rather than returning the original type as "narrowed".
+        # If exclusion didn't change the type (e.g., non-union or already narrowed),
+        # return the base_type if it was provided as incoming (already narrowed upstream),
+        # otherwise return None to indicate no narrowing.
         if result is base_type {
-            return None;
+            # If incoming was provided, the type is already narrowed - return it.
+            # If incoming was None, we got the declared type and couldn't narrow it.
+            return incoming;
         }
         return result;
     }

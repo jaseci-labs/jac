@@ -161,6 +161,23 @@ impl NaIRGenPass.init(
 # ─── Main Pass Logic ─────────────────────────────────────────
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Auto-promote a compatible .jac module to native context when requested
+    if (
+        getattr(self.prog, '_auto_promote_native', False)
+        and self.ir_in.gen.native_compat
+    ) {
+        mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+        main_target = getattr(self.prog, '_auto_promote_target', "");
+        if (
+            mod_path == main_target
+            and not mod_path.endswith('.na.jac')
+            and not mod_path.endswith('.impl.jac')
+            and not mod_path.endswith('.test.jac')
+        ) {
+            import from jaclang.jac0core.compiler { _coerce_native_module }
+            _coerce_native_module(self.ir_in);
+        }
+    }
     # Emit reference counting helper functions (must be first)
     self._emit_rc_helpers();
     # Process C library imports: import from "libname" { def ...; }

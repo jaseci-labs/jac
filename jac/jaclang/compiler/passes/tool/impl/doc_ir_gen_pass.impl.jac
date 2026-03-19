@@ -1113,6 +1113,15 @@ impl DocIRGenPass.exit_gen_compr(nd: uni.GenCompr) -> None {
     nd.gen.doc_ir = self.format_comprehension(parts);
 }
 
+"""Generate DocIR for a single slice item."""
+impl DocIRGenPass.exit_slice(nd: uni.Slice) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        parts.append(i.gen.doc_ir);
+    }
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
 """Generate DocIR for index slices."""
 impl DocIRGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
     parts: list[doc.DocType] = [];
