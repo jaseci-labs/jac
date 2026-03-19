@@ -610,7 +610,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
                     # (which cause false positives on generic types like list[T].append).
-                    if not lookup_type.is_any_type() {
+                    if not self.is_any_type(lookup_type) {
                         _has_tvars = (
                             isinstance(lookup_type, types.ClassType)
                             and lookup_type.private is not None
@@ -629,9 +629,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
                         }
                     }
+                    # Attribute access on Any should return Any, not Unknown
+                    if self.is_any_type(lookup_type)
+                    and self.prefetch.any_class is not None {
+                        return self.prefetch.any_class;
+                    }
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
                     assert isinstance(base_type, types.ClassType);
+                    # Unwrap Final[T] to T for attribute access: Final is a write-once
+                    # qualifier, not a distinct type; member lookup should go to T.
+                    # TODO: Handle non-ClassType inner (e.g. Final[int | str]).
+                    # TODO: Consider centralizing unwrap logic for all type qualifiers.
+                    if (
+                        self.prefetch.final_class is not None
+                        and isinstance(self.prefetch.final_class, types.ClassType)
+                        and base_type.shared == self.prefetch.final_class.shared
+                        and base_type.private is not None
+                        and base_type.private.type_args
+                    ) {
+                        inner = base_type.private.type_args[0];
+                        if isinstance(inner, types.ClassType) {
+                            base_type = inner;
+                        }
+                    }
                     # Handle .value/.name on enum instances — DynamicClassAttribute
                     # is not detected by the property check, so resolve these directly.
                     if base_type.is_enum_class() {
@@ -790,7 +811,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args.
-                    if not base_type.is_any_type() {
+                    if not self.is_any_type(base_type) {
                         _has_tvars = (
                             isinstance(base_type, types.ClassType)
                             and base_type.private.type_args is not None
@@ -807,6 +828,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 attr=expr.right.value
                             );
                         }
+                    }
+                    # Attribute access on Any should return Any, not Unknown
+                    if self.is_any_type(base_type)
+                    and self.prefetch.any_class is not None {
+                        return self.prefetch.any_class;
                     }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.EnumMemberType) {
@@ -1137,6 +1163,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return types.UnknownType();
                     }
                 }
+                # Subscript on Any should return Any, not Unknown (check before generic
+                # specialization to avoid Any's subscript returning Any[Unknown]).
+                # Use narrow check: only actual Any, not TypeVars (which need error reporting).
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and self.prefetch.any_class is not None
+                    and base_type.shared == self.prefetch.any_class.shared
+                ) {
+                    return self.prefetch.any_class;
+                }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
@@ -1222,10 +1258,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     subscript_arg = expr.right.slices[0].start;
                 }
-                return self.get_type_of_magic_method_call(
+                if result := self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
-                )
-                or types.UnknownType();
+                ) {
+                    return result;
+                }
+                return types.UnknownType();
             }
 
         case uni.AtomUnit():
@@ -1824,6 +1862,13 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Handles both for-loops (InForStmt) and comprehensions (InnerCompr)
             if isinstance(node_.parent, (uni.InForStmt, uni.InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
+
+                # Iterating over Any yields Any (any-like types allow all operations)
+                if self.is_any_type(collection_type)
+                and self.prefetch.any_class is not None {
+                    node_.type = self.prefetch.any_class;
+                    return self.prefetch.any_class;
+                }
 
                 # Special handling for NamedTuple iteration
                 # Iterating over a NamedTuple yields its field values
@@ -2617,6 +2662,10 @@ use the expected type's type_args to produce a more precise result.
 impl TypeEvaluator.get_type_of_expression(
     node_: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
+    # Guard against None node
+    if node_ is None {
+        return types.UnknownType();
+    }
     # To support JS style IIFE, abilities should be treated as expressions.
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);

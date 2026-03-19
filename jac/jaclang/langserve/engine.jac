@@ -94,7 +94,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;
-    def formatted_jac(file_path: str) -> list[lspt.TextEdit];
+    def format_document(file_path: str, auto_lint: bool = False) -> list[lspt.TextEdit];
     def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];
     def get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str];
     def get_outline(file_path: str) -> list[lspt.DocumentSymbol];

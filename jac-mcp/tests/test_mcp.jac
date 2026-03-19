@@ -413,7 +413,7 @@ test "write module returns messages" {
     );
     assert "messages" in result;
     assert len(result["messages"]) > 0;
-    assert result["messages"][0]["role"] == "system";
+    assert result["messages"][0]["role"] == "assistant";
     assert result["messages"][1]["role"] == "user";
     assert "my_module" in result["messages"][1]["content"];
 }
@@ -466,6 +466,45 @@ test "unknown prompt returns error" {
     pp = PromptProvider();
     result = pp.get_prompt("nonexistent", {});
     assert "Unknown" in result.get("description", "") or "messages" in result;
+}
+
+test "all prompt messages use only MCP-valid roles" {
+    pp = PromptProvider();
+    valid_roles = ["user", "assistant"];
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            assert msg["role"] in valid_roles , f"Prompt '{prompt[
+                'name'
+            ]}' has invalid MCP role '{msg[
+                'role'
+            ]}' — only 'user' or 'assistant' are allowed";
+        }
+    }
+}
+
+test "prompt messages pass MCP SDK Pydantic validation" {
+    import from mcp.types { PromptMessage, TextContent }
+    pp = PromptProvider();
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            pm = PromptMessage(
+                role=msg["role"], content=TextContent(type="text", text=msg["content"])
+            );
+            assert pm is not None , f"PromptMessage construction failed for prompt '{prompt[
+                'name'
+            ]}' with role '{msg['role']}'";
+        }
+    }
 }
 
 # ── Bundle Script Tests ──

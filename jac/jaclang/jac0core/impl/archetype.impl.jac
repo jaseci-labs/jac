@@ -301,6 +301,23 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
     }
 }
 
+"""Mark anchor as updated when properties are modified."""
+impl Archetype.__setattr__(self: Archetype, name: str, value: Any) -> None {
+    object.__setattr__(self, name, value);
+    if not name.startswith('_') and name != '__jac__' {
+        try {
+            anchor = self.__jac__;
+            if hasattr(anchor, 'is_updated') {
+                object.__setattr__(anchor, 'is_updated', True);
+            }
+        } except Exception as e {
+            logger.debug(
+                f"Failed to set is_updated flag for {self.__class__.__name__}.{name}: {e}"
+            );
+        }
+    }
+}
+
 """Override repr for archetype."""
 impl Archetype.__repr__(self: Archetype) -> str {
     return f"{self.__class__.__name__}";

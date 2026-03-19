@@ -945,3 +945,22 @@ test "test_cross_module_imported_func_sem_token" {
         teardown_test();
     }
 }
+
+test "test_format_document_lintfix" {
+    # Verifies lintfix output exactly matches the expected file.
+    setup_test();
+    try {
+        lsp = create_server(FIXTURE_DIR);
+        file_uri = uris.from_fs_path(fixture_path("format_lintfix.jac"));
+        lsp.type_check_file(file_uri);
+        edits = lsp.format_document(file_uri, auto_lint=True);
+        assert edits is not None and len(edits) > 0 , "Expected text edits from lintfix format_document";
+        lintfixed = edits[0].new_text;
+        expected = open(fixture_path("format_lintfix_expected.jac")).read();
+        assert lintfixed == expected , (
+            f"Lintfix output does not match expected.\nGOT:\n{lintfixed}\nEXPECTED:\n{expected}"
+        );
+    } finally {
+        teardown_test();
+    }
+}

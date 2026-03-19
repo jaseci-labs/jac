@@ -143,7 +143,8 @@ obj Anchor {
         root: (UUID | None) = None,
         access: Permission = field(default_factory=Permission),
         persistent: bool = False,
-        hash: int = 0;
+        hash: int = 0,
+        is_updated: bool = True;
 
     def is_populated(self: Anchor) -> bool;
     def make_stub(self: Anchor) -> TANCH;
@@ -211,6 +212,7 @@ obj Archetype {
     def __jac__(self: Archetype) -> Anchor;
 
     def __init_subclass__(cls: Any, **kwargs: object) -> None;
+    def __setattr__(self: Archetype, name: str, value: Any) -> None;
     def __repr__(self: Archetype) -> str;
     def __jac_access__(self: Archetype) -> (AccessLevel | str | int | None);
 }

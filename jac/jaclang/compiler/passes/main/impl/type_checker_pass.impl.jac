@@ -644,7 +644,7 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
         # Skip check for UnknownType and any-like types (Any, object)
         # Following Pyright's pattern: these types are assumed to be iterable.
     } elif not isinstance(collection_type, types.UnknownType)
-    and not collection_type.is_any_type() {
+    and not self.evaluator.is_any_type(collection_type) {
         # Enum classes are iterable via EnumMeta.__iter__ which is not in the
         # Jac type system's MRO. Skip the __iter__ check for enum classes.
         is_enum = (
