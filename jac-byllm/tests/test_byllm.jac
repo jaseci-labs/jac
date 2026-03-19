@@ -984,3 +984,29 @@ test "all exception types log and propagate regardless of debug" {
         _loguru_logger.remove(handler_id);
     }
 }
+
+test "sem strings not dropped for s e m prefixed functions" {
+    # Regression test for issue #5233: lstrip('sem.') strips individual characters
+    # {s, e, m, .} instead of the prefix "sem.", corrupting function names that
+    # start with those letters and silently dropping their sem strings.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("sem_lstrip_bug", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+
+    # Verify MTIR FunctionInfo.semstr is set for s/e/m-prefixed functions
+    assert "MTIR_summarize_text: Summarize the given text into a concise summary." in stdout_value , (
+        "sem string for summarize_text (s-prefix) was dropped: " + stdout_value
+    );
+    assert "MTIR_evaluate_score: Evaluate and return a numeric score for the text." in stdout_value , (
+        "sem string for evaluate_score (e-prefix) was dropped: " + stdout_value
+    );
+    assert "MTIR_merge_results: Merge multiple results into a single combined output." in stdout_value , (
+        "sem string for merge_results (m-prefix) was dropped: " + stdout_value
+    );
+    # Control: f-prefixed function should always work
+    assert "MTIR_fetch_data: Fetch data from the remote source." in stdout_value , (
+        "sem string for fetch_data (f-prefix) was dropped: " + stdout_value
+    );
+}
