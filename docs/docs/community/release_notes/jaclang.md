@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Fix: `sem` strings silently dropped for functions starting with 's', 'e', or 'm'** (#5233): `SemDefMatchPass` used `lstrip('sem.')` to strip the `sem.` prefix, which strips individual *characters* from the set `{s, e, m, .}` rather than the prefix string. This corrupted function names like `summarize_text` → `ummarize_text`, causing the symbol table lookup to fail and the sem string to be silently discarded. Fixed by replacing `lstrip('sem.')` with `removeprefix('sem.')`.
 - **Type Checking Enabled by Default**: All user modules are now type-checked during compilation. Bootstrap modules skip type checking automatically to avoid circular imports.
 - **Type Checker: Enum `.value`/`.name` Resolution**: Accessing `.value` or `.name` on enum instances now returns the correct type. For plain enums, the value type is inferred from members.
 - **Fix: Static Analysis False Positive on Attribute Access**: The "Name may be undefined" warning (W2001) no longer fires on attribute-access names (e.g., `obj.value`), which are member lookups, not standalone name references.
