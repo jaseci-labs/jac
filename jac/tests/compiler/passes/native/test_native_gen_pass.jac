@@ -11,13 +11,15 @@ import sys;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import jaclang.jac0core.unitree as uni;
+import from llvmlite.binding { ExecutionEngine }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""
-def compile_native(fixture: str) -> tuple {
+def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
@@ -2448,6 +2450,7 @@ test "maybe_point struct round-trip" {
 test "NativeFieldInfo func_ptr defaults to False" {
     (eng, ir) = compile_native("func_ptr_fields.na.jac");
     layout = ir.gen.native_layout;
+    assert layout is not None;
     af = layout.structs["AllFields"];
     for f in af.fields {
         assert f.is_func_ptr == False , f"Field {f.name} should not be func_ptr";

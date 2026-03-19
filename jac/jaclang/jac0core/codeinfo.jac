@@ -10,6 +10,7 @@ with entry {
         import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
         import from jaclang.compiler.passes.tool.doc_ir { Doc }
         import from jaclang.jac0core.unitree { Source, Token }
+        import from llvmlite.binding { ModuleRef, ExecutionEngine }
     }
 }
 
@@ -42,8 +43,8 @@ obj NativeFunctionInfo {
 """Metadata for a compiled .na.jac module."""
 obj NativeModuleInfo {
     has mod_path: str,
-        llvm_module: Any = None,
-        native_engine: Any = None,
+        llvm_module: (ModuleRef | None) = None,
+        native_engine: (ExecutionEngine | None) = None,
         exported_functions: dict[(str, NativeFunctionInfo)] = field(
             default_factory=`dict
         );
@@ -169,8 +170,8 @@ obj CodeGenTarget {
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
-        llvm_ir: Any = None,
-        native_engine: Any = None,
+        llvm_ir: (ModuleRef | None) = None,
+        native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
         interop_manifest: InteropManifest = field(default_factory=InteropManifest),
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
