@@ -177,7 +177,7 @@ obj CodeGenTarget {
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[Any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
-        _auto_promoted_native: bool = False,
+        native_compat: bool = False,
         layout_registry: Any = None;
 
     @property
