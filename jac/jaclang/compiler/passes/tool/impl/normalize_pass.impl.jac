@@ -1425,6 +1425,11 @@ impl NormalizePass.enter_index_slice(nd: uni.IndexSlice) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
+"""Normalize Slice kid list - handled by parent IndexSlice."""
+impl NormalizePass.enter_slice(nd: uni.Slice) -> None {
+# Kids are set by enter_index_slice which has the is_range context.
+}
+
 """Normalize EdgeRefTrailer kid list."""
 impl NormalizePass.enter_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
     new_kid: list[uni.UniNode] = [];

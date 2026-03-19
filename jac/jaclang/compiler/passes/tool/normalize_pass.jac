@@ -89,6 +89,7 @@ obj NormalizePass(UniPass) {
     def enter_yield_expr(nd: uni.YieldExpr) -> None;
     def enter_func_call(nd: uni.FuncCall) -> None;
     def enter_index_slice(nd: uni.IndexSlice) -> None;
+    def enter_slice(nd: uni.Slice) -> None;
     def enter_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None;
     def enter_edge_op_ref(nd: uni.EdgeOpRef) -> None;
     def enter_disconnect_op(nd: uni.DisconnectOp) -> None;

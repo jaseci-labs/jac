@@ -286,18 +286,29 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
 """Resolve a Callable[[param_types], ret_type] IndexSlice to a function pointer type.
 
 Expected AST structure:
-  IndexSlice
-    TupleVal
-      ListVal  ← parameter types (non-Token kids)
-      <ret_type_expr>  ← return type
+  IndexSlice (is_range=False)
+    slices: [Slice]
+      Slice.start = TupleVal
+        ListVal  ← parameter types (non-Token kids)
+        <ret_type_expr>  ← return type
 """
 impl NaIRGenPass._resolve_callable_type(slice: uni.IndexSlice) -> ir.Type {
     # Dig out the TupleVal inside the IndexSlice.
+    # With Slice as a UniNode, the TupleVal is in Slice.start.
     _tuple_val = None;
-    for _k in (slice.kid or []) {
-        if isinstance(_k, uni.TupleVal) {
-            _tuple_val = _k;
-            break;
+    if slice.slices and len(slice.slices) == 1 {
+        _sl = slice.slices[0];
+        if isinstance(_sl.start, uni.TupleVal) {
+            _tuple_val = _sl.start;
+        }
+    }
+    # Fallback: check IndexSlice.kid directly for backwards compatibility.
+    if _tuple_val is None {
+        for _k in (slice.kid or []) {
+            if isinstance(_k, uni.TupleVal) {
+                _tuple_val = _k;
+                break;
+            }
         }
     }
     if _tuple_val is None {
