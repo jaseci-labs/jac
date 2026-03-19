@@ -407,31 +407,31 @@ cl {
                             <strong style={{"color": "#fbbf24"}}>
                                 __JAC_API_BASE_URL__ is "(not set)":
                             </strong>
-                             Sidecar didn't start or Tauri didn't inject the URL
+                            Sidecar didn't start or Tauri didn't inject the URL
                         </li>
                         <li>
                             <strong style={{"color": "#fbbf24"}}>
                                 __TAURI__ is not available:
                             </strong>
-                             Running as web, not desktop
+                            Running as web, not desktop
                         </li>
                         <li>
                             <strong style={{"color": "#fbbf24"}}>
                                 Walker ping fails:
                             </strong>
-                             API endpoint not reachable or sidecar crashed
+                            API endpoint not reachable or sidecar crashed
                         </li>
                         <li>
                             <strong style={{"color": "#fbbf24"}}>
                                 Fetch fails with network error:
                             </strong>
-                             CORS or sidecar not running
+                            CORS or sidecar not running
                         </li>
                         <li>
                             <strong style={{"color": "#4ade80"}}>
                                 All green:
                             </strong>
-                             Sidecar is working correctly!
+                            Sidecar is working correctly!
                         </li>
                     </ul>
                 </div>
