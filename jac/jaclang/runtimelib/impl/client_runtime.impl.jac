@@ -800,6 +800,7 @@ impl __jacRegisterClientModule(
     moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
 ) -> None {
     __jacEnsureObjectGetPolyfill();
+    __jacInstallErrorHandlers();
     scope = __jacGlobalScope();
     registry = __jacEnsureRegistry();
     moduleFunctions = {};
@@ -897,4 +898,70 @@ impl useEffect(effectFn: Any, deps: list = []) -> None {
     # For now, always run on mount since we don't have React's dep tracking
     # This matches useEffect(() => { ... }, []) behavior
     onMount(effectFn);
+}
+
+# ============================================================================
+# Client Error Reporting
+# ============================================================================
+"""Report a client-side error to the server via POST /cl/__error__.
+Fires asynchronously and silently ignores failures (to avoid error loops).
+"""
+impl __jacReportError(
+    message: str, stack: str = "", url: str = "", source: str = ""
+) -> None {
+    try {
+        fetch(
+            "/cl/__error__",
+            {
+                "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "body": JSON.stringify(
+                    {
+                        "message": message,
+                        "stack": stack,
+                        "url": url or window.location.href,
+                        "source": source,
+                        "timestamp": Reflect.construct(Date, []).toISOString()
+                    }
+                )
+            }
+        );
+    } except Exception {
+    # Silently ignore - never let error reporting cause more errors
+    }
+}
+
+"""Install global error handlers to catch unhandled JS errors and rejections.
+Called once during client module initialization.
+"""
+impl __jacInstallErrorHandlers -> None {
+    scope = __jacGlobalScope();
+    if not scope or not scope.addEventListener {
+        return;
+    }
+    # Guard against double-install
+    if scope.__jacErrorHandlersInstalled {
+        return;
+    }
+    scope.__jacErrorHandlersInstalled = True;
+    # Catch synchronous errors (e.g., TypeError, ReferenceError)
+    scope.addEventListener(
+        "error",
+        lambda event: Any  -> None { __jacReportError(
+            event.message or "Unknown error",
+            event.error.stack if event.error else "",
+            event.filename or "",
+            "window.onerror"
+        );}
+    );
+    # Catch unhandled promise rejections (e.g., failed fetch, async errors)
+    scope.addEventListener(
+        "unhandledrejection",
+        lambda event: Any  -> None { reason = event.reason;message = "";stack = "";if reason {
+            message = reason.message or str(reason);
+            stack = reason.stack or "";
+        } else {
+            message = "Unhandled promise rejection";
+        } __jacReportError(message, stack, "", "unhandledrejection");}
+    );
 }

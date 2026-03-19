@@ -3,6 +3,8 @@
 """Before pass."""
 impl SymTabBuildPass.before_pass(self: SymTabBuildPass) -> None {
     self.cur_sym_tab: list[UniScopeNode] = [];
+    # Track version conditional if statements (don't create scope, only traverse matched branch)
+    self._version_cond_ifs: set[int] = set();
 }
 
 """Push scope."""
@@ -190,11 +192,22 @@ impl SymTabBuildPass._exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) 
     }
     self._bind_import_path_symbols(import_all_module_path_node);
     if module {
+        # Copy symbols from names_in_scope (primary definitions)
         for sym in module.names_in_scope.values() {
             if (sym.access != SymbolAccess.PRIVATE) {
                 sym_table_to_update.def_insert(
                     sym.defn[0], single_decl='import absorb', imported=True
                 );
+            }
+        }
+        # Copy overloaded function symbols from names_in_scope_overload
+        for (name, overload_syms) in module.names_in_scope_overload.items() {
+            for sym in overload_syms {
+                if (sym.access != SymbolAccess.PRIVATE) {
+                    sym_table_to_update.def_insert(
+                        sym.defn[0], single_decl='import absorb', imported=True
+                    );
+                }
             }
         }
     }
@@ -405,27 +418,75 @@ impl SymTabBuildPass.exit_typed_ctx_block(
 }
 
 impl SymTabBuildPass.enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None {
-    self.push_scope_and_link(nd);
+    # Pyright: evaluateStaticBoolLikeExpression for sys.version_info conditionals
+    eval_result = evaluate_version_condition(nd.condition);
+
+    if eval_result is None {
+        # Not a version conditional - normal processing with scope
+        self.push_scope_and_link(nd);
+        return;
+    }
+
+    # Version conditional: don't push scope, don't link
+    # sym_tab will skip unlinked scopes, so symbols go to parent
+    self._version_cond_ifs.add(id(nd));
+
+    if eval_result {
+        # Condition True - only process if body
+        for stmt in nd.body {
+            self.traverse(stmt);
+        }
+    } else {
+        # Condition False - only process else body
+        if nd.else_body {
+            self._version_cond_ifs.add(id(nd.else_body));
+            self.traverse(nd.else_body);
+        }
+    }
+    # Skip automatic child traversal
+    self.prune();
 }
 
 impl SymTabBuildPass.exit_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None {
-    self.pop_scope();
+    if id(nd) not in self._version_cond_ifs {
+        self.pop_scope();
+    }
 }
 
 impl SymTabBuildPass.enter_else_if(self: SymTabBuildPass, nd: uni.ElseIf) -> None {
+    if id(nd) in self._version_cond_ifs {
+        # Part of version conditional - don't push scope
+        for stmt in nd.body {
+            self.traverse(stmt);
+        }
+        self.prune();
+        return;
+    }
     self.push_scope_and_link(nd);
 }
 
 impl SymTabBuildPass.exit_else_if(self: SymTabBuildPass, nd: uni.ElseIf) -> None {
-    self.pop_scope();
+    if id(nd) not in self._version_cond_ifs {
+        self.pop_scope();
+    }
 }
 
 impl SymTabBuildPass.enter_else_stmt(self: SymTabBuildPass, nd: uni.ElseStmt) -> None {
+    if id(nd) in self._version_cond_ifs {
+        # Part of version conditional - don't push scope
+        for stmt in nd.body {
+            self.traverse(stmt);
+        }
+        self.prune();
+        return;
+    }
     self.push_scope_and_link(nd);
 }
 
 impl SymTabBuildPass.exit_else_stmt(self: SymTabBuildPass, nd: uni.ElseStmt) -> None {
-    self.pop_scope();
+    if id(nd) not in self._version_cond_ifs {
+        self.pop_scope();
+    }
 }
 
 impl SymTabBuildPass.enter_try_stmt(self: SymTabBuildPass, nd: uni.TryStmt) -> None {

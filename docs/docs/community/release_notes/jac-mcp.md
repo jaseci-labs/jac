@@ -1,8 +1,15 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.5 (Unreleased)
+## jac-mcp 0.1.6 (Unreleased)
 
-## jac-mcp 0.1.4 (Latest Release)
+- **Fix SSE transport method issue**
+- **Fix CompilerBridge tools returning incorrect results**: `check_syntax`, `validate_jac`, and `get_ast` now use the compiler's structured diagnostics and parse API to correctly detect errors and return real AST output
+- **Fix error reporting and example loading**: Syntax errors now report accurate line/column numbers, and `list_examples`/`get_example` work correctly in PyPI installs
+- **Lazy GitHub-based example fetching**: Examples are now fetched on-demand from GitHub instead of being bundled in the PyPI package, reducing package size and ensuring examples are always up-to-date. Local repo examples are used when available, with GitHub as a fallback
+
+## jac-mcp 0.1.5 (Latest Release)
+
+## jac-mcp 0.1.4
 
 - **Fix streamable HTTP transport method issue**: Refactors the server initialization logic for the `streamable-http` transport method.
 - 1 small change/refactor.

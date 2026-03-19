@@ -18,17 +18,27 @@ This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Pyth
 
 Pass flags after `--` to customize the install:
 
+**Core language only (no plugins):**
+
 ```bash
-# Core language only (no plugins)
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
+```
 
-# Specific version
+**Specific version:**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
+```
 
-# Standalone binary (self-contained, no Python/uv needed at runtime)
+**Standalone binary (self-contained, no Python/uv needed at runtime):**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --standalone
+```
 
-# Uninstall
+**Uninstall:**
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --uninstall
 ```
 
@@ -117,28 +127,42 @@ pip install jaseci
 
 ## IDE Setup
 
-### VS Code (Recommended)
+The **Jac Language Support** extension is available on both major extension marketplaces:
 
-Install the official Jac extension for the best development experience:
+| Marketplace | Link |
+|-------------|------|
+| VS Code Marketplace | [jaseci-labs.jaclang-extension](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension) |
+| Open VSX Registry | [jaseci-labs/jaclang-extension](https://open-vsx.org/extension/jaseci-labs/jaclang-extension) |
 
-**Option 1: From Marketplace**
+### Supported IDEs
 
-1. Open VS Code
-2. Click Extensions in the sidebar (or press `Ctrl+Shift+X` / `Cmd+Shift+X`)
-3. Search for **"Jac"**
-4. Click **Install** on "Jac Language Support" by Jaseci Labs
+- [VS Code](https://code.visualstudio.com/)
+- [Cursor](https://www.cursor.com/)
+- [Windsurf](https://codeium.com/windsurf)
+- [Antigravity](https://antigravity.google/)
+- [VSCodium](https://vscodium.com/)
+- [Gitpod](https://gitpod.io/)
+- [Eclipse Theia](https://theia-ide.org/)
+- [Void](https://voideditor.com/)
 
-Or install directly: [Open in VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension)
+### Install the Extension
 
-**Option 2: Quick Install**
+In any of the IDEs above, installing is the same:
 
-Press `Ctrl+P` / `Cmd+P` and paste:
+1. Open the Extensions panel - `Ctrl+Shift+X` / `Cmd+Shift+X`
+2. Search **`jaclang`**
+3. Click **Install** on "Jac Language Support" by Jaseci Labs
 
-```
-ext install jaseci-labs.jaclang-extension
-```
+### Manual Install (VSIX)
 
-**Features:**
+For IDEs without marketplace access or for offline installs:
+
+1. Download the latest `.vsix` from [GitHub Releases](https://github.com/Jaseci-Labs/jac-vscode/releases/latest)
+2. Open the Command Palette - `Ctrl+Shift+P` / `Cmd+Shift+P`
+3. Select **"Extensions: Install from VSIX..."**
+4. Choose the downloaded file
+
+### Extension Features
 
 - Syntax highlighting for `.jac` files
 - Intelligent autocomplete
@@ -146,13 +170,6 @@ ext install jaseci-labs.jaclang-extension
 - Hover documentation
 - Go to definition
 - Graph visualization
-
-### Cursor
-
-1. Download the latest `.vsix` from [GitHub releases](https://github.com/Jaseci-Labs/jac-vscode/releases/latest)
-2. Press `Ctrl+Shift+P` / `Cmd+Shift+P`
-3. Select "Extensions: Install from VSIX"
-4. Choose the downloaded file
 
 ---
 

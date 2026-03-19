@@ -529,13 +529,21 @@ function jacSourceMapper() {{
     name: 'jac-source-mapper',
     enforce: 'pre',
 
-    // Extract source mapping from compiled files
+    // Extract source mapping and chain per-file source maps
     transform(code, id) {{
       if (id.includes('/compiled/') && id.endsWith('.js')) {{
         const match = code.match(/^\\/\\* Source: (.+?) \\*\\//);
         if (match) {{
           sourceMap.set(id, match[1]);
         }}
+        // Load per-file .map if it exists and return it so Vite chains it
+        const mapPath = id + '.map';
+        try {{
+          if (fs.existsSync(mapPath)) {{
+            const rawMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
+            return {{ code, map: rawMap }};
+          }}
+        }} catch (e) {{}}
       }}
       return null;
     }},

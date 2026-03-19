@@ -21,8 +21,9 @@ impl Model.postinit -> None {
     }
     if not self._mock_delegate {
         logging.getLogger("httpx").setLevel(logging.WARNING);
-        _disable_debugging();
-        # Use drop_params from config
+        if not _litellm_config.get("debug", False) {
+            _disable_debugging();
+        }
         litellm.drop_params = _litellm_config.get("drop_params", True);
     }
 }
@@ -56,17 +57,26 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = litellm.completion(api_key=self.api_key or None, **params);
         }
     } except litellm.exceptions.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
         raise AuthenticationError(str(e));
     } except openai.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
         raise AuthenticationError(str(e));
     } except litellm.exceptions.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
         raise RateLimitError(str(e));
     } except openai.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
         raise RateLimitError(str(e));
     } except litellm.exceptions.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
     } except openai.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
+        raise;
     }
     return response;
 }

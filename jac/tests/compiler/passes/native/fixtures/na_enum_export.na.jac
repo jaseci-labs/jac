@@ -15,13 +15,16 @@ obj Token {
         value: str = "";
 }
 
-glob KEYWORDS: dict[str, int] = {
+glob KEYWORDS: dict[str, TokenKind] = {
     "if": TokenKind.KW_IF,
     "else": TokenKind.KW_ELSE
 };
 
 def lookup_keyword(text: str) -> int {
-    return KEYWORDS.get(text, -1);
+    if text in KEYWORDS {
+        return int(KEYWORDS[text]);
+    }
+    return -1;
 }
 
 def make_token(kind: TokenKind, value: str) -> Token {

@@ -140,7 +140,7 @@ obj ObjectSpatialPath {
 obj Anchor {
     has archetype: Archetype,
         id: UUID = field(default_factory=uuid4),
-        `root: (UUID | None) = None,
+        root: (UUID | None) = None,
         access: Permission = field(default_factory=Permission),
         persistent: bool = False,
         hash: int = 0;
@@ -161,10 +161,13 @@ obj Anchor {
 @dataclass(eq=False, repr=False, kw_only=True)
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
-        edges: list[EdgeAnchor];
+        edges: list[EdgeAnchor],
+        topology_index_data: (bytes | None) = None;
 
     def __getstate__(self: NodeAnchor) -> dict[(str, object)];
     def is_populated(self: NodeAnchor) -> bool;
+    def get_topology_index(self: NodeAnchor) -> Any;
+    def set_topology_index(self: NodeAnchor, index: Any) -> None;
 }
 
 """Edge Anchor."""

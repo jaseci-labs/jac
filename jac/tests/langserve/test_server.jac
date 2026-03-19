@@ -688,12 +688,12 @@ test "test_hover_types" {
         );
         lsp.type_check_file(overload_file);
         overload_cases = [
-            (4, 6, ["list"]),  # parts: list[str]
-            (5, 6, ["str"]),  # first: str (from list[str][0])
-            (6, 6, ["str"]),  # result: str (str + str)
-            (8, 6, ["list"]),  # parts2: list[str]
-            (9, 6, ["str"]),  # first3: str
-            (10, 6, ["str"]),  # result3: str
+            (4, 6, ["list"]),  # parts: list[str] or list[LiteralString]
+            (5, 6, ["str", "String"]),  # first: str or LiteralString
+            (6, 6, ["str", "String"]),  # result: str or LiteralString
+            (8, 6, ["list"]),  # parts2: list[str] or list[LiteralString]
+            (9, 6, ["str", "String"]),  # first3: str or LiteralString
+            (10, 6, ["str", "String"]),  # result3: str or LiteralString
 
         ];
         for (line, col, expected_list) in overload_cases {
@@ -708,6 +708,32 @@ test "test_hover_types" {
             }
             assert found , f"Overload line {line}: expected one of {expected_list}, got: {hover.contents.value}";
         }
+
+        # Stdlib overload via wildcard import: os.path.dirname (from posixpath/ntpath import *)
+        stdlib_file = uris.from_fs_path(fixture_path("stdlib_overload.jac"));
+        lsp.type_check_file(stdlib_file);
+        hover = lsp.get_hover_info(stdlib_file, lspt.Position(5, 22));
+        assert hover is not None , "Hover should return info for os.path.dirname";
+        assert "dirname" in hover.contents.value , f"os.path.dirname: expected 'dirname', got: {hover.contents.value}";
+        defn = lsp.get_definition(stdlib_file, lspt.Position(5, 22));
+        assert defn is not None , "Definition should be found for os.path.dirname";
+        assert "posixpath.pyi" in defn.uri or "ntpath.pyi" in defn.uri , f"os.path.dirname go-to-def: expected posixpath/ntpath.pyi, got: {defn.uri}";
+
+        # isinstance narrowing in ternary: true branch should show narrowed type
+        ternary_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_isinstance_ternary.jac")
+        );
+        lsp.type_check_file(ternary_file);
+        # Line 8: result = [left] if isinstance(left, Node) else left;
+        # True branch: left should be narrowed to Node (column 15, 0-indexed: 14)
+        hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 14));
+        assert hover is not None , "Ternary true branch hover should exist";
+        assert "Node" in hover.contents.value , f"Ternary true branch: expected Node, got: {hover.contents.value}";
+        assert "list[Node]" not in hover.contents.value , f"Ternary true branch: should NOT contain list[Node], got: {hover.contents.value}";
+        # Else branch: left should be narrowed to list[Node] (column 53, 0-indexed: 52)
+        hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 52));
+        assert hover is not None , "Ternary else branch hover should exist";
+        assert "list[Node]" in hover.contents.value , f"Ternary else branch: expected list[Node], got: {hover.contents.value}";
     } finally {
         teardown_test();
     }
@@ -780,6 +806,141 @@ test "test_namedtuple_hover" {
             assert hover is not None , f"Hover for '{name}' at line {line + 1} should exist";
             assert expected_type in hover.contents.value , f"'{name}' at line {line + 1}: expected '{expected_type}', got: {hover.contents.value}";
         }
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_go_to_definition_import_module_path_and_item" {
+    setup_test();
+    try {
+        lsp = create_server();
+        import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"));
+        lsp.type_check_file(import_file);
+
+        # Line 3: import from mypkg_deep.utils.helpers { greet, greeting }
+        # Test module path segments (each should navigate to the module/directory)
+        positions = [
+            # "mypkg_deep" in module path → namespace package dir
+            (3, 15, "local_imports/mypkg_deep"),
+            # "utils" in module path → namespace package dir
+            (3, 25, "local_imports/mypkg_deep/utils"),
+            # "helpers" in module path → module file at 0:0
+            (3, 31, "local_imports/mypkg_deep/utils/helpers.jac"),
+            # "greet" in { greet, greeting } → definition in helpers.jac
+            (3, 41, "local_imports/mypkg_deep/utils/helpers.jac"),
+            # "greeting" in { greet, greeting } → definition in helpers.jac
+            (3, 48, "local_imports/mypkg_deep/utils/helpers.jac"),
+
+        ];
+
+        for (line, char, expected) in positions {
+            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
+            assert def_loc is not None , f"Definition at line {line}, col {char} not found";
+            assert expected in str(def_loc) , f"Expected '{expected}' in definition for "
+            f"line {line}, char {char}, got: {def_loc}";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_cross_module_imported_func_no_false_errors" {
+    setup_test();
+    try {
+        lsp = create_server();
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # There should be no diagnostics on line 5 (the call site).
+        # Previously, JIR cache corruption caused FunctionType to have 0 params,
+        # which produced false "wrong number of arguments" errors.
+        diags = lsp.diagnostics.get(caller_file, []);
+        call_line_diags = [
+            d
+            for d in diags
+            if d.range.start.line == 4
+        ];
+        assert len(call_line_diags) == 0 , f"Expected no errors on call line, got: "
+        f"{[d.message for d in call_line_diags]}";
+    } finally {
+        teardown_test();
+    }
+}
+
+"""Stale JIR caches from older compiler versions must be rejected.
+
+Regression test: a cache written by a buggy compiler (before #5195)
+would lose FuncSignature.params, causing false E1052 errors on every
+call site.  is_module_cache_valid must reject caches whose
+jaclang_version_hash doesn't match the running compiler.
+"""
+test "test_jir_cache_invalidated_on_version_mismatch" {
+    import struct;
+    import tempfile;
+    import shutil;
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        is_module_cache_valid,
+        HEADER_FMT,
+        HEADER_SIZE
+    }
+
+    setup_test();
+    try {
+        lsp = create_server();
+        # Type-check the caller to force JIR cache creation for the dependency.
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # Locate the JIR cache for the dependency module.
+        dep_src = fixture_path("cross_module_func.jac");
+        cache_path = get_module_cache_path(dep_src);
+
+        # Sanity: cache should exist and be valid right now.
+        assert cache_path.exists() , "JIR cache was not written";
+        assert is_module_cache_valid(dep_src, cache_path) , "Fresh cache should be valid";
+
+        # Tamper: overwrite jaclang_version_hash with a fake value.
+        data = bytearray(cache_path.read_bytes());
+        # Header layout <4sHHIIIIII>: jaclang_version_hash is at offset 8.
+        struct.pack_into("<I", data, 8, 0xDEADBEEF);
+        cache_path.write_bytes(bytes(data));
+
+        # The cache should now be rejected.
+        assert not is_module_cache_valid(dep_src, cache_path) , (
+            "Cache with mismatched jaclang_version_hash should be invalid"
+        );
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_cross_module_imported_func_sem_token" {
+    import from jaclang.jac0core.constant { JacSemTokenType }
+    setup_test();
+    try {
+        lsp = create_server();
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # "greet_user" on line 3 (import) should have FUNCTION sem token, not PROPERTY.
+        import_tok = lsp.get_token_at_position(caller_file, lspt.Position(2, 35));
+        assert import_tok is not None , "Expected token at import line";
+        sem = import_tok.sem_token;
+        assert sem is not None , "Expected sem_token for imported function";
+        assert sem[0] == JacSemTokenType.FUNCTION , (
+            f"Expected FUNCTION sem token for imported function, got: {sem[0]}"
+        );
+
+        # "greet_user" on line 5 (call site) should also have FUNCTION sem token.
+        call_tok = lsp.get_token_at_position(caller_file, lspt.Position(4, 14));
+        assert call_tok is not None , "Expected token at call site";
+        call_sem = call_tok.sem_token;
+        assert call_sem is not None , "Expected sem_token for function call";
+        assert call_sem[0] == JacSemTokenType.FUNCTION , (
+            f"Expected FUNCTION sem token at call site, got: {call_sem[0]}"
+        );
     } finally {
         teardown_test();
     }

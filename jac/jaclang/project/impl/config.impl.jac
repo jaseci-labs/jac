@@ -783,7 +783,8 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False)
+            autonative=run_data.get("autonative", False),
+            topology_index=run_data.get("topology_index", True)
         );
     }
     if "build" in data {
@@ -831,7 +832,10 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             );
         }
         config.check = CheckConfig(
-            print_errs=check_data.get("print_errs", True), lint=lint_config
+            print_errs=check_data.get("print_errs", True),
+            lint=lint_config,
+            suppress=check_data.get("suppress", []),
+            suppress_categories=check_data.get("suppress_categories", [])
         );
     }
     if "dot" in data {

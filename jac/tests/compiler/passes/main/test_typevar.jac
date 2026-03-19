@@ -7,6 +7,9 @@ import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+     CHECKER_FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
+     ),
      TYPEVAR_FIXTURES = os.path.join(
          JAC_ROOT,
          "tests",
@@ -31,7 +34,7 @@ test "typevar1_validation_errors" {
     error_messages = [e.pretty_print() for e in program.errors_had];
     all_errors = "\n".join(error_messages);
 
-    assert 'TypeVar name "T3 ' in all_errors and 'must match' in all_errors , "Expected name mismatch error for T2 = TypeVar('T3')";
+    assert 'TypeVar name "T3"' in all_errors and 'must match' in all_errors , "Expected name mismatch error for T2 = TypeVar('T3')";
     assert 'must be assigned to a simple variable' in all_errors , "Expected index expression error for my_dict['var'] = TypeVar('T5')";
     assert 'requires at least two constrained types' in all_errors , "Expected single constraint error for TypeVar('T5', str)";
 }
@@ -131,4 +134,62 @@ test "typevar6_bounded_operations" {
     assert 'is not awaitable' in all_errors , "Expected await error for await a";
     assert 'is not iterable' in all_errors , "Expected iteration error for for _ in a";
     assert 'Cannot access attribute "do_other_stuff"' in all_errors , "Expected error for a.do_other_stuff() on Foo-bounded T1";
+}
+
+"""Test constrained TypeVar operation validation."""
+test "typevar7_constrained_operations" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # Key TypeVar-related errors to verify (constraints check each type)
+    # Attribute access - Foo doesn't have var2
+    assert 'Cannot access attribute "var2" for type "Foo"' in all_errors , "Expected attribute error for a.var2 (Foo has no var2)";
+
+    # Subscript - neither Foo nor Bar is subscriptable
+    assert 'is not subscriptable' in all_errors , "Expected subscript error for a[0]";
+
+    # Unary operator - neither Foo nor Bar supports __neg__
+    assert '__neg__' in all_errors and 'not supported' in all_errors , "Expected unary op error for -a";
+
+    # Await - neither Foo nor Bar is awaitable
+    assert 'is not awaitable' in all_errors , "Expected await error for await a";
+
+    # Iteration - neither Foo nor Bar is iterable
+    assert 'is not iterable' in all_errors , "Expected iteration error for for _ in a";
+
+    # Method access - Foo doesn't have do_other_stuff
+    assert 'Cannot access attribute "do_other_stuff" for type "Foo"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
+}
+
+"""Test that ParamSpec and TypeVarTuple in Callable annotations produce no false E1071 errors."""
+test "paramspec_callable_no_false_e1071" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "paramspec.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    e1071_errors = [
+        e
+        for e in errors
+        if "E1071" in e
+    ];
+    assert len(e1071_errors) == 0 , f"Expected no E1071 errors for Callable[P, T], got:\n{all_errors}";
+}
+
+"""Test that module-level dunder variables (__name__, __file__, etc.) type-check cleanly."""
+test "module_dunders_no_errors" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "module_dunders.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    assert len(program.errors_had) == 0 , f"Expected no errors for module dunder variables, got:\n{all_errors}";
 }

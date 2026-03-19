@@ -42,12 +42,30 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
-"""Get symbol table."""
+"""Get symbol table.
+
+For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
+We skip unlinked scopes and return the first linked scope (or Module root).
+"""
 @property
 impl UniNode.sym_tab -> UniScopeNode {
-    return self
-        if isinstance(self, UniScopeNode)
-        else self.parent_of_type(UniScopeNode);
+    nd: (UniNode | None) = self;
+    # TODO: Refactor this wile doing JS symtab
+    while nd is not None {
+        if isinstance(nd, UniScopeNode) {
+            # Module is always valid (root scope)
+            if isinstance(nd, Module) {
+                return nd;
+            }
+            # Linked scope (has parent_scope set)
+            if nd.parent_scope is not None {
+                return nd;
+            }
+            # Unlinked scope - continue up
+        }
+        nd = nd.parent;
+    }
+    raise ValueError("No scope found");
 }
 
 """Add kid left."""
@@ -480,13 +498,6 @@ impl UniScopeNode.link_kid_scope(key_node: UniScopeNode) -> UniScopeNode {
     return self.kid_scope[-1];
 }
 
-"""Inherit symbol table."""
-impl UniScopeNode.inherit_sym_tab(target_sym_tab: UniScopeNode) -> None {
-    for i in target_sym_tab.names_in_scope.values() {
-        self.def_insert(i.decl, access_spec=i.access);
-    }
-}
-
 """Insert into symbol table."""
 impl UniScopeNode.def_insert(
     nd: AstSymbolNode,
@@ -597,7 +608,7 @@ impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
 
 """Pretty print."""
 impl UniScopeNode.sym_pp(depth: (int | None) = None) -> str {
-    return print_symtab_tree(`root=self, depth=depth);
+    return print_symtab_tree(root=self, depth=depth);
 }
 
 """Generate dot graph for sym table."""
@@ -758,6 +769,7 @@ impl Expr.postinit -> None {
     self._type_sym_tab = None;
     self.type = None;
     self.attached_tokens = None;
+    self.backend_type_tag = None;
 }
 
 
@@ -849,6 +861,13 @@ impl NameAtom.sem_token -> (tuple[(SemTokType, SemTokMod)] | None) {
         return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
     }
     if self.sym {
+        # Before falling through to PROPERTY, check if the node's resolved type
+        # is a function/overloaded type. This handles imported functions where
+        # sym.decl.name_of is a plain Name (import alias) rather than Ability.
+        if self.type is not None
+        and type(self.type).__name__ in ('FunctionType', 'OverloadedType') {
+            return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
+        }
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
     # Handle __getattr__ dynamic attributes (explicitly marked by type checker)
@@ -1147,13 +1166,55 @@ impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     return resolve_relative_path(target, self.loc.mod_path);
 }
 
-"""Convert an import target string into a relative file path."""
+"""Convert an import target string into a list of file paths, one per segment.
+
+Resolves the FULL dotted path first (which uses sys.path, importlib, etc.)
+and then derives intermediate paths by walking up the directory tree.
+This ensures that intermediate package directories (e.g., 'jaclang.cli')
+resolve correctly even when per-prefix resolution would fail.
+"""
 impl ModulePath.resolve_relative_path_list -> list[str] {
     parts = self.dot_path_str.split('.');
-    paths = [];
-    for i in range(len(parts)) {
-        sub_path = '.'.join(parts[:(i + 1)]);
-        paths.append(resolve_relative_path(sub_path, self.loc.mod_path));
+    if not parts {
+        return [];
+    }
+    # Resolve the full dotted path — this uses the most robust resolution
+    # (sys.path, importlib, typeshed, etc.) and is the authoritative result.
+    full_path = resolve_relative_path(self.dot_path_str, self.loc.mod_path);
+    # Derive intermediate paths by walking up the directory tree.
+    # e.g., jaclang.cli.console -> .../jaclang/cli/console.jac
+    #   console -> .../jaclang/cli/console.jac (the full resolved path)
+    #   cli     -> .../jaclang/cli/            (parent directory)
+    #   jaclang -> .../jaclang/                (grandparent directory)
+    # For each intermediate directory, check for __init__.jac or __init__.py
+    # so that get_type_of_module() can import them properly.
+    paths: list[str] = [''] * len(parts);
+    paths[-1] = full_path;
+    # Walk up from the resolved path's parent directory.
+    # When the full path is a package __init__ file (e.g., pkg/__init__.py),
+    # dirname gives us the package dir itself (which represents the last
+    # segment), so we need to go one level further up.
+    full_basename = os.path.basename(full_path);
+    cur_dir = os.path.dirname(full_path);
+    if full_basename.startswith('__init__') {
+        cur_dir = os.path.dirname(cur_dir);
+    }
+    for i in range(len(parts) - 2, -1, -1) {
+        init_found = False;
+        for init_name in ('__init__.jac', '__init__.py', '__init__.pyi') {
+            init_path = os.path.join(cur_dir, init_name);
+            if os.path.isfile(init_path) {
+                paths[i] = init_path;
+                init_found = True;
+                break;
+            }
+        }
+        if not init_found {
+            # Namespace package (no __init__) — use the directory path itself
+            # so get_type_of_module can handle it via is_dir() check.
+            paths[i] = cur_dir;
+        }
+        cur_dir = os.path.dirname(cur_dir);
     }
     return paths;
 }
@@ -1911,6 +1972,11 @@ impl FuncCall.postinit -> None {
 }
 
 
+impl Slice.postinit -> None {
+    UniNode.postinit(self);
+}
+
+
 impl IndexSlice.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -2197,6 +2263,7 @@ impl Name.init(
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
     self._py_ctx_func = ast3.Load;
+    self.js_decl_kind = None;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR
@@ -2234,8 +2301,6 @@ impl SpecialVarRef.py_resolve_name -> str {
         return 'props';
     } elif (self.orig.name == Tok.KW_SUPER) {
         return 'super';
-    } elif (self.orig.name == Tok.KW_ROOT) {
-        return Con.ROOT.value;
     } elif (self.orig.name == Tok.KW_HERE) {
         return Con.HERE.value;
     } elif (self.orig.name == Tok.KW_VISITOR) {
@@ -2346,11 +2411,10 @@ impl String.lit_value -> str {
                 is_raw2 = 'r' in prefix2;
             }
             if not is_raw2 {
-                import codecs;
                 result = self.value;
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
                     result = result.replace('\\n', '\n');
@@ -2371,12 +2435,13 @@ impl String.lit_value -> str {
                 is_raw = 'r' in prefix;
             }
             if not is_raw {
-                import codecs;
                 result = self.value;
-                # Use codecs to decode all escape sequences (like \x1b, \n, \t, etc.)
+                # Use ast3.literal_eval to correctly handle escape sequences (\n, \t,
+                # \x1b, etc.) and non-ASCII Unicode chars (e.g. emojis), consistent
+                # with how normal string literals are handled above.
                 try {
-                    result = codecs.decode(result, 'unicode_escape');
-                } except Exception {
+                    result = ast3.literal_eval(f'"{result}"');
+                } except (ValueError, SyntaxError) {
                     # Fallback to manual handling if decode fails
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
@@ -2503,6 +2568,7 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
     self.comments: list[CommentToken] = [];
+    self.inline_suppressions: dict[int, set[str]] = {};
 }
 
 """Return the source code as string."""

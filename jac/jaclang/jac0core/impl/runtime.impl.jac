@@ -1,7 +1,9 @@
 """Implementation for runtime."""
 
 """Resolve the live anchor for an archetype from runtime memory."""
-impl JacAccessValidation._resolve_anchor(archetype: Archetype) -> tuple {
+impl JacAccessValidation._resolve_anchor(
+    archetype: Archetype
+) -> tuple[Anchor, ExecutionContext] {
     anchor = archetype.__jac__;
     jctx = JacRuntimeInterface.get_context();
     mem_anchor = jctx.mem.get(anchor.id);
@@ -905,12 +907,12 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(`root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = `root.__jac__ if `root else ctx.user_root;
+    ranchor = root.__jac__ if root else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
@@ -1141,9 +1143,15 @@ impl JacBasics.jac_import(
             JacRuntimeInterface.load_module(module_name, module, force=True);
         } else {
             module = importlib.import_module(module_name);
-            if reload_module {
-                JacRuntimeInterface.load_module(module_name, module, force=True);
-            }
+            # Always register in loaded_modules. When the module is freshly
+            # imported, exec_module already calls load_module, but if the
+            # module was cached in sys.modules (e.g. from a prior import
+            # that was cleared from loaded_modules but not sys.modules),
+            # exec_module is NOT re-invoked and the module would be missing
+            # from loaded_modules. Using force=True when reloading.
+            JacRuntimeInterface.load_module(
+                module_name, module, force=bool(reload_module)
+            );
         }
         if items {
             imported_items = [];
@@ -1307,11 +1315,50 @@ impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
 
 """Jac's apply_dir stmt feature."""
 impl JacBasics.refs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+    post_filter: (Callable[([Archetype], bool)] | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
     }
+    # Fuse post_filter into the last destination's node filter
+    if post_filter is not None and path.destinations {
+        last = path.destinations[-1];
+        if last.nd is None {
+            last.nd = post_filter;
+        } else {
+            orig_nd = last.nd;
+            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+        }
+    }
+    # Try topology index optimization for non-edge-only queries
+    if not path.edge_only {
+        import from jaclang.runtimelib.topo_utils { plan_query, batch_load_nodes }
+        planned_ids = plan_query(path);
+        if planned_ids is not None {
+            # Index resolved which nodes survive type filters.
+            # For single-hop, preserve edge-list order via origin walk.
+            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
+            destinations = path.destinations[:-1]
+                if path.edge_only
+                else path.destinations;
+            use_origin = path.origin if len(destinations) <= 1 else None;
+            nodes = batch_load_nodes(planned_ids, origin=use_origin);
+            destinations = path.destinations;
+            if destinations {
+                last_dest = destinations[-1];
+                if last_dest.nd {
+                    nodes = [
+                        n
+                        for n in nodes
+                        if last_dest.node_filter(n)
+                    ];
+                }
+            }
+            return nodes;
+        }
+    }
+    # Fallback: original approach
     origin = path.origin;
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
     while destinations {
@@ -1452,7 +1499,7 @@ impl JacBasics.safe_subscript(`obj: Any, key: Any) -> Any {
 }
 
 """Jac's root getter."""
-impl JacBasics.`root -> Root {
+impl JacBasics.root -> Root {
     return JacRuntime.get_context().get_root();
 }
 
@@ -1488,6 +1535,8 @@ impl JacBasics.build_edge(
         if (source.persistent or target.persistent) {
             JacRuntimeInterface.save(eanch);
         }
+        import from jaclang.runtimelib.topo_utils { on_edge_created }
+        on_edge_created(source, target, eanch);
         return `edge;
     }
     return builder;
@@ -1504,6 +1553,8 @@ impl JacBasics.save(`obj: (Archetype | Anchor)) -> None {
     jctx.mem.put(anchor);
     match anchor {
         case NodeAnchor():
+            import from jaclang.runtimelib.topo_utils { on_node_saved }
+            on_node_saved(anchor);
             for ed in anchor.edges {
                 if (ed.is_populated() and not ed.persistent) {
                     JacRuntimeInterface.save(ed);
@@ -1540,11 +1591,19 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
                     }
 
                 case EdgeAnchor():
+                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
+                    if anchor.is_populated() {
+                        on_edge_destroyed(anchor.source, anchor.target, anchor);
+                    }
                     JacRuntimeInterface.detach(anchor);
 
                 case _:
                     ;
 
+            }
+            if isinstance(anchor, NodeAnchor) {
+                import from jaclang.runtimelib.topo_utils { on_node_destroyed }
+                on_node_destroyed(anchor);
             }
             JacRuntimeInterface.get_context().mem.delete(anchor.id);
         }

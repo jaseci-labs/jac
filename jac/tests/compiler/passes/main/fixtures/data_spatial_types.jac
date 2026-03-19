@@ -44,8 +44,8 @@ impl W.create{
 
 with entry {
     root spawn W();
-    print([root-->-->(?:A)]);
-    print([root-->-->-->(?:A)]);
+    print([root-->-->[?:A]]);
+    print([root-->-->-->[?:A]]);
 }
 
 """Bubble sort using DS Features of Jac (somparision and swapping happens in inner nodes)."""

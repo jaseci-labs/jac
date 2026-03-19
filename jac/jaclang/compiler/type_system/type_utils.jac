@@ -111,3 +111,49 @@ obj ModuleSourceFlags {
 }
 
 def compute_module_source_flags(file_path: str) -> ModuleSourceFlags;
+
+# -------------------------------------------------------------------------
+# Type specialization utilities
+# -------------------------------------------------------------------------
+"""
+Convert a type to its instance form.
+
+- ClassType (instantiable) -> ClassType (instance)
+- UnionType -> converted members
+- Other types -> unchanged
+"""
+def convert_to_instance(ty: types.TypeBase) -> types.TypeBase;
+
+"""
+Apply type variable substitutions to a type.
+
+This is the unified function for TypeVar substitution. It handles:
+- Direct TypeVarType -> lookup in solution or class type_args
+- Self type -> class_type instance
+- Nested TypeVars in ClassType (e.g., tuple[int, T] -> tuple[int, Item])
+- UnionType -> specialize each member
+- FunctionType -> specialize parameters and return type
+"""
+def apply_solved_type_vars(
+    ty: types.TypeBase,
+    solution: dict[str, types.TypeBase],
+    class_type: (types.ClassType | None) = None
+) -> types.TypeBase;
+
+"""
+Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
+
+Walks the MRO accumulating bindings so that inherited TypeVars are resolved
+transitively. Used by specialize_member_type and FunctionType.specialize.
+"""
+def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
+
+"""Build type_params → type_args mapping from a specialized class."""
+def build_solution_from_specialized_class(
+    class_type: types.ClassType
+) -> dict[str, types.TypeBase];
+
+"""Specialize a base class using type args from the derived class."""
+def specialize_for_base_class(
+    src_type: types.ClassType, base_class: types.ClassType
+) -> types.ClassType;

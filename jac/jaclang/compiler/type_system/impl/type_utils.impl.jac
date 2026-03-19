@@ -414,3 +414,304 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
 
     return flags;
 }
+
+# -------------------------------------------------------------------------
+# Type specialization utilities (Pyright: typeUtils.ts)
+# -------------------------------------------------------------------------
+"""
+Convert a type to its instance form. (Pyright: convertToInstance)
+"""
+impl convert_to_instance(ty: types.TypeBase) -> types.TypeBase {
+    if ty.is_instantiable_class() {
+        assert isinstance(ty, types.ClassType);
+        return ty.clone_as_instance();
+    }
+    # Handle UnionType: convert each member type to instance form
+    if isinstance(ty, types.UnionType) {
+        converted = [convert_to_instance(t) for t in ty.types];
+        return types.UnionType(types=converted);
+    }
+    return ty;
+}
+
+"""
+Apply type variable substitutions to a type.
+
+This is the unified function for TypeVar substitution. Handles all cases:
+- Direct TypeVarType -> lookup in solution
+- Self type -> class_type instance
+- Nested TypeVars in ClassType
+- UnionType -> specialize each member
+- FunctionType -> specialize parameters and return type
+"""
+impl apply_solved_type_vars(
+    ty: types.TypeBase,
+    solution: dict[str, types.TypeBase],
+    class_type: (types.ClassType | None) = None
+) -> types.TypeBase {
+    # Case 1: Direct TypeVar replacement
+    if isinstance(ty, types.TypeVarType) {
+        # Self TypeVar -> class_type instance (Pyright: isSynthesizedSelf)
+        if ty.is_self and class_type is not None {
+            return class_type.clone_as_instance();
+        }
+        # Regular TypeVar -> lookup in solution by name
+        if ty.name and ty.name in solution {
+            resolved = solution[ty.name];
+            return convert_to_instance(resolved);
+        }
+        # TypeVar not in solution -> check class type_args by index
+        if class_type is not None and ty.name {
+            for (idx, tp) in enumerate(class_type.shared.type_params) {
+                if tp.name == ty.name {
+                    if idx < len(class_type.private.type_args) {
+                        resolved = class_type.private.type_args[idx];
+                        return convert_to_instance(resolved);
+                    } else {
+                        # TypeVar found but no type_arg available -> Unknown
+                        return types.UnknownType();
+                    }
+                }
+            }
+        }
+        # TypeVar not resolved -> return as is
+        return ty;
+    }
+
+    # Case 2: FunctionType -> specialize parameters and return type
+    if isinstance(ty, types.FunctionType) {
+        return _apply_to_function(ty, solution, class_type);
+    }
+
+    # Case 3: ClassType with type_args -> recursively specialize nested TypeVars
+    if isinstance(ty, types.ClassType) and ty.private.type_args {
+        new_args: list[types.TypeBase] = [];
+        any_changed = False;
+        for type_arg in ty.private.type_args {
+            specialized = apply_solved_type_vars(type_arg, solution, class_type);
+            new_args.append(specialized);
+            if specialized is not type_arg {
+                any_changed = True;
+            }
+        }
+        if any_changed {
+            return ty.specialize_generics(new_args);
+        }
+    }
+
+    # Case 4: UnionType -> specialize each member
+    if isinstance(ty, types.UnionType) {
+        new_types = [apply_solved_type_vars(t, solution, class_type) for t in ty.types];
+        return types.UnionType(types=new_types);
+    }
+
+    return ty;
+}
+
+"""
+Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
+
+Walks the MRO accumulating bindings so that inherited TypeVars are resolved
+transitively. For example, if Box[int] extends Container[T] and Container[T]
+declares get() -> T, then build_type_var_solution(Box[int]) yields {U: int, T: int}.
+"""
+impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase] {
+    solution: dict[str, types.TypeBase] = {};
+
+    # Start with the class's own type_params -> type_args
+    if class_type.shared.type_params
+    and class_type.private
+    and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    }
+
+    # Walk MRO and accumulate base class TypeVar mappings.
+    # Only add NEW bindings — never overwrite a concrete binding with a TypeVar.
+    for mro_cls in class_type.shared.mro {
+        if mro_cls.shared.type_params
+        and mro_cls.private
+        and mro_cls.private.type_args {
+            for (idx, tp) in enumerate(mro_cls.shared.type_params) {
+                if tp.name and idx < len(mro_cls.private.type_args) {
+                    arg = mro_cls.private.type_args[idx];
+                    resolved = apply_solved_type_vars(arg, solution);
+                    # Only bind if the resolved value is concrete (not a TypeVar).
+                    # Never overwrite an existing concrete binding.
+                    if not isinstance(resolved, types.TypeVarType) {
+                        if tp.name not in solution
+                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            solution[tp.name] = resolved;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return solution;
+}
+
+"""Build type_params → type_args mapping from a specialized class."""
+impl build_solution_from_specialized_class(
+    class_type: types.ClassType
+) -> dict[str, types.TypeBase] {
+    solution: dict[str, types.TypeBase] = {};
+
+    if class_type.shared.type_params
+    and class_type.private
+    and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                # Skip duplicates (e.g., Generator has _YieldT_co twice)
+                if tp.name not in solution {
+                    solution[tp.name] = class_type.private.type_args[idx];
+                }
+            }
+        }
+    }
+
+    return solution;
+}
+
+"""Specialize a base class using type args from the derived class."""
+impl specialize_for_base_class(
+    src_type: types.ClassType, base_class: types.ClassType
+) -> types.ClassType {
+    # If same class, return src_type directly
+    if src_type.shared == base_class.shared {
+        return src_type;
+    }
+
+    # If base_class has no type params, no specialization needed
+    if not base_class.shared.type_params {
+        return base_class;
+    }
+
+    # Find the path from src_type to base_class through base_classes
+    # and progressively specialize at each step
+    return _specialize_for_base_recursive(src_type, base_class);
+}
+
+"""
+Recursively find and specialize base_class from src_type's inheritance hierarchy.
+"""
+def _specialize_for_base_recursive(
+    src_type: types.ClassType, target_base: types.ClassType
+) -> types.ClassType {
+    # Direct match
+    if src_type.shared == target_base.shared {
+        return src_type;
+    }
+
+    # Build solution from src_type
+    solution = build_solution_from_specialized_class(src_type);
+
+    # Search through base_classes
+    if src_type.shared.base_classes {
+        for base in src_type.shared.base_classes {
+            if not isinstance(base, types.ClassType) {
+                continue;
+            }
+
+            # Check if this base IS the target or CONTAINS the target in its hierarchy
+            if base.shared == target_base.shared {
+                # Direct match - specialize base using our solution
+                return _apply_solution_to_class(base, solution);
+            }
+
+            # Check if target_base is in this base's MRO
+            target_in_mro = False;
+            for mro_cls in base.shared.mro {
+                if mro_cls.shared == target_base.shared {
+                    target_in_mro = True;
+                    break;
+                }
+            }
+
+            if target_in_mro {
+                # First specialize the intermediate base
+                specialized_base = _apply_solution_to_class(base, solution);
+                # Then recursively find target_base from the specialized intermediate
+                return _specialize_for_base_recursive(specialized_base, target_base);
+            }
+        }
+    }
+
+    # Not found - return base_class unchanged
+    return target_base;
+}
+
+"""
+Apply a TypeVar solution to specialize a ClassType's type_args.
+"""
+def _apply_solution_to_class(
+    class_type: types.ClassType, solution: dict[str, types.TypeBase]
+) -> types.ClassType {
+    if not class_type.private or not class_type.private.type_args {
+        return class_type;
+    }
+
+    # Apply solution to each type_arg
+    new_args: list[types.TypeBase] = [];
+    any_changed = False;
+
+    for type_arg in class_type.private.type_args {
+        specialized = apply_solved_type_vars(type_arg, solution);
+        new_args.append(specialized);
+        if specialized is not type_arg {
+            any_changed = True;
+        }
+    }
+
+    if any_changed {
+        return class_type.specialize_generics(new_args);
+    }
+
+    return class_type;
+}
+
+"""Helper to apply type vars to a FunctionType."""
+def _apply_to_function(
+    func: types.FunctionType,
+    solution: dict[str, types.TypeBase],
+    class_type: (types.ClassType | None)
+) -> types.FunctionType {
+    # Clone the function
+    clone = types.FunctionType(
+        func_name=func.func_name,
+        return_type=func.return_type,
+        parameters=[
+            types.Parameter(
+                name=param.name,
+                category=param.category,
+                param_type=param.param_type,
+                default_value=param.default_value,
+                is_self=param.is_self,
+                is_cls=param.is_cls,
+                param_kind=param.param_kind
+            ) for param in func.parameters
+        ]
+    );
+
+    # Specialize parameter types
+    for param in clone.parameters {
+        if param.param_type {
+            param.param_type = apply_solved_type_vars(
+                param.param_type, solution, class_type
+            );
+        }
+    }
+
+    # Specialize return type
+    if clone.return_type {
+        clone.return_type = apply_solved_type_vars(
+            clone.return_type, solution, class_type
+        );
+    }
+
+    return clone;
+}

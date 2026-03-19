@@ -183,7 +183,23 @@ impl JacCompiler.get_bytecode(
     if is_internal {
         setup_progress.on_internal_compile(full_target);
     }
-    options = CompileOptions();
+    # Skip type checking when the type check infrastructure is not yet
+    # available. This happens during bootstrap: TypeCheckPass and
+    # TypeEvaluator are themselves internal modules that need compilation,
+    # so attempting to type-check before they're ready causes circular
+    # imports. Once bootstrap completes, all modules get type-checked.
+    can_typecheck = (
+        'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
+        and 'jaclang.compiler.type_system.type_evaluator' in sys.modules
+        and hasattr(
+            sys.modules['jaclang.compiler.passes.main.type_checker_pass'],
+            'TypeCheckPass'
+        )
+        and hasattr(
+            sys.modules['jaclang.compiler.type_system.type_evaluator'], 'TypeEvaluator'
+        )
+    );
+    options = CompileOptions(type_check=can_typecheck);
     result = self.compile(
         file_path=full_target, target_program=actual_program, options=options
     );
@@ -552,11 +568,8 @@ impl JacCompiler.parse_str(
         mod = py_ast_ret.ir_out;
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
-        (mod, parse_errors, lex_errors) = rd_parse(
-            source_str, file_path, prog=target_program
-        );
+        (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
         _recalculate_parents(mod);
-        had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
         if file_path.endswith('.cl.jac') {
             _coerce_client_module(mod);
         } elif file_path.endswith('.sv.jac') {
@@ -569,7 +582,10 @@ impl JacCompiler.parse_str(
         return mod;
     }
     if target_program.mod.main.stub_only {
+        # Preserve the existing hub when replacing the stub main module
+        old_hub = target_program.mod.hub;
         target_program.mod = uni.ProgramModule(main_mod=mod);
+        target_program.mod.hub.update(old_hub);
     }
     target_program.mod.hub[mod.loc.mod_path] = mod;
     JacAnnexPass(ir_in=mod, prog=target_program);
@@ -611,7 +627,11 @@ impl JacCompiler.compile(
             );
         }
     }
-    actual_program = self._resolve_program(file_path, target_program);
+    if options.force_target_program {
+        actual_program = target_program;
+    } else {
+        actual_program = self._resolve_program(file_path, target_program);
+    }
     actual_program._compile_options = options;
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);
@@ -696,11 +716,9 @@ impl JacCompiler._prepare_tool_program(
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.parser { parse as rd_parse }
     prog = JacProgram();
-    (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+    (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
     _recalculate_parents(current_mod);
-    if len(parse_errors) > 0 or len(lex_errors) > 0 {
-        prog.errors_had.extend(parse_errors);
-        prog.errors_had.extend(lex_errors);
+    if had_error {
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
     }
@@ -714,7 +732,7 @@ impl JacCompiler._prepare_tool_program(
             for annex_path in discover_annex_files(file_path, '.impl.jac') {
                 try {
                     annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
                     _recalculate_parents(annex_mod);
                     current_mod.impl_mod.append(annex_mod);
                 } except Exception {
@@ -726,7 +744,7 @@ impl JacCompiler._prepare_tool_program(
             for annex_path in discover_annex_files(file_path, '.test.jac') {
                 try {
                     annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
                     _recalculate_parents(annex_mod);
                     current_mod.test_mod.append(annex_mod);
                 } except Exception {

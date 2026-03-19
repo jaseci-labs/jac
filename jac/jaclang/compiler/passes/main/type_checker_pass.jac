@@ -10,14 +10,29 @@ Reference:
 """
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.diagnostics {
+    E1001,
+    E1002,
+    E1003,
+    E1004,
+    E1010,
+    E1011,
+    E1020,
+    E1021,
+    E1022,
+    E1060,
+    E1061,
+    E1090,
+    E1091,
+    E1092,
+    E1093,
+    E1094,
+    E1095
+}
 
 """Type checker pass for JacLang."""
 class TypeCheckPass(UniPass) {
     def before_pass(self: TypeCheckPass) -> None;
-    def _add_diagnostic(
-        self: TypeCheckPass, nd: uni.UniNode, message: str, warning: bool
-    ) -> None;
-
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
     def enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None;

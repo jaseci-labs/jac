@@ -76,7 +76,7 @@ Execute a Jac file.
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [args ...]
+jac run [-h] [-m] [--no-main] [-c] [--no-cache] [-e] [--profile PROFILE] filename [args ...]
 ```
 
 | Option | Description | Default |
@@ -84,6 +84,7 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [ar
 | `filename` | Jac file to run | Required |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
+| `-e, --show-errors` | Show type check errors and warnings after execution | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
 | `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
 
@@ -101,9 +102,14 @@ jac run --no-cache main.jac
 # Pass arguments to the script
 jac run script.jac arg1 arg2
 
+# Run and show type check diagnostics
+jac run -e main.jac
+
 # Pass flag-like arguments to the script
 jac run script.jac --verbose --output result.txt
 ```
+
+> **Note**: `jac run` always prints a summary line with error and warning counts (if any). Use `-e` to see the full diagnostic details without running a separate `jac check`.
 
 **Passing arguments to scripts:**
 
@@ -274,6 +280,15 @@ jac check myproject/ --ignore fixtures tests
 jac check . --ignore node_modules dist __pycache__
 ```
 
+Errors and warnings are displayed with structured diagnostic codes (e.g., `E1030`, `W2001`). You can suppress individual diagnostics inline with `# jac:ignore[CODE]`:
+
+<!-- jac-skip -->
+```jac
+x = some_func();  # jac:ignore[E1030]
+```
+
+See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
+
 ---
 
 ### jac test
@@ -300,11 +315,17 @@ jac test [-h] [-t TEST_NAME] [-f FILTER] [-x] [-m MAXFAIL] [-d DIRECTORY] [-v] [
 # Run all tests in a file
 jac test main.jac
 
+# Run a specific test - spaces in name (quoted)
+jac test main.jac -t "my test name"
+
+# Run a specific test - underscores in name
+jac test main.jac -t my_test_name
+
 # Run tests in directory
 jac test -d tests/
 
-# Run specific test
-jac test main.jac -t my_test
+# Run all tests in current directory
+jac test
 
 # Stop on first failure
 jac test main.jac -x
@@ -312,6 +333,14 @@ jac test main.jac -x
 # Verbose output
 jac test main.jac -v
 ```
+
+**Error handling:**
+
+| Mistake | Error shown |
+|---------|-------------|
+| `jac test --test_name foo` (no file or directory) | `--test_name requires a filepath` |
+| `jac test missing.jac` (file doesn't exist) | `File not found: 'missing.jac'` |
+| `jac test main.jac -t foo bar` (unquoted multi-word) | hint to use quotes |
 
 ---
 
@@ -347,6 +376,8 @@ jac format . --check
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
+>
+> **Safety**: If the formatter detects that comments were displaced (e.g., moved to the end of the file), it emits error `E5051` and refuses to save the file. Run `jac format <file> -s` to inspect the output without writing.
 
 ---
 
@@ -380,7 +411,7 @@ jac lint .
 jac lint . --ignore fixtures
 ```
 
-> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. All enabled rules are treated as errors.
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx--e3xxx) for the full list with diagnostic codes.
 
 ---
 

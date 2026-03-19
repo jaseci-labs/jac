@@ -8,11 +8,11 @@ impl _jac_graph_json(file: (str | None) = None) -> str {
     edge_ids: set = set();
     nodes: list[dict] = [];
     edges: list[dict] = [];
-    `root = jac.root();
-    collect_node_connections(`root, visited_nodes, connections, edge_ids);
-    nodes.append({'id': id(`root), 'label': 'root'});
+    root = jac.root();
+    collect_node_connections(root, visited_nodes, connections, edge_ids);
+    nodes.append({'id': id(root), 'label': 'root'});
     for node_arch in visited_nodes {
-        if (node_arch != `root) {
+        if (node_arch != root) {
             nodes.append({'id': id(node_arch), 'label': repr(node_arch)});
         }
     }

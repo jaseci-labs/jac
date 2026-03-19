@@ -1,4 +1,4 @@
-"""Implementation for def_impl_match_pass constructs."""
+"""Implementation for decl_impl_match_pass constructs."""
 
 """Connect Decls and Defs."""
 impl DeclImplMatchPass.transform(
@@ -26,6 +26,16 @@ impl DeclImplMatchPass.transform(
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
         }
     }
+    self._resolve_module_level_symbols(ir_in);
+    for impl_module in ir_in.impl_mod {
+        self._resolve_module_level_symbols(impl_module);
+    }
+    for variant_module in ir_in.variant_mod {
+        self._resolve_module_level_symbols(variant_module);
+        for impl_module in variant_module.impl_mod {
+            self._resolve_module_level_symbols(impl_module);
+        }
+    }
     return ir_in;
 }
 
@@ -43,6 +53,36 @@ impl DeclImplMatchPass.defn_lookup(
         }
     }
     return None;
+}
+
+"""Find the archetype definition from a symbol's definitions.
+
+        When a class is used as a base class or has forward declarations,
+        its symbol may have multiple definitions. This method finds the
+        Archetype with a body (not a forward declaration).
+        """
+impl DeclImplMatchPass._find_archetype_defn(
+    self: DeclImplMatchPass, lookup: Symbol
+) -> (uni.NameAtom | None) {
+    # First pass: find an Archetype with a body (not a forward declaration)
+    for defn_idx in range(len(lookup.defn)) {
+        candidate = lookup.defn[defn_idx];
+        if (
+            isinstance(candidate.name_of, uni.Archetype)
+            and candidate.name_of.body is not None
+        ) {
+            return candidate;
+        }
+    }
+    # Second pass: find any Archetype (including forward declarations)
+    for defn_idx in range(len(lookup.defn)) {
+        candidate = lookup.defn[defn_idx];
+        if isinstance(candidate.name_of, uni.Archetype) {
+            return candidate;
+        }
+    }
+    # Fallback to last definition if no Archetype found
+    return lookup.defn[-1] if lookup.defn else None;
 }
 
 """Connect implementations from source symbol table to declarations in
@@ -70,16 +110,14 @@ impl DeclImplMatchPass.connect_impls(
         }
         decl_node = self.defn_lookup(lookup)
             if ((len(arch_refs) == 1) and lookup)
-            else lookup.defn[-1] if lookup else None;
+            else self._find_archetype_defn(lookup) if lookup else None;
         name_of_links.append(decl_node) if decl_node else None;
         for name in arch_refs[1:] {
             if decl_node {
                 lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
                     if decl_node.name_of.sym_tab
                     else None;
-                decl_node = self.defn_lookup(lookup)
-                    if ((len(arch_refs) == 1) and lookup)
-                    else lookup.defn[-1] if lookup else None;
+                decl_node = lookup.defn[-1] if lookup else None;
                 name_of_links.append(decl_node) if decl_node else None;
             } else {
                 break;
@@ -88,17 +126,11 @@ impl DeclImplMatchPass.connect_impls(
         if not decl_node {
             # Only log error if the archetype was found but the ability wasn't
             if len(name_of_links) > 0 {
-                self.log_error(
-                    f"Implementation could not be matched to a declaration.",
-                    sym.decl.name_of
-                );
+                self.emit(E2009, node_override=sym.decl.name_of);
             }
             continue;
         } elif (isinstance(decl_node, uni.Ability) and decl_node.is_abstract) {
-            self.log_warning(
-                f"Abstract ability {decl_node.py_resolve_name()} should not have a definition.",
-                decl_node
-            );
+            self.emit(W2010, node_override=decl_node, name=decl_node.py_resolve_name());
             continue;
         }
         if (
@@ -168,18 +200,26 @@ impl DeclImplMatchPass.validate_params_match(
         decl_count = len(params_decl) if params_decl else 0;
         defn_count = len(params_defn) if params_defn else 0;
         if (defn_count != decl_count) {
-            self.log_error(
-                f"Parameter count mismatch for ability {sym.sym_name}.",
-                sym.decl.name_of.name_spec
+            self.emit(
+                E2011, node_override=sym.decl.name_of.name_spec, name=sym.sym_name
             );
-            self.log_error(
-                f"From the declaration of {valid_decl.name_spec.sym_name}.",
-                valid_decl.name_spec
+            self.emit(
+                E2012,
+                node_override=valid_decl.name_spec,
+                name=valid_decl.name_spec.sym_name
             );
         } elif (params_decl and params_defn) {
-            for idx in range(len(params_defn)) {
-                # Update params list only; keep decl's kid intact for hover/go-to-def.
-                params_decl[idx] = params_defn[idx];
+            for idx in range(len(params_decl)) {
+                decl_name = params_decl[idx].name.value;
+                impl_name = params_defn[idx].name.value;
+                if decl_name != impl_name {
+                    self.emit(
+                        W2013,
+                        node_override=params_defn[idx].name,
+                        decl_name=decl_name,
+                        impl_name=impl_name
+                    );
+                }
             }
         }
     }
@@ -248,5 +288,52 @@ impl DeclImplMatchPass._populate_self_member_symbols(
             continue;
         }
         archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
+    }
+}
+
+"""Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values,
+ModuleCode bodies) that aren't covered by _resolve_impl_body_symbols."""
+impl DeclImplMatchPass._resolve_module_level_symbols(
+    self: DeclImplMatchPass, module: uni.Module
+) -> None {
+    # Collect module-level expression subtrees that need name resolution
+    expr_roots: list[uni.UniNode] = [];
+    for item in module.body {
+        if isinstance(item, uni.TypeAlias) {
+            expr_roots.append(item.value);
+        }
+        if isinstance(item, uni.GlobalVars) {
+            for asgn in item.assignments {
+                if asgn.value is not None {
+                    expr_roots.append(asgn.value);
+                }
+                if asgn.type_tag is not None {
+                    expr_roots.append(asgn.type_tag);
+                }
+            }
+        }
+        if isinstance(item, uni.ModuleCode) {
+            expr_roots.append(item);
+        }
+    }
+    # Resolve unresolved Name nodes in those subtrees
+    for expr_root in expr_roots {
+        for name_node in expr_root.get_all_sub_nodes(uni.Name) {
+            if (name_node.sym is not None) {
+                continue;
+            }
+            if isinstance(name_node.parent, uni.AtomTrailer) {
+                continue;
+            }
+            if name_node.sym_tab {
+                name_node.sym_tab.use_lookup(name_node);
+            }
+        }
+        for trailer_node in expr_root.get_all_sub_nodes(uni.AtomTrailer) {
+            chain = trailer_node.as_attr_list;
+            if (chain and (chain[0].sym is None) and trailer_node.sym_tab) {
+                trailer_node.sym_tab.chain_use_lookup(chain);
+            }
+        }
     }
 }

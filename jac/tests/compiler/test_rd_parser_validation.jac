@@ -13,6 +13,8 @@ import from jaclang.jac0core.unitree { Test as JacTest }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
+import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
+import from jaclang.jac0core.program { JacProgram }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      GAP_DIR = os.path.join(
@@ -23,8 +25,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
         import from jaclang.jac0core.parser.parser { parse }
-        (module, parse_errors, lex_errors) = parse(source, file_path);
-        if lex_errors or parse_errors {
+        (module, had_error) = parse(source, file_path);
+        if had_error {
             return None;
         }
         return module;
@@ -92,8 +94,6 @@ glob GAP_FILES = [
      MUST_REJECT: dict[str, str] = {
          "can_without_event_clause": "obj Foo { can bar { } }",
          "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
-         "pass_keyword": "with entry { match x { case 1: pass; } }",
-         "with_exit_at_module_level": 'with exit { print("bye"); }',
          "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
          "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
          "abs_prefix_on_archetype": "abs obj Foo { }",
@@ -159,15 +159,11 @@ glob GAP_FILES = [
          "except_without_try": "with entry { except Exception e { } }",
          "finally_without_try": "with entry { finally { } }",
          "case_without_match": "with entry { case 1: x = 1; }",
-         "empty_match_body": "with entry { match x { } }",
-         "empty_switch_body": "with entry { switch x { } }",
-         "try_no_except_no_finally": "with entry { try { } }",
          "break_with_value": "with entry { break 5; }",
          "continue_with_value": "with entry { continue 5; }",
          "double_else_on_if": "with entry { if true { } else { } else { } }",
          "from_import_empty_items": "import from foo { };",
          "bare_semi_at_module_level": ";",
-         "enum_empty_body": "enum Color { }",
          # --- Strictness gaps: semicolons optional where they should be required ---
          "assignment_missing_semi": 'with entry { x = 5 }',
          "augmented_assign_missing_semi": 'with entry { x += 1 }',
@@ -188,19 +184,54 @@ glob GAP_FILES = [
          "keyword_param_node": "def foo(node: int) { }",
          "keyword_param_override": "def foo(override: bool) { }",
          "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
-         # --- Strictness gaps: walrus LHS must be a name ---
-         "walrus_complex_lhs": "with entry { (a + b) := 5; }",
-         "walrus_call_lhs": "with entry { foo() := 5; }",
-         "walrus_subscript_lhs": "with entry { a[0] := 5; }",
          # --- Strictness gaps: enum in code blocks (not allowed at stmt level in Lark) ---
          "enum_inside_if": "with entry { if true { enum Color { RED } } }",
          "enum_inside_function": "def foo() { enum Color { RED } }"
+     },
+     MUST_REJECT_VALIDATION: dict[str, str] = {
+         # These are valid at the parser level but rejected by ASTValidationPass
+         "pass_keyword": "with entry { match x { case 1: pass; } }",
+         "with_exit_at_module_level": 'with exit { print("bye"); }',
+         "empty_match_body": "with entry { match x { } }",
+         "empty_switch_body": "with entry { switch x { } }",
+         "try_no_except_no_finally": "with entry { try { } }",
+         "enum_empty_body": "enum Color { }",
+         "walrus_complex_lhs": "with entry { (a + b) := 5; }",
+         "walrus_call_lhs": "with entry { foo() := 5; }",
+         "walrus_subscript_lhs": "with entry { a[0] := 5; }",
+         "assign_to_root": 'with entry { root = "s"; }',
+         "assign_to_super": "with entry { super = 1; }"
      };
+
+"""Parse and run ASTValidationPass, returning True if errors were found."""
+def parse_and_validate(source: str, file_path: str) -> bool {
+    try {
+        import from jaclang.jac0core.parser.parser { parse }
+        (module, parse_errors, lex_errors) = parse(source, file_path);
+        if lex_errors or parse_errors {
+            return True;
+        }
+        if module is None {
+            return True;
+        }
+        prog = JacProgram();
+        validation = ASTValidationPass(ir_in=module, prog=prog);
+        return len(prog.errors_had) > 0;
+    } except Exception {
+        return True;
+    }
+}
 
 def strictness_test(name_snippet: tuple) -> None {
     (name, snippet) = name_snippet;
     rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac");
     assert rd_ast is None , f"RD parser must reject '{name}': {snippet}";
+}
+
+def validation_strictness_test(name_snippet: tuple) -> None {
+    (name, snippet) = name_snippet;
+    has_errors = parse_and_validate(snippet, "/tmp/strictness_test.jac");
+    assert has_errors , f"Parser + ASTValidationPass must reject '{name}': {snippet}";
 }
 
 with entry {
@@ -212,5 +243,11 @@ with entry {
     );
     parametrize(
         "rd strict", list(MUST_REJECT.items()), strictness_test, id_fn=lambda x : x[0]
+    );
+    parametrize(
+        "rd strict validation",
+        list(MUST_REJECT_VALIDATION.items()),
+        validation_strictness_test,
+        id_fn=lambda x : x[0]
     );
 }

@@ -60,7 +60,8 @@ obj JacScaleScheduler {
         interval: (float | None),
         cron: (str | None),
         date: (str | None),
-        username: str
+        username: str,
+        is_walker: bool = True
     ) -> None;
 
     def _persist_job(job_data: dict) -> str;

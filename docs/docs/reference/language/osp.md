@@ -318,7 +318,7 @@ edge Friend { has since: int = 2020; }
 
 walker Visitor {
     can filter with Person entry {
-        visit [-->](?:Person);          # Visit Person nodes only
+        visit [-->][?:Person];          # Visit Person nodes only
         visit [->:Friend:->];           # Visit via Friend edges only
         visit [->:Friend:since>2020:->]; # Via Friend edges with condition
     }
@@ -497,7 +497,7 @@ walker add_todo {
 
 walker list_todos {
     can list with Root entry {
-        for todo in [-->](?:Todo) {
+        for todo in [-->][?:Todo] {
             report todo;
         }
     }
@@ -817,13 +817,13 @@ walker FilteredWalker {
 
     can traverse with Person entry {
         # By node type
-        visit [-->](?:Person);
+        visit [-->][?:Person];
 
         # By edge type
         visit [->:Friend:->];
 
         # Combined: Friend edges to Person nodes since 2020
-        visit [->:Friend:since > 2020:->](?:Person);
+        visit [->:Friend:since > 2020:->][?:Person];
     }
 }
 ```
@@ -868,7 +868,7 @@ walker Traverser {
         filtered = [->:Edge:attr > 0:->];     # Filter by edge attribute
 
         # Node type filter
-        people = [-->](?:Person);             # Filter result nodes by type
+        people = [-->][?:Person];             # Filter result nodes by type
 
         # Get edges vs nodes
         edges = [edge -->];                   # Get edge objects
@@ -893,8 +893,8 @@ edge Link { has weight: float = 0.0; }
 walker Filter {
     can query with User entry {
         # Filter by node attributes (after traversal)
-        adults = [-->](?age >= 18);
-        active = [-->](?status == "active");
+        adults = [-->][?age >= 18];
+        active = [-->][?status == "active"];
 
         # Filter by edge attributes (during traversal)
         recent_friends = [->:Friend:since > 2020:->];
@@ -919,7 +919,7 @@ walker Querier {
         path = [here ->:Friend:-> ->:Colleague:->];
 
         # Combined with filters
-        target = [->:Friend:since < 2020:->](?:Person, age > 30);
+        target = [->:Friend:since < 2020:->][?:Person, age > 30];
     }
 }
 ```
