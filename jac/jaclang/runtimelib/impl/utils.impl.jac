@@ -274,9 +274,10 @@ impl get_db_path(base_path: str) -> (str | None) {
     import os;
     import from pathlib { Path }
     # Check for data path override (used in AppImage/sidecar mode where base_path is read-only)
+    # Path structure must match UserManager.postinit in server.impl.jac: JAC_DATA_PATH/.jac/data/
     data_path_override = os.environ.get('JAC_DATA_PATH');
     if data_path_override {
-        data_dir = Path(data_path_override) / "data";
+        data_dir = Path(data_path_override) / ".jac" / "data";
     } else {
         data_dir = Path(base_path) / ".jac" / "data";
     }

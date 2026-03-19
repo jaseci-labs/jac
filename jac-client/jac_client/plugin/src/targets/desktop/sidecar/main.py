@@ -167,8 +167,10 @@ def main():
     fallback_paths = [
         data_path,
         Path.home() / ".jac-app",  # Fallback to home directory
-        Path("/tmp") / f"jac-app-{os.getuid()}",  # Fallback to /tmp with user id
     ]
+    # Add /tmp fallback only on Unix (os.getuid() doesn't exist on Windows)
+    if hasattr(os, "getuid"):
+        fallback_paths.append(Path("/tmp") / f"jac-app-{os.getuid()}")
 
     data_path_created = False
     for candidate in fallback_paths:

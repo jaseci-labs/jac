@@ -4,6 +4,10 @@
 # This script builds your app inside an Ubuntu 22.04 container to ensure
 # GLIBC 2.35 compatibility with most modern Linux distributions.
 #
+# Requirements:
+#   - Docker with at least 4GB memory (8GB recommended)
+#   - ~5GB disk space for build
+#
 # Usage:
 #   ./build.sh [project_dir] [--rebuild-image]
 #
@@ -14,6 +18,9 @@
 # Example:
 #   ./build.sh ./my-app
 #   ./build.sh . --rebuild-image
+#
+# Troubleshooting:
+#   If build gets "Killed", increase Docker memory in Docker Desktop settings
 
 set -e
 
@@ -102,6 +109,7 @@ docker run --rm \
     -w /project \
     -e JAC_SIDECAR_STANDALONE=1 \
     -e JAC_PRODUCTION_BUILD=1 \
+    -e CARGO_BUILD_JOBS=2 \
     "$IMAGE_NAME:$IMAGE_TAG" \
     bash -c '
         set -e
@@ -139,6 +147,10 @@ docker run --rm \
         else
             python3.12 -m pip install -q jac-scale 2>/dev/null || echo "jac-scale not available"
         fi
+
+        # Clean up pip cache to free memory before Rust build
+        python3.12 -m pip cache purge 2>/dev/null || true
+        rm -rf /root/.cache/pip /tmp/*
 
         echo ""
         echo "=== Building desktop app ==="

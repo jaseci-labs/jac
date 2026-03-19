@@ -451,8 +451,11 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
 
         console.success("Desktop target setup complete!");
         console.print("\nNext steps:", style="bold");
-        console.print("  1. Build: jac build main.jac --client desktop");
-        console.print("  2. Dev:   jac start main.jac --client desktop");
+        console.print("  1. Dev:   jac start main.jac --client desktop");
+        console.print("  2. Build: jac build main.jac --client desktop");
+        console.print("\nBuild options:", style="bold");
+        console.print("  --platform <windows|macos|linux|all>  Target platform");
+        console.print("  --docker                              Production build (Linux, GLIBC compatible)");
     } finally {
         # ABSOLUTE GUARANTEE: Ensure src-tauri directory exists no matter what
         if not tauri_dir.exists() {
@@ -1898,7 +1901,7 @@ impl DesktopTarget.build(
     # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
     try {
-        web_bundle_path = super.build(entry_file, project_dir, target_platform);
+        web_bundle_path = super.build(entry_file, project_dir, platform);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
@@ -1913,7 +1916,7 @@ impl DesktopTarget.build(
     try {
         console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
         sidecar_path = _bundle_sidecar(
-            entry_file, project_dir, tauri_dir, target_platform
+            entry_file, project_dir, tauri_dir, platform
         );
         if sidecar_path and sidecar_path.exists() {
             console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
@@ -1976,7 +1979,7 @@ except:
     _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
     # Step 3: Run cargo tauri build
     console.print("  Step 3: Building Tauri app...", style="muted");
-    bundle_path = _run_tauri_build(tauri_dir, target_platform);
+    bundle_path = _run_tauri_build(tauri_dir, platform);
     console.success(f"Desktop app built successfully!");
     console.print(f"  Output: {bundle_path}", style="muted");
     return bundle_path;

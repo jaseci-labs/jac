@@ -64,6 +64,9 @@ impl Scheduler.wait -> None {
     if not self._running {
         return;
     }
+    if self._done_event is None {
+        return;
+    }
     try {
         while not self._done_event.wait(timeout=0.5) { }
     } except KeyboardInterrupt {
