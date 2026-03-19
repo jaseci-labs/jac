@@ -1134,15 +1134,17 @@ obj FuncCall(Expr) {
     def postinit -> None;
 }
 
+"""Slice item node type for IndexSlice."""
+obj Slice(UniNode) {
+    has start: (Expr | None),
+        stop: (Expr | None),
+        step: (Expr | None);
+
+    def postinit -> None;
+}
+
 """IndexSlice node type for Jac Ast."""
 obj IndexSlice(AtomExpr) {
-    """Slice node type for Jac Ast."""
-    obj Slice {
-        has start: (Expr | None),
-            stop: (Expr | None),
-            step: (Expr | None);
-    }
-
     has slices: list[Slice],
         is_range: bool;
 

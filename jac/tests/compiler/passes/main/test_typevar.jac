@@ -7,6 +7,9 @@ import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+     CHECKER_FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
+     ),
      TYPEVAR_FIXTURES = os.path.join(
          JAC_ROOT,
          "tests",
@@ -160,4 +163,33 @@ test "typevar7_constrained_operations" {
 
     # Method access - Foo doesn't have do_other_stuff
     assert 'Cannot access attribute "do_other_stuff" for type "Foo"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
+}
+
+"""Test that ParamSpec and TypeVarTuple in Callable annotations produce no false E1071 errors."""
+test "paramspec_callable_no_false_e1071" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "paramspec.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    e1071_errors = [
+        e
+        for e in errors
+        if "E1071" in e
+    ];
+    assert len(e1071_errors) == 0 , f"Expected no E1071 errors for Callable[P, T], got:\n{all_errors}";
+}
+
+"""Test that module-level dunder variables (__name__, __file__, etc.) type-check cleanly."""
+test "module_dunders_no_errors" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "module_dunders.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    assert len(program.errors_had) == 0 , f"Expected no errors for module dunder variables, got:\n{all_errors}";
 }

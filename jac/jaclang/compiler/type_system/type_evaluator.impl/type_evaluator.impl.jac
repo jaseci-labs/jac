@@ -974,6 +974,27 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Error: attribute not available on unbounded TypeVar
                     self.emit_diag(E1031, expr, attr=attr_name, type=base_type.name);
                     return types.UnknownType();
+                } elif isinstance(
+                    base_type, (types.FunctionType, types.OverloadedType)
+                ) {
+                    # All functions are instances of types.FunctionType at runtime.
+                    # Delegate attribute lookup to the prefetched FunctionType class.
+                    # TODO: Add is_method_type() check and use method_class for bound methods.
+                    if self.prefetch and self.prefetch.function_class {
+                        assert isinstance(self.prefetch.function_class, types.ClassType);
+                        if member := self._lookup_object_member(
+                            self.prefetch.function_class.clone_as_instance(),
+                            expr.right.value
+                        ) {
+                            self._set_symbol_to_expr(expr.right, member.symbol);
+                            return self.get_type_of_symbol(member.symbol);
+                        }
+                    }
+                    # Attribute not found on FunctionType
+                    self.emit_diag(
+                        E1031, expr, attr=expr.right.value, type=str(base_type)
+                    );
+                    return types.UnknownType();
                 }
             } elif expr.is_null_ok {
                 # TODO:
@@ -2309,6 +2330,28 @@ impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
     );
 }
 
+"""Check if a type is the ParamSpec class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_paramspec_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.param_spec_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.param_spec_class, types.ClassType)
+        and ty.shared == self.prefetch.param_spec_class.shared
+    );
+}
+
+"""Check if a type is the TypeVarTuple class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_type_var_tuple_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.type_var_tuple_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.type_var_tuple_class, types.ClassType)
+        and ty.shared == self.prefetch.type_var_tuple_class.shared
+    );
+}
+
 """Assign the source type to the destination type."""
 impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
@@ -2655,7 +2698,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.classmethod_class = get_builtin_type("classmethod");
     self.prefetch.union_type_class = get_types_type("UnionType");
     # self.prefetch.awaitable_class =
-    # self.prefetch.function_class =
+    self.prefetch.function_class = get_types_type("FunctionType");
     # self.prefetch.method_class =
     self.prefetch.tuple_class = get_builtin_type("tuple");
     self.prefetch.bool_class = get_builtin_type("bool");
@@ -2790,6 +2833,12 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     # These prefetch type are essential for the builtin types.
     self.prefetch.type_var_class = self._get_type_from_module(
         self.typing_module, "TypeVar"
+    );
+    self.prefetch.param_spec_class = self._get_type_from_module(
+        self.typing_module, "ParamSpec"
+    );
+    self.prefetch.type_var_tuple_class = self._get_type_from_module(
+        self.typing_module, "TypeVarTuple"
     );
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(self._JAC_BUILTINS_STUB_FILE_PATH);
@@ -3599,10 +3648,13 @@ impl TypeEvaluator._apply_narrowing(
             base_type = self.get_type_of_symbol(symbol);
         }
         result = self.exclude_type_from_union(base_type, predicate.narrow_type);
-        # If exclusion didn't change the type (non-union), return None to indicate
-        # no narrowing rather than returning the original type as "narrowed".
+        # If exclusion didn't change the type (e.g., non-union or already narrowed),
+        # return the base_type if it was provided as incoming (already narrowed upstream),
+        # otherwise return None to indicate no narrowing.
         if result is base_type {
-            return None;
+            # If incoming was provided, the type is already narrowed - return it.
+            # If incoming was None, we got the declared type and couldn't narrow it.
+            return incoming;
         }
         return result;
     }

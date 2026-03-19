@@ -1853,10 +1853,14 @@ test "assert_isinstance_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # All cases should pass - assert isinstance narrows the type
-    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+    # Expect exactly 1 error: the failure case where truthy assert doesn't narrow union
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (truthy assert failure case), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # Verify the error is about accessing .value on a string literal type
+    err_msg = program.errors_had[0].pretty_print();
+    assert 'has no attribute "value"' in err_msg , f"Expected attribute error, got: {err_msg}";
 }
 
 """Test assignment-based type narrowing."""
@@ -2218,6 +2222,17 @@ test "isinstance_ternary_narrowing" {
 test "list_generator_type_inference" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_list_generator_inference.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test function type attribute access (__code__, __name__, etc.)."""
+test "function_type_attrs" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_function_attrs.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
