@@ -108,7 +108,7 @@ impl nacompile(filename: str, output: str = "") -> int {
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
-        if auto_promote and not (ir_module and ir_module.gen._auto_promoted_native) {
+        if auto_promote and not (ir_module and ir_module.gen.native_compat) {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
                 "  It may use walkers, nodes, edges, async, lambdas, or other\n"

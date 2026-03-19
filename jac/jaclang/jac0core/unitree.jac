@@ -311,7 +311,8 @@ are evaluated to produce a value.
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit;
+        attached_tokens: (list[Token] | None) by postinit,
+        backend_type_tag: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -1383,6 +1384,8 @@ obj Token(UniNode) {
 
 """Name node type for Jac Ast."""
 obj Name(Token, NameAtom) {
+    has js_decl_kind: (str | None) by postinit;
+
     def init(
         orig_src: Source,
         name: str,
