@@ -2346,11 +2346,8 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     if isinstance(ty, types.TypeVarType) {
         return True;
     }
-    # Check for object, Any, or TypeVar class types
+    # Check for Any or TypeVar class types
     if isinstance(ty, types.ClassType) {
-        if ty.is_builtin("object") {
-            return True;
-        }
         if (self.prefetch.any_class and ty.shared == self.prefetch.any_class.shared) {
             return True;
         }
