@@ -1164,8 +1164,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 # Subscript on Any should return Any, not Unknown (check before generic
-                # specialization to avoid Any's subscript returning Any[Unknown])
-                if self.is_any_type(base_type) and self.prefetch.any_class is not None {
+                # specialization to avoid Any's subscript returning Any[Unknown]).
+                # Use narrow check: only actual Any, not TypeVars (which need error reporting).
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and self.prefetch.any_class is not None
+                    and base_type.shared == self.prefetch.any_class.shared
+                ) {
                     return self.prefetch.any_class;
                 }
                 # if <expr> is a class type, the atom trailer will be the type params.
