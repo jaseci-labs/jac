@@ -1941,9 +1941,7 @@ def compile_auto_native(file_path: str) -> tuple {
 test "auto promote chess.jac detects native compatible" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
-    assert ir.gen._auto_promoted_native , (
-        "chess.jac should be auto-promoted to native"
-    );
+    assert ir.gen.native_compat , ("chess.jac should be auto-promoted to native");
     assert ir.gen.native_engine is not None , (
         "Auto-promoted chess.jac should have a native engine"
     );
