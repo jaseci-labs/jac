@@ -28,7 +28,7 @@ target_sym_tab.lookup("Foo").lookup("bar").lookup("baz")
 impl SemDefMatchPass.find_symbol_from_dotted_name(
     dotted_name: str, target_sym_tab: UniScopeNode
 ) -> (Symbol | None) {
-    parts = dotted_name.lstrip('sem.').split('.');
+    parts = dotted_name.removeprefix('sem.').split('.');
     current_sym_tab: (UniScopeNode | None) = target_sym_tab;
     sym: (uni.Symbol | None) = None;
     for part in parts {

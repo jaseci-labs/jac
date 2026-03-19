@@ -456,6 +456,7 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
+    host: true,
     watch: {{
       usePolling: true,
       interval: 100,
@@ -930,7 +931,16 @@ def _toml_config_to_js(config_name: str, config_data: dict) -> str {
 
 """Build the Vite dev server command."""
 def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
-    return ['bun', 'x', 'vite', '--config', str(config_rel), '--port', str(port)];
+    return [
+        'bun',
+        'x',
+        'vite',
+        '--config',
+        str(config_rel),
+        '--port',
+        str(port),
+        '--host'
+    ];
 }
 
 """Check if a line indicates Vite server is ready."""
