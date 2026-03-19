@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.5.8 (Unreleased)
 
 - **Add: Configurable LiteLLM debug logging via `jac.toml`**: LiteLLM's verbose logging (HTTP requests, retries, headers) can now be toggled via `[plugins.byllm.litellm] debug = true/false` in `jac.toml`. Defaults to `false` (quiet). When disabled, `_disable_debugging()` silences LiteLLM's internal loggers, reducing stdout noise. byLLM's own exception logging (`logger.error`) is unaffected, errors are always logged and propagated regardless of this setting.
+- **Fix: `sem` strings silently dropped for functions starting with 's', 'e', or 'm'** (#5233): `SemDefMatchPass` used `lstrip('sem.')` to strip the `sem.` prefix, which strips individual *characters* from the set `{s, e, m, .}` rather than the prefix string. This corrupted function names like `summarize_text` → `ummarize_text`, causing the symbol table lookup to fail and the sem string to be silently discarded. Fixed by replacing `lstrip('sem.')` with `removeprefix('sem.')`.
 
 ## byllm 0.5.7 (Latest Release)
 
