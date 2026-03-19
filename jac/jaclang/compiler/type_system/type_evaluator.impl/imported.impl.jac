@@ -247,7 +247,8 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
 impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     if self.push_symbol_resolution(symbol) {
         try {
-            return self._get_type_of_symbol(symbol);
+            result = self._get_type_of_symbol(symbol);
+            return result;
         } finally {
             self.pop_symbol_resolution(symbol);
         }

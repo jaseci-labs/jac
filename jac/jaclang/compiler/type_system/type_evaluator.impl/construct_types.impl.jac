@@ -72,6 +72,13 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
+    func_type_params: list[types.TypeVarType] | None = None;
+    if node_.type_params {
+        func_type_params = [
+            types.TypeVarType(name=tp.sym_name)
+            for tp in node_.type_params
+        ];
+    }
     if not isinstance(node_.signature, uni.FuncSignature) {
         flags = types.FunctionTypeFlags.Null;
         if node_.is_static {
@@ -82,15 +89,15 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             return_type=self.get_none_type(),
             parameters=None,
             function_flags=flags,
+            type_params=func_type_params,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
     }
     return_type: TypeBase = self.get_none_type();
     if isinstance(node_.signature.return_type, uni.Expr) {
-        return_type = self._convert_to_instance(
-            self.get_type_of_expression(node_.signature.return_type)
-        );
+        _raw_ret = self.get_type_of_expression(node_.signature.return_type);
+        return_type = self._convert_to_instance(_raw_ret);
     }
     # Define helper function for parameter conversion.
     def _get_param_category(param: uni.ParamVar) -> types.ParameterCategory {
@@ -184,6 +191,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         return_type=return_type,
         parameters=parameters,
         function_flags=flags,
+        type_params=func_type_params,
     );
     node_.name_spec.type = func_type;
     return func_type;

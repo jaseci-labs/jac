@@ -247,7 +247,9 @@ def get_type_of_binary_operation(
     }
 
     if left_type.is_any_type() or right_type.is_any_type() {
-        return jtypes.UnknownType();
+        if not (isinstance(expr.op, uni.Token) and expr.op.name == Tok.BW_OR) {
+            return jtypes.UnknownType();
+        }
     }
     # Boolean operations
     if (
@@ -267,7 +269,11 @@ def get_type_of_binary_operation(
             if ty.is_instantiable() or isinstance(ty, jtypes.UnionType) {
                 return True;
             }
-            # Althought None is not a valid class, it can be used as a class in the type annotation.
+            # TypeVarType is valid in union type annotations (e.g., T | None)
+            if isinstance(ty, jtypes.TypeVarType) {
+                return True;
+            }
+            # Although None is not a valid class, it can be used as a class in the type annotation.
             if isinstance(ty, jtypes.ClassType) {
                 return ty.shared == evaluator.prefetch.none_type_class.shared;
             }

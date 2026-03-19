@@ -114,6 +114,13 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         if not arg_param_match.argument_errors {
             self.validate_arg_types(arg_param_match);
         }
+        if caller_type.type_params {
+            bindings = self._collect_type_var_bindings(caller_type, expr);
+            if bindings {
+                specialized = caller_type.specialize_func_type_vars(bindings);
+                return specialized.return_type or types.UnknownType();
+            }
+        }
         return caller_type.return_type or types.UnknownType();
     }
     if isinstance(caller_type, types.OverloadedType) {
@@ -594,6 +601,23 @@ impl TypeEvaluator.assign_type_to_type_var(
     if isinstance(param_type, types.TypeVarType) {
         if param_type.name and param_type.name not in bindings {
             bindings[param_type.name] = self._convert_to_instance(arg_type);
+        }
+        return;
+    }
+
+    # Handle type[T] pattern: param is type[T] and arg is type[X] (Instantiable class)
+    # Bind T = X so generic functions like find_parent_of_type[T](typ: type[T]) -> T
+    # resolve correctly when called with a concrete class.
+    if (isinstance(param_type, types.ClassType)
+        and isinstance(arg_type, types.ClassType)
+        and param_type.shared
+        and param_type.shared.class_name == "type"
+        and param_type.private
+        and param_type.private.type_args
+        and (arg_type.flags & types.TypeFlags.Instantiable)
+    ) {
+        for pta in param_type.private.type_args {
+            self.assign_type_to_type_var(pta, arg_type.clone_as_instance(), bindings);
         }
         return;
     }
