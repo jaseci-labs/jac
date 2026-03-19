@@ -102,7 +102,7 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
         if isinstance(nd.target.right, uni.IndexSlice) {
             idx_slice: uni.IndexSlice = nd.target.right;
             for slice in idx_slice.slices {
-                slice_item: uni.IndexSlice.Slice = slice;
+                slice_item: uni.Slice = slice;
                 if slice_item.start {
                     self.evaluator.validate_typevar_in_type_expr(slice_item.start);
                 }
