@@ -11,6 +11,11 @@ on:
         description: 'App name for artifacts'
         required: true
         default: 'all-in-one'
+  pull_request:
+    paths:
+      - 'jac-client/jac_client/examples/all-in-one/**'
+      - 'jac-client/jac_client/plugin/src/targets/**'
+      - '.github/workflows/build-desktop.yml'
   push:
     paths:
       - 'jac-client/jac_client/examples/all-in-one/**'
