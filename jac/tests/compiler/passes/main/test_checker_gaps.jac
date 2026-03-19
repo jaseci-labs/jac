@@ -20,6 +20,7 @@ Gap index:
   #48 - TypeCheckPass self-check produces 100+ false positives
   #49 - TYPE_CHECKING forward-reference string annotations
   #50 - postinit body not validated against by-postinit field declarations
+  #51 - Function-level TypeVar (e.g. def foo[T]) not resolved at call sites
 """
 
 import os;
@@ -518,4 +519,31 @@ test "gap 50 postinit assignment tracking" {
         incomplete_errors
     )}. "
     f"All errors: {[e.pretty_print()[:100] for e in program.errors_had]}";
+}
+
+# =========================================================================
+# Gap #51: Function-level TypeVar not resolved at call sites
+#
+# def identity[T](val: T) -> T  called with int should return int.
+# def make_or_none[T](typ: type[T]) -> T | None  called with Dog should
+# return Dog | None.
+# Without the fix, return types stay Unknown and type mismatches are missed.
+# =========================================================================
+test "gap51_function_level_typevar_resolution" {
+    program = compile_and_check("checker_gap_func_typevar.jac");
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # identity(42) returns int, assigning to str should error
+    assert "wrong_type" in all_errors ,
+        f"Gap #51: identity[T] not resolving T=int. Errors: {all_errors}";
+
+    # identity("hi") returns str, assigning to int should error
+    assert "wrong_type2" in all_errors ,
+        f"Gap #51: identity[T] not resolving T=str. Errors: {all_errors}";
+
+    # Should have exactly 2 type errors (the two wrong assignments)
+    assert len(program.errors_had) == 2 ,
+        f"Gap #51: Expected 2 errors, got {len(program.errors_had)}. Errors: {all_errors}";
 }
