@@ -30,11 +30,11 @@ glob registry = get_registry();
             help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
-            "parse_only",
+            "fast",
             typ=bool,
             default=False,
-            help="Only check syntax (skip type checking)",
-            short="p"
+            help="Fast syntax and symbol check only (skips IR generation and type checking)",
+            short=""
         ),
         Arg.create(
             "nowarn",
@@ -50,8 +50,8 @@ glob registry = get_registry();
         ("jac check myproject/", "Check all files in directory"),
         ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
         (
-            "jac check myprogram.jac --parse-only",
-            "Only check syntax, skip type checking"
+            "jac check myprogram.jac --fast",
+            "Fastest check: parse and symbol table only"
         ),
         ("jac check myprogram.jac --nowarn", "Check without warnings"),
 
@@ -62,7 +62,7 @@ def check(
     paths: list,
     print_errs: bool = True,
     ignore: list = [],
-    parse_only: bool = False,
+    fast: bool = False,
     nowarn: bool = False
 ) -> int;
 

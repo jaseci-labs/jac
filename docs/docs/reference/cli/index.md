@@ -261,7 +261,7 @@ jac check [-h] [-e] [-i [IGNORE ...]] [-p] [--nowarn] paths [paths ...]
 | `paths` | Files/directories to check | Required |
 | `-e, --print_errs` | Print detailed error messages | `True` |
 | `-i, --ignore` | Space-separated list of files/folders to ignore | None |
-| `-p, --parse_only` | Only check syntax (skip type checking) | `False` |
+| `--fast` | Fast syntax and symbol check only (skips IR generation and type checking) | `False` |
 | `--nowarn` | Suppress warning output | `False` |
 
 **Examples:**

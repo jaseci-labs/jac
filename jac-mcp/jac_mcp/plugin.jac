@@ -88,9 +88,22 @@ def _handle_mcp_cmd(ctx: object) -> None {
         return;
     }
 
-    # Start the server
-    import from jac_mcp.server { JacMcpServer }
-    server = JacMcpServer(transport=transport, port=port, host=host);
+    # Use importlib.import_module to defer loading the MCP server stack
+    # (mcp, anyio, pydantic) until the command is actually invoked.
+    # A direct `import from jac_mcp.server { JacMcpServer }` would be
+    # resolved at Jac compile time, loading ~910 modules at plugin init.
+    import importlib;
+    try {
+        _server_mod = importlib.import_module('jac_mcp.server');
+    } except ImportError as e {
+        import sys;
+        sys.stderr.write(f"jac mcp: failed to load MCP server — {e}\n");
+        sys.stderr.write("  Try: pip install jac-mcp[server]\n");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    server = _server_mod.JacMcpServer(transport=transport, port=port, host=host);
     server.start();
     ctx.set_data("cancel_execution", True);
     ctx.set_data("cancel_return_code", 0);

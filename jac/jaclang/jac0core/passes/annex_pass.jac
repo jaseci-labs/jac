@@ -27,6 +27,10 @@ with entry {
 
 """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
 class JacAnnexPass(Transform[uni.Module, uni.Module]) {
+    # Per-pass directory scan cache: keyed by (source_path, suffix).
+    # Scoped to one compilation cycle so there is no staleness risk.
+    has _annex_cache: dict = {};
+
     """Load and attach annex modules to the given module."""
     def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module;
 

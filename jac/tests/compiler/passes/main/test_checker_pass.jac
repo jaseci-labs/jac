@@ -2235,3 +2235,46 @@ test "function_type_attrs" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+# ── --fast flag contract tests ───────────────────────────────────────────────
+"""--fast skips type checking: a file with only a type error must compile clean."""
+test "fast_mode skips type errors" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_fast_mode.jac");
+    program.compile(path, options=CompileOptions(symtab_ir_only=True, type_check=False));
+    assert len(program.errors_had) == 0 , (
+        f"--fast should not report type errors, got {len(program.errors_had)}:\n" + "\n".join(
+            e.pretty_print() for e in program.errors_had
+        )
+    );
+}
+
+"""Full check catches the type error that --fast silently skips."""
+test "fast_mode full check catches type error" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_fast_mode.jac");
+    program.compile(path, options=CompileOptions(type_check=True));
+    assert len(program.errors_had) >= 1 , (
+        "Full check should report the int→str type error in checker_fast_mode.jac"
+    );
+}
+
+"""--fast still catches parse errors (they occur before the pass schedule)."""
+test "fast_mode still catches parse errors" {
+    import tempfile;
+    import os;
+    tf = tempfile.NamedTemporaryFile(suffix=".jac", delete=False, mode="w");
+    tf.write("glob x = ;");  # invalid syntax: missing RHS
+    tf.close();
+    try {
+        program = JacProgram();
+        program.compile(
+            tf.name, options=CompileOptions(symtab_ir_only=True, type_check=False)
+        );
+        assert len(program.errors_had) >= 1 , (
+            "--fast must surface parse errors, got 0 errors"
+        );
+    } finally {
+        os.unlink(tf.name);
+    }
+}

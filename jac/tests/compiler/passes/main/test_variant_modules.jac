@@ -194,3 +194,41 @@ test "variant precedence fallback — sv.jac as head when no plain .jac" {
     render_sym = cl_variant.impl_mod[0].sym_tab.lookup("impl.Widget.render");
     assert render_sym is not None , "impl.Widget.render should match from same dir";
 }
+
+# ── discover_annex_files cache tests ────────────────────────────────────────
+test "annex cache hit returns same list as cache miss" {
+    head_path = os.path.join(VARIANT_DIR, "mymod.jac");
+    cache: dict = {};
+    first = discover_annex_files(head_path, '.impl.jac', cache=cache);
+    second = discover_annex_files(head_path, '.impl.jac', cache=cache);
+    assert sorted(first) == sorted(second) , "Cache hit must return same files as miss";
+    assert (head_path, '.impl.jac') in cache , "Cache must be populated after first call";
+}
+
+test "annex cache stores empty list for files with no annexes" {
+    sv_path = os.path.join(VARIANT_DIR, "mymod.sv.jac");
+    cache: dict = {};
+    first = discover_annex_files(sv_path, '.test.jac', cache=cache);
+    assert (sv_path, '.test.jac') in cache , "Cache must store empty result";
+    second = discover_annex_files(sv_path, '.test.jac', cache=cache);
+    assert second == first , "Cached empty list must be returned on second call";
+}
+
+test "annex cache keys include suffix so impl and test don't collide" {
+    head_path = os.path.join(VARIANT_DIR, "mymod.jac");
+    cache: dict = {};
+    impl_result = discover_annex_files(head_path, '.impl.jac', cache=cache);
+    test_result = discover_annex_files(head_path, '.test.jac', cache=cache);
+    assert (head_path, '.impl.jac') in cache;
+    assert (head_path, '.test.jac') in cache;
+    assert cache[(head_path, '.impl.jac')] == impl_result;
+    assert cache[(head_path, '.test.jac')] == test_result;
+}
+
+test "annex cache=None preserves existing behaviour" {
+    head_path = os.path.join(VARIANT_DIR, "mymod.jac");
+    uncached = discover_annex_files(head_path, '.impl.jac');
+    cache: dict = {};
+    cached = discover_annex_files(head_path, '.impl.jac', cache=cache);
+    assert sorted(uncached) == sorted(cached) , "cache=None and cache={} must yield same files";
+}

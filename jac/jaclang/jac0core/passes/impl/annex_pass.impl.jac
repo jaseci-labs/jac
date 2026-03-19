@@ -14,12 +14,12 @@ impl JacAnnexPass.transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module
 impl JacAnnexPass._load_annexes(
     self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
 ) -> None {
-    for path in discover_annex_files(mod_path, '.impl.jac') {
+    for path in discover_annex_files(mod_path, '.impl.jac', cache=self._annex_cache) {
         if (mod := jac_program.compile(file_path=path, no_cgen=True)) {
             nd.impl_mod.append(mod);
         }
     }
-    for path in discover_annex_files(mod_path, '.test.jac') {
+    for path in discover_annex_files(mod_path, '.test.jac', cache=self._annex_cache) {
         if (mod := jac_program.compile(file_path=path, no_cgen=True)) {
             nd.test_mod.append(mod);
         }

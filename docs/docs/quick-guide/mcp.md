@@ -378,7 +378,7 @@ Full type-check validation of Jac code. Runs the complete compilation pipeline i
 
 ### check_syntax
 
-Quick parse-only syntax check. Faster than `validate_jac` since it skips type checking.
+Quick syntax and symbol check (`--fast`, no type checking). Faster than `validate_jac` since it skips type checking.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

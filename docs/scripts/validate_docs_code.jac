@@ -1,7 +1,7 @@
 """
 Validate Jac code blocks in documentation markdown files.
 
-Extracts ```jac code blocks from markdown files and runs `jac check --parse-only`
+Extracts ```jac code blocks from markdown files and runs `jac check --fast`
 to verify they have valid syntax. This catches syntax errors without requiring
 imports or types to be resolvable.
 
@@ -85,7 +85,7 @@ def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
     return code_blocks;
 }
 
-"""Validate code blocks using jac check --parse-only."""
+"""Validate code blocks using jac check --fast."""
 def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult] {
     if not code_blocks {
         return [];
@@ -104,7 +104,7 @@ def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult]
         all_paths = list(temp_files.keys());
         try {
             result = subprocess.run(
-                ["jac", "check", "--parse_only"] + all_paths,
+                ["jac", "check", "--fast"] + all_paths,
                 capture_output=True,
                 text=True,
                 timeout=300,

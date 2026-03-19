@@ -18,7 +18,7 @@ impl check(
     paths: list,
     print_errs: bool = True,
     ignore: list = [],
-    parse_only: bool = False,
+    fast: bool = False,
     nowarn: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
@@ -67,7 +67,10 @@ impl check(
             prog.compile(
                 file_path=file_path,
                 options=CompileOptions(
-                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                    type_check=not fast,
+                    symtab_ir_only=fast,
+                    no_cgen=True,
+                    force_target_program=True
                 )
             );
             new_errors = prog.errors_had[err_start:];

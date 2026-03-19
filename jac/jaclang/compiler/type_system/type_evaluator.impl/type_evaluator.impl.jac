@@ -2742,27 +2742,30 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     if not os.path.exists(path) {
         raise FileNotFoundError(f"Stub file not found at {path}");
     }
-    # Convert to absolute path so this function and _import_module_from_path share the same hub key.
+    # Normalise to absolute path so hub keys are consistent with the rest of
+    # the compiler (parse_str always stores under the resolved path).
     resolved_path = str(Path(path).resolve());
-    # Route jaclang-internal stubs (typeshed, etc.) to the compiler's
-    # internal hub so they don't pollute the user's program hub.
     compiler = self.program._get_compiler();
-    target_hub = compiler._resolve_program(resolved_path, self.program).mod.hub;
-    if resolved_path in self.program.mod.hub {
-        return self.program.mod.hub[resolved_path];
+    # Stubs live inside the jaclang package, so _resolve_program routes them
+    # to internal_program — a compiler-level singleton whose hub is shared
+    # across every JacProgram in this process.  A hub hit here means the stub
+    # was already parsed by an earlier JacProgram; no work needed.
+    target_prog = compiler._resolve_program(resolved_path, self.program);
+    if resolved_path in target_prog.mod.hub {
+        return target_prog.mod.hub[resolved_path];
     }
-    if resolved_path in target_hub {
-        return target_hub[resolved_path];
-    }
-    file_content = read_file_with_encoding(path);
-    uni_source = uni.Source(file_content, path);
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast.parse(file_content), orig_src=uni_source,),
-        prog=self.program,
-    ).ir_out;
-    SymTabBuildPass(ir_in=mod, prog=self.program);
-    target_hub[resolved_path] = mod;
-    return mod;
+    # Cache miss: delegate to the normal compile path.  parse_str() handles
+    # .pyi files via PyastBuildPass, stores the result in target_prog.mod.hub,
+    # and runs JacAnnexPass (which is a no-op for .pyi paths).  The subsequent
+    # pass schedule (symtab_ir_only) runs ASTValidationPass + SymTabBuildPass
+    # + DeclImplMatchPass — equivalent to what we did manually, plus
+    # consistent with every other module compiled in the system.
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    return compiler.compile(
+        file_path=resolved_path,
+        target_program=target_prog,
+        options=CompileOptions(type_check=False, symtab_ir_only=True, no_cgen=True)
+    );
 }
 
 """Initialize the type evaluator with prefetched types.

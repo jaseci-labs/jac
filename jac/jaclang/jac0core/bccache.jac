@@ -32,10 +32,26 @@ def get_global_cache_dir -> Path {
 """Discover annex files (.impl.jac, .test.jac) for a source .jac or .cl.jac file.
 
     Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/, test/).
+
+    The optional ``cache`` dict is keyed by ``(source_path, suffix)`` and stores
+    the result list so repeated calls within the same compilation pass avoid
+    redundant filesystem scans.  Pass a fresh dict per JacAnnexPass instance so
+    the cache is naturally scoped to one compilation cycle (no staleness risk).
     """
-def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[str] {
+def discover_annex_files(
+    source_path: str, suffix: str = '.impl.jac', cache: (dict | None) = None
+) -> list[str] {
+    if cache is not None {
+        key = (source_path, suffix);
+        if key in cache {
+            return cache[key];
+        }
+    }
     src = Path(source_path).resolve();
     if (not src.name.endswith('.jac') or src.name.endswith(suffix)) {
+        if cache is not None {
+            cache[(source_path, suffix)] = [];
+        }
         return [];
     }
     base = src.stem;
@@ -58,21 +74,28 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
     dirs = [src.parent, mod_folder, (src.parent / shared_folder)];
     results: list[str] = [];
     for d in dirs {
-        if not d.is_dir() {
+        d_str = str(d);
+        # Use os.scandir for faster directory iteration (avoids Path object
+        # construction per entry; DirEntry.is_file() uses d_type on Linux).
+        try {
+            entries = list(os.scandir(d_str));
+        } except OSError {
             continue;
         }
-        for f in d.iterdir() {
-            if not f.name.endswith(suffix) {
+        for entry in entries {
+            if not entry.name.endswith(suffix) {
                 continue;
             }
-            if ((d != mod_folder) and not f.name.startswith(f"{base}.")) {
+            if ((d != mod_folder) and not entry.name.startswith(f"{base}.")) {
                 continue;
             }
-            if not f.is_file() {
+            if not entry.is_file() {
                 continue;
             }
             # Determine the annex file's variant context.
-            annex_stem = f.name[:-len(suffix)];  # e.g. "svc.sv" from "svc.sv.impl.jac"
+            annex_stem = entry.name[:-len(
+                suffix
+            )];  # e.g. "svc.sv" from "svc.sv.impl.jac"
             annex_variant: (str | None) = None;
             for vext in ('.sv', '.cl', '.na') {
                 if annex_stem.endswith(vext) {
@@ -90,8 +113,11 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
             } elif (src_variant is not None and bare_head_exists) {
                 continue;
             }
-            results.append(str(f));
+            results.append(os.path.join(d_str, entry.name));
         }
+    }
+    if cache is not None {
+        cache[(source_path, suffix)] = results;
     }
     return results;
 }

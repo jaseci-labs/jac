@@ -27,7 +27,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "check_syntax",
-            "description": "Quick syntax-only check (parse-only, no type checking). Use this for a fast first pass when iterating on code. For final validation, use validate_jac instead.",
+            "description": "Quick syntax and symbol check (--fast, no type checking). Use this for a fast first pass when iterating on code. For final validation, use validate_jac instead.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
