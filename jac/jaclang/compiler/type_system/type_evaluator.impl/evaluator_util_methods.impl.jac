@@ -657,13 +657,26 @@ impl TypeEvaluator._create_callable_type(
                 param_types.append(param_type);
             }
         } else {
-            # Invalid first argument - should be [...] or ...
-            self.emit_diag(E1071, first_arg);
-            # Try to recover by treating it as a single parameter type
-            # This handles cases like Callable[int, str] (incorrect but common mistake)
-            param_type = self.get_type_of_expression(first_arg);
-            param_type = self._convert_to_instance(param_type);
-            param_types.append(param_type);
+            # Check for valid Python 3.10+ Callable[P, T] where P is a ParamSpec/TypeVar.
+            # After ParamSpec("P") is evaluated, P has type TypeVarType(is_param_spec=True).
+            # After TypeVar("T") is evaluated, T has type TypeVarType.
+            # The raw ParamSpec/TypeVarTuple class can also appear in typeshed stubs.
+            resolved_first = self.get_type_of_expression(first_arg);
+            if isinstance(resolved_first, types.TypeVarType) {
+                # Callable[P, T] or Callable[T, T] — ParamSpec or TypeVar as first arg.
+                # Treat as gradual: full ParamSpec substitution is future work.
+                is_gradual = True;
+            } elif self.is_paramspec_class(resolved_first)
+            or self.is_type_var_tuple_class(resolved_first) {
+                # Raw ParamSpec/TypeVarTuple class used as first arg (common in typeshed stubs).
+                is_gradual = True;
+            } else {
+                # Genuinely invalid first argument — should be [...] or ...
+                self.emit_diag(E1071, first_arg);
+                # Recover by treating it as a single parameter type
+                param_type = self._convert_to_instance(resolved_first);
+                param_types.append(param_type);
+            }
         }
         # Second argument: return type
         if len(type_arg_values) >= 2 {

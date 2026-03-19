@@ -2330,6 +2330,28 @@ impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
     );
 }
 
+"""Check if a type is the ParamSpec class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_paramspec_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.param_spec_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.param_spec_class, types.ClassType)
+        and ty.shared == self.prefetch.param_spec_class.shared
+    );
+}
+
+"""Check if a type is the TypeVarTuple class itself (not a TypeVarType instance)."""
+impl TypeEvaluator.is_type_var_tuple_class(ty: TypeBase) -> bool {
+    return (
+        self.prefetch
+        and self.prefetch.type_var_tuple_class
+        and isinstance(ty, types.ClassType)
+        and isinstance(self.prefetch.type_var_tuple_class, types.ClassType)
+        and ty.shared == self.prefetch.type_var_tuple_class.shared
+    );
+}
+
 """Assign the source type to the destination type."""
 impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
@@ -2811,6 +2833,12 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     # These prefetch type are essential for the builtin types.
     self.prefetch.type_var_class = self._get_type_from_module(
         self.typing_module, "TypeVar"
+    );
+    self.prefetch.param_spec_class = self._get_type_from_module(
+        self.typing_module, "ParamSpec"
+    );
+    self.prefetch.type_var_tuple_class = self._get_type_from_module(
+        self.typing_module, "TypeVarTuple"
     );
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(self._JAC_BUILTINS_STUB_FILE_PATH);

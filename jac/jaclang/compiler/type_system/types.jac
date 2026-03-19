@@ -148,6 +148,7 @@ obj TypeVarType(TypeBase) {
         is_covariant: bool = False,
         is_contravariant: bool = False,
         is_self: bool = False,
+        is_param_spec: bool = False,
         bound: (TypeBase | None) = None,
         constraints: (list[TypeBase] | None) = None;
 
