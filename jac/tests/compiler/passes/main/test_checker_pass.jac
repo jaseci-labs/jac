@@ -1343,6 +1343,31 @@ test "property_type_checking" {
     );
 }
 
+test "property_self_return_type_resolution" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_self_return.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Only 2 errors: assigning Path to int
+    assert len(program.errors_had) == 2;
+
+    assert_error_pretty_found(
+        """
+        wrong: int = p.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        wrong_chained: int = p.parent.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
@@ -1523,12 +1548,12 @@ test "enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
+        "B = \"jac\"",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
         "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        "impl_shape_ok: str = ShapeType.SQUARE.name",
         "func_wrong_type: str = process_color"
     ];
 
@@ -1553,8 +1578,11 @@ test "class_based_enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"1\"] to Tokens",
+        "Cannot assign <Tokens.FLOAT> to int",
         "Cannot assign Literal[\"1\"] to int",
+        "Cannot assign Literal[\"LSQUARE\"] to int",
+        "Cannot assign Literal[\"RSQUARE\"] to int",
+        "Cannot assign <AccessLevel.READ> to str",
         "Cannot assign AccessLevel | NoneType to int",
         "Cannot assign int to str"
     ];
@@ -1825,10 +1853,14 @@ test "assert_isinstance_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # All cases should pass - assert isinstance narrows the type
-    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+    # Expect exactly 1 error: the failure case where truthy assert doesn't narrow union
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (truthy assert failure case), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # Verify the error is about accessing .value on a string literal type
+    err_msg = program.errors_had[0].pretty_print();
+    assert 'has no attribute "value"' in err_msg , f"Expected attribute error, got: {err_msg}";
 }
 
 """Test assignment-based type narrowing."""
@@ -2190,6 +2222,17 @@ test "isinstance_ternary_narrowing" {
 test "list_generator_type_inference" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_list_generator_inference.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test function type attribute access (__code__, __name__, etc.)."""
+test "function_type_attrs" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_function_attrs.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(

@@ -108,6 +108,8 @@ obj PrefetchedTypes {
         mapping_class: TypeBase | None = None,
         template_class: TypeBase | None = None,
         type_var_class: TypeBase | None = None,
+        param_spec_class: TypeBase | None = None,
+        type_var_tuple_class: TypeBase | None = None,
         classmethod_class: TypeBase | None = None,
         # Prefetch from typing.pyi file
         protocol_class: TypeBase | None = None,
@@ -186,6 +188,10 @@ obj TypeEvaluator {
     def is_any_type(ty: TypeBase) -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
+    # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
+    def is_paramspec_class(ty: TypeBase) -> bool;
+    # Check if a type is the TypeVarTuple class itself (not a TypeVarType instance).
+    def is_type_var_tuple_class(ty: TypeBase) -> bool;
     # Comments from pyright:
     # // Determines if the source type can be assigned to the dest type.
     # // If constraint are provided, type variables within the destType are

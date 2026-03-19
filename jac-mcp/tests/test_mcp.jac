@@ -311,6 +311,19 @@ test "parse invalid code" {
     assert len(result["errors"]) > 0;
 }
 
+test "parse errors have correct line and col" {
+    result = CompilerBridge.parse_snippet("obj Foo {\n    has x: int = 5\n}");
+    assert result["valid"] == False;
+    assert len(result["errors"]) > 0;
+    err = result["errors"][0];
+    assert err["line"] > 0 , f"Expected line > 0, got {err['line']}";
+    assert err["col"] > 0 , f"Expected col > 0, got {err['col']}";
+    assert "message" in err;
+    assert len(err["message"]) > 0;
+    assert isinstance(err["line"], int);
+    assert isinstance(err["col"], int);
+}
+
 test "parse empty code" {
     result = CompilerBridge.parse_snippet("");
     assert isinstance(result, dict);

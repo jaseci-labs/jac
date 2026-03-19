@@ -5,6 +5,7 @@ for context: grammar specs, documentation, examples, and curated guides.
 """
 
 import from typing { Any }
+import from pathlib { Path }
 
 """Find the repo root by walking up from jaclang package location."""
 def find_repo_root -> str | None;
@@ -29,4 +30,13 @@ obj ResourceProvider {
 
     """Read resource content by URI."""
     def read_resource(uri: str) -> str;
+
+    """Read example resource (local or lazy GitHub)."""
+    def _read_example(uri: str) -> str;
+
+    """Index local example directories."""
+    def _index_examples_local(examples_dir: Path) -> None;
+
+    """Fetch and cache GitHub example categories."""
+    def _fetch_github_categories -> list[str];
 }

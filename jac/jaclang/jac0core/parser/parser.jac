@@ -129,6 +129,7 @@ import from jaclang.jac0core.unitree {
     AtomUnit,
     FuncCall,
     IndexSlice,
+    Slice,
     EdgeRefTrailer
 }
 import from jaclang.jac0core.unitree {

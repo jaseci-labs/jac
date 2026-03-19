@@ -244,6 +244,84 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             constraints=constraint_types or None
         );
     }
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.shared == (self.prefetch and self.prefetch.param_spec_class.shared) {
+        # Handle ParamSpec("P", bound=..., covariant=..., contravariant=...)
+        # ParamSpec accepts only a name and optional bound/variance kwargs (no positional constraints).
+        param_spec_name = "";
+        is_covariant = False;
+        is_contravariant = False;
+        bound_type: types.TypeBase | None = None;
+
+        def _get_str_lit(arg: uni.Expr) -> str | None {
+            if isinstance(arg, uni.String) {
+                return arg.lit_value;
+            } elif isinstance(arg, uni.MultiString) and arg.strings {
+                if isinstance(arg.strings[0], uni.String) {
+                    return arg.strings[0].lit_value;
+                }
+            }
+            return None;
+        }
+
+        if expr.params and len(expr.params) > 0 {
+            param_spec_name = _get_str_lit(expr.params[0]) or "";
+            if not param_spec_name {
+                self.emit_diag(E1063, expr.params[0]);
+            }
+            for i in range(1, len(expr.params)) {
+                arg = expr.params[i];
+                if isinstance(arg, uni.KWPair) and isinstance(arg.key, uni.Name) {
+                    if arg.key.value == "covariant"
+                    and isinstance(arg.value, uni.Bool) {
+                        is_covariant = arg.value.value;
+                    } elif arg.key.value == "contravariant"
+                    and isinstance(arg.value, uni.Bool) {
+                        is_contravariant = arg.value.value;
+                    } elif arg.key.value == "bound" {
+                        bound_type = self.get_type_of_expression(arg.value);
+                        if isinstance(bound_type, types.ClassType)
+                        and bound_type.is_instantiable() {
+                            bound_type = bound_type.clone_as_instance();
+                        }
+                    }
+                }
+            }
+        } else {
+            self.emit_diag(E1063, expr);
+        }
+        return types.TypeVarType(
+            name=param_spec_name,
+            is_covariant=is_covariant,
+            is_contravariant=is_contravariant,
+            is_param_spec=True,
+            bound=bound_type
+        );
+    }
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.shared == (
+        self.prefetch and self.prefetch.type_var_tuple_class.shared
+    ) {
+        # Handle TypeVarTuple("Ts") - only accepts a name, no variance or bound
+        tvt_name = "";
+        if expr.params and len(expr.params) > 0 {
+            if isinstance(expr.params[0], uni.String) {
+                tvt_name = expr.params[0].lit_value;
+            } elif (
+                isinstance(expr.params[0], uni.MultiString)
+                and expr.params[0].strings
+                and isinstance(expr.params[0].strings[0], uni.String)
+            ) {
+                tvt_name = expr.params[0].strings[0].lit_value;
+            }
+            if not tvt_name {
+                self.emit_diag(E1063, expr.params[0]);
+            }
+        } else {
+            self.emit_diag(E1063, expr);
+        }
+        return types.TypeVarType(name=tvt_name, is_param_spec=False);
+    }
     if (
         isinstance(caller_type, types.ClassType)
         and caller_type.is_instantiable_class()

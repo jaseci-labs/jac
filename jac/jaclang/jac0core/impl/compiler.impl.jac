@@ -582,7 +582,10 @@ impl JacCompiler.parse_str(
         return mod;
     }
     if target_program.mod.main.stub_only {
+        # Preserve the existing hub when replacing the stub main module
+        old_hub = target_program.mod.hub;
         target_program.mod = uni.ProgramModule(main_mod=mod);
+        target_program.mod.hub.update(old_hub);
     }
     target_program.mod.hub[mod.loc.mod_path] = mod;
     JacAnnexPass(ir_in=mod, prog=target_program);
