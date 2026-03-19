@@ -2,6 +2,7 @@
 
 ## jac-mcp 0.1.6 (Unreleased)
 
+- **Performance: Defer MCP server stack loading**: The plugin no longer loads anyio, pydantic, starlette, and the MCP SDK at `import jaclang` time. The server is now imported lazily when `jac mcp` is invoked, reducing startup overhead for all other `jac` commands. The `check_syntax` tool description updated to reflect `--fast` flag semantics (symbol table check, not parse-only).
 - **Fix SSE transport method issue**
 - **Fix CompilerBridge tools returning incorrect results**: `check_syntax`, `validate_jac`, and `get_ast` now use the compiler's structured diagnostics and parse API to correctly detect errors and return real AST output
 - **Fix error reporting and example loading**: Syntax errors now report accurate line/column numbers, and `list_examples`/`get_example` work correctly in PyPI installs
