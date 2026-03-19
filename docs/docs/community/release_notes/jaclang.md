@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.12.3 (Unreleased)
 
 - **Fix: `sem` strings silently dropped for functions starting with 's', 'e', or 'm'** (#5233): `SemDefMatchPass` used `lstrip('sem.')` to strip the `sem.` prefix, which strips individual *characters* from the set `{s, e, m, .}` rather than the prefix string. This corrupted function names like `summarize_text` → `ummarize_text`, causing the symbol table lookup to fail and the sem string to be silently discarded. Fixed by replacing `lstrip('sem.')` with `removeprefix('sem.')`.
+- **Anchor Change Tracking (`is_updated` field)**: Added an `is_updated` flag to the `Anchor` class to track modification state, marking anchors as updated only on changes and enabling persistence backends to skip unnecessary writes during read-only operations.
 - **Type Checking Enabled by Default**: All user modules are now type-checked during compilation. Bootstrap modules skip type checking automatically to avoid circular imports.
 - **Type Checker: Enum `.value`/`.name` Resolution**: Accessing `.value` or `.name` on enum instances now returns the correct type. For plain enums, the value type is inferred from members.
 - **Fix: Static Analysis False Positive on Attribute Access**: The "Name may be undefined" warning (W2001) no longer fires on attribute-access names (e.g., `obj.value`), which are member lookups, not standalone name references.
@@ -50,6 +51,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Checker: `ParamSpec` and `TypeVarTuple` Support**: `P = ParamSpec('P')` and `Ts = TypeVarTuple('Ts')` now produce proper `TypeVarType` entries in the symbol table (with `is_param_spec=True`) instead of `<Unknown>`. `Callable[P, T]` no longer emits a false E1071 error. `ParamSpec` and `TypeVarTuple` are tracked via the prefetch mechanism (same as `TypeVar`) so identity checks use type-system identity rather than string matching.
 - **Fix: Module-Level Dunder Variables**: `__name__`, `__file__`, `__doc__`, `__package__`, and `__spec__` are now declared in `jac_builtins.pyi` with their correct types. Previously, `getLogger(__name__)` and similar calls produced E1053 because `__name__` resolved to `<Unknown>`.
 - 3 small refactors/changes.
+- **Request-Scoped Execution Context**:Introduced request-scoped execution contexts using `ContextVar` in `JacRuntime.get_context()`, enabling isolated per-request state and L1 caches in web environments while preserving global context behavior for CLI and tests.
 
 ## jaclang 0.12.2 (Latest Release)
 
