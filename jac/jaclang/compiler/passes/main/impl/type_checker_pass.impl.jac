@@ -37,6 +37,17 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
     import from jaclang.compiler.type_system { types }
 
     if (fn := self.evaluator._get_enclosing_function(nd)) {
+        # Warn if returning a value from an event-driven ability.
+        # Abilities triggered by walkers ignore return values —
+        # node/walker fields should be updated directly instead.
+        if (
+            isinstance(fn.signature, uni.EventSignature)
+            and nd.expr
+            and not isinstance(nd.expr, uni.Null)
+        ) {
+            self.emit(W2014, node_override=nd);
+            return;
+        }
         # Check if return type annotation is missing.
         has_annotation = (
             isinstance(fn.signature, uni.FuncSignature)
