@@ -304,16 +304,14 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
 """Mark anchor as updated when properties are modified."""
 impl Archetype.__setattr__(self: Archetype, name: str, value: Any) -> None {
     object.__setattr__(self, name, value);
+    # Only update anchor if it ALREADY exists (avoid lazy creation).
+    # This is a critical optimization: creating anchors with UUIDs for
+    # every AST node during compilation causes 1M+ UUID generations.
     if not name.startswith('_') and name != '__jac__' {
-        try {
-            anchor = self.__jac__;
-            if hasattr(anchor, 'is_updated') {
-                object.__setattr__(anchor, 'is_updated', True);
-            }
-        } except Exception as e {
-            logger.debug(
-                f"Failed to set is_updated flag for {self.__class__.__name__}.{name}: {e}"
-            );
+        # Check __dict__ directly to avoid triggering cached_property
+        anchor = self.__dict__.get('__jac__');
+        if anchor is not None and hasattr(anchor, 'is_updated') {
+            object.__setattr__(anchor, 'is_updated', True);
         }
     }
 }

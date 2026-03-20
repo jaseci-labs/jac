@@ -1284,7 +1284,7 @@ Process python node.
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     # Get the original f-string source to detect quote style
-    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
+    ast_seg = self._get_source_segment(nd);
     if (ast_seg is None) {
         ast_seg = 'f""';
     }
@@ -1294,7 +1294,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
             # Use get_source_segment to preserve original escape sequences exactly as written
-            escaped_value = py_ast.get_source_segment(self.orig_src.code, i);
+            escaped_value = self._get_source_segment(i);
             if escaped_value is None {
                 # Fallback to repr approach if source segment unavailable
                 raw_repr = repr(i.value);
@@ -1794,7 +1794,7 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
         }
         if (value_type is str) {
             # Use get_source_segment to preserve original escape sequences and quote style
-            value = py_ast.get_source_segment(self.orig_src.code, nd);
+            value = self._get_source_segment(nd);
             if value is None {
                 # Fallback to repr approach if source segment unavailable
                 raw_repr = repr(nd.value);
@@ -2956,10 +2956,47 @@ impl PyastBuildPass.nu(nd: T) -> T {
 impl PyastBuildPass.postinit -> None {
     self.mod_path = self.ir_in.loc.mod_path;
     self.orig_src = self.ir_in.loc.orig_src;
+    # Cache source lines to avoid repeated splitlines() in _get_source_segment.
+    # Python's ast.get_source_segment calls _splitlines_no_ff on every call,
+    # which is O(n) per call and causes O(n*m) slowdown for n nodes in m lines.
+    self._source_lines = self.orig_src.code.splitlines(keepends=True);
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
     Transform.init(
         self, ir_in=self.ir_in, prog=self.prog, cancel_token=self.cancel_token
     );
+}
+
+"""Get source segment using cached line splits.
+
+This is a performance-optimized replacement for py_ast.get_source_segment().
+The stdlib version calls _splitlines_no_ff on every call, which splits the
+entire source into lines each time. For a file with many string constants,
+this causes O(n*m) slowdown where n is the number of nodes and m is lines.
+"""
+impl PyastBuildPass._get_source_segment(nd: py_ast.AST) -> (str | None) {
+    try {
+        if (nd.end_lineno is None or nd.end_col_offset is None) {
+            return None;
+        }
+        lineno = nd.lineno - 1;
+        end_lineno = nd.end_lineno - 1;
+        col_offset = nd.col_offset;
+        end_col_offset = nd.end_col_offset;
+    } except AttributeError {
+        return None;
+    }
+    lines = self._source_lines;
+    if (end_lineno >= len(lines)) {
+        return None;
+    }
+    if (end_lineno == lineno) {
+        return lines[lineno].encode()[col_offset:end_col_offset].decode();
+    }
+    first = lines[lineno].encode()[col_offset:].decode();
+    last = lines[end_lineno].encode()[:end_col_offset].decode();
+    middle = lines[lineno + 1:end_lineno];
+    result_lines = [first] + middle + [last];
+    return ''.join(result_lines);
 }
