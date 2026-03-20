@@ -41,4 +41,4 @@ jobs:
 
       - name: Run jac check (using .jacignore)
         run: |
-          jac check . --ignore tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn --print_errs
+          jac check . --ignore tests checker_*.jac *_err.jac --nowarn --print_errs
