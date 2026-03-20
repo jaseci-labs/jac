@@ -339,6 +339,50 @@ impl TypeEvaluator._get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None 
     return None;
 }
 
+"""Get the nearest enclosing return scope: the first Ability or LambdaExpr walking up."""
+impl TypeEvaluator._get_enclosing_return_scope(
+    nd: uni.UniNode
+) -> uni.Ability | uni.LambdaExpr | None {
+    while nd := nd.parent {
+        if isinstance(nd, uni.LambdaExpr) {
+            return nd;
+        }
+        if isinstance(nd, uni.Ability) {
+            return nd;
+        }
+        if isinstance(nd, uni.ImplDef) and isinstance(nd.decl_link, uni.Ability) {
+            return nd.decl_link;
+        }
+    }
+    return None;
+}
+
+"""Get the resolved return type from an Ability or LambdaExpr, or None if unresolvable."""
+impl TypeEvaluator._get_declared_return_type(
+    scope: uni.Ability | uni.LambdaExpr
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system { types }
+
+    if isinstance(scope, uni.LambdaExpr) {
+        if (
+            isinstance(scope.signature, uni.FuncSignature)
+            and scope.signature.return_type is not None
+        ) {
+            return self._convert_to_instance(
+                self.get_type_of_expression(scope.signature.return_type)
+            );
+        }
+        return None;
+    }
+    # Ability path — resolve via get_type_of_ability (handles both annotated
+    # and unannotated cases; unannotated defaults to NoneType).
+    fn_type_base = self.get_type_of_ability(scope);
+    if not isinstance(fn_type_base, types.FunctionType) {
+        return None;
+    }
+    return self._convert_to_instance(fn_type_base.return_type);
+}
+
 """Get the enclosing function (ability) of the given node."""
 impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None {
     while nd := nd.parent {

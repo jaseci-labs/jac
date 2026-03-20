@@ -10,6 +10,7 @@ import from collections { OrderedDict }
 import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextlib { contextmanager, suppress }
+import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
 import from functools { wraps }
@@ -77,7 +78,8 @@ glob plugin_manager = plugin.PluginManager('jac'),
      JsonValue: TypeAlias = None | str | int | float | bool | `list['JsonValue'] | `dict[
          (str, 'JsonValue')
      ],
-     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
+     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
+     _request_context: ContextVar = ContextVar('request_context', default=None);
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
@@ -307,7 +309,7 @@ class JacBasics {
     """Set Class References."""
     static def setup -> None;
 
-    """Get current execution context."""
+    """Get current execution context (request-scoped if available, else global)."""
     static def get_context -> ExecutionContext;
 
     """Commit all data from memory to datasource."""
@@ -947,8 +949,14 @@ class JacRuntime(JacRuntimeInterface) {
         """
     static def set_base_path(base_path: (str | None)) -> None;
 
-    """Set the context for the machine."""
+    """Set the context for the machine (global, for backward compatibility)."""
     static def set_context(context: ExecutionContext) -> None;
+
+    """Set request-scoped execution context (for web servers)."""
+    static def set_request_context(context: ExecutionContext) -> None;
+
+    """Clear request-scoped context and commit changes."""
+    static def clear_request_context -> None;
 }
 
 """Context manager to temporarily disable external plugins.

@@ -260,116 +260,225 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
     return 0;
 }
 
+"""Format a single .jac file (standalone for parallel execution).
+
+Returns dict with: path, success, changed, errors, syntax_errors, warnings_strs, errors_strs,
+and optionally formatted_code/impl_results for deferred writes.
+"""
+def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
+    import from jaclang.jac0core.program { JacProgram }
+    path_obj = Path(file_path);
+    result: dict = {
+        'path': file_path,
+        'success': False,
+        'changed': False,
+        'errors': 0,
+        'syntax_errors': [],
+        'warnings_strs': [],
+        'errors_strs': [],
+        'formatted_code': None,
+        'impl_results': []
+    };
+    if not path_obj.exists() {
+        result['syntax_errors'] = [f"File '{file_path}' does not exist."];
+        return result;
+    }
+    try {
+        prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        if prog.errors_had {
+            has_format_error = any(
+                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
+            );
+            if has_format_error or not lintfix {
+                result['syntax_errors'] = [str(e) for e in prog.errors_had];
+                return result;
+            }
+        }
+        try {
+            formatted_code = prog.mod.main.gen.jac;
+            original_code = prog.mod.main.source.code;
+            if not formatted_code or len(formatted_code.strip()) == 0 {
+                if prog.errors_had {
+                    result['syntax_errors'] = [str(e) for e in prog.errors_had];
+                    return result;
+                }
+            }
+            changed = formatted_code != original_code;
+            result['changed'] = changed;
+            # Store formatted code for writing later (if not check mode)
+            if changed and not check {
+                result['formatted_code'] = formatted_code;
+            }
+            # Check impl modules
+            for impl_mod in prog.mod.main.impl_mod {
+                impl_path = impl_mod.loc.mod_path;
+                impl_formatted = impl_mod.gen.jac;
+                impl_original = impl_mod.source.code;
+                if impl_formatted != impl_original {
+                    result['changed'] = True;
+                    if not check {
+                        result['impl_results'].append((impl_path, impl_formatted));
+                    }
+                }
+            }
+        } except Exception {
+            result['syntax_errors'] = [str(e) for e in prog.errors_had];
+            return result;
+        }
+        # Collect warnings/errors as strings for later printing
+        lint_errors = 0;
+        if lintfix {
+            for warning in prog.warnings_had {
+                result['warnings_strs'].append(str(warning));
+            }
+            for error in prog.errors_had {
+                result['errors_strs'].append(str(error));
+                lint_errors += 1;
+            }
+        }
+        result['success'] = True;
+        result['errors'] = lint_errors;
+        return result;
+    } except Exception as e {
+        result['syntax_errors'] = [f"Error formatting '{file_path}': {e}"];
+        return result;
+    }
+}
+
 """Format .jac files with improved code style."""
 impl format(
     paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
 ) -> int {
-    import from jaclang.jac0core.program { JacProgram }
+    import from concurrent.futures { ProcessPoolExecutor, as_completed }
+    import os;
     if isinstance(paths, str) {
         paths = [paths];
     }
     # Track unformatted files for check mode
     unformatted_files: list[str] = [];
     failed_results: list = [];
-    def write_formatted_code(code: str, target_path: str) -> None {
-        if to_screen {
-            console.print(code);
-        } elif not check {
-            try {
-                with open(target_path, 'w', encoding='utf-8') as f {
-                    f.write(code);
+
+    (all_files, had_path_errors) = _iter_jac_files(paths);
+    total_files = len(all_files);
+
+    if total_files == 0 {
+        return 1 if had_path_errors else 0;
+    }
+
+    # Use parallel processing for multiple files (unless outputting to screen)
+    use_parallel = total_files > 1 and not to_screen;
+    max_workers = min(os.cpu_count() or 4, total_files, 8);
+
+    results: list[dict] = [];
+
+    if use_parallel {
+        with ProcessPoolExecutor(max_workers=max_workers) as executor {
+            futures = {
+                executor.submit(_format_single_file_worker, fp, lintfix, check): fp
+                for fp in all_files
+            };
+            completed = 0;
+            for future in as_completed(futures) {
+                completed += 1;
+                fp = futures[future];
+                console.print(f"Formatting [{completed}/{total_files}] completed...");
+                try {
+                    results.append(future.result());
+                } except Exception as e {
+                    results.append(
+                        {
+                            'path': fp,
+                            'success': False,
+                            'changed': False,
+                            'errors': 0,
+                            'syntax_errors': [f"Worker error: {e}"],
+                            'warnings_strs': [],
+                            'errors_strs': [],
+                            'formatted_code': None,
+                            'impl_results': []
+                        }
+                    );
                 }
-            } except Exception as e {
-                console.error(f"Error writing formatted code to '{target_path}': {e}");
             }
+        }
+    } else {
+        # Single file: show filename
+        for fp in all_files {
+            console.print(f"Formatting {fp}...");
+            results.append(_format_single_file_worker(fp, lintfix, check));
         }
     }
-    def format_single_file(file_path: str) -> tuple[bool, bool, int, list] {
-        # Returns (success, changed, lint_error_count, syntax_errors)
-        path_obj = Path(file_path);
-        if not path_obj.exists() {
-            console.error(f"File '{file_path}' does not exist.");
-            return (False, False, 0, []);
-        }
-        try {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
-            if prog.errors_had {
-                # Always block on comment displacement errors (formatter bug)
-                has_format_error = any(
-                    e.code is not None and e.code.code == "E5051"
-                    for e in prog.errors_had
-                );
-                if has_format_error or not lintfix {
-                    return (False, False, 0, list(prog.errors_had));
-                }
-            }
-            try {
-                formatted_code = prog.mod.main.gen.jac;
-                original_code = prog.mod.main.source.code;
 
-                if not formatted_code or len(formatted_code.strip()) == 0 {
-                    if prog.errors_had {
-                        return (False, False, 0, list(prog.errors_had));
-                    }
-                }
-
-                changed = formatted_code != original_code;
-                write_formatted_code(formatted_code, str(path_obj));
-
-                # Write impl modules (.impl.jac files)
-                for impl_mod in prog.mod.main.impl_mod {
-                    impl_path = impl_mod.loc.mod_path;
-                    impl_formatted = impl_mod.gen.jac;
-                    impl_original = impl_mod.source.code;
-                    if (impl_formatted != impl_original) {
-                        write_formatted_code(impl_formatted, impl_path);
-                        changed = True;
-                    }
-                }
-            } except Exception {
-                # Can't produce formatted output (parse error)
-                return (False, False, 0, list(prog.errors_had));
-            }
-            # Report auto-fixed lint warnings and unfixable lint errors
-            lint_errors = 0;
-            if lintfix {
-                for warning in prog.warnings_had {
-                    console.warning(f"{warning}");
-                }
-                for error in prog.errors_had {
-                    console.error(f"{error}");
-                    lint_errors += 1;
-                }
-            }
-            return (True, changed, lint_errors, []);
-        } except Exception as e {
-            return (False, False, 0, [f"Error formatting '{file_path}': {e}"]);
-        }
-    }
-    total_files = 0;
+    # Process results: write files, print messages, aggregate stats
     failed_files = 0;
     changed_files = 0;
     total_errors = 0;
-    (all_files, had_path_errors) = _iter_jac_files(paths);
-    for file_path in all_files {
-        total_files += 1;
-        (success, changed, errors, syntax_errors) = format_single_file(file_path);
-        total_errors += errors;
-        if not success {
+
+    for res in results {
+        # Print warnings/errors from this file
+        for w in res['warnings_strs'] {
+            console.warning(w);
+        }
+        for e in res['errors_strs'] {
+            console.error(e);
+        }
+
+        total_errors += res['errors'];
+
+        if not res['success'] {
             failed_files += 1;
             failed_results.append(
-                {'path': file_path, 'errors': syntax_errors, 'warnings': []}
+                {'path': res['path'], 'errors': res['syntax_errors'], 'warnings': []}
             );
-        } elif changed {
+        } elif res['changed'] {
             changed_files += 1;
             if check {
-                unformatted_files.append(file_path);
+                unformatted_files.append(res['path']);
+            } else {
+                # Write formatted code
+                if res['formatted_code'] is not None {
+                    try {
+                        if to_screen {
+                            console.print(res['formatted_code']);
+                        } else {
+                            with open(res['path'], 'w', encoding='utf-8') as f {
+                                f.write(res['formatted_code']);
+                            }
+                        }
+                    } except Exception as e {
+                        console.error(f"Error writing to '{res['path']}': {e}");
+                    }
+                }
+                # Write impl files
+                for (impl_path, impl_code) in res['impl_results'] {
+                    try {
+                        if to_screen {
+                            console.print(impl_code);
+                        } else {
+                            with open(impl_path, 'w', encoding='utf-8') as f {
+                                f.write(impl_code);
+                            }
+                        }
+                    } except Exception as e {
+                        console.error(f"Error writing to '{impl_path}': {e}");
+                    }
+                }
             }
         }
     }
     # Print syntax error summary grouped by file
+    # Note: errors are strings (for multiprocessing), not Alert objects
     if failed_results {
-        print_failures(failed_results);
+        import from jaclang.cli.check_report { separator }
+        console.print("");
+        console.print(separator("FAILURES"));
+        for r in failed_results {
+            console.print(separator(str(r['path']), char='_'));
+            for e in r['errors'] {
+                console.error(e);  # Already a string
+            }
+            console.print("");
+        }
         print_failed_summary(failed_results);
     }
     # In check mode, report all issues together

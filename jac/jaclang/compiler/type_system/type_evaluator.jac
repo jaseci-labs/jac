@@ -251,6 +251,14 @@ obj TypeEvaluator {
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
     def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_return_scope(
+        nd: uni.UniNode
+    ) -> uni.Ability | uni.LambdaExpr | None;
+
+    def _get_declared_return_type(
+        scope: uni.Ability | uni.LambdaExpr
+    ) -> TypeBase | None;
+
     def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;

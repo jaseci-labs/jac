@@ -1284,7 +1284,7 @@ Process python node.
 """
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     # Get the original f-string source to detect quote style
-    ast_seg = py_ast.get_source_segment(self.orig_src.code, nd);
+    ast_seg = self._get_source_segment(nd);
     if (ast_seg is None) {
         ast_seg = 'f""';
     }
@@ -1294,7 +1294,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
             # Use get_source_segment to preserve original escape sequences exactly as written
-            escaped_value = py_ast.get_source_segment(self.orig_src.code, i);
+            escaped_value = self._get_source_segment(i);
             if escaped_value is None {
                 # Fallback to repr approach if source segment unavailable
                 raw_repr = repr(i.value);
@@ -1582,14 +1582,49 @@ impl PyastBuildPass.proc_formatted_value(
     prev_in_fstring = self.in_fstring_expr;
     self.in_fstring_expr = True;
     value = self.convert(nd.value);
-    fmt_spec = cast(uni.Expr, self.convert(nd.format_spec)) if nd.format_spec else None;
     self.in_fstring_expr = prev_in_fstring;
+    # Handle format_spec specially - it should be a plain string, not an f-string
+    fmt_spec = None;
+    if nd.format_spec {
+        if isinstance(nd.format_spec, py_ast.JoinedStr) {
+            # format_spec is a JoinedStr, extract the string content
+            fmt_parts: list[str] = [];
+            for part in nd.format_spec.values {
+                if isinstance(part, py_ast.Constant) and isinstance(part.value, str) {
+                    fmt_parts.append(part.value);
+                } elif isinstance(part, py_ast.FormattedValue) {
+                    nested_fmt = self.convert(part);
+                    if isinstance(nested_fmt, uni.FormattedValue) {
+                        fmt_spec = nested_fmt;
+                        break;
+                    }
+                }
+            }
+            if (not fmt_spec and fmt_parts) {
+                # Create a plain String node for the format spec
+                fmt_str = ''.join(fmt_parts);
+                fmt_spec = uni.String(
+                    orig_src=self.orig_src,
+                    name='STRING',
+                    value=fmt_str,
+                    line=nd.format_spec.lineno,
+                    end_line=nd.format_spec.end_lineno or nd.format_spec.lineno,
+                    col_start=nd.format_spec.col_offset,
+                    col_end=nd.format_spec.end_col_offset or nd.format_spec.col_offset,
+                    pos_start=0,
+                    pos_end=0
+                );
+            }
+        } else {
+            fmt_spec = cast(uni.Expr, self.convert(nd.format_spec));
+        }
+    }
     if isinstance(value, uni.Expr) {
         ret = uni.FormattedValue(
             format_part=value,
             conversion=nd.conversion,
             format_spec=fmt_spec,
-            kid=[value]
+            kid=[value, fmt_spec] if fmt_spec else [value]
         );
     } else {
         raise self.ice();
@@ -1794,7 +1829,7 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
         }
         if (value_type is str) {
             # Use get_source_segment to preserve original escape sequences and quote style
-            value = py_ast.get_source_segment(self.orig_src.code, nd);
+            value = self._get_source_segment(nd);
             if value is None {
                 # Fallback to repr approach if source segment unavailable
                 raw_repr = repr(nd.value);
@@ -2054,7 +2089,7 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
     }
     attribute = uni.Name(
         orig_src=self.orig_src,
-        name=Tok.NAME,
+        name=Tok.KW_INIT if (nd.attr == '__init__') else Tok.NAME,
         value='init' if (nd.attr == '__init__') else nd.attr,
         line=nd.lineno,
         end_line=nd.end_lineno or nd.lineno,
@@ -2686,11 +2721,16 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         raise self.ice('Length mismatch in decorators on class');
     }
     valid_decorators = decorators or None;
-    kid = [name, *base_classes, *valid_body, doc]
-        if (doc and base_classes)
-        else [name, *base_classes, *valid_body]
-            if base_classes
-            else [name, *valid_body, doc] if doc else [name, *valid_body];
+    kid: list = [];
+    if valid_decorators {
+        kid.extend(valid_decorators);
+    }
+    kid.append(name);
+    kid.extend(base_classes);
+    kid.extend(valid_body);
+    if doc {
+        kid.append(doc);
+    }
     return uni.Archetype(
         arch_type=arch_type,
         name=name,
@@ -2956,10 +2996,47 @@ impl PyastBuildPass.nu(nd: T) -> T {
 impl PyastBuildPass.postinit -> None {
     self.mod_path = self.ir_in.loc.mod_path;
     self.orig_src = self.ir_in.loc.orig_src;
+    # Cache source lines to avoid repeated splitlines() in _get_source_segment.
+    # Python's ast.get_source_segment calls _splitlines_no_ff on every call,
+    # which is O(n) per call and causes O(n*m) slowdown for n nodes in m lines.
+    self._source_lines = self.orig_src.code.splitlines(keepends=True);
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
     Transform.init(
         self, ir_in=self.ir_in, prog=self.prog, cancel_token=self.cancel_token
     );
+}
+
+"""Get source segment using cached line splits.
+
+This is a performance-optimized replacement for py_ast.get_source_segment().
+The stdlib version calls _splitlines_no_ff on every call, which splits the
+entire source into lines each time. For a file with many string constants,
+this causes O(n*m) slowdown where n is the number of nodes and m is lines.
+"""
+impl PyastBuildPass._get_source_segment(nd: py_ast.AST) -> (str | None) {
+    try {
+        if (nd.end_lineno is None or nd.end_col_offset is None) {
+            return None;
+        }
+        lineno = nd.lineno - 1;
+        end_lineno = nd.end_lineno - 1;
+        col_offset = nd.col_offset;
+        end_col_offset = nd.end_col_offset;
+    } except AttributeError {
+        return None;
+    }
+    lines = self._source_lines;
+    if (end_lineno >= len(lines)) {
+        return None;
+    }
+    if (end_lineno == lineno) {
+        return lines[lineno].encode()[col_offset:end_col_offset].decode();
+    }
+    first = lines[lineno].encode()[col_offset:].decode();
+    last = lines[end_lineno].encode()[:end_col_offset].decode();
+    middle = lines[lineno + 1:end_lineno];
+    result_lines = [first] + middle + [last];
+    return ''.join(result_lines);
 }
