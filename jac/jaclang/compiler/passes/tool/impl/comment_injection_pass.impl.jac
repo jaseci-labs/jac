@@ -889,7 +889,9 @@ impl CommentInjectionPass._get_tokens(nd: doc.DocType) -> list[uni.Token] {
         }
         result = tokens;
     } elif isinstance(nd, doc.IfBreak) {
-        result = self._get_tokens(nd.break_contents) + self._get_tokens(nd.flat_contents);
+        result = self._get_tokens(nd.break_contents) + self._get_tokens(
+            nd.flat_contents
+        );
     } else {
         result = [];
     }
