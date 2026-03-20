@@ -40,11 +40,13 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
         cancel_token: Event | None = None,
         mod_path: str by postinit,
         orig_src: str by postinit,
+        _source_lines: list[str] by postinit,
         in_type_annotation: bool by postinit,
         in_match_pattern: bool by postinit,
         in_fstring_expr: bool by postinit;
 
     def postinit -> None;
+    def _get_source_segment(nd: py_ast.AST) -> (str | None);
     def nu(nd: T) -> T;
     def convert(nd: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;

@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.7 (Unreleased)
 
+- **Vite dev server binds to all interfaces**: Added `host: true` to Vite config and `--host` CLI flag so the dev server is accessible from outside containers/pods.
 - **Client-Side Error Reporting**: Added `__jacReportError` and `__jacInstallErrorHandlers` to the client runtime. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization to automatically capture unhandled JS errors and forward them to the server via `POST /cl/__error__`. The `ErrorBoundary` fallback component also reports caught errors. Entry file generation (`ViteCompiler`) now imports and calls `__jacInstallErrorHandlers()` on startup for both explicit and pages-based routing modes.
 - **Per-File Source Map Generation**: The client compiler now generates `.js.map` files for each compiled `.jac` module, mapping generated JS lines back to original `.jac` source locations. Source comment headers (`/* Source: path.jac */`) are paired with standard v3 source maps for full traceability.
 - **Diagnostics Source Map Auto-Population**: `BuildContext` now auto-populates its source map from compiled JS `/* Source: */` headers when none is provided, and delegates snippet reading to the centralized `source_mapping` module.

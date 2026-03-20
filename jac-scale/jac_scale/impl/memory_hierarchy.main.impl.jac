@@ -22,6 +22,8 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     mongo_backend = MongoBackend();
     if mongo_backend.is_available() {
         self.l3 = mongo_backend;
+        # Give MongoDB access to L1 memory for sync()
+        mongo_backend.set_memory_ref(self.__mem__);
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
         # Show subtle message (optional - uncomment to enable)
@@ -44,48 +46,58 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     }
 }
 
-"""Commit changes: flush L1 anchors to persistent storage (MongoDB/SQLite)."""
+
+"""Commit changes: delegate to L3's sync() which handles change detection."""
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         return;
     }
     # Single anchor commit
     if anchor is not None {
-        # Early return if anchor is not valid for persistence
-        if not isinstance(anchor, Anchor) or not anchor.persistent {
+        if not anchor.persistent {
             return;
         }
-        typed_anchor = cast(Anchor, anchor);
-        # Early return if no write access
-        if not Jac.check_write_access(typed_anchor) {
+        if not Jac.check_write_access(anchor) {
             return;
         }
+        anchor.is_updated = True;
         try {
-            self.l3.put(typed_anchor);
-            # Also update L2 cache if available
+            self.l3.put(anchor);
             if self.l2 {
-                self.l2.put(typed_anchor);
+                self.l2.put(anchor);
             }
         } except Exception as e {
             logger.warning(f"ScaleTieredMemory.commit(anchor) failed: {e}");
         }
         return;
     }
-    # Flush all L1 anchors to L3 (and L2 if available)
-    for (_, mem_anchor) in list(self.__mem__.items()) {
-        if not mem_anchor.persistent or not Jac.check_write_access(mem_anchor) {
-            continue;
-        }
+    # Batch commit: delegate to L3's sync()
+    # - SQLite: sync() does hash-based change detection (only writes changed anchors)
+    # - MongoDB: sync() checks is_updated flag (only writes modified anchors)
+    if self.l3 {
         try {
-            self.l3.put(mem_anchor);
+            l2_pending = [];
             if self.l2 {
-                self.l2.put(mem_anchor);
+                l2_pending = [
+                    mem_anchor
+                    for (_, mem_anchor) in list(self.__mem__.items())
+                    if mem_anchor.persistent
+                    and mem_anchor.is_updated
+                    and Jac.check_write_access(mem_anchor)
+                ];
+            }
+            self.l3.sync();
+            if self.l2 {
+                for mem_anchor in l2_pending {
+                    try {
+                        self.l2.put(mem_anchor);
+                    } except Exception as l2_err {
+                        logger.warning(f"L2 cache update failed: {l2_err}");
+                    }
+                }
             }
         } except Exception as e {
-            logger.warning(
-                f"ScaleTieredMemory.commit flush failed for anchor "
-                f"{mem_anchor.id}: {e}"
-            );
+            logger.warning(f"ScaleTieredMemory.commit sync failed: {e}");
         }
     }
 }

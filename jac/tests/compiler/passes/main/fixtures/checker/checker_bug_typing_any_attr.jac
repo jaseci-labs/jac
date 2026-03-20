@@ -32,3 +32,9 @@ def test_any_calls(val: Any) -> None {
     _ = val.method().result;  # <-- Ok (method call then attr)
     _ = val()()[0].foo.bar();  # <-- Ok (complex chain)
 }
+
+# Contrast: object type does NOT allow arbitrary attribute access (unlike Any)
+def test_object_attr_access(val: object) -> None {
+    val.__doc__;  # <-- Ok (object has __doc__)
+    val.nonexistent;  # <-- Error: object has no attribute "nonexistent"
+}
