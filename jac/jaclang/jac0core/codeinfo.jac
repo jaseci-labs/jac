@@ -119,13 +119,13 @@ obj InteropBinding {
         source_module: (str | None) = None;
 
     @property
-    def is_direct(self: InteropBinding) -> bool;
+    def is_direct -> bool;
 
     @property
-    def is_composed(self: InteropBinding) -> bool;
+    def is_composed -> bool;
 
     @property
-    def is_cross_module(self: InteropBinding) -> bool;
+    def is_cross_module -> bool;
 }
 
 """All cross-boundary function bindings for a module.
@@ -148,16 +148,16 @@ obj InteropManifest {
         );
 
     @property
-    def native_imports(self: InteropManifest) -> list[InteropBinding];
+    def native_imports -> list[InteropBinding];
 
     @property
-    def native_exports(self: InteropManifest) -> list[InteropBinding];
+    def native_exports -> list[InteropBinding];
 
     @property
-    def native_cross_module_imports(self: InteropManifest) -> list[InteropBinding];
+    def native_cross_module_imports -> list[InteropBinding];
 
     @property
-    def server_exports_to_client(self: InteropManifest) -> list[InteropBinding];
+    def server_exports_to_client -> list[InteropBinding];
 }
 
 """Code generation target."""
@@ -181,7 +181,7 @@ obj CodeGenTarget {
         layout_registry: Any = None;
 
     @property
-    def doc_ir(self: CodeGenTarget) -> Doc {
+    def doc_ir -> Doc {
         if (self._doc_ir is None) {
             import jaclang.compiler.passes.tool.doc_ir as doc;
             self._doc_ir = doc.Text('');
@@ -190,7 +190,7 @@ obj CodeGenTarget {
     }
 
     @doc_ir.setter
-    def doc_ir(self: CodeGenTarget, value: Doc) -> None {
+    def doc_ir(value: Doc) -> None {
         self._doc_ir = value;
     }
 }
@@ -201,76 +201,74 @@ obj CodeLocInfo {
         last_tok: Token;
 
     @property
-    def orig_src(self: CodeLocInfo) -> Source {
+    def orig_src -> Source {
         return self.first_tok.orig_src;
     }
 
     @property
-    def mod_path(self: CodeLocInfo) -> str {
+    def mod_path -> str {
         return self.first_tok.orig_src.file_path;
     }
 
     @property
-    def first_line(self: CodeLocInfo) -> int {
+    def first_line -> int {
         return self.first_tok.line_no;
     }
 
     @property
-    def last_line(self: CodeLocInfo) -> int {
+    def last_line -> int {
         return self.last_tok.end_line;
     }
 
     @property
-    def col_start(self: CodeLocInfo) -> int {
+    def col_start -> int {
         return self.first_tok.c_start;
     }
 
     @property
-    def col_end(self: CodeLocInfo) -> int {
+    def col_end -> int {
         return self.last_tok.c_end;
     }
 
     @property
-    def pos_start(self: CodeLocInfo) -> int {
+    def pos_start -> int {
         return self.first_tok.pos_start;
     }
 
     @property
-    def pos_end(self: CodeLocInfo) -> int {
+    def pos_end -> int {
         return self.last_tok.pos_end;
     }
 
     @property
-    def tok_range(self: CodeLocInfo) -> tuple[(Token, Token)] {
+    def tok_range -> tuple[(Token, Token)] {
         return (self.first_tok, self.last_tok);
     }
 
     @property
-    def first_token(self: CodeLocInfo) -> Token {
+    def first_token -> Token {
         return self.first_tok;
     }
 
     @property
-    def last_token(self: CodeLocInfo) -> Token {
+    def last_token -> Token {
         return self.last_tok;
     }
 
-    def update_token_range(
-        self: CodeLocInfo, first_tok: Token, last_tok: Token
-    ) -> None {
+    def update_token_range(first_tok: Token, last_tok: Token) -> None {
         self.first_tok = first_tok;
         self.last_tok = last_tok;
     }
 
-    def update_first_token(self: CodeLocInfo, first_tok: Token) -> None {
+    def update_first_token(first_tok: Token) -> None {
         self.first_tok = first_tok;
     }
 
-    def update_last_token(self: CodeLocInfo, last_tok: Token) -> None {
+    def update_last_token(last_tok: Token) -> None {
         self.last_tok = last_tok;
     }
 
-    def __str__(self: CodeLocInfo) -> str {
+    def __str__ -> str {
         return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
     }
 }

@@ -412,10 +412,10 @@ obj DistFacade {
     has _dist: (object | None);
 
     @property
-    def project_name(self: DistFacade) -> str;
+    def project_name -> str;
 
     @property
-    def version(self: DistFacade) -> str;
+    def version -> str;
 }
 
 """Get list of disabled plugins from JAC_DISABLED_PLUGINS env var or jac.toml.

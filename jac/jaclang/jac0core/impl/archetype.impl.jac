@@ -1,27 +1,22 @@
 """Implementation for archetype constructs."""
 
 """Validate access."""
-impl Access.check(self: Access, anchor: str) -> (AccessLevel | None) {
+impl Access.check(anchor: str) -> (AccessLevel | None) {
     return self.anchors.get(anchor);
 }
 
 """Filter edge."""
-impl ObjectSpatialDestination.edge_filter(
-    self: ObjectSpatialDestination, arch: Archetype
-) -> bool {
+impl ObjectSpatialDestination.edge_filter(arch: Archetype) -> bool {
     return (not self.edge or self.edge(arch));
 }
 
 """Filter node."""
-impl ObjectSpatialDestination.node_filter(
-    self: ObjectSpatialDestination, arch: Archetype
-) -> bool {
+impl ObjectSpatialDestination.node_filter(arch: Archetype) -> bool {
     return (not self.nd or self.nd(arch));
 }
 
 """Override Init."""
 impl ObjectSpatialPath.init(
-    self: ObjectSpatialPath,
     origin: (NodeArchetype | list[NodeArchetype]),
     destinations: (list[ObjectSpatialDestination] | None) = None
 ) -> None {
@@ -36,7 +31,7 @@ impl ObjectSpatialPath.init(
 
 """Convert filter."""
 impl ObjectSpatialPath.convert(
-    self: ObjectSpatialPath, filter: ObjectSpatialFilter
+    filter: ObjectSpatialFilter
 ) -> (Callable[([Archetype], bool)] | None) {
     if not filter {
         return None;
@@ -51,10 +46,7 @@ impl ObjectSpatialPath.convert(
 
 """Append destination."""
 impl ObjectSpatialPath.append(
-    self: ObjectSpatialPath,
-    direction: EdgeDir,
-    `edge: ObjectSpatialFilter,
-    nd: ObjectSpatialFilter
+    direction: EdgeDir, `edge: ObjectSpatialFilter, nd: ObjectSpatialFilter
 ) -> ObjectSpatialPath {
     self.destinations.append(
         ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd))
@@ -64,40 +56,34 @@ impl ObjectSpatialPath.append(
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_out(
-    self: ObjectSpatialPath,
-    `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None
+    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
     return self.append(EdgeDir.OUT, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_in(
-    self: ObjectSpatialPath,
-    `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None
+    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
     return self.append(EdgeDir.IN, `edge, nd);
 }
 
 """Override greater than function."""
 impl ObjectSpatialPath.edge_any(
-    self: ObjectSpatialPath,
-    `edge: ObjectSpatialFilter = None,
-    nd: ObjectSpatialFilter = None
+    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
 ) -> ObjectSpatialPath {
     return self.append(EdgeDir.ANY, `edge, nd);
 }
 
 """Set edge only."""
-impl ObjectSpatialPath.set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath {
+impl ObjectSpatialPath.set_edge_only -> ObjectSpatialPath {
     self.edge_only = True;
     return self;
 }
 
 """Repr builder."""
 impl ObjectSpatialPath.repr_builder(
-    self: ObjectSpatialPath, repr_str: str, dest: ObjectSpatialDestination, mark: str
+    repr_str: str, dest: ObjectSpatialDestination, mark: str
 ) -> str {
     repr_str += mark;
     repr_str += f" (edge{' filter' if dest.edge else ''}) ";
@@ -107,7 +93,7 @@ impl ObjectSpatialPath.repr_builder(
 }
 
 """Override repr."""
-impl ObjectSpatialPath.__repr__(self: ObjectSpatialPath) -> str {
+impl ObjectSpatialPath.__repr__ -> str {
     repr_str = 'nodes ';
     for dest in self.destinations {
         if (dest.direction == EdgeDir.IN) {
@@ -122,12 +108,12 @@ impl ObjectSpatialPath.__repr__(self: ObjectSpatialPath) -> str {
 }
 
 """Check if state."""
-impl Anchor.is_populated(self: Anchor) -> bool {
+impl Anchor.is_populated -> bool {
     return ('archetype' in self.__dict__);
 }
 
 """Return unsynced copy of anchor."""
-impl Anchor.make_stub(self: Anchor) -> TANCH {
+impl Anchor.make_stub -> TANCH {
     if self.is_populated() {
         unloaded = object.__new__(self.__class__);
         unloaded.id = self.id;
@@ -137,7 +123,7 @@ impl Anchor.make_stub(self: Anchor) -> TANCH {
 }
 
 """Retrieve the Archetype from db and return."""
-impl Anchor.populate(self: Anchor) -> None {
+impl Anchor.populate -> None {
     import from jaclang { JacRuntimeInterface as Jac }
     ctx = Jac.get_context();
     anchor = ctx.mem.get(self.id);
@@ -147,7 +133,7 @@ impl Anchor.populate(self: Anchor) -> None {
 }
 
 """Trigger load if detects unloaded state."""
-impl Anchor.__getattr__(self: Anchor, name: str) -> object {
+impl Anchor.__getattr__(name: str) -> object {
     if not self.is_populated() {
         self.populate();
         if not self.is_populated() {
@@ -163,7 +149,7 @@ impl Anchor.__getattr__(self: Anchor, name: str) -> object {
 }
 
 """Serialize Anchor."""
-impl Anchor.__getstate__(self: Anchor) -> dict[(str, Any)] {
+impl Anchor.__getstate__ -> dict[(str, Any)] {
     if self.is_populated() {
         unlinked = object.__new__(self.archetype.__class__);
         unlinked.__dict__.update(self.archetype.__dict__);
@@ -181,7 +167,7 @@ impl Anchor.__getstate__(self: Anchor) -> dict[(str, Any)] {
 }
 
 """Deserialize Anchor."""
-impl Anchor.__setstate__(self: Anchor, state: dict[(str, Any)]) -> None {
+impl Anchor.__setstate__(state: dict[(str, Any)]) -> None {
     self.__dict__.update(state);
     if (self.is_populated() and self.archetype) {
         self.archetype.__jac__ = self;
@@ -190,7 +176,7 @@ impl Anchor.__setstate__(self: Anchor, state: dict[(str, Any)]) -> None {
 }
 
 """Override representation."""
-impl Anchor.__repr__(self: Anchor) -> str {
+impl Anchor.__repr__ -> str {
     if self.is_populated() {
         attrs = '';
         for f in fields(self) {
@@ -206,7 +192,7 @@ impl Anchor.__repr__(self: Anchor) -> str {
 }
 
 """Report Anchor."""
-impl Anchor.`report(self: Anchor) -> AnchorReport {
+impl Anchor.`report -> AnchorReport {
     return AnchorReport(
         id=self.id.hex,
         context=asdict(self.archetype)
@@ -218,12 +204,12 @@ impl Anchor.`report(self: Anchor) -> AnchorReport {
 }
 
 """Override hash for anchor."""
-impl Anchor.__hash__(self: Anchor) -> int {
+impl Anchor.__hash__ -> int {
     return hash(self.id);
 }
 
 """Override equal implementation."""
-impl Anchor.__eq__(self: Anchor, other: object) -> bool {
+impl Anchor.__eq__(other: object) -> bool {
     if isinstance(other, Anchor) {
         return ((self.__class__ is other.__class__) and (self.id == other.id));
     }
@@ -231,19 +217,19 @@ impl Anchor.__eq__(self: Anchor, other: object) -> bool {
 }
 
 """Check if node anchor is fully populated (has edges)."""
-impl NodeAnchor.is_populated(self: NodeAnchor) -> bool {
+impl NodeAnchor.is_populated -> bool {
     d = self.__dict__;
     return 'edges' in d and 'archetype' in d;
 }
 
 """Check if edge anchor is fully populated (has source/target)."""
-impl EdgeAnchor.is_populated(self: EdgeAnchor) -> bool {
+impl EdgeAnchor.is_populated -> bool {
     d = self.__dict__;
     return 'source' in d and 'target' in d and 'archetype' in d;
 }
 
 """Serialize Node Anchor."""
-impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
+impl NodeAnchor.__getstate__ -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state['edges'] = [`edge.make_stub() for `edge in self.edges];
@@ -255,7 +241,7 @@ impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
 }
 
 """Get decoded topology index (lazy-decoded from blob)."""
-impl NodeAnchor.get_topology_index(self: NodeAnchor) -> Any {
+impl NodeAnchor.get_topology_index -> Any {
     import from jaclang.runtimelib.topology_index { TopologyIndex }
     if self.topology_index_data {
         return TopologyIndex.decode(self.topology_index_data);
@@ -264,12 +250,12 @@ impl NodeAnchor.get_topology_index(self: NodeAnchor) -> Any {
 }
 
 """Set topology index from TopologyIndex object (encodes to blob)."""
-impl NodeAnchor.set_topology_index(self: NodeAnchor, index: Any) -> None {
+impl NodeAnchor.set_topology_index(index: Any) -> None {
     self.topology_index_data = index.encode();
 }
 
 """Serialize Edge Anchor."""
-impl EdgeAnchor.__getstate__(self: EdgeAnchor) -> dict[(str, object)] {
+impl EdgeAnchor.__getstate__ -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state.update(
@@ -285,7 +271,7 @@ impl EdgeAnchor.__getstate__(self: EdgeAnchor) -> dict[(str, object)] {
 
 """Create default anchor."""
 @cached_property
-impl Archetype.__jac__(self: Archetype) -> Anchor {
+impl Archetype.__jac__ -> Anchor {
     return Anchor(archetype=self);
 }
 
@@ -302,12 +288,16 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
 }
 
 """Mark anchor as updated when properties are modified."""
-impl Archetype.__setattr__(self: Archetype, name: str, value: Any) -> None {
+impl Archetype.__setattr__(name: str, value: Any) -> None {
     object.__setattr__(self, name, value);
+    # Only update anchor if it ALREADY exists (avoid lazy creation).
+    # This is a critical optimization: creating anchors with UUIDs for
+    # every AST node during compilation causes 1M+ UUID generations.
     if not name.startswith('_') and name != '__jac__' {
         try {
-            anchor = self.__jac__;
-            if hasattr(anchor, 'is_updated') {
+            # Check __dict__ directly to avoid triggering cached_property
+            anchor = self.__dict__.get('__jac__');
+            if anchor is not None and hasattr(anchor, 'is_updated') {
                 object.__setattr__(anchor, 'is_updated', True);
             }
         } except Exception as e {
@@ -319,36 +309,36 @@ impl Archetype.__setattr__(self: Archetype, name: str, value: Any) -> None {
 }
 
 """Override repr for archetype."""
-impl Archetype.__repr__(self: Archetype) -> str {
+impl Archetype.__repr__ -> str {
     return f"{self.__class__.__name__}";
 }
 
 """Override access validation."""
-impl Archetype.__jac_access__(self: Archetype) -> (AccessLevel | str | int | None) {
+impl Archetype.__jac_access__ -> (AccessLevel | str | int | None) {
     return None;
 }
 
 """Override repr for archetype."""
-impl GenericEdge.__repr__(self: GenericEdge) -> str {
+impl GenericEdge.__repr__ -> str {
     return f"{self.__class__.__name__}()";
 }
 
 """Create default anchor."""
 @cached_property
-impl Root.__jac__(self: Root) -> NodeAnchor {
+impl Root.__jac__ -> NodeAnchor {
     return NodeAnchor(archetype=self, persistent=True, edges=[]);
 }
 
 """Override repr for archetype."""
-impl Root.__repr__(self: Root) -> str {
+impl Root.__repr__ -> str {
     return f"{self.__class__.__name__}()";
 }
 
 """Get function parameter annotations."""
 @cached_property
-impl ObjectSpatialFunction.trigger(
-    self: ObjectSpatialFunction
-) -> (type | UnionType | tuple[((type | UnionType), ...)] | None) {
+impl ObjectSpatialFunction.trigger -> (
+    type | UnionType | tuple[((type | UnionType), ...)] | None
+) {
     parameters = signature(self.func, eval_str=True).parameters;
     if (len(parameters) >= 2) {
         second_param = `list(parameters.values())[1];

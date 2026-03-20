@@ -1,9 +1,7 @@
 """Implementation for CompileOptions."""
 
 """Return a copy with skip_native_engine set."""
-impl CompileOptions.with_skip_native_engine(
-    self: CompileOptions, `skip: bool = True
-) -> CompileOptions {
+impl CompileOptions.with_skip_native_engine(`skip: bool = True) -> CompileOptions {
     return CompileOptions(
         type_check=self.type_check,
         symtab_ir_only=self.symtab_ir_only,
@@ -16,9 +14,7 @@ impl CompileOptions.with_skip_native_engine(
 }
 
 """Return a copy with aot_mode set."""
-impl CompileOptions.with_aot_mode(
-    self: CompileOptions, mode: bool = True
-) -> CompileOptions {
+impl CompileOptions.with_aot_mode(mode: bool = True) -> CompileOptions {
     return CompileOptions(
         type_check=self.type_check,
         symtab_ir_only=self.symtab_ir_only,
