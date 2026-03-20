@@ -378,7 +378,9 @@ def _build_pwa_install_banner_script(pwa_config: dict) -> str {
     delay = pwa_config.get("install_banner_delay", PWA_BANNER_DEFAULT_DELAY_MS);
     position = pwa_config.get("install_banner_position", "bottom");
     title = pwa_config.get("install_title", "");
-    description = pwa_config.get("install_description", "Add to home screen for the best experience");
+    description = pwa_config.get(
+        "install_description", "Add to home screen for the best experience"
+    );
     install_text = pwa_config.get("install_button_text", "Install");
     dismiss_text = pwa_config.get("install_dismiss_text", "Not now");
 

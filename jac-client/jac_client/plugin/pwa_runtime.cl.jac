@@ -15,7 +15,6 @@ import from 'react' { useState as reactUseState, useEffect as reactUseEffect }
 # =============================================================================
 # PLATFORM DETECTION
 # =============================================================================
-
 """Detect current platform: 'ios' | 'android' | 'desktop' | 'unknown'"""
 def:pub getPlatform -> str;
 
@@ -34,7 +33,6 @@ def:pub isMobile -> bool;
 # =============================================================================
 # STANDALONE DETECTION
 # =============================================================================
-
 """Check if app is running as installed PWA (standalone mode)."""
 def:pub isStandalone -> bool;
 
@@ -44,7 +42,6 @@ def:pub useIsStandalone -> bool;
 # =============================================================================
 # INSTALL PROMPT CAPTURE
 # =============================================================================
-
 """Capture beforeinstallprompt event. Called automatically, exposed for manual use."""
 def:pub captureInstallPrompt -> None;
 
@@ -57,7 +54,6 @@ async def:pub triggerInstallPrompt -> bool;
 # =============================================================================
 # MANIFEST HELPERS
 # =============================================================================
-
 """Fetch and parse the PWA manifest.json."""
 async def:pub getManifest -> dict;
 
@@ -70,7 +66,6 @@ async def:pub getAppName -> str;
 # =============================================================================
 # USER PREFERENCES STORAGE
 # =============================================================================
-
 """Get PWA user preferences from localStorage."""
 def:pub getPwaUserPrefs -> dict;
 
@@ -83,7 +78,6 @@ def:pub resetPwaUserPrefs -> None;
 # =============================================================================
 # RE-PROMPT LOGIC
 # =============================================================================
-
 """Check if install banner should be shown (considers dismiss history + backoff)."""
 def:pub shouldShowInstallBanner -> bool;
 
@@ -99,7 +93,6 @@ def:pub recordInstallSuccess -> None;
 # =============================================================================
 # CORE HOOK
 # =============================================================================
-
 """Main PWA install hook - handles all install logic.
 
 Returns:
@@ -125,7 +118,6 @@ def:pub usePwaInstall -> dict;
 # =============================================================================
 # COMPONENTS
 # =============================================================================
-
 """Install banner component - glassmorphic floating banner.
 
 Props:
@@ -168,7 +160,6 @@ def:pub IosInstallGuide(props: dict) -> JsxElement;
 # =============================================================================
 # INTERNAL - Called by build system
 # =============================================================================
-
 """Initialize PWA runtime. Called automatically during app bootstrap."""
 def:pub __jacPwaInit -> None;
 
