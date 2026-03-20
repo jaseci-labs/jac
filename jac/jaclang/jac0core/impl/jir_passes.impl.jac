@@ -719,7 +719,13 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                     }
                 }
             }
-            nd[fname] = items;
+            # Writer stores single-node values (e.g. ImplDef on body) with count=1.
+            # Restore as single node instead of list to match pre-serialization state.
+            if len(items) == 1 and isinstance(items[0], uni.ImplDef) {
+                nd[fname] = items[0];
+            } else {
+                nd[fname] = items;
+            }
         } elif kind == FieldKind.OPT_NODE_REF {
             flag = data[pos];
             pos += 1;
