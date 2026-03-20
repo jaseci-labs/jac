@@ -34,56 +34,49 @@ impl TypeCheckPass.exit_formatted_value(
 
 """Handle the return statement node."""
 impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
-    import from jaclang.compiler.type_system { types }
+    scope = self.evaluator._get_enclosing_return_scope(nd);
+    if scope is None {
+        return;
+    }
 
-    if (fn := self.evaluator._get_enclosing_function(nd)) {
-        # Check if return type annotation is missing.
+    # For top-level abilities without a return annotation, require one.
+    if (
+        isinstance(scope, uni.Ability)
+        and nd.expr
+        and not isinstance(nd.expr, uni.Null)
+        and isinstance(
+            scope.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
+        )
+    ) {
         has_annotation = (
-            isinstance(fn.signature, uni.FuncSignature)
-            and fn.signature.return_type is not None
+            isinstance(scope.signature, uni.FuncSignature)
+            and scope.signature.return_type is not None
         );
-        # If returning a non-None value but no annotation, require one.
-        # `return None` and bare `return` don't need an annotation.
-        # Skip for nested/inline functions (lambdas, IIFEs, closures).
-        is_toplevel_fn = isinstance(
-            fn.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
-        );
-        if (
-            nd.expr
-            and not has_annotation
-            and not isinstance(nd.expr, uni.Null)
-            and is_toplevel_fn
-        ) {
+        if not has_annotation {
             self.emit(E1003, node_override=nd);
             return;
         }
+    }
 
-        # Get the declared return type to pass as expected_type for bidirectional inference
-        fn_type_base = self.evaluator.get_type_of_ability(fn);
-        if not isinstance(fn_type_base, types.FunctionType) {
-            return;
-        }
-        fn_type: types.FunctionType = fn_type_base;
-        return_type = self.evaluator._convert_to_instance(fn_type.return_type);
+    return_type = self.evaluator._get_declared_return_type(scope);
+    if return_type is None {
+        return;
+    }
 
-        returning_type = self.evaluator._convert_to_instance(
-            self.evaluator.get_none_type()
+    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    if nd.expr {
+        returning_type = self.evaluator.get_type_of_expression(
+            nd.expr, expected_type=return_type
         );
-        if nd.expr {
-            # Pass return type as expected_type for bidirectional inference
-            returning_type = self.evaluator.get_type_of_expression(
-                nd.expr, expected_type=return_type
-            );
-        }
+    }
 
-        if not self.evaluator.assign_type(returning_type, return_type) {
-            self.emit(
-                E1002,
-                node_override=nd,
-                actual=str(returning_type),
-                expected=str(fn_type.return_type)
-            );
-        }
+    if not self.evaluator.assign_type(returning_type, return_type) {
+        self.emit(
+            E1002,
+            node_override=nd,
+            actual=str(returning_type),
+            expected=str(return_type)
+        );
     }
 }
 
@@ -755,28 +748,24 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
         return;
     }
     yielded_type = self.evaluator.get_type_of_expression(nd.expr);
-    if (fn := self.evaluator._get_enclosing_function(nd)) {
-        has_annotation = (
-            isinstance(fn.signature, uni.FuncSignature)
-            and fn.signature.return_type is not None
-        );
-        if has_annotation {
-            fn_type_base = self.evaluator.get_type_of_ability(fn);
-            fn_type: types.FunctionType = fn_type_base;
-            return_type = self.evaluator._convert_to_instance(fn_type.return_type);
-            if not isinstance(return_type, types.UnknownType) {
-                if not nd.with_from {
-                    # Regular yield: check yielded value against declared return type
-                    if not self.evaluator.assign_type(yielded_type, return_type) {
-                        self.emit(
-                            E1093,
-                            node_override=nd,
-                            actual=str(yielded_type),
-                            expected=str(fn_type.return_type)
-                        );
-                    }
-                }
-            }
+    scope = self.evaluator._get_enclosing_return_scope(nd);
+    if scope is None {
+        return;
+    }
+
+    return_type = self.evaluator._get_declared_return_type(scope);
+    if return_type is None or isinstance(return_type, types.UnknownType) {
+        return;
+    }
+
+    if not nd.with_from {
+        if not self.evaluator.assign_type(yielded_type, return_type) {
+            self.emit(
+                E1093,
+                node_override=nd,
+                actual=str(yielded_type),
+                expected=str(return_type)
+            );
         }
     }
 }
