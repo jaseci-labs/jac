@@ -504,6 +504,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
      ),
+     W2014 = _warn(
+         "W2014",
+         Category.SEMANTIC,
+         "Avoid 'return' with a value in an event-driven ability — "
+         "abilities are triggered by walkers and their return values are ignored. "
+         "Update node or walker fields directly instead."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

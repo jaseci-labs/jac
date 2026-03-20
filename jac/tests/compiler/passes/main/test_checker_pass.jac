@@ -110,6 +110,23 @@ test "bug_in_walker_ability" {
     assert len(program.errors_had) == 0;
 }
 
+test "return_value_in_ability_warns" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_return_in_ability.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0;
+    w2014_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W2014"
+    ];
+    assert len(w2014_warnings) == 2 , f"Expected 2 W2014 warnings, got {len(
+        w2014_warnings
+    )}: {w2014_warnings}";
+}
+
 test "member_access_type_resolve" {
     program = JacProgram();
     mod = program.compile(

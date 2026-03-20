@@ -39,22 +39,33 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
         return;
     }
 
-    # For top-level abilities without a return annotation, require one.
-    if (
-        isinstance(scope, uni.Ability)
-        and nd.expr
-        and not isinstance(nd.expr, uni.Null)
-        and isinstance(
-            scope.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
-        )
-    ) {
-        has_annotation = (
-            isinstance(scope.signature, uni.FuncSignature)
-            and scope.signature.return_type is not None
-        );
-        if not has_annotation {
-            self.emit(E1003, node_override=nd);
+    # Only Ability scopes need the E1003 / W2014 guards (lambdas skip these).
+    if isinstance(scope, uni.Ability) {
+        # Warn if returning a value from an event-driven ability.
+        if (
+            isinstance(scope.signature, uni.EventSignature)
+            and nd.expr
+            and not isinstance(nd.expr, uni.Null)
+        ) {
+            self.emit(W2014, node_override=nd);
             return;
+        }
+        # For top-level abilities without a return annotation, require one.
+        if (
+            nd.expr
+            and not isinstance(nd.expr, uni.Null)
+            and isinstance(
+                scope.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
+            )
+        ) {
+            has_annotation = (
+                isinstance(scope.signature, uni.FuncSignature)
+                and scope.signature.return_type is not None
+            );
+            if not has_annotation {
+                self.emit(E1003, node_override=nd);
+                return;
+            }
         }
     }
 
