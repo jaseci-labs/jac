@@ -401,6 +401,34 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     # Validate TypeVar variance (covariant in params, contravariant in returns)
     self.evaluator.validate_typevar_variance(nd);
 
+    # Error if an obj/node/edge/walker method has an explicit 'self' parameter.
+    # In these archetype types, 'self' is implicit and must not appear in the signature.
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and not nd.is_static
+        and not nd.is_classmethod
+    ) {
+        owner = nd.method_owner;
+        if (
+            isinstance(owner, uni.Archetype)
+            and owner.arch_type.value in ("obj", "node", "edge", "walker")
+        ) {
+            all_params = nd.signature.get_parameters();
+            if (
+                len(all_params) > 0
+                and isinstance(all_params[0].name, uni.Name)
+                and all_params[0].name.value == "self"
+            ) {
+                self.emit(
+                    E2015,
+                    node_override=all_params[0],
+                    arch_type=owner.arch_type.value,
+                    name=nd.name_spec.sym_name
+                );
+            }
+        }
+    }
+
     # ImplDef body is not in kid list, traverse it explicitly
     # Only process stubs linked to an impl file
     if isinstance(nd.body, uni.ImplDef) {

@@ -127,6 +127,22 @@ test "return_value_in_ability_warns" {
     )}: {w2014_warnings}";
 }
 
+test "explicit_self_in_archetype_errors" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_self.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    e2015_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E2015"
+    ];
+    # 4 errors: one each for obj, node, edge, walker bad_method
+    # No errors for: good_method (no self), static_method (static), PyClass methods (class)
+    assert len(e2015_errors) == 4 , f"Expected 4 E2015 errors, got {len(e2015_errors)}: {e2015_errors}";
+}
+
 test "member_access_type_resolve" {
     program = JacProgram();
     mod = program.compile(

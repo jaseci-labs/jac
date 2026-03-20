@@ -511,6 +511,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "abilities are triggered by walkers and their return values are ignored. "
          "Update node or walker fields directly instead."
      ),
+     E2015 = _err(
+         "E2015",
+         Category.SEMANTIC,
+         "Explicit 'self' parameter is not allowed in {arch_type} method '{name}' — "
+         "'self' is implicit in obj, node, edge, and walker methods."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
