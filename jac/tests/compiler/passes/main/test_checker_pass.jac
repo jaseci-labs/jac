@@ -2285,3 +2285,22 @@ test "function_type_attrs" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+"""Test Any allows arbitrary attr access, but object does not."""
+test "any_vs_object_attr_access" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_bug_typing_any_attr.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Any allows arbitrary access (no errors), but object.nonexistent should error
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        val.nonexistent;  # <-- Error: object has no attribute "nonexistent"
+            ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
