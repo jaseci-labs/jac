@@ -2791,11 +2791,18 @@ impl TypeEvaluator._prefetch_types{
 
 """Load and return builtins stub module."""
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
+    import copy;
     if not os.path.exists(path) {
         raise FileNotFoundError(f"Stub file not found at {path}");
     }
-    # Convert to absolute path so this function and _import_module_from_path share the same hub key.
+    # Convert to absolute path for consistent cache keys.
     resolved_path = str(Path(path).resolve());
+
+    # Check global cache first - return deep copy for clean isolation
+    if resolved_path in _stub_module_cache {
+        return copy.deepcopy(_stub_module_cache[resolved_path]);
+    }
+
     # Route jaclang-internal stubs (typeshed, etc.) to the compiler's
     # internal hub so they don't pollute the user's program hub.
     compiler = self.program._get_compiler();
@@ -2806,6 +2813,8 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     if resolved_path in target_hub {
         return target_hub[resolved_path];
     }
+
+    # Parse and build symbol table
     file_content = read_file_with_encoding(path);
     uni_source = uni.Source(file_content, path);
     mod = PyastBuildPass(
@@ -2813,20 +2822,13 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
         prog=self.program,
     ).ir_out;
     SymTabBuildPass(ir_in=mod, prog=self.program);
+
+    # Cache pristine copy, return deep copy for this instance
+    _stub_module_cache[resolved_path] = copy.deepcopy(mod);
     target_hub[resolved_path] = mod;
     return mod;
 }
 
-"""Initialize the type evaluator with prefetched types.
-
-Implementation Note:
---------------------
-Pyright is prefetching the builtins when an evaluation is requested
-on a node and from that node it does lookup for the builtins scope
-and does the prefetch once, however if we forgot to call prefetch
-in some place then it will not be available in the evaluator, So we
-are prefetching the builtins at the constructor level once.
-"""
 impl TypeEvaluator.init(program: "JacProgram") -> None {
     # Initialize constants that have defaults in the class definition
     self._BUILTINS_STUB_FILE_PATH: str = os.path.join(

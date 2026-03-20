@@ -126,6 +126,14 @@ obj PrefetchedTypes {
         set_class: TypeBase | None = None;
 }
 
+"""Global cache for parsed stub modules (pristine copies).
+
+Stub modules are expensive to parse (~50-100ms each). This cache stores
+pristine copies that are deep-copied for each TypeEvaluator instance,
+ensuring clean isolation while avoiding repeated parsing.
+"""
+glob _stub_module_cache: dict[str, uni.Module] = {};
+
 """Represents a single entry in the symbol resolution stack."""
 obj SymbolResolutionStackEntry {
     has symbol: uni.Symbol,

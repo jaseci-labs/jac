@@ -17,19 +17,16 @@ Shortcoming index:
 """
 
 import os;
-import from pathlib { Path }
-import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     CHECKER_FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
-     );
+import from jaclang.compiler.passes.main.checker_test_utils {
+    get_test_program,
+    CHECKER_FIXTURES
+}
 
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
     TypeCheckPass(ir_in=mod, prog=program);
     return program;

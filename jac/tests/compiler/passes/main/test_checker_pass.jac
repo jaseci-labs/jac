@@ -1,34 +1,18 @@
 """Type checker pass tests -- migrated from test_checker_pass.py."""
 
 import os;
-import from pathlib { Path }
-import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-import from jaclang.jac0core.program { JacProgram }
-import from jaclang.jac0core.compile_options { CompileOptions }
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
-     ),
-     CHECKER_FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
-     ),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     NO_TC = CompileOptions(type_check=False);
-
-def assert_error_pretty_found(needle: str, haystack: str) {
-    for line in [
-        line.strip()
-        for line in needle.splitlines()
-        if line.strip()
-    ] {
-        assert line in haystack , f"Expected line '{line}' not found in:\n{haystack}";
-    }
+import from jaclang.compiler.passes.main.checker_test_utils {
+    get_test_program,
+    assert_error_pretty_found,
+    FIXTURES,
+    CHECKER_FIXTURES,
+    LANG_FIXTURES,
+    NO_TC
 }
 
 test "explicit_type_annotation_in_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     program.compile(
         os.path.join(FIXTURES, "type_annotation_assignment.jac"), type_check=True
     );
@@ -51,7 +35,7 @@ test "explicit_type_annotation_in_assignment" {
 }
 
 test "list_assignment_to_int" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_list_assignment.jac"), options=NO_TC
     );
@@ -67,7 +51,7 @@ test "list_assignment_to_int" {
 }
 
 test "float_types" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_float.jac"), options=NO_TC
     );
@@ -84,7 +68,7 @@ test "float_types" {
 }
 
 test "infer_type_of_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "infer_type_assignment.jac"), options=NO_TC
     );
@@ -101,7 +85,7 @@ test "infer_type_of_assignment" {
 }
 
 test "bug_in_walker_ability" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_bug_return_in_walker_ability.jac"),
         options=NO_TC
@@ -111,7 +95,7 @@ test "bug_in_walker_ability" {
 }
 
 test "return_value_in_ability_warns" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_return_in_ability.jac"), options=NO_TC
     );
@@ -128,7 +112,7 @@ test "return_value_in_ability_warns" {
 }
 
 test "explicit_self_in_archetype_errors" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_explicit_self.jac"), options=NO_TC
     );
@@ -144,7 +128,7 @@ test "explicit_self_in_archetype_errors" {
 }
 
 test "member_access_type_resolve" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "member_access_type_resolve.jac"), options=NO_TC
     );
@@ -160,7 +144,7 @@ test "member_access_type_resolve" {
 }
 
 test "imported_sym" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "checker", "import_sym_test.jac"), options=NO_TC
     );
@@ -177,7 +161,7 @@ test "imported_sym" {
 }
 
 test "member_access_type_infered" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "member_access_type_inferred.jac"), options=NO_TC
     );
@@ -193,7 +177,7 @@ test "member_access_type_infered" {
 }
 
 test "inherited_symbol" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_sym_inherit.jac"), options=NO_TC
     );
@@ -210,7 +194,7 @@ test "inherited_symbol" {
 }
 
 test "import_symbol_type_infer" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "import_symbol_type_infer.jac"), options=NO_TC
     );
@@ -228,7 +212,7 @@ test "import_symbol_type_infer" {
 test "from_import" {
     path = os.path.join(CHECKER_FIXTURES, "checker_importer.jac");
 
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -243,7 +227,7 @@ test "from_import" {
 
 test "call_expr" {
     path = os.path.join(CHECKER_FIXTURES, "checker_expr_call.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -258,7 +242,7 @@ test "call_expr" {
 
 test "call_expr_magic" {
     path = os.path.join(CHECKER_FIXTURES, "checker_magic_call.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -274,7 +258,7 @@ test "call_expr_magic" {
 
 test "arity" {
     path = os.path.join(CHECKER_FIXTURES, "checker_arity.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 3;
@@ -303,7 +287,7 @@ test "arity" {
 
 test "param_types" {
     path = os.path.join(CHECKER_FIXTURES, "checker_param_types.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -318,7 +302,7 @@ test "param_types" {
 }
 
 test "param_arg_match" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_arg_param_match.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -418,7 +402,7 @@ test "param_arg_match" {
 }
 
 test "class_construct" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_class_construct.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -466,7 +450,7 @@ test "class_construct" {
 
 test "self_type_inference" {
     path = os.path.join(CHECKER_FIXTURES, "checker_self_type.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -480,7 +464,7 @@ test "self_type_inference" {
 }
 
 test "binary_op" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_binary_op.jac"), options=NO_TC
     );
@@ -504,7 +488,7 @@ test "binary_op" {
 
 test "checker_call_expr_class" {
     path = os.path.join(CHECKER_FIXTURES, "checker_call_expr_class.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -519,7 +503,7 @@ test "checker_call_expr_class" {
 
 test "type_ref_resolution" {
     path = os.path.join(CHECKER_FIXTURES, "checker_type_ref.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0;
@@ -527,7 +511,7 @@ test "type_ref_resolution" {
 
 test "checker_mod_path" {
     path = os.path.join(CHECKER_FIXTURES, "checker_mod_path.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -542,7 +526,7 @@ test "checker_mod_path" {
 
 test "checker_cat_is_animal" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cat_is_animal.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -559,7 +543,7 @@ test "checker_cat_is_animal" {
 
 test "checker_member_access" {
     path = os.path.join(FIXTURES, "symtab_build.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(mod.sym_tab.names_in_scope.values()) == 2;
@@ -596,7 +580,7 @@ test "checker_member_access" {
 
 test "checker_import_missing_module" {
     path = os.path.join(CHECKER_FIXTURES, "checker_import_missing_module.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 8;
@@ -604,7 +588,7 @@ test "checker_import_missing_module" {
 
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0;
@@ -612,14 +596,14 @@ test "cyclic_symbol" {
 
 test "get_type_of_iife_expression" {
     path = os.path.join(CHECKER_FIXTURES, "checker_iife_expression.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
 }
 
 test "generics" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_generics.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -717,7 +701,7 @@ test "generics" {
 }
 
 test "return_type" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_return_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -756,7 +740,7 @@ test "return_type" {
 }
 
 test "connect_typed" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_typed.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -764,7 +748,7 @@ test "connect_typed" {
 }
 
 test "connect_filter" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_filter.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -823,7 +807,7 @@ test "connect_filter" {
 }
 
 test "connect_any_type" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_any_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -831,7 +815,7 @@ test "connect_any_type" {
 }
 
 test "connect_node_collection" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_node_collection.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -839,7 +823,7 @@ test "connect_node_collection" {
 }
 
 test "root_type" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_root_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -853,7 +837,7 @@ test "root_type" {
 }
 
 test "inherit_method_lookup" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inherit_method_lookup.jac"),
         options=NO_TC
@@ -870,7 +854,7 @@ test "inherit_method_lookup" {
 }
 
 test "inherit_init_params" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inherit_init_params.jac"),
         options=NO_TC
@@ -902,7 +886,7 @@ test "inherit_init_params" {
 }
 
 test "agentvisitor_connect_no_errors" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(FIXTURES, "connect_agentvisitor.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -911,7 +895,7 @@ test "agentvisitor_connect_no_errors" {
 }
 
 test "union_reassignment" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_union_reassignment.jac"), options=NO_TC
     );
@@ -941,7 +925,7 @@ test "union_reassignment" {
 }
 
 test "protocol" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_protocol.jac"), options=NO_TC
     );
@@ -964,7 +948,7 @@ test "protocol" {
 }
 
 test "classmethod" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_classmethod.jac"), options=NO_TC
     );
@@ -972,7 +956,7 @@ test "classmethod" {
 }
 
 test "datetime_now" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_datetime_now.jac"), options=NO_TC
     );
@@ -981,7 +965,7 @@ test "datetime_now" {
 }
 
 test "any_type_works_with_any_type" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_any_type_works.jac"), options=NO_TC
     );
@@ -990,7 +974,7 @@ test "any_type_works_with_any_type" {
 }
 
 test "dict_pop" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_dict_pop.jac"), options=NO_TC
     );
@@ -1020,7 +1004,7 @@ test "dict_pop" {
 }
 
 test "final_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_final.jac"), options=NO_TC
     );
@@ -1036,7 +1020,7 @@ test "final_type_checking" {
 }
 
 test "list_iteration_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_list_iteration.jac"), options=NO_TC
     );
@@ -1052,7 +1036,7 @@ test "list_iteration_type_checking" {
 }
 
 test "overload_decorator" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_overload.jac"), options=NO_TC
     );
@@ -1097,7 +1081,7 @@ test "overload_decorator" {
 }
 
 test "function_overload_decorator" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_function_overload.jac"), options=NO_TC
     );
@@ -1125,7 +1109,7 @@ test "function_overload_decorator" {
 }
 
 test "object_type_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(LANG_FIXTURES, "object_type_assignment.jac"), options=NO_TC
     );
@@ -1134,7 +1118,7 @@ test "object_type_assignment" {
 }
 
 test "walrus_operator" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_walrus_operator.jac"), options=NO_TC
     );
@@ -1172,7 +1156,7 @@ test "walrus_operator" {
 }
 
 test "builtin_constructors" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_builtin_constructors.jac"),
         options=NO_TC
@@ -1182,7 +1166,7 @@ test "builtin_constructors" {
 }
 
 test "union_type_annotation" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_union_type_annotation.jac"),
         options=NO_TC
@@ -1200,7 +1184,7 @@ test "union_type_annotation" {
 
 """Test member access on union types."""
 test "union_member_access" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac"),
         options=NO_TC
@@ -1219,7 +1203,7 @@ test "union_member_access" {
 }
 
 test "list_indexing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"), options=NO_TC
     );
@@ -1228,7 +1212,7 @@ test "list_indexing" {
 }
 
 test "range_function" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_range.jac"), options=NO_TC
     );
@@ -1237,7 +1221,7 @@ test "range_function" {
 }
 
 test "varargs_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_varargs_type.jac"), options=NO_TC
     );
@@ -1271,7 +1255,7 @@ test "varargs_type_checking" {
 }
 
 test "slice_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_slice.jac"), options=NO_TC
     );
@@ -1288,7 +1272,7 @@ test "slice_type_checking" {
 }
 
 test "numeric_type_promotion" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_numeric_promotion.jac"), options=NO_TC
     );
@@ -1321,7 +1305,7 @@ test "numeric_type_promotion" {
 }
 
 test "property_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_property.jac"), options=NO_TC
     );
@@ -1377,7 +1361,7 @@ test "property_type_checking" {
 }
 
 test "property_self_return_type_resolution" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_property_self_return.jac"),
         options=NO_TC
@@ -1402,7 +1386,7 @@ test "property_self_return_type_resolution" {
 }
 
 test "type_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_type_narrowing.jac"), options=NO_TC
     );
@@ -1467,7 +1451,7 @@ test "type_narrowing" {
 }
 
 test "postinit_fields_not_required_in_constructor" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_postinit_fields.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1477,7 +1461,7 @@ test "postinit_fields_not_required_in_constructor" {
 }
 
 test "impl_body_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_impl_body.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1507,7 +1491,7 @@ test "impl_body_type_checking" {
 
 """Test that self.x = value in impl files creates valid archetype attributes."""
 test "impl_self_member_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(FIXTURES, "checker_impl", "checker_impl_self_member.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1518,7 +1502,7 @@ test "impl_self_member_assignment" {
 }
 
 test "super_init_with_has_vars" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_super_init_has_vars.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1543,7 +1527,7 @@ test "super_init_with_has_vars" {
 }
 
 test "super_init_with_explicit_init" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_super_init_explicit.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1574,7 +1558,7 @@ test "super_init_with_explicit_init" {
 }
 
 test "enum_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_enum.jac"), options=NO_TC
     );
@@ -1604,7 +1588,7 @@ test "enum_type_checking" {
 }
 
 test "class_based_enum_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_class_enum.jac"), options=NO_TC
     );
@@ -1634,7 +1618,7 @@ test "class_based_enum_type_checking" {
 }
 
 test "nested_functions_in_impl_blocks" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_nested_impldef.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1645,7 +1629,7 @@ test "nested_functions_in_impl_blocks" {
 }
 
 test "callable_type_annotation" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_callable.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1714,7 +1698,7 @@ test "callable_type_annotation" {
 
 """Test unbound method call type checking (ParentClass.init(self, ...))."""
 test "unbound_method_call" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_unbound_method_call.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1735,7 +1719,7 @@ test "unbound_method_call" {
 
 """Test that passing args to a parameterless init produces errors."""
 test "parameterless_init_with_args" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(FIXTURES, "checker_parameterless_init.jac"), options=NO_TC
     );
@@ -1754,7 +1738,7 @@ test "parameterless_init_with_args" {
 
 """Test bare `type` parameter accepts classes but rejects instances."""
 test "type_param_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_type_param.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1773,7 +1757,7 @@ test "type_param_assignment" {
 """Test bare-dot relative import (from . import x) resolves sibling module and catches type errors."""
 test "bare_dot_relative_import" {
     path = os.path.join(CHECKER_FIXTURES, "checker_bare_dot_import.jac");
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
@@ -1787,7 +1771,7 @@ test "bare_dot_relative_import" {
 
 """Test type narrowing detects None assignment to non-None type in else branches."""
 test "type_narrowing_none_assignment_errors" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_type_narrowing_none.jac"),
         options=NO_TC
@@ -1815,7 +1799,7 @@ test "type_narrowing_none_assignment_errors" {
 
 """Test match case type narrowing - validates type narrowing inside match cases."""
 test "match_type_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_match_type_narrowing.jac"),
         options=NO_TC
@@ -1844,7 +1828,7 @@ test "match_type_narrowing" {
 
 """Test union of subclasses assignable to base class (match narrowing support)."""
 test "union_subclass_to_base_assignment" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_match_narrowing.jac"), options=NO_TC
     );
@@ -1865,7 +1849,7 @@ test "union_subclass_to_base_assignment" {
 
 """Test compound AND narrowing picks most specific type."""
 test "compound_and_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_and_narrowing.jac"), options=NO_TC
     );
@@ -1880,7 +1864,7 @@ test "compound_and_narrowing" {
 
 """Test assert isinstance type narrowing."""
 test "assert_isinstance_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_assert_narrowing.jac"), options=NO_TC
     );
@@ -1898,7 +1882,7 @@ test "assert_isinstance_narrowing" {
 
 """Test assignment-based type narrowing."""
 test "assignment_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_assignment_narrowing.jac"),
         options=NO_TC
@@ -1913,7 +1897,7 @@ test "assignment_narrowing" {
 
 """Test truthiness guard narrowing for member access."""
 test "guard_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_guard_narrowing.jac"), options=NO_TC
     );
@@ -1927,7 +1911,7 @@ test "guard_narrowing" {
 
 """Test impl files can access imports from their parent .jac file."""
 test "impl_imports_from_parent" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_impl_imports.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -1952,7 +1936,7 @@ test "impl_imports_from_parent" {
 }
 
 test "union_and_optional_special_forms" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_union_special_form.jac"), options=NO_TC
     );
@@ -1990,7 +1974,7 @@ test "union_and_optional_special_forms" {
 
 """Test __getattr__ support: dynamic attrs use __getattr__ return type."""
 test "getattr_support" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(FIXTURES, "checker_getattr_support.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2011,7 +1995,7 @@ test "getattr_support" {
 
 """Test NamedTuple type checking: constructor accepts positional arguments for fields."""
 test "namedtuple_constructor" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_namedtuple.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2035,7 +2019,7 @@ list[LiteralString] (Unknown) and another returns list[str], the type
 checker should prefer the concrete list[str] overload.
 """
 test "overload_resolution_concrete_types" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_overload_resolution.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2054,7 +2038,7 @@ test "overload_resolution_concrete_types" {
 }
 
 test "literal_string_type_checking" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_literal_string.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2087,7 +2071,7 @@ _SupportsFloatOrIndex overload (returning int) rather than failing on the
 _SupportsFloor protocol overload.
 """
 test "module_level_overload" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_module_level_overload.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2113,7 +2097,7 @@ test "module_level_overload" {
 - subpkg: resolved as ModuleType fix (subpackage __init__.py treated correctly)
 """
 test "py_pkg_imports" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_py_pkg_imports.jac"), options=NO_TC
     );
@@ -2125,7 +2109,7 @@ test "py_pkg_imports" {
 
 """Test ClassVar[T] type annotation unwraps to T correctly."""
 test "classvar_type_annotation" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_classvar.jac"), options=NO_TC
     );
@@ -2140,7 +2124,7 @@ When unwrapping Final[T], if T is a UnionType, we must delegate to assign_type
 instead of accessing .shared directly.
 """
 test "final_union_type_no_crash" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_final_union_type.jac"), options=NO_TC
     );
@@ -2153,7 +2137,7 @@ test "final_union_type_no_crash" {
 # Generic Type Inference Tests (Pyright-style)
 # =============================================================================
 test "enumerate_type_inference" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_gap_enumerate_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2166,7 +2150,7 @@ test "enumerate_type_inference" {
 }
 
 test "generic_call_inference" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_gap_generic_call_inference.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2180,7 +2164,7 @@ test "generic_call_inference" {
 
 """Test bidirectional type inference for container literals and type[X] covariance."""
 test "bidirectional_container_inference" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_bidirectional_container.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2203,7 +2187,7 @@ test "bidirectional_container_inference" {
 
 """Test Self type resolution in method return types."""
 test "self_type_resolution" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_gap_self_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2220,7 +2204,7 @@ test "self_type_resolution" {
 
 """Test walrus operator (:=) type narrowing with is not None."""
 test "walrus_operator_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_walrus_narrowing.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2231,7 +2215,7 @@ test "walrus_operator_narrowing" {
 
 """Test type[T] subscript member access resolves to T's class members."""
 test "type_subscript_member_access" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_type_subscript_member.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2242,7 +2226,7 @@ test "type_subscript_member_access" {
 
 """Test isinstance type narrowing in ternary expressions."""
 test "isinstance_ternary_narrowing" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_ternary.jac");
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2253,7 +2237,7 @@ test "isinstance_ternary_narrowing" {
 
 """Test list(Generator[T, _, _]) returns list[T]."""
 test "list_generator_type_inference" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_list_generator_inference.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2264,7 +2248,7 @@ test "list_generator_type_inference" {
 
 """Test that return inside lambda checks against lambda's return type, not enclosing function's."""
 test "bug_lambda_return_type_checks_against_enclosing_function" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_bug_lambda_return_type.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2277,7 +2261,7 @@ test "bug_lambda_return_type_checks_against_enclosing_function" {
 
 """Test function type attribute access (__code__, __name__, etc.)."""
 test "function_type_attrs" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_function_attrs.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
@@ -2288,7 +2272,7 @@ test "function_type_attrs" {
 
 """Test Any allows arbitrary attr access, but object does not."""
 test "any_vs_object_attr_access" {
-    program = JacProgram();
+    program = get_test_program();
     path = os.path.join(CHECKER_FIXTURES, "checker_bug_typing_any_attr.jac");
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);

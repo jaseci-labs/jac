@@ -23,20 +23,18 @@ Gap index:
 """
 
 import os;
-import from pathlib { Path }
-import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     CHECKER_FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
-     );
+import from jaclang.compiler.passes.main.checker_test_utils {
+    get_test_program,
+    CHECKER_FIXTURES,
+    JAC_ROOT
+}
 
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, fixture_name),
         options=CompileOptions(type_check=False)
@@ -316,7 +314,7 @@ test "gap 45 enum iteration false positive" {
 #         This is the root cause of ~70% of .jacignore entries.
 # =========================================================================
 test "gap 46 impl file standalone scope resolution" {
-    program = JacProgram();
+    program = get_test_program();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_gap_impl_scope.impl.jac"),
         options=CompileOptions(resolve_annex_parent=True, type_check=False)
@@ -397,7 +395,7 @@ test "gap 47 undeclared attr assignment on archetypes" {
 #         are compiler source files.
 # =========================================================================
 test "gap 48 type checker self check" {
-    program = JacProgram();
+    program = get_test_program();
     tc_path = os.path.join(
         JAC_ROOT, "jaclang", "compiler", "passes", "main", "type_checker_pass.jac"
     );
