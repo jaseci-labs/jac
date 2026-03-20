@@ -110,6 +110,39 @@ test "bug_in_walker_ability" {
     assert len(program.errors_had) == 0;
 }
 
+test "return_value_in_ability_warns" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_return_in_ability.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0;
+    w2014_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W2014"
+    ];
+    assert len(w2014_warnings) == 2 , f"Expected 2 W2014 warnings, got {len(
+        w2014_warnings
+    )}: {w2014_warnings}";
+}
+
+test "explicit_self_in_archetype_errors" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_self.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    e2015_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E2015"
+    ];
+    # 4 errors: one each for obj, node, edge, walker bad_method
+    # No errors for: good_method (no self), static_method (static), PyClass methods (class)
+    assert len(e2015_errors) == 4 , f"Expected 4 E2015 errors, got {len(e2015_errors)}: {e2015_errors}";
+}
+
 test "member_access_type_resolve" {
     program = JacProgram();
     mod = program.compile(
@@ -2225,6 +2258,19 @@ test "list_generator_type_inference" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test that return inside lambda checks against lambda's return type, not enclosing function's."""
+test "bug_lambda_return_type_checks_against_enclosing_function" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_bug_lambda_return_type.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Case 1 and 2 should pass (valid returns), Case 3 should produce exactly 1 error
+    # (str returned from lambda declared -> int).
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (lambda return mismatch), got {len(
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }

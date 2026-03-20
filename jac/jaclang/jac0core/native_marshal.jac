@@ -72,13 +72,13 @@ obj NativeStructView {
         _field_meta: dict = field(default_factory=`dict, repr=False);
 
     def postinit -> None;
-    def __getattr__(self: NativeStructView, name: str) -> Any;
-    def _resolve(self: NativeStructView, name: str, raw: Any) -> Any;
-    def __getitem__(self: NativeStructView, key: str) -> Any;
-    def __contains__(self: NativeStructView, key: str) -> bool;
-    def keys(self: NativeStructView) -> Any;
-    def items(self: NativeStructView) -> Any;
-    def __repr__(self: NativeStructView) -> str;
+    def __getattr__(name: str) -> Any;
+    def _resolve(name: str, raw: Any) -> Any;
+    def __getitem__(key: str) -> Any;
+    def __contains__(key: str) -> bool;
+    def keys -> Any;
+    def items -> Any;
+    def __repr__ -> str;
 }
 
 
@@ -105,11 +105,11 @@ obj NativeListView {
         return cls(list_ptr=0, elem_key="");
     }
 
-    def __len__(self: NativeListView) -> int;
-    def __getitem__(self: NativeListView, index: Any) -> Any;
-    def __iter__(self: NativeListView) -> Any;
-    def __eq__(self: NativeListView, other: Any) -> Any;
-    def __repr__(self: NativeListView) -> str;
+    def __len__ -> int;
+    def __getitem__(index: Any) -> Any;
+    def __iter__ -> Any;
+    def __eq__(other: Any) -> Any;
+    def __repr__ -> str;
 }
 
 

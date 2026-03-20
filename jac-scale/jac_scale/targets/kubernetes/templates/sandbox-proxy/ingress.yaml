@@ -1,0 +1,36 @@
+# Example ingress for sandbox proxy.
+# Customize host and annotations for your ingress controller and cloud provider.
+#
+# For AWS ALB, add these annotations:
+#   alb.ingress.kubernetes.io/group.name: YOUR_ALB_GROUP
+#   alb.ingress.kubernetes.io/certificate-arn: YOUR_CERT_ARN
+#   alb.ingress.kubernetes.io/scheme: internet-facing
+#   alb.ingress.kubernetes.io/target-type: ip
+#   alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+#   alb.ingress.kubernetes.io/ssl-redirect: "443"
+#   alb.ingress.kubernetes.io/healthcheck-path: /_proxy/health
+#   And set ingressClassName: alb
+#
+# For GCP, use ingressClassName: gce
+# For Traefik, use ingressClassName: traefik
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sandbox-proxy-wildcard
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "*.example.com"  # Replace with your wildcard domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sandbox-proxy
+                port:
+                  number: 8080

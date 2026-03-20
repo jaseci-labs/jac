@@ -289,7 +289,7 @@ impl UniNode.unparse -> str {
     return ' '.join([i.unparse() for i in self.kid]);
 }
 
-impl AtomExpr.postinit(self: AtomExpr) -> None {
+impl AtomExpr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.UNKNOWN);
 }
