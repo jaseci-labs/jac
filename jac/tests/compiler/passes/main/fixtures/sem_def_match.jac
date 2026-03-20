@@ -19,6 +19,22 @@ obj OuterClass {
     }
 }
 
+def summarize_text(text: str) -> str {
+    return text;
+}
+
+def evaluate_score(text: str) -> int {
+    return 0;
+}
+
+def merge_results(a: str, b: str) -> str {
+    return a + b;
+}
+
+def fetch_data(query: str) -> str {
+    return query;
+}
+
 with entry {
     print(E.A);
 }

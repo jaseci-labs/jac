@@ -29,4 +29,7 @@ obj CompilerBridge {
 
     """Convert Python code to Jac."""
     static def py_to_jac(python_code: str) -> dict[str, Any];
+
+    """Parse Jac code and return AST representation."""
+    static def get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, Any];
 }

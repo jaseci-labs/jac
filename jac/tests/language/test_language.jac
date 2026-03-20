@@ -89,6 +89,13 @@ test "printgraph mermaid" {
     assert "flowchart LR" in output;
 }
 
+test "root builtin" {
+    output = run_jac(os.path.join(FIXTURES, "root_builtin.jac"));
+    lines = output.strip().split("\n");
+    assert lines[0] == "Root";
+    assert lines[1] == "2";
+}
+
 test "chandra bugs" {
     output = run_jac(os.path.join(FIXTURES, "chandra_bugs.jac"));
     assert output == "<link href='{'new_val': 3, 'where': 'from_foo'}' rel='stylesheet'>\nTrue\n";

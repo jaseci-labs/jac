@@ -108,6 +108,12 @@ impl sync_code_to_pvc(
         'metadata': {'name': sync_pod_name, 'labels': {'managed': 'jac-scale'}},
         'spec': {
             'restartPolicy': 'Never',
+            'securityContext': {
+                'runAsNonRoot': True,
+                'runAsUser': 1000,
+                'fsGroup': 1000,
+                'seccompProfile': {'type': 'RuntimeDefault'}
+            },
             'affinity': {
                 'podAffinity': {
                     'preferredDuringSchedulingIgnoredDuringExecution': [
@@ -128,11 +134,23 @@ impl sync_code_to_pvc(
                     'name': 'sync',
                     'image': sync_image,
                     'command': ['sh', '-c', 'sleep 3600'],
-                    'volumeMounts': [{'name': 'code', 'mountPath': '/data'}]
+                    'securityContext': {
+                        'runAsNonRoot': True,
+                        'runAsUser': 1000,
+                        'readOnlyRootFilesystem': True,
+                        'allowPrivilegeEscalation': False,
+                        'capabilities': {'drop': ['ALL']},
+                        'seccompProfile': {'type': 'RuntimeDefault'}
+                    },
+                    'volumeMounts': [
+                        {'name': 'code', 'mountPath': '/data'},
+                        {'name': 'tmp', 'mountPath': '/tmp'}
+                    ]
                 }
             ],
             'volumes': [
-                {'name': 'code', 'persistentVolumeClaim': {'claimName': pvc_name}}
+                {'name': 'code', 'persistentVolumeClaim': {'claimName': pvc_name}},
+                {'name': 'tmp', 'emptyDir': {}}
             ]
         }
     };
@@ -184,7 +202,7 @@ impl sync_code_to_pvc(
                 '--',
                 'sh',
                 '-c',
-                'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
+                'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && chmod -R a+rX /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
         # Remove jac.local.toml which is meant for local dev overrides only
@@ -436,12 +454,24 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
         }
 
         for container in statuses {
-            if (container.restart_count > 0) {
-                console.print(
-                    f"Pod {pod.metadata.name} container "
-                    f"{container.name} restarted "
-                );
-                return True;
+            # Fast-exit: restarted AND not currently running means it crashed
+            # and hasn't recovered. A pod that restarts once then stabilises
+            # (e.g. MongoDB with readOnlyRootFilesystem) will have restart_count>0
+            # but state.running set, so it passes this check.
+            if container.restart_count > 0 {
+                is_running = container.state and container.state.running;
+                if not is_running {
+                    reason = (
+                        container.state.waiting.reason
+                            if (container.state and container.state.waiting)
+                            else "unknown"
+                    );
+                    console.print(
+                        f"Pod {pod.metadata.name} container "
+                        f"{container.name} restarted and is not running (reason: {reason})"
+                    );
+                    return True;
+                }
             }
         }
     }
@@ -589,6 +619,23 @@ impl ensure_namespace_exists(namespace: str) -> None {
         core_v1 = client.CoreV1Api();
         core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
+        try {
+            core_v1.patch_namespace(
+                name=namespace,
+                body={
+                    'metadata': {
+                        'labels': {
+                            'pod-security.kubernetes.io/enforce': 'baseline',
+                            'pod-security.kubernetes.io/warn': 'restricted'
+                        }
+                    }
+                }
+            );
+        } except ApiException as patch_err {
+            console.print(
+                f"Warning: could not apply PSS labels to namespace '{namespace}': {patch_err}"
+            );
+        }
     } except ApiException as e {
         if (e.status == 404) {
             console.print(f"Namespace '{namespace}' not found. Creating it...");
@@ -596,7 +643,13 @@ impl ensure_namespace_exists(namespace: str) -> None {
                 body={
                     'apiVersion': 'v1',
                     'kind': 'Namespace',
-                    'metadata': {'name': namespace}
+                    'metadata': {
+                        'name': namespace,
+                        'labels': {
+                            'pod-security.kubernetes.io/enforce': 'baseline',
+                            'pod-security.kubernetes.io/warn': 'restricted'
+                        }
+                    }
                 }
             );
             console.print(f"Namespace '{namespace}' created successfully.");

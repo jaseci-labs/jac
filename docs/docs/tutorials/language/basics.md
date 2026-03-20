@@ -32,6 +32,8 @@ Jac supports all the same primitive types as Python (`str`, `int`, `float`, `boo
 
 The `with entry { }` block is Jac's equivalent of Python's `if __name__ == "__main__":` -- it defines the program's entry point and runs when you execute the file with `jac run`.
 
+> **💡 Tip**: Run `jac run -e main.jac` to see type check errors and warnings inline after execution, without needing a separate `jac check` step.
+
 ### Basic Variables
 
 ```jac

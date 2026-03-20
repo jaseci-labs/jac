@@ -78,6 +78,7 @@ import from jaclang.jac0core.unitree {
     AtomUnit,
     FuncCall,
     IndexSlice,
+    Slice,
     EdgeRefTrailer
 }
 import from jaclang.jac0core.unitree {
@@ -369,7 +370,6 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_DISENGAGE,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR,
-        TokenKind.KW_ROOT,
         TokenKind.KW_ASYNC,
         TokenKind.KW_AWAIT,
         TokenKind.KW_FLOW,
@@ -1495,7 +1495,6 @@ impl Parser._make_attr_from_keyword(name_tok: Any) {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ];
@@ -1519,55 +1518,62 @@ impl Parser.parse_index_slice -> IndexSlice {
         first_expr = self.parse_expression();
     }
     if self.check(TokenKind.COLON) {
-        # Slice expression
-        slice_kid: list = [lsq_uni];
+        # Slice expression - each Slice becomes its own UniNode in IndexSlice.kid
+        index_kid: list = [lsq_uni];
         slices: list = [];
+        # Build first Slice node
+        s1_kid: list = [];
         if first_expr is not None {
-            slice_kid.append(first_expr);
+            s1_kid.append(first_expr);
         }
         colon1_uni = self.consume_uni(TokenKind.COLON);
-        slice_kid.append(colon1_uni);
+        s1_kid.append(colon1_uni);
         stop: UniNode | None = None;
         if not self.check_any(TokenKind.COLON, TokenKind.RSQUARE, TokenKind.COMMA) {
             stop = self.parse_expression();
-            slice_kid.append(stop);
+            s1_kid.append(stop);
         }
         step: UniNode | None = None;
         if self.match_tok(TokenKind.COLON) {
-            slice_kid.append(self.make_uni_token(self.previous()));
+            s1_kid.append(self.make_uni_token(self.previous()));
             if not self.check_any(TokenKind.RSQUARE, TokenKind.COMMA) {
                 step = self.parse_expression();
-                slice_kid.append(step);
+                s1_kid.append(step);
             }
         }
-        slices.append(IndexSlice.Slice(start=first_expr, stop=stop, step=step));
+        slice1 = Slice(start=first_expr, stop=stop, step=step, kid=s1_kid);
+        slices.append(slice1);
+        index_kid.append(slice1);
         while self.match_tok(TokenKind.COMMA) {
-            slice_kid.append(self.make_uni_token(self.previous()));
+            index_kid.append(self.make_uni_token(self.previous()));
+            sn_kid: list = [];
             s2: UniNode | None = None;
             if not self.check(TokenKind.COLON) {
                 s2 = self.parse_expression();
-                slice_kid.append(s2);
+                sn_kid.append(s2);
             }
             colon_s2_uni = self.consume_uni(TokenKind.COLON);
-            slice_kid.append(colon_s2_uni);
+            sn_kid.append(colon_s2_uni);
             e2: UniNode | None = None;
             if not self.check_any(TokenKind.COLON, TokenKind.RSQUARE, TokenKind.COMMA) {
                 e2 = self.parse_expression();
-                slice_kid.append(e2);
+                sn_kid.append(e2);
             }
             t2: UniNode | None = None;
             if self.match_tok(TokenKind.COLON) {
-                slice_kid.append(self.make_uni_token(self.previous()));
+                sn_kid.append(self.make_uni_token(self.previous()));
                 if not self.check_any(TokenKind.RSQUARE, TokenKind.COMMA) {
                     t2 = self.parse_expression();
-                    slice_kid.append(t2);
+                    sn_kid.append(t2);
                 }
             }
-            slices.append(IndexSlice.Slice(start=s2, stop=e2, step=t2));
+            slice_n = Slice(start=s2, stop=e2, step=t2, kid=sn_kid);
+            slices.append(slice_n);
+            index_kid.append(slice_n);
         }
         rsq_uni = self.consume_uni(TokenKind.RSQUARE);
-        slice_kid.append(rsq_uni);
-        return IndexSlice(slices=slices, is_range=True, kid=slice_kid);
+        index_kid.append(rsq_uni);
+        return IndexSlice(slices=slices, is_range=True, kid=index_kid);
     } else {
         # Regular index access: [x] or [x, y, ...]
         indices: list = [];
@@ -1590,16 +1596,12 @@ impl Parser.parse_index_slice -> IndexSlice {
         list_val = ListVal(values=indices, kid=list_kid);
         if len(indices) == 1 {
             idx_expr = indices[0];
-            index_slice_kid: list = [list_val];
+            slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[list_val]);
         } else {
             idx_expr = TupleVal(values=indices, kid=list_kid);
-            index_slice_kid = [idx_expr];
+            slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[idx_expr]);
         }
-        return IndexSlice(
-            slices=[IndexSlice.Slice(start=idx_expr, stop=None, step=None)],
-            is_range=False,
-            kid=index_slice_kid
-        );
+        return IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
     }
 }
 
@@ -1649,7 +1651,6 @@ impl Parser.parse_call_arg -> Expr | KWPair {
             TokenKind.KW_SELF,
             TokenKind.KW_PROPS,
             TokenKind.KW_SUPER,
-            TokenKind.KW_ROOT,
             TokenKind.KW_HERE,
             TokenKind.KW_VISITOR
         ] {
@@ -1957,13 +1958,12 @@ impl Parser.parse_builtin_type -> Expr {
     return None;
 }
 
-"""Parse special reference: self, super, here, root, visitor, props, init, postinit."""
+"""Parse special reference: self, super, here, visitor, props, init, postinit."""
 impl Parser.parse_special_ref -> Expr {
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
-        TokenKind.KW_ROOT,
         TokenKind.KW_VISITOR,
         TokenKind.KW_PROPS,
         TokenKind.KW_INIT,
@@ -2050,13 +2050,12 @@ impl Parser.parse_atom -> Expr {
     ) {
         return self.parse_builtin_type();
     }
-    # Special references: self, super, here, root, visitor, props, init, postinit
+    # Special references: self, super, here, visitor, props, init, postinit
     # Plus archetype keywords as type names: node, edge, walker, object, class, enum
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
-        TokenKind.KW_ROOT,
         TokenKind.KW_VISITOR,
         TokenKind.KW_PROPS,
         TokenKind.KW_INIT,
@@ -2212,7 +2211,6 @@ impl Parser._is_edge_ref_start -> bool {
         TokenKind.ARROW_L_P1,
         TokenKind.RETURN_HINT,
         TokenKind.NAME,
-        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2223,7 +2221,6 @@ impl Parser._is_edge_ref_start -> bool {
     # NAME/special ref followed by arrow → edge ref.
     if self.check_any(
         TokenKind.NAME,
-        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2555,11 +2552,10 @@ impl Parser.parse_edge_ref_chain -> Expr {
         self.advance();
         kid.append(self.make_uni_token(self.previous()));
     }
-    # Parse optional starting expression (e.g., root, self, here)
+    # Parse optional starting expression (e.g., self, here)
     if self.check_any(
         TokenKind.NAME,
         TokenKind.KWESC_NAME,
-        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2610,7 +2606,6 @@ impl Parser.parse_edge_ref_chain -> Expr {
             TokenKind.NAME,
             TokenKind.KWESC_NAME,
             TokenKind.KW_SELF,
-            TokenKind.KW_ROOT,
             TokenKind.KW_HERE,
             TokenKind.KW_SUPER
         ) {
@@ -2988,7 +2983,6 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     )
@@ -3042,7 +3036,6 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ) {
@@ -5535,7 +5528,6 @@ impl Parser.parse_has_var -> HasVar {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ] {
@@ -5908,11 +5900,7 @@ impl Parser.parse_param_var -> ParamVar | None {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
-        TokenKind.KW_PROPS,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
+        TokenKind.KW_PROPS, TokenKind.KW_SUPER, TokenKind.KW_HERE, TokenKind.KW_VISITOR
     ) {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);

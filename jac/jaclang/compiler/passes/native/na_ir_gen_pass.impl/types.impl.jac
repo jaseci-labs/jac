@@ -4,6 +4,53 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
     }
+    # Tag-first fast path: use pre-computed backend_type_tag from UniTreeEnrichPass.
+    # This avoids re-walking type annotation AST nodes for primitive and simple
+    # collection types that TypeCheckPass already resolved.
+    if isinstance(type_expr, uni.Expr)
+    and getattr(type_expr, 'backend_type_tag', None) is not None {
+        tag = type_expr.backend_type_tag;
+        if tag == "void" {
+            return ir.VoidType();
+        }
+        if tag.startswith("list[") and tag.endswith("]") {
+            elem_name = tag[5:-1];
+            elem_llvm = self.type_map.get(elem_name);
+            if elem_llvm is not None {
+                na_spec = self._llvm_to_spec(elem_llvm);
+                self._emit_list_helpers(na_spec, elem_llvm);
+                return self.list_types[na_spec].as_pointer();
+            }
+        } elif tag.startswith("dict[") and tag.endswith("]") {
+            inner = tag[5:-1];
+            colon_idx = inner.find(":");
+            if colon_idx > 0 {
+                k_name = inner[:colon_idx];
+                v_name = inner[colon_idx + 1:];
+                k_llvm = self.type_map.get(k_name);
+                v_llvm = self.type_map.get(v_name);
+                if k_llvm is not None and v_llvm is not None {
+                    k_spec = self._llvm_to_spec(k_llvm);
+                    v_spec = self._llvm_to_spec(v_llvm);
+                    self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, 0);
+                    return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+                }
+            }
+        } elif tag.startswith("set[") and tag.endswith("]") {
+            elem_name = tag[4:-1];
+            elem_llvm = self.type_map.get(elem_name);
+            if elem_llvm is not None {
+                na_spec = self._llvm_to_spec(elem_llvm);
+                self._emit_set_helpers(na_spec, elem_llvm, 0);
+                return self.set_types[na_spec].as_pointer();
+            }
+        } else {
+            llvm_type = self.type_map.get(tag);
+            if llvm_type is not None {
+                return llvm_type;
+            }
+        }
+    }
     # Handle Name nodes (type references like `int`, `float`, `Point`)
     if isinstance(type_expr, uni.Name) {
         type_name = type_expr.value;
@@ -280,24 +327,58 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return self.type_map[type_str];
         }
     }
+    import logging as _logging;
+    _logging.getLogger("jaclang.native").debug(
+        "[NaIRGenPass] _resolve_jac_type: unresolved type %r (type=%s) — "
+        "defaulting to i64; consider adding an explicit type annotation",
+        type_expr,
+        type(type_expr).__name__,
+    );
     return ir.IntType(64);
+}
+
+"""Classify an LLVM ir.Type into the na_type_spec string used as collection helper keys.
+
+Returns "f64" for DoubleType, "ptr" for PointerType, and "i64" for all integer types
+(i8, i16, i32, i64, bool). This matches the classification used in _resolve_jac_type's
+AtomTrailer branches so collection helper keys are consistent.
+"""
+impl NaIRGenPass._llvm_to_spec(t: Any) -> str {
+    if isinstance(t, ir.DoubleType) {
+        return "f64";
+    }
+    if isinstance(t, ir.PointerType) {
+        return "ptr";
+    }
+    return "i64";
 }
 
 """Resolve a Callable[[param_types], ret_type] IndexSlice to a function pointer type.
 
 Expected AST structure:
-  IndexSlice
-    TupleVal
-      ListVal  ← parameter types (non-Token kids)
-      <ret_type_expr>  ← return type
+  IndexSlice (is_range=False)
+    slices: [Slice]
+      Slice.start = TupleVal
+        ListVal  ← parameter types (non-Token kids)
+        <ret_type_expr>  ← return type
 """
 impl NaIRGenPass._resolve_callable_type(slice: uni.IndexSlice) -> ir.Type {
     # Dig out the TupleVal inside the IndexSlice.
+    # With Slice as a UniNode, the TupleVal is in Slice.start.
     _tuple_val = None;
-    for _k in (slice.kid or []) {
-        if isinstance(_k, uni.TupleVal) {
-            _tuple_val = _k;
-            break;
+    if slice.slices and len(slice.slices) == 1 {
+        _sl = slice.slices[0];
+        if isinstance(_sl.start, uni.TupleVal) {
+            _tuple_val = _sl.start;
+        }
+    }
+    # Fallback: check IndexSlice.kid directly for backwards compatibility.
+    if _tuple_val is None {
+        for _k in (slice.kid or []) {
+            if isinstance(_k, uni.TupleVal) {
+                _tuple_val = _k;
+                break;
+            }
         }
     }
     if _tuple_val is None {

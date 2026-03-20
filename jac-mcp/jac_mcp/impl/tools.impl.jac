@@ -382,16 +382,5 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, Any] {
 """Parse code and return AST info."""
 impl get_ast(code: str, fmt: str = "tree") -> dict[str, Any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
-    result = CompilerBridge.parse_snippet(code);
-    if not result.get("valid", False) {
-        return {
-            "error": "Parse failed",
-            "errors": result.get("errors", []),
-            "ast": None
-        };
-    }
-    return {
-        "ast": "Parsed successfully. Use validate_jac for detailed analysis.",
-        "valid": True
-    };
+    return CompilerBridge.get_ast_snippet(code, fmt);
 }

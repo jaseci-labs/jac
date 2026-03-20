@@ -45,7 +45,8 @@ def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 }
 
 glob _ir_sched_loading = False,
-     _codegen_sched_loading = False;
+     _codegen_sched_loading = False,
+     _typecheck_sched_loading = False;
 
 """Full IR generation schedule.
 
@@ -70,6 +71,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
+        import from jaclang.compiler.passes.main.unitree_enrich_pass {
+            UniTreeEnrichPass
+        }
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
@@ -80,7 +84,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemanticAnalysisPass,
             SemDefMatchPass,
             CFGBuildPass,
-            MTIRGenPass
+            MTIRGenPass,
+            UniTreeEnrichPass
         ];
     } except ImportError {
         return [
@@ -94,11 +99,34 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-"""Type checking schedule."""
+"""Type checking schedule.
+
+    Same re-entrancy guard as get_ir_gen_sched: when compiling the
+    pass modules that this schedule depends on (TypeCheckPass, etc.),
+    importing them would trigger recursive compilation. The guard
+    detects this and returns an empty schedule, skipping type checking
+    for only those bootstrap modules.
+    """
 def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-    import from jaclang.compiler.passes.main.static_analysis_pass { StaticAnalysisPass }
-    return [TypeCheckPass, StaticAnalysisPass];
+    global _typecheck_sched_loading;
+    if _typecheck_sched_loading {
+        return [];
+    }
+    _typecheck_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+        import from jaclang.compiler.passes.main.static_analysis_pass {
+            StaticAnalysisPass
+        }
+        import from jaclang.compiler.passes.main.unitree_enrich_pass {
+            UniTreeEnrichPass
+        }
+        return [TypeCheckPass, StaticAnalysisPass, UniTreeEnrichPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _typecheck_sched_loading = False;
+    }
 }
 
 """Full Python code generation schedule.
@@ -119,12 +147,8 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
             InteropAnalysisPass,
             EsastGenPass
         ];
-        import from jaclang.compiler.passes.native {
-            NativeCompatCheckPass,
-            NaIRGenPass,
-            NativeCompilePass
-        }
-        passes.extend([NativeCompatCheckPass, NaIRGenPass, NativeCompilePass]);
+        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
+        passes.extend([NaIRGenPass, NativeCompilePass]);
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {

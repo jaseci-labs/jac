@@ -49,6 +49,52 @@ test "streamable-http transport initializes session manager and app" {
     assert starlette_app.routes[0].path == "/mcp";
 }
 
+test "sse _async_start builds correct Mount-based route for messages" {
+    import from unittest.mock { patch, AsyncMock, MagicMock }
+    import from jac_mcp.server { JacMcpServer }
+    import from starlette.routing { Mount, Route }
+
+    captured_apps: list = [];
+
+    def fake_config(app: object, **kwargs: object) -> object {
+        captured_apps.append(app);
+        return MagicMock();
+    }
+
+    mock_serve = AsyncMock();
+    mock_server_instance = MagicMock();
+    mock_server_instance.serve = mock_serve;
+    mock_server_class = MagicMock();
+    mock_server_class.return_value = mock_server_instance;
+
+    mock_config_class = MagicMock();
+    mock_config_class.side_effect = fake_config;
+
+    # Pass mocks as positional arg (maps to patch's 'new' parameter)
+    with patch("uvicorn.Config", mock_config_class) {
+        with patch("uvicorn.Server", mock_server_class) {
+            JacMcpServer(transport="sse", port=3001, host="127.0.0.1").start();
+        }
+    }
+
+    assert len(captured_apps) == 1 , "uvicorn.Config should have been called once";
+    app: object = captured_apps[0];
+    routes: list = getattr(app, "routes");
+    assert len(routes) >= 2;
+
+    sse_route: object = routes[0];
+    messages_route: object = routes[1];
+    assert isinstance(sse_route, Route) , f"Expected Route for /sse, got {type(
+        sse_route
+    )}";
+    assert getattr(sse_route, "path") == "/sse";
+    assert isinstance(messages_route, Mount) , (
+        f"Expected Mount for /messages (handle_post_message is an ASGI app, "
+        f"not a Starlette endpoint — use Mount not Route). Got {type(messages_route)}"
+    );
+    assert getattr(messages_route, "path") == "/messages";
+}
+
 # ── Plugin Config Tests ──
 test "get plugin metadata" {
     metadata = JacMcpPluginConfig.get_plugin_metadata();
@@ -254,6 +300,28 @@ test "parse valid code" {
     assert isinstance(result, dict);
     assert "valid" in result;
     assert "errors" in result;
+    assert result["valid"] == True;
+    assert len(result["errors"]) == 0;
+}
+
+test "parse invalid code" {
+    result = CompilerBridge.parse_snippet("this is not valid @@@ !!!");
+    assert isinstance(result, dict);
+    assert result["valid"] == False;
+    assert len(result["errors"]) > 0;
+}
+
+test "parse errors have correct line and col" {
+    result = CompilerBridge.parse_snippet("obj Foo {\n    has x: int = 5\n}");
+    assert result["valid"] == False;
+    assert len(result["errors"]) > 0;
+    err = result["errors"][0];
+    assert err["line"] > 0 , f"Expected line > 0, got {err['line']}";
+    assert err["col"] > 0 , f"Expected col > 0, got {err['col']}";
+    assert "message" in err;
+    assert len(err["message"]) > 0;
+    assert isinstance(err["line"], int);
+    assert isinstance(err["col"], int);
 }
 
 test "parse empty code" {
@@ -267,6 +335,30 @@ test "input size limit" {
     assert result["valid"] == False;
     assert len(result["errors"]) > 0;
     assert "size" in result["errors"][0]["message"].lower();
+}
+
+test "get ast tree format" {
+    result = CompilerBridge.get_ast_snippet("obj Foo { has x: int = 5; }", "tree");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == True;
+    assert "Foo" in result["ast"];
+}
+
+test "get ast json format" {
+    result = CompilerBridge.get_ast_snippet("obj Foo { has x: int = 5; }", "json");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == True;
+    assert "Module" in result["ast"];
+}
+
+test "get ast invalid code" {
+    result = CompilerBridge.get_ast_snippet("this is not valid @@@ !!!", "tree");
+    assert isinstance(result, dict);
+    assert result.get("ast") is not None;
+    assert result.get("valid") == False;
+    assert len(result.get("errors", [])) > 0;
 }
 
 test "format valid code" {
@@ -321,7 +413,7 @@ test "write module returns messages" {
     );
     assert "messages" in result;
     assert len(result["messages"]) > 0;
-    assert result["messages"][0]["role"] == "system";
+    assert result["messages"][0]["role"] == "assistant";
     assert result["messages"][1]["role"] == "user";
     assert "my_module" in result["messages"][1]["content"];
 }
@@ -374,6 +466,45 @@ test "unknown prompt returns error" {
     pp = PromptProvider();
     result = pp.get_prompt("nonexistent", {});
     assert "Unknown" in result.get("description", "") or "messages" in result;
+}
+
+test "all prompt messages use only MCP-valid roles" {
+    pp = PromptProvider();
+    valid_roles = ["user", "assistant"];
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            assert msg["role"] in valid_roles , f"Prompt '{prompt[
+                'name'
+            ]}' has invalid MCP role '{msg[
+                'role'
+            ]}' — only 'user' or 'assistant' are allowed";
+        }
+    }
+}
+
+test "prompt messages pass MCP SDK Pydantic validation" {
+    import from mcp.types { PromptMessage, TextContent }
+    pp = PromptProvider();
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            pm = PromptMessage(
+                role=msg["role"], content=TextContent(type="text", text=msg["content"])
+            );
+            assert pm is not None , f"PromptMessage construction failed for prompt '{prompt[
+                'name'
+            ]}' with role '{msg['role']}'";
+        }
+    }
 }
 
 # ── Bundle Script Tests ──

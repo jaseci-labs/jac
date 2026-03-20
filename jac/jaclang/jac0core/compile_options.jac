@@ -7,7 +7,7 @@ import from typing { Any }
 
 """Options controlling Jac compilation behavior."""
 obj CompileOptions {
-    has type_check: bool = False,
+    has type_check: bool = True,
         symtab_ir_only: bool = False,
         no_cgen: bool = False,
         skip_native_engine: bool = False,
@@ -17,12 +17,10 @@ obj CompileOptions {
         cancel_token: Any = None;
 
     """Return a copy with skip_native_engine set."""
-    def with_skip_native_engine(
-        self: CompileOptions, `skip: bool = True
-    ) -> CompileOptions;
+    def with_skip_native_engine(`skip: bool = True) -> CompileOptions;
 
     """Return a copy with aot_mode set."""
-    def with_aot_mode(self: CompileOptions, mode: bool = True) -> CompileOptions;
+    def with_aot_mode(mode: bool = True) -> CompileOptions;
 }
 
 glob DEFAULT_OPTIONS = CompileOptions();

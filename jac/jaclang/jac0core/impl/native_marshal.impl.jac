@@ -17,7 +17,7 @@ impl NativeStructView.postinit -> None {
     }
 }
 
-impl NativeStructView.__getattr__(self: NativeStructView, name: str) -> Any {
+impl NativeStructView.__getattr__(name: str) -> Any {
     native = self._native;
     try {
         raw = getattr(native, name);
@@ -27,7 +27,7 @@ impl NativeStructView.__getattr__(self: NativeStructView, name: str) -> Any {
     return self._resolve(name, raw);
 }
 
-impl NativeStructView._resolve(self: NativeStructView, name: str, raw: Any) -> Any {
+impl NativeStructView._resolve(name: str, raw: Any) -> Any {
     finfo = self._field_meta.get(name);
     if finfo is None {
         return raw;
@@ -88,23 +88,23 @@ impl NativeStructView._resolve(self: NativeStructView, name: str, raw: Any) -> A
     return raw;
 }
 
-impl NativeStructView.__getitem__(self: NativeStructView, key: str) -> Any {
+impl NativeStructView.__getitem__(key: str) -> Any {
     return getattr(self, key);
 }
 
-impl NativeStructView.__contains__(self: NativeStructView, key: str) -> bool {
+impl NativeStructView.__contains__(key: str) -> bool {
     return key in self._field_meta;
 }
 
-impl NativeStructView.keys(self: NativeStructView) -> Any {
+impl NativeStructView.keys -> Any {
     return self._field_meta.keys();
 }
 
-impl NativeStructView.items(self: NativeStructView) -> Any {
+impl NativeStructView.items -> Any {
     return ((k, self[k]) for k in self.keys());
 }
 
-impl NativeStructView.__repr__(self: NativeStructView) -> str {
+impl NativeStructView.__repr__ -> str {
     return f"<NativeStructView {self.struct_name}>";
 }
 
@@ -138,11 +138,11 @@ impl NativeListView.postinit -> None {
     }
 }
 
-impl NativeListView.__len__(self: NativeListView) -> int {
+impl NativeListView.__len__ -> int {
     return self._count;
 }
 
-impl NativeListView.__getitem__(self: NativeListView, index: Any) -> Any {
+impl NativeListView.__getitem__(index: Any) -> Any {
     if isinstance(index, slice) {
         return [self[i] for i in range(*index.indices(self._count))];
     }
@@ -173,13 +173,13 @@ impl NativeListView.__getitem__(self: NativeListView, index: Any) -> Any {
     return raw;
 }
 
-impl NativeListView.__iter__(self: NativeListView) -> Any {
+impl NativeListView.__iter__ -> Any {
     for i in range(len(self)) {
         yield self[i];
     }
 }
 
-impl NativeListView.__eq__(self: NativeListView, other: Any) -> Any {
+impl NativeListView.__eq__(other: Any) -> Any {
     if isinstance(other, list) {
         return (
             len(self) == len(other) and all(a == b for (a, b) in zip(self, other))
@@ -188,6 +188,6 @@ impl NativeListView.__eq__(self: NativeListView, other: Any) -> Any {
     return NotImplemented;
 }
 
-impl NativeListView.__repr__(self: NativeListView) -> str {
+impl NativeListView.__repr__ -> str {
     return f"<NativeListView len={len(self)}>";
 }

@@ -254,6 +254,7 @@ impl JacNode.remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
     for (idx, ed) in enumerate(nd.edges) {
         if (ed.id == `edge.id) {
             nd.edges.pop(idx);
+            nd.is_updated = True;
             break;
         }
     }
@@ -889,8 +890,15 @@ impl JacCmd.create_cmd -> None { }
 """Set Class References."""
 impl JacBasics.setup -> None { }
 
-"""Get current execution context."""
+"""Get current execution context (request-scoped if available, else global)."""
 impl JacBasics.get_context -> ExecutionContext {
+    # Try request-scoped context first (for web servers)
+    ctx = _request_context.get();
+    if ctx is not None {
+        return ctx;
+    }
+
+    # Fallback to global context (CLI, tests, non-web environments)
     if (JacRuntime.exec_ctx is None) {
         JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None);
     }
@@ -907,12 +915,12 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
 }
 
 """Purge current or target graph."""
-impl JacBasics.reset_graph(`root: (Root | None) = None) -> int {
+impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
-    ranchor = `root.__jac__ if `root else ctx.user_root;
+    ranchor = root.__jac__ if root else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
@@ -936,6 +944,7 @@ impl JacBasics.reset_graph(`root: (Root | None) = None) -> int {
         for e in ranchor.edges
         if (e.id not in deleted_ids)
     ];
+    ranchor.is_updated = True;
     mem.commit(ranchor);
     return deleted_count;
 }
@@ -1135,7 +1144,17 @@ impl JacBasics.jac_import(
                 module.__path__ = spec.submodule_search_locations;
             }
             JacRuntimeInterface.load_module('__main__', module);
-            if spec.loader {
+            # Route .py files through Jac's compiler pipeline
+            if (spec.origin and spec.origin.endswith('.py')) {
+                codeobj = JacRuntime.get_compiler().get_bytecode(
+                    full_target=spec.origin, target_program=JacRuntime.get_program()
+                );
+                if codeobj {
+                    exec(codeobj, module.__dict__);
+                } elif spec.loader {
+                    spec.loader.exec_module(module);
+                }
+            } elif spec.loader {
                 spec.loader.exec_module(module);
             }
         } elif (reload_module and (module_name in sys.modules)) {
@@ -1143,9 +1162,15 @@ impl JacBasics.jac_import(
             JacRuntimeInterface.load_module(module_name, module, force=True);
         } else {
             module = importlib.import_module(module_name);
-            if reload_module {
-                JacRuntimeInterface.load_module(module_name, module, force=True);
-            }
+            # Always register in loaded_modules. When the module is freshly
+            # imported, exec_module already calls load_module, but if the
+            # module was cached in sys.modules (e.g. from a prior import
+            # that was cleared from loaded_modules but not sys.modules),
+            # exec_module is NOT re-invoked and the module would be missing
+            # from loaded_modules. Using force=True when reloading.
+            JacRuntimeInterface.load_module(
+                module_name, module, force=bool(reload_module)
+            );
         }
         if items {
             imported_items = [];
@@ -1309,11 +1334,50 @@ impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
 
 """Jac's apply_dir stmt feature."""
 impl JacBasics.refs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+    post_filter: (Callable[([Archetype], bool)] | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
     }
+    # Fuse post_filter into the last destination's node filter
+    if post_filter is not None and path.destinations {
+        last = path.destinations[-1];
+        if last.nd is None {
+            last.nd = post_filter;
+        } else {
+            orig_nd = last.nd;
+            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+        }
+    }
+    # Try topology index optimization for non-edge-only queries
+    if not path.edge_only {
+        import from jaclang.runtimelib.topo_utils { plan_query, batch_load_nodes }
+        planned_ids = plan_query(path);
+        if planned_ids is not None {
+            # Index resolved which nodes survive type filters.
+            # For single-hop, preserve edge-list order via origin walk.
+            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
+            destinations = path.destinations[:-1]
+                if path.edge_only
+                else path.destinations;
+            use_origin = path.origin if len(destinations) <= 1 else None;
+            nodes = batch_load_nodes(planned_ids, origin=use_origin);
+            destinations = path.destinations;
+            if destinations {
+                last_dest = destinations[-1];
+                if last_dest.nd {
+                    nodes = [
+                        n
+                        for n in nodes
+                        if last_dest.node_filter(n)
+                    ];
+                }
+            }
+            return nodes;
+        }
+    }
+    # Fallback: original approach
     origin = path.origin;
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
     while destinations {
@@ -1454,7 +1518,7 @@ impl JacBasics.safe_subscript(`obj: Any, key: Any) -> Any {
 }
 
 """Jac's root getter."""
-impl JacBasics.`root -> Root {
+impl JacBasics.root -> Root {
     return JacRuntime.get_context().get_root();
 }
 
@@ -1478,6 +1542,8 @@ impl JacBasics.build_edge(
         );
         source.edges.append(eanch);
         target.edges.append(eanch);
+        source.is_updated = True;
+        target.is_updated = True;
         if conn_assign {
             for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {
                 if hasattr(`edge, fld) {
@@ -1490,6 +1556,8 @@ impl JacBasics.build_edge(
         if (source.persistent or target.persistent) {
             JacRuntimeInterface.save(eanch);
         }
+        import from jaclang.runtimelib.topo_utils { on_edge_created }
+        on_edge_created(source, target, eanch);
         return `edge;
     }
     return builder;
@@ -1506,6 +1574,8 @@ impl JacBasics.save(`obj: (Archetype | Anchor)) -> None {
     jctx.mem.put(anchor);
     match anchor {
         case NodeAnchor():
+            import from jaclang.runtimelib.topo_utils { on_node_saved }
+            on_node_saved(anchor);
             for ed in anchor.edges {
                 if (ed.is_populated() and not ed.persistent) {
                     JacRuntimeInterface.save(ed);
@@ -1542,11 +1612,19 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
                     }
 
                 case EdgeAnchor():
+                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
+                    if anchor.is_populated() {
+                        on_edge_destroyed(anchor.source, anchor.target, anchor);
+                    }
                     JacRuntimeInterface.detach(anchor);
 
                 case _:
                     ;
 
+            }
+            if isinstance(anchor, NodeAnchor) {
+                import from jaclang.runtimelib.topo_utils { on_node_destroyed }
+                on_node_destroyed(anchor);
             }
             JacRuntimeInterface.get_context().mem.delete(anchor.id);
         }
@@ -2309,4 +2387,18 @@ impl JacRuntime.set_base_path(base_path: (str | None)) -> None {
 """Set the context for the machine."""
 impl JacRuntime.set_context(context: ExecutionContext) -> None {
     JacRuntime.exec_ctx = context;
+}
+
+"""Set request-scoped execution context (for web servers)."""
+impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
+    _request_context.set(context);
+}
+
+"""Clear request-scoped context and commit changes."""
+impl JacRuntime.clear_request_context -> None {
+    ctx = _request_context.get();
+    if ctx is not None {
+        ctx.close();
+        _request_context.set(None);
+    }
 }

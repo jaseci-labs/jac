@@ -339,6 +339,50 @@ impl TypeEvaluator._get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None 
     return None;
 }
 
+"""Get the nearest enclosing return scope: the first Ability or LambdaExpr walking up."""
+impl TypeEvaluator._get_enclosing_return_scope(
+    nd: uni.UniNode
+) -> uni.Ability | uni.LambdaExpr | None {
+    while nd := nd.parent {
+        if isinstance(nd, uni.LambdaExpr) {
+            return nd;
+        }
+        if isinstance(nd, uni.Ability) {
+            return nd;
+        }
+        if isinstance(nd, uni.ImplDef) and isinstance(nd.decl_link, uni.Ability) {
+            return nd.decl_link;
+        }
+    }
+    return None;
+}
+
+"""Get the resolved return type from an Ability or LambdaExpr, or None if unresolvable."""
+impl TypeEvaluator._get_declared_return_type(
+    scope: uni.Ability | uni.LambdaExpr
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system { types }
+
+    if isinstance(scope, uni.LambdaExpr) {
+        if (
+            isinstance(scope.signature, uni.FuncSignature)
+            and scope.signature.return_type is not None
+        ) {
+            return self._convert_to_instance(
+                self.get_type_of_expression(scope.signature.return_type)
+            );
+        }
+        return None;
+    }
+    # Ability path — resolve via get_type_of_ability (handles both annotated
+    # and unannotated cases; unannotated defaults to NoneType).
+    fn_type_base = self.get_type_of_ability(scope);
+    if not isinstance(fn_type_base, types.FunctionType) {
+        return None;
+    }
+    return self._convert_to_instance(fn_type_base.return_type);
+}
+
 """Get the enclosing function (ability) of the given node."""
 impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None {
     while nd := nd.parent {
@@ -657,13 +701,26 @@ impl TypeEvaluator._create_callable_type(
                 param_types.append(param_type);
             }
         } else {
-            # Invalid first argument - should be [...] or ...
-            self.emit_diag(E1071, first_arg);
-            # Try to recover by treating it as a single parameter type
-            # This handles cases like Callable[int, str] (incorrect but common mistake)
-            param_type = self.get_type_of_expression(first_arg);
-            param_type = self._convert_to_instance(param_type);
-            param_types.append(param_type);
+            # Check for valid Python 3.10+ Callable[P, T] where P is a ParamSpec/TypeVar.
+            # After ParamSpec("P") is evaluated, P has type TypeVarType(is_param_spec=True).
+            # After TypeVar("T") is evaluated, T has type TypeVarType.
+            # The raw ParamSpec/TypeVarTuple class can also appear in typeshed stubs.
+            resolved_first = self.get_type_of_expression(first_arg);
+            if isinstance(resolved_first, types.TypeVarType) {
+                # Callable[P, T] or Callable[T, T] — ParamSpec or TypeVar as first arg.
+                # Treat as gradual: full ParamSpec substitution is future work.
+                is_gradual = True;
+            } elif self.is_paramspec_class(resolved_first)
+            or self.is_type_var_tuple_class(resolved_first) {
+                # Raw ParamSpec/TypeVarTuple class used as first arg (common in typeshed stubs).
+                is_gradual = True;
+            } else {
+                # Genuinely invalid first argument — should be [...] or ...
+                self.emit_diag(E1071, first_arg);
+                # Recover by treating it as a single parameter type
+                param_type = self._convert_to_instance(resolved_first);
+                param_types.append(param_type);
+            }
         }
         # Second argument: return type
         if len(type_arg_values) >= 2 {
