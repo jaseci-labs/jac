@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.12.3 (Unreleased)
 
+- **Parallel `jac format`**: `jac format` now processes multiple files in parallel using `ProcessPoolExecutor`, significantly reducing CI time for large codebases (e.g., 11 min → ~2 min).
 - **Fix: `sem` strings silently dropped for functions starting with 's', 'e', or 'm'** (#5233): `SemDefMatchPass` used `lstrip('sem.')` to strip the `sem.` prefix, which strips individual *characters* from the set `{s, e, m, .}` rather than the prefix string. This corrupted function names like `summarize_text` → `ummarize_text`, causing the symbol table lookup to fail and the sem string to be silently discarded. Fixed by replacing `lstrip('sem.')` with `removeprefix('sem.')`.
 - **Anchor Change Tracking (`is_updated` field)**: Added an `is_updated` flag to the `Anchor` class to track modification state, marking anchors as updated only on changes and enabling persistence backends to skip unnecessary writes during read-only operations.
 - **Type Checking Enabled by Default**: All user modules are now type-checked during compilation. Bootstrap modules skip type checking automatically to avoid circular imports.
