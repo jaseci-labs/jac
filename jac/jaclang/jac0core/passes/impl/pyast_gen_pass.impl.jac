@@ -206,6 +206,9 @@ impl PyastGenPass._py_name(self: PyastGenPass, nd: uni.AstSymbolNode) -> str {
     if (isinstance(nd, uni.SpecialVarRef) and (nd.name == Tok.KW_INIT)) {
         return '__init__';
     }
+    if (isinstance(nd, uni.Name) and (nd.name == Tok.KW_INIT)) {
+        return '__init__';
+    }
     return nd.sym_name;
 }
 

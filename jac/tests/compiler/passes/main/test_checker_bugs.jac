@@ -303,8 +303,16 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
 # =========================================================================
 test "bug_any1_typing_any_attr_access" {
     program = compile_and_check("checker_bug_typing_any_attr.jac");
-    assert len(program.errors_had) == 0 , f"Bug #ANY-1: attribute access on typing.Any raised E1030 "
-    f"({len(program.errors_had)} errors). Any must allow all attribute access.";
+    # Expect 1 error: object.nonexistent (object does not allow arbitrary attr access)
+    # Any still allows all attribute access (0 errors for Any tests)
+    assert len(program.errors_had) == 1 , f"Bug #ANY-1: Expected 1 error (object.nonexistent), "
+    f"got {len(
+        program.errors_had
+    )} errors. Any must allow all attribute access, but object must not.";
+    # Verify the error is for object.nonexistent, not for Any
+    err_str = program.errors_had[0].pretty_print();
+    assert "nonexistent" in err_str , f"Expected error for 'nonexistent' attr, got: {err_str}";
+    assert "object" in err_str , f"Expected error mentioning 'object' type, got: {err_str}";
 }
 
 # =========================================================================

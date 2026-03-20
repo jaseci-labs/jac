@@ -1582,14 +1582,49 @@ impl PyastBuildPass.proc_formatted_value(
     prev_in_fstring = self.in_fstring_expr;
     self.in_fstring_expr = True;
     value = self.convert(nd.value);
-    fmt_spec = cast(uni.Expr, self.convert(nd.format_spec)) if nd.format_spec else None;
     self.in_fstring_expr = prev_in_fstring;
+    # Handle format_spec specially - it should be a plain string, not an f-string
+    fmt_spec = None;
+    if nd.format_spec {
+        if isinstance(nd.format_spec, py_ast.JoinedStr) {
+            # format_spec is a JoinedStr, extract the string content
+            fmt_parts: list[str] = [];
+            for part in nd.format_spec.values {
+                if isinstance(part, py_ast.Constant) and isinstance(part.value, str) {
+                    fmt_parts.append(part.value);
+                } elif isinstance(part, py_ast.FormattedValue) {
+                    nested_fmt = self.convert(part);
+                    if isinstance(nested_fmt, uni.FormattedValue) {
+                        fmt_spec = nested_fmt;
+                        break;
+                    }
+                }
+            }
+            if (not fmt_spec and fmt_parts) {
+                # Create a plain String node for the format spec
+                fmt_str = ''.join(fmt_parts);
+                fmt_spec = uni.String(
+                    orig_src=self.orig_src,
+                    name='STRING',
+                    value=fmt_str,
+                    line=nd.format_spec.lineno,
+                    end_line=nd.format_spec.end_lineno or nd.format_spec.lineno,
+                    col_start=nd.format_spec.col_offset,
+                    col_end=nd.format_spec.end_col_offset or nd.format_spec.col_offset,
+                    pos_start=0,
+                    pos_end=0
+                );
+            }
+        } else {
+            fmt_spec = cast(uni.Expr, self.convert(nd.format_spec));
+        }
+    }
     if isinstance(value, uni.Expr) {
         ret = uni.FormattedValue(
             format_part=value,
             conversion=nd.conversion,
             format_spec=fmt_spec,
-            kid=[value]
+            kid=[value, fmt_spec] if fmt_spec else [value]
         );
     } else {
         raise self.ice();
@@ -2054,7 +2089,7 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
     }
     attribute = uni.Name(
         orig_src=self.orig_src,
-        name=Tok.NAME,
+        name=Tok.KW_INIT if (nd.attr == '__init__') else Tok.NAME,
         value='init' if (nd.attr == '__init__') else nd.attr,
         line=nd.lineno,
         end_line=nd.end_lineno or nd.lineno,
@@ -2686,11 +2721,16 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         raise self.ice('Length mismatch in decorators on class');
     }
     valid_decorators = decorators or None;
-    kid = [name, *base_classes, *valid_body, doc]
-        if (doc and base_classes)
-        else [name, *base_classes, *valid_body]
-            if base_classes
-            else [name, *valid_body, doc] if doc else [name, *valid_body];
+    kid: list = [];
+    if valid_decorators {
+        kid.extend(valid_decorators);
+    }
+    kid.append(name);
+    kid.extend(base_classes);
+    kid.extend(valid_body);
+    if doc {
+        kid.append(doc);
+    }
     return uni.Archetype(
         arch_type=arch_type,
         name=name,
