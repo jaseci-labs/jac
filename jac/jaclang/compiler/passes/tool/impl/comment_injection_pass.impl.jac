@@ -995,6 +995,8 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
 
 """Inject comments using token-level precision."""
 impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Clear token cache for each transform call (impl modules reuse the same pass instance)
+    self._token_cache = {};
     self._comments: (CommentStore | None) = None;
     if isinstance(ir_in, uni.Module) {
         self._comments = CommentStore.from_module(ir_in);
