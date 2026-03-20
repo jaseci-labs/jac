@@ -1,11 +1,8 @@
 """Tests for PWA target functionality."""
 
 import os;
-import json;
 import tempfile;
-import tomllib;
 import from pathlib { Path }
-import from subprocess { PIPE, Popen, run }
 
 """Create a minimal jac.toml file for PWA testing."""
 def _create_jac_toml_with_pwa(
