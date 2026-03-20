@@ -266,7 +266,6 @@ glob MICRO_JAC_FILES: list[str] = [
          "tests/compiler/passes/main/fixtures/checker/checker_binary_op.jac",
          "tests/compiler/passes/main/fixtures/checker/checker_bug_return_in_walker_ability.jac",
          "tests/compiler/passes/main/fixtures/checker/checker_return_in_ability.jac",
-         "tests/compiler/passes/main/fixtures/checker/checker_explicit_self.jac",
          "tests/compiler/passes/main/fixtures/checker/checker_call_expr_class.jac",
          "tests/compiler/passes/main/fixtures/checker/checker_cat_is_animal.jac",
          "tests/compiler/passes/main/fixtures/checker/checker_class_construct.jac",
