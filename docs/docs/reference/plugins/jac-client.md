@@ -1174,6 +1174,174 @@ cl {
 
 **Wildcard patterns** (`@alias/*` -> `./path/*`) match any sub-path under the prefix. **Exact patterns** (`@alias` -> `./path`) match only the alias itself.
 
+### Vite Plugin Integration
+
+The `[plugins.client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
+
+1. Declare the npm package in `[dependencies.npm]`
+2. Wire the plugin in `[plugins.client.vite]`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `plugins` | list of strings | Vite plugin function calls, written as JS expressions |
+| `lib_imports` | list of strings | ES import statements for each plugin |
+
+These are written directly into the generated `vite.config.js` - `lib_imports` become top-level imports and `plugins` populate the `plugins: []` array.
+
+**Example: Tailwind CSS v4**
+
+```bash
+jac add --npm --dev tailwindcss @tailwindcss/vite
+```
+
+```toml
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm.dev]
+tailwindcss = "^4.0.0"
+"@tailwindcss/vite" = "^4.0.0"
+```
+
+Then import Tailwind in your entry CSS and use `className=` in components:
+
+```jac
+cl {
+    import "./assets/main.css";  # contains: @import "tailwindcss";
+
+    def:pub app() -> JsxElement {
+        return <div className="min-h-screen bg-gray-100 p-8">
+            <h1 className="text-3xl font-bold">Hello</h1>
+        </div>;
+    }
+}
+```
+
+**Example: Multiple plugins**
+
+```toml
+[plugins.client.vite]
+plugins = ["tailwindcss()", "myPlugin({ option: 'value' })"]
+lib_imports = [
+    "import tailwindcss from '@tailwindcss/vite'",
+    "import myPlugin from 'my-vite-plugin'"
+]
+```
+
+#### Build Options
+
+Override Vite build options via `[plugins.client.vite.build]`:
+
+```toml
+[plugins.client.vite.build]
+sourcemap = true
+minify = "esbuild"
+outDir = "dist"
+```
+
+#### Dev Server Options
+
+Configure the Vite dev server via `[plugins.client.vite.server]`:
+
+```toml
+[plugins.client.vite.server]
+port = 3000
+open = true
+host = "0.0.0.0"
+cors = true
+```
+
+### Generic Config File Generation
+
+`[plugins.client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
+
+**Example: Tailwind CSS v3 + PostCSS**
+
+```bash
+jac add --npm --dev tailwindcss autoprefixer postcss
+```
+
+```toml
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
+
+[plugins.client.configs.tailwind.theme.extend.colors]
+primary = "#3490dc"
+
+[dependencies.npm.dev]
+tailwindcss = "^3.4.0"
+autoprefixer = "^10.4.0"
+postcss = "^8.4.0"
+```
+
+This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/tailwind.config.js` automatically.
+
+| Use case | Config section |
+|---|---|
+| Vite plugins (Tailwind v4, custom plugins) | `[plugins.client.vite]` |
+| PostCSS / Tailwind v3 / ESLint / Prettier | `[plugins.client.configs]` |
+
+### TypeScript Configuration
+
+Override the generated `tsconfig.json` via `[plugins.client.ts]`:
+
+```toml
+[plugins.client.ts.compilerOptions]
+strict = false
+target = "ES2022"
+noUnusedLocals = false
+noUnusedParameters = false
+
+[plugins.client.ts]
+include = ["components/**/*", "lib/**/*", "types/**/*"]
+```
+
+`compilerOptions` values override defaults. `include` and `exclude` replace defaults entirely when provided.
+
+### App Metadata
+
+Set HTML `<head>` tags for the client app via `[plugins.client.app_meta_data]`:
+
+```toml
+[plugins.client.app_meta_data]
+title = "My App"
+description = "App description"
+keywords = "jac, fullstack"
+author = "Your Name"
+theme_color = "#3490dc"
+robots = "index, follow"
+og_title = "My App"
+og_description = "App description"
+og_image = "/assets/og-image.png"
+```
+
+### API Base URL
+
+Set the backend API base URL used by client-side requests:
+
+```toml
+[plugins.client.api]
+base_url = "https://api.example.com"
+```
+
+Useful for production deployments where the API lives on a different domain than the frontend.
+
+### Minification
+
+Control minification in production builds:
+
+```toml
+[plugins.client]
+minify = true
+```
+
+Defaults to `true` for `jac build` and `false` for `jac start --dev`.
+
 ---
 
 ## CLI Commands
@@ -1382,6 +1550,59 @@ description = "My awesome Jac app"
 ```
 
 **Custom Icons:** Add `pwa-192x192.png` and `pwa-512x512.png` to `pwa_icons/` directory.
+
+### PWA Install Banner
+
+After running `jac setup pwa`, your app automatically shows a native-style install prompt to users. No manual code changes required.
+
+**Features:**
+
+- **Automatic display** -- Glassmorphic dark banner with slide-up animation appears after configurable delay
+- **Chrome/Edge integration** -- Uses `beforeinstallprompt` for native install flow
+- **iOS Safari support** -- Detects iOS and shows step-by-step "Add to Home Screen" instructions
+- **Smart re-prompting** -- Exponential backoff after dismiss (7 → 14 → 28 days), max 3 prompts total
+
+**Banner Configuration in jac.toml:**
+
+```toml
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+
+# Install banner settings
+install_banner = true                    # Enable/disable (default: true)
+install_banner_delay = 3000              # Delay before showing in ms (default: 3000)
+install_banner_position = "bottom"       # "bottom" or "top" (default: bottom)
+install_button_text = "Install"          # Custom install button text
+install_dismiss_text = "Not Now"         # Custom dismiss button text
+```
+
+**Programmatic Control (Optional):**
+
+For advanced use cases, import the PWA runtime module:
+
+```jac
+cl import from "@jac/pwa" { usePwaInstall, PwaInstallButton }
+
+cl {
+    def:pub CustomInstallUI() -> JsxElement {
+        (canInstall, triggerInstall) = usePwaInstall();
+
+        return <div>
+            {canInstall and (
+                <button onClick={lambda -> None { triggerInstall(); }}>
+                    Get the App
+                </button>
+            )}
+        </div>;
+    }
+}
+```
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `usePwaInstall()` | hook | Returns `(canInstall: bool, triggerInstall: () -> void)` |
+| `PwaInstallButton` | component | Pre-styled install button component |
 
 ---
 
