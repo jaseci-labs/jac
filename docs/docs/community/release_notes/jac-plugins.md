@@ -1,5 +1,28 @@
 # jac-plugins Release Notes
 
+## jac-client PWA Install Banner
+
+Added automatic PWA install banner support for Progressive Web Apps built with jac-client.
+
+### Features
+
+- **Automatic Install Banner**: PWA apps show a native-style install prompt after `jac setup pwa` -- no manual code required
+  - Glassmorphic dark design with slide-up animation
+  - Fetches app icon and name from `manifest.json` automatically
+  - Native Chrome/Edge install prompt integration via `beforeinstallprompt`
+- **iOS Safari Support**: Detects iOS devices and shows step-by-step "Add to Home Screen" instructions modal
+- **Smart Re-prompting**: Exponential backoff after dismiss (7 → 14 → 28 days), max 3 prompts total, persisted in localStorage
+- **Configurable via jac.toml**: All banner settings in `[plugins.client.pwa]`
+  - `install_banner` - enable/disable (default: true)
+  - `install_banner_delay` - delay before showing in ms (default: 3000)
+  - `install_banner_position` - "bottom" or "top" (default: bottom)
+  - `install_button_text`, `install_dismiss_text` - custom button labels
+- **PWA Runtime Module**: Optional `@jac/pwa` import for programmatic control (`usePwaInstall` hook, `PwaInstallButton` component)
+- **Zero Dependencies**: Self-contained vanilla JS injection -- no React or external libraries required at runtime
+- **Test Suite**: 10 tests covering config loading, banner generation, and vite alias injection
+
+---
+
 ## jac-shadcn 0.1.0 (Latest Release)
 
 Initial release of jac-shadcn, a Jac CLI plugin for managing [shadcn/ui](https://ui.shadcn.com)-style components in Jac projects.
