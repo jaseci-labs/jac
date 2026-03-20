@@ -298,6 +298,18 @@ impl ASTValidationPass.enter_archetype(
     seen_methods: set[str] = set();
     for item in body {
         if isinstance(item, uni.Ability) and item.name_ref is not None {
+            # Skip @overload-decorated methods — duplicates are expected.
+            has_overload = False;
+            if item.decorators is not None {
+                for dec in item.decorators {
+                    if isinstance(dec, uni.Name) and dec.value == "overload" {
+                        has_overload = True;
+                    }
+                }
+            }
+            if has_overload {
+                continue;
+            }
             mname = item.name_ref.value;
             if mname in seen_methods {
                 self.emit(E0076, node_override=item.name_ref, name=mname);
