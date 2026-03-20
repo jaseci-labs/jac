@@ -20,6 +20,7 @@ Gap index:
   #48 - TypeCheckPass self-check produces 100+ false positives
   #49 - TYPE_CHECKING forward-reference string annotations
   #50 - postinit body not validated against by-postinit field declarations
+  #51 - @property on union types returns FunctionType instead of return type
 """
 
 import os;
@@ -518,4 +519,30 @@ test "gap 50 postinit assignment tracking" {
         incomplete_errors
     )}. "
     f"All errors: {[e.pretty_print()[:100] for e in program.errors_had]}";
+}
+
+# =========================================================================
+# Gap #51: @property on union types returns FunctionType instead of return type
+#
+# When accessing a @property on a union type (e.g., after isinstance(x, (A, B))),
+# the union member access path calls get_type_of_symbol() directly without
+# checking get_getter_type_from_property(). The single-type path does this
+# check, but the union path was missing it.
+#
+# Impact: `pet.name` where pet is `Dog | Cat` returns
+#         `<function name() -> str>` instead of `str`.
+# =========================================================================
+test "gap 51 property on union type returns function type" {
+    program = compile_and_check("checker_gap_property.jac");
+
+    # Expected: 2 type mismatch errors (wrong1: str->int, wrong2: str->int)
+    # Before fix: ok2 also errored because property returned FunctionType on union
+    fixture_errors = [
+        e
+        for e in program.errors_had
+        if "checker_gap_property.jac" in (e.loc.mod_path or "")
+    ];
+    assert len(fixture_errors) == 2 , f"Gap #51: Property on union type not unwrapped. "
+    f"Expected 2 errors but got {len(fixture_errors)}. "
+    f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
 }
