@@ -2,6 +2,12 @@
 
 Tests verify that .na.jac fixtures compile to LLVM IR, JIT-compile to
 native machine code, and produce correct results when executed via ctypes.
+
+Performance: Native compilation is cached per fixture. The same fixture compiled
+multiple times returns the cached (engine, module) tuple. This is safe because:
+  - Tests only call functions via ctypes, they don't mutate the engine
+  - LLVM ExecutionEngine is thread-safe for function calls
+  - If a test needs fresh state, use compile_native_fresh() instead
 """
 
 import ctypes;
@@ -16,10 +22,13 @@ import from llvmlite.binding { ExecutionEngine }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
-     );
+     ),
+     # Module-level cache for compiled native engines (fixture -> (engine, module))
+     # Safe because tests only read from the engine via ctypes function calls
+     _native_cache: dict[str, tuple[ExecutionEngine, uni.Module]] = {};
 
-"""Compile a .na.jac fixture and return the JIT engine."""
-def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
+"""Compile a .na.jac fixture without caching (for tests needing fresh state)."""
+def compile_native_fresh(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
@@ -27,6 +36,14 @@ def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
+}
+
+"""Compile a .na.jac fixture and return the JIT engine (cached)."""
+def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
+    if fixture not in _native_cache {
+        _native_cache[fixture] = compile_native_fresh(fixture);
+    }
+    return _native_cache[fixture];
 }
 
 """Get a ctypes-callable function from the JIT engine."""

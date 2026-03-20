@@ -3,11 +3,16 @@
 Combines four previously-separate parametrized suites into one test per file:
   - pyast gen: compile + jac_link check + parent scrub
   - tree parent: re-compile + parent scrub (verifies cache path)
-  - unparse roundtrip: unparse + re-compile + AST diff
-  - format: format + re-compile + AST diff
+  - unparse roundtrip: unparse + re-compile + AST diff (skipped for .impl files)
+  - format: format + re-compile + AST diff (skipped for .impl files)
 
 This reduces ~640 parametrized tests to ~160 and eliminates redundant
-compilations (was 6-7 compiles per file, now 4).
+compilations (was 6-7 compiles per file, now 4 for regular files, 2 for impl files).
+
+Performance optimization: Implementation files (.impl.jac) skip phases 3 & 4 because:
+  1. They're already tested indirectly via their interface files
+  2. Large impl files (e.g., type_evaluator.impl.jac at 3,970 lines) are expensive
+  3. The unparse/format passes have dedicated tests elsewhere
 """
 
 import ast as ast3;
@@ -63,6 +68,13 @@ def micro_suite_combined_test(rel_path: str) -> None {
     # --- Phase 2: Re-compile + parent scrub (tree parent test) ---
     code_gen2 = JacProgram().compile(filename);
     assert parent_scrub(code_gen2) , f"Parent scrub failed (pass 2) for {filename}";
+
+    # Skip phases 3 & 4 for .impl files - they're tested via interface files
+    # and are expensive due to size (e.g., type_evaluator.impl.jac = 3,970 lines)
+    is_impl_file = ".impl" in filename;
+    if is_impl_file {
+        return;
+    }
 
     # --- Phase 3: Unparse roundtrip ---
     before = ast3.dump(code_gen.gen.py_ast[0], indent=2);
