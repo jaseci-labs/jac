@@ -377,11 +377,14 @@ impl format(
                 executor.submit(_format_single_file_worker, fp, lintfix, check): fp
                 for fp in all_files
             };
+            completed = 0;
             for future in as_completed(futures) {
+                completed += 1;
+                fp = futures[future];
+                console.print(f"Formatting [{completed}/{total_files}] completed...");
                 try {
                     results.append(future.result());
                 } except Exception as e {
-                    fp = futures[future];
                     results.append(
                         {
                             'path': fp,
@@ -399,8 +402,9 @@ impl format(
             }
         }
     } else {
-        # Single file or to_screen mode: process sequentially
+        # Single file: show filename
         for fp in all_files {
+            console.print(f"Formatting {fp}...");
             results.append(_format_single_file_worker(fp, lintfix, check));
         }
     }
