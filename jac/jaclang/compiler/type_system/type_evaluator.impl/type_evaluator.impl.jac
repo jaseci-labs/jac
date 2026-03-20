@@ -2340,17 +2340,14 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     return None;
 }
 
-"""Check if a type is Any, object, or TypeVar."""
+"""Check if a type is Any or TypeVar (types that allow any operation)."""
 impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     # Check for TypeVarType
     if isinstance(ty, types.TypeVarType) {
         return True;
     }
-    # Check for object, Any, or TypeVar class types
+    # Check for Any or TypeVar class types
     if isinstance(ty, types.ClassType) {
-        if ty.is_builtin("object") {
-            return True;
-        }
         if (self.prefetch.any_class and ty.shared == self.prefetch.any_class.shared) {
             return True;
         }
@@ -2532,8 +2529,14 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
-    # Everything is assignable to object, Any, or TypeVar.
+    # Everything is assignable to Any or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
+        return True;
+    }
+    # Everything is assignable to object (all classes derive from object).
+    # This is separate from is_any_type() because object should NOT allow
+    # arbitrary attribute access like Any does.
+    if isinstance(dest_type, types.ClassType) and dest_type.is_builtin("object") {
         return True;
     }
     # If source is a union type and destination is NOT a union, check if ALL
