@@ -2,25 +2,25 @@
 
 """True if the bridge is a single hop (e.g. sv→na)."""
 @property
-impl InteropBinding.is_direct(self: InteropBinding) -> bool {
+impl InteropBinding.is_direct -> bool {
     return (len(self.route) == 2);
 }
 
 """True if the bridge requires multiple hops (e.g. cl→sv→na)."""
 @property
-impl InteropBinding.is_composed(self: InteropBinding) -> bool {
+impl InteropBinding.is_composed -> bool {
     return (len(self.route) > 2);
 }
 
 """True if the function is imported from another module."""
 @property
-impl InteropBinding.is_cross_module(self: InteropBinding) -> bool {
+impl InteropBinding.is_cross_module -> bool {
     return (self.source_module is not None);
 }
 
 """Server (Python) functions that native code calls."""
 @property
-impl InteropManifest.native_imports(self: InteropManifest) -> list[InteropBinding] {
+impl InteropManifest.native_imports -> list[InteropBinding] {
     return [
         b
         for b in self.bindings.values()
@@ -33,7 +33,7 @@ impl InteropManifest.native_imports(self: InteropManifest) -> list[InteropBindin
 
 """Native functions that server (Python) code calls."""
 @property
-impl InteropManifest.native_exports(self: InteropManifest) -> list[InteropBinding] {
+impl InteropManifest.native_exports -> list[InteropBinding] {
     return [
         b
         for b in self.bindings.values()
@@ -46,9 +46,7 @@ impl InteropManifest.native_exports(self: InteropManifest) -> list[InteropBindin
 
 """Native functions imported from other .na.jac modules."""
 @property
-impl InteropManifest.native_cross_module_imports(
-    self: InteropManifest
-) -> list[InteropBinding] {
+impl InteropManifest.native_cross_module_imports -> list[InteropBinding] {
     return [
         b
         for b in self.bindings.values()
@@ -62,9 +60,7 @@ impl InteropManifest.native_cross_module_imports(
 
 """Server functions that client (JS) code calls."""
 @property
-impl InteropManifest.server_exports_to_client(
-    self: InteropManifest
-) -> list[InteropBinding] {
+impl InteropManifest.server_exports_to_client -> list[InteropBinding] {
     return [
         b
         for b in self.bindings.values()

@@ -40,7 +40,7 @@ impl StringPool.serialize(self: StringPool) -> bytes {
 }
 
 # --- JirHeader methods ---
-impl JirHeader.to_bytes(self: JirHeader) -> bytes {
+impl JirHeader.to_bytes -> bytes {
     return struct.pack(
         HEADER_FMT,
         self.magic,
@@ -55,7 +55,7 @@ impl JirHeader.to_bytes(self: JirHeader) -> bytes {
     );
 }
 
-impl JirHeader.is_compatible(self: JirHeader) -> bool {
+impl JirHeader.is_compatible -> bool {
     expected_py = (sys.version_info.major << 8) | sys.version_info.minor;
     if self.python_version != expected_py {
         return False;

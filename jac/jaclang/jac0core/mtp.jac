@@ -28,7 +28,7 @@ obj MTIR {
 
     """Convert to runtime context."""
     @property
-    def runtime(self: MTIR) -> MTRuntime;
+    def runtime -> MTRuntime;
 }
 
 obj Info {
@@ -53,7 +53,7 @@ obj ClassInfo(Info) {
         base_classes: list[ClassInfo],
         methods: list[MethodInfo];
 
-    def postinit(self: ClassInfo) -> object;
+    def postinit -> object;
 }
 
 obj FunctionInfo(Info) {
@@ -62,7 +62,7 @@ obj FunctionInfo(Info) {
         tools: (list[MethodInfo] | None) = None,
         by_call: bool = False;
 
-    def postinit(self: FunctionInfo) -> object;
+    def postinit -> object;
 }
 
 obj MethodInfo(FunctionInfo) {

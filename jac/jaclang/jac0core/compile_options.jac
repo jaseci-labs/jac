@@ -17,12 +17,10 @@ obj CompileOptions {
         cancel_token: Any = None;
 
     """Return a copy with skip_native_engine set."""
-    def with_skip_native_engine(
-        self: CompileOptions, `skip: bool = True
-    ) -> CompileOptions;
+    def with_skip_native_engine(`skip: bool = True) -> CompileOptions;
 
     """Return a copy with aot_mode set."""
-    def with_aot_mode(self: CompileOptions, mode: bool = True) -> CompileOptions;
+    def with_aot_mode(mode: bool = True) -> CompileOptions;
 }
 
 glob DEFAULT_OPTIONS = CompileOptions();
