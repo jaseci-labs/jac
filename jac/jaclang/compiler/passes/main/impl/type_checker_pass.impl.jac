@@ -95,7 +95,7 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
         if isinstance(nd.target.right, uni.IndexSlice) {
             idx_slice: uni.IndexSlice = nd.target.right;
             for slice in idx_slice.slices {
-                slice_item: uni.IndexSlice.Slice = slice;
+                slice_item: uni.Slice = slice;
                 if slice_item.start {
                     self.evaluator.validate_typevar_in_type_expr(slice_item.start);
                 }
@@ -637,7 +637,7 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
         # Skip check for UnknownType and any-like types (Any, object)
         # Following Pyright's pattern: these types are assumed to be iterable.
     } elif not isinstance(collection_type, types.UnknownType)
-    and not collection_type.is_any_type() {
+    and not self.evaluator.is_any_type(collection_type) {
         # Enum classes are iterable via EnumMeta.__iter__ which is not in the
         # Jac type system's MRO. Skip the __iter__ check for enum classes.
         is_enum = (

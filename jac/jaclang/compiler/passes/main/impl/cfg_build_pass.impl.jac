@@ -281,7 +281,7 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
         and (k is parent.iter or k is parent.count_by) {
             continue;
         }
-        if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef)) {
+        if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             # Scope boundary -- don't recurse into nested scopes
             continue;
         }
@@ -727,5 +727,20 @@ impl CFGBuildPass.exit_impl_def(nd: uni.ImplDef) -> None {
 impl CFGBuildPass.exit_module_code(nd: uni.ModuleCode) -> None {
     if nd.body {
         self._link_sequential(nd.body);
+    }
+}
+
+"""Test: scope boundary, link to body (same as Ability)."""
+impl CFGBuildPass.exit_test(nd: uni.Test) -> None {
+    if nd.body and isinstance(nd.body, Sequence) {
+        body = [
+            s
+            for s in nd.body
+            if isinstance(s, uni.CodeBlockStmt)
+        ];
+        if body {
+            self.link_bbs(nd, body[0]);
+            self._link_sequential(body);
+        }
     }
 }

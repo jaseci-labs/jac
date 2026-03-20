@@ -66,6 +66,7 @@ obj CFGBuildPass(UniPass) {
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_impl_def(nd: uni.ImplDef) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
+    def exit_test(nd: uni.Test) -> None;
 }
 
 """Fetch basic blocks."""

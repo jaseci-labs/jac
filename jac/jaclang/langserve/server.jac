@@ -40,6 +40,10 @@ def formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit];
 
+def lintfix_formatting(
+    ls: JacLangServer, params: lspt.DocumentFormattingParams
+) -> list[lspt.TextEdit];
+
 """Check syntax on file creation."""
 def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) -> None { }
 

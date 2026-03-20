@@ -684,25 +684,22 @@ impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> uni.AtomTrailer {
     value = self.convert(nd.value);
     slice = self.convert(nd.slice);
     if (not isinstance(slice, uni.IndexSlice) and isinstance(slice, uni.Expr)) {
-        slice = uni.IndexSlice(
-            slices=[uni.IndexSlice.Slice(slice, None, None)],
-            is_range=False,
-            kid=[slice]
-        );
+        slice_node = uni.Slice(start=slice, stop=None, step=None, kid=[slice]);
+        slice = uni.IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
     }
     if (
         not isinstance(slice, uni.IndexSlice)
         and isinstance(slice, uni.TupleVal)
         and slice.values
     ) {
-        slices: list[uni.IndexSlice.Slice] = [];
+        slices: list[uni.Slice] = [];
         for index_slice in slice.values {
             if not isinstance(index_slice, uni.IndexSlice) {
                 raise self.ice();
             }
             slices.append(index_slice.slices[0]);
         }
-        slice = uni.IndexSlice(slices=slices, is_range=True, kid=[slice]);
+        slice = uni.IndexSlice(slices=slices, is_range=True, kid=list(slices));
     }
     if (isinstance(value, uni.Expr) and isinstance(slice, uni.IndexSlice)) {
         return uni.AtomTrailer(
@@ -759,11 +756,8 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> uni.IndexSlice {
         and (isinstance(upper, uni.Expr) or (upper is None))
         and (isinstance(step, uni.Expr) or (step is None))
     ) {
-        return uni.IndexSlice(
-            slices=[uni.IndexSlice.Slice(lower, upper, step)],
-            is_range=True,
-            kid=valid_kid
-        );
+        slice_node = uni.Slice(start=lower, stop=upper, step=step, kid=valid_kid);
+        return uni.IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
     } else {
         raise self.ice();
     }

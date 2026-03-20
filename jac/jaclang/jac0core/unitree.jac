@@ -311,7 +311,8 @@ are evaluated to produce a value.
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit;
+        attached_tokens: (list[Token] | None) by postinit,
+        backend_type_tag: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -1134,15 +1135,17 @@ obj FuncCall(Expr) {
     def postinit -> None;
 }
 
+"""Slice item node type for IndexSlice."""
+obj Slice(UniNode) {
+    has start: (Expr | None),
+        stop: (Expr | None),
+        step: (Expr | None);
+
+    def postinit -> None;
+}
+
 """IndexSlice node type for Jac Ast."""
 obj IndexSlice(AtomExpr) {
-    """Slice node type for Jac Ast."""
-    obj Slice {
-        has start: (Expr | None),
-            stop: (Expr | None),
-            step: (Expr | None);
-    }
-
     has slices: list[Slice],
         is_range: bool;
 
@@ -1381,6 +1384,8 @@ obj Token(UniNode) {
 
 """Name node type for Jac Ast."""
 obj Name(Token, NameAtom) {
+    has js_decl_kind: (str | None) by postinit;
+
     def init(
         orig_src: Source,
         name: str,

@@ -138,7 +138,7 @@ impl run(
                     ir_mod = na_program.compile(file_path=full_path);
                     if (
                         ir_mod
-                        and ir_mod.gen._auto_promoted_native
+                        and ir_mod.gen.native_compat
                         and ir_mod.gen.native_engine
                     ) {
                         # Auto-promoted native module: execute via JIT

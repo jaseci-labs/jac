@@ -1202,13 +1202,19 @@ impl NormalizePass.enter_set_val(nd: uni.SetVal) -> None {
 
 """Normalize TupleVal kid list."""
 impl NormalizePass.enter_tuple_val(nd: uni.TupleVal) -> None {
+    # TupleVal parent is now Slice (which lives inside IndexSlice)
+    index_slice_parent = (
+        nd.parent.parent
+            if nd.parent and isinstance(nd.parent, uni.Slice)
+            else nd.parent
+    );
     in_ret_type = (
-        nd.parent
-        and isinstance(nd.parent, uni.IndexSlice)
-        and nd.parent
-        and isinstance(nd.parent.parent, uni.AtomTrailer)
-        and nd.parent.parent
-        and isinstance(nd.parent.parent.parent, uni.FuncSignature)
+        index_slice_parent
+        and isinstance(index_slice_parent, uni.IndexSlice)
+        and index_slice_parent
+        and isinstance(index_slice_parent.parent, uni.AtomTrailer)
+        and index_slice_parent.parent
+        and isinstance(index_slice_parent.parent.parent, uni.FuncSignature)
     );
     new_kid: list[uni.UniNode] = (
         [nd.gen_token(Tok.LPAREN), ] if not in_ret_type else []
@@ -1393,23 +1399,35 @@ impl NormalizePass.enter_index_slice(nd: uni.IndexSlice) -> None {
             if i > 0 {
                 new_kid.append(nd.gen_token(Tok.COMMA));
             }
-            if nd.slices[i].start {
-                new_kid.append(nd.slices[i].start);
+            sl = nd.slices[i];
+            sl_kid: list[uni.UniNode] = [];
+            if sl.start {
+                sl_kid.append(sl.start);
             }
-            new_kid.append(nd.gen_token(Tok.COLON));
-            if nd.slices[i].stop {
-                new_kid.append(nd.slices[i].stop);
+            sl_kid.append(nd.gen_token(Tok.COLON));
+            if sl.stop {
+                sl_kid.append(sl.stop);
             }
-            if nd.slices[i].step {
-                new_kid.append(nd.gen_token(Tok.COLON));
-                new_kid.append(nd.slices[i].step);
+            if sl.step {
+                sl_kid.append(nd.gen_token(Tok.COLON));
+                sl_kid.append(sl.step);
             }
+            sl.set_kids(nodes=sl_kid);
+            new_kid.append(sl);
         }
-    } elif len(nd.slices) == 1 and nd.slices[0].start {
-        new_kid.append(nd.slices[0].start);
+    } elif len(nd.slices) == 1 {
+        sl = nd.slices[0];
+        sl_kid = [sl.start] if sl.start else [];
+        sl.set_kids(nodes=sl_kid);
+        new_kid.append(sl);
     }
     new_kid.append(nd.gen_token(Tok.RSQUARE));
     nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize Slice kid list - handled by parent IndexSlice."""
+impl NormalizePass.enter_slice(nd: uni.Slice) -> None {
+# Kids are set by enter_index_slice which has the is_range context.
 }
 
 """Normalize EdgeRefTrailer kid list."""

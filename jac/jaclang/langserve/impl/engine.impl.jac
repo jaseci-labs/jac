@@ -502,18 +502,20 @@ impl JacLangServer.get_hover_info(
     return None;
 }
 
-"""Return formatted jac."""
-impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
+"""Format a document, optionally with lint auto-fix applied."""
+impl JacLangServer.format_document(
+    file_path: str, auto_lint: bool = False
+) -> list[lspt.TextEdit] {
     document = self.workspace.get_text_document(file_path);
     try {
         prog = JacProgram.jac_str_formatter(
-            source_str=document.source, file_path=document.path
+            source_str=document.source, file_path=document.path, auto_lint=auto_lint
         );
         formatted_text = prog.mod.main.gen.jac
             if not prog.errors_had
             else document.source;
     } except Exception as e {
-        self.log_error(f"'Error during formatting: '{e}");
+        self.log_error(f"Error during {'lintfix ' if auto_lint else ''}formatting: {e}");
         formatted_text = document.source;
     }
     return [

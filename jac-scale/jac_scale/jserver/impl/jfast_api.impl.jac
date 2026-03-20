@@ -842,4 +842,43 @@ impl JFastApiServer.init(
     self.app = app or FastAPI();
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
+
+    async def request_context_middleware(request: Request, call_next: Callable) {
+        ctx = JacRuntimeInterface.create_j_context(user_root=None);
+        JacRuntime.set_request_context(ctx);
+
+        user_id = getattr(request.state, 'user_root_id', None)
+            if request?.state
+            else None;
+
+        if user_id {
+            try {
+                ctx.set_user_root(user_id);
+            } except ValueError {
+                logger.warning(f"Invalid user_root_id: {user_id}, using system root");
+            }
+        }
+
+        try {
+            response = await call_next(request);
+            try {
+                ctx.mem.commit();
+            } except Exception as e {
+                logger.error(
+                    f"CRITICAL: Failed to commit request data: {e}. Request will fail.",
+                    exc_info=True
+                );
+                raise;
+            }
+
+            return response;
+        } finally {
+            try {
+                JacRuntime.clear_request_context();
+            } except Exception as e {
+                logger.warning(f"Failed to clear request context: {e}", exc_info=True);
+            }
+        }
+    }
+    self.app.middleware('http')(request_context_middleware);
 }
