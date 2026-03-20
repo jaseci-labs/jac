@@ -271,7 +271,6 @@ test "E0075: duplicate base class" {
 }
 
 test "E0076: duplicate method definition" {
-    pytest.skip("E0076 not yet implemented");
     (prog, _) = compile_and_check("parser_E0076_duplicate_method.jac");
     assert has_diagnostic_code(prog, "E0076");
 }
