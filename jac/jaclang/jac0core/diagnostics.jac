@@ -28,7 +28,7 @@ obj DiagnosticInfo {
         help_text: str | None = None,
         url_slug: str | None = None;
 
-    def format_message(self: DiagnosticInfo, **kwargs: object) -> str {
+    def format_message(**kwargs: object) -> str {
         try {
             return self.message_template.format(**kwargs);
         } except KeyError as e {
