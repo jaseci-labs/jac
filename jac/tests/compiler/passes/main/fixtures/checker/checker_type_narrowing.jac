@@ -512,3 +512,42 @@ def test_truthiness_no_none_union(val: str | int) -> str | int {
     result: str | int = val;  # <-- Ok, val is still str | int
     return result;
 }
+
+# =========================================================================
+# 18. OR short-circuit type narrowing
+#     In `X or Y`, when evaluating Y, X was falsy.
+#     This means the type checker should narrow based on what must be true
+#     when X is false.
+# =========================================================================
+
+# 18a. `not x or x.method()` — `not x` falsy means x is truthy (not None)
+#      The or expression returns bool | str (bool from `not x`, str from bark())
+def test_not_or_method(x: Dog | None) -> bool | str {
+    return (not x or x.bark());  # <-- Ok: x narrowed to Dog
+}
+
+# 18b. `x is None or x.method()` — `x is None` falsy means x is not None
+def test_is_none_or_method(x: Dog | None) -> bool | str {
+    return (x is None or x.bark());  # <-- Ok: x narrowed to Dog
+}
+
+# 18c. AtomTrailer narrowing: `not self.field or self.field.method()`
+obj MaybeHandler {
+    has dog: Dog | None = None;
+
+    def try_bark -> bool | str {
+        return (not self.dog or self.dog.bark());  # <-- Ok: self.dog narrowed
+    }
+}
+
+# 18d. isinstance negation in OR: `not isinstance(x, Dog) or x.bark()`
+def test_not_isinstance_or_method(animal: Dog | Cat) -> bool | str {
+    return (not isinstance(animal, Dog) or animal.bark());  # <-- Ok: animal narrowed to Dog
+}
+
+# E11. OR narrowing does NOT persist past the expression
+#      Two errors: E1099 (attribute access on None) + E1002 (return type mismatch)
+def test_error_or_no_persist(x: Dog | None) -> str {
+    discard = (not x or x.bark());
+    return x.bark();  # <-- Error: x is still Dog | None here
+}

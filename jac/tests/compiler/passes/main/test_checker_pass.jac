@@ -1408,7 +1408,7 @@ test "type_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 11 , f"Expected exactly 11 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 13 , f"Expected exactly 13 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1456,6 +1456,14 @@ test "type_narrowing" {
         """
         to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
                           ^^
+        """,
+        """
+        return x.bark();  # <-- Error: x is still Dog | None here
+               ^^^^
+        """,
+        """
+        return x.bark();  # <-- Error: x is still Dog | None here
+        ^^^^^^^^^^^^^^^^
         """
     ];
 

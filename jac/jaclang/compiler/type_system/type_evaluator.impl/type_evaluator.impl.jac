@@ -2673,9 +2673,11 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Check scope narrowing for Name nodes ONLY in ternary expressions.
-    # Regular if/else uses CFG-based narrowing which correctly handles branches.
-    if isinstance(node_, uni.Name) and self._in_ternary_expr_depth > 0 {
+    # Check scope narrowing for Name nodes in inline expression contexts
+    # (ternary and AND/OR boolean expressions) where CFG-based narrowing
+    # does not apply. Regular if/else uses CFG-based narrowing for Names.
+    if isinstance(node_, uni.Name)
+    and (self._in_ternary_expr_depth > 0 or self._in_bool_expr_narrowing_depth > 0) {
         if scope_narrowed := self.get_scope_narrowing(node_.value) {
             node_.type = scope_narrowed;
             return scope_narrowed;
@@ -2883,6 +2885,9 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     # Currently, ternary uses scope-based narrowing for Names while if/else uses CFG.
     # Once CFG properly covers ternary expressions, this counter can be removed.
     self._in_ternary_expr_depth: int = 0;
+    # Counter for AND/OR boolean expression contexts that need scope-based
+    # Name narrowing. Incremented/decremented by TypeCheckPass enter/exit_bool_expr.
+    self._in_bool_expr_narrowing_depth: int = 0;
     # Track symbols currently being narrowed to prevent recursive cycles.
     # Uses id(symbol) for unique identity, avoiding name collisions between
     # different symbols with the same name in different scopes.
@@ -3371,6 +3376,86 @@ impl TypeEvaluator.process_condition(condition: uni.Expr) -> None {
                 }
             }
         }
+    }
+}
+
+"""Process a condition under the assumption it evaluated to falsy.
+
+Used for OR expressions: in `X or Y`, when evaluating Y, X was falsy.
+This is the inverse of process_condition — it narrows based on what
+must be true when a condition is false.
+
+Supported patterns:
+  - `not X` being falsy → X is truthy → process_condition(X)
+  - isinstance(x, T) being falsy → narrow x to exclude T
+  - `x is None` being falsy → x is not None → exclude None
+  - `x is not None` being falsy → x is None → narrow to None
+  - OR expression being falsy → all operands are falsy → recurse
+  - Truthiness (`x` where x: T|None) being falsy → not useful (falsy != None)
+"""
+impl TypeEvaluator.process_negated_condition(condition: uni.Expr) -> None {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Unwrap parentheses
+    if isinstance(condition, uni.AtomUnit) and condition.value {
+        self.process_negated_condition(condition.value);
+        return;
+    }
+    # `not X` being falsy means X is truthy — delegate to positive narrowing
+    if isinstance(condition, uni.UnaryExpr)
+    and isinstance(condition.op, uni.Token)
+    and condition.op.name == Tok.NOT {
+        self.process_condition(condition.operand);
+        return;
+    }
+    # OR being falsy means ALL operands are falsy
+    if isinstance(condition, uni.BoolExpr) and condition.op.name == Tok.KW_OR {
+        for val in condition.values {
+            self.process_negated_condition(val);
+        }
+        return;
+    }
+    # isinstance(x, T) being falsy → exclude T from x's type
+    if isinstance_info := self._extract_isinstance_info(condition) {
+        (narrowing_key, isinstance_type) = isinstance_info;
+        sym = self._find_symbol_by_key(narrowing_key, condition);
+        if sym is not None {
+            base_type = self.get_type_of_symbol(sym);
+            narrowed = self.exclude_type_from_union(base_type, isinstance_type);
+            if narrowed != base_type {
+                self.add_scope_narrowing(narrowing_key, narrowed);
+            }
+        }
+        return;
+    }
+    # None checks inverted
+    if (
+        isinstance(condition, uni.CompareExpr)
+        and len(condition.ops) == 1
+        and len(condition.rights) == 1
+        and isinstance(condition.rights[0], uni.Null)
+    ) {
+        narrowing_key = self.get_narrowing_key(condition.left);
+        if narrowing_key is not None
+        and self.prefetch
+        and self.prefetch.none_type_class {
+            expr_type = self.get_type_of_expression(condition.left);
+            none_type = self._convert_to_instance(self.prefetch.none_type_class);
+            if condition.ops[0].name == Tok.KW_IS {
+                # `x is None` being falsy → x is not None → exclude None
+                if self._union_contains_none(expr_type) {
+                    narrowed = self.exclude_type_from_union(expr_type, none_type);
+                    if narrowed != expr_type {
+                        self.add_scope_narrowing(narrowing_key, narrowed);
+                    }
+                }
+            } elif condition.ops[0].name == Tok.KW_ISN {
+                # `x is not None` being falsy → x is None → narrow to None
+                if self._union_contains_none(expr_type) {
+                    self.add_scope_narrowing(narrowing_key, none_type);
+                }
+            }
+        }
+        return;
     }
 }
 

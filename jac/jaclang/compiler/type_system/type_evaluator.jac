@@ -426,6 +426,7 @@ obj TypeEvaluator {
     def get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def process_condition(condition: uni.Expr) -> None;
+    def process_negated_condition(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(
