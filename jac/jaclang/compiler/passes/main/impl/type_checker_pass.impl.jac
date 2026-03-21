@@ -155,6 +155,26 @@ impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
     self.evaluator.pop_narrowing_scope();
 }
 
+"""Enter a match case - narrow the match subject based on the pattern type."""
+impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
+    self.evaluator.push_narrowing_scope();
+    parent = nd.parent;
+    if isinstance(parent, uni.MatchStmt) {
+        key = self.evaluator.get_narrowing_key(parent.target);
+        if key {
+            pattern_type = self.evaluator._get_type_from_match_pattern(nd.pattern);
+            if pattern_type is not None {
+                self.evaluator.add_scope_narrowing(key, pattern_type);
+            }
+        }
+    }
+}
+
+"""Exit a match case - clean up narrowing scope."""
+impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
+    self.evaluator.pop_narrowing_scope();
+}
+
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
     self.evaluator.get_type_of_expression(nd);

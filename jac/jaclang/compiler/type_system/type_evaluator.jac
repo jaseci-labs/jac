@@ -360,7 +360,7 @@ obj TypeEvaluator {
     # -------------------------------------------------------------------------
     def assign_type_to_type_var(
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
-    ) -> None;
+    ) -> bool;
 
     def infer_type_args(
         caller_type: types.ClassType, expr: uni.FuncCall
