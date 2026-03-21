@@ -2355,3 +2355,15 @@ test "match_case_narrowing" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+"""Enum static methods resolve correctly (not treated as enum members)."""
+test "enum_static_method" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_static_method.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
