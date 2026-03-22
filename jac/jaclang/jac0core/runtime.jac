@@ -154,10 +154,14 @@ def _prefetch_edges(origin: list[NodeArchetype]) -> None {
         for anchor in nanch.edges {
             loaded = ctx.mem.get(anchor.id);
             if loaded {
-                if hasattr(loaded, 'source') and loaded.source is not None and not loaded.source.is_populated() {
+                if loaded?.source
+                and loaded.source is not None
+                and not loaded.source.is_populated() {
                     node_ids.append(loaded.source.id);
                 }
-                if hasattr(loaded, 'target') and loaded.target is not None and not loaded.target.is_populated() {
+                if loaded?.target
+                and loaded.target is not None
+                and not loaded.target.is_populated() {
                     node_ids.append(loaded.target.id);
                 }
             }

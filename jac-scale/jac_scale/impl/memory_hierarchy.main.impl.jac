@@ -120,7 +120,7 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
             if self.l2 {
                 try {
                     self.l2.put(anchor);
-                } except Exception {}
+                } except Exception { }
             }
             result[id] = anchor;
         }
