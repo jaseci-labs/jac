@@ -29,3 +29,21 @@ def search_docs(query: str, limit: int = 5) -> dict[str, Any];
 
 """Parse code and return AST info."""
 def get_ast(code: str, fmt: str = "tree") -> dict[str, Any];
+
+"""Lint Jac code with optional auto-fix."""
+def lint_jac(code: str, auto_fix: bool = False) -> dict[str, Any];
+
+"""Convert Jac code to Python."""
+def jac_to_py(code: str) -> dict[str, Any];
+
+"""Convert Jac code to JavaScript."""
+def jac_to_js(code: str) -> dict[str, Any];
+
+"""Execute Jac code and return output."""
+def run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, Any];
+
+"""Generate graph visualization from Jac code."""
+def graph_visualize(
+    code: str, format: str = "dot", depth: int = -1,
+    bfs: bool = True, edge_limit: int = 512, node_limit: int = 512
+) -> dict[str, Any];
