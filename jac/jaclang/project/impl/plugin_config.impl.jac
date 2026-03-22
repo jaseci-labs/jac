@@ -2,6 +2,7 @@
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.project.config { JacConfig }
+import from jaclang.jac0core.runtime { JacRuntime }
 
 """Deep merge two dictionaries recursively."""
 impl deep_merge(base: dict[str, Any], override_dict: dict[str, Any]) -> dict[str, Any] {
@@ -22,11 +23,12 @@ impl deep_merge(base: dict[str, Any], override_dict: dict[str, Any]) -> dict[str
 
 """Initialize config loader with project directory."""
 impl PluginConfigBase.postinit{
-    if self.project_dir is None {
-        self.project_dir = Path.cwd();
-    } else {
-        self.project_dir = self.project_dir;
-    }
+    full_target = JacRuntime.full_target_path;
+    self.project_dir = (
+        self.project_dir
+            if self.project_dir is not None
+            else (Path(full_target).parent if full_target else Path.cwd())
+    );
     self.config_file = self.project_dir / 'jac.toml';
     self._config = None;
     self._jac_config = None;

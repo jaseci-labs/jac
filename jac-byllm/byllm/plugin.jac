@@ -130,7 +130,9 @@ class JacRuntime {
         }
         import from byllm.llm { Model }
         import from byllm.config_loader { get_byllm_config }
-        config = get_byllm_config();
+        full_target = Jac?.full_target_path;
+        project_dir: Path | None = Path(full_target).parent if full_target else None;
+        config = get_byllm_config(project_dir);
         model_config = config.get_model_config();
         call_params_config = config.get_call_params_config();
         instance = Model(
