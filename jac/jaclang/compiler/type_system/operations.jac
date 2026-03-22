@@ -246,6 +246,28 @@ def get_type_of_binary_operation(
         }
     }
 
+    # Handle '|' union types BEFORE the is_any_type() guard, because TypeVarType
+    # reports is_any_type()=True but is valid in type annotations (e.g., _VT | None).
+    if (isinstance(expr.op, uni.Token) and expr.op.name == Tok.BW_OR) {
+        def is_annotation_type(ty: jtypes.TypeBase) -> bool {
+            if ty.is_instantiable() or isinstance(ty, jtypes.UnionType) {
+                return True;
+            }
+            # TypeVars are valid in union type annotations (e.g., _VT | None in typeshed stubs).
+            if isinstance(ty, jtypes.TypeVarType) {
+                return True;
+            }
+            # Although None is not a valid class, it can be used as a class in the type annotation.
+            if isinstance(ty, jtypes.ClassType) {
+                return ty.shared == evaluator.prefetch.none_type_class.shared;
+            }
+            return False;
+        }
+        if is_annotation_type(left_type) and is_annotation_type(right_type) {
+            return jtypes.UnionType(types=[left_type, right_type]);
+        }
+    }
+
     if left_type.is_any_type() or right_type.is_any_type() {
         return jtypes.UnknownType();
     }
@@ -263,22 +285,6 @@ def get_type_of_binary_operation(
         #
         # TODO: Pyright checks if the types support '__or__' and '__ror__' before returning UnionType
         # If they support, we can treat them as binary operands, instead of Union types.
-        def is_annotation_type(ty: jtypes.TypeBase) -> bool {
-            if ty.is_instantiable() or isinstance(ty, jtypes.UnionType) {
-                return True;
-            }
-            # Althought None is not a valid class, it can be used as a class in the type annotation.
-            if isinstance(ty, jtypes.ClassType) {
-                return ty.shared == evaluator.prefetch.none_type_class.shared;
-            }
-            return False;
-        }
-        if expr.op.name == Tok.BW_OR {
-            # TODO: Handle None instance used
-            if is_annotation_type(left_type) and is_annotation_type(right_type) {
-                return jtypes.UnionType(types=[left_type, right_type]);
-            }
-        }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         # Apply numeric type promotion for arithmetic operations (int -> float)
         if expr.op.name in ARITHMETIC_OPERATORS {

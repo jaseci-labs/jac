@@ -55,10 +55,21 @@ impl check(
     def check_single_file(
         prog: JacProgram, file_path: str
     ) -> tuple[bool, int, int, list, list] {
+        import os;
+        import from jaclang.jac0core.bccache { discover_base_file }
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 0, [], []);
+        }
+        # If the file is an annex (.impl.jac or .test.jac), compile the base
+        # file instead so the full annex pipeline runs (DeclImplMatchPass, etc.).
+        # Then filter errors/warnings to only those originating from the annex file.
+        annex_filter_path: (str | None) = None;
+        base_path = discover_base_file(file_path);
+        if base_path is not None {
+            annex_filter_path = os.path.realpath(file_path);
+            file_path = base_path;
         }
         try {
             import from jaclang.jac0core.compile_options { CompileOptions }
@@ -88,6 +99,19 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
+            # If checking an annex file, further filter to only errors from that file
+            if annex_filter_path is not None {
+                filtered_errors = [
+                    e
+                    for e in filtered_errors
+                    if e.loc and e.loc.mod_path == annex_filter_path
+                ];
+                filtered_warnings = [
+                    w
+                    for w in filtered_warnings
+                    if w.loc and w.loc.mod_path == annex_filter_path
+                ];
+            }
             err_count = len(filtered_errors);
             warn_count = len(filtered_warnings);
 
@@ -372,36 +396,51 @@ impl format(
     results: list[dict] = [];
 
     if use_parallel {
-        with ProcessPoolExecutor(max_workers=max_workers) as executor {
-            futures = {
-                executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                for fp in all_files
-            };
-            completed = 0;
-            for future in as_completed(futures) {
-                completed += 1;
-                fp = futures[future];
-                console.print(f"Formatting [{completed}/{total_files}] completed...");
-                try {
-                    results.append(future.result());
-                } except Exception as e {
-                    results.append(
-                        {
-                            'path': fp,
-                            'success': False,
-                            'changed': False,
-                            'errors': 0,
-                            'syntax_errors': [f"Worker error: {e}"],
-                            'warnings_strs': [],
-                            'errors_strs': [],
-                            'formatted_code': None,
-                            'impl_results': []
-                        }
+        try {
+            import multiprocessing as mp;
+            ctx = mp.get_context("fork") if os.name != "nt" else None;
+            pool_cls = (
+                ProcessPoolExecutor
+                    if ctx is None
+                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
+            );
+            with pool_cls(max_workers=max_workers) as executor {
+                futures = {
+                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
+                    for fp in all_files
+                };
+                completed = 0;
+                for future in as_completed(futures) {
+                    completed += 1;
+                    fp = futures[future];
+                    console.print(
+                        f"Formatting [{completed}/{total_files}] completed..."
                     );
+                    try {
+                        results.append(future.result());
+                    } except Exception as e {
+                        results.append(
+                            {
+                                'path': fp,
+                                'success': False,
+                                'changed': False,
+                                'errors': 0,
+                                'syntax_errors': [f"Worker error: {e}"],
+                                'warnings_strs': [],
+                                'errors_strs': [],
+                                'formatted_code': None,
+                                'impl_results': []
+                            }
+                        );
+                    }
                 }
             }
+        } except Exception {
+            # Fall back to sequential processing if multiprocessing fails
+            use_parallel = False;
         }
-    } else {
+    }
+    if not use_parallel {
         # Single file: show filename
         for fp in all_files {
             console.print(f"Formatting {fp}...");
