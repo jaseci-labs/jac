@@ -529,26 +529,21 @@ impl TypeEvaluator._extract_type_params(
     outer_names = {tp.name for tp in outer_type_params};
 
     # Handle Python-style generics: obj Box(Generic[T])
-    # Track seen TypeVar names to deduplicate. A class like
-    # Mapping(Collection[_KT], Generic[_KT, _VT_co]) would otherwise collect
-    # _KT twice, causing type_params/type_args positional mismatches.
+    # Track seen TypeVar names to deduplicate (e.g. Mapping(Collection[_KT],
+    # Generic[_KT, _VT_co]) would otherwise collect _KT twice).
     #
-    # IMPORTANT: When Generic[...] is explicitly present in the bases, it is the
-    # authoritative declaration of type parameter order (PEP 484). We must process
-    # it FIRST so that other parameterized bases (which may list TypeVars in a
-    # different order) don't produce an incorrect ordering.
+    # Two-pass strategy: when Generic[...] is explicitly present in the bases,
+    # PEP 484 makes it the authoritative declaration of type parameter order.
+    # We process it FIRST so other bases don't impose encounter order.
     # e.g. dict_values(ValuesView[_VT_co], Generic[_KT_co, _VT_co]) must produce
     # [_KT_co, _VT_co] (from Generic), not [_VT_co, _KT_co] (encounter order).
+    #
+    # Generic detection uses two approaches:
+    #   1. is_special_form("Generic") on the resolved type (when alias_name is set).
+    #   2. AST symbol name fallback — Generic in typeshed stubs resolves to
+    #      type[_SpecialForm] without alias_name, so we check the Name node
+    #      value directly (mirroring Pyright's aliasedName approach).
     seen_names: set[str] = set();
-
-    # First pass: find and process Generic[...] base to establish canonical order.
-    # Per PEP 484, Generic[T1, T2, ...] is the authoritative declaration of
-    # type parameter order. We detect it two ways:
-    #   1. Via is_special_form("Generic") on the resolved type (when alias_name
-    #      is set, e.g. for prefetched types).
-    #   2. Via the AST symbol name — Generic in typeshed stubs resolves to
-    #      type[_SpecialForm] without alias_name, so we fall back to checking
-    #      the Name node value, mirroring Pyright's aliasedName approach.
     generic_base: uni.AtomTrailer | None = None;
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
