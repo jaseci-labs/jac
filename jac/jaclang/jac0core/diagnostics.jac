@@ -197,6 +197,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
+     E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
      # Parser: warnings
      W0060 = _warn(
          "W0060",
