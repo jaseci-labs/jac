@@ -18,6 +18,9 @@ Bug index:
   #23     - With statement alias typed as Unknown (wrong traversal order)
   #ANY-1  - typing.Any attribute access incorrectly raises E1030
   #FINAL-1 - Final[T] not unwrapped for attribute access
+  #TVAR-1 - Duplicate TypeVars in _extract_type_params cause positional mismatch
+  #TVAR-2 - No transitive TypeVar propagation through base_classes in build_type_var_solution
+  #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
 """
 
 import os;
@@ -325,4 +328,81 @@ test "bug_final1_final_unwrap_for_attr_access" {
     program = compile_and_check("checker_bug_final_unwrap_attr.jac");
     assert len(program.errors_had) == 0 , f"Bug #FINAL-1: attribute access on Final[T] raised E1030 "
     f"({len(program.errors_had)} errors). Final[T] must unwrap to T for member lookup.";
+}
+
+# =========================================================================
+# Bug #TVAR-1: Duplicate TypeVars in _extract_type_params
+#
+# When a class inherits from multiple generic bases with overlapping TypeVars
+# (e.g., BaseMapping(BaseCollection[K], Generic[K, V])), _extract_type_params
+# collected K twice, producing type_params=[K, K, V]. This caused positional
+# mismatches when mapping type_params to type_args during specialization,
+# leaving V unresolved -> Unknown.
+#
+# Fix: Deduplicate TypeVars by name in _extract_type_params, preserving
+# first-occurrence order (matching Python's typing module behavior).
+#
+# Impact: Methods returning TypeVars from multi-base generic classes had
+#         Unknown return types, suppressing legitimate type errors.
+# =========================================================================
+test "bug_tvar1_typevar_dedup_in_extract_type_params" {
+    program = compile_and_check("checker_bug_typevar_dedup.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = m.lookup("key")`)
+    # Without fix: 0 errors (V is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-1: _extract_type_params duplicates TypeVars from "
+    f"multiple generic bases, causing positional mismatch. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without dedup, V in BaseMapping(BaseCollection[K], Generic[K, V]) is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-2: No transitive TypeVar propagation in build_type_var_solution
+#
+# build_type_var_solution only checked MRO entries for type_args (which are
+# unspecialized), missing the parameterized base_classes chain. When a class
+# like ChildMap[str, int] inherits MiddleMap[K, V] which inherits
+# BaseReader[K, V2], the TypeVar V2 was never mapped to V -> int.
+#
+# Fix: Added a phase in build_type_var_solution that walks each MRO entry's
+# base_classes to propagate TypeVar bindings transitively.
+#
+# Impact: Methods inherited from grandparent+ generic classes had Unknown
+#         return types when TypeVars were renamed across inheritance levels.
+# =========================================================================
+test "bug_tvar2_transitive_typevar_propagation" {
+    program = compile_and_check("checker_bug_typevar_transitive.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = c.read("key")`)
+    # Without fix: 0 errors (V2 is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-2: build_type_var_solution doesn't propagate TypeVars "
+    f"through base_classes chain. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without transitive propagation, V2 in BaseReader is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-3: Union return types with TypeVars resolve to Unknown
+#
+# When a generic method returns V | None (a union containing a TypeVar),
+# the BinaryExpr with BW_OR operator was evaluated by operations.jac which
+# checked is_any_type() on both operands BEFORE handling the union case.
+# Since TypeVarType.is_any_type() returns True, the function short-circuited
+# to UnknownType, and the union handler at line 276 was never reached.
+#
+# Fix: Move the BW_OR union-type check before the is_any_type() early return
+# and extend is_annotation_type() to recognize TypeVarType as valid.
+#
+# Impact: dict.get(), Optional-returning methods on generic classes, and any
+#         typeshed stub with `-> TypeVar | None` had Unknown return types.
+# =========================================================================
+test "bug_tvar3_typevar_union_return_type" {
+    program = compile_and_check("checker_bug_typevar_union_return.jac");
+
+    # Expected: 1 error (int | None not assignable to str for `bad: str = s.lookup("key")`)
+    # Without fix: 0 errors (V | None is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-3: Union return types with TypeVars (V | None) resolve "
+    f"to Unknown due to is_any_type() short-circuit in operations.jac. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without the fix, dict.get() and similar methods return Unknown.";
 }

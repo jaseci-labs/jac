@@ -81,6 +81,21 @@ def _handle_mcp_cmd(ctx: object) -> None {
     host = ctx.get_arg("host", "127.0.0.1");
     inspect_mode = ctx.get_arg("inspect", False);
 
+    # Load [plugins.mcp] from jac.toml as fallback defaults
+    import from jaclang.project.config { get_config }
+    jac_cfg = get_config();
+    mcp_cfg: dict[str, object] = {};
+    if jac_cfg {
+        mcp_cfg = jac_cfg.get_plugin_config("mcp");
+    }
+
+    # Priority: CLI arg (if explicitly set) > jac.toml > CLI default
+    transport = transport
+        if transport != "stdio"
+        else mcp_cfg.get("transport", transport);
+    port = port if port != 3001 else mcp_cfg.get("port", port);
+    host = host if host != "127.0.0.1" else mcp_cfg.get("host", host);
+
     if inspect_mode {
         _print_inspect();
         ctx.set_data("cancel_execution", True);

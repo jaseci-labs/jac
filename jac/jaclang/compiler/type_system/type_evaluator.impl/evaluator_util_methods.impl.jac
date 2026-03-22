@@ -529,6 +529,10 @@ impl TypeEvaluator._extract_type_params(
     outer_names = {tp.name for tp in outer_type_params};
 
     # Handle Python-style generics: obj Box(Generic[T])
+    # Track seen TypeVar names to deduplicate. A class like
+    # Mapping(Collection[_KT], Generic[_KT, _VT_co]) would otherwise collect
+    # _KT twice, causing type_params/type_args positional mismatches.
+    seen_names: set[str] = set();
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr
@@ -546,7 +550,10 @@ impl TypeEvaluator._extract_type_params(
                         if type_var_type.name in outer_names {
                             self.emit_diag(E1062, val, name=type_var_type.name);
                         }
-                        type_params.append(type_var_type);
+                        if type_var_type.name not in seen_names {
+                            seen_names.add(type_var_type.name);
+                            type_params.append(type_var_type);
+                        }
                     }
                 }
             } else {
@@ -556,7 +563,10 @@ impl TypeEvaluator._extract_type_params(
                     if type_var_type.name in outer_names {
                         self.emit_diag(E1062, type_vars, name=type_var_type.name);
                     }
-                    type_params.append(type_var_type);
+                    if type_var_type.name not in seen_names {
+                        seen_names.add(type_var_type.name);
+                        type_params.append(type_var_type);
+                    }
                 }
             }
         }

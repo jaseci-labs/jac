@@ -121,6 +121,17 @@ obj PrefetchedTypes {
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,
         jsx_element_class: TypeBase | None = None,
+        # Fixed-width numeric types
+        i8_class: TypeBase | None = None,
+        u8_class: TypeBase | None = None,
+        i16_class: TypeBase | None = None,
+        u16_class: TypeBase | None = None,
+        i32_class: TypeBase | None = None,
+        u32_class: TypeBase | None = None,
+        i64_class: TypeBase | None = None,
+        u64_class: TypeBase | None = None,
+        f32_class: TypeBase | None = None,
+        f64_class: TypeBase | None = None,
         # Prefetched enum base class
         enum_class: TypeBase | None = None,
         set_class: TypeBase | None = None;
@@ -349,7 +360,7 @@ obj TypeEvaluator {
     # -------------------------------------------------------------------------
     def assign_type_to_type_var(
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
-    ) -> None;
+    ) -> bool;
 
     def infer_type_args(
         caller_type: types.ClassType, expr: uni.FuncCall
@@ -415,6 +426,7 @@ obj TypeEvaluator {
     def get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def process_condition(condition: uni.Expr) -> None;
+    def process_negated_condition(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(

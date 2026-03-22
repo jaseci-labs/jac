@@ -401,7 +401,17 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.TYP_BOOL,
         TokenKind.TYP_BYTES,
         TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE
+        TokenKind.TYP_TYPE,
+        TokenKind.TYP_I8,
+        TokenKind.TYP_U8,
+        TokenKind.TYP_I16,
+        TokenKind.TYP_U16,
+        TokenKind.TYP_I32,
+        TokenKind.TYP_U32,
+        TokenKind.TYP_I64,
+        TokenKind.TYP_U64,
+        TokenKind.TYP_F32,
+        TokenKind.TYP_F64
     );
 }
 
@@ -417,7 +427,17 @@ impl Parser.is_builtin_type_token -> bool {
         TokenKind.TYP_BOOL,
         TokenKind.TYP_BYTES,
         TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE
+        TokenKind.TYP_TYPE,
+        TokenKind.TYP_I8,
+        TokenKind.TYP_U8,
+        TokenKind.TYP_I16,
+        TokenKind.TYP_U16,
+        TokenKind.TYP_I32,
+        TokenKind.TYP_U32,
+        TokenKind.TYP_I64,
+        TokenKind.TYP_U64,
+        TokenKind.TYP_F32,
+        TokenKind.TYP_F64
     );
 }
 
@@ -1924,7 +1944,7 @@ impl Parser.parse_multistring -> Expr {
     return MultiString(strings=strings, kid=strings);
 }
 
-"""Parse builtin type: str, int, float, list, tuple, set, dict, bool, bytes, any, type."""
+"""Parse builtin type: str, int, float, list, tuple, set, dict, bool, bytes, any, type, i8-u64, f32, f64."""
 impl Parser.parse_builtin_type -> Expr {
     if self.check_any(
         TokenKind.TYP_STRING,
@@ -1937,7 +1957,17 @@ impl Parser.parse_builtin_type -> Expr {
         TokenKind.TYP_BOOL,
         TokenKind.TYP_BYTES,
         TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE
+        TokenKind.TYP_TYPE,
+        TokenKind.TYP_I8,
+        TokenKind.TYP_U8,
+        TokenKind.TYP_I16,
+        TokenKind.TYP_U16,
+        TokenKind.TYP_I32,
+        TokenKind.TYP_U32,
+        TokenKind.TYP_I64,
+        TokenKind.TYP_U64,
+        TokenKind.TYP_F32,
+        TokenKind.TYP_F64
     ) {
         tok = self.advance();
         builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]

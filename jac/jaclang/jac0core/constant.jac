@@ -169,6 +169,16 @@ class Tokens(StrEnum) {
         TYP_BYTES = 'TYP_BYTES';
         TYP_ANY = 'TYP_ANY';
         TYP_TYPE = 'TYP_TYPE';
+        TYP_I8 = 'TYP_I8';
+        TYP_U8 = 'TYP_U8';
+        TYP_I16 = 'TYP_I16';
+        TYP_U16 = 'TYP_U16';
+        TYP_I32 = 'TYP_I32';
+        TYP_U32 = 'TYP_U32';
+        TYP_I64 = 'TYP_I64';
+        TYP_U64 = 'TYP_U64';
+        TYP_F32 = 'TYP_F32';
+        TYP_F64 = 'TYP_F64';
         KW_ABSTRACT = 'KW_ABSTRACT';
         KW_OBJECT = 'KW_OBJECT';
         KW_CLASS = 'KW_CLASS';
@@ -556,6 +566,16 @@ glob TOKEN_MAP: dict[str, str] = {
          'TYP_STRING': 'str',
          'TYP_TUPLE': 'tuple',
          'TYP_TYPE': 'type',
+         'TYP_I8': 'i8',
+         'TYP_U8': 'u8',
+         'TYP_I16': 'i16',
+         'TYP_U16': 'u16',
+         'TYP_I32': 'i32',
+         'TYP_U32': 'u32',
+         'TYP_I64': 'i64',
+         'TYP_U64': 'u64',
+         'TYP_F32': 'f32',
+         'TYP_F64': 'f64',
          'WALKER_OP': ':walker:',
          'WALRUS_EQ': ':=',
          'WS': ' '

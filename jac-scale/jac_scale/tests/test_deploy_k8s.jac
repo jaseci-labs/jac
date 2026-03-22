@@ -799,6 +799,24 @@ test "deploy all in one" {
     assert response.status_code == 200;
     print(f"Successfully reached app page at {url}");
 
+    # Verify /metrics endpoint: unauthenticated should be 403, Basic Auth should return Prometheus text
+    monitoring_cfg = app_scale_config.get_monitoring_config();
+    prometheus_password = monitoring_cfg.get(
+        'prometheus_admin_password', 'Adminpassword123'
+    );
+    admin_cfg = app_scale_config.get_admin_config();
+    admin_user = admin_cfg.get('username', 'admin');
+    metrics_url = f"http://localhost:{ingress_node_port}/metrics";
+    unauthed = requests.get(metrics_url, timeout=10);
+    assert unauthed.status_code == 403 , f"Expected 403 without auth, got {unauthed.status_code}";
+    print(f"Metrics endpoint correctly returned 403 without auth");
+    authed = requests.get(
+        metrics_url, auth=(admin_user, prometheus_password), timeout=10
+    );
+    assert authed.status_code == 200 , f"Expected 200 with Basic Auth, got {authed.status_code}";
+    assert "python_gc" in authed.text or "jac_scale" in authed.text , "Response does not look like Prometheus metrics";
+    print(f"Metrics endpoint returned 200 with Basic Auth — Prometheus scraping OK");
+
     # --- Port conflict test ---
     # Deploy the same app into a different namespace using the same ingress_node_port.
     # check_node_ports_available must detect the conflict and the deploy must fail.
