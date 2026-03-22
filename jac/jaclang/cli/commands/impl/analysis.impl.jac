@@ -68,7 +68,7 @@ impl check(
         annex_filter_path: (str | None) = None;
         base_path = discover_base_file(file_path);
         if base_path is not None {
-            annex_filter_path = os.path.abspath(file_path);
+            annex_filter_path = os.path.realpath(file_path);
             file_path = base_path;
         }
         try {
@@ -396,36 +396,51 @@ impl format(
     results: list[dict] = [];
 
     if use_parallel {
-        with ProcessPoolExecutor(max_workers=max_workers) as executor {
-            futures = {
-                executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                for fp in all_files
-            };
-            completed = 0;
-            for future in as_completed(futures) {
-                completed += 1;
-                fp = futures[future];
-                console.print(f"Formatting [{completed}/{total_files}] completed...");
-                try {
-                    results.append(future.result());
-                } except Exception as e {
-                    results.append(
-                        {
-                            'path': fp,
-                            'success': False,
-                            'changed': False,
-                            'errors': 0,
-                            'syntax_errors': [f"Worker error: {e}"],
-                            'warnings_strs': [],
-                            'errors_strs': [],
-                            'formatted_code': None,
-                            'impl_results': []
-                        }
+        try {
+            import multiprocessing as mp;
+            ctx = mp.get_context("fork") if os.name != "nt" else None;
+            pool_cls = (
+                ProcessPoolExecutor
+                    if ctx is None
+                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
+            );
+            with pool_cls(max_workers=max_workers) as executor {
+                futures = {
+                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
+                    for fp in all_files
+                };
+                completed = 0;
+                for future in as_completed(futures) {
+                    completed += 1;
+                    fp = futures[future];
+                    console.print(
+                        f"Formatting [{completed}/{total_files}] completed..."
                     );
+                    try {
+                        results.append(future.result());
+                    } except Exception as e {
+                        results.append(
+                            {
+                                'path': fp,
+                                'success': False,
+                                'changed': False,
+                                'errors': 0,
+                                'syntax_errors': [f"Worker error: {e}"],
+                                'warnings_strs': [],
+                                'errors_strs': [],
+                                'formatted_code': None,
+                                'impl_results': []
+                            }
+                        );
+                    }
                 }
             }
+        } except Exception {
+            # Fall back to sequential processing if multiprocessing fails
+            use_parallel = False;
         }
-    } else {
+    }
+    if not use_parallel {
         # Single file: show filename
         for fp in all_files {
             console.print(f"Formatting {fp}...");
