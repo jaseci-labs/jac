@@ -3247,6 +3247,10 @@ Handles simple names (x), attribute access chains (x.foo.bar), and walrus
 expressions (x := expr). Returns None if not suitable for narrowing.
 """
 impl TypeEvaluator.get_narrowing_key(expr: uni.Expr) -> str | None {
+    # Unwrap parentheses: (expr) → expr
+    if isinstance(expr, uni.AtomUnit) and expr.value {
+        return self.get_narrowing_key(expr.value);
+    }
     if isinstance(expr, uni.Name) {
         return expr.value;
     }
