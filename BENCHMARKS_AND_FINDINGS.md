@@ -10,9 +10,9 @@
 
 Jac's tiered memory hierarchy (L1 in-process cache, L2 Redis, L3 MongoDB/SQLite) stores
 graph anchors as opaque serialized blobs keyed by UUID. When a walker traverses edges
-(`-->`, `-->(?:Type)`, `->:EdgeType:->`), the runtime iterates `node.edges` — a list
+(`-->`, `-->(?:Type)`, `->:EdgeType:->`), the runtime iterates `node.edges` -- a list
 of stub EdgeAnchors. Each stub's first attribute access triggers `populate()`, which calls
-`mem.get(id)` — a single database round-trip. For a node with N edges, this produces
+`mem.get(id)` -- a single database round-trip. For a node with N edges, this produces
 2N+1 individual database fetches (1 origin + N edges + N targets).
 
 This N+1 pattern is well-documented in database literature. It is the dominant latency
@@ -21,7 +21,7 @@ source for graph traversals in production jac-scale deployments where L3 is Mong
 
 ---
 
-## 2. Approach 1: Structured Metadata Columns (PR #5270 — REJECTED)
+## 2. Approach 1: Structured Metadata Columns (PR #5270 -- REJECTED)
 
 ### Hypothesis
 
@@ -40,7 +40,7 @@ alongside the serialized blob. This enables:
 
 ### Benchmark Method
 
-Four Docker containers: v1/v2 × SQLite/MongoDB. Each runs `jac run benchmark.jac` —
+Four Docker containers: v1/v2 × SQLite/MongoDB. Each runs `jac run benchmark.jac` --
 a `.jac` program that builds a graph with `++>` and `+>:EdgeType:+>`, then traverses
 with `-->`, `-->(?:PersonNode)`, `->:KnowsEdge:->`, and `->:KnowsEdge:->(?:PersonNode)`.
 Walker abilities use `with Root entry` to trigger on the root node. Each operation runs
@@ -75,7 +75,7 @@ The structured metadata columns added significant write overhead:
 
 The traversal was also slower because:
 - The runtime still uses the N+1 `populate()` path
-- The metadata columns are not used during traversal — only during direct database queries
+- The metadata columns are not used during traversal -- only during direct database queries
 - The indexes added overhead to every write but weren't queried by the walker engine
 
 ### Decision
@@ -95,12 +95,12 @@ When bypassing the Jac runtime and querying MongoDB directly with pymongo:
 | Type-filtered (10 matches) | 29.9 | 5.4 | **5.5x** |
 | Archetype lookup (250 matches) | 1,279 | 3.8 | **341x** |
 
-These results confirm the structured approach works at the query level — the
+These results confirm the structured approach works at the query level -- the
 problem is wiring it into the runtime.
 
 ---
 
-## 3. Approach 2: batch_get() — Read-Path Only (In Progress)
+## 3. Approach 2: batch_get() -- Read-Path Only (In Progress)
 
 ### Hypothesis
 
@@ -141,7 +141,7 @@ Same 4-container approach as Approach 1. Graph built in-process, then traversed.
 
 The `jac run` benchmark builds the graph and traverses it **in the same process**.
 After `root ++> PersonNode(...)`, the node is in L1 (`__mem__` dict). When the walker
-does `[-->]`, every `populate()` hits L1 — **zero L3 fetches**. `batch_get` is a
+does `[-->]`, every `populate()` hits L1 -- **zero L3 fetches**. `batch_get` is a
 no-op (all IDs found in L1).
 
 The N+1 problem only manifests when:
@@ -153,7 +153,7 @@ The N+1 problem only manifests when:
 
 To simulate production, we clear L1 and measure individual `find_one()` calls vs
 `find({$in: [...]})` batch queries against MongoDB directly. This isolates the
-database layer — the exact cost that `batch_get` eliminates.
+database layer -- the exact cost that `batch_get` eliminates.
 
 ### Results: Cold Start (MongoDB)
 
@@ -178,13 +178,13 @@ Empty L1 cache, all reads from MongoDB. Measures actual database round-trip cost
 ### Analysis
 
 The cold-start benchmark validates the `batch_get` hypothesis:
-- **N+1 → batch reduces queries from 201/1001 to 3** — the database does one indexed
+- **N+1 → batch reduces queries from 201/1001 to 3** -- the database does one indexed
   `$in` lookup instead of hundreds of individual `find_one` calls
-- **`batch_get` API delivers 3-5x improvement** — limited by deserialization overhead
+- **`batch_get` API delivers 3-5x improvement** -- limited by deserialization overhead
   in `_load_anchor()` (each anchor must be individually deserialized from the blob)
-- **Raw `$in` delivers 18-23x** — shows the ceiling if deserialization were batched
+- **Raw `$in` delivers 18-23x** -- shows the ceiling if deserialization were batched
   or eliminated
-- **Zero write overhead** — build times identical between v1 and v2
+- **Zero write overhead** -- build times identical between v1 and v2
 
 The gap between raw `$in` (18-23x) and `batch_get` API (3-5x) is the deserialization
 cost. Each anchor blob must be individually parsed by `Serializer.deserialize()`.
@@ -221,7 +221,7 @@ The runtime's `edges_to_nodes()` iterates `node.edges` and calls `populate()` on
 each stub sequentially. This design assumes in-memory access (L1 hit) and degrades
 linearly with L3 latency.
 
-**Implication:** The fix must change the runtime traversal code — not just the
+**Implication:** The fix must change the runtime traversal code -- not just the
 storage schema or query capabilities.
 
 ### Finding 4: SQLite (local dev) doesn't need optimization
@@ -334,7 +334,7 @@ For 500 anchors: 12,000+ Python objects constructed sequentially.
 
 ### Why It Can't Be Easily Batched
 
-Each anchor's deserialization is independent — there's no shared state between
+Each anchor's deserialization is independent -- there's no shared state between
 anchors that could be amortized. The `Serializer` uses recursive dispatch
 (`_deserialize_value` → `deserialize` → type-specific handler) which prevents
 vectorization.
@@ -376,15 +376,15 @@ The TopologyIndex (PR #5205) and `batch_get` solve different parts of the same p
 
 Without TopologyIndex: `batch_get` fetches all 500 edges + 500 targets = 2 queries.
 With TopologyIndex: `batch_get` fetches only 50 matching targets = 1 query.
-Both together: optimal — filter first, then batch fetch the filtered set.
+Both together: optimal -- filter first, then batch fetch the filtered set.
 
 ---
 
-## Appendix A: Code Trace — What Happens When a Walker Executes `[-->]`
+## Appendix A: Code Trace -- What Happens When a Walker Executes `[-->]`
 
 1. Compiler generates `refs(ObjectSpatialPath)` call
 2. `refs()` calls `edges_to_nodes(origin, destination)` per hop
-3. `edges_to_nodes()` iterates `nanch.edges` — list of stub EdgeAnchors
+3. `edges_to_nodes()` iterates `nanch.edges` -- list of stub EdgeAnchors
 4. Accessing `anchor.source` triggers `__getattr__` → `populate()` → `mem.get(id)`
 5. `mem.get(id)`: L1 hit → return; L1 miss → L3 query → promote to L1
 6. Accessing `target.archetype` triggers another `populate()` → another `mem.get(id)`
@@ -396,5 +396,5 @@ With `batch_get`:
 2. `batch_get(edge_ids)`: single `find({_id: {$in: [...]}})` → warm L1
 3. Collects all target node IDs from loaded edges
 4. `batch_get(target_ids)`: single `find({_id: {$in: [...]}})` → warm L1
-5. Original filter loop runs — all `populate()` calls hit L1
+5. Original filter loop runs -- all `populate()` calls hit L1
 6. **Total: 3 database fetches regardless of N**
