@@ -526,12 +526,12 @@ obj IngressDeployer {
             );
         }
 
-        main_rule: dict;
-        if self.k8s_config.domain {
-            main_rule = {'host': self.k8s_config.domain, 'http': {'paths': paths}};
-        } else {
-            main_rule = {'http': {'paths': paths}};
-        }
+        # Always deploy with a wildcard rule (no host).
+        # The domain is stored in the jac-scale/domain annotation so that
+        # --enable-tls can read it and add the host + TLS together in one step.
+        # Setting host here without TLS causes nginx to restrict routing to that
+        # domain before the cert exists, making the app unreachable via IP/NLB.
+        main_rule: dict = {'http': {'paths': paths}};
 
         ingress_annotations: dict = {
             'nginx.ingress.kubernetes.io/proxy-body-size': '0',
@@ -645,7 +645,6 @@ obj IngressDeployer {
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-secret'] = ri_auth_secret_name;
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-realm'] = 'RedisInsight';
 
-            redis_rule: dict;
             redis_paths = [
                 {
                     'path': '/cache-dashboard(/|$)(.*)',
@@ -658,14 +657,8 @@ obj IngressDeployer {
                     }
                 }
             ];
-            if self.k8s_config.domain {
-                redis_rule = {
-                    'host': self.k8s_config.domain,
-                    'http': {'paths': redis_paths}
-                };
-            } else {
-                redis_rule = {'http': {'paths': redis_paths}};
-            }
+            # Same as main ingress: always wildcard rule; host added by --enable-tls.
+            redis_rule: dict = {'http': {'paths': redis_paths}};
 
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
