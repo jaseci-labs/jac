@@ -552,6 +552,32 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
         }
     }
 
+    # Propagate TypeVar bindings transitively through the inheritance chain.
+    # MRO entries are unspecialized (shared only, no type_args), so Phase 2
+    # above misses TypeVars defined on ancestor classes (e.g., _VT_co on
+    # Mapping when specializing dict[str, int]). Use the existing
+    # specialize_for_base_class infrastructure to get each MRO entry's
+    # specialized form, then extract its TypeVar bindings into the solution.
+    for mro_cls in class_type.shared.mro {
+        if not mro_cls.shared.type_params {
+            continue;
+        }
+        specialized = specialize_for_base_class(class_type, mro_cls);
+        if specialized.private is not None and specialized.private.type_args {
+            for (idx, tp) in enumerate(specialized.shared.type_params) {
+                if tp.name and idx < len(specialized.private.type_args) {
+                    arg = specialized.private.type_args[idx];
+                    if not isinstance(arg, types.TypeVarType) {
+                        if tp.name not in solution
+                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            solution[tp.name] = arg;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return solution;
 }
 

@@ -20,7 +20,7 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution, transform }
-import from jaclang.jac0core.jir { get_jir_cache_dir }
+import from jaclang.jac0core.jir { get_jir_cache_dir, get_module_cache_path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
@@ -318,6 +318,11 @@ test "deep imports interp mode" {
         for cache_file in cache_dir.glob("*deep_import*") {
             cache_file.unlink();
         }
+    }
+    # Also clear project-local cache (used when jac.toml is present)
+    cp = get_module_cache_path(os.path.join(FIXTURES, "deep_import_interp.jac"));
+    if cp.exists() {
+        cp.unlink();
     }
 
     captured = io.StringIO();
