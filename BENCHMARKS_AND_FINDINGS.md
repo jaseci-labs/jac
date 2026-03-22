@@ -27,6 +27,7 @@ source for graph traversals in production jac-scale deployments where L3 is Mong
 
 Surface `anchor_type`, `archetype`, `source`, `target` as queryable columns/fields
 alongside the serialized blob. This enables:
+
 - SQL JOINs (SQLite) and aggregation pipelines (MongoDB) for edge traversal
 - Indexed archetype lookups without deserializing blobs
 - Filter push-down to the database
@@ -70,10 +71,12 @@ Walker abilities use `with Root entry` to trigger on the root node. Each operati
 ### Analysis
 
 The structured metadata columns added significant write overhead:
+
 - **SQLite**: Every `put()` extracts metadata + writes 6 columns instead of 2
 - **MongoDB**: Larger documents (489 → 634 bytes) + 3 index updates per write
 
 The traversal was also slower because:
+
 - The runtime still uses the N+1 `populate()` path
 - The metadata columns are not used during traversal -- only during direct database queries
 - The indexes added overhead to every write but weren't queried by the walker engine
@@ -107,6 +110,7 @@ problem is wiring it into the runtime.
 Add a `batch_get(ids: list[UUID])` method to the Memory interface that fetches
 multiple anchors in a single database query. Then prefetch all edge stubs + target
 nodes before the filter loop in `edges_to_nodes()`. This:
+
 - Changes only the read path (zero write overhead)
 - Requires no schema changes
 - Is transparent to Jac developers (same `-->` syntax)
@@ -145,6 +149,7 @@ does `[-->]`, every `populate()` hits L1 -- **zero L3 fetches**. `batch_get` is 
 no-op (all IDs found in L1).
 
 The N+1 problem only manifests when:
+
 1. L1 is empty (fresh request, different worker, cold start)
 2. Edges are stubs (loaded from L3 with only UUID, not yet populated)
 3. Each `populate()` triggers an individual L3 fetch
@@ -178,6 +183,7 @@ Empty L1 cache, all reads from MongoDB. Measures actual database round-trip cost
 ### Analysis
 
 The cold-start benchmark validates the `batch_get` hypothesis:
+
 - **N+1 → batch reduces queries from 201/1001 to 3** -- the database does one indexed
   `$in` lookup instead of hundreds of individual `find_one` calls
 - **`batch_get` API delivers 3-5x improvement** -- limited by deserialization overhead
@@ -207,6 +213,7 @@ to measure storage optimization impact.
 
 Adding queryable columns/fields to the storage schema (Approach 1) multiplies write
 cost because:
+
 - Every `put()` must extract metadata from the anchor object
 - Larger documents increase serialization/network cost
 - Database indexes must be updated on every write
@@ -240,6 +247,7 @@ write overhead, and is transparent to developers. It reduces 2N+1 sequential
 database round-trips to 3 batch queries (1 root + 1 batch edges + 1 batch targets).
 
 The theoretical speedup is:
+
 - For N edges with T ms network latency: `(2N+1) × T` → `3 × T`
 - N=100, T=2ms: 402ms → 6ms = **67x**
 - N=20, T=5ms: 205ms → 15ms = **14x**
@@ -371,6 +379,7 @@ The TopologyIndex (PR #5205) and `batch_get` solve different parts of the same p
 | **Scale limit** | Application memory (~8 bytes/edge) | Database `$in` query size |
 
 **They are complementary:**
+
 1. TopologyIndex resolves `-->(?:PersonNode)` to a UUID set (e.g., 50 out of 500)
 2. `batch_get` fetches those 50 UUIDs in 1 query instead of 50 queries
 
@@ -392,6 +401,7 @@ Both together: optimal -- filter first, then batch fetch the filtered set.
 8. **Total for N edges: 2N+1 fetches**
 
 With `batch_get`:
+
 1. `_prefetch_edges()` collects all edge stub IDs
 2. `batch_get(edge_ids)`: single `find({_id: {$in: [...]}})` → warm L1
 3. Collects all target node IDs from loaded edges
