@@ -117,3 +117,9 @@ jobs:
             --base main \
             --head "$BRANCH_NAME")
           echo "::notice::Release PR created: $PR_URL"
+
+          # Trigger CI workflows (GITHUB_TOKEN can trigger workflow_dispatch)
+          gh workflow run test-jaseci.yml --ref "$BRANCH_NAME"
+          gh workflow run jac-check.yml --ref "$BRANCH_NAME"
+          gh workflow run docs-validation.yml --ref "$BRANCH_NAME"
+          echo "::notice::CI workflows triggered on $BRANCH_NAME"
