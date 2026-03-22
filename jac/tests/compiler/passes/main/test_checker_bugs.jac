@@ -406,3 +406,28 @@ test "bug_tvar3_typevar_union_return_type" {
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
     f"Without the fix, dict.get() and similar methods return Unknown.";
 }
+
+# =========================================================================
+# Bug #TVAR-4: Generic[] base class must establish canonical TypeVar order
+# =========================================================================
+# Root cause: _extract_type_params processed base classes left-to-right and
+# deduplicated by name. For dict_values(ValuesView[_VT_co], Generic[_KT_co,
+# _VT_co]), _VT_co was encountered first (from ValuesView), producing
+# type_params = [_VT_co, _KT_co]. The correct order per PEP 484 is
+# [_KT_co, _VT_co] from the Generic[] declaration, which is the authoritative
+# source. Wrong ordering swaps key/value types in dict.keys()/values().
+#
+# Impact: dict.values() yielded key types instead of value types, and
+#         dict.keys() yielded value types instead of key types, for any
+#         dict-like class whose typeshed stub lists Generic[] after other
+#         parameterized bases.
+# =========================================================================
+test "bug_tvar4_generic_base_canonical_typevar_order" {
+    program = compile_and_check("checker_bug_typevar_generic_order.jac");
+
+    # Expected: 2 errors (str not assignable to int for `bad`, int not assignable to str for `bad2`)
+    # Without fix: 0 errors (key/value types swapped, so assignments look correct)
+    assert len(program.errors_had) >= 2 , f"Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
+    f"Expected at least 2 type errors but got {len(program.errors_had)}. "
+    f"Without the fix, dict.values() yields key type and dict.keys() yields value type.";
+}

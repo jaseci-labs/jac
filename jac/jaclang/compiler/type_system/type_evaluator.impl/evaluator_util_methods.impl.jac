@@ -532,46 +532,99 @@ impl TypeEvaluator._extract_type_params(
     # Track seen TypeVar names to deduplicate. A class like
     # Mapping(Collection[_KT], Generic[_KT, _VT_co]) would otherwise collect
     # _KT twice, causing type_params/type_args positional mismatches.
+    #
+    # IMPORTANT: When Generic[...] is explicitly present in the bases, it is the
+    # authoritative declaration of type parameter order (PEP 484). We must process
+    # it FIRST so that other parameterized bases (which may list TypeVars in a
+    # different order) don't produce an incorrect ordering.
+    # e.g. dict_values(ValuesView[_VT_co], Generic[_KT_co, _VT_co]) must produce
+    # [_KT_co, _VT_co] (from Generic), not [_VT_co, _KT_co] (encounter order).
     seen_names: set[str] = set();
+
+    # First pass: find and process Generic[...] base to establish canonical order.
+    generic_base: uni.AtomTrailer | None = None;
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr
         or base_class.is_null_ok {
             continue;
         }
+        target_type = self.get_type_of_expression(base_class.target);
+        if (
+            isinstance(target_type, types.ClassType)
+            and target_type.is_special_form("Generic")
+        ) {
+            generic_base = base_class;
+            break;
+        }
+    }
+    if generic_base is not None {
+        self._collect_typevars_from_base(
+            generic_base, outer_names, seen_names, type_params
+        );
+    }
 
-        if isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices {
-            type_vars = base_class.right.slices[0].start;
-            if isinstance(type_vars, uni.TupleVal) {
-                for val in type_vars.values {
-                    type_var_type = self.get_type_of_expression(val);
-                    if isinstance(type_var_type, types.TypeVarType) {
-                        # Validate: TypeVar not already in use by outer scope
-                        if type_var_type.name in outer_names {
-                            self.emit_diag(E1062, val, name=type_var_type.name);
-                        }
-                        if type_var_type.name not in seen_names {
-                            seen_names.add(type_var_type.name);
-                            type_params.append(type_var_type);
-                        }
-                    }
+    # Second pass: process all non-Generic bases for remaining TypeVars.
+    # When Generic[] was found, this only picks up TypeVars not already seen
+    # (should be none in well-formed code). When Generic[] is absent, this is
+    # the primary extraction path.
+    for base_class in node_.base_classes or [] {
+        if (not isinstance(base_class, uni.AtomTrailer))
+        or base_class.is_attr
+        or base_class.is_null_ok {
+            continue;
+        }
+        if base_class is generic_base {
+            continue;
+        }
+        self._collect_typevars_from_base(
+            base_class, outer_names, seen_names, type_params
+        );
+    }
+    return type_params;
+}
+
+"""Extract TypeVars from a single parameterized base class into type_params.
+
+Handles both single-TypeVar bases like Base[T] and multi-TypeVar bases like
+Generic[K, V]. Deduplicates by name using seen_names and validates against
+outer_names for outer-scope reuse errors.
+"""
+impl TypeEvaluator._collect_typevars_from_base(
+    base_class: uni.AtomTrailer,
+    outer_names: set[str],
+    seen_names: set[str],
+    type_params: list[types.TypeVarType]
+) -> None {
+    if not (isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices) {
+        return;
+    }
+    type_vars = base_class.right.slices[0].start;
+    if isinstance(type_vars, uni.TupleVal) {
+        for val in type_vars.values {
+            type_var_type = self.get_type_of_expression(val);
+            if isinstance(type_var_type, types.TypeVarType) {
+                if type_var_type.name in outer_names {
+                    self.emit_diag(E1062, val, name=type_var_type.name);
                 }
-            } else {
-                type_var_type = self.get_type_of_expression(type_vars);
-                if isinstance(type_var_type, types.TypeVarType) {
-                    # Validate: TypeVar not already in use by outer scope
-                    if type_var_type.name in outer_names {
-                        self.emit_diag(E1062, type_vars, name=type_var_type.name);
-                    }
-                    if type_var_type.name not in seen_names {
-                        seen_names.add(type_var_type.name);
-                        type_params.append(type_var_type);
-                    }
+                if type_var_type.name not in seen_names {
+                    seen_names.add(type_var_type.name);
+                    type_params.append(type_var_type);
                 }
             }
         }
+    } else {
+        type_var_type = self.get_type_of_expression(type_vars);
+        if isinstance(type_var_type, types.TypeVarType) {
+            if type_var_type.name in outer_names {
+                self.emit_diag(E1062, type_vars, name=type_var_type.name);
+            }
+            if type_var_type.name not in seen_names {
+                seen_names.add(type_var_type.name);
+                type_params.append(type_var_type);
+            }
+        }
     }
-    return type_params;
 }
 
 """Emit a structured diagnostic via the pass."""
