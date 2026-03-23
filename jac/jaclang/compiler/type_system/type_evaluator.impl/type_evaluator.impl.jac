@@ -1689,7 +1689,8 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Skip cached UnknownType if there's a type annotation - the Unknown
             # may have been cached from a context where TypeVars couldn't be resolved,
             # but the declared type annotation is always the authoritative raw type.
-            if node_.type is not None and not isinstance(node_.type, types.UnknownType) {
+            if node_.type is not None
+            and not isinstance(node_.type, types.UnknownType) {
                 return node_.type;
             }
             # ---- Handle tuple/list unpacking targets ----
