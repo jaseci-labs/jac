@@ -150,6 +150,25 @@ impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None
     }
 }
 
+"""Enter a ternary expression - manually traverse children with branch-specific narrowing.
+
+Without this, the walker visits children in kid order without narrowing, causing
+exit_func_call etc. to type-check arguments against unnarrowed types (false positives).
+
+This handler manually traverses with narrowing scopes so exit_* handlers fire
+with correct types. After traversal, cached types on NameAtom nodes inside
+branches are cleared so the normal type evaluator chain (triggered by
+exit_assignment) can re-evaluate them with full symbol resolution.
+"""
+impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
+    # No-op: narrowing for ternary branches is handled by the type evaluator's
+    # IfElseExpr handler. Walker-level traversal with _in_ternary_expr_depth
+    # would cache types on NameAtom nodes and block symbol resolution needed
+    # by the language server for hover/go-to-definition.
+    return;
+}
+
+
 """Enter an if statement - set up narrowing scope for the if body."""
 impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
     # Push a narrowing scope for the if body

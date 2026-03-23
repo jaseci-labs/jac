@@ -1269,6 +1269,154 @@ byLLM validates that responses match the declared return type, coercing when pos
 
 ---
 
+## Agent Telemetry
+
+byLLM provides a built-in telemetry system that emits events after each `by llm()` invocation completes. You can register callbacks to capture per-invocation data - caller name, arguments, model, latency, status, user prompt, agent response, and conversation history.
+
+This is a **publish-only** mechanism: byLLM does not store any telemetry data. You supply a callback function that receives a telemetry record dict for each completed invocation.
+
+### Registering a Callback
+
+=== "Jac"
+    ```jac
+    import from byllm.telemetry { register_agent_callback }
+
+    glob telemetry_log: list = [];
+
+    def my_callback(record: dict) -> None {
+        telemetry_log.append(record);
+        print(f"[{record['caller_name']}] {record['model']} - {record['status']} in {record['latency_ms']:.0f}ms");
+    }
+
+    with entry {
+        register_agent_callback(my_callback);
+    }
+    ```
+
+### Telemetry Record Fields
+
+Each callback receives a dict with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `invocation_id` | `str` | Unique ID for this `by llm()` invocation |
+| `caller_name` | `str` | Name of the function decorated with `by llm()` |
+| `caller_args` | `dict` | Arguments passed to the caller (values truncated to 500 chars) |
+| `user_prompt` | `str` | The user prompt sent to the model (truncated to 2000 chars) |
+| `agent_response` | `str` | The model's response (truncated to 2000 chars, or `"[streaming]"` for streamed responses) |
+| `conversation_history` | `list` | Full message list from the conversation |
+| `model` | `str` | Model name used for the invocation |
+| `latency_ms` | `float` | Wall-clock time for the invocation in milliseconds |
+| `status` | `str` | `"success"` or `"error"` |
+| `error` | `str \| None` | Error message if status is `"error"` (truncated to 1000 chars) |
+
+### Combining with LiteLLM Per-Call Logging
+
+For full observability (tokens, cost, per-call breakdowns), combine the byLLM agent callback with a [litellm CustomLogger](https://docs.litellm.ai/docs/observability/custom_callback#custom-callback-class). The agent callback fires once per `by llm()` invocation, while the litellm callback fires for each underlying LLM API call (including tool-use round-trips).
+
+```jac
+import litellm;
+import from litellm.integrations.custom_logger { CustomLogger }
+import from byllm.telemetry { register_agent_callback }
+
+glob llm_call_records: list = [],
+     agent_records: list = [];
+
+# litellm per-call callback - captures tokens & cost
+obj UserTelemetryLogger(CustomLogger) {
+    def log_success_event(
+        kwargs: dict,
+        response_obj: object,
+        start_time: object,
+        end_time: object
+    ) -> None {
+        slp = kwargs.get("standard_logging_object", {}) or {};
+        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {};
+        llm_call_records.append({
+            "invocation_id": metadata.get("jac_invocation_id", ""),
+            "model": slp.get("model") or kwargs.get("model"),
+            "prompt_tokens": slp.get("prompt_tokens") or 0,
+            "completion_tokens": slp.get("completion_tokens") or 0,
+            "total_tokens": slp.get("total_tokens") or 0,
+            "cost": slp.get("response_cost") or 0.0,
+            "latency_s": slp.get("response_time") or 0
+        });
+    }
+}
+
+# byllm agent callback - captures caller, args, response
+def capture_agent(record: dict) -> None {
+    agent_records.append(record);
+}
+
+with entry {
+    litellm.callbacks.append(UserTelemetryLogger());
+    register_agent_callback(capture_agent);
+
+    # Now all by llm() calls emit both per-call and per-invocation telemetry.
+    # Use invocation_id to correlate agent records with their LLM call records.
+}
+```
+
+### Telemetry Example
+
+```jac
+import litellm;
+import from litellm.integrations.custom_logger { CustomLogger }
+import from byllm.telemetry { register_agent_callback }
+
+glob llm_call_records: list = [],
+     agent_records: list = [];
+
+obj UserTelemetryLogger(CustomLogger) {
+    def log_success_event(
+        kwargs: dict,
+        response_obj: object,
+        start_time: object,
+        end_time: object
+    ) -> None {
+        slp = kwargs.get("standard_logging_object", {}) or {};
+        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {};
+        llm_call_records.append({
+            "invocation_id": metadata.get("jac_invocation_id", ""),
+            "total_tokens": slp.get("total_tokens") or 0,
+            "cost": slp.get("response_cost") or 0.0
+        });
+    }
+}
+
+def summarize(text: str) -> str by llm();
+
+with entry {
+    litellm.callbacks.append(UserTelemetryLogger());
+    register_agent_callback(lambda rec: agent_records.append(rec));
+
+    result = summarize("Jac is a programming language built on top of Python.");
+    print(f"Summary: {result}");
+
+    rec = agent_records[0];
+    calls = [c for c in llm_call_records if c.get("invocation_id") == rec.get("invocation_id")];
+    print(f"Caller : {rec.get('caller_name')}");
+    print(f"Status : {rec.get('status')}");
+    print(f"Latency: {rec.get('latency_ms', 0):.0f} ms");
+    print(f"Tokens : {sum(c.get('total_tokens', 0) for c in calls)}");
+    print(f"Cost   : ${sum(c.get('cost', 0.0) for c in calls):.6f}");
+}
+```
+
+**Output (values vary by model):**
+
+```
+Summary: Programming involves designing, writing, testing, and maintaining code to create software applications and systems.
+Caller : summarize
+Status : success
+Latency: 1482 ms
+Tokens : 89
+Cost   : $0.000021
+```
+
+---
+
 ## LiteLLM Proxy Server
 
 byLLM can connect to a [LiteLLM proxy server](https://docs.litellm.ai/docs/simple_proxy) for enterprise deployments. This allows centralized model management, rate limiting, and cost tracking.
@@ -1308,6 +1456,21 @@ llm = Model(
 | `config` | Configuration dict; set `api_base` to the URL of your LiteLLM proxy server (also accepts `base_url` or `host` as aliases) |
 
 For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys).
+
+### Enabling Telemetry in LiteLLM Proxy Server
+
+When using jac-scale (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
+
+The telemetry endpoints are:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/llm/telemetry/summary` | Aggregate stats: total calls, tokens, cost, latency, per-model and per-caller breakdowns |
+| `GET /admin/llm/telemetry/traces` | Paginated list of invocation traces (supports `?caller=`, `?model=`, `?status=` filters) |
+| `GET /admin/llm/telemetry/traces/{id}` | Full detail for a single trace including all associated LLM call records |
+| `GET /admin/llm/telemetry/filters` | Available filter values (callers, models, statuses) |
+
+All endpoints require admin authentication via the `Authorization` header.
 
 ---
 

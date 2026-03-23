@@ -13,6 +13,7 @@ import from byllm.exceptions {
     FinishToolError,
     ConfigurationError
 }
+import from byllm.telemetry { register_agent_callback }
 
 glob by = JacRuntime.by ,
      __all__ = [
@@ -32,5 +33,6 @@ glob by = JacRuntime.by ,
          'MTIR',
          'MTRuntime',
          'StreamEvent',
-         'Video'
+         'Video',
+         'register_agent_callback'
      ];

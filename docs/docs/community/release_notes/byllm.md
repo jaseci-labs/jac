@@ -2,11 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.8 (Unreleased)
+## byllm 0.5.9 (Unreleased)
+
+- 1 small changes.
+
+## byllm 0.5.8 (Latest Release)
 
 - **Add: Configurable LiteLLM debug logging via `jac.toml`**: LiteLLM's verbose logging (HTTP requests, retries, headers) can now be toggled via `[plugins.byllm.litellm] debug = true/false` in `jac.toml`. Defaults to `false` (quiet). When disabled, `_disable_debugging()` silences LiteLLM's internal loggers, reducing stdout noise. byLLM's own exception logging (`logger.error`) is unaffected, errors are always logged and propagated regardless of this setting.
+- **Add: LLM Telemetry & Observability**: Introduced a lightweight agent telemetry publish mechanism (`byllm/telemetry.jac`) that emits structured per-invocation records (caller, user prompt, agent response, token usage, cost, and latency) at the end of every `Model.invoke()` call without storing any data in byllm itself.
+- **Add: Invocation ID correlation**: `Model.invoke()` now stamps a UUID `invocation_id` across all LLM calls in a ReAct loop, enabling external consumers (e.g., jac-scale) to correlate per-call litellm events with the top-level agent invocation into a single unified trace.
 
-## byllm 0.5.7 (Latest Release)
+## byllm 0.5.7
 
 ## byllm 0.5.6
 

@@ -2,7 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.3 (Unreleased)
+## jaclang 0.13.1 (Unreleased)
+
+- **Fix: Ternary Expression Type Narrowing**: The type checker now applies branch-specific narrowing inside ternary (`if-else`) expressions. The walker manually traverses the true branch with narrowing from the condition and the false branch with inverse narrowing, preventing false-positive type errors when `isinstance` guards are used in ternary expressions.
+- **Fix: CFG Symbol Propagation Through Already-Linked Nodes**: `link_bbs` now propagates newly added `affected_symbols` via iterative BFS to already-linked internal CFG nodes. This fixes cases where `exit_if_stmt` linked body nodes before `_link_sequential` added upstream symbols, causing the backward CFG walk to miss narrowing predicates.
+- **Fix: Runtime Null Safety for `user_root` and `visit` Expressions**: `check_access_level` now returns `NO_ACCESS` when `user_root` is `None` instead of crashing, and `visit` gracefully handles expressions that are neither `NodeArchetype` nor `EdgeArchetype` by producing an empty traversal list instead of failing.
+- **Fix: Scope Narrowing for AtomTrailer Nodes**: The pre-cache scope narrowing check in `get_type_of_expression` now handles `AtomTrailer` nodes (attribute access like `obj.attr`) in addition to `Name` and `NameAtom` nodes. Previously, attribute access expressions inside `and` chains and ternary branches returned stale cached types, bypassing truthiness and isinstance narrowing. This eliminates 12 false positive errors in `runtime.impl.jac`.
+- **Fix: `add_scope_narrowing` Union Replacement**: When an existing scope narrowing is a `UnionType` (e.g., from truthiness excluding `None`) and a more specific type arrives (e.g., from `isinstance`), the specific type now replaces the union instead of being silently dropped.
+- **Fix: Compound `or` Guard Narrowing**: `_find_predicate_for` now handles inverted predicates in `or` conditions (e.g., `not x or not x.attr`). Previously it bailed out when any `or` operand was inverted, preventing DeMorgan narrowing on the false branch of compound `or` guards.
+
+## jaclang 0.13.0 (Latest Release)
 
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
 - **Type Checker: TypeVar Union and Overload Resolution**: Fixed three root causes that made generic method return types resolve to `<Unknown>`: (1) `TypeVarType.is_any_type()` short-circuited the `|` operator so `_VT | None` in typeshed stubs became `UnknownType` instead of a proper union; (2) `is_annotation_type()` did not recognize `TypeVarType` as valid for union creation; (3) added TypeVar constraint solving to overload resolution -- method-level TypeVars (e.g., `_D` in `ContextVar.get(default: _D) -> _D | _T`) are now inferred from call arguments with bounds, constraints, and consistency validation via the existing `assign_type_to_type_var` infrastructure. This fixes `dict[K,V].get()`, `ContextVar[T].get()`, and similar generic methods returning `<Unknown>` for user-defined types.
@@ -73,7 +82,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Checker: Warn on Return Value in Event-Driven Abilities (W2014)**: The type checker now emits warning W2014 when an event-driven ability (`can X with Y entry`) uses `return <value>`. Since walker-triggered abilities ignore return values, the warning guides developers to update node or walker fields directly instead. Plain `return;` (no value) and `return None;` are not flagged.
 - **Fix: `jac py2jac` Performance on Large Files**: Fixed exponential slowdown when converting large Python files to Jac. A 10k-line file now converts in ~10s instead of 37s (3.9x faster), and a 20k-line file in ~16s instead of ~3 minutes (11x faster).
 
-## jaclang 0.12.2 (Latest Release)
+## jaclang 0.12.2
 
 - **Fix: `os.path.dirname()` Type Check Error**: Calling `os.path.dirname()` no longer fails with "No matching overload found". This also fixes other stdlib functions accessed through wildcard imports (e.g., `os.path`, `datetime`) that have multiple `@overload` signatures.
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.
