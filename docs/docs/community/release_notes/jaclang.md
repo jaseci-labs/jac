@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.1 (Unreleased)
 
+- **Type Checker: Strict Unparameterized Generic Checking**: Unparameterized generics (e.g., `items: list` instead of `items: list[int]`) now return `Unknown` for type parameters, enabling stricter type checking. Previously, TypeVars were preserved as-is, allowing silent assignment to any type.
+
 ## jaclang 0.13.0 (Latest Release)
 
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
