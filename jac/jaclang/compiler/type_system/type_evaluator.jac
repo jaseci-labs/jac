@@ -185,6 +185,13 @@ obj TypeEvaluator {
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
+    def _collect_typevars_from_base(
+        base_class: uni.AtomTrailer,
+        outer_names: set[str],
+        seen_names: set[str],
+        type_params: list[types.TypeVarType]
+    ) -> None;
+
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;

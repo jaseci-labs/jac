@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.7 (Unreleased)
+## jac-scale 0.2.8 (Unreleased)
+
+## jac-scale 0.2.7 (Latest Release)
 
 - **Configurable MongoDB PVC Storage Size**: MongoDB persistent volume storage size is now configurable via `mongodb_storage_size` in `jac.toml` (default: `1Gi`). Increasing the size on redeploy is supported and automatically patched onto the existing PVC without affecting stored data. Decreasing the size is blocked with an explicit error to prevent data loss.
 
@@ -17,7 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Sandbox System**: Isolated preview environments with Docker and Kubernetes backends, warm pod pool, routing proxy with WebSocket/HMR, and path-safe file operations. Configure via `[plugins.scale.sandbox]` in `jac.toml`.
 - **Request-Scoped L1 Memory Cache**: Made the L1 (in-memory) cache request-scoped using `ContextVar`, ensuring each request gets an isolated cache that is automatically cleared after execution, preventing stale data, memory leaks, and cross-request interference while maintaining backward compatibility for CLI and tests.
 
-## jac-scale 0.2.6 (Latest Release)
+## jac-scale 0.2.6
 
 - **Domain & TLS support (`--enable-tls`)**: Added custom domain name routing and automatic HTTPS via cert-manager + Let's Encrypt. Set `domain` in `jac.toml`, deploy normally, point your CNAME to the NLB, then run `jac start app.jac --scale --enable-tls` to enable HTTPS without a full redeploy. cert-manager is installed automatically and certificates are renewed automatically. Configurable via `domain` and `cert_manager_email` in `[plugins.scale.kubernetes]`.
 
