@@ -671,7 +671,9 @@ impl TypeEvaluator.assign_type_to_type_var(
                 bindings[param_type.name] = resolved_arg;  # new type is wider, use it
             } else {
                 # Neither fits the other -> widen to union
-                bindings[param_type.name] = types.UnionType(types=[existing, resolved_arg]);
+                bindings[param_type.name] = types.UnionType(
+                    types=[existing, resolved_arg]
+                );
             }
         } else {
             bindings[param_type.name] = resolved_arg;
