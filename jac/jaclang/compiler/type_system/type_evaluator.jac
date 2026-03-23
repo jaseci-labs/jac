@@ -184,6 +184,10 @@ obj TypeEvaluator {
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_star_import_symbol(
+        mod: uni.Module, name: str, visited: set[int] | None = None
+    ) -> uni.Symbol | None;
+
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def _collect_typevars_from_base(
         base_class: uni.AtomTrailer,
