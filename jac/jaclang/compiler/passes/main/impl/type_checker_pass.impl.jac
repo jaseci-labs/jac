@@ -155,41 +155,19 @@ impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None
 Without this, the walker visits children in kid order without narrowing, causing
 exit_func_call etc. to type-check arguments against unnarrowed types (false positives).
 
-This handler mirrors the ternary handler in _get_type_of_expression_core but operates
-at the walker level: it traverses the condition normally, then the true branch with
-narrowing from the condition, then the false branch with inverse narrowing. All exit_*
-handlers fire for children with the correct narrowing scopes active. After manual
-traversal, prune() prevents the walker from re-traversing children automatically.
+This handler manually traverses with narrowing scopes so exit_* handlers fire
+with correct types. After traversal, cached types on NameAtom nodes inside
+branches are cleared so the normal type evaluator chain (triggered by
+exit_assignment) can re-evaluate them with full symbol resolution.
 """
 impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
-    # 1. Traverse condition normally (no narrowing scope)
-    self.traverse(nd.condition);
-
-    # 2. Traverse true branch with narrowing from condition
-    isinstance_info = self.evaluator._extract_isinstance_info(nd.condition);
-    self.evaluator.push_narrowing_scope();
-    if isinstance_info {
-        (narrowing_key, narrowed_type) = isinstance_info;
-        self.evaluator.add_scope_narrowing(narrowing_key, narrowed_type);
-    } else {
-        self.evaluator.process_condition(nd.condition);
-    }
-    self.evaluator._in_ternary_expr_depth += 1;
-    self.traverse(nd.value);
-    self.evaluator._in_ternary_expr_depth -= 1;
-    self.evaluator.pop_narrowing_scope();
-
-    # 3. Traverse false branch with inverse narrowing
-    self.evaluator.push_narrowing_scope();
-    self.evaluator.process_negated_condition(nd.condition);
-    self.evaluator._in_ternary_expr_depth += 1;
-    self.traverse(nd.else_value);
-    self.evaluator._in_ternary_expr_depth -= 1;
-    self.evaluator.pop_narrowing_scope();
-
-    # 4. Prevent automatic child traversal (already done above)
-    self.prune();
+    # No-op: narrowing for ternary branches is handled by the type evaluator's
+    # IfElseExpr handler. Walker-level traversal with _in_ternary_expr_depth
+    # would cache types on NameAtom nodes and block symbol resolution needed
+    # by the language server for hover/go-to-definition.
+    return;
 }
+
 
 """Enter an if statement - set up narrowing scope for the if body."""
 impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
