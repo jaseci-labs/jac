@@ -60,30 +60,7 @@ declarations in the main module.
         self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
     ) -> None;
 
-    """Re-resolve symbols in an impl body after symbol table synchronization.
-
-        When impl files are compiled, they don't have access to the base
-module's
-        symbols (like 'self' or archetype members). After DeclImplMatchPass
-links
-        the impl to its declaration and synchronizes symbol tables, we need to
-        re-traverse the impl body to resolve these symbols.
-        """
-    def _resolve_impl_body_symbols(
-        self: DeclImplMatchPass, impl_def: uni.ImplDef
-    ) -> None;
-
-    """Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values)."""
-    def _resolve_module_level_symbols(
-        self: DeclImplMatchPass, module: uni.Module
-    ) -> None;
-
-    """Populate self-member symbols from impl body to archetype's symbol table.
-
-    When an impl file contains `self.x = value` assignments in a method, these
-    define instance attributes on the archetype. Since SymTabBuildPass runs on
-    impl files before they're connected to their declarations, it can't populate
-    these symbols into the archetype. This method does that after connection."""
+    """Populate self-member symbols from impl body to archetype's symbol table."""
     def _populate_self_member_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
     ) -> None;

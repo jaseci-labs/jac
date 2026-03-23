@@ -461,10 +461,11 @@ impl apply_solved_type_vars(
             return convert_to_instance(resolved);
         }
         # TypeVar not in solution -> check class type_args by index
-        if class_type is not None and ty.name {
+        if class_type is not None and ty.name and class_type.private is not None {
             for (idx, tp) in enumerate(class_type.shared.type_params) {
                 if tp.name == ty.name {
-                    if idx < len(class_type.private.type_args) {
+                    if class_type.private.type_args
+                    and idx < len(class_type.private.type_args) {
                         resolved = class_type.private.type_args[idx];
                         return convert_to_instance(resolved);
                     } else {
