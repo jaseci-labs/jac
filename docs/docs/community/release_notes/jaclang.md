@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.3 (Unreleased)
+## jaclang 0.13.1 (Unreleased)
+
+## jaclang 0.13.0 (Latest Release)
 
 - **Fix: byllm Provider Config Ignored from `jac.toml`**: The byllm plugin now correctly reads the provider and model from `[plugins.byllm.model]` in `jac.toml`. Previously, `PluginConfigBase` resolved `project_dir` via `cwd` and `default_llm` called `get_byllm_config()` without a path, both causing the config lookup to miss the project's `jac.toml` and fall back to the OpenAI default. Both now derive the project directory from `JacRuntime.full_target_path` (set by `jac run` before compilation).
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
@@ -74,7 +76,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Checker: Warn on Return Value in Event-Driven Abilities (W2014)**: The type checker now emits warning W2014 when an event-driven ability (`can X with Y entry`) uses `return <value>`. Since walker-triggered abilities ignore return values, the warning guides developers to update node or walker fields directly instead. Plain `return;` (no value) and `return None;` are not flagged.
 - **Fix: `jac py2jac` Performance on Large Files**: Fixed exponential slowdown when converting large Python files to Jac. A 10k-line file now converts in ~10s instead of 37s (3.9x faster), and a 20k-line file in ~16s instead of ~3 minutes (11x faster).
 
-## jaclang 0.12.2 (Latest Release)
+## jaclang 0.12.2
 
 - **Fix: `os.path.dirname()` Type Check Error**: Calling `os.path.dirname()` no longer fails with "No matching overload found". This also fixes other stdlib functions accessed through wildcard imports (e.g., `os.path`, `datetime`) that have multiple `@overload` signatures.
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.

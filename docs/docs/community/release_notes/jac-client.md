@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.7 (Unreleased)
+## jac-client 0.3.8 (Unreleased)
+
+## jac-client 0.3.7 (Latest Release)
 
 - **PWA Install Banner**: PWA apps now show an automatic install prompt after `jac setup pwa` -- no manual code required. Features include a glassmorphic dark banner with slide-up animation, native Chrome/Edge install prompt integration via `beforeinstallprompt`, iOS Safari support with step-by-step "Add to Home Screen" instructions modal, and smart re-prompting with exponential backoff (7 → 14 → 28 days, max 3 dismissals). All banner settings are configurable via `[plugins.client.pwa]` in `jac.toml`: `install_banner`, `install_banner_delay`, `install_banner_position`, `install_button_text`, `install_dismiss_text`. For programmatic control, import `usePwaInstall` hook or `PwaInstallButton` component from `@jac/pwa`.
 - **Vite dev server binds to all interfaces**: Added `host: true` to Vite config and `--host` CLI flag so the dev server is accessible from outside containers/pods.
@@ -11,7 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Diagnostics Source Map Auto-Population**: `BuildContext` now auto-populates its source map from compiled JS `/* Source: */` headers when none is provided, and delegates snippet reading to the centralized `source_mapping` module.
 - **Vite Source Map Chaining**: The `jac-source-mapper` Vite plugin now loads per-file `.js.map` files and returns them as input source maps during `transform`, enabling Vite/Rollup to chain `.jac` → compiled `.js` → bundled `client.js` mappings end-to-end.
 
-## jac-client 0.3.6 (Latest Release)
+## jac-client 0.3.6
 
 - **Fix: Desktop Target Asset Loading**: Fixed an issue where images and other static assets referenced with `/static/assets/` URLs were not loading in desktop (Tauri) builds. Assets are now correctly copied from `compiled/assets/` to `dist/static/assets/` during the build process, ensuring they are available when Tauri serves the frontend bundle. This fix applies to both `jac build --client desktop` and `jac start --client desktop` commands.
 
