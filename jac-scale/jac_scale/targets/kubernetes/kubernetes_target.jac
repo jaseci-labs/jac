@@ -1302,7 +1302,16 @@ obj KubernetesTarget(DeploymentTarget) {
             # When using --build, the image has no default CMD so we must set the startup command
             build_command: (list[str] | None) = None;
             if app_config.build {
-                build_command = ['jac', 'start', app_config.file_name];
+                build_command = [
+                    'jac',
+                    'start',
+                    app_config.file_name,
+                    '--port',
+                    str(self.k8s_config.container_port)
+                ];
+                # Mount a writable emptyDir at /app/.jac so jac can write compiled
+                # client bundles at runtime while keeping the root filesystem read-only
+                volumes.append({'name': 'jac-cache', 'emptyDir': {}});
             }
             container_config = self._build_container_config(
                 app_name,
@@ -1310,8 +1319,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 probe_configs,
                 resources_config,
                 command=build_command,
-                secret_ref_name=secret_ref_name,
-                needs_root=True
+                volume_mounts=[{'name': 'jac-cache', 'mountPath': '/app/.jac'}]
+                    if app_config.build
+                    else None,
+                secret_ref_name=secret_ref_name
             );
 
             # 10. Handle volumes and build container if not building image
