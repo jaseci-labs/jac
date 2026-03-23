@@ -49,7 +49,24 @@ obj CompilerBridge {
 
     """Generate graph visualization from Jac code."""
     static def graph_viz_snippet(
-        code: str, format: str = "dot", depth: int = -1,
-        bfs: bool = True, edge_limit: int = 512, node_limit: int = 512
+        code: str,
+        format: str = "dot",
+        depth: int = -1,
+        bfs: bool = True,
+        edge_limit: int = 512,
+        node_limit: int = 512
+    ) -> dict[str, Any];
+
+    """List available Jac project templates."""
+    static def list_templates -> dict[str, Any];
+
+    """Create a new Jac project from a template."""
+    static def create_project(
+        name: str, template: str = "default", directory: str = ""
+    ) -> dict[str, Any];
+
+    """Start a Jac REST API server as a background process."""
+    static def start_server(
+        filename: str, port: int = 8000, faux: bool = False
     ) -> dict[str, Any];
 }

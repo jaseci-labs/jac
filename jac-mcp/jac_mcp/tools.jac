@@ -44,6 +44,23 @@ def run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, Any
 
 """Generate graph visualization from Jac code."""
 def graph_visualize(
-    code: str, format: str = "dot", depth: int = -1,
-    bfs: bool = True, edge_limit: int = 512, node_limit: int = 512
+    code: str,
+    format: str = "dot",
+    depth: int = -1,
+    bfs: bool = True,
+    edge_limit: int = 512,
+    node_limit: int = 512
+) -> dict[str, Any];
+
+"""List available Jac project templates."""
+def list_templates -> dict[str, Any];
+
+"""Create a new Jac project from a template."""
+def create_project(
+    name: str, template: str = "default", directory: str = ""
+) -> dict[str, Any];
+
+"""Start a Jac REST API server."""
+def start_server(
+    filename: str, port: int = 8000, faux: bool = False
 ) -> dict[str, Any];

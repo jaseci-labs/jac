@@ -412,7 +412,10 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, Any] {
                 for e in prog.errors_had {
                     errors.append(str(e));
                 }
-                return {"python_code": "", "warnings": errors or ["Conversion failed"]};
+                return {
+                    "python_code": "",
+                    "warnings": errors or ["Conversion failed"]
+                };
             }
 
             py_code = ir.gen.py or "";
@@ -532,8 +535,7 @@ impl CompilerBridge.run_snippet(
                 if entrypoint {
                     # Load module then run specific entrypoint
                     ret = Jac.jac_import(
-                        target=mod_name, base_path=base,
-                        override_name='__main__'
+                        target=mod_name, base_path=base, override_name='__main__'
                     );
                     if ret {
                         (loaded_mod, ) = ret;
@@ -554,14 +556,16 @@ impl CompilerBridge.run_snippet(
                 } else {
                     # Run as main module
                     Jac.jac_import(
-                        target=mod_name, base_path=base,
-                        override_name='__main__', lng='jac'
+                        target=mod_name,
+                        base_path=base,
+                        override_name='__main__',
+                        lng='jac'
                     );
                 }
 
                 # Collect reports from execution context
                 reports = [];
-                if hasattr(mach, 'reports') and mach.reports {
+                if mach?.reports and mach.reports {
                     for r in mach.reports {
                         try {
                             reports.append(str(r));
@@ -607,7 +611,7 @@ impl CompilerBridge.run_snippet(
             sys.argv = original_argv;
             try {
                 os.unlink(tmp_path);
-            } except Exception {}
+            } except Exception { }
         }
     }
     (success, result) = run_with_timeout(_do_run, timeout=timeout);
@@ -624,8 +628,12 @@ impl CompilerBridge.run_snippet(
 
 """Generate graph visualization from Jac code."""
 impl CompilerBridge.graph_viz_snippet(
-    code: str, format: str = "dot", depth: int = -1,
-    bfs: bool = True, edge_limit: int = 512, node_limit: int = 512
+    code: str,
+    format: str = "dot",
+    depth: int = -1,
+    bfs: bool = True,
+    edge_limit: int = 512,
+    node_limit: int = 512
 ) -> dict[str, Any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -670,8 +678,10 @@ impl CompilerBridge.graph_viz_snippet(
 
             try {
                 Jac.jac_import(
-                    target=mod_name, base_path=base,
-                    override_name='__main__', lng='jac'
+                    target=mod_name,
+                    base_path=base,
+                    override_name='__main__',
+                    lng='jac'
                 );
 
                 # Generate graph from root node
@@ -688,10 +698,7 @@ impl CompilerBridge.graph_viz_snippet(
                 mach.close();
                 program_output = captured_out.getvalue();
 
-                return {
-                    "graph": graph_output or "",
-                    "program_output": program_output
-                };
+                return {"graph": graph_output or "", "program_output": program_output};
             } except Exception as e {
                 mach.close();
                 return {
@@ -706,7 +713,7 @@ impl CompilerBridge.graph_viz_snippet(
             sys.argv = original_argv;
             try {
                 os.unlink(tmp_path);
-            } except Exception {}
+            } except Exception { }
         }
     }
     (success, result) = run_with_timeout(_do_graph, timeout=DEFAULT_TIMEOUT);
@@ -716,3 +723,164 @@ impl CompilerBridge.graph_viz_snippet(
     return result;
 }
 
+"""List available Jac project templates."""
+impl CompilerBridge.list_templates -> dict[str, Any] {
+    def _do_list_templates -> dict[str, Any] {
+        import from jaclang.project.template_registry {
+            get_template_registry,
+            initialize_template_registry
+        }
+        initialize_template_registry();
+        registry = get_template_registry();
+        templates = registry.list_templates();
+        result: list[dict[str, str]] = [];
+        for (name, description) in templates {
+            result.append({"name": name, "description": description});
+        }
+        return {"templates": result};
+    }
+    (success, result) = run_with_timeout(_do_list_templates);
+    if not success {
+        return {"templates": [], "error": str(result)};
+    }
+    return result;
+}
+
+"""Create a new Jac project from a template."""
+impl CompilerBridge.create_project(
+    name: str, template: str = "default", directory: str = ""
+) -> dict[str, Any] {
+    import subprocess;
+    import from pathlib { Path }
+
+    if not name {
+        return {"success": False, "error": "Project name is required"};
+    }
+
+    # Determine working directory
+    if directory {
+        work_dir = str(Path(directory).resolve());
+    } else {
+        work_dir = tempfile.gettempdir();
+    }
+
+    # Build command
+    cmd: list[str] = ["jac", "create", name, "-u", template, "--force"];
+
+    def _do_create -> dict[str, Any] {
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=work_dir, timeout=30
+        );
+
+        project_path = str(Path(work_dir) / name);
+
+        # List files created
+        files_created: list[str] = [];
+        pp = Path(project_path);
+        if pp.exists() {
+            for f in pp.rglob("*") {
+                if f.is_file() {
+                    files_created.append(str(f.relative_to(pp)));
+                }
+            }
+        }
+
+        success = result.returncode == 0;
+        return {
+            "success": success,
+            "project_path": project_path,
+            "files_created": files_created,
+            "output": result.stdout,
+            "error": result.stderr if not success else ""
+        };
+    }
+
+    (success, result) = run_with_timeout(_do_create, timeout=30);
+    if not success {
+        return {
+            "success": False,
+            "project_path": "",
+            "files_created": [],
+            "output": "",
+            "error": str(result)
+        };
+    }
+    return result;
+}
+
+"""Start a Jac REST API server as a background process."""
+impl CompilerBridge.start_server(
+    filename: str, port: int = 8000, faux: bool = False
+) -> dict[str, Any] {
+    import subprocess;
+    import from pathlib { Path }
+    import time;
+
+    if not filename {
+        return {"error": "Filename is required"};
+    }
+
+    filepath = Path(filename);
+    if not filepath.exists() {
+        return {"error": f"File not found: {filename}"};
+    }
+
+    # Run from the file's parent directory so jac.toml is discovered
+    project_dir = str(filepath.resolve().parent);
+    file_name_only = filepath.name;
+
+    if faux {
+        # Faux mode: run jac start --faux synchronously to get endpoint docs
+        def _do_faux -> dict[str, Any] {
+            result = subprocess.run(
+                ["jac", "start", file_name_only, "--faux", "-p", str(port)],
+                capture_output=True,
+                text=True,
+                cwd=project_dir,
+                timeout=30
+            );
+            return {
+                "mode": "faux",
+                "endpoints": result.stdout,
+                "error": result.stderr if result.returncode != 0 else ""
+            };
+        }
+        (success, result) = run_with_timeout(_do_faux, timeout=30);
+        if not success {
+            return {"mode": "faux", "endpoints": "", "error": str(result)};
+        }
+        return result;
+    }
+
+    # Start server as background process
+    try {
+        proc = subprocess.Popen(
+            ["jac", "start", file_name_only, "-p", str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=project_dir
+        );
+
+        # Give it a moment to start or fail
+        time.sleep(1.5);
+
+        if proc.poll() is not None {
+            # Process already exited - likely an error
+            stdout_val = proc.stdout.read().decode() if proc.stdout else "";
+            stderr_val = proc.stderr.read().decode() if proc.stderr else "";
+            return {
+                "error": f"Server exited immediately (code {proc.returncode})",
+                "stdout": stdout_val,
+                "stderr": stderr_val
+            };
+        }
+
+        return {
+            "url": f"http://localhost:{port}",
+            "pid": proc.pid,
+            "message": f"Server started on port {port} (PID {proc.pid})"
+        };
+    } except Exception as e {
+        return {"error": f"Failed to start server: {str(e)}"};
+    }
+}

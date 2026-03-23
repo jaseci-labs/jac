@@ -252,6 +252,59 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
                 "required": ["code"]
             }
         },
+        {
+            "name": "list_templates",
+            "description": "List available Jac project templates for scaffolding new projects with 'jac create'. Returns all registered templates (built-in like 'default' and plugin-provided like 'client') with names and descriptions.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "create_project",
+            "description": "Scaffold a new Jac project from a template. Creates project structure with jac.toml, source files, and .gitignore. Use list_templates first to see available templates. The project is created in the specified directory (or a temp directory by default).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Project name (used as directory name and in jac.toml)"
+                    },
+                    "template": {
+                        "type": "string",
+                        "description": "Template to use (e.g., 'default', 'client'). Use list_templates to see options.",
+                        "default": "default"
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": "Parent directory where the project will be created. Defaults to system temp directory.",
+                        "default": ""
+                    }
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "start_server",
+            "description": "Start a Jac REST API server from a .jac file. In normal mode, starts the server as a background process and returns the localhost URL and PID. In faux mode (faux=true), only inspects and returns endpoint documentation without starting the server. The filename must be an absolute path or relative to the MCP server's working directory.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Path to the .jac file to serve"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "Port number for the server",
+                        "default": 8000
+                    },
+                    "faux": {
+                        "type": "boolean",
+                        "description": "If true, only print endpoint docs without starting the server",
+                        "default": False
+                    }
+                },
+                "required": ["filename"]
+            }
+        },
 
     ];
 }
@@ -352,6 +405,24 @@ impl ToolProvider.call_tool(name: str, arguments: dict[str, Any]) -> dict[str, A
                 return {"error": "Missing required argument: code"};
             }
             return graph_visualize(code, fmt, depth, bfs, edge_limit, node_limit);
+        } elif name == "list_templates" {
+            return list_templates();
+        } elif name == "create_project" {
+            proj_name = arguments.get("name", "");
+            template = arguments.get("template", "default");
+            directory = arguments.get("directory", "");
+            if not proj_name {
+                return {"error": "Missing required argument: name"};
+            }
+            return create_project(proj_name, template, directory);
+        } elif name == "start_server" {
+            srv_filename = arguments.get("filename", "");
+            port = arguments.get("port", 8000);
+            faux = arguments.get("faux", False);
+            if not srv_filename {
+                return {"error": "Missing required argument: filename"};
+            }
+            return start_server(srv_filename, port, faux);
         } else {
             return {"error": f"Unknown tool: {name}"};
         }
@@ -560,10 +631,37 @@ impl run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, An
 
 """Generate graph visualization from Jac code."""
 impl graph_visualize(
-    code: str, format: str = "dot", depth: int = -1,
-    bfs: bool = True, edge_limit: int = 512, node_limit: int = 512
+    code: str,
+    format: str = "dot",
+    depth: int = -1,
+    bfs: bool = True,
+    edge_limit: int = 512,
+    node_limit: int = 512
 ) -> dict[str, Any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
-    return CompilerBridge.graph_viz_snippet(code, format, depth, bfs, edge_limit, node_limit);
+    return CompilerBridge.graph_viz_snippet(
+        code, format, depth, bfs, edge_limit, node_limit
+    );
 }
 
+"""List available Jac project templates."""
+impl list_templates -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.list_templates();
+}
+
+"""Create a new Jac project from a template."""
+impl create_project(
+    name: str, template: str = "default", directory: str = ""
+) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.create_project(name, template, directory);
+}
+
+"""Start a Jac REST API server."""
+impl start_server(
+    filename: str, port: int = 8000, faux: bool = False
+) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.start_server(filename, port, faux);
+}
