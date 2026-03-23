@@ -1309,9 +1309,6 @@ obj KubernetesTarget(DeploymentTarget) {
                     '--port',
                     str(self.k8s_config.container_port)
                 ];
-                # Mount a writable emptyDir at /app/.jac so jac can write compiled
-                # client bundles at runtime while keeping the root filesystem read-only
-                volumes.append({'name': 'jac-cache', 'emptyDir': {}});
             }
             container_config = self._build_container_config(
                 app_name,
@@ -1319,10 +1316,8 @@ obj KubernetesTarget(DeploymentTarget) {
                 probe_configs,
                 resources_config,
                 command=build_command,
-                volume_mounts=[{'name': 'jac-cache', 'mountPath': '/app/.jac'}]
-                    if app_config.build
-                    else None,
-                secret_ref_name=secret_ref_name
+                secret_ref_name=secret_ref_name,
+                needs_root=app_config.build
             );
 
             # 10. Handle volumes and build container if not building image
@@ -1471,6 +1466,11 @@ obj KubernetesTarget(DeploymentTarget) {
             details["deploy_ingress"] = "Successful";
 
             # 16. Wait for deployment and get service URL
+            if self.logger {
+                self.logger.info(
+                    f"Waiting for '{app_name}' to become healthy at '{health_check_path}'..."
+                );
+            }
             deployment_details = self._wait_for_deployment(
                 app_name, namespace, health_check_path, cluster_env
             );
