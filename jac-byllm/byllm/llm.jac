@@ -34,6 +34,7 @@ import from byllm.types {
     MessageRole
 }
 import from byllm.config_loader { get_byllm_config }
+import from byllm.telemetry { _emit_agent_telemetry }
 
 # Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
