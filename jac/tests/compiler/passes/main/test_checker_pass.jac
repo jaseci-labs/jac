@@ -2505,3 +2505,68 @@ test "narrowing_gaps_total_error_count" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+# ============================================================================
+# Runtime.impl.jac type checker issues
+# These document false positive errors found in runtime.impl.jac.
+# ============================================================================
+"""Runtime narrowing: truthiness + isinstance on attribute access in `and` chains.
+
+Tests that `obj.attr and isinstance(obj.attr, T)` correctly narrows obj.attr
+from a multi-member union through both truthiness and isinstance. Uses AtomTrailer
+nodes (attribute access) to match the real runtime.impl.jac patterns.
+"""
+test "runtime_attr_truthiness_and_isinstance_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 1 ok_ functions: lines 60-100 (attr truthiness, isinstance, loop patterns)
+    i1_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 60 <= e.loc.first_line <= 100
+    ];
+    assert len(i1_errors) == 0 , f"Attr truthiness/isinstance narrowing should produce 0 errors, got {len(
+        i1_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i1_errors);
+}
+
+"""Runtime narrowing: compound `or` guard on attribute access after early exit.
+
+Tests that after `if (not obj or not obj.attr) { raise/return; }`, obj is narrowed
+to non-None for subsequent attribute access. Uses AtomTrailer nodes to match the
+real runtime.impl.jac `spec` pattern.
+"""
+test "runtime_compound_or_guard_attr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 2 ok_ functions: lines 120-175 (compound or guard patterns)
+    i2_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 120 <= e.loc.first_line <= 175
+    ];
+    assert len(i2_errors) == 0 , f"Compound or guard narrowing should produce 0 errors, got {len(
+        i2_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i2_errors);
+}
+
+"""Total error count for runtime errors fixture — all patterns should pass."""
+test "runtime_errors_total" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"All runtime patterns should produce 0 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

@@ -2660,16 +2660,22 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Check scope narrowing for Name/NameAtom nodes in inline expression contexts
-    # (ternary and AND/OR boolean expressions) where CFG-based narrowing
-    # does not apply. Regular if/else uses CFG-based narrowing for Names.
-    # NameAtom nodes also need this check since they appear as variable
-    # references inside ternary branches (e.g., function call arguments).
-    if isinstance(node_, (uni.Name, uni.NameAtom))
-    and (self._in_ternary_expr_depth > 0 or self._in_bool_expr_narrowing_depth > 0) {
-        if scope_narrowed := self.get_scope_narrowing(node_.value) {
-            node_.type = scope_narrowed;
-            return scope_narrowed;
+    # Check scope narrowing for Name, NameAtom, and AtomTrailer nodes in inline
+    # expression contexts (ternary and AND/OR boolean expressions) where CFG-based
+    # narrowing does not apply. This MUST happen before the cache check because the
+    # cached type on the node is the unnarrowed type from a previous evaluation.
+    if (self._in_ternary_expr_depth > 0 or self._in_bool_expr_narrowing_depth > 0) {
+        narrowing_key: str | None = None;
+        if isinstance(node_, (uni.Name, uni.NameAtom)) {
+            narrowing_key = node_.value;
+        } elif isinstance(node_, uni.AtomTrailer) {
+            narrowing_key = self.get_narrowing_key(node_);
+        }
+        if narrowing_key is not None {
+            if scope_narrowed := self.get_scope_narrowing(narrowing_key) {
+                node_.type = scope_narrowed;
+                return scope_narrowed;
+            }
         }
     }
     # Use cached result if available, UNLESS expected_type is provided
@@ -3213,7 +3219,10 @@ impl TypeEvaluator.add_scope_narrowing(
 ) -> None {
     if self._narrowing_scope_stack {
         current_scope = self._narrowing_scope_stack[-1];
-        # If already narrowed, keep the more specific type
+        # If already narrowed, keep the more specific type.
+        # In `x and isinstance(x, T)`, truthiness narrows first (e.g., to a UnionType
+        # with None excluded), then isinstance narrows further. The isinstance type
+        # is always more specific than the truthiness-narrowed union.
         if key in current_scope {
             existing = current_scope[key];
             if (
@@ -3221,10 +3230,12 @@ impl TypeEvaluator.add_scope_narrowing(
                 and isinstance(existing, types.ClassType)
             ) {
                 if self.is_sub_class(existing, narrowed_type) {
-                    # narrowed_type is more specific
                     current_scope[key] = narrowed_type;
                 }
-                # else: existing is more specific, keep it
+            } elif isinstance(existing, types.UnionType) {
+                # Existing is a union (e.g., from truthiness narrowing),
+                # new type is more specific (e.g., from isinstance) — replace.
+                current_scope[key] = narrowed_type;
             }
         } else {
             current_scope[key] = narrowed_type;
@@ -3534,20 +3545,33 @@ impl TypeEvaluator._find_predicate_for(
                 return most_specific;
 
             # Pattern 3: Compound OR (BoolExpr with KW_OR)
-            # Handles: isinstance(x, A) | isinstance(x, B) -> narrows to A | B
-            # Note: In Jac, boolean OR is expressed with '|' (KW_OR), not 'or'
-            # Only works when all branches are positive isinstance checks
+            # Two sub-patterns:
+            #   a) isinstance(x, A) or isinstance(x, B) → narrows to A|B (positive)
+            #   b) not x or not x.attr → inverted truthiness predicates
+            # For (a), the true branch narrows to A|B. For (b), the false branch
+            # (all operands falsy) means each inverted pred's inner condition is true.
             case Tok.KW_OR:
-                narrowed_types: list[types.TypeBase] = [];
-                for val in condition.values {
-                    pred = self._find_predicate_for(symbol, val);
-                    if pred is None or pred.is_inverted {
-                        # Can't narrow OR if any branch is negative or unknown
-                        return None;
-                    }
-                    narrowed_types.append(pred.narrow_type);
+                all_preds = [
+                    self._find_predicate_for(symbol, val) for val in condition.values
+                ];
+                matched = [
+                    p
+                    for p in all_preds
+                    if p is not None
+                ];
+                if not matched {
+                    return None;
                 }
-                if len(narrowed_types) > 0 {
+                # Sub-pattern (a): all positive → union for true branch
+                positive = [
+                    p
+                    for p in matched
+                    if not p.is_inverted
+                ];
+                if len(positive) == len(matched) {
+                    narrowed_types: list[types.TypeBase] = [
+                        p.narrow_type for p in positive
+                    ];
                     if len(narrowed_types) == 1 {
                         union_type = narrowed_types[0];
                     } else {
@@ -3557,7 +3581,15 @@ impl TypeEvaluator._find_predicate_for(
                         sym_name=sym_name, narrow_type=union_type, is_inverted=False
                     );
                 }
-                return None;
+                # Sub-pattern (b): has inverted predicates (e.g., `not x or not x.y`)
+                # Return first matching predicate for this symbol. On the false branch,
+                # _apply_narrowing inverts is_inverted (double negation → positive).
+                for p in matched {
+                    if p.sym_name == sym_name {
+                        return p;
+                    }
+                }
+                return matched[0];
 
         }
     }
