@@ -2660,10 +2660,12 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Check scope narrowing for Name nodes in inline expression contexts
+    # Check scope narrowing for Name/NameAtom nodes in inline expression contexts
     # (ternary and AND/OR boolean expressions) where CFG-based narrowing
     # does not apply. Regular if/else uses CFG-based narrowing for Names.
-    if isinstance(node_, uni.Name)
+    # NameAtom nodes also need this check since they appear as variable
+    # references inside ternary branches (e.g., function call arguments).
+    if isinstance(node_, (uni.Name, uni.NameAtom))
     and (self._in_ternary_expr_depth > 0 or self._in_bool_expr_narrowing_depth > 0) {
         if scope_narrowed := self.get_scope_narrowing(node_.value) {
             node_.type = scope_narrowed;
