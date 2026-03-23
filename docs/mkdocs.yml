@@ -72,6 +72,7 @@ nav:
 
   - Community:
       - Contributing: "community/contributing.md"
+      - Codebase Guide: "community/codebase-guide.md"
       - Breaking Changes: "community/breaking-changes.md"
       - PR Leaderboard: "community/contributors.md"
       - Release Notes:

@@ -1,6 +1,8 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.6 (Unreleased)
+## jac-mcp 0.1.7 (Unreleased)
+
+## jac-mcp 0.1.6 (Latest Release)
 
 - **Fix SSE transport method issue**
 - **Fix `prompts/get` failing with Pydantic validation error**: System instructions now correctly use `role: "assistant"`
@@ -9,7 +11,7 @@
 - **Fix jac-mcp configuration issue in `jac.toml`***: Respect [plugins.mcp] config from jac.toml in jac mcp, using it as fallback when CLI args are not explicitly provided.
 - **Lazy GitHub-based example fetching**: Examples are now fetched on-demand from GitHub instead of being bundled in the PyPI package, reducing package size and ensuring examples are always up-to-date. Local repo examples are used when available, with GitHub as a fallback
 
-## jac-mcp 0.1.5 (Latest Release)
+## jac-mcp 0.1.5
 
 ## jac-mcp 0.1.4
 
