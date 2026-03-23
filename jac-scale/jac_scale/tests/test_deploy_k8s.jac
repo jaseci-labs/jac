@@ -1796,29 +1796,32 @@ test "code server scaled to zero before sync on redeploy" {
 
     call_order: list[str] = [];
 
-    # apps_v1 mock: code-server deployment exists, track all patch calls by body.
-    # Use *args/**kwargs on all lambdas: JAC may compile some keyword-arg calls
-    # as positional, so fixed-arity lambdas would fail with "N args but M given".
+    # JAC does not support *args/**kwargs in lambda syntax — `lambda *a, **kw:`
+    # compiles to a 2-param lambda `lambda a, kw:` which fails when called with
+    # a different number of positional args.  Use named defs with *a: Any instead.
+    def _track_patch(*a: Any, **kw: Any) -> None {
+        body = a[2] if len(a) > 2 else kw.get('body');
+        call_order.append(
+            'scale_to_zero' if body == {'spec': {'replicas': 0}} else 'scale_to_one'
+        );
+    }
+    def _track_delete(*a: Any, **kw: Any) -> None {
+        call_order.append('delete_code_server');
+    }
+    def _track_create(*a: Any, **kw: Any) -> None {
+        call_order.append('create_code_server');
+    }
+    def _track_sync(*a: Any, **kw: Any) -> None {
+        call_order.append('sync_code_to_pvc');
+    }
+
     mock_apps_v1 = unittest.mock.MagicMock();
     mock_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
         spec=SimpleNamespace(replicas=1)
     );
-    mock_apps_v1.patch_namespaced_deployment.side_effect = (
-        lambda *a , **kw :
-            call_order.append(
-                'scale_to_zero'
-                    if (a[2] if len(a) > 2 else kw.get('body')) == {
-                        'spec': {'replicas': 0}
-                    }
-                    else 'scale_to_one'
-            )
-    );
-    mock_apps_v1.delete_namespaced_deployment.side_effect = (
-        lambda *a , **kw : call_order.append('delete_code_server')
-    );
-    mock_apps_v1.create_namespaced_deployment.side_effect = (
-        lambda *a , **kw : call_order.append('create_code_server')
-    );
+    mock_apps_v1.patch_namespaced_deployment.side_effect = _track_patch;
+    mock_apps_v1.delete_namespaced_deployment.side_effect = _track_delete;
+    mock_apps_v1.create_namespaced_deployment.side_effect = _track_create;
 
     # core_v1 mock: no pods left after scale-to-zero (volume already released)
     mock_core_v1 = unittest.mock.MagicMock();
@@ -1829,7 +1832,7 @@ test "code server scaled to zero before sync on redeploy" {
     # --- success path ---
     with unittest.mock.patch(
         'jac_scale.targets.kubernetes.kubernetes_target.sync_code_to_pvc',
-        side_effect=lambda *a , **kw : call_order.append('sync_code_to_pvc')
+        side_effect=_track_sync
     ) {
         deployment_target._build_volumes_config(
             'test-app',
@@ -1862,16 +1865,7 @@ test "code server scaled to zero before sync on redeploy" {
     mock_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
         spec=SimpleNamespace(replicas=1)
     );
-    mock_apps_v1.patch_namespaced_deployment.side_effect = (
-        lambda *a , **kw :
-            call_order.append(
-                'scale_to_zero'
-                    if (a[2] if len(a) > 2 else kw.get('body')) == {
-                        'spec': {'replicas': 0}
-                    }
-                    else 'scale_to_one'
-            )
-    );
+    mock_apps_v1.patch_namespaced_deployment.side_effect = _track_patch;
 
     sync_raised = False;
     with unittest.mock.patch(
@@ -1928,21 +1922,12 @@ test "code server scaled to zero before sync on redeploy" {
         return _side_effect;
     }
     mock_apps_v1.read_namespaced_deployment.side_effect = _make_read_side_effect();
-    mock_apps_v1.patch_namespaced_deployment.side_effect = (
-        lambda *a , **kw :
-            call_order.append(
-                'scale_to_zero'
-                    if (a[2] if len(a) > 2 else kw.get('body')) == {
-                        'spec': {'replicas': 0}
-                    }
-                    else 'scale_to_one'
-            )
-    );
+    mock_apps_v1.patch_namespaced_deployment.side_effect = _track_patch;
 
     deploy_raised = False;
     with unittest.mock.patch(
         'jac_scale.targets.kubernetes.kubernetes_target.sync_code_to_pvc',
-        side_effect=lambda *a , **kw : call_order.append('sync_code_to_pvc')
+        side_effect=_track_sync
     ) {
         with unittest.mock.patch.object(
             deployment_target,
