@@ -23,6 +23,11 @@ dependencies = [
     "bcrypt>=4.0.0,<5.0.0"
 ]
 
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://jac-lang.org"
+
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
 scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
