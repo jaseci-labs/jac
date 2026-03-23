@@ -1517,7 +1517,7 @@ obj KubernetesTarget(DeploymentTarget) {
             # 16. Wait for deployment and get service URL
             if self.logger {
                 self.logger.info(
-                    f"Waiting for '{app_name}' to become healthy at '{health_check_path}'..."
+                    f"Waiting for deployment '{app_name}' to become healthy..."
                 );
             }
             deployment_details = self._wait_for_deployment(

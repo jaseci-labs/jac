@@ -31,7 +31,7 @@ obj KubernetesConfig(BaseConfig) {
         pvc_size: str = '5Gi',
         # Timing configuration
         resource_deletion_wait: int = 5,
-        aws_nlb_wait: int = 60,
+        aws_nlb_wait: int = 10,
         # Paths
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
