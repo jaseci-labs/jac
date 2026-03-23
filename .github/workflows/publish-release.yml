@@ -313,6 +313,27 @@ jobs:
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
+  wait-tier3:
+    needs: [parse-release, publish-tier3]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Wait for tier 3 on PyPI
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 3
+
   # ============================================================================
   # Push tags after successful publish
   # ============================================================================
@@ -436,9 +457,10 @@ jobs:
   # Build standalone binaries (triggered when jaseci is released)
   # ============================================================================
   build-standalone-binaries:
-    needs: [parse-release, push-tags, create-github-release]
+    needs: [parse-release, wait-tier3, push-tags, create-github-release]
     if: |
       always() &&
+      needs.wait-tier3.result == 'success' &&
       needs.push-tags.result == 'success' &&
       needs.push-tags.outputs.jaseci_version != ''
     uses: ./.github/workflows/build-standalone.yml
@@ -452,7 +474,7 @@ jobs:
   # Summary
   # ============================================================================
   summary:
-    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, push-tags, create-github-release, build-standalone-binaries]
+    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
