@@ -2634,6 +2634,63 @@ if __name__ == "__main__":
         );
     }
 
+    # Auto-install Python dependencies from jac.toml before bundling
+    jac_toml_path = project_dir / "jac.toml";
+    if jac_toml_path.exists() {
+        try {
+            import tomllib;
+            with open(jac_toml_path, "rb") as f {
+                toml_data = tomllib.load(f);
+            }
+            python_deps = toml_data.get("dependencies", {});
+
+            # Count valid dependencies first
+            dep_count = 0;
+            for (name, version) in python_deps.items() {
+                if isinstance(version, str) {
+                    dep_count += 1;
+                }
+            }
+
+            if dep_count > 0 {
+                console.print(f"  Installing {dep_count} Python dependencies from jac.toml...", style="muted");
+
+                # Install each dependency
+                for (name, version) in python_deps.items() {
+                    # Skip sub-tables (npm, git, etc.) - only process string values
+                    if not isinstance(version, str) {
+                        continue;
+                    }
+
+                    # Build pip install spec
+                    if version and not version.startswith("*") {
+                        dep_spec = f"{name}{version}";
+                    } else {
+                        dep_spec = name;
+                    }
+
+                    try {
+                        result = subprocess.run(
+                            [sys.executable, "-m", "pip", "install", dep_spec, "-q"],
+                            capture_output=True,
+                            text=True,
+                            timeout=120
+                        );
+                        if result.returncode == 0 {
+                            console.print(f"    ✔ {dep_spec}", style="success");
+                        } else {
+                            console.warning(f"    ✖ Failed to install {dep_spec}: {result.stderr.strip()}");
+                        }
+                    } except Exception as e {
+                        console.warning(f"    ✖ Failed to install {dep_spec}: {e}");
+                    }
+                }
+            }
+        } except Exception as e {
+            console.warning(f"  Could not read dependencies from jac.toml: {e}");
+        }
+    }
+
     # Create PyInstaller spec file
     spec_path = tauri_dir / "jac-sidecar.spec";
     spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name, plugins_config);

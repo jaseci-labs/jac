@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.8 (Unreleased)
 
+- **Auto-Install Python Dependencies for Desktop Builds**: Desktop builds now automatically install Python dependencies listed in `[dependencies]` section of `jac.toml` before bundling. No need to manually `pip install` packages - just add them to `jac.toml` and they'll be installed and bundled automatically.
 - **Scalable Plugin Bundling for Desktop**: Refactored the PyInstaller spec generation to use `collect_all()` for comprehensive, automatic package bundling. Plugin dependencies (jac-scale, byllm, jac-coder) and their transitive dependencies are now automatically discovered via `importlib.metadata.requires()` instead of manually maintained import lists. This eliminates runtime errors like "No module named 'websockets'" or "No module named 'loguru'" when plugins update their dependencies. The new system:
   - Automatically collects all data files, binaries, and submodules for each plugin
   - Recursively discovers dependencies from package metadata (pyproject.toml)
