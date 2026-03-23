@@ -406,3 +406,45 @@ test "bug_tvar3_typevar_union_return_type" {
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
     f"Without the fix, dict.get() and similar methods return Unknown.";
 }
+
+# =========================================================================
+# Bug #TVAR-4: Generic[] base class must establish canonical TypeVar order
+# =========================================================================
+# Root cause: _extract_type_params processed base classes left-to-right and
+# deduplicated by name. For dict_values(ValuesView[_VT_co], Generic[_KT_co,
+# _VT_co]), _VT_co was encountered first (from ValuesView), producing
+# type_params = [_VT_co, _KT_co]. The correct order per PEP 484 is
+# [_KT_co, _VT_co] from the Generic[] declaration, which is the authoritative
+# source. Wrong ordering swaps key/value types in dict.keys()/values().
+#
+# Impact: dict.values() yielded key types instead of value types, and
+#         dict.keys() yielded value types instead of key types, for any
+#         dict-like class whose typeshed stub lists Generic[] after other
+#         parameterized bases.
+# =========================================================================
+test "bug_tvar4_generic_base_canonical_typevar_order" {
+    program = compile_and_check("checker_bug_typevar_generic_order.jac");
+
+    # Expected: 2 errors on the `bad` lines (24 and 30), NOT on the `good` lines (23 and 29).
+    # Without fix: 2 errors on the WRONG lines (23 and 30) because key/value types are swapped,
+    # so a count-only check would still pass — we must verify the error locations.
+    assert len(program.errors_had) >= 2 , f"Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
+    f"Expected at least 2 type errors but got {len(program.errors_had)}.";
+
+    # Verify errors are on the `bad` assignment lines, not the `good` ones.
+    # Line 24: `bad: int = v` should error (v is str from values())
+    # Line 30: `bad2: str = k` should error (k is int from keys())
+    error_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc
+    ];
+    assert 24 in error_lines , f"Expected error on line 24 (bad: int = v), got errors on lines {error_lines}. "
+    f"Without fix, dict.values() yields key type instead of value type.";
+    assert 30 in error_lines , f"Expected error on line 30 (bad2: str = k), got errors on lines {error_lines}.";
+    # The `good` lines should NOT have errors.
+    assert 23 not in error_lines , f"Line 23 (good: str = v) should not error — values() yields str, "
+    f"but got errors on lines {error_lines}. TypeVar order is likely swapped.";
+    assert 29 not in error_lines , f"Line 29 (good2: int = k) should not error — keys() yields int, "
+    f"but got errors on lines {error_lines}.";
+}

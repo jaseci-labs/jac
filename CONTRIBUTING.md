@@ -143,7 +143,8 @@ Releasing new versions to PyPI is a two-step process using GitHub Actions.
    - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jaseci`
 4. Click **Run workflow**
 5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
-6. Wait for CI tests to pass, then **approve and merge** the PR to main
+6. **Current workaround (needs fix)**: Close and reopen the PR to trigger CI tests
+7. Wait for CI tests to pass, then **approve and merge** the PR to main
 
 ### Step 2: Approve Publishing
 
@@ -172,6 +173,7 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
 
 | Issue | Solution |
 |-------|----------|
+| CI tests not running on release PR | Close and reopen the PR to trigger CI |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
 | A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped |
 | Version conflict on PyPI | The `Create Release PR` workflow validates this upfront - if you hit this, someone manually published |
