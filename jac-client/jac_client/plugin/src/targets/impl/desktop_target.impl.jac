@@ -1071,6 +1071,12 @@ linux = true
 system_tray = false
 auto_update = false
 notifications = false
+
+# Jac plugins to bundle (set to false to exclude from build)
+[desktop.plugins]
+jac_scale = true   # FastAPI server, auth, scaling features
+byllm = true       # LLM providers integration (litellm)
+jac_coder = true   # AI coding assistant
 ''';
 
     # Append the section
@@ -1917,7 +1923,19 @@ impl DesktopTarget.build(
     sidecar_bundled = False;
     try {
         console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
-        sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform);
+        # Load desktop config to get plugins configuration
+        import from jac_client.plugin.src.desktop_config { DesktopConfig }
+        plugins_config = None;
+        try {
+            desktop_config = DesktopConfig(project_dir=project_dir);
+            plugins_config = desktop_config.get_plugins_config();
+            if plugins_config {
+                console.print(f"  Plugins config: {plugins_config}", style="muted");
+            }
+        } except Exception as config_err {
+            console.warning(f"  Could not load plugins config: {config_err}, using defaults");
+        }
+        sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform, plugins_config);
         if sidecar_path and sidecar_path.exists() {
             console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
             sidecar_bundled = True;
@@ -2534,7 +2552,8 @@ def _bundle_sidecar(
     entry_file: Path,
     project_dir: Path,
     tauri_dir: Path,
-    target_platform: Optional[str] = None
+    target_platform: Optional[str] = None,
+    plugins_config: dict | None = None
 ) -> Path | None {
     import platform as platform_module;
 
@@ -2552,7 +2571,7 @@ def _bundle_sidecar(
 
     if use_pyinstaller {
         result = _bundle_sidecar_pyinstaller(
-            entry_file, project_dir, tauri_dir, binaries_dir, is_windows
+            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config
         );
         if result {
             return result;
@@ -2570,7 +2589,8 @@ def _bundle_sidecar_pyinstaller(
     project_dir: Path,
     tauri_dir: Path,
     binaries_dir: Path,
-    is_windows: bool
+    is_windows: bool,
+    plugins_config: dict | None = None
 ) -> Path | None {
     import sys;
     import shutil;
@@ -2616,7 +2636,7 @@ if __name__ == "__main__":
 
     # Create PyInstaller spec file
     spec_path = tauri_dir / "jac-sidecar.spec";
-    spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name);
+    spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name, plugins_config);
     with open(spec_path, "w") as f {
         f.write(spec_content);
     }
@@ -2705,8 +2725,21 @@ if __name__ == "__main__":
 
 """Generate PyInstaller spec file for sidecar bundling."""
 def _generate_pyinstaller_spec(
-    entry_script: Path, project_dir: Path, binary_name: str
+    entry_script: Path, project_dir: Path, binary_name: str,
+    plugins_config: dict | None = None
 ) -> str {
+    # Default plugins config - all enabled
+    if plugins_config is None {
+        plugins_config = {
+            'jac_scale': True,
+            'byllm': True,
+            'jac_coder': True
+        };
+    }
+
+    # Convert plugins config to Python code string for the spec file
+    plugins_config_str = str(plugins_config);
+
     # entry_script is the actual Python file to bundle (sidecar_entry.py)
     return f'''# -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for Jac Sidecar
@@ -2714,6 +2747,9 @@ def _generate_pyinstaller_spec(
 
 import sys
 from pathlib import Path
+
+# Plugin configuration from [desktop.plugins] in jac.toml
+PLUGINS_CONFIG = {plugins_config_str}
 
 # Hidden imports for jaclang and dependencies
 hiddenimports = [
@@ -2745,6 +2781,13 @@ hiddenimports = [
     'pluggy',
     'toml',
     'tomli',
+    # Websockets for preview proxy
+    'websockets',
+    'websockets.client',
+    'websockets.server',
+    'websockets.legacy',
+    'websockets.legacy.server',
+    'websockets.legacy.client',
     # Python stdlib modules that jaclang uses
     'pdb',
     'bdb',
@@ -2754,79 +2797,123 @@ hiddenimports = [
     'readline',
 ]
 
-# Try to add jac-scale if installed (includes FastAPI/uvicorn dependencies)
-try:
-    import jac_scale
-    hiddenimports.extend([
-        'jac_scale',
-        'jac_scale.plugin',
-        # FastAPI and dependencies
-        'fastapi',
-        'fastapi.applications',
-        'fastapi.routing',
-        'fastapi.middleware',
-        'fastapi.middleware.cors',
-        'starlette',
-        'starlette.applications',
-        'starlette.routing',
-        'starlette.middleware',
-        'starlette.middleware.cors',
-        'uvicorn',
-        'uvicorn.main',
-        'uvicorn.config',
-        'uvicorn.lifespan',
-        'uvicorn.lifespan.on',
-        'uvicorn.protocols',
-        'uvicorn.protocols.http',
-        'uvicorn.protocols.http.h11_impl',
-        'uvicorn.protocols.websockets',
-        'uvicorn.loops',
-        'uvicorn.loops.auto',
-        'httptools',
-        'websockets',
-        'h11',
-        'anyio',
-        'sniffio',
-        'redis',
-        'pydantic',
-        'pydantic_core',
-    ])
-except ImportError:
-    pass
+# Check plugin availability (collect_all() below handles the actual bundling)
+print("\\n[Checking plugins...]")
+if PLUGINS_CONFIG.get('jac_scale', True):
+    try:
+        import jac_scale
+        print("  jac_scale: available")
+    except ImportError:
+        print("  jac_scale: not installed")
+else:
+    print("  jac_scale: disabled in config")
 
-# Collect all jaclang data files (.jac files, etc.)
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+if PLUGINS_CONFIG.get('byllm', True):
+    try:
+        import byllm
+        print("  byllm: available")
+    except ImportError:
+        print("  byllm: not installed")
+else:
+    print("  byllm: disabled in config")
+
+if PLUGINS_CONFIG.get('jac_coder', True):
+    try:
+        import jac_coder
+        print("  jac_coder: available")
+    except ImportError:
+        print("  jac_coder: not installed")
+else:
+    print("  jac_coder: disabled in config")
+
+# Use collect_all() for comprehensive package bundling (scalable approach)
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
 
 datas = []
+binaries = []
+all_hiddenimports = []
 
-# Copy package metadata (preserves entry points for plugin discovery)
-try:
-    datas += copy_metadata('jaclang')
-except Exception:
-    pass
-try:
-    datas += copy_metadata('jac_scale')
-except Exception:
-    pass
-try:
-    datas += copy_metadata('jac_client')
-except Exception:
-    pass
+def safe_collect_all(pkg_name):
+    """Safely collect all data, binaries, and imports for a package."""
+    try:
+        d, b, h = collect_all(pkg_name)
+        print(f"  collect_all('{{pkg_name}}'): {{len(d)}} datas, {{len(b)}} binaries, {{len(h)}} imports")
+        return d, b, h
+    except Exception as e:
+        print(f"  collect_all('{{pkg_name}}'): skipped - {{e}}")
+        return [], [], []
 
-try:
-    datas += collect_data_files('jaclang', include_py_files=True)
-except Exception:
-    pass
+def get_package_deps(pkg_name):
+    """Get direct dependencies of a package from its metadata."""
+    try:
+        from importlib.metadata import requires
+        reqs = requires(pkg_name) or []
+        deps = []
+        for req in reqs:
+            # Parse requirement string (e.g., "litellm>=1.81.15,<1.83.0" -> "litellm")
+            dep_name = req.split('[')[0].split('>')[0].split('<')[0].split('=')[0].split('!')[0].split(';')[0].strip()
+            if dep_name:
+                # Convert package name to module name
+                module_name = dep_name.replace('-', '_')
+                deps.append(module_name)
+        return deps
+    except Exception:
+        return []
 
-try:
-    datas += collect_data_files('jac_client', include_py_files=True)
-except Exception:
-    pass
+def collect_with_deps(pkg_name, collected=None):
+    """Collect a package and its dependencies recursively."""
+    if collected is None:
+        collected = set()
+    if pkg_name in collected:
+        return [], [], []
+    collected.add(pkg_name)
 
-try:
-    datas += collect_data_files('jac_scale', include_py_files=True)
-except Exception:
-    pass
+    all_d, all_b, all_h = safe_collect_all(pkg_name)
+
+    # Also collect direct dependencies
+    for dep in get_package_deps(pkg_name):
+        if dep not in collected:
+            d, b, h = safe_collect_all(dep)
+            all_d += d
+            all_b += b
+            all_h += h
+            collected.add(dep)
+
+    return all_d, all_b, all_h
+
+# Track collected packages to avoid duplicates
+collected_packages = set()
+
+# Core packages - always bundle completely (with their dependencies)
+print("\\n[Collecting core packages...]")
+for pkg in ['jaclang', 'jac_client']:
+    d, b, h = collect_with_deps(pkg, collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# Plugin packages - bundle based on config (with their dependencies)
+print("\\n[Collecting plugin packages...]")
+if PLUGINS_CONFIG.get('jac_scale', True):
+    d, b, h = collect_with_deps('jac_scale', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+if PLUGINS_CONFIG.get('byllm', True):
+    d, b, h = collect_with_deps('byllm', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+if PLUGINS_CONFIG.get('jac_coder', True):
+    d, b, h = collect_with_deps('jac_coder', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# Merge collected imports with manual hiddenimports
+hiddenimports.extend(all_hiddenimports)
 
 # Add project .jac files
 project_dir = Path(r'{project_dir}')
@@ -2839,20 +2926,36 @@ jac_toml = project_dir / 'jac.toml'
 if jac_toml.exists():
     datas.append((str(jac_toml), '.'))
 
-# Collect all submodules
-hiddenimports += collect_submodules('jaclang')
-hiddenimports += collect_submodules('jac_client')
+# Read Python dependencies from jac.toml and add to hiddenimports
 try:
-    hiddenimports += collect_submodules('jac_scale')
-except Exception:
-    pass
+    import tomllib
+    with open(jac_toml, 'rb') as f:
+        toml_data = tomllib.load(f)
+    # Get [dependencies] section (Python packages)
+    python_deps = toml_data.get('dependencies', {{}})
+    for dep_name, dep_version in python_deps.items():
+        # Skip sub-tables like npm, git, etc.
+        if isinstance(dep_version, str):
+            # Convert package name to module name (e.g., jac-scale -> jac_scale)
+            module_name = dep_name.replace('-', '_')
+            hiddenimports.append(module_name)
+            try:
+                hiddenimports += collect_submodules(module_name)
+            except Exception:
+                pass
+    print(f"Added {{len([d for d in python_deps.values() if isinstance(d, str)])}} Python dependencies from jac.toml")
+except Exception as e:
+    print(f"Warning: Could not read Python dependencies from jac.toml: {{e}}")
+
+# Note: collect_all() already handles submodules, data files, and binaries
+# No need for separate collect_submodules() calls
 
 a = Analysis(
     [r'{entry_script}'],
     pathex=[str(project_dir)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
-    hiddenimports=hiddenimports,
+    hiddenimports=list(set(hiddenimports)),  # deduplicate
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
