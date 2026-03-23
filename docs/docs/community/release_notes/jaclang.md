@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.12.3 (Unreleased)
+## jaclang 0.13.1 (Unreleased)
+
+## jaclang 0.13.0 (Latest Release)
 
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
 - **Type Checker: TypeVar Union and Overload Resolution**: Fixed three root causes that made generic method return types resolve to `<Unknown>`: (1) `TypeVarType.is_any_type()` short-circuited the `|` operator so `_VT | None` in typeshed stubs became `UnknownType` instead of a proper union; (2) `is_annotation_type()` did not recognize `TypeVarType` as valid for union creation; (3) added TypeVar constraint solving to overload resolution -- method-level TypeVars (e.g., `_D` in `ContextVar.get(default: _D) -> _D | _T`) are now inferred from call arguments with bounds, constraints, and consistency validation via the existing `assign_type_to_type_var` infrastructure. This fixes `dict[K,V].get()`, `ContextVar[T].get()`, and similar generic methods returning `<Unknown>` for user-defined types.
@@ -44,6 +46,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Impl Matching with Forward Declarations**: `impl MyClass.method` now correctly matches declarations when `MyClass` has forward declarations or is reassigned elsewhere. Previously failed with E2009.
 - **Fix: Goto Definition for Import Paths and Imported Items**: Goto definition now works correctly on all parts of an import statement. Previously, intermediate path segments failed to resolve because each was resolved independently; now the full dotted path is resolved once and intermediate paths are derived by walking up the directory tree.
 - **Fix: TypeVar Deduplication and Transitive Propagation in Generic Specialization**: Fixed two bugs in the type checker's generic TypeVar resolution. (1) `_extract_type_params` now deduplicates TypeVars by name when a class inherits from multiple generic bases with overlapping TypeVars (e.g., `Mapping(Collection[_KT], Generic[_KT, _VT_co])` previously collected `_KT` twice, causing positional mismatches). (2) `build_type_var_solution` now propagates TypeVar bindings transitively through the `base_classes` chain, so renamed TypeVars across inheritance levels (e.g., `_VT_co` in `Mapping` mapped through `_VT` in `MutableMapping`) are correctly resolved when specializing methods like `dict[str, int].get()`.
+- **Fix: Generic[] Base Class Canonical TypeVar Ordering**: `_extract_type_params` now processes `Generic[...]` base classes first to establish the canonical type parameter order (PEP 484). Previously, TypeVars were collected in encounter order across all bases, so `dict_values(ValuesView[_VT_co], Generic[_KT_co, _VT_co])` produced `[_VT_co, _KT_co]` instead of `[_KT_co, _VT_co]`, swapping key and value types for `dict.keys()` and `dict.values()`.
 - **Fix: `jac check` on `.impl.jac` / `.test.jac` Files Produced False Errors**: Running `jac check` directly on an annex file (e.g., `runtime.impl.jac`) compiled it as a standalone module, bypassing the annex pipeline (`DeclImplMatchPass`, scope linking) and producing hundreds of false type errors.
 - **Fix: JIR Cache Corrupted Function Signatures**: The decl/impl matching pass replaced parameter nodes with references outside the AST tree, causing JIR serialization to drop all parameter info. Imported functions loaded from cache appeared to have zero parameters, producing false argument-count errors and incorrect semantic highlighting.
 - **Fix: JIR Cache Lost Generic Class Fields**: Generic type inference (e.g., `Box[int].get()` returning `int`) failed on cached modules because `Archetype.body` was serialized with the wrong field kind and restored as `None`. Now works correctly on both fresh and cached runs.
@@ -72,7 +75,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Checker: Warn on Return Value in Event-Driven Abilities (W2014)**: The type checker now emits warning W2014 when an event-driven ability (`can X with Y entry`) uses `return <value>`. Since walker-triggered abilities ignore return values, the warning guides developers to update node or walker fields directly instead. Plain `return;` (no value) and `return None;` are not flagged.
 - **Fix: `jac py2jac` Performance on Large Files**: Fixed exponential slowdown when converting large Python files to Jac. A 10k-line file now converts in ~10s instead of 37s (3.9x faster), and a 20k-line file in ~16s instead of ~3 minutes (11x faster).
 
-## jaclang 0.12.2 (Latest Release)
+## jaclang 0.12.2
 
 - **Fix: `os.path.dirname()` Type Check Error**: Calling `os.path.dirname()` no longer fails with "No matching overload found". This also fixes other stdlib functions accessed through wildcard imports (e.g., `os.path`, `datetime`) that have multiple `@overload` signatures.
 - **Type Checker: Constrained TypeVar Support**: TypeVars with explicit constraints (`T = TypeVar("T", Foo, Bar)`) now validate operations against all constraint types.
