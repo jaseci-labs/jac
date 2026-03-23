@@ -1801,6 +1801,7 @@ obj KubernetesTarget(DeploymentTarget) {
             'Service'
         );
         delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-registry-secret");
         code_server_name = f"{app_name}-code-server";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment,
