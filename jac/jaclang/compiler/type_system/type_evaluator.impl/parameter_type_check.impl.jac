@@ -662,16 +662,16 @@ impl TypeEvaluator.assign_type_to_type_var(
             }
         }
 
-        # Check consistency: if already bound, arg must be compatible
+        # Check consistency: if already bound, widen to union on conflict
         if param_type.name in bindings {
             existing = bindings[param_type.name];
-            # Both directions: allow widening (arg assignable to existing
-            # OR existing assignable to arg)
-            if (
-                not self.assign_type(resolved_arg, existing)
-                and not self.assign_type(existing, resolved_arg)
-            ) {
-                return False;
+            if self.assign_type(resolved_arg, existing) {
+                ;  # arg fits in existing bound, keep it
+            } elif self.assign_type(existing, resolved_arg) {
+                bindings[param_type.name] = resolved_arg;  # new type is wider, use it
+            } else {
+                # Neither fits the other -> widen to union
+                bindings[param_type.name] = types.UnionType(types=[existing, resolved_arg]);
             }
         } else {
             bindings[param_type.name] = resolved_arg;

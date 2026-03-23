@@ -165,6 +165,21 @@ test "typevar7_constrained_operations" {
     assert 'Cannot access attribute "do_other_stuff" for type "Foo"' in all_errors , "Expected error for a.do_other_stuff() on Foo constraint";
 }
 
+"""Test TypeVar union widening on conflict."""
+test "typevar8_widening" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar8.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    error_messages = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(error_messages);
+
+    # No type errors expected: widening should produce valid union types
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}:\n{all_errors}";
+}
+
 """Test that ParamSpec and TypeVarTuple in Callable annotations produce no false E1071 errors."""
 test "paramspec_callable_no_false_e1071" {
     program = JacProgram();
