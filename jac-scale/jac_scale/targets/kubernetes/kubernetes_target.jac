@@ -1271,6 +1271,56 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             }
 
+            # 3c. Create Docker registry pull secret for private DockerHub images
+            pull_secret_name: str | None = None;
+            if app_config.build
+            and self.k8s_config.docker_username
+            and self.k8s_config.docker_password {
+                import json;
+                import base64;
+                pull_secret_name = f"{app_name}-registry-secret";
+                auth = base64.b64encode(
+                    f"{self.k8s_config.docker_username}:{self.k8s_config.docker_password}".encode()
+                ).decode();
+                docker_config = json.dumps(
+                    {'auths': {'https://index.docker.io/v1/': {'auth': auth}}}
+                );
+                pull_secret_body = {
+                    'apiVersion': 'v1',
+                    'kind': 'Secret',
+                    'metadata': {'name': pull_secret_name, 'namespace': namespace},
+                    'type': 'kubernetes.io/dockerconfigjson',
+                    'data': {
+                        '.dockerconfigjson': base64.b64encode(
+                            docker_config.encode()
+                        ).decode()
+                    }
+                };
+                try {
+                    core_v1.read_namespaced_secret(
+                        name=pull_secret_name, namespace=namespace
+                    );
+                    core_v1.replace_namespaced_secret(
+                        name=pull_secret_name,
+                        namespace=namespace,
+                        body=pull_secret_body
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        core_v1.create_namespaced_secret(
+                            namespace=namespace, body=pull_secret_body
+                        );
+                    } else {
+                        raise;
+                    }
+                }
+                if self.logger {
+                    self.logger.info(
+                        f"Created DockerHub pull secret '{pull_secret_name}'"
+                    );
+                }
+            }
+
             # 4. Determine cluster type
             cluster_env = cluster_type();
             # 4b. On local clusters, verify that the requested NodePorts are not
@@ -1372,6 +1422,11 @@ obj KubernetesTarget(DeploymentTarget) {
                             'securityContext': {
                                 'seccompProfile': {'type': 'RuntimeDefault'}
                             },
+                            'imagePullSecrets': [
+                                {'name': pull_secret_name}
+                            ]
+                                if pull_secret_name
+                                else [],
                             'initContainers': init_containers,
                             'containers': [container_config],
                             'volumes': volumes
