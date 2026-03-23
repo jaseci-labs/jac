@@ -48,6 +48,23 @@ obj DockerHubRegistry(ImageRegistry) {
             );
         }
 
+        # Ensure .dockerignore excludes local override files
+        dockerignore_path = os.path.join(code_folder, '.dockerignore');
+        ignore_entries = ['jac.local.toml', 'jac.*.toml'];
+        existing_entries: list[str] = [];
+        if os.path.exists(dockerignore_path) {
+            with open(dockerignore_path, 'r') as f {
+                existing_entries = [line.strip() for line in f.readlines()];
+            }
+        }
+        with open(dockerignore_path, 'a') as f {
+            for entry in ignore_entries {
+                if entry not in existing_entries {
+                    f.write(f"{entry}\n");
+                }
+            }
+        }
+
         # Build Docker image using Docker client
         docker_client = docker.from_env();
         console.print(f"Building Docker image '{repository_name}'...");
