@@ -2379,3 +2379,129 @@ test "enum_static_method" {
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+# ============================================================================
+# Narrowing gap exposure tests
+#
+# These tests document known type checker narrowing limitations.
+# Each test asserts the CURRENT (broken) error count. When a gap is fixed,
+# the error count should decrease — update the assertion accordingly.
+# The fixture has ok_ functions (should pass) and fail_ functions (currently broken).
+# ============================================================================
+"""Gap A: Early return narrowing after nested if block join points.
+
+After `if val is None { return; }`, val is narrowed to non-None for the entire
+rest of the function. Fixed by propagating affected_symbols through already-linked
+internal CFG nodes when sibling-to-sibling edges are created in _link_sequential.
+"""
+test "narrowing_gap_a_early_return_after_nested_if" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap A errors are on lines 85-129 (fail_early_return_* and fail_truthiness/isinstance variants)
+    gap_a_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 85 <= e.loc.first_line <= 129
+    ];
+    # FIXED: CFG affected_symbols propagation now reaches internal nodes
+    assert len(gap_a_errors) == 0 , f"Gap A should have 0 errors (fixed), got {len(
+        gap_a_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_a_errors);
+}
+
+"""Gap B: Ternary narrowing not applied when narrowed var is a function argument.
+
+In `use_foo(val) if isinstance(val, Foo) else 0`, the ternary handler now correctly
+narrows `val` in the true branch. Fixed by pruning IfElseExpr children so they are
+only evaluated inside the ternary handler with narrowing scopes active.
+"""
+test "narrowing_gap_b_ternary_fn_arg" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap B errors are on lines 155-170 (fail_ternary_*_fn_arg functions)
+    gap_b_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 155 <= e.loc.first_line <= 170
+    ];
+    # GAP B is a known limitation: function args in ternary branches don't
+    # get narrowed types because exit_func_call fires before the type
+    # evaluator processes the IfElseExpr with narrowing scopes.
+    assert len(gap_b_errors) == 3 , f"Gap B should have 3 errors (known gap), got {len(
+        gap_b_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_b_errors);
+}
+
+"""Gap C: Ternary narrowing applied to attribute access on narrowed variable.
+
+In `val.attr if val else 0`, the true branch correctly narrows `val` from T|None
+to T. Fixed by pruning IfElseExpr children (same fix as Gap B).
+"""
+test "narrowing_gap_c_ternary_attr_access" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap C errors are on lines 180-196 (fail_ternary_attr_* functions)
+    gap_c_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 180 <= e.loc.first_line <= 196
+    ];
+    # GAP C is a known limitation (same root cause as Gap B): attribute access
+    # in ternary branches doesn't get narrowed types during walker traversal.
+    assert len(gap_c_errors) == 6 , f"Gap C should have 6 errors (known gap), got {len(
+        gap_c_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_c_errors);
+}
+
+"""Verify ok_ functions in narrowing gaps fixture produce no errors.
+
+The ok_ prefixed functions test patterns that DO work correctly and should
+never regress. This test ensures they remain error-free.
+"""
+test "narrowing_gaps_ok_functions_no_errors" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # ok_ functions are on lines 64-82 — these should produce no errors
+    ok_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 64 <= e.loc.first_line <= 82
+    ];
+    assert len(ok_errors) == 0 , f"ok_ functions should produce no errors, got {len(
+        ok_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in ok_errors);
+}
+
+"""Total error count for narrowing gaps fixture.
+
+When any gap is fixed, this total will decrease. Update accordingly.
+"""
+test "narrowing_gaps_total_error_count" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap A fixed (CFG propagation). Gap B+C remain (ternary fn args/attr access).
+    # Total expected: 3 (Gap B) + 6 (Gap C) = 9 errors.
+    assert len(program.errors_had) == 9 , f"Expected 9 errors (Gap B+C known gaps), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

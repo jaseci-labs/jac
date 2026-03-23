@@ -125,6 +125,19 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     # Use call_params from config as defaults, then override with instance call_params
     default_temp = _call_params_config.get("temperature", 0.7);
     default_max_tokens = _call_params_config.get("max_tokens");
+
+    # Build telemetry metadata (litellm passes this through to callbacks untouched)
+    agent_metadata = {};
+    try {
+        agent_metadata = {
+            "jac_invocation_id": getattr(mt_run, '_invocation_id', None),
+            "jac_caller_name": mt_run.mtir.caller.__name__ if mt_run.mtir else None,
+
+        };
+    } except Exception as e {
+        logger.debug(f"agent_metadata build failed: {e}");
+    }
+
     params = {
         "model": self.model_name,
         "api_base": (
@@ -139,6 +152,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         "api_key": self.api_key or None,
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
+        "metadata": agent_metadata,
 
     };
     # Pass through tool_choice if explicitly set in call_params

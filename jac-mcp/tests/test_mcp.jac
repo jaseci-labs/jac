@@ -275,6 +275,26 @@ test "list examples returns results" {
     assert isinstance(result["examples"], list);
 }
 
+test "list examples returns results when repo root is None (PyPI install)" {
+    import from unittest.mock { patch, MagicMock }
+
+    # Mock find_repo_root to return None, simulating a PyPI (non-editable) install
+    with patch("jac_mcp.resources.find_repo_root", return_value=None) {
+        tp = ToolProvider();
+        result = tp.call_tool("list_examples", {});
+    }
+    assert "examples" in result;
+    examples = result["examples"];
+    assert len(examples) > 0 , "list_examples should return results via GitHub fallback when repo root is None";
+    names = [e["name"] for e in examples];
+    assert "data_spatial" in names , "Expected 'data_spatial' in GitHub-fetched examples";
+    for ex in examples {
+        assert "name" in ex;
+        assert "uri" in ex;
+        assert ex["uri"].startswith("jac://examples/");
+    }
+}
+
 test "unknown tool returns error" {
     tp = ToolProvider();
     result = tp.call_tool("nonexistent_tool", {});

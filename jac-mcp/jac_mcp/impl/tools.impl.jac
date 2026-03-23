@@ -293,6 +293,21 @@ impl list_examples(category: str | None = None) -> dict[str, Any] {
             }
         }
     }
+    # If no individual examples found, try lazy GitHub fetch (PyPI install)
+    if not examples and "jac://examples/index" in rp._resources {
+        categories = rp._fetch_github_categories();
+        for cat_name in categories {
+            if category is None or category == cat_name {
+                examples.append(
+                    {
+                        "name": cat_name,
+                        "uri": f"jac://examples/{cat_name}",
+                        "description": f"Example Jac code for {cat_name}"
+                    }
+                );
+            }
+        }
+    }
     return {"examples": sorted(examples, key=lambda x : x["name"])};
 }
 
