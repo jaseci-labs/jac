@@ -5,6 +5,7 @@ import shutil;
 import from typing { Any }
 import from docker.errors { APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
+import from jaclang.cli.console { console }
 
 """DockerHub image registry implementation."""
 obj DockerHubRegistry(ImageRegistry) {
@@ -36,29 +37,34 @@ obj DockerHubRegistry(ImageRegistry) {
 
         # Generate a Dockerfile from template if one doesn't exist in the code folder
         dockerfile_path = os.path.join(code_folder, 'Dockerfile');
-        generated_dockerfile: (str | None) = None;
         if not os.path.exists(dockerfile_path) {
             template_path = os.path.join(
                 os.path.dirname(__file__),
                 '../../targets/kubernetes/templates/base.Dockerfile'
             );
             shutil.copy(template_path, dockerfile_path);
-            generated_dockerfile = dockerfile_path;
+            console.print(
+                f"No Dockerfile found. Generated one from template at '{dockerfile_path}'."
+            );
         }
 
         # Build Docker image using Docker client
         docker_client = docker.from_env();
+        console.print(f"Building Docker image '{repository_name}'...");
         try {
-            docker_client.images.build(
+            build_logs = docker_client.images.build(
                 path=code_folder, tag=repository_name, dockerfile='Dockerfile', rm=True
             );
+            for chunk in build_logs[1] {
+                line = chunk.get('stream', '').strip();
+                if line {
+                    console.print(f"  {line}");
+                }
+            }
         } except BuildError as e {
             raise RuntimeError(f"Failed to build Docker image: {e}") from e;
-        } finally {
-            if generated_dockerfile {
-                os.remove(generated_dockerfile);
-            }
         }
+        console.print(f"Docker image '{repository_name}' built successfully.");
 
         return repository_name;
     }
@@ -66,14 +72,29 @@ obj DockerHubRegistry(ImageRegistry) {
     def push_image(image_name: str) -> None {
         # Push Docker image to DockerHub
         docker_client = docker.from_env();
+        console.print(f"Pushing Docker image '{image_name}' to DockerHub...");
         try {
             docker_client.login(
                 username=self.docker_username, password=self.docker_password
             );
-            docker_client.images.push(image_name);
+            for chunk in docker_client.images.push(
+                image_name, stream=True, decode=True
+            ) {
+                if 'status' in chunk {
+                    detail = chunk.get('progressDetail', {});
+                    if detail {
+                        console.print(f"  {chunk['status']} {detail}");
+                    } else {
+                        console.print(f"  {chunk['status']}");
+                    }
+                } elif 'error' in chunk {
+                    raise RuntimeError(f"Push failed: {chunk['error']}");
+                }
+            }
         } except APIError as e {
             raise RuntimeError(f"Failed to push Docker image: {e}") from e;
         }
+        console.print(f"Docker image '{image_name}' pushed successfully.");
     }
 
     def get_image_url(image_name: str) -> str {

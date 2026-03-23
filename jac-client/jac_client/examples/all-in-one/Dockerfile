@@ -20,3 +20,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir jaclang jac-scale jac-client jac-super
 
 COPY . .
+
+RUN jac install

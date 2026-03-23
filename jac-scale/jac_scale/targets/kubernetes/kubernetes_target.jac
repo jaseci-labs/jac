@@ -1299,11 +1299,17 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             # 9. Build container configuration
+            # When using --build, the image has no default CMD so we must set the startup command
+            build_command: (list[str] | None) = None;
+            if app_config.build {
+                build_command = ['jac', 'serve', app_config.file_name];
+            }
             container_config = self._build_container_config(
                 app_name,
                 repository_name,
                 probe_configs,
                 resources_config,
+                command=build_command,
                 secret_ref_name=secret_ref_name
             );
 
