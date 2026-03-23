@@ -120,15 +120,23 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing scope for AND expressions."""
+"""Enter a boolean expression - set up narrowing scope for AND/OR expressions."""
 impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # For AND expressions, push a narrowing scope
     if nd.op.name == Tok.KW_AND {
+        # For AND: each operand's truthiness narrows subsequent operands
         self.evaluator.push_narrowing_scope();
-        # Pre-process conditions to add narrowings BEFORE children are evaluated
+        self.evaluator._in_bool_expr_narrowing_depth += 1;
         for val in nd.values {
             self.evaluator.process_condition(val);
+        }
+    } elif nd.op.name == Tok.KW_OR {
+        # For OR: each operand's falsiness narrows subsequent operands
+        # In `X or Y`, when evaluating Y, X was falsy
+        self.evaluator.push_narrowing_scope();
+        self.evaluator._in_bool_expr_narrowing_depth += 1;
+        for val in nd.values {
+            self.evaluator.process_negated_condition(val);
         }
     }
 }
@@ -136,9 +144,9 @@ impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> Non
 """Exit a boolean expression - clean up narrowing scope."""
 impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # Pop the narrowing scope for AND expressions
-    if nd.op.name == Tok.KW_AND {
+    if nd.op.name == Tok.KW_AND or nd.op.name == Tok.KW_OR {
         self.evaluator.pop_narrowing_scope();
+        self.evaluator._in_bool_expr_narrowing_depth -= 1;
     }
 }
 
@@ -152,6 +160,26 @@ impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
 
 """Exit an if statement - clean up narrowing scope."""
 impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    self.evaluator.pop_narrowing_scope();
+}
+
+"""Enter a match case - narrow the match subject based on the pattern type."""
+impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
+    self.evaluator.push_narrowing_scope();
+    parent = nd.parent;
+    if isinstance(parent, uni.MatchStmt) {
+        key = self.evaluator.get_narrowing_key(parent.target);
+        if key {
+            pattern_type = self.evaluator._get_type_from_match_pattern(nd.pattern);
+            if pattern_type is not None {
+                self.evaluator.add_scope_narrowing(key, pattern_type);
+            }
+        }
+    }
+}
+
+"""Exit a match case - clean up narrowing scope."""
+impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
     self.evaluator.pop_narrowing_scope();
 }
 

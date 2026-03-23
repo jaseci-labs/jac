@@ -192,6 +192,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
         'configs': client_config.get('configs', {}),
         'paths': client_config.get('paths', {}),
         'npm': client_config.get('npm', {}),
+        'pwa': client_config.get('pwa', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -271,6 +272,20 @@ impl JacClientConfig.remove_dependency(
 impl JacClientConfig.get_paths_config(self: JacClientConfig) -> dict[str, str] {
     config = self.load();
     return config.get('paths', {});
+}
+
+"""Get PWA configuration from [plugins.client.pwa] in jac.toml."""
+impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('pwa', {});
+}
+
+"""Check if PWA is enabled (pwa section exists in jac.toml)."""
+impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
+    pwa_config = self.get_pwa_config();
+    # PWA is enabled if the section exists (even if empty)
+    # The section is added by `jac setup pwa`
+    return len(pwa_config) > 0;
 }
 
 """Check if jac-client-node version matches exactly with jac-client plugin.

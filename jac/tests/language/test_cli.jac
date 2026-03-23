@@ -1916,3 +1916,45 @@ test "jir cache preserves list iteration type through IndexSlice" {
         ]}";
     }
 }
+
+"""jac check on .impl.jac files should compile the base file and filter errors."""
+test "jac check on impl file redirects to base and filters errors" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Create a base .jac file with a type error in the base
+        with open(os.path.join(tmpdir, "mymod.jac"), "w") as f {
+            f.write(
+                "def greet(name: str) -> str;\n"
+                "def bad_base -> int { return 'not_int'; }\n"
+            );
+        }
+        # Create an impl file with its own type error
+        impl_dir = os.path.join(tmpdir, "impl");
+        os.makedirs(impl_dir);
+        with open(os.path.join(impl_dir, "mymod.impl.jac"), "w") as f {
+            f.write("impl greet(name: str) -> str { return 42; }\n");
+        }
+        impl_path = os.path.join(impl_dir, "mymod.impl.jac");
+        JacRuntime.program = JacProgram();
+        (cap_out, cap_err, old_out, old_err) = _capture_output();
+        try {
+            result = analysis.check([impl_path]);
+            output = cap_out.getvalue() + cap_err.getvalue();
+        } finally {
+            _restore_output(old_out, old_err);
+        }
+        # The impl file has a type error (returning int instead of str),
+        # so check should report failure
+        assert result == 1 , (
+            f"Expected exit code 1 for impl file with errors, got {result}. "
+            f"Output:\n{output}"
+        );
+        # Errors from the base file (bad_base) should NOT appear in output
+        assert "bad_base" not in output , (
+            f"Base file errors should be filtered out when checking impl file. "
+            f"Output:\n{output}"
+        );
+    }
+}

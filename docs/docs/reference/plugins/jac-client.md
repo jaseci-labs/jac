@@ -1551,6 +1551,59 @@ description = "My awesome Jac app"
 
 **Custom Icons:** Add `pwa-192x192.png` and `pwa-512x512.png` to `pwa_icons/` directory.
 
+### PWA Install Banner
+
+After running `jac setup pwa`, your app automatically shows a native-style install prompt to users. No manual code changes required.
+
+**Features:**
+
+- **Automatic display** -- Glassmorphic dark banner with slide-up animation appears after configurable delay
+- **Chrome/Edge integration** -- Uses `beforeinstallprompt` for native install flow
+- **iOS Safari support** -- Detects iOS and shows step-by-step "Add to Home Screen" instructions
+- **Smart re-prompting** -- Exponential backoff after dismiss (7 → 14 → 28 days), max 3 prompts total
+
+**Banner Configuration in jac.toml:**
+
+```toml
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+
+# Install banner settings
+install_banner = true                    # Enable/disable (default: true)
+install_banner_delay = 3000              # Delay before showing in ms (default: 3000)
+install_banner_position = "bottom"       # "bottom" or "top" (default: bottom)
+install_button_text = "Install"          # Custom install button text
+install_dismiss_text = "Not Now"         # Custom dismiss button text
+```
+
+**Programmatic Control (Optional):**
+
+For advanced use cases, import the PWA runtime module:
+
+```jac
+cl import from "@jac/pwa" { usePwaInstall, PwaInstallButton }
+
+cl {
+    def:pub CustomInstallUI() -> JsxElement {
+        (canInstall, triggerInstall) = usePwaInstall();
+
+        return <div>
+            {canInstall and (
+                <button onClick={lambda -> None { triggerInstall(); }}>
+                    Get the App
+                </button>
+            )}
+        </div>;
+    }
+}
+```
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `usePwaInstall()` | hook | Returns `(canInstall: bool, triggerInstall: () -> void)` |
+| `PwaInstallButton` | component | Pre-styled install button component |
+
 ---
 
 ## Automatic Endpoint Caching

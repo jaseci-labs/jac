@@ -468,6 +468,163 @@ test "unknown prompt returns error" {
     assert "Unknown" in result.get("description", "") or "messages" in result;
 }
 
+# ── Plugin Config / jac.toml Integration Tests ──
+#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default
+test "jac.toml values override CLI defaults for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp` with no explicit args (all CLI defaults)
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1 , "JacMcpServer should have been instantiated once";
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "streamable-http" , "jac.toml transport should override CLI default";
+    assert ctor_kwargs["port"] == 9000 , "jac.toml port should override CLI default";
+    assert ctor_kwargs["host"] == "0.0.0.0" , "jac.toml host should override CLI default";
+}
+
+test "explicit CLI args take priority over jac.toml for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp --transport sse --port 8080 --host 10.0.0.1`
+    mock_ctx = MagicMock();
+    def cli_explicit(name: str, fallback: object = None) -> object {
+        m = {"transport": "sse", "port": 8080, "host": "10.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_explicit;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "sse" , "explicit CLI --transport must win over jac.toml";
+    assert ctor_kwargs["port"] == 8080 , "explicit CLI --port must win over jac.toml";
+    assert ctor_kwargs["host"] == "10.0.0.1" , "explicit CLI --host must win over jac.toml";
+}
+
+test "CLI defaults used when jac.toml has no mcp section" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {};
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
+test "CLI defaults used when no jac.toml is present" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=None) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
 test "all prompt messages use only MCP-valid roles" {
     pp = PromptProvider();
     valid_roles = ["user", "assistant"];
