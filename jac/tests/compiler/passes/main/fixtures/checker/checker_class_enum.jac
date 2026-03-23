@@ -11,9 +11,10 @@ class Tokens(BaseClass) {
     }
 }
 
-glob a: Tokens = Tokens.FLOAT,
-     c: str = Tokens.FLOAT,
-     d: int = Tokens.FLOAT;
+# StrEnum member assignments
+glob a: Tokens = Tokens.FLOAT,  # OK: enum member to enum type
+     c: str = Tokens.FLOAT,     # OK: StrEnum member is assignable to str
+     d: int = Tokens.FLOAT;     # Error: StrEnum member is NOT assignable to int
 
 class Tokens2(BaseClass2) {
     with entry {
@@ -22,8 +23,6 @@ class Tokens2(BaseClass2) {
         RSQUARE = 'RSQUARE';  # Error: Cannot assign <class str> to enum member 'RSQUARE' of type <class int>
     }
 }
-# Valid: StrEnum member is assignable to str
-# Error: Cannot assign <Tokens.FLOAT> to <class int>
 
 # Test: Static methods on class-based enums should return their declared return type
 class AccessLevel(IntEnum) {
@@ -41,6 +40,16 @@ class AccessLevel(IntEnum) {
         return 99;
     }
 }
+
+# Test: IntEnum member assignment to IntEnum typed variable
+glob level: AccessLevel = AccessLevel.READ;  # OK: IntEnum member to IntEnum type
+glob level_int: int = AccessLevel.READ;      # OK: IntEnum member is assignable to int
+glob level_str: str = AccessLevel.READ;      # Error: IntEnum member is NOT assignable to str
+
+def check_level(min_level: AccessLevel) -> bool {
+    return True;
+}
+glob check_result = check_level(AccessLevel.WRITE);  # OK: IntEnum member as argument
 
 # Static method member access (no call) should return FunctionType
 glob static_method_ref = AccessLevel.cast;

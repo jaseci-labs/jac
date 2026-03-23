@@ -868,6 +868,54 @@ test "test_cross_module_imported_func_no_false_errors" {
     }
 }
 
+"""Stale JIR caches from older compiler versions must be rejected.
+
+Regression test: a cache written by a buggy compiler (before #5195)
+would lose FuncSignature.params, causing false E1052 errors on every
+call site.  is_module_cache_valid must reject caches whose
+jaclang_version_hash doesn't match the running compiler.
+"""
+test "test_jir_cache_invalidated_on_version_mismatch" {
+    import struct;
+    import tempfile;
+    import shutil;
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        is_module_cache_valid,
+        HEADER_FMT,
+        HEADER_SIZE
+    }
+
+    setup_test();
+    try {
+        lsp = create_server();
+        # Type-check the caller to force JIR cache creation for the dependency.
+        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
+        lsp.type_check_file(caller_file);
+
+        # Locate the JIR cache for the dependency module.
+        dep_src = fixture_path("cross_module_func.jac");
+        cache_path = get_module_cache_path(dep_src);
+
+        # Sanity: cache should exist and be valid right now.
+        assert cache_path.exists() , "JIR cache was not written";
+        assert is_module_cache_valid(dep_src, cache_path) , "Fresh cache should be valid";
+
+        # Tamper: overwrite jaclang_version_hash with a fake value.
+        data = bytearray(cache_path.read_bytes());
+        # Header layout <4sHHIIIIII>: jaclang_version_hash is at offset 8.
+        struct.pack_into("<I", data, 8, 0xDEADBEEF);
+        cache_path.write_bytes(bytes(data));
+
+        # The cache should now be rejected.
+        assert not is_module_cache_valid(dep_src, cache_path) , (
+            "Cache with mismatched jaclang_version_hash should be invalid"
+        );
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_cross_module_imported_func_sem_token" {
     import from jaclang.jac0core.constant { JacSemTokenType }
     setup_test();
@@ -892,6 +940,25 @@ test "test_cross_module_imported_func_sem_token" {
         assert call_sem is not None , "Expected sem_token for function call";
         assert call_sem[0] == JacSemTokenType.FUNCTION , (
             f"Expected FUNCTION sem token at call site, got: {call_sem[0]}"
+        );
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_format_document_lintfix" {
+    # Verifies lintfix output exactly matches the expected file.
+    setup_test();
+    try {
+        lsp = create_server(FIXTURE_DIR);
+        file_uri = uris.from_fs_path(fixture_path("format_lintfix.jac"));
+        lsp.type_check_file(file_uri);
+        edits = lsp.format_document(file_uri, auto_lint=True);
+        assert edits is not None and len(edits) > 0 , "Expected text edits from lintfix format_document";
+        lintfixed = edits[0].new_text;
+        expected = open(fixture_path("format_lintfix_expected.jac")).read();
+        assert lintfixed == expected , (
+            f"Lintfix output does not match expected.\nGOT:\n{lintfixed}\nEXPECTED:\n{expected}"
         );
     } finally {
         teardown_test();

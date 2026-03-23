@@ -25,7 +25,7 @@ import from typing { Any }
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 8;
+glob FORMAT_VERSION: int = 10;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
@@ -60,6 +60,13 @@ optimized code on cache reload. Includes a platform header:
   [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
 """
 glob SEC_NATIVE_OBJ: int = 0x06;
+
+"""Section type: varint-encoded (node_id, str_pool_idx) pairs for Expr.backend_type_tag.
+
+Format: [count: varint] + repeat([node_id: varint] [str_pool_idx: varint])
+Only Expr nodes with non-None backend_type_tag are stored.
+"""
+glob SEC_TYPE_TAGS: int = 0x07;
 
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
@@ -138,8 +145,8 @@ obj JirHeader {
         string_pool_size: int = 0,
         flags: int = 0;
 
-    def to_bytes(self: JirHeader) -> bytes;
-    def is_compatible(self: JirHeader) -> bool;
+    def to_bytes -> bytes;
+    def is_compatible -> bool;
 }
 
 """Create a JirHeader for the current environment."""
@@ -389,9 +396,10 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
     return header + empty_payload + section_bytes;
 }
 
-"""Check whether a module's JIR cache is still valid via mtime comparison.
+"""Check whether a module's JIR cache is still valid.
 
-The cache is valid if it exists and is newer than the source file and
+The cache is valid if it exists, was written by a compatible compiler
+version (same jaclang + Python), and is newer than the source file and
 all its annex files (impl, test) and variant files (sv, cl, na).
 """
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
@@ -400,6 +408,15 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         return False;
     }
     try {
+        # Check header compatibility (jaclang version, Python version)
+        header_bytes: bytes = cache_path.read_bytes()[:HEADER_SIZE];
+        header = parse_header(header_bytes);
+        if header is None {
+            return False;
+        }
+        if not header.is_compatible() {
+            return False;
+        }
         cache_mtime = os.path.getmtime(cache_path);
         if cache_mtime <= os.path.getmtime(source_path) {
             return False;

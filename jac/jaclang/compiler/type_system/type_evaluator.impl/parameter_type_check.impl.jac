@@ -106,6 +106,32 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return types.UnknownType();
     }
 
+    # Special-form handling for typing.cast(T, val) -> T
+    # Without this, cast() matches the `object` overload and returns Any/Unknown.
+    if isinstance(caller_type, types.OverloadedType) {
+        target_node = expr.target;
+        is_cast = False;
+        if isinstance(target_node, uni.Name) and target_node.sym {
+            dotted = target_node.sym.sym_dotted_name;
+            is_cast = dotted.endswith("typing.cast");
+        }
+        if is_cast and len(expr.params) >= 1 {
+            first_arg = expr.params[0];
+            first_arg_expr = first_arg.value
+                if isinstance(first_arg, uni.KWPair)
+                else first_arg;
+            cast_target_type = self.get_type_of_expression(first_arg_expr);
+            if isinstance(cast_target_type, types.ClassType)
+            and cast_target_type.is_instantiable_class() {
+                return cast_target_type.clone_as_instance();
+            }
+            # For non-class types (e.g. cast(str, x)), return the type directly
+            if not isinstance(cast_target_type, types.UnknownType) {
+                return cast_target_type;
+            }
+        }
+    }
+
     is_unbound_call = self._is_unbound_method_call(expr);
     if isinstance(caller_type, types.FunctionType) {
         arg_param_match = self.match_args_to_params(
@@ -121,10 +147,16 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         # to avoid broken overloads (e.g. LiteralString) shadowing correct ones.
         _fallback_result: types.TypeBase | None = None;
 
-        # Helper to check if a type contains Unknown (either is Unknown or has Unknown in type_args)
+        # Helper to check if a type contains Unknown or unresolved TypeVars
         def _contains_unknown(ty: types.TypeBase) -> bool {
             if isinstance(ty, types.UnknownType) {
                 return True;
+            }
+            if isinstance(ty, types.TypeVarType) {
+                return True;
+            }
+            if isinstance(ty, types.UnionType) {
+                return any(_contains_unknown(member) for member in ty.types);
             }
             if isinstance(ty, types.ClassType) and ty.private.type_args {
                 return any(_contains_unknown(arg) for arg in ty.private.type_args);
@@ -143,12 +175,24 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
             if not arg_param_match.argument_errors {
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
+                    ret_type = overload.return_type;
+                    # Infer method-level TypeVars from call arguments and
+                    # specialize the return type. Uses the existing
+                    # _collect_type_var_bindings infrastructure which handles
+                    # bounds, constraints, variance, and nested generics via
+                    # assign_type_to_type_var.
+                    if ret_type and _contains_unknown(ret_type) {
+                        bindings = self._collect_type_var_bindings(overload, expr);
+                        if bindings {
+                            ret_type = self._substitute_type_vars(ret_type, bindings);
+                        }
+                    }
                     # Check if return type is concrete (no Unknown types anywhere)
-                    if not _contains_unknown(overload.return_type) {
-                        return overload.return_type or types.UnknownType();
+                    if not _contains_unknown(ret_type or types.UnknownType()) {
+                        return ret_type or types.UnknownType();
                     }
                     if _fallback_result is None {
-                        _fallback_result = overload.return_type;
+                        _fallback_result = ret_type;
                     }
                 }
             }
@@ -243,6 +287,84 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             bound=bound_type,
             constraints=constraint_types or None
         );
+    }
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.shared == (self.prefetch and self.prefetch.param_spec_class.shared) {
+        # Handle ParamSpec("P", bound=..., covariant=..., contravariant=...)
+        # ParamSpec accepts only a name and optional bound/variance kwargs (no positional constraints).
+        param_spec_name = "";
+        is_covariant = False;
+        is_contravariant = False;
+        bound_type: types.TypeBase | None = None;
+
+        def _get_str_lit(arg: uni.Expr) -> str | None {
+            if isinstance(arg, uni.String) {
+                return arg.lit_value;
+            } elif isinstance(arg, uni.MultiString) and arg.strings {
+                if isinstance(arg.strings[0], uni.String) {
+                    return arg.strings[0].lit_value;
+                }
+            }
+            return None;
+        }
+
+        if expr.params and len(expr.params) > 0 {
+            param_spec_name = _get_str_lit(expr.params[0]) or "";
+            if not param_spec_name {
+                self.emit_diag(E1063, expr.params[0]);
+            }
+            for i in range(1, len(expr.params)) {
+                arg = expr.params[i];
+                if isinstance(arg, uni.KWPair) and isinstance(arg.key, uni.Name) {
+                    if arg.key.value == "covariant"
+                    and isinstance(arg.value, uni.Bool) {
+                        is_covariant = arg.value.value;
+                    } elif arg.key.value == "contravariant"
+                    and isinstance(arg.value, uni.Bool) {
+                        is_contravariant = arg.value.value;
+                    } elif arg.key.value == "bound" {
+                        bound_type = self.get_type_of_expression(arg.value);
+                        if isinstance(bound_type, types.ClassType)
+                        and bound_type.is_instantiable() {
+                            bound_type = bound_type.clone_as_instance();
+                        }
+                    }
+                }
+            }
+        } else {
+            self.emit_diag(E1063, expr);
+        }
+        return types.TypeVarType(
+            name=param_spec_name,
+            is_covariant=is_covariant,
+            is_contravariant=is_contravariant,
+            is_param_spec=True,
+            bound=bound_type
+        );
+    }
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.shared == (
+        self.prefetch and self.prefetch.type_var_tuple_class.shared
+    ) {
+        # Handle TypeVarTuple("Ts") - only accepts a name, no variance or bound
+        tvt_name = "";
+        if expr.params and len(expr.params) > 0 {
+            if isinstance(expr.params[0], uni.String) {
+                tvt_name = expr.params[0].lit_value;
+            } elif (
+                isinstance(expr.params[0], uni.MultiString)
+                and expr.params[0].strings
+                and isinstance(expr.params[0].strings[0], uni.String)
+            ) {
+                tvt_name = expr.params[0].strings[0].lit_value;
+            }
+            if not tvt_name {
+                self.emit_diag(E1063, expr.params[0]);
+            }
+        } else {
+            self.emit_diag(E1063, expr);
+        }
+        return types.TypeVarType(name=tvt_name, is_param_spec=False);
     }
     if (
         isinstance(caller_type, types.ClassType)
@@ -511,13 +633,60 @@ Example: param=Iterable[_T], arg=list[Item] -> bindings[_T] = Item
 """
 impl TypeEvaluator.assign_type_to_type_var(
     param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
-) -> None {
+) -> bool {
     # Direct TypeVar binding
     if isinstance(param_type, types.TypeVarType) {
-        if param_type.name and param_type.name not in bindings {
-            bindings[param_type.name] = self._convert_to_instance(arg_type);
+        if not param_type.name {
+            return True;
         }
-        return;
+        resolved_arg = self._convert_to_instance(arg_type);
+
+        # Validate against bound: T(bound=X) requires arg <: X
+        if param_type.bound {
+            if not self.assign_type(resolved_arg, param_type.bound) {
+                return False;
+            }
+        }
+
+        # Validate against constraints: T(A, B) requires arg <: A or arg <: B
+        if param_type.constraints {
+            matched = False;
+            for constraint in param_type.constraints {
+                if self.assign_type(resolved_arg, constraint) {
+                    matched = True;
+                    break;
+                }
+            }
+            if not matched {
+                return False;
+            }
+        }
+
+        # Check consistency: if already bound, arg must be compatible
+        if param_type.name in bindings {
+            existing = bindings[param_type.name];
+            # Both directions: allow widening (arg assignable to existing
+            # OR existing assignable to arg)
+            if (
+                not self.assign_type(resolved_arg, existing)
+                and not self.assign_type(existing, resolved_arg)
+            ) {
+                return False;
+            }
+        } else {
+            bindings[param_type.name] = resolved_arg;
+        }
+        return True;
+    }
+
+    # Union param type: try to bind TypeVars in each member
+    if isinstance(param_type, types.UnionType) {
+        for member in param_type.types {
+            if isinstance(member, types.TypeVarType) {
+                self.assign_type_to_type_var(member, arg_type, bindings);
+            }
+        }
+        return True;
     }
 
     # Generic ClassType: match type_args recursively
@@ -529,10 +698,13 @@ impl TypeEvaluator.assign_type_to_type_var(
 
         for (i, pta) in enumerate(param_type_args) {
             if i < len(arg_type_args) {
-                self.assign_type_to_type_var(pta, arg_type_args[i], bindings);
+                if not self.assign_type_to_type_var(pta, arg_type_args[i], bindings) {
+                    return False;
+                }
             }
         }
     }
+    return True;
 }
 
 
@@ -609,6 +781,12 @@ impl TypeEvaluator._substitute_type_vars(
 ) -> types.TypeBase {
     if isinstance(typ, types.TypeVarType) {
         return bindings.get(typ.name, typ);
+    }
+    if isinstance(typ, types.UnionType) {
+        new_members = [
+            self._substitute_type_vars(member, bindings) for member in typ.types
+        ];
+        return types.UnionType(types=new_members);
     }
     if isinstance(typ, types.ClassType) and typ.private and typ.private.type_args {
         new_args = [

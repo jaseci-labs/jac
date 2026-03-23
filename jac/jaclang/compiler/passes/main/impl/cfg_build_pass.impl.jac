@@ -220,7 +220,10 @@ impl CFGBuildPass.before_pass -> None { }
 # Utilities
 # ============================================================================
 """Link two CFG nodes: source.bb_out -> target, target.bb_in -> source.
-Also propagates affected_symbols for the Pyright-style branch-skipping optimization."""
+Also propagates affected_symbols for the Pyright-style branch-skipping optimization.
+When target already has internal bb_out edges (e.g., an IfStmt whose exit handler
+already linked to its body), new symbols from source are propagated to those internal
+nodes so that the backward CFG walk can find narrowing predicates through them."""
 impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None {
     if source and target {
         if target not in source.bb_out {
@@ -229,7 +232,28 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
         if source not in target.bb_in {
             target.bb_in.append(source);
         }
+        new_symbols = source.affected_symbols - target.affected_symbols;
         target.affected_symbols.update(source.affected_symbols);
+        # Propagate newly added symbols to already-linked internal nodes.
+        # This handles the case where exit_if_stmt linked S2→body before
+        # _link_sequential linked S1→S2, so body nodes missed S1's symbols.
+        # Uses iterative BFS to avoid recursion issues with cyclic CFGs.
+        if new_symbols {
+            visited: set = {id(target)};
+            queue: list = list(target.bb_out);
+            while queue {
+                child = queue.pop(0);
+                child_id = id(child);
+                if child_id in visited {
+                    continue;
+                }
+                visited.add(child_id);
+                if not new_symbols.issubset(child.affected_symbols) {
+                    child.affected_symbols.update(new_symbols);
+                    queue.extend(child.bb_out);
+                }
+            }
+        }
     }
 }
 
@@ -281,7 +305,7 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
         and (k is parent.iter or k is parent.count_by) {
             continue;
         }
-        if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef)) {
+        if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             # Scope boundary -- don't recurse into nested scopes
             continue;
         }
@@ -727,5 +751,20 @@ impl CFGBuildPass.exit_impl_def(nd: uni.ImplDef) -> None {
 impl CFGBuildPass.exit_module_code(nd: uni.ModuleCode) -> None {
     if nd.body {
         self._link_sequential(nd.body);
+    }
+}
+
+"""Test: scope boundary, link to body (same as Ability)."""
+impl CFGBuildPass.exit_test(nd: uni.Test) -> None {
+    if nd.body and isinstance(nd.body, Sequence) {
+        body = [
+            s
+            for s in nd.body
+            if isinstance(s, uni.CodeBlockStmt)
+        ];
+        if body {
+            self.link_bbs(nd, body[0]);
+            self._link_sequential(body);
+        }
     }
 }

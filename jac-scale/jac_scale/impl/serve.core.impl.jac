@@ -221,6 +221,7 @@ impl JacAPIServerCore.start(
     self.register_api_key_endpoints();
     self.register_graph_endpoint();
     self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
         self.register_dynamic_walker_endpoint();
@@ -1091,18 +1092,42 @@ impl JacAPIServerCore._create_admin_metrics_handler(
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import dataclasses;
+    import base64;
+
+    monitoring_config = get_scale_config().get_monitoring_config();
+    prometheus_password = monitoring_config.get('prometheus_admin_password', '');
+    admin_config = get_scale_config().get_admin_config();
+    admin_username = admin_config.get('username', 'admin');
 
     async def admin_metrics_handler(request: Request) -> Response {
         authorization = request.headers.get('Authorization');
-        admin_user = self.validate_admin_token(authorization);
-        if not admin_user {
+        # Accept Bearer JWT token (admin portal) or Basic Auth (Prometheus scraping)
+        authed = False;
+        if authorization {
+            if authorization.startswith('Bearer ') {
+                authed = self.validate_admin_token(authorization) is not None;
+            } elif authorization.startswith('Basic ') and prometheus_password {
+                try {
+                    decoded = base64.b64decode(authorization[6:]).decode('utf-8');
+                    parts = decoded.split(':', 1);
+                    authed = parts[0] == admin_username
+                    and parts[1] == prometheus_password;
+                } except Exception {
+                    authed = False;
+                }
+            }
+        }
+        if not authed {
             return JSONResponse(
                 status_code=403,
-                content=TransportResponse.fail(
-                    code='FORBIDDEN',
-                    message='Admin access required',
-                    meta=Meta(extra={'http_status': 403})
-                ).model_dump()
+                content=dataclasses.asdict(
+                    TransportResponse.fail(
+                        code='FORBIDDEN',
+                        message='Admin access required',
+                        meta=Meta(extra={'http_status': 403})
+                    )
+                )
             );
         }
         return original_handler();

@@ -27,7 +27,9 @@ import from jaclang.jac0core.diagnostics {
     E1092,
     E1093,
     E1094,
-    E1095
+    E1095,
+    W2014,
+    E2015
 }
 
 """Type checker pass for JacLang."""
@@ -52,8 +54,11 @@ class TypeCheckPass(UniPass) {
     def exit_edge_ref_trailer(self: TypeCheckPass, nd: uni.EdgeRefTrailer) -> None;
     def exit_special_var_ref(self: TypeCheckPass, nd: uni.SpecialVarRef) -> None;
     def exit_name(self: TypeCheckPass, nd: uni.Name) -> None;
+    def enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None;
     def enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None;
     def exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None;
+    def enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None;
+    def exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None;
     def exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None;
     def exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None;
     def exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None;

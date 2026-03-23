@@ -783,7 +783,8 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False)
+            autonative=run_data.get("autonative", False),
+            topology_index=run_data.get("topology_index", True)
         );
     }
     if "build" in data {

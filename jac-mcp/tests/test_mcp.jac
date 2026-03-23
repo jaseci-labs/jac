@@ -275,6 +275,26 @@ test "list examples returns results" {
     assert isinstance(result["examples"], list);
 }
 
+test "list examples returns results when repo root is None (PyPI install)" {
+    import from unittest.mock { patch, MagicMock }
+
+    # Mock find_repo_root to return None, simulating a PyPI (non-editable) install
+    with patch("jac_mcp.resources.find_repo_root", return_value=None) {
+        tp = ToolProvider();
+        result = tp.call_tool("list_examples", {});
+    }
+    assert "examples" in result;
+    examples = result["examples"];
+    assert len(examples) > 0 , "list_examples should return results via GitHub fallback when repo root is None";
+    names = [e["name"] for e in examples];
+    assert "data_spatial" in names , "Expected 'data_spatial' in GitHub-fetched examples";
+    for ex in examples {
+        assert "name" in ex;
+        assert "uri" in ex;
+        assert ex["uri"].startswith("jac://examples/");
+    }
+}
+
 test "unknown tool returns error" {
     tp = ToolProvider();
     result = tp.call_tool("nonexistent_tool", {});
@@ -309,6 +329,19 @@ test "parse invalid code" {
     assert isinstance(result, dict);
     assert result["valid"] == False;
     assert len(result["errors"]) > 0;
+}
+
+test "parse errors have correct line and col" {
+    result = CompilerBridge.parse_snippet("obj Foo {\n    has x: int = 5\n}");
+    assert result["valid"] == False;
+    assert len(result["errors"]) > 0;
+    err = result["errors"][0];
+    assert err["line"] > 0 , f"Expected line > 0, got {err['line']}";
+    assert err["col"] > 0 , f"Expected col > 0, got {err['col']}";
+    assert "message" in err;
+    assert len(err["message"]) > 0;
+    assert isinstance(err["line"], int);
+    assert isinstance(err["col"], int);
 }
 
 test "parse empty code" {
@@ -400,7 +433,7 @@ test "write module returns messages" {
     );
     assert "messages" in result;
     assert len(result["messages"]) > 0;
-    assert result["messages"][0]["role"] == "system";
+    assert result["messages"][0]["role"] == "assistant";
     assert result["messages"][1]["role"] == "user";
     assert "my_module" in result["messages"][1]["content"];
 }
@@ -453,6 +486,202 @@ test "unknown prompt returns error" {
     pp = PromptProvider();
     result = pp.get_prompt("nonexistent", {});
     assert "Unknown" in result.get("description", "") or "messages" in result;
+}
+
+# ── Plugin Config / jac.toml Integration Tests ──
+#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default
+test "jac.toml values override CLI defaults for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp` with no explicit args (all CLI defaults)
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1 , "JacMcpServer should have been instantiated once";
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "streamable-http" , "jac.toml transport should override CLI default";
+    assert ctor_kwargs["port"] == 9000 , "jac.toml port should override CLI default";
+    assert ctor_kwargs["host"] == "0.0.0.0" , "jac.toml host should override CLI default";
+}
+
+test "explicit CLI args take priority over jac.toml for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp --transport sse --port 8080 --host 10.0.0.1`
+    mock_ctx = MagicMock();
+    def cli_explicit(name: str, fallback: object = None) -> object {
+        m = {"transport": "sse", "port": 8080, "host": "10.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_explicit;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "sse" , "explicit CLI --transport must win over jac.toml";
+    assert ctor_kwargs["port"] == 8080 , "explicit CLI --port must win over jac.toml";
+    assert ctor_kwargs["host"] == "10.0.0.1" , "explicit CLI --host must win over jac.toml";
+}
+
+test "CLI defaults used when jac.toml has no mcp section" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {};
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
+test "CLI defaults used when no jac.toml is present" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=None) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
+test "all prompt messages use only MCP-valid roles" {
+    pp = PromptProvider();
+    valid_roles = ["user", "assistant"];
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            assert msg["role"] in valid_roles , f"Prompt '{prompt[
+                'name'
+            ]}' has invalid MCP role '{msg[
+                'role'
+            ]}' — only 'user' or 'assistant' are allowed";
+        }
+    }
+}
+
+test "prompt messages pass MCP SDK Pydantic validation" {
+    import from mcp.types { PromptMessage, TextContent }
+    pp = PromptProvider();
+    for prompt in pp.list_prompts() {
+        args: dict = {};
+        for arg in prompt.get("arguments", []) {
+            args[arg["name"]] = "test";
+        }
+        result = pp.get_prompt(prompt["name"], args);
+        for msg in result.get("messages", []) {
+            pm = PromptMessage(
+                role=msg["role"], content=TextContent(type="text", text=msg["content"])
+            );
+            assert pm is not None , f"PromptMessage construction failed for prompt '{prompt[
+                'name'
+            ]}' with role '{msg['role']}'";
+        }
+    }
 }
 
 # ── Bundle Script Tests ──

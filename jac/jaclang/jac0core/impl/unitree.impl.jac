@@ -289,7 +289,7 @@ impl UniNode.unparse -> str {
     return ' '.join([i.unparse() for i in self.kid]);
 }
 
-impl AtomExpr.postinit(self: AtomExpr) -> None {
+impl AtomExpr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.UNKNOWN);
 }
@@ -769,6 +769,7 @@ impl Expr.postinit -> None {
     self._type_sym_tab = None;
     self.type = None;
     self.attached_tokens = None;
+    self.backend_type_tag = None;
 }
 
 
@@ -1971,6 +1972,11 @@ impl FuncCall.postinit -> None {
 }
 
 
+impl Slice.postinit -> None {
+    UniNode.postinit(self);
+}
+
+
 impl IndexSlice.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -2257,6 +2263,7 @@ impl Name.init(
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
     self._py_ctx_func = ast3.Load;
+    self.js_decl_kind = None;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR

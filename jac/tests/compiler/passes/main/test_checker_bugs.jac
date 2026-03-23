@@ -4,18 +4,23 @@ Each test documents behavior that was buggy and has since been fixed.
 They now serve as regression guards to prevent re-introduction of these bugs.
 
 Bug index:
-  #1  - 'is'/'in' operators return UnknownType (missing return)
-  #3  - List element type inference only considers first element
-  #6  - MRO linearization is not C3 (diamond inheritance)
-  #7  - Protocol checking compares only method names, not signatures
-  #8  - DictVal/TupleVal/SetVal have no type inference
-  #11 - BoolExpr (and/or) always returns last operand's type
-  #12 - CompareExpr has no handler (returns UnknownType)
-  #13 - IfExpr (ternary) has no handler (returns UnknownType)
-  #15 - No generic type argument checking (list[int] -> list[str])
-  #21 - _get_method_with_overloads doesn't specialize the base method
-  #22 - Tuple unpacking in for loops returns UnknownType
-  #23 - With statement alias typed as Unknown (wrong traversal order)
+  #1      - 'is'/'in' operators return UnknownType (missing return)
+  #3      - List element type inference only considers first element
+  #6      - MRO linearization is not C3 (diamond inheritance)
+  #7      - Protocol checking compares only method names, not signatures
+  #8      - DictVal/TupleVal/SetVal have no type inference
+  #11     - BoolExpr (and/or) always returns last operand's type
+  #12     - CompareExpr has no handler (returns UnknownType)
+  #13     - IfExpr (ternary) has no handler (returns UnknownType)
+  #15     - No generic type argument checking (list[int] -> list[str])
+  #21     - _get_method_with_overloads doesn't specialize the base method
+  #22     - Tuple unpacking in for loops returns UnknownType
+  #23     - With statement alias typed as Unknown (wrong traversal order)
+  #ANY-1  - typing.Any attribute access incorrectly raises E1030
+  #FINAL-1 - Final[T] not unwrapped for attribute access
+  #TVAR-1 - Duplicate TypeVars in _extract_type_params cause positional mismatch
+  #TVAR-2 - No transitive TypeVar propagation through base_classes in build_type_var_solution
+  #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
 """
 
 import os;
@@ -290,4 +295,156 @@ test "bug_22_tuple_unpack_for_loop_unknown" {
     assert len(program.errors_had) == 5 , f"Bug #22: Tuple unpacking in for loops returns UnknownType. "
     f"Expected 5 type errors but got {len(program.errors_had)}. "
     f"for (a, b) in list[tuple[A, B]] should type a as A and b as B.";
+}
+
+# =========================================================================
+# Bug #ANY-1: typing.Any attribute access incorrectly raises E1030
+#
+# TypeBase.is_any_type() missed ClassType-wrapped typing.Any.
+# E1030 guards called lookup_type.is_any_type() (simple) instead of
+# self.is_any_type() (TypeEvaluator, checks prefetch.any_class).
+# =========================================================================
+test "bug_any1_typing_any_attr_access" {
+    program = compile_and_check("checker_bug_typing_any_attr.jac");
+    # Expect 1 error: object.nonexistent (object does not allow arbitrary attr access)
+    # Any still allows all attribute access (0 errors for Any tests)
+    assert len(program.errors_had) == 1 , f"Bug #ANY-1: Expected 1 error (object.nonexistent), "
+    f"got {len(
+        program.errors_had
+    )} errors. Any must allow all attribute access, but object must not.";
+    # Verify the error is for object.nonexistent, not for Any
+    err_str = program.errors_had[0].pretty_print();
+    assert "nonexistent" in err_str , f"Expected error for 'nonexistent' attr, got: {err_str}";
+    assert "object" in err_str , f"Expected error mentioning 'object' type, got: {err_str}";
+}
+
+# =========================================================================
+# Bug #FINAL-1: Final[T] not unwrapped for attribute access
+#
+# Member lookup ran against Final instead of T, so Final[list[int]].count
+# raised E1030. Unwrapping existed for assignment checks but not attr access.
+# =========================================================================
+test "bug_final1_final_unwrap_for_attr_access" {
+    program = compile_and_check("checker_bug_final_unwrap_attr.jac");
+    assert len(program.errors_had) == 0 , f"Bug #FINAL-1: attribute access on Final[T] raised E1030 "
+    f"({len(program.errors_had)} errors). Final[T] must unwrap to T for member lookup.";
+}
+
+# =========================================================================
+# Bug #TVAR-1: Duplicate TypeVars in _extract_type_params
+#
+# When a class inherits from multiple generic bases with overlapping TypeVars
+# (e.g., BaseMapping(BaseCollection[K], Generic[K, V])), _extract_type_params
+# collected K twice, producing type_params=[K, K, V]. This caused positional
+# mismatches when mapping type_params to type_args during specialization,
+# leaving V unresolved -> Unknown.
+#
+# Fix: Deduplicate TypeVars by name in _extract_type_params, preserving
+# first-occurrence order (matching Python's typing module behavior).
+#
+# Impact: Methods returning TypeVars from multi-base generic classes had
+#         Unknown return types, suppressing legitimate type errors.
+# =========================================================================
+test "bug_tvar1_typevar_dedup_in_extract_type_params" {
+    program = compile_and_check("checker_bug_typevar_dedup.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = m.lookup("key")`)
+    # Without fix: 0 errors (V is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-1: _extract_type_params duplicates TypeVars from "
+    f"multiple generic bases, causing positional mismatch. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without dedup, V in BaseMapping(BaseCollection[K], Generic[K, V]) is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-2: No transitive TypeVar propagation in build_type_var_solution
+#
+# build_type_var_solution only checked MRO entries for type_args (which are
+# unspecialized), missing the parameterized base_classes chain. When a class
+# like ChildMap[str, int] inherits MiddleMap[K, V] which inherits
+# BaseReader[K, V2], the TypeVar V2 was never mapped to V -> int.
+#
+# Fix: Added a phase in build_type_var_solution that walks each MRO entry's
+# base_classes to propagate TypeVar bindings transitively.
+#
+# Impact: Methods inherited from grandparent+ generic classes had Unknown
+#         return types when TypeVars were renamed across inheritance levels.
+# =========================================================================
+test "bug_tvar2_transitive_typevar_propagation" {
+    program = compile_and_check("checker_bug_typevar_transitive.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = c.read("key")`)
+    # Without fix: 0 errors (V2 is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-2: build_type_var_solution doesn't propagate TypeVars "
+    f"through base_classes chain. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without transitive propagation, V2 in BaseReader is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-3: Union return types with TypeVars resolve to Unknown
+#
+# When a generic method returns V | None (a union containing a TypeVar),
+# the BinaryExpr with BW_OR operator was evaluated by operations.jac which
+# checked is_any_type() on both operands BEFORE handling the union case.
+# Since TypeVarType.is_any_type() returns True, the function short-circuited
+# to UnknownType, and the union handler at line 276 was never reached.
+#
+# Fix: Move the BW_OR union-type check before the is_any_type() early return
+# and extend is_annotation_type() to recognize TypeVarType as valid.
+#
+# Impact: dict.get(), Optional-returning methods on generic classes, and any
+#         typeshed stub with `-> TypeVar | None` had Unknown return types.
+# =========================================================================
+test "bug_tvar3_typevar_union_return_type" {
+    program = compile_and_check("checker_bug_typevar_union_return.jac");
+
+    # Expected: 1 error (int | None not assignable to str for `bad: str = s.lookup("key")`)
+    # Without fix: 0 errors (V | None is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-3: Union return types with TypeVars (V | None) resolve "
+    f"to Unknown due to is_any_type() short-circuit in operations.jac. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without the fix, dict.get() and similar methods return Unknown.";
+}
+
+# =========================================================================
+# Bug #TVAR-4: Generic[] base class must establish canonical TypeVar order
+# =========================================================================
+# Root cause: _extract_type_params processed base classes left-to-right and
+# deduplicated by name. For dict_values(ValuesView[_VT_co], Generic[_KT_co,
+# _VT_co]), _VT_co was encountered first (from ValuesView), producing
+# type_params = [_VT_co, _KT_co]. The correct order per PEP 484 is
+# [_KT_co, _VT_co] from the Generic[] declaration, which is the authoritative
+# source. Wrong ordering swaps key/value types in dict.keys()/values().
+#
+# Impact: dict.values() yielded key types instead of value types, and
+#         dict.keys() yielded value types instead of key types, for any
+#         dict-like class whose typeshed stub lists Generic[] after other
+#         parameterized bases.
+# =========================================================================
+test "bug_tvar4_generic_base_canonical_typevar_order" {
+    program = compile_and_check("checker_bug_typevar_generic_order.jac");
+
+    # Expected: 2 errors on the `bad` lines (24 and 30), NOT on the `good` lines (23 and 29).
+    # Without fix: 2 errors on the WRONG lines (23 and 30) because key/value types are swapped,
+    # so a count-only check would still pass — we must verify the error locations.
+    assert len(program.errors_had) >= 2 , f"Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
+    f"Expected at least 2 type errors but got {len(program.errors_had)}.";
+
+    # Verify errors are on the `bad` assignment lines, not the `good` ones.
+    # Line 24: `bad: int = v` should error (v is str from values())
+    # Line 30: `bad2: str = k` should error (k is int from keys())
+    error_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc
+    ];
+    assert 24 in error_lines , f"Expected error on line 24 (bad: int = v), got errors on lines {error_lines}. "
+    f"Without fix, dict.values() yields key type instead of value type.";
+    assert 30 in error_lines , f"Expected error on line 30 (bad2: str = k), got errors on lines {error_lines}.";
+    # The `good` lines should NOT have errors.
+    assert 23 not in error_lines , f"Line 23 (good: str = v) should not error — values() yields str, "
+    f"but got errors on lines {error_lines}. TypeVar order is likely swapped.";
+    assert 29 not in error_lines , f"Line 29 (good2: int = k) should not error — keys() yields int, "
+    f"but got errors on lines {error_lines}.";
 }

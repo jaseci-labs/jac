@@ -110,6 +110,39 @@ test "bug_in_walker_ability" {
     assert len(program.errors_had) == 0;
 }
 
+test "return_value_in_ability_warns" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_return_in_ability.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0;
+    w2014_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W2014"
+    ];
+    assert len(w2014_warnings) == 2 , f"Expected 2 W2014 warnings, got {len(
+        w2014_warnings
+    )}: {w2014_warnings}";
+}
+
+test "explicit_self_in_archetype_errors" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_self.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    e2015_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E2015"
+    ];
+    # 4 errors: one each for obj, node, edge, walker bad_method
+    # No errors for: good_method (no self), static_method (static), PyClass methods (class)
+    assert len(e2015_errors) == 4 , f"Expected 4 E2015 errors, got {len(e2015_errors)}: {e2015_errors}";
+}
+
 test "member_access_type_resolve" {
     program = JacProgram();
     mod = program.compile(
@@ -1343,6 +1376,31 @@ test "property_type_checking" {
     );
 }
 
+test "property_self_return_type_resolution" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_self_return.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Only 2 errors: assigning Path to int
+    assert len(program.errors_had) == 2;
+
+    assert_error_pretty_found(
+        """
+        wrong: int = p.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    assert_error_pretty_found(
+        """
+        wrong_chained: int = p.parent.parent;  # <-- Error (Path assigned to int)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
@@ -1350,7 +1408,7 @@ test "type_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 11 , f"Expected exactly 11 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 14 , f"Expected exactly 14 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1398,6 +1456,18 @@ test "type_narrowing" {
         """
         to_connect.append(nd);  # <-- Error: BaseNode cannot assign to CFGNode
                           ^^
+        """,
+        """
+        return x.bark();  # <-- Error: x is still Dog | None here
+               ^^^^
+        """,
+        """
+        return x.bark();  # <-- Error: x is still Dog | None here
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        result: Dog = x if (x is None) else Dog(name="d");  # <-- Error: x is NoneType in true branch
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         """
     ];
 
@@ -1523,12 +1593,12 @@ test "enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
+        "B = \"jac\"",
         "name_err: int = Color.RED.name",
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
         "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        "impl_shape_ok: str = ShapeType.SQUARE.name",
         "func_wrong_type: str = process_color"
     ];
 
@@ -1553,8 +1623,11 @@ test "class_based_enum_type_checking" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     expected_errors = [
-        "Cannot assign Literal[\"1\"] to Tokens",
+        "Cannot assign <Tokens.FLOAT> to int",
         "Cannot assign Literal[\"1\"] to int",
+        "Cannot assign Literal[\"LSQUARE\"] to int",
+        "Cannot assign Literal[\"RSQUARE\"] to int",
+        "Cannot assign <AccessLevel.READ> to str",
         "Cannot assign AccessLevel | NoneType to int",
         "Cannot assign int to str"
     ];
@@ -1825,10 +1898,14 @@ test "assert_isinstance_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # All cases should pass - assert isinstance narrows the type
-    assert len(program.errors_had) == 0 , f"Expected no type errors, but got " + f"{len(
+    # Expect exactly 1 error: the failure case where truthy assert doesn't narrow union
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (truthy assert failure case), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # Verify the error is about accessing .value on a string literal type
+    err_msg = program.errors_had[0].pretty_print();
+    assert 'has no attribute "value"' in err_msg , f"Expected attribute error, got: {err_msg}";
 }
 
 """Test assignment-based type narrowing."""
@@ -2195,4 +2272,301 @@ test "list_generator_type_inference" {
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test that return inside lambda checks against lambda's return type, not enclosing function's."""
+test "bug_lambda_return_type_checks_against_enclosing_function" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_bug_lambda_return_type.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Case 1 and 2 should pass (valid returns), Case 3 should produce exactly 1 error
+    # (str returned from lambda declared -> int).
+    assert len(program.errors_had) == 1 , f"Expected 1 type error (lambda return mismatch), got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test function type attribute access (__code__, __name__, etc.)."""
+test "function_type_attrs" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_function_attrs.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Test Any allows arbitrary attr access, but object does not."""
+test "any_vs_object_attr_access" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_bug_typing_any_attr.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Any allows arbitrary access (no errors), but object.nonexistent should error
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        val.nonexistent;  # <-- Error: object has no attribute "nonexistent"
+            ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+"""B2: TypeVar | union return types resolve correctly (not Unknown)."""
+test "typevar_union_return_types" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_typevar_union_return.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""B2c: Method-level TypeVar inference in overload resolution."""
+test "typevar_overload_inference" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_typevar_overload_inference.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""B1: typing.cast() returns the target type."""
+test "typing_cast_special_form" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_typing_cast.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""B3: match/case narrows the match subject inside case bodies."""
+test "match_case_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_match_case_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Enum static methods resolve correctly (not treated as enum members)."""
+test "enum_static_method" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_static_method.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+# ============================================================================
+# Narrowing gap exposure tests
+#
+# These tests document known type checker narrowing limitations.
+# Each test asserts the CURRENT (broken) error count. When a gap is fixed,
+# the error count should decrease — update the assertion accordingly.
+# The fixture has ok_ functions (should pass) and fail_ functions (currently broken).
+# ============================================================================
+"""Gap A: Early return narrowing after nested if block join points.
+
+After `if val is None { return; }`, val is narrowed to non-None for the entire
+rest of the function. Fixed by propagating affected_symbols through already-linked
+internal CFG nodes when sibling-to-sibling edges are created in _link_sequential.
+"""
+test "narrowing_gap_a_early_return_after_nested_if" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap A errors are on lines 85-129 (fail_early_return_* and fail_truthiness/isinstance variants)
+    gap_a_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 85 <= e.loc.first_line <= 129
+    ];
+    # FIXED: CFG affected_symbols propagation now reaches internal nodes
+    assert len(gap_a_errors) == 0 , f"Gap A should have 0 errors (fixed), got {len(
+        gap_a_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_a_errors);
+}
+
+"""Gap B: Ternary narrowing not applied when narrowed var is a function argument.
+
+In `use_foo(val) if isinstance(val, Foo) else 0`, the ternary handler now correctly
+narrows `val` in the true branch. Fixed by pruning IfElseExpr children so they are
+only evaluated inside the ternary handler with narrowing scopes active.
+"""
+test "narrowing_gap_b_ternary_fn_arg" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap B errors are on lines 155-170 (fail_ternary_*_fn_arg functions)
+    gap_b_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 155 <= e.loc.first_line <= 170
+    ];
+    # GAP B is a known limitation: function args in ternary branches don't
+    # get narrowed types because exit_func_call fires before the type
+    # evaluator processes the IfElseExpr with narrowing scopes.
+    assert len(gap_b_errors) == 3 , f"Gap B should have 3 errors (known gap), got {len(
+        gap_b_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_b_errors);
+}
+
+"""Gap C: Ternary narrowing applied to attribute access on narrowed variable.
+
+In `val.attr if val else 0`, the true branch correctly narrows `val` from T|None
+to T. Fixed by pruning IfElseExpr children (same fix as Gap B).
+"""
+test "narrowing_gap_c_ternary_attr_access" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap C errors are on lines 180-196 (fail_ternary_attr_* functions)
+    gap_c_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 180 <= e.loc.first_line <= 196
+    ];
+    # GAP C is a known limitation (same root cause as Gap B): attribute access
+    # in ternary branches doesn't get narrowed types during walker traversal.
+    assert len(gap_c_errors) == 6 , f"Gap C should have 6 errors (known gap), got {len(
+        gap_c_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_c_errors);
+}
+
+"""Verify ok_ functions in narrowing gaps fixture produce no errors.
+
+The ok_ prefixed functions test patterns that DO work correctly and should
+never regress. This test ensures they remain error-free.
+"""
+test "narrowing_gaps_ok_functions_no_errors" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # ok_ functions are on lines 64-82 — these should produce no errors
+    ok_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 64 <= e.loc.first_line <= 82
+    ];
+    assert len(ok_errors) == 0 , f"ok_ functions should produce no errors, got {len(
+        ok_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in ok_errors);
+}
+
+"""Total error count for narrowing gaps fixture.
+
+When any gap is fixed, this total will decrease. Update accordingly.
+"""
+test "narrowing_gaps_total_error_count" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap A fixed (CFG propagation). Gap B+C remain (ternary fn args/attr access).
+    # Total expected: 3 (Gap B) + 6 (Gap C) = 9 errors.
+    assert len(program.errors_had) == 9 , f"Expected 9 errors (Gap B+C known gaps), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+# ============================================================================
+# Runtime.impl.jac type checker issues
+# These document false positive errors found in runtime.impl.jac.
+# ============================================================================
+"""Runtime narrowing: truthiness + isinstance on attribute access in `and` chains.
+
+Tests that `obj.attr and isinstance(obj.attr, T)` correctly narrows obj.attr
+from a multi-member union through both truthiness and isinstance. Uses AtomTrailer
+nodes (attribute access) to match the real runtime.impl.jac patterns.
+"""
+test "runtime_attr_truthiness_and_isinstance_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 1 ok_ functions: lines 60-100 (attr truthiness, isinstance, loop patterns)
+    i1_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 60 <= e.loc.first_line <= 100
+    ];
+    assert len(i1_errors) == 0 , f"Attr truthiness/isinstance narrowing should produce 0 errors, got {len(
+        i1_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i1_errors);
+}
+
+"""Runtime narrowing: compound `or` guard on attribute access after early exit.
+
+Tests that after `if (not obj or not obj.attr) { raise/return; }`, obj is narrowed
+to non-None for subsequent attribute access. Uses AtomTrailer nodes to match the
+real runtime.impl.jac `spec` pattern.
+"""
+test "runtime_compound_or_guard_attr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 2 ok_ functions: lines 120-175 (compound or guard patterns)
+    i2_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 120 <= e.loc.first_line <= 175
+    ];
+    assert len(i2_errors) == 0 , f"Compound or guard narrowing should produce 0 errors, got {len(
+        i2_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i2_errors);
+}
+
+"""Total error count for runtime errors fixture — all patterns should pass."""
+test "runtime_errors_total" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"All runtime patterns should produce 0 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

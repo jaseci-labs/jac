@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   test-core:
@@ -331,6 +332,7 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
+    # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
       run: |
         jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
@@ -351,43 +353,43 @@ jobs:
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        timeout 600 jac start main.jac > /tmp/jac-server.log 2>&1 &
+        timeout 600 jac start main.jac > /tmp/jac-gpt-server.log 2>&1 &
         SERVER_PID=$!
-        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
-        echo "Server starting with PID $SERVER_PID..."
+        echo "JAC_GPT_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "jac-gpt server starting with PID $SERVER_PID..."
         sleep 10
         if ! kill -0 $SERVER_PID 2>/dev/null; then
           echo "Server process died during startup"
-          cat /tmp/jac-server.log
+          cat /tmp/jac-gpt-server.log
           exit 1
         fi
 
     - name: Wait for jac-gpt server to be ready
       run: |
-        echo "Waiting for server on port 8000..."
+        echo "Waiting for jac-gpt server on port 8000..."
         for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.SERVER_PID }} 2>/dev/null; then
+          if ! kill -0 ${{ env.JAC_GPT_PID }} 2>/dev/null; then
             echo "Server process exited unexpectedly"
-            cat /tmp/jac-server.log
+            cat /tmp/jac-gpt-server.log
             exit 1
           fi
-          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>/dev/null; then
-            echo "Server is ready (attempt $i)"
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "jac-gpt server is ready (attempt $i)"
             exit 0
           fi
           echo "Attempt $i/24: not ready, waiting 15s..."
           sleep 15
         done
         echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/jac-server.log
+        tail -100 /tmp/jac-gpt-server.log
         exit 1
 
-    - name: Verify HTTP response
+    - name: Verify jac-gpt HTTP response
       run: |
         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "Root endpoint: HTTP $HTTP_CODE"
+        echo "jac-gpt root endpoint: HTTP $HTTP_CODE"
         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "Server responding correctly"
+          echo "jac-gpt server responding correctly"
         else
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
@@ -396,26 +398,100 @@ jobs:
     - name: Stop jac-gpt server
       if: always()
       run: |
-        if [ -n "${{ env.SERVER_PID }}" ]; then
-          kill ${{ env.SERVER_PID }} 2>/dev/null || true
+        if [ -n "${{ env.JAC_GPT_PID }}" ]; then
+          kill ${{ env.JAC_GPT_PID }} 2>/dev/null || true
           sleep 3
-          kill -9 ${{ env.SERVER_PID }} 2>/dev/null || true
+          kill -9 ${{ env.JAC_GPT_PID }} 2>/dev/null || true
+        fi
+
+    # ========== Algo test ==========
+    - name: Create Algo from jacpack
+      run: |
+        jac create algo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/Algo/Algo.jacpack
+        cd algo && jac install
+
+    - name: Type check Algo
+      working-directory: algo
+      run: jac check main.jac
+
+    - name: Start Algo server in background
+      working-directory: algo
+      run: |
+        timeout 600 jac start main.jac > /tmp/algo-server.log 2>&1 &
+        ALGO_PID=$!
+        echo "ALGO_PID=$ALGO_PID" >> $GITHUB_ENV
+        echo "Algo server starting with PID $ALGO_PID..."
+        sleep 10
+        if ! kill -0 $ALGO_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/algo-server.log
+          exit 1
+        fi
+
+    - name: Wait for Algo server to be ready
+      run: |
+        echo "Waiting for Algo server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.ALGO_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/algo-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Algo server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/algo-server.log
+        exit 1
+
+    - name: Verify Algo HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "Algo root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "Algo server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop Algo server
+      if: always()
+      run: |
+        if [ -n "${{ env.ALGO_PID }}" ]; then
+          kill ${{ env.ALGO_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
         fi
 
     - name: Upload jac-gpt server logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: jac-pack-test-logs
-        path: /tmp/jac-server.log
+        name: jac-gpt-test-logs
+        path: /tmp/jac-gpt-server.log
+        retention-days: 7
+
+    - name: Upload Algo server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: algo-test-logs
+        path: /tmp/algo-server.log
         retention-days: 7
 
     - name: Jac pack test summary
       if: always()
       run: |
-        echo "## jac-pack-test (jac-gpt)" >> $GITHUB_STEP_SUMMARY
+        echo "## Jac Pack Smoke Tests" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Status** | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY

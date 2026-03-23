@@ -48,6 +48,7 @@ class ViteCompiler {
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
+    def compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str]];
     def compile_dependencies_recursively(
         self: ViteCompiler,
         module_path: Path,
