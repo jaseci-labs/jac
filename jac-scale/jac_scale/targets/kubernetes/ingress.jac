@@ -188,7 +188,9 @@ obj IngressDeployer {
             },
             'data': {
                 'allow-snippet-annotations': 'true',
-                'annotations-risk-level': 'Critical'
+                'annotations-risk-level': 'Critical',
+                'use-gzip': 'true',
+                'gzip-types': 'application/javascript text/css application/json image/svg+xml'
             }
         };
         try {
@@ -644,20 +646,18 @@ obj IngressDeployer {
             # frontend sets window.__RI_PROXY_PATH__ = 'cache-dashboard' and prefixes all
             # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
             # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
-            # gzip on re-compresses all responses (HTML, JS, CSS) before sending to
-            # the browser, so there is no performance penalty.
+            # Compression is handled at the server level via the nginx ConfigMap
+            # (use-gzip: true), NOT in the snippet — gzip directives in location
+            # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
                 'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
                 'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-buffering': 'on',
                 'nginx.ingress.kubernetes.io/use-regex': 'true',
                 'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
                 'nginx.ingress.kubernetes.io/configuration-snippet': (
                     'proxy_set_header Accept-Encoding "";\n'
-                    'gzip on;\n'
-                    'gzip_proxied any;\n'
-                    'gzip_types text/html text/css application/javascript application/json image/svg+xml;\n'
-                    'gzip_min_length 256;\n'
                     'sub_filter_types text/html;\n'
                     'sub_filter \'src="/assets/\' \'src="/cache-dashboard/assets/\';\n'
                     'sub_filter \'href="/assets/\' \'href="/cache-dashboard/assets/\';\n'
