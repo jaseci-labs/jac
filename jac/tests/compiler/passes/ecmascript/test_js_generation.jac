@@ -652,7 +652,7 @@ test "separated files" {
 
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code;
-    assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.strip()});" in js_code;
+    assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.trim()});" in js_code;
 }
 
 test "separated defpub generates rpc stubs" {
@@ -839,10 +839,22 @@ test "compr list multiple filters" {
 test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
-    # list_compr_method: [x.strip() for x in items] → items.map(x => x.strip())
-    assert ".strip()" in js_code , (
-        "Method call in comprehension output should be preserved"
+    # list_compr_method: [x.strip() for x in items] → items.map(x => x.trim())
+    assert ".trim()" in js_code , (
+        "str.strip() in comprehension should map to .trim()"
     );
+}
+
+test "str methods on local vars and chained calls" {
+    import tempfile;
+    source = 'def:pub T() -> JsxElement {\n    has text: str = "hi";\n    temp = text.strip();\n    a = temp.lower();\n    b = text.strip().lower();\n    return <div>{a}{b}</div>;\n}\n';
+    tmp = tempfile.NamedTemporaryFile(suffix=".cl.jac", mode="w", delete=False);
+    tmp.write(source);
+    tmp.close();
+    js_code = compile_fixture_to_js(tmp.name);
+    os.remove(tmp.name);
+    assert "temp.toLowerCase()" in js_code , "str.lower() on local var should map to .toLowerCase()";
+    assert "text.trim().toLowerCase()" in js_code , "chained str.strip().lower() should map to .trim().toLowerCase()";
 }
 
 test "compr list ternary output" {

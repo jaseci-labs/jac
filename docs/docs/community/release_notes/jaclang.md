@@ -10,6 +10,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Scope Narrowing for AtomTrailer Nodes**: The pre-cache scope narrowing check in `get_type_of_expression` now handles `AtomTrailer` nodes (attribute access like `obj.attr`) in addition to `Name` and `NameAtom` nodes. Previously, attribute access expressions inside `and` chains and ternary branches returned stale cached types, bypassing truthiness and isinstance narrowing. This eliminates 12 false positive errors in `runtime.impl.jac`.
 - **Fix: `add_scope_narrowing` Union Replacement**: When an existing scope narrowing is a `UnionType` (e.g., from truthiness excluding `None`) and a more specific type arrives (e.g., from `isinstance`), the specific type now replaces the union instead of being silently dropped.
 - **Fix: Compound `or` Guard Narrowing**: `_find_predicate_for` now handles inverted predicates in `or` conditions (e.g., `not x or not x.attr`). Previously it bailed out when any `or` operand was inverted, preventing DeMorgan narrowing on the false branch of compound `or` guards.
+- **Fix: Python string method transpilation on local vars and chained calls in `.cl.jac`**: The ECMAScript pass now prioritizes `str` over `bytes` when resolving methods on untyped expressions, fixing `.lower()`, `.upper()`, `.strip()`, and `.find()` failing to map to JS equivalents on local variables and chained calls.
 
 ## jaclang 0.13.0 (Latest Release)
 
