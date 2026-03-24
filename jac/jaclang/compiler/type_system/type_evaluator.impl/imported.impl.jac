@@ -171,10 +171,22 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             return node_.path[-1].type;
         }
         path_list = node_.resolve_relative_path_list();
-        # Calculate offset for relative imports: leading dots produce extra segments
-        # in resolve_relative_path_list() that don't have corresponding entries in node_.path.
+        # Calculate offset for relative imports from Python packages:
+        # leading dots produce extra segments in resolve_relative_path_list()
+        # that don't have corresponding entries in node_.path.
         # E.g., "from .base import X" has path=[base] but path_list=[__init__.py, base.jac]
-        offset = len(path_list) - len(node_.path) if node_.path else 0;
+        # Only apply offset when importing from Python __init__.py (not jaclang internals)
+        # to avoid circular import issues during compiler bootstrap.
+        offset = 0;
+        if node_.path and len(path_list) > len(node_.path) and node_.level > 0 {
+            first_path = path_list[0] if path_list else "";
+            # Only for Python __init__ files, not Jac __init__.jac or jaclang internals
+            is_python_init = first_path.endswith(("__init__.py", "__init__.pyi"));
+            is_jaclang_internal = "jaclang" in first_path and "/jaclang/" in first_path;
+            if is_python_init and not is_jaclang_internal {
+                offset = len(path_list) - len(node_.path);
+            }
+        }
         for (idx, npath) in enumerate(node_.path) {
             mod_path = path_list[idx + offset];
 
