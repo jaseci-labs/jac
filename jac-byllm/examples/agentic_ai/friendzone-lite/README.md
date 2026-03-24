@@ -54,7 +54,7 @@ obj Response {
 
 ## Usage
 
-1. Start the Jac Cloud server:
+1. Start the Jac server:
 
    ```bash
    jac start friendzone_lite.jac
