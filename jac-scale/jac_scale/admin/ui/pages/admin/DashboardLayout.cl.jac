@@ -13,6 +13,8 @@ cl {
     import from .users.UsersPage { UsersPage }
     import from .sso.SSOPage { SSOPage }
     import from .monitoring.MetricsPage { MetricsPage }
+    import from .monitoring.LLMMetricsPage { LLMMetricsPage }
+    import from .monitoring.LLMTracesPage { LLMTracesPage }
     import from .placeholder.PlaceholderPage {
         SessionsPage,
         ApiKeysPage,
@@ -57,6 +59,8 @@ cl {
              },
              "monitor": {
                  "metrics": MetricsPage,
+                 "llm_metrics": LLMMetricsPage,
+                 "llm_traces": LLMTracesPage,
                  "logs": LogsPage,
                  "health": HealthPage,
                  "alerts": AlertsConfigPage
