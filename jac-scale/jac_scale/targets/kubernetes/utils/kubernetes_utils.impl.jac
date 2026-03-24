@@ -345,12 +345,24 @@ impl parse_storage_quantity(quantity: str) -> int {
     };
     for (suffix, multiplier) in suffixes_binary.items() {
         if q.endswith(suffix) {
-            return int(q[:-len(suffix)]) * multiplier;
+            number_part = q[:-len(suffix)].strip();
+            if number_part == '' {
+                raise ValueError(
+                    f"Storage quantity '{quantity}' is missing a numeric component."
+                );
+            }
+            return int(number_part) * multiplier;
         }
     }
     for (suffix, multiplier) in suffixes_decimal.items() {
         if q.endswith(suffix) {
-            return int(q[:-len(suffix)]) * multiplier;
+            number_part = q[:-len(suffix)].strip();
+            if number_part == '' {
+                raise ValueError(
+                    f"Storage quantity '{quantity}' is missing a numeric component."
+                );
+            }
+            return int(number_part) * multiplier;
         }
     }
     try {
