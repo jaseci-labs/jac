@@ -538,7 +538,9 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
         # Skip generator functions (contain yield) — they don't need explicit return
         is_generator = len(nd.get_all_sub_nodes(uni.YieldExpr)) > 0;
-        if not is_overload and not is_generator {
+        # Skip stub functions (body is only ellipsis and/or semicolons)
+        is_stub = self.evaluator._is_ellipsis_only_body(nd.body);
+        if not is_overload and not is_generator and not is_stub {
             ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
             ret_inst = self.evaluator._convert_to_instance(ret_type);
             none_type = self.evaluator._convert_to_instance(

@@ -588,3 +588,36 @@ def test_error_ternary_true_branch_none(x: Dog | None) -> Dog {
     result: Dog = x if (x is None) else Dog(name="d");  # <-- Error: x is NoneType in true branch
     return result;
 }
+
+# =========================================================================
+# 20. OR-expression result type narrowing (Pyright-style)
+#     `x or default` where x: T | None should produce T | type(default),
+#     not T | None | type(default), because None (always falsy) causes
+#     OR to short-circuit to the next operand.
+# =========================================================================
+
+# 20a. `x or []` where x: list[str] | None → list[str]
+def test_or_none_default_list(x: list[str] | None) -> None {
+    result: list[str] = x or [];  # <-- Ok: None excluded, result is list[str]
+}
+
+# 20b. Assignment-based narrowing: `x = x or []` narrows x to list[str]
+def test_or_reassign_narrows(x: list[str] | None) -> None {
+    x = x or [];
+    result: list[str] = x;  # <-- Ok: x narrowed to list[str] via assignment
+}
+
+# 20c. `x or "default"` where x: str | None → str
+def test_or_none_default_str(x: str | None) -> None {
+    result: str = x or "default";  # <-- Ok: None excluded, result is str
+}
+
+# 20d. Multi-operand OR: `a or b or c`
+def test_or_chain_none_default(a: str | None, b: str | None) -> None {
+    result: str = a or b or "fallback";  # <-- Ok: None excluded from all non-last operands
+}
+
+# 20e. OR with non-None union preserves non-falsy members
+def test_or_preserves_truthy_types(x: Dog | None) -> None {
+    result: Dog = x or Dog(name="default");  # <-- Ok: None excluded, result is Dog
+}
