@@ -3022,7 +3022,7 @@ impl TypeEvaluator._compute_narrowed_at(
     symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
     sym_name = symbol.sym_name;
-    cache_key = (id(stmt), sym_name);
+    cache_key = (id(stmt), id(symbol));
     if cache_key in self._narrowing_cache {
         return self._narrowing_cache[cache_key];
     }
