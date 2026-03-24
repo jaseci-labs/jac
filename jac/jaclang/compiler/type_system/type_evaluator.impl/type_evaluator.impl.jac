@@ -1393,9 +1393,21 @@ impl TypeEvaluator._get_type_of_expression_core(
             # AND/OR return operand values, not bool: `x and y` → y if x truthy, else x
             # The type should be the union of all operand types (Python semantics).
             # Narrowing (isinstance/truthiness) handled by TypeCheckPass.enter_bool_expr
+            is_or = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_OR;
             operand_types: list[TypeBase] = [];
-            for val in expr.values {
-                op_type = self.get_type_of_expression(val);
+            num_values = len(expr.values);
+            for i in range(num_values) {
+                op_type = self.get_type_of_expression(expr.values[i]);
+                # Pyright-style OR result narrowing: for `x or y`, the result
+                # type of non-last operands excludes always-falsy types (None)
+                # because if the operand were falsy, OR short-circuits to the
+                # next operand. So None can never be the result from x in `x or y`.
+                if is_or and i < num_values - 1 {
+                    none_type = self._convert_to_instance(self.prefetch.none_type_class);
+                    if none_type is not None {
+                        op_type = self.exclude_type_from_union(op_type, none_type);
+                    }
+                }
                 self._collect_unique_types(op_type, operand_types);
             }
             if len(operand_types) == 1 {
