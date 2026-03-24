@@ -31,11 +31,16 @@ IMAGE_TAG="ubuntu22.04"
 # Parse arguments
 PROJECT_DIR="${1:-.}"
 REBUILD_IMAGE=false
+PREFER_PYPI=false
 
 for arg in "$@"; do
     case $arg in
         --rebuild-image)
             REBUILD_IMAGE=true
+            shift
+            ;;
+        --prefer-pypi)
+            PREFER_PYPI=true
             shift
             ;;
     esac
@@ -135,19 +140,29 @@ echo ""
 
 docker run --rm \
     $VOLUME_MOUNTS \
+    -v jac-pip-cache:/root/.cache/pip \
+    -v jac-cargo-cache:/root/.cargo/registry \
     -w /project \
     -e JAC_SIDECAR_STANDALONE=1 \
     -e JAC_PRODUCTION_BUILD=1 \
     -e CARGO_BUILD_JOBS=2 \
+    -e PREFER_PYPI=$PREFER_PYPI \
     "$IMAGE_NAME:$IMAGE_TAG" \
     bash -c '
         set -e
 
         echo "=== Installing Jac packages ==="
 
-        # Install from local jaseci source if available
-        # Copy to temp dir first since mounted volume may be read-only
-        if [ -d /jaseci/jac ]; then
+        # Configure pip for slow/unstable connections
+        export PIP_DEFAULT_TIMEOUT=300
+        export PIP_RETRIES=10
+
+        if [ "$PREFER_PYPI" = "true" ]; then
+            echo "(Using PyPI for faster installs)"
+        fi
+
+        # Install jaclang
+        if [ "$PREFER_PYPI" != "true" ] && [ -d /jaseci/jac ]; then
             echo "Installing jaclang from source..."
             cp -r /jaseci/jac /tmp/jac
             python3.12 -m pip install --progress-bar on /tmp/jac
@@ -157,7 +172,8 @@ docker run --rm \
             python3.12 -m pip install --progress-bar on jaclang
         fi
 
-        if [ -d /jaseci/jac-client ]; then
+        # Install jac-client
+        if [ "$PREFER_PYPI" != "true" ] && [ -d /jaseci/jac-client ]; then
             echo "Installing jac-client from source..."
             cp -r /jaseci/jac-client /tmp/jac-client
             python3.12 -m pip install --progress-bar on /tmp/jac-client
@@ -167,8 +183,8 @@ docker run --rm \
             python3.12 -m pip install --progress-bar on jac-client
         fi
 
-        # Install jac-scale if available
-        if [ -d /jaseci/jac-scale ]; then
+        # Install jac-scale
+        if [ "$PREFER_PYPI" != "true" ] && [ -d /jaseci/jac-scale ]; then
             echo "Installing jac-scale from source..."
             cp -r /jaseci/jac-scale /tmp/jac-scale
             python3.12 -m pip install --progress-bar on /tmp/jac-scale
@@ -178,21 +194,23 @@ docker run --rm \
         fi
 
         # Install byllm (jac-byllm) if available
-        if [ -d /jac-byllm ]; then
+        if [ "$PREFER_PYPI" != "true" ] && [ -d /jac-byllm ]; then
             echo "Installing byllm from source (/jac-byllm)..."
             cp -r /jac-byllm /tmp/jac-byllm
             python3.12 -m pip install --progress-bar on /tmp/jac-byllm
             rm -rf /tmp/jac-byllm
-        elif [ -d /jaseci/jac-byllm ]; then
+        elif [ "$PREFER_PYPI" != "true" ] && [ -d /jaseci/jac-byllm ]; then
             echo "Installing byllm from source (/jaseci/jac-byllm)..."
             cp -r /jaseci/jac-byllm /tmp/jac-byllm
             python3.12 -m pip install --progress-bar on /tmp/jac-byllm
             rm -rf /tmp/jac-byllm
         else
-            python3.12 -m pip install --progress-bar on byllm 2>/dev/null || echo "byllm not available"
+            echo "Installing byllm from PyPI..."
+            python3.12 -m pip install --progress-bar on byllm 2>/dev/null || echo "byllm not available on PyPI"
         fi
 
         # Install jac-coder if available (check mounted paths)
+        # Note: jac-coder is NOT on PyPI yet, so source is required
         if [ -d /jac-code ]; then
             echo "Installing jac-coder from source (/jac-code)..."
             cp -r /jac-code /tmp/jac-code
@@ -204,7 +222,7 @@ docker run --rm \
             python3.12 -m pip install --progress-bar on /tmp/jac-code
             rm -rf /tmp/jac-code
         else
-            python3.12 -m pip install --progress-bar on jac-coder 2>/dev/null || echo "jac-coder not available (not on PyPI yet)"
+            echo "jac-coder not available (not on PyPI, source required)"
         fi
 
         # Install Python dependencies from jac.toml if present
@@ -224,9 +242,12 @@ for name, version in deps.items():
             done
         fi
 
-        # Clean up pip cache to free memory before Rust build
-        python3.12 -m pip cache purge 2>/dev/null || true
-        rm -rf /root/.cache/pip /tmp/*
+        # Ensure PyInstaller runtime dependencies are installed
+        echo "Installing PyInstaller runtime dependencies..."
+        python3.12 -m pip install --progress-bar on appdirs setuptools packaging
+
+        # Clean up temp files (but keep pip cache for faster rebuilds)
+        rm -rf /tmp/*
 
         echo ""
         echo "=== Building desktop app ==="
