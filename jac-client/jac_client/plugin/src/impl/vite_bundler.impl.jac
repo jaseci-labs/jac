@@ -835,20 +835,18 @@ impl ViteBundler.init(
 }
 
 """Create config files from jac.toml [plugins.client.configs].
+Each key in [plugins.client.configs] becomes a <name>.config.<ext> file.
 
-Generates JavaScript config files (e.g., postcss.config.js, tailwind.config.js)
-from TOML configuration. Each key in [plugins.client.configs] becomes a config file.
-
-Example jac.toml:
+CommonJS (default) - plain TOML data, no meta keys:
     [plugins.client.configs.postcss]
     plugins = ["tailwindcss", "autoprefixer"]
+    → postcss.config.js:  module.exports = { "plugins": [...] };
 
-    [plugins.client.configs.tailwind]
-    content = ["./src/**/*.{js,jsx}"]
-
-This generates:
-    - .jac/client/configs/postcss.config.js
-    - .jac/client/configs/tailwind.config.js
+Raw template - write file content verbatim (any extension):
+    [plugins.client.configs.source]
+    extension = ".ts"
+    raw = "export default { foo: 'bar' };"
+    → source.config.ts:  export default { foo: 'bar' };
 """
 impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs = self.config_loader.get_configs();
@@ -860,11 +858,18 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs_dir.mkdir(parents=True, exist_ok=True);
     created_files: list[Path] = [];
     for (config_name, config_data) in configs.items() {
-        config_path = configs_dir / f'{config_name}.config.js';
+        if not isinstance(config_data, dict) {
+            continue;
+        }
+        extension = config_data.get('extension', '.js');
+        config_path = configs_dir / f'{config_name}.config{extension}';
 
-        # Convert the TOML config to JavaScript module.exports
-        js_content = _toml_config_to_js(config_name, config_data);
-        config_path.write_text(js_content, encoding='utf-8');
+        if 'raw' in config_data {
+            file_content = _toml_config_from_raw(config_data);
+        } else {
+            file_content = _toml_config_to_js(config_data);
+        }
+        config_path.write_text(file_content, encoding='utf-8');
         created_files.append(config_path);
     }
     return created_files;
@@ -929,12 +934,22 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-"""Convert TOML config data to JavaScript config file content.
+"""Convert TOML config data to CommonJS module.exports."""
+def _toml_config_to_js(config_data: dict) -> str {
+    return f"module.exports = {json.dumps(
+        {
+            k: v
+            for (k, v) in config_data.items()
+            if k not in CONFIG_META_KEYS
+        },
+        indent=2
+    )};\n";
+}
 
-Generates a generic module.exports with the config data as JSON.
-"""
-def _toml_config_to_js(config_name: str, config_data: dict) -> str {
-    return f"module.exports = {json.dumps(config_data, indent=2)};\n";
+"""Write the 'raw' field verbatim as config file content."""
+def _toml_config_from_raw(config_data: dict) -> str {
+    content = str(config_data.get('raw', '')).strip();
+    return content + '\n' if content else '';
 }
 
 """Build the Vite dev server command."""
