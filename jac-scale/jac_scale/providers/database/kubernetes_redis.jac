@@ -485,8 +485,6 @@ obj KubernetesRedisProvider(DatabaseProvider) {
             'automountServiceAccountToken': False
         };
 
-        # RedisInsight v3 supports RI_REDIS_HOST / RI_REDIS_PORT env vars to
-        # pre-seed a database connection on first start (no manual setup needed).
         containers = [
             {
                 'name': 'redisinsight',
@@ -500,6 +498,11 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 },
                 'ports': [{'containerPort': 5540}],
                 'env': [
+                    # Auto-accept EULA so the dashboard is usable immediately.
+                    {'name': 'RI_ACCEPT_TERMS_AND_CONDITIONS', 'value': 'true'},
+                    # Container has no OS keyring — provide an explicit encryption key.
+                    {'name': 'RI_ENCRYPTION_KEY', 'value': f"{self.app_name}-redis-insight-key"},
+                    # Pre-seed the Redis database connection.
                     {'name': 'RI_REDIS_HOST', 'value': redis_service_name},
                     {'name': 'RI_REDIS_PORT', 'value': '6379'},
                     {'name': 'RI_REDIS_ALIAS', 'value': 'Jaseci Redis'},
