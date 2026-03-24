@@ -2135,6 +2135,25 @@ test "py_pkg_imports" {
     assert mod.sym_tab.lookup("subpkg") is not None , "subpkg not in sym_tab - subpackage resolution broken";
 }
 
+"""Test stdlib star re-export resolution (e.g., asyncio.Queue from asyncio.queues).
+
+Ensures the type checker follows star imports in stub files so that
+symbols like Queue, SimpleQueue are not Unknown.
+"""
+test "stdlib_star_reexport" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_stdlib_star_reexport.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    assert mod.sym_tab.lookup("Queue") is not None , "Queue not resolved - asyncio star re-export broken";
+    assert mod.sym_tab.lookup("SimpleQueue") is not None , "SimpleQueue not resolved - queue star re-export broken";
+}
+
 """Test ClassVar[T] type annotation unwraps to T correctly."""
 test "classvar_type_annotation" {
     program = JacProgram();
@@ -2380,6 +2399,19 @@ test "enum_static_method" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Self member assignments with TypeVar annotations propagate through inheritance."""
+test "generic_self_member_type_propagation" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_generic_self_member.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 # ============================================================================
 # Narrowing gap exposure tests
 #
@@ -2413,11 +2445,11 @@ test "narrowing_gap_a_early_return_after_nested_if" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_a_errors);
 }
 
-"""Gap B: Ternary narrowing not applied when narrowed var is a function argument.
+"""Gap B: Ternary narrowing applied to function arguments in ternary branches.
 
-In `use_foo(val) if isinstance(val, Foo) else 0`, the ternary handler now correctly
-narrows `val` in the true branch. Fixed by pruning IfElseExpr children so they are
-only evaluated inside the ternary handler with narrowing scopes active.
+In `use_foo(val) if isinstance(val, Foo) else 0`, the ternary handler correctly
+narrows `val` in the true branch. Fixed by eagerly evaluating the IfElseExpr in
+enter_if_else_expr so narrowing scopes are active before children are visited.
 """
 test "narrowing_gap_b_ternary_fn_arg" {
     program = JacProgram();
@@ -2432,10 +2464,9 @@ test "narrowing_gap_b_ternary_fn_arg" {
         for e in program.errors_had
         if e.loc and 155 <= e.loc.first_line <= 170
     ];
-    # GAP B is a known limitation: function args in ternary branches don't
-    # get narrowed types because exit_func_call fires before the type
-    # evaluator processes the IfElseExpr with narrowing scopes.
-    assert len(gap_b_errors) == 3 , f"Gap B should have 3 errors (known gap), got {len(
+    # FIXED: eagerly evaluating IfElseExpr in enter_if_else_expr caches narrowed
+    # types on child nodes before the walker visits them.
+    assert len(gap_b_errors) == 0 , f"Gap B should have 0 errors (fixed), got {len(
         gap_b_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_b_errors);
 }
@@ -2443,7 +2474,7 @@ test "narrowing_gap_b_ternary_fn_arg" {
 """Gap C: Ternary narrowing applied to attribute access on narrowed variable.
 
 In `val.attr if val else 0`, the true branch correctly narrows `val` from T|None
-to T. Fixed by pruning IfElseExpr children (same fix as Gap B).
+to T. Fixed by eagerly evaluating IfElseExpr (same fix as Gap B).
 """
 test "narrowing_gap_c_ternary_attr_access" {
     program = JacProgram();
@@ -2458,9 +2489,8 @@ test "narrowing_gap_c_ternary_attr_access" {
         for e in program.errors_had
         if e.loc and 180 <= e.loc.first_line <= 196
     ];
-    # GAP C is a known limitation (same root cause as Gap B): attribute access
-    # in ternary branches doesn't get narrowed types during walker traversal.
-    assert len(gap_c_errors) == 6 , f"Gap C should have 6 errors (known gap), got {len(
+    # FIXED: same root cause as Gap B — eagerly evaluating IfElseExpr resolves this.
+    assert len(gap_c_errors) == 0 , f"Gap C should have 0 errors (fixed), got {len(
         gap_c_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_c_errors);
 }
@@ -2499,11 +2529,30 @@ test "narrowing_gaps_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Gap A fixed (CFG propagation). Gap B+C remain (ternary fn args/attr access).
-    # Total expected: 3 (Gap B) + 6 (Gap C) = 9 errors.
-    assert len(program.errors_had) == 9 , f"Expected 9 errors (Gap B+C known gaps), got {len(
+    # All gaps fixed: Gap A (CFG propagation), Gap B+C (eager IfElseExpr evaluation),
+    # Gap D (assignment in if-body narrows after block).
+    assert len(program.errors_had) == 0 , f"Expected 0 errors (all gaps fixed), got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+"""Gap D: Assignment in if-body narrows type after the if block."""
+test "narrowing_gap_d_assign_in_if_body" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_narrowing_gaps.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Gap D ok_ functions: lines 210-300 (includes try/finally pattern)
+    gap_d_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 210 <= e.loc.first_line <= 300
+    ];
+    assert len(gap_d_errors) == 0 , f"Gap D should have 0 errors (fixed), got {len(
+        gap_d_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in gap_d_errors);
 }
 
 # ============================================================================
@@ -2557,6 +2606,45 @@ test "runtime_compound_or_guard_attr_narrowing" {
         i2_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in i2_errors);
 }
+
+"""Ternary isinstance narrowing should exclude generic types (list[T]) from union."""
+test "runtime_ternary_isinstance_generic_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 3 ok_ functions: lines 195-230 (ternary isinstance with generic types)
+    i3_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 195 <= e.loc.first_line <= 230
+    ];
+    assert len(i3_errors) == 0 , f"Ternary isinstance generic narrowing should produce 0 errors, got {len(
+        i3_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i3_errors);
+}
+
+"""isinstance narrowing should preserve generic type parameters from union members."""
+test "runtime_isinstance_preserves_generic_params" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_runtime_errors.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Issue 4 ok_ functions: lines 240-290 (isinstance preserving generics)
+    i4_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and 240 <= e.loc.first_line <= 290
+    ];
+    assert len(i4_errors) == 0 , f"isinstance generic preservation should produce 0 errors, got {len(
+        i4_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in i4_errors);
+}
+
 
 """Total error count for runtime errors fixture — all patterns should pass."""
 test "runtime_errors_total" {

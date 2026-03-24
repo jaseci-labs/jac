@@ -194,3 +194,105 @@ def fail_ternary_attr_isinstance(val: Animal) -> int {
 def fail_ternary_attr_chain(root: Root | None) -> int {
     return use_anchor(root.anchor) if root else 0;  # Error
 }
+
+# ============================================================================
+# Gap D: Assignment in if-body should narrow type after the if block
+#
+# When `x: T | None = None; if not x { x = T(); }`, x should be T after
+# the if block because both branches guarantee non-None:
+# - False branch: x was truthy → already T
+# - True branch: x was reassigned to T()
+#
+# Root cause: exclude_type_from_union returns the original when excluding a
+# non-union type from itself (NoneType - NoneType → NoneType instead of Never).
+# This makes the false branch return NoneType instead of NeverType, poisoning
+# the join-point merge with an incorrect type.
+#
+# Mirrors: runtime.impl.jac ContextVar.get(None) / reassign pattern
+# ============================================================================
+
+# --- ok_ functions: patterns that should work (lines 210-260) ---
+
+def ok_assign_in_if_narrows_obj(x: Animal | None) -> str {
+    # After if-body reassignment, x is guaranteed Animal
+    if not x {
+        x = Dog();
+    }
+    return x.name;
+}
+
+def ok_assign_in_if_narrows_str(x: str | None) -> str {
+    if not x {
+        x = "default";
+    }
+    return x.upper();
+}
+
+def ok_assign_in_if_none_check(x: Animal | None) -> str {
+    if x is None {
+        x = Dog();
+    }
+    return x.name;
+}
+
+def ok_assign_in_if_with_intervening(x: Dog | None) -> int {
+    flag = False;
+    if not x {
+        x = Dog();
+        flag = True;
+    }
+    y = 10;
+    return x.bark_count + y;
+}
+
+import from contextvars { ContextVar }
+
+def ok_contextvar_get_reassign(cv: ContextVar[Animal]) -> str {
+    # ContextVar.get(None) returns T | None; reassign in if-body should narrow
+    x = cv.get(None);
+    if not x {
+        x = Dog();
+    }
+    return x.name;
+}
+
+def ok_contextvar_get_with_set(cv: ContextVar[Dog]) -> int {
+    x = cv.get(None);
+    if not x {
+        cv.set(Dog());
+        x = cv.get();
+    }
+    return x.bark_count;
+}
+
+import from queue { Queue }
+
+obj CallStateTest {
+    has reports: Queue = Queue(),
+        _sentinel: object = object();
+}
+
+def ok_try_finally_narrowing(cv: ContextVar[CallStateTest]) -> list {
+    # Exact runtime.impl.jac pattern: narrowing must propagate through try/finally
+    cs = cv.get(None);
+    owns = False;
+    if not cs {
+        cv.set(CallStateTest());
+        cs = cv.get();
+        owns = True;
+    }
+    try {
+        result = 42;
+        return [result];
+    } finally {
+        if owns {
+            reports: list = [];
+            while not cs.reports.empty() {
+                item = cs.reports.get_nowait();
+                if item is not cs._sentinel {
+                    reports.append(item);
+                }
+            }
+        }
+    }
+}
