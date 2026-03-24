@@ -1040,22 +1040,20 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             _type_name = _obj_type.shared.class_name;
         }
         if not _type_name {
-            _method_probe = callee.property.name
+            _method_name = callee.property.name
                 if isinstance(callee.property, es.Identifier)
                 else "";
-            if _method_probe {
-                _str_emitter = self._primitive_emitters.get("str");
-                if _str_emitter
-                and getattr(_str_emitter, "emit_" + _method_probe, None) {
+            if _method_name {
+                _str_e = self._primitive_emitters.get("str");
+                _dict_e = self._primitive_emitters.get("dict");
+                _list_e = self._primitive_emitters.get("list");
+                _emit_key = "emit_" + _method_name;
+                if (
+                    getattr(_str_e, _emit_key, None)
+                    and not getattr(_dict_e, _emit_key, None)
+                    and not getattr(_list_e, _emit_key, None)
+                ) {
                     _type_name = "str";
-                } else {
-                    for _pname in self._primitive_type_names {
-                        _pe = self._primitive_emitters.get(_pname);
-                        if _pe and getattr(_pe, "emit_" + _method_probe, None) {
-                            _type_name = _pname;
-                            break;
-                        }
-                    }
                 }
             }
         }
