@@ -1205,7 +1205,8 @@ obj KubernetesTarget(DeploymentTarget) {
                 'app_name': app_name,
                 'docker_username': self.k8s_config.docker_username,
                 'docker_password': self.k8s_config.docker_password,
-                'docker_image_name': image_name
+                'docker_image_name': image_name,
+                'build_platform': self.k8s_config.build_platform
             };
             image_registry = ImageRegistryFactory.create('dockerhub', registry_config);
             full_image = image_registry.build_and_push(

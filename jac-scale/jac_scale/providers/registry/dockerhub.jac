@@ -11,11 +11,13 @@ import from jaclang.cli.console { console }
 obj DockerHubRegistry(ImageRegistry) {
     has config: dict[str, Any] = {},
         docker_username: str by postinit,
-        docker_password: str by postinit;
+        docker_password: str by postinit,
+        build_platform: str by postinit;
 
     def postinit {
         self.docker_username = self.config.get('docker_username', '');
         self.docker_password = self.config.get('docker_password', '');
+        self.build_platform = self.config.get('build_platform', 'linux/amd64');
     }
 
     def build_image(code_folder: str, image_name: (str | None) = None) -> str {
@@ -70,7 +72,11 @@ obj DockerHubRegistry(ImageRegistry) {
         console.print(f"Building Docker image '{repository_name}'...");
         try {
             build_logs = docker_client.images.build(
-                path=code_folder, tag=repository_name, dockerfile='Dockerfile', rm=True
+                path=code_folder,
+                tag=repository_name,
+                dockerfile='Dockerfile',
+                rm=True,
+                platform=self.build_platform
             );
             for chunk in build_logs[1] {
                 line = chunk.get('stream', '').strip();
