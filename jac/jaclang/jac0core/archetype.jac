@@ -121,8 +121,7 @@ obj Anchor {
         root: (UUID | None) = None,
         access: Permission = field(default_factory=Permission),
         persistent: bool = False,
-        hash: int = 0,
-        is_updated: bool = True;
+        hash: int = 0;
 
     def is_populated -> bool;
     def make_stub -> TANCH;
