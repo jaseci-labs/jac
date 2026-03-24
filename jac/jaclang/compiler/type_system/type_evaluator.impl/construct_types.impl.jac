@@ -221,7 +221,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     # TODO: We need to handle @dataclass decorator as well.
     is_data_class = node_.sym_category != SymbolType.TYPE;
     # Detect class-based enums: is_enum_class propagates from prefetched Enum.
-    import from jaclang.compiler.type_system { enum_utils }
     is_enum_class = any(
         isinstance(base, types.ClassType) and base.shared.is_enum_class
         for base in base_classes
@@ -269,7 +268,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
 
 """Build the type for an enum class."""
 impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
-    import from jaclang.compiler.type_system { enum_utils }
     # Return cached type if available
     if node_.name_spec.type is not None {
         return cast(types.ClassType, node_.name_spec.type);

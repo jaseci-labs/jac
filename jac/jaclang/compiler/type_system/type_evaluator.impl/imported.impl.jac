@@ -180,14 +180,9 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         offset = 0;
         if node_.path and len(path_list) > len(node_.path) and node_.level > 0 {
             first_path = path_list[0] if path_list else "";
-            # Only for Python __init__ files, not Jac __init__.jac or jaclang internals
+            # Only for Python __init__ files, not Jac __init__.jac
             is_python_init = first_path.endswith(("__init__.py", "__init__.pyi"));
-            # TODO: The is_jaclang_internal check is a workaround. Applying the offset to
-            # jaclang's own imports exposes a circular dependency in the type system modules
-            # (type_evaluator <-> enum_utils <-> types). The proper fix is to refactor those
-            # modules to break the circular import chain, then remove this exclusion.
-            is_jaclang_internal = "jaclang" in first_path and "/jaclang/" in first_path;
-            if is_python_init and not is_jaclang_internal {
+            if is_python_init {
                 offset = len(path_list) - len(node_.path);
             }
         }

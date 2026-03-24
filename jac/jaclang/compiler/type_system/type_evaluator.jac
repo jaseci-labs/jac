@@ -29,6 +29,7 @@ with entry {
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system { properties }
+import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
 import from jaclang.jac0core.diagnostics {
