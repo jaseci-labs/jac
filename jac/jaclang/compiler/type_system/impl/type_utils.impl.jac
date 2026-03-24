@@ -455,7 +455,47 @@ impl apply_solved_type_vars(
         if ty.is_self and class_type is not None {
             return class_type.clone_as_instance();
         }
-        # Regular TypeVar -> lookup in solution by name
+        # Only substitute TypeVars that are declared class type parameters.
+        # Module-level TypeVars that are NOT used as class type params should
+        # not be substituted, as they are independent of the class hierarchy.
+        #
+        # A TypeVar should be substituted if:
+        # 1. is_class_type_param flag is True (set when created from class type param), OR
+        # 2. Name matches a class type_param AND the TypeVar has NO bound
+        #    (module-level TypeVars typically have bounds from TypeVar(...) call,
+        #    while class type params from Generic[T] don't unless explicitly bounded)
+        #
+        # This allows typeshed TypeVars (which don't have is_class_type_param) to be
+        # substituted when they match class type params, while preventing module-level
+        # TypeVars with explicit bounds from being incorrectly substituted.
+        is_declared_class_param = ty.is_class_type_param;
+        if not is_declared_class_param and ty.name {
+            # Check if this TypeVar matches a class type param by name AND bound
+            if class_type is not None {
+                for tp in class_type.shared.type_params {
+                    if tp.name == ty.name {
+                        # Only substitute if the TypeVar's bound matches the class type param's bound
+                        # (or if neither has a bound)
+                        if ty.bound is None
+                        or (tp.bound is not None and ty.bound == tp.bound) {
+                            is_declared_class_param = True;
+                        }
+                        break;
+                    }
+                }
+            }
+            # Also allow substitution if the TypeVar has no bound AND name is in solution
+            # This handles typeshed TypeVars without bounds
+            if not is_declared_class_param
+            and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+        }
+        if not is_declared_class_param {
+            return ty;
+        }
+        # Regular TypeVar (class type param) -> lookup in solution by name
         if ty.name and ty.name in solution {
             resolved = solution[ty.name];
             return convert_to_instance(resolved);

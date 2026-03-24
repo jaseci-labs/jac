@@ -2658,3 +2658,21 @@ test "runtime_errors_total" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+"""MRO resolves correctly when base class imported through Python __init__.py re-export."""
+test "mro_reexport_through_init" {
+    # When a Jac class inherits from a class that's imported through a Python
+    # __init__.py re-export, the base class should resolve correctly and the
+    # MRO should be properly computed. Previously, the base class resolved to
+    # UnknownType because get_type_of_module used wrong index into path_list
+    # for relative imports (leading dots create extra segments).
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_mro_reexport.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"MRO reexport should produce 0 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
