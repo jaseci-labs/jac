@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.1 (Unreleased)
+## jaclang 0.13.2 (Unreleased)
+
+## jaclang 0.13.1 (Latest Release)
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
 - **Fix: TypeVar Annotations in `self.attr` Assignments**: Type annotations on self-member assignments in generic class `init` methods (e.g., `self.value: V = input`) now correctly propagate through inheritance chains. Previously, accessing such attributes in subclasses produced false "has no attribute" errors because the TypeVar type wasn't stored on the declaration node.
@@ -19,7 +21,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: OR-Expression Result Type Narrowing**: The type evaluator now excludes `NoneType` from non-last operands of `or` expressions, following Pyright's short-circuit semantics. For `x or default` where `x: T | None`, the result type is now `T | type(default)` instead of `T | None | type(default)`, because `None` (always falsy) causes `or` to short-circuit to the next operand. This enables CFG assignment-based narrowing for the common `x = x or []` idiom, eliminating false type errors when the narrowed variable is later used as a non-optional parameter.
 - **Fix: Narrowing Cache Key Uses Symbol Identity**: The CFG narrowing cache in `_compute_narrowed_at` now uses `id(symbol)` instead of `sym_name` in its cache key. When a variable is reassigned inside a branch (e.g., `if x is None { x = make_ctx(); }`), Jac creates a separate symbol for the inner assignment. The old name-based key caused stale narrowing results from one symbol to be returned for the other, preventing the post-join type from reflecting the reassignment.
 
-## jaclang 0.13.0 (Latest Release)
+## jaclang 0.13.0
 
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
 - **Type Checker: TypeVar Union and Overload Resolution**: Fixed three root causes that made generic method return types resolve to `<Unknown>`: (1) `TypeVarType.is_any_type()` short-circuited the `|` operator so `_VT | None` in typeshed stubs became `UnknownType` instead of a proper union; (2) `is_annotation_type()` did not recognize `TypeVarType` as valid for union creation; (3) added TypeVar constraint solving to overload resolution -- method-level TypeVars (e.g., `_D` in `ContextVar.get(default: _D) -> _D | _T`) are now inferred from call arguments with bounds, constraints, and consistency validation via the existing `assign_type_to_type_var` infrastructure. This fixes `dict[K,V].get()`, `ContextVar[T].get()`, and similar generic methods returning `<Unknown>` for user-defined types.

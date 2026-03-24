@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.8 (Unreleased)
+## jac-scale 0.2.9 (Unreleased)
+
+## jac-scale 0.2.8 (Latest Release)
 
 - 1 small changes.
 
-## jac-scale 0.2.7 (Latest Release)
+## jac-scale 0.2.7
 
 - **Kubernetes Security Hardening**: Added container-level security contexts (`allowPrivilegeEscalation: false`, `drop: ALL`, `readOnlyRootFilesystem`, `seccompProfile: RuntimeDefault`), dedicated `ServiceAccount` per workload, component-specific NetworkPolicies enforcing proper isolation (databases only accept traffic from main app + dashboards, monitoring components only accept ingress from trusted internal sources), and `pod-security.kubernetes.io/enforce: baseline` namespace labels.
 - **Scheduler Code Quality Cleanup**: Extracted shared `_authenticate_request()` and `_validate_trigger()` helpers to remove duplicated auth/validation logic across `/jobs` endpoints. Fixed `get_job()` to query by ID directly instead of loading all jobs. Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)`. Persisted `is_walker` in job data to avoid redundant introspector lookups. Replaced silent exception swallowing with debug logging.
