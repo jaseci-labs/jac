@@ -21,6 +21,7 @@ Bug index:
   #TVAR-1 - Duplicate TypeVars in _extract_type_params cause positional mismatch
   #TVAR-2 - No transitive TypeVar propagation through base_classes in build_type_var_solution
   #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
+  #TVAR-5 - Module-level TypeVars shadowed by class type parameters
 """
 
 import os;
@@ -447,4 +448,32 @@ test "bug_tvar4_generic_base_canonical_typevar_order" {
     f"but got errors on lines {error_lines}. TypeVar order is likely swapped.";
     assert 29 not in error_lines , f"Line 29 (good2: int = k) should not error — keys() yields int, "
     f"but got errors on lines {error_lines}.";
+}
+
+# =========================================================================
+# Bug #TVAR-5: Module-level TypeVars shadowed by class type parameters
+#
+# apply_solved_type_vars matched TypeVars by name only, so module-level
+# `glob T = TypeVar('T', bound=int)` was substituted with inherited `str`
+# from `Transform[str]`.
+#
+# Fix: Added is_class_type_param flag and bounds-checking to distinguish
+# class type parameters from module-level TypeVars.
+# =========================================================================
+test "bug_tvar5_module_typevar_shadowed_by_class_param" {
+    program = compile_and_check("checker_bug_typevar_shadow.jac");
+
+    # Expected: 1 error (str -> int on line 29)
+    # Without fix: 2 errors (line 23 would also error because sync returned str)
+    assert len(program.errors_had) == 1 , f"Bug #TVAR-5: Expected 1 error but got {len(
+        program.errors_had
+    )}.";
+
+    error_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc
+    ];
+    assert 29 in error_lines , f"Expected error on line 29, got {error_lines}.";
+    assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
 }
