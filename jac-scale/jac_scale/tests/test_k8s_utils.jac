@@ -15,6 +15,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     load_env_variables,
     parse_cpu_quantity,
     parse_memory_quantity,
+    parse_storage_quantity,
     resize_pvc_if_needed,
     sync_code_to_pvc,
     validate_resource_limits
@@ -414,4 +415,57 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
         raised = True;
     }
     assert raised , "Expected ValueError when trying to shrink PVC";
+
+    # Case 4 — PVC not yet provisioned (first deploy): 404 must return silently.
+    core_v1_new = unittest.mock.MagicMock();
+    core_v1_new.read_namespaced_persistent_volume_claim.side_effect = ApiException(
+        status=404
+    );
+    resize_pvc_if_needed(core_v1_new, "ns", "mongo-pvc", "10Gi");
+    core_v1_new.patch_namespaced_persistent_volume_claim.assert_not_called();
+}
+
+# --- parse_storage_quantity valid ---
+def _test_parse_storage_valid(pair: tuple) {
+    raw = pair[0];
+    expected = pair[1];
+    result = parse_storage_quantity(raw);
+    assert result == expected , f"parse_storage_quantity({raw!r}) = {result}, expected {expected}";
+}
+
+with entry {
+    parametrize(
+        "parse storage quantity valid",
+        [
+            ("1Ki", 1024),
+            ("1Mi", 1024 ** 2),
+            ("1Gi", 1024 ** 3),
+            ("2Ti", 2 * 1024 ** 4),
+            ("500", 500),
+            ("1k", 1000),
+            ("1M", 1000 ** 2),
+            ("1G", 1000 ** 3),
+            (" 4Gi ", 4 * 1024 ** 3)
+        ],
+        _test_parse_storage_valid
+    );
+}
+
+# --- parse_storage_quantity invalid ---
+def _test_parse_storage_invalid(raw: str) {
+    raised = False;
+    try {
+        parse_storage_quantity(raw);
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , f"Expected ValueError for parse_storage_quantity({raw!r})";
+}
+
+with entry {
+    parametrize(
+        "parse storage quantity invalid",
+        ["", "abc", "Gi", "10X", "10gi", "10GI"],
+        _test_parse_storage_invalid
+    );
 }

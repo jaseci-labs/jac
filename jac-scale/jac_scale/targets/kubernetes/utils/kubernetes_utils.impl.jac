@@ -323,6 +323,10 @@ Supports binary suffixes (Ki, Mi, Gi, Ti, Pi, Ei) and decimal suffixes
 (k, M, G, T, P, E) as well as plain byte values.
 """
 impl parse_storage_quantity(quantity: str) -> int {
+    q = quantity.strip();
+    if q == '' {
+        raise ValueError('Storage quantity cannot be empty.');
+    }
     suffixes_binary: dict[str, int] = {
         'Ki': 1024,
         'Mi': 1024 ** 2,
@@ -339,7 +343,6 @@ impl parse_storage_quantity(quantity: str) -> int {
         'P': 1000 ** 5,
         'E': 1000 ** 6
     };
-    q = quantity.strip();
     for (suffix, multiplier) in suffixes_binary.items() {
         if q.endswith(suffix) {
             return int(q[:-len(suffix)]) * multiplier;
@@ -350,7 +353,14 @@ impl parse_storage_quantity(quantity: str) -> int {
             return int(q[:-len(suffix)]) * multiplier;
         }
     }
-    return int(q);
+    try {
+        return int(q);
+    } except ValueError {
+        raise ValueError(
+            f"Unrecognized storage quantity '{quantity}'. "
+            f"Use a plain integer (bytes) or a suffix: Ki, Mi, Gi, Ti, Pi, Ei, k, M, G, T, P, E."
+        );
+    }
 }
 
 """Resize a PVC to the desired size if it is larger than the current size.
