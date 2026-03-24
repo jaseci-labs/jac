@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.2 (Unreleased)
 
+- **Fix: `enum.auto()` Support**: Using `auto()` in `IntEnum` class definitions now works correctly. Previously produced false type errors.
+- 1 small refactors/changes.
+
 ## jaclang 0.13.1 (Latest Release)
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
