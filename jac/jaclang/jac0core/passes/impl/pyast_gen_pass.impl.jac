@@ -337,10 +337,10 @@ impl PyastGenPass.py_ast_val(self: PyastGenPass, nd: uni.UniNode) -> ast3.AST {
 """Sync ast locations."""
 impl PyastGenPass.sync(
     self: PyastGenPass,
-    py_node: _AstT,
+    py_node: T,
     jac_node: (uni.UniNode | None) = None,
     deep: bool = False
-) -> _AstT {
+) -> T {
     if not jac_node {
         jac_node = self.cur_node;
     }
