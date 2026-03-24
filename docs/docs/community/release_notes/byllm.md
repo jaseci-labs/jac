@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.5.9 (Unreleased)
 
 - 1 small changes.
+- **Fix: LiteLLM dependency pinned to GitHub commit (PyPI quarantine workaround)**: The `litellm` package has been quarantined by PyPI admins, making it uninstallable via `pip`. The dependency is now pinned to GitHub commit `fa65433` (litellm v1.82.6) instead of a PyPI version range. This requires `git` to be available in the build/install environment.
 
 ## byllm 0.5.8 (Latest Release)
 

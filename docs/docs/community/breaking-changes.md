@@ -7,6 +7,21 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### byllm 0.5.9
+
+#### LiteLLM Dependency Now Installs from GitHub
+
+The `litellm` package has been quarantined by PyPI admins and is no longer installable via `pip install litellm`. The byllm dependency is now pinned to a specific GitHub commit (`fa65433`, litellm v1.82.6) instead of a PyPI version range.
+
+**Impact:**
+
+- **`git` is now required** in your build/install environment. `pip` will clone the litellm repository from GitHub during installation.
+- **litellm version is frozen at v1.82.6.** The pinned commit does not allow automatic version range resolution. To upgrade litellm, the pin in `jac-byllm/pyproject.toml` must be updated manually.
+- **Docker/CI environments** that do not have `git` installed will fail to install byllm. Ensure `git` is available (e.g., `apt-get install git`).
+- **Installing older byllm versions (≤0.5.8)** that depend on `litellm` from PyPI will fail because litellm is no longer available on PyPI. You must manually install a compatible litellm version from GitHub first before installing an older byllm release (e.g., `pip install git+https://github.com/BerriAI/litellm.git@fa65433c8ce2bc59c56fd575073efcd6a6a04db8` then `pip install byllm==0.5.8 --no-deps`).
+
+---
+
 ### Version 0.12.3
 
 #### 1. Automatic `TYPE_CHECKING` Import Guards
