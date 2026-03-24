@@ -10,7 +10,7 @@ keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.11"
 dependencies = [
     "jaclang>=0.13.1",
-    "litellm>=1.81.15,<1.82.8",
+    "litellm @ git+https://github.com/BerriAI/litellm.git@61409275c8d8478d0a7ffc23d375a4fd86717b23",  # SECURITY: v1.82.7+ compromised - pinned to v1.82.3-stable
     "loguru>=0.7.2,<0.8.0",
     "pillow>=12.0.0,<13.0.0",
 ]
