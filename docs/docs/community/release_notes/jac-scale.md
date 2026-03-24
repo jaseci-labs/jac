@@ -6,6 +6,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - 1 small changes.
 
+- **Docker Build Pathway (`--build`)**: `jac start app.jac --scale --build` now builds and pushes a Docker image to DockerHub before deploying. Auto-generates a `Dockerfile` (with Bun, `jac install`, and layer-cached `jac.toml`) and `.dockerignore` (excludes `jac.local.toml`) if not present. Sets the correct K8s startup command automatically.
+- **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
+- **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
+- **Health Check Tuning**: Interval reduced from 15s to 10s, max retries increased to 60, `aws_nlb_wait` reduced to 10s.
+
 ## jac-scale 0.2.7 (Latest Release)
 
 - **Kubernetes Security Hardening**: Added container-level security contexts (`allowPrivilegeEscalation: false`, `drop: ALL`, `readOnlyRootFilesystem`, `seccompProfile: RuntimeDefault`), dedicated `ServiceAccount` per workload, component-specific NetworkPolicies enforcing proper isolation (databases only accept traffic from main app + dashboards, monitoring components only accept ingress from trusted internal sources), and `pod-security.kubernetes.io/enforce: baseline` namespace labels.
