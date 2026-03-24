@@ -277,12 +277,12 @@ def serve_with_watch(port: int = 8000) -> None:
     app.add_middleware(LiveReloadMiddleware)
 
     # Add health check endpoint
-    @app.route("/health")
     async def health_check(request: Request) -> Response:
         return Response("healthy\n", media_type="text/plain")
 
+    app.add_route("/health", health_check)
+
     # Add Server-Sent Events endpoint for live reload
-    @app.route("/events")
     async def events(request: Request) -> StreamingResponse:
         async def event_generator():
             yield "data: connected\n\n"
@@ -294,6 +294,8 @@ def serve_with_watch(port: int = 8000) -> None:
                     yield "data: ping\n\n"
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    app.add_route("/events", events)
 
     app.mount("/", StaticFiles(directory=site_dir, html=True), name="static")
 

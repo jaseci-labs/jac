@@ -184,7 +184,18 @@ obj TypeEvaluator {
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_star_import_symbol(
+        mod: uni.Module, name: str, visited: set[int] | None = None
+    ) -> uni.Symbol | None;
+
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
+    def _collect_typevars_from_base(
+        base_class: uni.AtomTrailer,
+        outer_names: set[str],
+        seen_names: set[str],
+        type_params: list[types.TypeVarType]
+    ) -> None;
+
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
@@ -445,6 +456,10 @@ obj TypeEvaluator {
         is_true_branch: bool,
         symbol: uni.Symbol
     ) -> TypeBase | None;
+
+    def _refine_isinstance_type(
+        narrowing_key: str, isinstance_type: TypeBase, condition: uni.Expr
+    ) -> TypeBase;
 
     def _filter_union_for_isinstance(
         base_type: TypeBase, target_type: TypeBase
