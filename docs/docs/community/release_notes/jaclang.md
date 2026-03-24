@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.13.2 (Unreleased)
 
 - **Fix: `enum.auto()` Support**: Using `auto()` in `IntEnum` class definitions now works correctly. Previously produced false type errors.
+- **Fix: JIR Cache Preserves Impl-Defined Instance Variables**: Instance variables defined in `.impl.jac` files (e.g., `self.x` in `init`) are now preserved after JIR cache reload. Previously, these symbols were lost because `impl_mod` is not serialized in JIR.
 - 1 small refactors/changes.
 
 ## jaclang 0.13.1 (Latest Release)
