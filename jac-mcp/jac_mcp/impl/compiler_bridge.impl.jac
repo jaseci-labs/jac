@@ -642,77 +642,43 @@ impl CompilerBridge.graph_viz_snippet(
         };
     }
     def _do_graph -> dict[str, Any] {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.runtimelib.builtin { printgraph }
+        import subprocess;
+        import shutil;
+        import from pathlib { Path }
 
-        Jac.setup();
-
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jac", delete=False, dir=tempfile.gettempdir()
-        ) as f {
-            f.write(code);
-            tmp_path = f.name;
-        }
-
-        # Suppress stdout during module load
-        old_stdout = sys.stdout;
-        old_stderr = sys.stderr;
-        captured_out = io.StringIO();
-        captured_err = io.StringIO();
-        sys.stdout = captured_out;
-        sys.stderr = captured_err;
-
-        original_argv = sys.argv;
-        sys.argv = [tmp_path];
+        tmp_dir = tempfile.mkdtemp();
+        tmp_path = os.path.join(tmp_dir, "snippet.jac");
+        dot_path = os.path.join(tmp_dir, "snippet.dot");
 
         try {
-            (base, mod_name) = os.path.split(tmp_path);
-            base = base or './';
-            mod_name = mod_name[:-4];
-
-            if not Jac.base_path_dir {
-                Jac.set_base_path(base);
+            with open(tmp_path, "w") as f {
+                f.write(code);
             }
-            mach = Jac.create_j_context(user_root=None);
-            Jac.set_context(mach);
-
-            try {
-                Jac.jac_import(
-                    target=mod_name,
-                    base_path=base,
-                    override_name='__main__',
-                    lng='jac'
-                );
-
-                # Generate graph from root node
-                graph_output = printgraph(
-                    nd=None,
-                    depth=depth,
-                    traverse=False,
-                    bfs=bfs,
-                    edge_limit=edge_limit,
-                    node_limit=node_limit,
-                    format=format
-                );
-
-                mach.close();
-                program_output = captured_out.getvalue();
-
-                return {"graph": graph_output or "", "program_output": program_output};
-            } except Exception as e {
-                mach.close();
-                return {
-                    "graph": "",
-                    "program_output": captured_out.getvalue(),
-                    "error": str(e)
-                };
+            proc = subprocess.run(
+                ["jac", "dot", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=DEFAULT_TIMEOUT,
+                cwd=tmp_dir
+            );
+            if os.path.exists(dot_path) {
+                with open(dot_path) as f {
+                    graph_output = f.read();
+                }
+                return {"graph": graph_output, "program_output": proc.stdout};
             }
+            return {
+                "graph": "",
+                "program_output": proc.stdout,
+                "error": proc.stderr.strip() or "No graph output generated"
+            };
+        } except subprocess.TimeoutExpired {
+            return {"graph": "", "error": "Execution timed out"};
+        } except Exception as e {
+            return {"graph": "", "error": str(e)};
         } finally {
-            sys.stdout = old_stdout;
-            sys.stderr = old_stderr;
-            sys.argv = original_argv;
             try {
-                os.unlink(tmp_path);
+                shutil.rmtree(tmp_dir);
             } except Exception { }
         }
     }
