@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.5.9 (Unreleased)
 
+- 1 small changes.
+
 ## byllm 0.5.8 (Latest Release)
 
 - **Add: Configurable LiteLLM debug logging via `jac.toml`**: LiteLLM's verbose logging (HTTP requests, retries, headers) can now be toggled via `[plugins.byllm.litellm] debug = true/false` in `jac.toml`. Defaults to `false` (quiet). When disabled, `_disable_debugging()` silences LiteLLM's internal loggers, reducing stdout noise. byLLM's own exception logging (`logger.error`) is unaffected, errors are always logged and propagated regardless of this setting.
