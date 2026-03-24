@@ -183,7 +183,7 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType],
+            mro: list[ClassType] = [],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
