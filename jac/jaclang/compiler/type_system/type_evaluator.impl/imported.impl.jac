@@ -171,8 +171,12 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             return node_.path[-1].type;
         }
         path_list = node_.resolve_relative_path_list();
+        # Calculate offset for relative imports: leading dots produce extra segments
+        # in resolve_relative_path_list() that don't have corresponding entries in node_.path.
+        # E.g., "from .base import X" has path=[base] but path_list=[__init__.py, base.jac]
+        offset = len(path_list) - len(node_.path) if node_.path else 0;
         for (idx, npath) in enumerate(node_.path) {
-            mod_path = path_list[idx];
+            mod_path = path_list[idx + offset];
 
             if mod_path in self._module_type_cache {
                 npath.type = self._module_type_cache[mod_path];
