@@ -155,17 +155,46 @@ impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None
 Without this, the walker visits children in kid order without narrowing, causing
 exit_func_call etc. to type-check arguments against unnarrowed types (false positives).
 
-This handler manually traverses with narrowing scopes so exit_* handlers fire
-with correct types. After traversal, cached types on NameAtom nodes inside
-branches are cleared so the normal type evaluator chain (triggered by
-exit_assignment) can re-evaluate them with full symbol resolution.
+This handler prunes automatic child traversal and manually walks each branch with
+the correct narrowing scope and _in_ternary_expr_depth active.  This ensures:
+  - exit_* handlers fire with narrowed types (preventing false positive errors)
+  - _get_type_of_expression_core runs for each node (symbol resolution for LSP)
+  - scope narrowing is applied after resolution in the NameAtom handler
 """
 impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
-    # No-op: narrowing for ternary branches is handled by the type evaluator's
-    # IfElseExpr handler. Walker-level traversal with _in_ternary_expr_depth
-    # would cache types on NameAtom nodes and block symbol resolution needed
-    # by the language server for hover/go-to-definition.
-    return;
+    self.prune();
+
+    # Traverse the condition normally (no narrowing scope).
+    self.traverse(nd.condition);
+
+    # Extract narrowing info from the condition.
+    isinstance_info = self.evaluator._extract_isinstance_info(nd.condition);
+
+    # True branch: traverse with narrowing scope active.
+    self.evaluator.push_narrowing_scope();
+    if isinstance_info {
+        (narrowing_key, narrowed_type) = isinstance_info;
+        # Refine: filter the variable's existing type to preserve generic
+        # params (e.g., isinstance(x, list) on list[int]|str → list[int]).
+        refined = self.evaluator._refine_isinstance_type(
+            narrowing_key, narrowed_type, nd.condition
+        );
+        self.evaluator.add_scope_narrowing(narrowing_key, refined);
+    } else {
+        self.evaluator.process_condition(nd.condition);
+    }
+    self.evaluator._in_ternary_expr_depth += 1;
+    self.traverse(nd.value);
+    self.evaluator._in_ternary_expr_depth -= 1;
+    self.evaluator.pop_narrowing_scope();
+
+    # False branch: traverse with inverse narrowing scope active.
+    self.evaluator.push_narrowing_scope();
+    self.evaluator.process_negated_condition(nd.condition);
+    self.evaluator._in_ternary_expr_depth += 1;
+    self.traverse(nd.else_value);
+    self.evaluator._in_ternary_expr_depth -= 1;
+    self.evaluator.pop_narrowing_scope();
 }
 
 
@@ -237,7 +266,22 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
             return;
         } else {
-            left_type = self.evaluator.get_type_of_expression(target);
+            # Handle typed assignment: target: Type = value
+            # Propagate type annotation to the target node
+            if nd.type_tag and nd.type_tag.tag {
+                declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+                target.type = declared_type;
+                # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
+                if isinstance(target, uni.AtomTrailer) {
+                    chain = target.as_attr_list;
+                    if len(chain) >= 2 {
+                        chain[-1].type = declared_type;
+                    }
+                }
+                left_type = declared_type;
+            } else {
+                left_type = self.evaluator.get_type_of_expression(target);
+            }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
         right_type = self.evaluator.get_type_of_expression(

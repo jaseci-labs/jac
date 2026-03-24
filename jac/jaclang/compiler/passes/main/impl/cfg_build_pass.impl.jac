@@ -622,13 +622,15 @@ impl CFGBuildPass.exit_try_stmt(nd: uni.TryStmt) -> None {
             self.link_bbs(nd.body[-1], nd.else_body.body[0]);
         }
     }
-    # Finally: all paths flow through it
+    # Finally: all paths flow through it — always link, even from terminal
+    # statements (return/raise). The finally block executes regardless, and
+    # the link propagates affected_symbols needed for narrowing analysis.
     if nd.finally_body {
-        if nd.body and not self._is_terminal(nd.body[-1]) {
+        if nd.body {
             self.link_bbs(nd.body[-1], nd.finally_body);
         }
         for exc in nd.excepts {
-            if exc.body and not self._is_terminal(exc.body[-1]) {
+            if exc.body {
                 self.link_bbs(exc.body[-1], nd.finally_body);
             }
         }
