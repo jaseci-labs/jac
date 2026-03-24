@@ -297,7 +297,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'livenessProbe': {
                                     'httpGet': {
@@ -307,7 +308,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '90Mi'},
