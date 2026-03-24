@@ -122,7 +122,7 @@ obj AnyType(TypeBase) {
 obj ModuleType(TypeBase) {
     has mod_name: str = "",
         file_uri: Path = Path(""),
-        symbol_table: SymbolTable = None,
+        symbol_table: SymbolTable | None = None,
         # Module source flags (similar to Pyright's SourceFileInfo)
         # These are computed once when the module is loaded based on file path.
         is_stub_file: bool = False,  # True if .pyi file
