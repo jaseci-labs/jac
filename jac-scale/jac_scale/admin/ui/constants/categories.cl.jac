@@ -31,6 +31,8 @@ cl {
              ],
              "monitor": [
                  {"id": "metrics", "label": "Metrics"},
+                 {"id": "llm_metrics", "label": "LLM Metrics"},
+                 {"id": "llm_traces", "label": "LLM Traces"},
                  {"id": "logs", "label": "Logs"},
                  {"id": "health", "label": "Health"},
                  {"id": "alerts", "label": "Alerts"}

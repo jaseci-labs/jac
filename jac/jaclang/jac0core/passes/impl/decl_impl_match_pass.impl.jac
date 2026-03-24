@@ -26,14 +26,21 @@ impl DeclImplMatchPass.transform(
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
         }
     }
-    self._resolve_module_level_symbols(ir_in);
-    for impl_module in ir_in.impl_mod {
-        self._resolve_module_level_symbols(impl_module);
+    # Resolve module-level symbols (GlobalVars, TypeAlias, ModuleCode)
+    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
+        for item in module.body {
+            if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
+                self._resolve_symbols_in_subtree(item);
+            }
+        }
     }
     for variant_module in ir_in.variant_mod {
-        self._resolve_module_level_symbols(variant_module);
         for impl_module in variant_module.impl_mod {
-            self._resolve_module_level_symbols(impl_module);
+            for item in impl_module.body {
+                if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
+                    self._resolve_symbols_in_subtree(item);
+                }
+            }
         }
     }
     return ir_in;
@@ -158,7 +165,7 @@ impl DeclImplMatchPass.connect_impls(
             valid_decl.sym_tab.names_in_scope
         );
         valid_decl.sym_tab.names_in_scope = sym.decl.name_of.sym_tab.names_in_scope;
-        self._resolve_impl_body_symbols(sym.decl.name_of);
+        self._resolve_symbols_in_subtree(sym.decl.name_of);
         # Populate self-member symbols from impl to archetype for method impls
         # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
         if (
@@ -225,20 +232,12 @@ impl DeclImplMatchPass.validate_params_match(
     }
 }
 
-"""Re-resolve symbols in an impl body after symbol table synchronization.
-
-        When impl files are compiled, they don't have access to the base
-module's
-        symbols (like 'self' or archetype members). After DeclImplMatchPass
-links
-        the impl to its declaration and synchronizes symbol tables, we need to
-        re-traverse the impl body to resolve these symbols.
-        """
-impl DeclImplMatchPass._resolve_impl_body_symbols(
-    self: DeclImplMatchPass, impl_def: uni.ImplDef
+"""Resolve unresolved Name and AtomTrailer symbols in a subtree."""
+impl DeclImplMatchPass._resolve_symbols_in_subtree(
+    self: DeclImplMatchPass, root: uni.UniNode
 ) -> None {
-    for name_node in impl_def.get_all_sub_nodes(uni.Name) {
-        if (name_node.sym is not None) {
+    for name_node in root.get_all_sub_nodes(uni.Name) {
+        if name_node.sym is not None {
             continue;
         }
         if isinstance(name_node.parent, uni.AtomTrailer) {
@@ -248,9 +247,9 @@ impl DeclImplMatchPass._resolve_impl_body_symbols(
             name_node.sym_tab.use_lookup(name_node);
         }
     }
-    for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer) {
+    for trailer_node in root.get_all_sub_nodes(uni.AtomTrailer) {
         chain = trailer_node.as_attr_list;
-        if (chain and (chain[0].sym is None) and trailer_node.sym_tab) {
+        if chain and chain[0].sym is None and trailer_node.sym_tab {
             trailer_node.sym_tab.chain_use_lookup(chain);
         }
     }
@@ -288,52 +287,5 @@ impl DeclImplMatchPass._populate_self_member_symbols(
             continue;
         }
         archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
-    }
-}
-
-"""Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values,
-ModuleCode bodies) that aren't covered by _resolve_impl_body_symbols."""
-impl DeclImplMatchPass._resolve_module_level_symbols(
-    self: DeclImplMatchPass, module: uni.Module
-) -> None {
-    # Collect module-level expression subtrees that need name resolution
-    expr_roots: list[uni.UniNode] = [];
-    for item in module.body {
-        if isinstance(item, uni.TypeAlias) {
-            expr_roots.append(item.value);
-        }
-        if isinstance(item, uni.GlobalVars) {
-            for asgn in item.assignments {
-                if asgn.value is not None {
-                    expr_roots.append(asgn.value);
-                }
-                if asgn.type_tag is not None {
-                    expr_roots.append(asgn.type_tag);
-                }
-            }
-        }
-        if isinstance(item, uni.ModuleCode) {
-            expr_roots.append(item);
-        }
-    }
-    # Resolve unresolved Name nodes in those subtrees
-    for expr_root in expr_roots {
-        for name_node in expr_root.get_all_sub_nodes(uni.Name) {
-            if (name_node.sym is not None) {
-                continue;
-            }
-            if isinstance(name_node.parent, uni.AtomTrailer) {
-                continue;
-            }
-            if name_node.sym_tab {
-                name_node.sym_tab.use_lookup(name_node);
-            }
-        }
-        for trailer_node in expr_root.get_all_sub_nodes(uni.AtomTrailer) {
-            chain = trailer_node.as_attr_list;
-            if (chain and (chain[0].sym is None) and trailer_node.sym_tab) {
-                trailer_node.sym_tab.chain_use_lookup(chain);
-            }
-        }
     }
 }

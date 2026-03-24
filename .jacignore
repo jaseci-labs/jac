@@ -118,6 +118,9 @@ webhook.jac
 web_target.impl.jac
 web_target.jac
 admin_portal.impl.jac
+llm_telemetry.impl.jac
+prim_builtins_extra2.jac
+prim_builtin_sort.jac
 vite_client_bundle.impl.jac
 static_analysis_pass.impl.jac
 lexer.na.jac
