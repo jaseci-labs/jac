@@ -1,14 +1,4 @@
-"""Test that @property resolves to return type on union types.
-
-Mirrors the real bug in sym_tab_build_pass.impl.jac where:
-    if isinstance(i, (uni.ListVal, uni.TupleVal)) {
-        self._def_insert_unpacking(i, i.sym_tab);
-    }
-produces E1053 because `i.sym_tab` on the union `ListVal | TupleVal`
-returns `<function sym_tab() -> UniScopeNode>` instead of `UniScopeNode`.
-
-Uses unitree types directly to exercise the union property lookup path.
-"""
+"""Test that @property resolves to return type on union types."""
 
 import jaclang.jac0core.unitree as uni;
 

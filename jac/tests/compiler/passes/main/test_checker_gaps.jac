@@ -523,21 +523,9 @@ test "gap 50 postinit assignment tracking" {
 
 # =========================================================================
 # Gap #51: @property on union types returns FunctionType instead of return type
-#
-# When accessing a @property on a union type (e.g., `i: ListVal | TupleVal`),
-# the union member access path calls get_type_of_symbol() directly without
-# checking get_getter_type_from_property(). This returns the raw FunctionType
-# instead of the property's return type.
-#
-# Impact: `use_scope(i.sym_tab)` where i is `ListVal | TupleVal` errors with
-#         E1053 because sym_tab resolves to `<function sym_tab() -> UniScopeNode>`
-#         instead of `UniScopeNode`.
 # =========================================================================
 test "gap 51 property on union type returns function type" {
     program = compile_and_check("checker_gap_property.jac");
-
-    # Expected: 0 errors — both node.sym_tab and i.sym_tab should resolve to UniScopeNode
-    # Before fix: i.sym_tab on union returned FunctionType, causing false E1053
     fixture_errors = [
         e
         for e in program.errors_had
