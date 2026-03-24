@@ -1193,12 +1193,39 @@ graph TD
 | **Production** | `jac start app.jac --scale --build` | Build and push Docker image to registry, then deploy |
 | **Enable HTTPS** | `jac start app.jac --scale --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
 
-**Production mode** requires Docker credentials in `.env`:
+**Production mode** requires Docker credentials in `jac.toml`:
 
-```env
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password-or-token
+```toml
+[plugins.scale.kubernetes]
+docker_username = "your-dockerhub-username"
+docker_password = "your-dockerhub-token"
 ```
+
+#### Auto-generated Dockerfile
+
+If no `Dockerfile` exists in your project folder, one is automatically generated from the built-in template when `--build` is used. It:
+
+- Installs `jaclang`, `jac-scale`, `jac-client`, and `jac-super`
+- Installs [Bun](https://bun.sh) (required for npm dependencies)
+- Copies `jac.toml` first for Docker layer caching, runs `jac install`, then copies all files
+- Excludes `jac.local.toml` and `jac.*.toml` via auto-generated `.dockerignore`
+
+You can create your own `Dockerfile` to override this behavior.
+
+#### Private DockerHub Repositories
+
+When `docker_username` and `docker_password` are set, a `kubernetes.io/dockerconfigjson` pull secret (`{app_name}-registry-secret`) is automatically created so Kubernetes can pull private images. The secret is updated on re-deploy and deleted on `jac destroy`.
+
+#### Cross-Platform Builds
+
+By default, images are built for `linux/amd64`, compatible with most cloud K8s clusters. If your K8s nodes run ARM, override this:
+
+```toml
+[plugins.scale.kubernetes]
+build_platform = "linux/arm64"   # default: linux/amd64
+```
+
+This ensures images built on Apple Silicon (M1/M2/M3) or AWS Graviton machines target the correct architecture.
 
 ---
 
@@ -1927,7 +1954,8 @@ kubectl logs -l app=redis
 ### Build Failures (--build mode)
 
 - Ensure Docker daemon is running
-- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+- Verify `docker_username` and `docker_password` are set under `[plugins.scale.kubernetes]` in `jac.toml`
+- If building on ARM (Apple Silicon) for x86_64 nodes, set `build_platform = "linux/amd64"`
 - Check disk space for image building
 
 ### General Debugging
