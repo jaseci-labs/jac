@@ -518,7 +518,7 @@ impl TypeEvaluator._extract_type_params(
     # The type_params field on the Archetype node holds TypeParam AST nodes.
     if node_.type_params {
         for tp in node_.type_params {
-            tv = types.TypeVarType(name=tp.sym_name);
+            tv = types.TypeVarType(name=tp.sym_name, is_class_type_param=True);
             type_params.append(tv);
         }
         return type_params;
@@ -619,7 +619,16 @@ impl TypeEvaluator._collect_typevars_from_base(
                 }
                 if type_var_type.name not in seen_names {
                     seen_names.add(type_var_type.name);
-                    type_params.append(type_var_type);
+                    # Mark as class type param since it's used in the class's base declaration
+                    class_type_var = types.TypeVarType(
+                        name=type_var_type.name,
+                        is_covariant=type_var_type.is_covariant,
+                        is_contravariant=type_var_type.is_contravariant,
+                        bound=type_var_type.bound,
+                        constraints=type_var_type.constraints,
+                        is_class_type_param=True
+                    );
+                    type_params.append(class_type_var);
                 }
             }
         }
@@ -631,7 +640,16 @@ impl TypeEvaluator._collect_typevars_from_base(
             }
             if type_var_type.name not in seen_names {
                 seen_names.add(type_var_type.name);
-                type_params.append(type_var_type);
+                # Mark as class type param since it's used in the class's base declaration
+                class_type_var = types.TypeVarType(
+                    name=type_var_type.name,
+                    is_covariant=type_var_type.is_covariant,
+                    is_contravariant=type_var_type.is_contravariant,
+                    bound=type_var_type.bound,
+                    constraints=type_var_type.constraints,
+                    is_class_type_param=True
+                );
+                type_params.append(class_type_var);
             }
         }
     }
@@ -1332,4 +1350,20 @@ impl TypeEvaluator._get_outer_scope_type_params(
         current = current.parent;
     }
     return type_params;
+}
+
+"""Check if a function body contains only ellipsis (stub body)."""
+impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool {
+    has_ellipsis = False;
+    for stmt in body {
+        if isinstance(stmt, uni.Semi) {
+            continue;
+        }
+        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
+            has_ellipsis = True;
+            continue;
+        }
+        return False;
+    }
+    return has_ellipsis;
 }

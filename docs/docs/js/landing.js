@@ -892,7 +892,7 @@ def scale_demo():
 `,
         codeLang: "python",
         output: "Scaling with Jac is seamless!",
-        link: "https://www.jac-lang.org/learn/jac-cloud/introduction/"
+        link: "https://www.jac-lang.org/learn/jac-scale/introduction/"
     }
 ];
 
