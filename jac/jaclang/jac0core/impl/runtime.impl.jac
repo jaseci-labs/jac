@@ -106,7 +106,11 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.WRITE;
     }
     jctx = JacRuntimeInterface.get_context();
-    jroot = jctx.user_root;
+    _jroot = jctx.user_root;
+    if (_jroot is None) {
+        return AccessLevel.NO_ACCESS;
+    }
+    jroot: NodeAnchor = _jroot;
     if ((jroot == jctx.system_root) or (jroot.id == `to.root) or (jroot == `to)) {
         return AccessLevel.WRITE;
     }
@@ -288,7 +292,9 @@ impl JacWalker.`visit(
         next = [];
         for anchor in (i.__jac__ for i in expr)
             if isinstance(expr, `list)
-            else [expr.__jac__] {
+            else [expr.__jac__]
+                if isinstance(expr, (NodeArchetype, EdgeArchetype))
+                else [] {
             if (anchor not in wanch.ignores) {
                 if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
                     next.append(anchor);

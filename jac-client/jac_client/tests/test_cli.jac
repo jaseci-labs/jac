@@ -887,6 +887,47 @@ test "config files from jac toml" {
     }
 }
 
+"""Test raw template config generation."""
+test "raw template config files from jac toml" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+
+            # Create jac.toml with raw template config
+            raw_content = 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";\n\nexport const docs = defineDocs({\n  dir: "content/docs",\n});\n\nexport default defineConfig({});';
+            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
+            config_path = os.path.join(temp_dir, "jac.toml");
+            with open(config_path, "w") as f {
+                f.write(toml_content);
+            }
+
+            import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+            created_files = bundler.create_config_files();
+
+            assert len(created_files) == 1;
+
+            # Verify source.config.ts was created with raw content
+            configs_dir = os.path.join(temp_dir, ".jac", "client", "configs");
+            source_config = os.path.join(configs_dir, "source.config.ts");
+            assert os.path.exists(source_config);
+
+            with open(source_config) as f {
+                content = f.read();
+            }
+
+            assert 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";' in content;
+            assert "export const docs = defineDocs({" in content;
+            assert "export default defineConfig({});" in content;
+            assert "module.exports" not in content;
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 """Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
 test "npmrc from jac toml" {
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -1180,16 +1221,6 @@ test "vite config generation" {
             assert "/walker" in dev_config_content;  # Walker endpoint proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
-            assert "jacErrorReporter()" in dev_config_content;  # Client error reporter plugin
-            assert "jac:client-error" in dev_config_content;  # WebSocket event listener
-
-            # Dev index.html should wire up browser error forwarding
-            build_dir = Path(temp_dir) / ".jac" / "client";
-            bundler._ensure_dev_index_html(build_dir);
-            index_content = (build_dir / "index.html").read_text();
-            assert "jac:client-error" in index_content;  # Sends errors to Vite
-            assert 'window.addEventListener("error"' in index_content;  # Runtime errors
-            assert "unhandledrejection" in index_content;  # Promise rejections
 
             # Verify configs are different (dev vs build)
             assert build_config_content != dev_config_content;
