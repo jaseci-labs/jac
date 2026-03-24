@@ -1701,7 +1701,8 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Jac-native generic type parameter: obj Box[T]
             # Return a TypeVarType matching the parameter name so that
             # FunctionType.specialize can substitute it with concrete type_args.
-            return types.TypeVarType(name=node_.sym_name);
+            # Mark as class type param so it can be distinguished from module-level TypeVars.
+            return types.TypeVarType(name=node_.sym_name, is_class_type_param=True);
 
         case uni.Ability():
             return self.get_type_of_ability(node_);
