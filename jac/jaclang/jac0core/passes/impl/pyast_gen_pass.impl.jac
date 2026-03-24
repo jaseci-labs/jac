@@ -2325,7 +2325,7 @@ impl PyastGenPass.exit_binary_expr(self: PyastGenPass, nd: uni.BinaryExpr) -> No
             self.sync(
                 ast3.keyword(
                     arg='left', value=cast(ast3.expr, self.py_ast_val(nd.left))
-                )   
+                )
             ),
             self.sync(
                 ast3.keyword(
