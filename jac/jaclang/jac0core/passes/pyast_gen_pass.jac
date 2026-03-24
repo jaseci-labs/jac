@@ -42,7 +42,7 @@ import from jaclang.jac0core.diagnostics {
     W0062
 }
 
-glob T = TypeVar('T', bound=ast3.AST),
+glob _AstT = TypeVar('_AstT', bound=ast3.AST),
      TOKEN_AST_MAP: dict[(Tok, type[ast3.AST])] = {
          Tok.KW_AND: ast3.And,
          Tok.KW_OR: ast3.Or,
@@ -189,10 +189,10 @@ variables
     """Sync ast locations."""
     def sync(
         self: PyastGenPass,
-        py_node: T,
+        py_node: _AstT,
         jac_node: (uni.UniNode | None) = None,
         deep: bool = False
-    ) -> T;
+    ) -> _AstT;
 
     """Sync ast locations."""
     def pyinline_sync(self: PyastGenPass, py_nodes: list[ast3.AST]) -> list[ast3.AST];
