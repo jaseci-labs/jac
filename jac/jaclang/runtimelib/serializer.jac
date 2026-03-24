@@ -64,6 +64,8 @@ obj Serializer {
     static def _deserialize_archetype(
         data: dict[str, object], anchor: object
     ) -> (object | None);
+
+    static def _compute_hash(anchor: object) -> int;
 }
 
 # Auto-register user archetypes via __init_subclass__ hook.
