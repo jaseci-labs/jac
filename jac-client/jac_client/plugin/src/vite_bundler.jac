@@ -15,7 +15,8 @@ glob logger = logging.getLogger(__name__),
      JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__",
      VITE_READY_TIMEOUT_SECONDS = 60,  # Max time to wait for Vite to be ready
      VITE_READY_PATTERNS = ['ready in', 'local:'],
-     VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'];
+     VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'],
+     CONFIG_META_KEYS = frozenset({'extension'});
 
 """Handles Vite bundling operations."""
 class ViteBundler {
@@ -99,3 +100,5 @@ class ViteBundler {
 # Patterns to detect Vite server ready state
 
 # Patterns to filter from Vite output (we print our own URLs)
+
+# Keys used by the config generation system itself, not written to output files

@@ -13,6 +13,11 @@ dependencies = [
     "mcp>=1.0.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://jac-lang.org"
+
 [project.entry-points."jac"]
 mcp = "jac_mcp.plugin:JacCmd"
 mcp_plugin_config = "jac_mcp.plugin_config:JacMcpPluginConfig"

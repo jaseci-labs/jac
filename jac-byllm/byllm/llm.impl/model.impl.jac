@@ -28,12 +28,38 @@ impl Model.postinit -> None {
     }
 }
 
-"""Invoke the LLM, delegating to MockLLM if applicable."""
+"""Invoke the LLM, delegating to MockLLM if applicable.
+
+Wraps the full invocation with telemetry. Sets a unique invocation_id
+on mt_run, then delegates all telemetry extraction to _emit_agent_telemetry.
+"""
 impl Model.invoke(mt_run: MTRuntime) -> object {
-    if self._mock_delegate {
-        return self._mock_delegate.invoke(mt_run);
+    import uuid;
+    import time;
+
+    mt_run._invocation_id = str(uuid.uuid4());
+    _start = time.time();
+
+    try {
+        result = self._mock_delegate.invoke(mt_run)
+            if self._mock_delegate
+            else super.invoke(mt_run);
+
+        _emit_agent_telemetry(
+            mt_run,
+            result,
+            self.model_name,
+            (time.time() - _start) * 1000,
+            "success",
+            None
+        );
+        return result;
+    } except Exception as e {
+        _emit_agent_telemetry(
+            mt_run, None, self.model_name, (time.time() - _start) * 1000, "error", e
+        );
+        raise;
     }
-    return super.invoke(mt_run);
 }
 
 """Make a direct model call without streaming.
