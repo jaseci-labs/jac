@@ -1333,3 +1333,21 @@ impl TypeEvaluator._get_outer_scope_type_params(
     }
     return type_params;
 }
+
+"""Check if a function body contains only ellipsis (stub body)."""
+impl TypeEvaluator._is_ellipsis_only_body(
+    body: list[uni.CodeBlockStmt]
+) -> bool {
+    has_ellipsis = False;
+    for stmt in body {
+        if isinstance(stmt, uni.Semi) {
+            continue;
+        }
+        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
+            has_ellipsis = True;
+            continue;
+        }
+        return False;
+    }
+    return has_ellipsis;
+}

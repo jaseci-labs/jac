@@ -78,7 +78,4 @@ class TypeCheckPass(UniPass) {
         self: TypeCheckPass, body: list[uni.CodeBlockStmt]
     ) -> bool;
 
-    def _is_ellipsis_only_body(
-        self: TypeCheckPass, body: list[uni.CodeBlockStmt]
-    ) -> bool;
 }

@@ -539,7 +539,7 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         # Skip generator functions (contain yield) — they don't need explicit return
         is_generator = len(nd.get_all_sub_nodes(uni.YieldExpr)) > 0;
         # Skip stub functions (body is only ellipsis and/or semicolons)
-        is_stub = self._is_ellipsis_only_body(nd.body);
+        is_stub = self.evaluator._is_ellipsis_only_body(nd.body);
         if not is_overload and not is_generator and not is_stub {
             ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
             ret_inst = self.evaluator._convert_to_instance(ret_type);
@@ -661,24 +661,6 @@ impl TypeCheckPass._body_always_returns(
         }
     }
     return False;
-}
-
-"""Check if a function body contains only ellipsis (stub body)."""
-impl TypeCheckPass._is_ellipsis_only_body(
-    self: TypeCheckPass, body: list[uni.CodeBlockStmt]
-) -> bool {
-    has_ellipsis = False;
-    for stmt in body {
-        if isinstance(stmt, uni.Semi) {
-            continue;
-        }
-        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
-            has_ellipsis = True;
-            continue;
-        }
-        return False;
-    }
-    return has_ellipsis;
 }
 
 """Exit a type alias node."""
