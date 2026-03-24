@@ -2399,6 +2399,19 @@ test "enum_static_method" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Self member assignments with TypeVar annotations propagate through inheritance."""
+test "generic_self_member_type_propagation" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_generic_self_member.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 # ============================================================================
 # Narrowing gap exposure tests
 #

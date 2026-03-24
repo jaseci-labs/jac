@@ -266,7 +266,22 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
             return;
         } else {
-            left_type = self.evaluator.get_type_of_expression(target);
+            # Handle typed assignment: target: Type = value
+            # Propagate type annotation to the target node
+            if nd.type_tag and nd.type_tag.tag {
+                declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+                target.type = declared_type;
+                # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
+                if isinstance(target, uni.AtomTrailer) {
+                    chain = target.as_attr_list;
+                    if len(chain) >= 2 {
+                        chain[-1].type = declared_type;
+                    }
+                }
+                left_type = declared_type;
+            } else {
+                left_type = self.evaluator.get_type_of_expression(target);
+            }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
         right_type = self.evaluator.get_type_of_expression(
