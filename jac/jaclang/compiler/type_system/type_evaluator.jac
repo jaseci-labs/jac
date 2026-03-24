@@ -303,7 +303,7 @@ obj TypeEvaluator {
     # with user-defined classes named "Callable".
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
-    ) -> types.ClassType | None;
+    ) -> types.TypeBase | None;
     # creates Self TypeVar if symbol is typing.Self
     def create_self_type(symbol_type: types.TypeBase) -> types.TypeVarType | None;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
@@ -439,6 +439,7 @@ obj TypeEvaluator {
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def process_condition(condition: uni.Expr) -> None;
     def process_negated_condition(condition: uni.Expr) -> None;
+    def promote_inverted_narrowings(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(
