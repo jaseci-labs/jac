@@ -142,6 +142,10 @@ obj ModuleType(TypeBase) {
 TypeVarType supports two mutually exclusive constraint modes:
 1. bound - TypeVar("T", bound=Foo) means T can be Foo or any subclass
 2. constraints - TypeVar("T", Foo, Bar) means T must be exactly Foo or Bar
+
+The is_class_type_param flag distinguishes:
+- Class type parameters (T from class Foo[T]) - should be substituted during specialization
+- Module-level TypeVars (glob T = TypeVar('T', bound=int)) - should NOT be substituted
 """
 obj TypeVarType(TypeBase) {
     has name: str = "",
@@ -149,6 +153,7 @@ obj TypeVarType(TypeBase) {
         is_contravariant: bool = False,
         is_self: bool = False,
         is_param_spec: bool = False,
+        is_class_type_param: bool = False,
         bound: (TypeBase | None) = None,
         constraints: (list[TypeBase] | None) = None;
 
