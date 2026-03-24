@@ -524,25 +524,26 @@ test "gap 50 postinit assignment tracking" {
 # =========================================================================
 # Gap #51: @property on union types returns FunctionType instead of return type
 #
-# When accessing a @property on a union type (e.g., after isinstance(x, (A, B))),
+# When accessing a @property on a union type (e.g., `i: ListVal | TupleVal`),
 # the union member access path calls get_type_of_symbol() directly without
-# checking get_getter_type_from_property(). The single-type path does this
-# check, but the union path was missing it.
+# checking get_getter_type_from_property(). This returns the raw FunctionType
+# instead of the property's return type.
 #
-# Impact: `pet.name` where pet is `Dog | Cat` returns
-#         `<function name() -> str>` instead of `str`.
+# Impact: `use_scope(i.sym_tab)` where i is `ListVal | TupleVal` errors with
+#         E1053 because sym_tab resolves to `<function sym_tab() -> UniScopeNode>`
+#         instead of `UniScopeNode`.
 # =========================================================================
 test "gap 51 property on union type returns function type" {
     program = compile_and_check("checker_gap_property.jac");
 
-    # Expected: 2 type mismatch errors (wrong1: str->int, wrong2: str->int)
-    # Before fix: ok2 also errored because property returned FunctionType on union
+    # Expected: 0 errors — both node.sym_tab and i.sym_tab should resolve to UniScopeNode
+    # Before fix: i.sym_tab on union returned FunctionType, causing false E1053
     fixture_errors = [
         e
         for e in program.errors_had
         if "checker_gap_property.jac" in (e.loc.mod_path or "")
     ];
-    assert len(fixture_errors) == 2 , f"Gap #51: Property on union type not unwrapped. "
-    f"Expected 2 errors but got {len(fixture_errors)}. "
+    assert len(fixture_errors) == 0 , f"Gap #51: Property on union type not unwrapped. "
+    f"Expected 0 errors but got {len(fixture_errors)}. "
     f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
 }
