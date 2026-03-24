@@ -887,9 +887,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                             if member := self._lookup_object_member(
                                 union_member, expr.right.value
                             ) {
-                                member_types.append(
-                                    self.get_type_of_symbol(member.symbol)
-                                );
+                                if prop_ret := self.get_getter_type_from_property(
+                                    member.symbol
+                                ) {
+                                    member_types.append(prop_ret);
+                                } else {
+                                    member_types.append(
+                                        self.get_type_of_symbol(member.symbol)
+                                    );
+                                }
                                 if decl_for_ide is None {
                                     decl_for_ide = member.symbol.decl;
                                 }
