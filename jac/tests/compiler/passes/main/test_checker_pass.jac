@@ -1640,7 +1640,8 @@ test "class_based_enum_type_checking" {
         "Cannot assign Literal[\"RSQUARE\"] to int",
         "Cannot assign <AccessLevel.READ> to str",
         "Cannot assign AccessLevel | NoneType to int",
-        "Cannot assign int to str"
+        "Cannot assign int to str",
+        "Cannot assign <Priority.HIGH> to str"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
