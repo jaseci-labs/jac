@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.5
 
+- **ESM & TypeScript Client Config Generation**: Added a feature to support for generating ESM and TypeScript client config files from `[plugins.client.configs]`, while preserving existing CommonJS behavior and allowing raw config templates when needed.
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
 - **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
 
@@ -192,22 +193,22 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PYPI Package Release**: First stable release (v0.1.0) now available on PyPI. Install via `pip install jac-client` to get started with Vite-powered client bundling for your Jac projects.
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5
+## jaclang 0.8.10 / byllm 0.4.5
 
-## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
+## jaclang 0.8.9 / byllm 0.4.4
 
-## jaclang 0.8.8 / jac-cloud 0.2.8 / byllm 0.4.3
+## jaclang 0.8.8 / byllm 0.4.3
 
-## jaclang 0.8.7 / jac-cloud 0.2.7 / byllm 0.4.2
+## jaclang 0.8.7 / byllm 0.4.2
 
-## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
+## jaclang 0.8.6 / byllm 0.4.1
 
-## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
+## jaclang 0.8.5 / mtllm 0.4.0
 
-## jaclang 0.8.4 / jac-cloud 0.2.4 / mtllm 0.3.9
+## jaclang 0.8.4 / mtllm 0.3.9
 
-## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
+## jaclang 0.8.3 / mtllm 0.3.8
 
-## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
+## jaclang 0.8.1 / mtllm 0.3.6
 
 ## Version 0.8.0
