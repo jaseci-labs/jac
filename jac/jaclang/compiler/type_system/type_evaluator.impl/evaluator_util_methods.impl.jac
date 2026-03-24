@@ -518,7 +518,7 @@ impl TypeEvaluator._extract_type_params(
     # The type_params field on the Archetype node holds TypeParam AST nodes.
     if node_.type_params {
         for tp in node_.type_params {
-            tv = types.TypeVarType(name=tp.sym_name);
+            tv = types.TypeVarType(name=tp.sym_name, is_class_type_param=True);
             type_params.append(tv);
         }
         return type_params;
@@ -619,7 +619,16 @@ impl TypeEvaluator._collect_typevars_from_base(
                 }
                 if type_var_type.name not in seen_names {
                     seen_names.add(type_var_type.name);
-                    type_params.append(type_var_type);
+                    # Mark as class type param since it's used in the class's base declaration
+                    class_type_var = types.TypeVarType(
+                        name=type_var_type.name,
+                        is_covariant=type_var_type.is_covariant,
+                        is_contravariant=type_var_type.is_contravariant,
+                        bound=type_var_type.bound,
+                        constraints=type_var_type.constraints,
+                        is_class_type_param=True
+                    );
+                    type_params.append(class_type_var);
                 }
             }
         }
@@ -631,7 +640,16 @@ impl TypeEvaluator._collect_typevars_from_base(
             }
             if type_var_type.name not in seen_names {
                 seen_names.add(type_var_type.name);
-                type_params.append(type_var_type);
+                # Mark as class type param since it's used in the class's base declaration
+                class_type_var = types.TypeVarType(
+                    name=type_var_type.name,
+                    is_covariant=type_var_type.is_covariant,
+                    is_contravariant=type_var_type.is_contravariant,
+                    bound=type_var_type.bound,
+                    constraints=type_var_type.constraints,
+                    is_class_type_param=True
+                );
+                type_params.append(class_type_var);
             }
         }
     }
