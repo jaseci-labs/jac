@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.8 (Unreleased)
+## jac-scale 0.2.9 (Unreleased)
+
+## jac-scale 0.2.8 (Latest Release)
 
 - 1 small changes.
 
-## jac-scale 0.2.7 (Latest Release)
+## jac-scale 0.2.7
 
 - **Configurable MongoDB PVC Storage Size**: MongoDB persistent volume storage size is now configurable via `mongodb_storage_size` in `jac.toml` (default: `1Gi`). Increasing the size on redeploy is supported and automatically patched onto the existing PVC without affecting stored data. Decreasing the size is blocked with an explicit error to prevent data loss.
 

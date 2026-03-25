@@ -180,6 +180,7 @@ obj TypeEvaluator {
     # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
+    def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
@@ -303,7 +304,7 @@ obj TypeEvaluator {
     # with user-defined classes named "Callable".
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
-    ) -> types.ClassType | None;
+    ) -> types.TypeBase | None;
     # creates Self TypeVar if symbol is typing.Self
     def create_self_type(symbol_type: types.TypeBase) -> types.TypeVarType | None;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
@@ -439,6 +440,7 @@ obj TypeEvaluator {
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def process_condition(condition: uni.Expr) -> None;
     def process_negated_condition(condition: uni.Expr) -> None;
+    def promote_inverted_narrowings(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(

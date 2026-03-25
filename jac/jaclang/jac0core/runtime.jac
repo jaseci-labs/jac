@@ -79,7 +79,9 @@ glob plugin_manager = plugin.PluginManager('jac'),
          (str, 'JsonValue')
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
-     _request_context: ContextVar = ContextVar('request_context', default=None);
+     _request_context: ContextVar[ExecutionContext | None] = ContextVar(
+         'request_context', default=None
+     );
 
 """Jac Access Validation Specs."""
 class JacAccessValidation {
