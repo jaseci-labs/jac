@@ -536,4 +536,3 @@ test "gap 51 property on union type returns function type" {
     f"Expected 0 errors but got {len(fixture_errors)}. "
     f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
 }
-
