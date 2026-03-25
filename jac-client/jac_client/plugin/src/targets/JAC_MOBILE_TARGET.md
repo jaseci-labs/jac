@@ -478,6 +478,7 @@ my-app/
 ```
 
 **Key Points:**
+
 - `mobile/` directory in project root (similar to desktop's `src-tauri/`)
 - `app.json` is generated from `[mobile.expo]` section in `jac.toml`
 - `eas.json` is generated from `[mobile.eas]` section in `jac.toml`
