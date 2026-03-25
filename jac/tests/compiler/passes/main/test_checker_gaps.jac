@@ -558,3 +558,4 @@ test "gap51_function_level_typevar_resolution" {
     # Should have exactly 2 type errors (the two wrong assignments)
     assert len(program.errors_had) == 2 ,
         f"Gap #51: Expected 2 errors, got {len(program.errors_had)}. Errors: {all_errors}";
+}
