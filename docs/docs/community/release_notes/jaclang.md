@@ -12,6 +12,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.1 (Latest Release)
 
+- **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriti
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
 - **Fix: `ExecutionContext` Field Types Corrected to Non-Optional**: Changed `system_root`, `user_root`, and `entry_node` fields on `ExecutionContext` from `NodeAnchor | None` to `NodeAnchor`. These fields are always initialized in `postinit` (defaulting to `system_root`), so the `| None` was incorrect and forced unnecessary null-guard workarounds throughout access validation and anchor persistence code.
 - **Fix: TypeVar Annotations in `self.attr` Assignments**: Type annotations on self-member assignments in generic class `init` methods (e.g., `self.value: V = input`) now correctly propagate through inheritance chains. Previously, accessing such attributes in subclasses produced false "has no attribute" errors because the TypeVar type wasn't stored on the declaration node.
