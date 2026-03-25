@@ -740,30 +740,20 @@ test "test_hover_types" {
             passes_main_fixture_abs_path("checker/checker_gap_func_typevar.jac")
         );
         lsp.type_check_file(typevar_file);
-        # ok1 = identity(42) — T resolved to int
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(37, 4));
-        assert hover is not None , "Hover should exist for ok1";
-        assert "int" in hover.contents.value , f"ok1 should be int, got: {hover.contents.value}";
-        # result1 = make_or_none(Animal) — T resolved to Animal
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(42, 4));
-        assert hover is not None , "Hover should exist for result1";
-        assert "Animal" in hover.contents.value , f"result1 should contain Animal, got: {hover.contents.value}";
-        # result2 = make_or_none(Dog) — T resolved to Dog
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(43, 4));
-        assert hover is not None , "Hover should exist for result2";
-        assert "Dog" in hover.contents.value , f"result2 should contain Dog, got: {hover.contents.value}";
-        # result1 = make_or_none(Dog) — T resolved to Dog
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(47, 4));
-        assert hover is not None , "Hover should exist for result1";
-        assert "Dog" in hover.contents.value , f"result1 should contain Dog, got: {hover.contents.value}";
-        # result2 = make_or_none(Cat) — T resolved to Cat
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(48, 4));
-        assert hover is not None , "Hover should exist for result2";
-        assert "Cat" in hover.contents.value , f"result2 should contain Cat, got: {hover.contents.value}";
-        # ok_swap = swap(42, "hi") — T=int, U=str resolved
-        hover = lsp.get_hover_info(typevar_file, lspt.Position(51, 4));
-        assert hover is not None , "Hover should exist for ok_swap";
-        assert "tuple" in hover.contents.value , f"ok_swap should be tuple type, got: {hover.contents.value}";
+        
+        typevar_cases: list[tuple[int, int, str, str]] = [
+            (37, 4, "ok1", "int"),
+            (42, 4, "result1", "Animal"),
+            (43, 4, "result2", "Dog"),
+            (47, 4, "result1", "Dog"),
+            (48, 4, "result2", "Cat"),
+            (51, 4, "ok_swap", "tuple"),
+        ];
+        for (line, col, var_name, expected_type) in typevar_cases {
+            hover = lsp.get_hover_info(typevar_file, lspt.Position(line, col));
+            assert hover is not None , f"Hover should exist for {var_name}";
+            assert expected_type in hover.contents.value , f"{var_name} should contain {expected_type}, got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }
