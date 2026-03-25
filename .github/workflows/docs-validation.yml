@@ -80,5 +80,13 @@ jobs:
           CI: "true"
         run: bash scripts/check-release-notes.sh
 
+      - name: Set up Python for release notes check
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install jaclang for release notes check
+        run: pip install -e jac
+
       - name: Check release note entries are in (Unreleased) section
-        run: python scripts/check_release_notes_section.py
+        run: jac run scripts/check_release_notes_section.jac
