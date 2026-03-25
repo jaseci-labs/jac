@@ -89,7 +89,7 @@ def check_file(merge_base: str, filepath: str) -> list[str]:
     if not misplaced:
         return []
 
-    errors = [f"  {filepath}: new entries found outside (Unreleased) section:"]
+    errors = [f"  {filepath}:"]
     for entry in misplaced:
         preview = entry[:100] + ("..." if len(entry) > 100 else "")
         errors.append(f"    {preview}")
@@ -108,13 +108,11 @@ def main() -> int:
 
     if all_errors:
         print()
-        print("=" * 60)
-        print("ERROR: Release note entries are not in the (Unreleased) section!")
-        print("=" * 60)
+        print("ERROR: New release note entries must be in the (Unreleased) section.")
         print()
-        print("The following new entries were added outside the (Unreleased) section.")
-        print("This usually happens after rebasing when a new release was cut.")
-        print("Move the entries to the (Unreleased) section at the top of the file.")
+        print("The entries below landed outside it -- this usually happens when a")
+        print("new release is cut while your PR is open and you rebase afterward.")
+        print("Open the file and move the entry to the top section marked (Unreleased).")
         print()
         for err in all_errors:
             print(err)
