@@ -9,7 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: JIR Cache Preserves Impl-Defined Instance Variables**: Instance variables defined in `.impl.jac` files (e.g., `self.x` in `init`) are now preserved after JIR cache reload. Previously, these symbols were lost because `impl_mod` is not serialized in JIR.
 - 1 small refactors/changes.
 - **Fix: Generic Function TypeVar Resolution**: Generic functions like `find_parent_of_type[T](typ: type[T]) -> T | None` now correctly resolve TypeVar bindings at call sites. Previously returned `Unknown` because function-level type parameters were never stored, `T | None` collapsed to `Unknown` due to `is_any_type()` short-circuiting, and `type_params` were dropped during method cloning.
-- **Fix: False Type Errors in `impl` Method Bodies**: Typed assignments inside `impl` blocks (e.g., `self.field: dict[str, list[str]] = {}`) no longer produce false errors like "Cannot assign dict[str, list[str]] to dict[str, list[str]]".
+- **Refactor: Compiler Passes Converted from `class` to `obj` with `postinit`**: All compiler pass classes now use the `obj` style with `has` declarations and `postinit` methods instead of `class` with custom `init`. This aligns passes with Jac's dataclass-like initialization pattern.
 
 ## jaclang 0.13.1 (Latest Release)
 

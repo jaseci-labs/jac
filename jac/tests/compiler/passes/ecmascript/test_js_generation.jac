@@ -49,7 +49,7 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
 
-    es_pass = EsastGenPass(ir, prog);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
