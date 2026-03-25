@@ -202,6 +202,11 @@ test "compiler separates internal from user modules" {
         user_file = tmp_file.name;
     }
 
+    old_compiler = Jac.compiler;
+    old_program = Jac.program;
+    Jac.compiler = None;
+    Jac.program = None;
+
     try {
         captured_output = io.StringIO();
         sys.stdout = captured_output;
@@ -232,6 +237,8 @@ test "compiler separates internal from user modules" {
         }
     } finally {
         os.unlink(user_file);
+        Jac.compiler = old_compiler;
+        Jac.program = old_program;
     }
 }
 
