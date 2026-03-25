@@ -20,8 +20,8 @@ Gap index:
   #48 - TypeCheckPass self-check produces 100+ false positives
   #49 - TYPE_CHECKING forward-reference string annotations
   #50 - postinit body not validated against by-postinit field declarations
-  #51 - Function-level TypeVar (e.g. def foo[T]) not resolved at call sites
-  #52 - @property on union types returns FunctionType instead of return type
+  #51 - @property on union types returns FunctionType instead of return type
+  #52 - Function-level TypeVar (e.g. def foo[T]) not resolved at call sites
 """
 
 import os;
@@ -539,7 +539,7 @@ test "gap 51 property on union type returns function type" {
 }
 
 # =========================================================================
-# Gap #51: Function-level TypeVar not resolved at call sites
+# Gap #52: Function-level TypeVar not resolved at call sites
 # =========================================================================
 test "gap51_function_level_typevar_resolution" {
     program = compile_and_check("checker_gap_func_typevar.jac");
