@@ -77,10 +77,12 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         func_type_params = [
             types.TypeVarType(
                 name=tp.sym_name,
-                bound=self._convert_to_instance(self.get_type_of_expression(tp.bound))
-                if tp.bound else None
-            )
-            for tp in node_.type_params
+                bound=self._convert_to_instance(
+                    self.get_type_of_expression(tp.bound)
+                )
+                    if tp.bound
+                    else None
+            ) for tp in node_.type_params
         ];
     }
     if not isinstance(node_.signature, uni.FuncSignature) {
