@@ -715,7 +715,7 @@ impl TypeEvaluator.assign_type_to_type_var(
         for pta in param_type.private.type_args {
             self.assign_type_to_type_var(pta, arg_type.clone_as_instance(), bindings);
         }
-        return;
+        return True;
     }
 
     # Generic ClassType: match type_args recursively
