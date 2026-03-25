@@ -270,7 +270,6 @@ search.jac
 callback.cl.jac
 media.impl.jac
 basellm.impl.jac
-google_sso_provider.jac
 db.jac
 webhook.impl.jac
 serve.endpoints.impl.jac
@@ -410,3 +409,7 @@ useBudget.jac
 useLocalStorage.jac
 whitespace.jac
 wikipedia_react.jac
+provider.jac
+apple.jac
+google.jac
+github.jac
