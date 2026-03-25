@@ -4,7 +4,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.9 (Unreleased)
 
-
 - **Docker Build Pathway (`--build`)**: `jac start app.jac --scale --build` now builds and pushes a Docker image to DockerHub before deploying. Auto-generates a `Dockerfile` (with Bun, `jac install`, and layer-cached `jac.toml`) and `.dockerignore` (excludes `jac.local.toml`) if not present. Sets the correct K8s startup command automatically.
 - **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
 - **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
