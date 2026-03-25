@@ -80,7 +80,7 @@ def find_unreleased_lines(filepath: str) -> set[str]:
 def check_file(merge_base: str, filepath: str) -> list[str]:
     """Return error messages for misplaced entries in this file."""
     added_lines = get_added_lines(merge_base, filepath)
-    new_bullets = [l for l in added_lines if l.startswith("- ")]
+    new_bullets = [line for line in added_lines if line.startswith("- ")]
     if not new_bullets:
         return []
 
