@@ -77,6 +77,17 @@ impl JacCompiler._resolve_program(
     if normalized_path.startswith((jaclang_root + os.sep)) {
         return self.internal_program;
     }
+    # Non-jaclang paths must never land in the internal hub.
+    # This can happen when the type checker runs on internal modules
+    # (e.g. compiler.impl.jac) and encounters third-party imports like
+    # `import llvmlite` — in that case self.program IS internal_program,
+    # so _resolve_program would return it as the fallback.
+    if target_program is self.internal_program {
+        import from jaclang { JacRuntime }
+        if JacRuntime.program is not None {
+            return JacRuntime.program;
+        }
+    }
     return target_program;
 }
 
