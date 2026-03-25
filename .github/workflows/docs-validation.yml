@@ -79,3 +79,6 @@ jobs:
         env:
           CI: "true"
         run: bash scripts/check-release-notes.sh
+
+      - name: Check release note entries are in (Unreleased) section
+        run: python scripts/check_release_notes_section.py
