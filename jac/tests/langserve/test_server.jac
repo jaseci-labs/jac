@@ -740,7 +740,7 @@ test "test_hover_types" {
             passes_main_fixture_abs_path("checker/checker_gap_func_typevar.jac")
         );
         lsp.type_check_file(typevar_file);
-        
+
         typevar_cases: list[tuple[int, int, str, str]] = [
             (37, 4, "ok1", "int"),
             (42, 4, "result1", "Animal"),
