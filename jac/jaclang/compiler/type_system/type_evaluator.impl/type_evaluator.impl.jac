@@ -532,7 +532,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # Unknown base type: attribute access cannot be validated.
                 if isinstance(base_type, types.UnknownType) {
                     assert isinstance(expr.right, uni.Name);
-                    self.emit_diag(E1032, expr.right, attr=expr.right.value);
+                    # Suppress cascading E1032 when the target is a chained
+                    # expression (AtomTrailer/FuncCall) that already resolved to
+                    # Unknown — the root cause was already reported upstream.
+                    # Name targets are never suppressed: they represent the first
+                    # attribute access on an Unknown variable and should be reported.
+                    target_already_unknown = (
+                        isinstance(expr.target.type, types.UnknownType)
+                        and isinstance(expr.target, (uni.AtomTrailer, uni.FuncCall))
+                    );
+                    if not target_already_unknown {
+                        self.emit_diag(E1032, expr.right, attr=expr.right.value);
+                    }
                     return types.UnknownType();
                 }
                 # Check for full expr narrowing: `if c.field is not None: use(c.field)`
@@ -880,16 +891,31 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Handle member access on union types (e.g., (Mammal | Primate).name)
                     # Look up member on each type in the union
                     member_types: list[TypeBase] = [];
+                    has_any_member = False;  # Track if Any/Unknown members exist
                     decl_for_ide: uni.NameAtom | None = None;  # First decl found, used for go-to-definition
                     for union_member in base_type.types {
+                        # Any and Unknown types are compatible with all attribute access
+                        if isinstance(
+                            union_member, (types.AnyType, types.UnknownType)
+                        ) {
+                            member_types.append(union_member);
+                            has_any_member = True;
+                            continue;
+                        }
                         if isinstance(union_member, types.ClassType)
                         and union_member.is_class_instance() {
                             if member := self._lookup_object_member(
                                 union_member, expr.right.value
                             ) {
-                                member_types.append(
-                                    self.get_type_of_symbol(member.symbol)
-                                );
+                                if prop_ret := self.get_getter_type_from_property(
+                                    member.symbol
+                                ) {
+                                    member_types.append(prop_ret);
+                                } else {
+                                    member_types.append(
+                                        self.get_type_of_symbol(member.symbol)
+                                    );
+                                }
                                 if decl_for_ide is None {
                                     decl_for_ide = member.symbol.decl;
                                 }
@@ -900,10 +926,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                     all_union_members_have_field = len(member_types) == len(
                         base_type.types
                     );
-                    if all_union_members_have_field
-                    and decl_for_ide
-                    and decl_for_ide.sym {
-                        decl_for_ide.sym.add_use(expr.right);
+                    if all_union_members_have_field {
+                        if decl_for_ide and decl_for_ide.sym {
+                            decl_for_ide.sym.add_use(expr.right);
+                        }
                         # Dedupe: (str, str) → str, (str, int) → str | int
                         unique_types = list({str(t): t for t in member_types}.values());
                         all_same_type = len(unique_types) == 1;
@@ -1097,8 +1123,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if (
                     isinstance(base_type, types.ClassType)
                     and base_type.is_special_form("Callable")
+                )
+                or (
+                    isinstance(base_type, types.FunctionType)
+                    and base_type.is_gradual_callable_form()
                 ) {
-                    # Extract type arguments for Callable
+                    # Extract type arguments for Callable[[ArgTypes], ReturnType]
                     type_args_expr: uni.Expr | None = None;
                     if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
                         type_args_expr = expr.right.slices[0].start;
@@ -1274,12 +1304,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     subscript_arg = expr.right.slices[0].start;
                 }
-                if result := self.get_type_of_magic_method_call(
+                result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
-                ) {
+                );
+                if result and not isinstance(result, types.UnknownType) {
                     return result;
                 }
-                return types.UnknownType();
+                # Fallback: if __getitem__ overload matching failed or returned
+                # Unknown (e.g. due to SupportsIndex protocol not being
+                # structurally matched), check if the type is a known container
+                # with a predictable element type.
+                # str[int] -> str, bytes[int] -> int.
+                if isinstance(base_type, types.ClassType) {
+                    if base_type.is_builtin("str") {
+                        return base_type;  # str[n] returns str
+
+                    }
+                    if base_type.is_builtin("bytes") {
+                        if self.prefetch and self.prefetch.int_class {
+                            return self._convert_to_instance(self.prefetch.int_class);
+                        }
+                    }
+                }
+                return result or types.UnknownType();
             }
 
         case uni.AtomUnit():
@@ -2517,13 +2564,10 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     # --- Callable/FunctionType assignment compatibility ---
     # Handle assignment of functions to Callable types and vice versa.
     #
-    # Handle bare Callable (special form without type args) - treat as gradual callable.
-    # Bare `Callable` is equivalent to `Callable[..., Any]` in Python's typing system,
-    # meaning any function/callable is assignable to it.
-    # TODO : this is ad-hoc for now
+    # Gradual callable (bare `Callable` / `Callable[..., Any]`) accepts any function.
     if (
-        isinstance(dest_type, types.ClassType)
-        and dest_type.is_special_form("Callable")
+        isinstance(dest_type, types.FunctionType)
+        and dest_type.is_gradual_callable_form()
         and isinstance(src_type, types.FunctionType)
     ) {
         return True;
@@ -2681,6 +2725,40 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         )
     ) {
         return True;
+    }
+    # --- Structural protocol matching for typing protocols ---
+    # Protocols like SupportsIndex, SupportsInt, SupportsFloat, Sized, etc.
+    # define a single required dunder method. If the source type has that
+    # method, it satisfies the protocol structurally (PEP 544).
+    if (
+        isinstance(dest_type, types.ClassType)
+        and isinstance(src_type, types.ClassType)
+        and src_type.is_class_instance()
+        and dest_type.is_class_instance()
+        and dest_type.shared
+    ) {
+        _protocol_methods: dict[str, str] = {
+            "SupportsIndex": "__index__",
+            "SupportsInt": "__int__",
+            "SupportsFloat": "__float__",
+            "SupportsComplex": "__complex__",
+            "SupportsBytes": "__bytes__",
+            "SupportsAbs": "__abs__",
+            "SupportsRound": "__round__",
+            "Sized": "__len__",
+            "Hashable": "__hash__",
+            "Iterable": "__iter__",
+            "Iterator": "__next__",
+            "Reversible": "__reversed__",
+            "Container": "__contains__",
+
+        };
+        required_method = _protocol_methods.get(dest_type.shared.class_name);
+        if required_method {
+            if self._lookup_object_member(src_type, required_method) {
+                return True;
+            }
+        }
     }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);
@@ -3449,6 +3527,31 @@ impl TypeEvaluator.process_condition(condition: uni.Expr) -> None {
             }
         }
     }
+}
+
+"""Promote inverted narrowings from a terminated if-body to the parent scope.
+
+When an if-body always terminates (raise/return/break/continue), the only
+way to reach code after the if is via the else-path. This method applies
+the negated condition's narrowings to the parent scope so that dotted paths
+like `rt.program` stay narrowed after the if-block.
+
+Called from exit_if_stmt BEFORE pop_narrowing_scope. We temporarily pop
+the current scope, process the negated condition into the parent scope,
+then push a dummy scope for the caller's pop.
+"""
+impl TypeEvaluator.promote_inverted_narrowings(condition: uni.Expr) -> None {
+    # Pop the current (if-body) scope temporarily
+    self.pop_narrowing_scope();
+    # If there's no parent scope, create one so the narrowings persist
+    # after the if-block for the rest of the function/scope.
+    if not self._narrowing_scope_stack {
+        self.push_narrowing_scope();
+    }
+    # Apply negated narrowings to the parent scope
+    self.process_negated_condition(condition);
+    # Push a dummy scope that exit_if_stmt's pop_narrowing_scope will remove
+    self.push_narrowing_scope();
 }
 
 """Process a condition under the assumption it evaluated to falsy.
