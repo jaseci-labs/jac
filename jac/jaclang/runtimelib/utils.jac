@@ -34,7 +34,7 @@ def traverse_graph(
     connections: list,
     node_depths: dict[(NodeArchetype, int)],
     visited_nodes: list,
-    queue: list,
+    queue: list[tuple[NodeArchetype, int]],
     bfs: bool,
     dfs: Callable,
     node_limit: int,

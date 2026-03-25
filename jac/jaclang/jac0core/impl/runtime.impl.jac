@@ -802,7 +802,7 @@ impl JacBuiltin.printgraph(
     edge_type = edge_type or [];
     visited_nodes: list[NodeArchetype] = [];
     node_depths: dict[(NodeArchetype, int)] = {nd: 0};
-    queue: list = [[nd, 0]];
+    queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
     connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
     """Depth first search.""";
     def dfs(nd: NodeArchetype, cur_depth: int) -> None {
@@ -904,10 +904,12 @@ impl JacBasics.get_context -> ExecutionContext {
     }
 
     # Fallback to global context (CLI, tests, non-web environments)
-    if (JacRuntime.exec_ctx is None) {
-        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None);
+    ctx = JacRuntime.exec_ctx;
+    if ctx is None {
+        ctx = JacRuntimeInterface.create_j_context(user_root=None);
+        JacRuntime.exec_ctx = ctx;
     }
-    return JacRuntime.exec_ctx;
+    return ctx;
 }
 
 """Commit all data from memory to datasource."""

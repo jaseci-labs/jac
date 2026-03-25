@@ -2,16 +2,19 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.8 (Unreleased)
+## jac-scale 0.2.9 (Unreleased)
 
-- 1 small changes.
 
 - **Docker Build Pathway (`--build`)**: `jac start app.jac --scale --build` now builds and pushes a Docker image to DockerHub before deploying. Auto-generates a `Dockerfile` (with Bun, `jac install`, and layer-cached `jac.toml`) and `.dockerignore` (excludes `jac.local.toml`) if not present. Sets the correct K8s startup command automatically.
 - **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
 - **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
 - **Health Check Tuning**: Interval reduced from 15s to 10s, max retries increased to 60, `aws_nlb_wait` reduced to 10s.
 
-## jac-scale 0.2.7 (Latest Release)
+## jac-scale 0.2.8 (Latest Release)
+
+- 1 small changes.
+
+## jac-scale 0.2.7
 
 - **Kubernetes Security Hardening**: Added container-level security contexts (`allowPrivilegeEscalation: false`, `drop: ALL`, `readOnlyRootFilesystem`, `seccompProfile: RuntimeDefault`), dedicated `ServiceAccount` per workload, component-specific NetworkPolicies enforcing proper isolation (databases only accept traffic from main app + dashboards, monitoring components only accept ingress from trusted internal sources), and `pod-security.kubernetes.io/enforce: baseline` namespace labels.
 - **Scheduler Code Quality Cleanup**: Extracted shared `_authenticate_request()` and `_validate_trigger()` helpers to remove duplicated auth/validation logic across `/jobs` endpoints. Fixed `get_job()` to query by ID directly instead of loading all jobs. Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)`. Persisted `is_walker` in job data to avoid redundant introspector lookups. Replaced silent exception swallowing with debug logging.

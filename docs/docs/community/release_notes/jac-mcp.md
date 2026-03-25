@@ -1,6 +1,8 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.7 (Unreleased)
+## jac-mcp 0.1.8 (Unreleased)
+
+## jac-mcp 0.1.7 (Latest Release)
 
 - 2 small changes.
 - **8 new tools**: AI models can now run Jac code, lint files, convert Jac to Python or JavaScript, visualize graphs, list project templates, scaffold new projects, and start a local server - all from within the MCP session.
@@ -9,7 +11,7 @@
 - **Expanded test coverage**: 35 new tests covering all new tools at both the `CompilerBridge` and `ToolProvider` levels.
 - **Richer example descriptions**: `list_examples` now returns a meaningful one-line description per example (fullstack, OSP, native/lib mode, etc.) so AI models can pick the right one without fetching its contents first.
 
-## jac-mcp 0.1.6 (Latest Release)
+## jac-mcp 0.1.6
 
 - **Fix SSE transport method issue**
 - **Fix `prompts/get` failing with Pydantic validation error**: System instructions now correctly use `role: "assistant"`
