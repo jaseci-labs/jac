@@ -734,6 +734,24 @@ test "test_hover_types" {
         hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 52));
         assert hover is not None , "Ternary else branch hover should exist";
         assert "list[Node]" in hover.contents.value , f"Ternary else branch: expected list[Node], got: {hover.contents.value}";
+
+        # Generic function TypeVar resolution: resolved return types should appear in hover
+        typevar_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_gap_func_typevar.jac")
+        );
+        lsp.type_check_file(typevar_file);
+        # ok1 = identity(42) — T resolved to int
+        hover = lsp.get_hover_info(typevar_file, lspt.Position(37, 4));
+        assert hover is not None , "Hover should exist for ok1";
+        assert "int" in hover.contents.value , f"ok1 should be int, got: {hover.contents.value}";
+        # result2 = make_or_none(Dog) — T resolved to Dog
+        hover = lsp.get_hover_info(typevar_file, lspt.Position(43, 4));
+        assert hover is not None , "Hover should exist for result2";
+        assert "Dog" in hover.contents.value , f"result2 should contain Dog, got: {hover.contents.value}";
+        # ok_swap = swap(42, "hi") — T=int, U=str resolved
+        hover = lsp.get_hover_info(typevar_file, lspt.Position(51, 4));
+        assert hover is not None , "Hover should exist for ok_swap";
+        assert "tuple" in hover.contents.value , f"ok_swap should be tuple type, got: {hover.contents.value}";
     } finally {
         teardown_test();
     }

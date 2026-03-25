@@ -35,19 +35,19 @@ def swap[T, U](a: T, b: U) -> tuple[U, T] {
 
 with entry {
     # identity[T] — positional and keyword
-    ok1: int = identity(42);
-    ok2: str = identity("hello");
-    ok_kw: int = identity(val=42);
+    ok1 = identity(42);
+    ok2 = identity("hello");
+    ok_kw = identity(val=42);
 
     # make_or_none[T]
-    result1: Animal | None = make_or_none(Animal);
-    result2: Dog | None = make_or_none(Dog);
+    result1 = make_or_none(Animal);
+    result2 = make_or_none(Dog);
 
     # first_of_type[T]
     animals: list = [Dog(), Cat()];
-    found: Dog | None = first_of_type(animals, Dog);
-    found2: Cat | None = first_of_type(animals, Cat);
+    found = first_of_type(animals, Dog);
+    found2 = first_of_type(animals, Cat);
 
     # swap[T, U] — 2 TypeVars
-    ok_swap: tuple[str, int] = swap(42, "hi");
+    ok_swap = swap(42, "hi");
 }
