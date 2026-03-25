@@ -706,10 +706,7 @@ impl TypeEvaluator.assign_type_to_type_var(
     if (
         isinstance(param_type, types.ClassType)
         and isinstance(arg_type, types.ClassType)
-        and param_type.shared
-        and param_type.shared.class_name == "type"
-        and param_type.private
-        and param_type.private.type_args
+        and self._is_type_subscript(param_type)
         and (arg_type.flags & types.TypeFlags.Instantiable)
     ) {
         for pta in param_type.private.type_args {

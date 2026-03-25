@@ -100,8 +100,9 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     }
     return_type: TypeBase = self.get_none_type();
     if isinstance(node_.signature.return_type, uni.Expr) {
-        _raw_ret = self.get_type_of_expression(node_.signature.return_type);
-        return_type = self._convert_to_instance(_raw_ret);
+        return_type = self._convert_to_instance(
+            self.get_type_of_expression(node_.signature.return_type)
+        );
     }
     # Define helper function for parameter conversion.
     def _get_param_category(param: uni.ParamVar) -> types.ParameterCategory {
