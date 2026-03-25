@@ -33,9 +33,9 @@ obj ExecutionContext {
     has mem: Memory by postinit,
         reports: list[Any] = [],
         custom: Any = MISSING,
-        system_root: NodeAnchor | None by postinit,
-        user_root: NodeAnchor | None by postinit,
-        entry_node: NodeAnchor | None by postinit,
+        system_root: NodeAnchor by postinit,
+        user_root: NodeAnchor by postinit,
+        entry_node: NodeAnchor by postinit,
         call_state: ContextVar[CallState] = ContextVar('call_state');
 
     def postinit -> None;

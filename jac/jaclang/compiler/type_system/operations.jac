@@ -269,7 +269,9 @@ def get_type_of_binary_operation(
     }
 
     if left_type.is_any_type() or right_type.is_any_type() {
-        return jtypes.UnknownType();
+        if not (isinstance(expr.op, uni.Token) and expr.op.name == Tok.BW_OR) {
+            return jtypes.UnknownType();
+        }
     }
     # Boolean operations
     if (
@@ -285,6 +287,26 @@ def get_type_of_binary_operation(
         #
         # TODO: Pyright checks if the types support '__or__' and '__ror__' before returning UnionType
         # If they support, we can treat them as binary operands, instead of Union types.
+        def is_annotation_type(ty: jtypes.TypeBase) -> bool {
+            if ty.is_instantiable() or isinstance(ty, jtypes.UnionType) {
+                return True;
+            }
+            # TypeVarType is valid in union type annotations (e.g., T | None)
+            if isinstance(ty, jtypes.TypeVarType) {
+                return True;
+            }
+            # Although None is not a valid class, it can be used as a class in the type annotation.
+            if isinstance(ty, jtypes.ClassType) {
+                return ty.shared == evaluator.prefetch.none_type_class.shared;
+            }
+            return False;
+        }
+        if expr.op.name == Tok.BW_OR {
+            # TODO: Handle None instance used
+            if is_annotation_type(left_type) and is_annotation_type(right_type) {
+                return jtypes.UnionType(types=[left_type, right_type]);
+            }
+        }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         # Apply numeric type promotion for arithmetic operations (int -> float)
         if expr.op.name in ARITHMETIC_OPERATORS {
