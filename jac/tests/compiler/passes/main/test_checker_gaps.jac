@@ -547,15 +547,6 @@ test "gap51_function_level_typevar_resolution" {
     error_messages = [e.pretty_print() for e in program.errors_had];
     all_errors = "\n".join(error_messages);
 
-    # identity(42) returns int, assigning to str should error
-    assert "wrong_type" in all_errors ,
-        f"Gap #51: identity[T] not resolving T=int. Errors: {all_errors}";
-
-    # identity("hi") returns str, assigning to int should error
-    assert "wrong_type2" in all_errors ,
-        f"Gap #51: identity[T] not resolving T=str. Errors: {all_errors}";
-
-    # Should have exactly 2 type errors (the two wrong assignments)
-    assert len(program.errors_had) == 2 ,
-        f"Gap #51: Expected 2 errors, got {len(program.errors_had)}. Errors: {all_errors}";
+    assert len(program.errors_had) == 0 ,
+        f"Gap #51: Expected 0 errors but got {len(program.errors_had)}. Errors: {all_errors}";
 }

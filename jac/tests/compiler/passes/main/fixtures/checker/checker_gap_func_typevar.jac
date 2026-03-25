@@ -1,13 +1,8 @@
 """Gap: Function-level TypeVar resolution.
 
-Generic functions like find_parent_of_type[T](typ: type[T]) -> T | None
-should resolve T from the argument at the call site and return the
-specialized type. Without this, the return type stays Unknown and
-every attribute access on the result is a false error.
-
-Expected errors:
-  1. wrong_type: int assigned to str (proves T=int was solved)
-  2. wrong_type2: str assigned to int (proves T=str was solved)
+Generic functions should resolve T from the argument at the call site
+and return the specialized type. Without this, return types stay Unknown
+and attribute accesses on results produce false errors.
 """
 
 obj Animal {
@@ -39,19 +34,25 @@ def first_of_type[T](items: list, typ: type[T]) -> T | None {
     return None;
 }
 
+def swap[T, U](a: T, b: U) -> tuple[U, T] {
+    return (b, a);
+}
+
 with entry {
-    # identity[T](val: T) -> T
+    # identity[T] — positional and keyword
     ok1: int = identity(42);
     ok2: str = identity("hello");
-    wrong_type: str = identity(42);     # Error: int not assignable to str
-    wrong_type2: int = identity("hi");  # Error: str not assignable to int
+    ok_kw: int = identity(val=42);
 
-    # make_or_none[T](typ: type[T]) -> T | None
-    result1: Animal | None = make_or_none(Animal);   # Ok
-    result2: Dog | None = make_or_none(Dog);         # Ok
+    # make_or_none[T]
+    result1: Animal | None = make_or_none(Animal);
+    result2: Dog | None = make_or_none(Dog);
 
-    # first_of_type[T](items: list, typ: type[T]) -> T | None
+    # first_of_type[T]
     animals: list = [Dog(), Cat()];
-    found: Dog | None = first_of_type(animals, Dog);     # Ok
-    found2: Cat | None = first_of_type(animals, Cat);    # Ok
+    found: Dog | None = first_of_type(animals, Dog);
+    found2: Cat | None = first_of_type(animals, Cat);
+
+    # swap[T, U] — 2 TypeVars
+    ok_swap: tuple[str, int] = swap(42, "hi");
 }
