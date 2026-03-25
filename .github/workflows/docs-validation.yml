@@ -64,6 +64,10 @@ jobs:
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Check release note entries are in (Unreleased) section
+        if: github.event_name == 'pull_request'
+        run: jac run scripts/check_release_notes_section.jac
+
   check-release-notes:
     name: Check Release Notes Updated
     if: github.event_name == 'pull_request'
@@ -79,14 +83,3 @@ jobs:
         env:
           CI: "true"
         run: bash scripts/check-release-notes.sh
-
-      - name: Set up Python for release notes check
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.12"
-
-      - name: Install jaclang for release notes check
-        run: pip install -e jac
-
-      - name: Check release note entries are in (Unreleased) section
-        run: jac run scripts/check_release_notes_section.jac
