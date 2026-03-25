@@ -1,9 +1,4 @@
-"""Gap: Function-level TypeVar resolution.
-
-Generic functions should resolve T from the argument at the call site
-and return the specialized type. Without this, return types stay Unknown
-and attribute accesses on results produce false errors.
-"""
+"""Gap #51: Generic functions should resolve TypeVars at call sites."""
 
 obj Animal {
     has name: str = "animal";
