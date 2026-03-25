@@ -112,7 +112,9 @@ def main() -> int:
         print()
         print("The entries below landed outside it -- this usually happens when a")
         print("new release is cut while your PR is open and you rebase afterward.")
-        print("Open the file and move the entry to the top section marked (Unreleased).")
+        print(
+            "Open the file and move the entry to the top section marked (Unreleased)."
+        )
         print()
         for err in all_errors:
             print(err)
