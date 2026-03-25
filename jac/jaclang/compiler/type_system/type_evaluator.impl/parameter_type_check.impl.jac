@@ -43,6 +43,13 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
+    # Special-form handling for enum.auto() -> int
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.is_builtin("auto")
+    and (not expr.params or len(expr.params) == 0) {
+        return self.prefetch.int_class if self.prefetch else types.UnknownType();
+    }
+
     # TypeVar handling - use bound/constraints if available
     if isinstance(caller_type, types.TypeVarType) {
         # Constrained TypeVar - check all constraint types

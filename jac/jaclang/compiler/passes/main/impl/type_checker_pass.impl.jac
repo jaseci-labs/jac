@@ -206,9 +206,42 @@ impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
     self.evaluator.process_condition(nd.condition);
 }
 
-"""Exit an if statement - clean up narrowing scope."""
+"""Exit an if statement - clean up narrowing scope.
+
+When the if-body always terminates (raise/return/break/continue), the only
+way to reach code after the if is via the else-path. In that case, promote
+the INVERTED narrowings from the condition to the parent scope. This handles
+patterns like:
+
+    if rt.program is None { raise ValueError(); }
+    rt.program.mtir_map  # rt.program is narrowed to Program (not None)
+"""
 impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    # Detect early-exit guard pattern: `if cond { raise/return; }`
+    # When the if-body always terminates and there's no else body, the code
+    # after the if only runs on the false-path. Promote the inverted narrowings
+    # to the parent scope so dotted attribute paths stay narrowed.
+    if nd.condition and self._if_body_always_terminates(nd) {
+        self.evaluator.promote_inverted_narrowings(nd.condition);
+    }
     self.evaluator.pop_narrowing_scope();
+}
+
+"""Check if an if-statement's body always terminates (raise/return).
+
+Only handles the simple guard pattern: `if cond { raise/return; }` with
+no else body. Elif chains and else bodies are not handled because the
+narrowing semantics are more complex (each branch may narrow differently).
+"""
+impl TypeCheckPass._if_body_always_terminates(
+    self: TypeCheckPass, nd: uni.IfStmt
+) -> bool {
+    if not nd.body or nd.else_body {
+        return False;  # Has else/elif: too complex for simple promotion
+
+    }
+    last_stmt = nd.body[-1];
+    return isinstance(last_stmt, (uni.RaiseStmt, uni.ReturnStmt));
 }
 
 """Enter a match case - narrow the match subject based on the pattern type."""
@@ -281,6 +314,18 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 left_type = declared_type;
             } else {
                 left_type = self.evaluator.get_type_of_expression(target);
+                # For field assignments (e.g., obj.field = value), the target
+                # expression type may be narrowed (e.g., NoneType inside an
+                # `if obj.field is None` block). Use the declared field type
+                # for the assignment check instead of the narrowed type.
+                if isinstance(target, uni.AtomTrailer) and target.is_attr {
+                    if isinstance(target.right, uni.Name) and target.right.sym {
+                        declared = self.evaluator.get_type_of_symbol(target.right.sym);
+                        if declared {
+                            left_type = declared;
+                        }
+                    }
+                }
             }
         }
         # Pass declared LHS type as expected_type for bidirectional inference

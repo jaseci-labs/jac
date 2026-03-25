@@ -322,11 +322,49 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
         data = cache_path.read_bytes();
         reader = JirReader(_source_path=resolved_path);
         mod = reader.read_module(data);
+
+        # Re-attach impl modules after JIR load.
+        # JIR doesn't serialize impl_mod, so symbols defined in impl files
+        # (e.g., self.x = value in __init__) would be lost. Re-discover and
+        # re-attach impl files, then re-run DeclImplMatchPass to restore them.
+        if mod is not None and resolved_path.endswith('.jac') {
+            self._reattach_impl_modules(mod, resolved_path);
+        }
+
         return mod;
     } except Exception {
         # Log but don't crash — fall back to full compile
         traceback.print_exc();
         return None;
+    }
+}
+
+"""Re-attach impl modules after JIR load to restore impl-defined symbols."""
+impl TypeEvaluator._reattach_impl_modules(mod: uni.Module, source_path: str) -> None {
+    import from jaclang.jac0core.bccache { discover_annex_files }
+    import from jaclang.jac0core.passes { DeclImplMatchPass }
+
+    # Skip annex files (they don't have their own annexes)
+    if source_path.endswith('.impl.jac')
+    or source_path.endswith('.test.jac')
+    or mod.annexable_by is not None {
+        return;
+    }
+
+    # Compile impl files fresh (impl symbol defn nodes aren't serialized in JIR)
+    for impl_path in discover_annex_files(source_path, '.impl.jac') {
+        impl_mod = self.program.compile(
+            impl_path, no_cgen=True, type_check=False, symtab_ir_only=True
+        );
+        if impl_mod is not None and impl_mod not in mod.impl_mod {
+            mod.impl_mod.append(impl_mod);
+            impl_mod.parent_scope = mod;
+        }
+    }
+
+    # Re-run DeclImplMatchPass to restore instance variable symbols (e.g., self.x in __init__)
+    if mod.impl_mod {
+        DeclImplMatchPass(ir_in=mod, prog=self.program);
     }
 }
 
