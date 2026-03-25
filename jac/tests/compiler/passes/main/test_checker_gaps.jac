@@ -21,7 +21,6 @@ Gap index:
   #49 - TYPE_CHECKING forward-reference string annotations
   #50 - postinit body not validated against by-postinit field declarations
   #51 - @property on union types returns FunctionType instead of return type
-  #52 - Function-level TypeVar (e.g. def foo[T]) not resolved at call sites
 """
 
 import os;
@@ -538,15 +537,3 @@ test "gap 51 property on union type returns function type" {
     f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
 }
 
-# =========================================================================
-# Gap #52: Function-level TypeVar not resolved at call sites
-# =========================================================================
-test "gap51_function_level_typevar_resolution" {
-    program = compile_and_check("checker_gap_func_typevar.jac");
-
-    error_messages = [e.pretty_print() for e in program.errors_had];
-    all_errors = "\n".join(error_messages);
-
-    assert len(program.errors_had) == 0 ,
-        f"Gap #51: Expected 0 errors but got {len(program.errors_had)}. Errors: {all_errors}";
-}

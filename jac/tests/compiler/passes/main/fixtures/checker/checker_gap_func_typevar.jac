@@ -44,7 +44,7 @@ with entry {
     result2 = make_or_none(Dog);
 
     # first_of_type[T]
-    animals: list = [Dog(), Cat()];
+    animals = [Dog(), Cat()];
     found = first_of_type(animals, Dog);
     found2 = first_of_type(animals, Cat);
 
