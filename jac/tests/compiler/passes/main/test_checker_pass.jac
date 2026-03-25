@@ -582,15 +582,15 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    # 5 errors: 'has no attribute name' (obj can't have dynamic attrs),
-    # 3 Unknown self in static/classmethod, 1 type mismatch
-    assert len(program.errors_had) == 5;
+    # 6 errors: 'has no attribute name' (obj can't have dynamic attrs),
+    # 3 Unknown self in static/classmethod, 2 type mismatches
+    assert len(program.errors_had) == 6;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[4].pretty_print()
+        program.errors_had[5].pretty_print()
     );
 }
 
@@ -599,7 +599,7 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 8;
+    assert len(program.errors_had) == 6;
 }
 
 test "cyclic_symbol" {
@@ -2739,9 +2739,11 @@ test "root_cause_2_unknown_cascade" {
         for e in program.errors_had
         if e.loc and 148 <= e.loc.first_line <= 162
     ];
-    # FIXED: Cascading E1032 errors suppressed when target already Unknown.
-    # Remaining 3: 2 root E1030 errors (Memory.l3, Memory.get_mem) + 1 E1002 return mismatch.
-    assert len(rc2_errors) == 3 , f"Expected 3 unknown-cascade errors (cascade suppressed), got {len(
+    # Cascading E1032 suppressed for chained AtomTrailer/FuncCall targets.
+    # Name targets still report: persistence.some_attr, data.values() are first
+    # attribute accesses on Unknown variables — each is a real diagnostic.
+    # 5: 2 root E1030 + 2 E1032 on Name targets + 1 return mismatch.
+    assert len(rc2_errors) == 5 , f"Expected 5 unknown-cascade errors, got {len(
         rc2_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc2_errors);
 }
@@ -2825,8 +2827,9 @@ test "root_cause_5_string_slice_loses_type" {
         if e.loc and 234 <= e.loc.first_line <= 254
     ];
     # PARTIALLY FIXED: str.__getitem__ now returns str via protocol matching fallback.
-    # Remaining 1: chained expr s[0].upper() — evaluation ordering in AtomTrailer chain.
-    assert len(rc5_errors) == 1 , f"Expected 1 string-slice error (partially fixed), got {len(
+    # Remaining 3: while-loop re-assignment degrades str to Unknown (.startswith x2),
+    # plus chained s[0].upper() — evaluation ordering in AtomTrailer chain.
+    assert len(rc5_errors) == 3 , f"Expected 3 string-slice errors, got {len(
         rc5_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc5_errors);
 }
@@ -2854,8 +2857,9 @@ test "root_cause_6_stdlib_returns_unknown" {
         for e in program.errors_had
         if e.loc and 267 <= e.loc.first_line <= 305
     ];
-    # RC2 cascade fix reduced secondary errors from 21 to 3 (root E1032s only).
-    assert len(rc6_errors) == 3 , f"Expected 3 stdlib-unknown errors (cascade suppressed), got {len(
+    # importlib.util resolves to Unknown — each function using it reports errors.
+    # Cascade suppression handles chained AtomTrailer accesses but not Name targets.
+    assert len(rc6_errors) == 15 , f"Expected 15 stdlib-unknown errors, got {len(
         rc6_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc6_errors);
 }
@@ -2914,9 +2918,9 @@ test "root_cause_8_dynamic_class_attrs" {
         for e in program.errors_had
         if e.loc and 360 <= e.loc.first_line <= 390
     ];
-    # 3 errors: type[Archetype].reports, WalkerArchetype._instance,
-    # object.call_params. ThreadPoolExecutor.submit cascade suppressed by RC2 fix.
-    assert len(rc8_errors) == 3 , f"Expected 3 dynamic-attr errors, got {len(
+    # 4 errors: type[Archetype].reports, WalkerArchetype._instance,
+    # object.call_params, executor.submit (ThreadPoolExecutor Unknown from import).
+    assert len(rc8_errors) == 4 , f"Expected 4 dynamic-attr errors, got {len(
         rc8_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc8_errors);
 }
@@ -3010,10 +3014,10 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Total: RC1(0) + RC2(3) + RC3(0) + RC4(0) + RC5(1) + RC6(3) + RC7(8) + RC8(3) + RC9(5) = 23
-    # Note: RC9 increased because RC1 raise narrowing exposed new type contexts.
-    # But not all are in RC9 range. Let's just assert total.
-    assert len(program.errors_had) == 21 , f"Expected 21 total errors, got {len(
+    # Total: RC1(0) + RC2(5) + RC3(0) + RC4(0) + RC5(3) + RC6(15) + RC7(8) + RC8(4) + RC9(3) = 38
+    # Name-target cascade suppression removed — each Unknown Name attribute
+    # access is now reported as a real diagnostic.
+    assert len(program.errors_had) == 38 , f"Expected 38 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

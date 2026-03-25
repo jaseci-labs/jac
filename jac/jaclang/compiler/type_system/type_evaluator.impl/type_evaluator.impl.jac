@@ -532,13 +532,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # Unknown base type: attribute access cannot be validated.
                 if isinstance(base_type, types.UnknownType) {
                     assert isinstance(expr.right, uni.Name);
-                    # Suppress cascading E1032 when the target expression already
-                    # resolved to Unknown (the root cause was already reported).
+                    # Suppress cascading E1032 when the target is a chained
+                    # expression (AtomTrailer/FuncCall) that already resolved to
+                    # Unknown — the root cause was already reported upstream.
+                    # Name targets are never suppressed: they represent the first
+                    # attribute access on an Unknown variable and should be reported.
                     target_already_unknown = (
                         isinstance(expr.target.type, types.UnknownType)
-                        and isinstance(
-                            expr.target, (uni.AtomTrailer, uni.Name, uni.FuncCall)
-                        )
+                        and isinstance(expr.target, (uni.AtomTrailer, uni.FuncCall))
                     );
                     if not target_already_unknown {
                         self.emit_diag(E1032, expr.right, attr=expr.right.value);
