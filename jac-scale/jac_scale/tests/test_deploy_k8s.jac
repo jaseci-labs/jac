@@ -777,6 +777,36 @@ test "deploy all in one" {
     assert "/db-dashboard" in ingress_paths , f"Main ingress must route '/db-dashboard'; got paths: {ingress_paths}";
     print(f"Main Ingress '{ingress_name}' exists with routes: {ingress_paths}");
 
+    # Validate rate limiting annotations are present with correct default values
+    ingress_annotations = main_ingress.metadata.annotations or {};
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-rps") == "20" , (
+        f"Expected limit-rps=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-rps'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-burst-multiplier"
+    ) == "5" , (
+        f"Expected limit-burst-multiplier=5, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-burst-multiplier'
+        )}"
+    );
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-connections") == "20" , (
+        f"Expected limit-connections=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-connections'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-req-status-code"
+    ) == "429" , (
+        f"Expected limit-req-status-code=429, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-req-status-code'
+        )}"
+    );
+    print(
+        f"Rate limiting annotations verified: rps=20, burst-multiplier=5, connections=20, status=429"
+    );
+
     ri_ingress = networking_v1.read_namespaced_ingress(
         name=redis_ingress_name, namespace=namespace
     );

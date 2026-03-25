@@ -536,7 +536,17 @@ obj IngressDeployer {
         ingress_annotations: dict = {
             'nginx.ingress.kubernetes.io/proxy-body-size': '0',
             'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600'
+            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+            'nginx.ingress.kubernetes.io/limit-rps': str(
+                self.k8s_config.ingress_limit_rps
+            ),
+            'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
+                self.k8s_config.ingress_limit_burst_multiplier
+            ),
+            'nginx.ingress.kubernetes.io/limit-connections': str(
+                self.k8s_config.ingress_limit_connections
+            ),
+            'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
         };
         if self.k8s_config.domain {
             ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;

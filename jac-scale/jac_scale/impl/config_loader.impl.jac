@@ -59,6 +59,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'redis_password': 'password',
             # Ingress configuration
             'ingress_node_port': 30080,
+            # Rate limiting (DDoS protection)
+            'ingress_limit_rps': 20,
+            'ingress_limit_burst_multiplier': 5,
+            'ingress_limit_connections': 20,
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,

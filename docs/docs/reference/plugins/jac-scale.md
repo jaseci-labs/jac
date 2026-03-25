@@ -1255,6 +1255,37 @@ ingress_node_port = 30080
 
 ---
 
+### Rate Limiting (DDoS Protection)
+
+jac-scale applies NGINX rate limiting annotations to the Ingress to protect against abuse and DDoS traffic. Limits are enforced **per client IP**.
+
+**How it works (leaky bucket algorithm):**
+
+- **`ingress_limit_rps`** - sustained requests per second allowed per IP.
+- **`ingress_limit_burst_multiplier`** - burst = `limit_rps x burst_multiplier`. Requests within the burst are queued; requests beyond it are dropped with `429`.
+- **`ingress_limit_connections`** - maximum number of concurrent open connections per IP. Excess connections are rejected immediately.
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `ingress_limit_rps` | `20` | Sustained requests per second per client IP |
+| `ingress_limit_burst_multiplier` | `5` | Burst headroom multiplier (burst = rps × multiplier) |
+| `ingress_limit_connections` | `20` | Max concurrent connections per client IP |
+
+Requests that exceed the limits receive `429 Too Many Requests`.
+
+**To customize in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+ingress_limit_rps = 50              # allow more sustained traffic
+ingress_limit_burst_multiplier = 3  # tighter burst control
+ingress_limit_connections = 30      # more concurrent connections
+```
+
+---
+
 ### Domain & TLS (HTTPS)
 
 jac-scale supports custom domain names and automatic HTTPS via [cert-manager](https://cert-manager.io) + Let's Encrypt. TLS is a two-step process to avoid the chicken-and-egg problem (NLB hostname is unknown until after the first deploy).
