@@ -2808,50 +2808,19 @@ from pathlib import Path
 # Plugin configuration from [desktop.plugins] in jac.toml
 PLUGINS_CONFIG = {plugins_config_str}
 
-# Hidden imports for jaclang and dependencies
+# Manual hidden imports - only for stdlib and PyInstaller runtime deps
+# (pip packages like jaclang, jac_client, websockets are handled by collect_all() below)
 hiddenimports = [
-    'jaclang',
-    'jaclang.jac0core',
-    'jaclang.jac0core.runtime',
-    'jaclang.runtimelib',
-    'jaclang.runtimelib.server',
-    'jaclang.cli',
-    'jaclang.cli.console',
-    'jaclang.project',
-    'jaclang.project.config',
-    'jac_client',
-    'jac_client.plugin',
-    'jac_client.plugin.src',
-    'jac_client.plugin.src.targets',
-    'jac_client.plugin.src.targets.desktop',
-    'jac_client.plugin.src.targets.desktop.sidecar',
-    'jac_client.plugin.src.targets.desktop.sidecar.main',
-    'sqlite3',
-    'hashlib',
-    'secrets',
-    'http.server',
-    'json',
-    'asyncio',
-    'inspect',
-    'typing',
-    'pathlib',
-    'pluggy',
-    'toml',
-    'tomli',
-    # Websockets for preview proxy
-    'websockets',
-    'websockets.client',
-    'websockets.server',
-    'websockets.legacy',
-    'websockets.legacy.server',
-    'websockets.legacy.client',
-    # Python stdlib modules that jaclang uses
-    'pdb',
-    'bdb',
-    'cmd',
-    'code',
-    'codeop',
-    'readline',
+    # Python stdlib modules (can't be collected via collect_all)
+    'sqlite3', 'hashlib', 'secrets', 'http.server', 'json',
+    'asyncio', 'inspect', 'typing', 'pathlib',
+    'pdb', 'bdb', 'cmd', 'code', 'codeop', 'readline',
+    # PyInstaller runtime deps - use importlib.metadata instead of pkg_resources
+    'appdirs', 'setuptools',
+    'packaging', 'packaging.version', 'packaging.specifiers', 'packaging.requirements',
+    'importlib.metadata', 'importlib.resources',
+    # jaraco packages (setuptools deps for Python 3.12+)
+    'jaraco', 'jaraco.functools', 'jaraco.context', 'jaraco.text',
 ]
 
 # Check plugin availability (collect_all() below handles the actual bundling)
@@ -2943,7 +2912,7 @@ collected_packages = set()
 
 # Core packages - always bundle completely (with their dependencies)
 print("\\n[Collecting core packages...]")
-for pkg in ['jaclang', 'jac_client']:
+for pkg in ['jaclang', 'jac_client', 'setuptools', 'appdirs', 'packaging']:
     d, b, h = collect_with_deps(pkg, collected_packages)
     datas += d
     binaries += b
@@ -3016,7 +2985,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy'],
+    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'pkg_resources'],
     noarchive=False,
 )
 

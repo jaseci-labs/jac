@@ -242,9 +242,25 @@ for name, version in deps.items():
             done
         fi
 
+        # Upgrade PyInstaller to latest (Python 3.12 compatibility fixes)
+        echo "Upgrading PyInstaller..."
+        python3.12 -m pip install --upgrade pyinstaller
+
         # Ensure PyInstaller runtime dependencies are installed
+        # setuptools>=70.0.0 required for Python 3.12 (pkgutil.ImpImporter removed)
+        # importlib-metadata for package discovery in frozen apps
+        # certifi for SSL certificates
         echo "Installing PyInstaller runtime dependencies..."
-        python3.12 -m pip install --progress-bar on appdirs setuptools packaging
+        python3.12 -m pip install --progress-bar on --upgrade \
+            appdirs \
+            "setuptools>=70.0.0" \
+            packaging \
+            importlib-metadata \
+            certifi \
+            zipp \
+            jaraco.functools \
+            jaraco.context \
+            jaraco.text
 
         # Clean up temp files (but keep pip cache for faster rebuilds)
         rm -rf /tmp/*
