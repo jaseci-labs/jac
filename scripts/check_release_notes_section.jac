@@ -1,15 +1,11 @@
 """Check that new release note entries land in the (Unreleased) section.
 
-Compares release notes files against the merge-base with origin/main and
-fails if any newly added bullet lines (lines starting with "- ") are not
-inside the section whose header contains "(Unreleased)".
-
-This prevents entries from silently ending up in an already-released section
-when a new release is cut while a PR is still open.
+Fails if any added bullet lines are outside (Unreleased), or if anything
+is added to the (Latest Release) section.
 """
 import subprocess;
 import sys;
-import from pathlib { Path }
+import re;
 
 glob RELEASE_NOTE_FILES = [
     "docs/docs/community/release_notes/jaclang.md",
@@ -19,6 +15,8 @@ glob RELEASE_NOTE_FILES = [
     "docs/docs/community/release_notes/jac-super.md",
     "docs/docs/community/release_notes/jac-mcp.md"
 ];
+
+glob VERSION_HEADER = r"^## ([a-z][a-z0-9-]*|Version) \d+\.\d+(\.\d+)?";
 
 def get_merge_base() -> (str | None) {
     try {
@@ -34,8 +32,7 @@ def get_merge_base() -> (str | None) {
     }
 }
 
-"""Return lines added in HEAD vs merge_base for the given file."""
-def get_added_lines(merge_base: str, filepath: str) -> list[str] {
+def get_diff(merge_base: str, filepath: str) -> str {
     try {
         result = subprocess.run(
             ["git", "diff", f"{merge_base}...HEAD", "--", filepath],
@@ -43,61 +40,60 @@ def get_added_lines(merge_base: str, filepath: str) -> list[str] {
             text=True,
             check=True
         );
+        return result.stdout;
     } except subprocess.CalledProcessError {
-        return [];
+        return "";
     }
-    added = [];
-    for line in result.stdout.splitlines() {
-        if (line.startswith("+") and not line.startswith("+++")) {
-            added.append(line[1:]);
-        }
-    }
-    return added;
 }
 
-"""Return the set of lines that are inside the (Unreleased) section."""
-def find_unreleased_lines(filepath: str) -> set[str] {
-    path = Path(filepath);
-    if not path.exists() {
-        return `set();
-    }
-    lines = path.read_text().splitlines();
-    in_unreleased = False;
-    result: set[str] = `set();
-    for line in lines {
-        if line.startswith("## ") {
-            in_unreleased = "(Unreleased)" in line;
-        } elif in_unreleased {
-            result.add(line);
-        }
-    }
-    return result;
-}
-
-"""Return error messages for misplaced entries in this file."""
 def check_file(merge_base: str, filepath: str) -> list[str] {
-    added_lines = get_added_lines(merge_base, filepath);
-    new_bullets = [
-        line
-        for line in added_lines
-        if line.startswith("- ")
-    ];
-    if not new_bullets {
+    diff = get_diff(merge_base, filepath);
+    if not diff {
         return [];
     }
-    unreleased_lines = find_unreleased_lines(filepath);
-    misplaced = [
-        b
-        for b in new_bullets
-        if (b not in unreleased_lines)
-    ];
-    if not misplaced {
-        return [];
+
+    is_unreleased = False;
+    is_latest_release = False;
+    latest_release_entries: list[str] = [];
+    misplaced_entries: list[str] = [];
+
+    for line in diff.splitlines() {
+        if line.startswith("---") or line.startswith("+++") or line.startswith("@@") or not line {
+            continue;
+        }
+
+        prefix = line[0];
+        content = line[1:];
+
+        if prefix == "-" {
+            continue;
+        }
+
+        if re.match(VERSION_HEADER, content) {
+            is_unreleased = "(Unreleased)" in content;
+            is_latest_release = "(Latest Release)" in content;
+        }
+
+        if prefix == "+" and content.startswith("- ") {
+            if not is_unreleased {
+                preview = content[:100] + ("..." if len(content) > 100 else "");
+                if is_latest_release {
+                    latest_release_entries.append(f"    {preview}");
+                } else {
+                    misplaced_entries.append(f"    {preview}");
+                }
+            }
+        }
     }
-    errors = [f"  {filepath}:"];
-    for `entry in misplaced {
-        preview = `entry[:100] + ("..." if (len(`entry) > 100) else "");
-        errors.append(f"    {preview}");
+
+    errors: list[str] = [];
+    if latest_release_entries {
+        errors.append(f"  {filepath}: additions to (Latest Release) are not allowed:");
+        errors.extend(latest_release_entries);
+    }
+    if misplaced_entries {
+        errors.append(f"  {filepath}: entries added outside (Unreleased) section:");
+        errors.extend(misplaced_entries);
     }
     return errors;
 }
@@ -114,11 +110,10 @@ def main() -> int {
     }
     if all_errors {
         print();
-        print("ERROR: New release note entries must be in the (Unreleased) section.");
+        print("ERROR: Release note entries must only be added to the (Unreleased) section.");
         print();
-        print("The entries below landed outside it -- this usually happens when a");
-        print("new release is cut while your PR is open and you rebase afterward.");
-        print("Open the file and move the entry to the top section marked (Unreleased).");
+        print("- If your entry landed in a released section: move it to the top (Unreleased) header.");
+        print("- If your entry is in (Latest Release): that section is locked -- move it to (Unreleased).");
         print();
         for err in all_errors {
             print(err);
