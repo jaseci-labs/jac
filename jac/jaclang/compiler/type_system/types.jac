@@ -122,7 +122,7 @@ obj AnyType(TypeBase) {
 obj ModuleType(TypeBase) {
     has mod_name: str = "",
         file_uri: Path = Path(""),
-        symbol_table: SymbolTable = None,
+        symbol_table: SymbolTable | None = None,
         # Module source flags (similar to Pyright's SourceFileInfo)
         # These are computed once when the module is loaded based on file path.
         is_stub_file: bool = False,  # True if .pyi file
@@ -183,7 +183,7 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType],
+            mro: list[ClassType] = [],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
@@ -312,7 +312,8 @@ obj FunctionType(TypeBase) {
         return_type: (TypeBase | None) = None,
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
-        function_flags: int = 0;
+        function_flags: int = 0,
+        type_params: (list[TypeVarType] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -321,6 +322,7 @@ obj FunctionType(TypeBase) {
     def postinit -> None;
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
+    def specialize_func_type_vars(solution: dict[(str, TypeBase)]) -> FunctionType;
     def is_gradual_callable_form -> bool;
     def is_from_callable_annotation -> bool;
 }

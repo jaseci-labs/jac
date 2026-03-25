@@ -425,7 +425,12 @@ obj Module(AstDocNode, UniScopeNode) {
         source: Source,
         body: Sequence[ElementStmt | String | EmptyToken],
         terminals: list[Token],
-        stub_only: bool = False;
+        stub_only: bool = False,
+        impl_mod: list[Module] = [],
+        test_mod: list[Module] = [],
+        variant_mod: list[Module] = [],
+        src_terminals: list[Token] = [],
+        is_raised_from_py: bool = False;
 
     def postinit -> None;
     @property
