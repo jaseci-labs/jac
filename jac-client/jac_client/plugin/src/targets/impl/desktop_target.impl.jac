@@ -2837,6 +2837,14 @@ hiddenimports = [
     'pathlib',
     'pluggy',
     'toml',
+    # pkg_resources dependencies (required for PyInstaller runtime)
+    'appdirs',
+    'pkg_resources',
+    'setuptools',
+    'packaging',
+    'packaging.version',
+    'packaging.specifiers',
+    'packaging.requirements',
     'tomli',
     # Websockets for preview proxy
     'websockets',
@@ -2943,7 +2951,7 @@ collected_packages = set()
 
 # Core packages - always bundle completely (with their dependencies)
 print("\\n[Collecting core packages...]")
-for pkg in ['jaclang', 'jac_client']:
+for pkg in ['jaclang', 'jac_client', 'setuptools', 'appdirs', 'packaging']:
     d, b, h = collect_with_deps(pkg, collected_packages)
     datas += d
     binaries += b
