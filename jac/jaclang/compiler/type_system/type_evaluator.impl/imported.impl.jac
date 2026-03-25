@@ -267,7 +267,8 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
             }
             target_hub[resolved_path] = mod;
         } else {
-            mod = target_program.compile(
+            # Cache miss — full compile
+            mod = self.program.compile(
                 path, no_cgen=True, type_check=False, symtab_ir_only=True
             );
             if mod.parent_scope is None and mod is not self.builtins_module {
