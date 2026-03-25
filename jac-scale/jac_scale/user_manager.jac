@@ -8,7 +8,7 @@ import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
-import from jac_scale.sso_provider { SSOProvider, SSOUserInfo }
+import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jac_scale.mongo_storage { MongoUserStorage }
 import from jaclang.jac0core.constant { Constants as Con }
 
@@ -52,15 +52,12 @@ obj JacScaleUserManager(UserManager) {
     def refresh_jwt_token(token: str) -> (str | None);
     def get_jwt_claims(token: str) -> (dict | None);
     # SSO methods
-    def get_sso(platform: str, operation: str) -> (SSOProvider | None);
+    def get_sso(platform: str) -> (SSOProvider | None);
     async def sso_initiate(
         platform: str, operation: str
     ) -> (Response | TransportResponse);
 
-    async def sso_callback(
-        request: Request, platform: str, operation: str
-    ) -> TransportResponse;
-
+    async def sso_callback(request: Request, platform: str) -> TransportResponse;
     # SSO Account Linking methods
     def link_sso_account(
         user_id: str, platform: str, external_id: str, email: str
