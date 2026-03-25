@@ -3,9 +3,9 @@ field layout, and vtable structure for all archetypes."""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 
-impl LayoutPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
-    super.init(ir_in, prog, cancel_token);
+    super.postinit();
 }
 
 impl LayoutPass.before_pass -> None {

@@ -27,7 +27,6 @@ import from jaclang.jac0core.diagnostics {
 
 """Static analysis pass for JacLang."""
 obj StaticAnalysisPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def after_pass -> None;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
     def _check_undefined_names(mod: uni.Module) -> None;

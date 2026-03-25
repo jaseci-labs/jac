@@ -87,7 +87,9 @@ obj LayoutRegistry {
 
 """Layout analysis pass."""
 obj LayoutPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
+    has registry: LayoutRegistry by postinit;
+
+    def postinit -> None;
     def before_pass -> None;
     # Core analysis
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];

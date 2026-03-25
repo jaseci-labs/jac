@@ -1,9 +1,3 @@
-impl PyJacAstLinkPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 impl PyJacAstLinkPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
     if (nd.is_attr and isinstance(nd.right, uni.AstSymbolNode)) {
         self.link_jac_py_nodes(jac_node=nd.right.name_spec, py_nodes=nd.gen.py_ast);

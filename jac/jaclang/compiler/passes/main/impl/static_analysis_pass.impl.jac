@@ -1,11 +1,5 @@
 """Static analysis pass implementation."""
 
-impl StaticAnalysisPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Run all static analyses after the full tree traversal."""
 impl StaticAnalysisPass.after_pass -> None {
     self._checked_scopes: set[int] = set();

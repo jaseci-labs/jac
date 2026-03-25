@@ -21,7 +21,7 @@ import from jaclang.jac0core.mtp {
 
 """Initialize the pass with the input IR and program context."""
 impl MTIRGenPass.postinit -> None {
-    super.init(self.ir_in, self.prog, self.cancel_token);
+    super.postinit();
 }
 
 """Check if a type expression represents a primitive type."""

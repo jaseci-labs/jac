@@ -176,7 +176,6 @@ obj GrammarExtractPass(UniPass) {
     has rules: list = [],
         target_class: str = "Parser";
 
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     # UniPass hooks
     def before_pass -> None;
     def enter_impl_def(nd: uni.ImplDef) -> None;

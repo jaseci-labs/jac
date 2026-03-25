@@ -1,8 +1,6 @@
 """Core initialization and transform logic for native IR generation."""
 """Initialize the native IR generation pass."""
-impl NaIRGenPass.init(
-    ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-) -> None {
+impl NaIRGenPass.postinit -> None {
     self.llvm_module = ir.Module(name="jac_native", context=ir.Context());
     # Set data layout to match native target so optimizer and MCJIT agree
     # on struct sizes. Without this, the optimizer uses default layout
@@ -155,7 +153,7 @@ impl NaIRGenPass.init(
     self.list_release_fns: dict[(str, ir.Function)] = {};
     self.dict_release_fns: dict[(str, ir.Function)] = {};
     self.set_release_fns: dict[(str, ir.Function)] = {};
-    super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
+    super.postinit();
 }
 
 # ─── Main Pass Logic ─────────────────────────────────────────

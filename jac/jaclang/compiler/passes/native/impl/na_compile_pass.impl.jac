@@ -1,10 +1,8 @@
 """Initialize the native compile pass."""
-impl NativeCompilePass.init(
-    ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-) -> None {
+impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
-    super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
+    super.postinit();
 }
 
 """Compile the LLVM IR module if one was generated."""

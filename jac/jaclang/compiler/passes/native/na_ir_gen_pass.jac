@@ -20,9 +20,7 @@ Uses manual tree-walking for function bodies to properly handle
 control flow basic blocks (if/else, while loops).
 """
 obj NaIRGenPass(ModuleCodegenPass) {
-    def init(
-        ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-    ) -> None;
+    def postinit -> None;
     # Main pass logic
     def transform(ir_in: uni.Module) -> uni.Module;
     def _register_enums(module: uni.Module) -> None;
