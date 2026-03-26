@@ -165,7 +165,45 @@ obj NarrowingPredicate {
 
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
-    def init(program: "JacProgram") -> None;
+    has program: "JacProgram",
+        # Path constants - initialized in postinit (use __file__ from impl)
+        _BUILTINS_STUB_FILE_PATH: str by postinit,
+        _TYPING_STUB_FILE_PATH: str by postinit,
+        _TYPES_STUB_FILE_PATH: str by postinit,
+        _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _ENUM_STUB_FILE_PATH: str by postinit,
+        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+            "Union",
+            "Protocol",
+            "Callable",
+            "Type",
+            "NoReturn",
+            "ClassVar",
+            "Optional",
+            "Tuple",
+            "Final",
+            "Literal",
+            "TypedDict"
+        ),
+        # Resolution and state
+        symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
+        prefetch: PrefetchedTypes by postinit,
+        _pass: object | None = None,
+        builtins_module: uni.Module | None = None,
+        # Type narrowing
+        _narrowing_cache: dict[tuple, types.TypeBase | None] = {},
+        _narrowing_scope_stack: list[dict[str, types.TypeBase]] = [],
+        _in_ternary_expr_depth: int = 0,
+        _in_bool_expr_narrowing_depth: int = 0,
+        _narrowing_in_progress: set[int] by postinit,
+        _module_type_cache: dict[str, types.ModuleType] = {},
+        # Stub modules - initialized in postinit
+        typing_module: uni.Module by postinit,
+        types_module: uni.Module by postinit,
+        enum_module: uni.Module by postinit,
+        jac_builtins_module: uni.Module by postinit;
+
+    def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
