@@ -494,6 +494,11 @@ impl BaseLLM._invoke_streaming(
                         event_type="steps_done",
                         data={"iterations": iter_count - 1, "reason": "aborted"}
                     );
+                    if last_result {
+                        yield StreamEvent(
+                            event_type="chunk", data={"content": last_result}
+                        );
+                    }
                     break;
                 }
                 if action == IterationAction.ABORT_WITH_SUMMARY {
