@@ -80,13 +80,23 @@ jobs:
           CI: "true"
         run: bash scripts/check-release-notes.sh
 
-      - name: Set up Python for release notes check
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
-      - name: Install jaclang for release notes check
-        run: pip install -e jac
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-jac-${{ hashFiles('jac/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-jac-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
 
       - name: Check release note entries are in (Unreleased) section
         run: jac run scripts/check_release_notes_section.jac
