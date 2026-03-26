@@ -50,34 +50,39 @@ impl WebTarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) ->
 
 """Start web target in production preview mode.
 
-For web target, this builds the bundle and serves it.
+For web target, this builds the bundle and starts the API server.
+Uses Jac.get_api_server_class() to respect plugin hooks (e.g., jac-scale).
 This method is called when using non-default targets that inherit from WebTarget.
 """
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
+    import os;
     import from jaclang.cli.console { console }
-    import http.server;
-    import socketserver;
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     bundler = ViteBundler(project_dir=project_dir);
     console.print("\n🌐 Building web bundle for production preview...", style="bold");
     self.build(entry_file, project_dir, None);
-    # Serve the dist directory (use bundler.output_dir to avoid path duplication)
+    # Verify dist directory exists
     dist_dir = bundler.output_dir;
     if not dist_dir.exists() {
         raise RuntimeError(f"Build output not found: {dist_dir}");
     }
-    import os;
-    os.chdir(dist_dir);
-    handler = http.server.SimpleHTTPRequestHandler;
-    console.print(f"\n🚀 Serving at http://localhost:{api_port}/", style="bold green");
+    # Get module name from entry file
+    (base, mod) = os.path.split(str(entry_file));
+    base = base or "./";
+    if entry_file.name.endswith('.jac') {
+        mod = mod[:-4];
+    }
+    # Use Jac.get_api_server_class() to respect plugin hooks (jac-scale, etc.)
+    ServerClass = Jac.get_api_server_class();
+    server = ServerClass(module_name=mod, port=api_port, base_path=base);
+    console.print(f"\n🚀 Starting server at http://localhost:{api_port}/", style="bold green");
     console.print("  Press Ctrl+C to stop\n", style="muted");
-    with socketserver.TCPServer(("", api_port), handler) as httpd {
-        try {
-            httpd.serve_forever();
-        } except KeyboardInterrupt {
-            console.print("\n  Stopping server...", style="muted");
-        }
+    try {
+        server.start(dev=False, no_client=False);
+    } except KeyboardInterrupt {
+        console.print("\n  Stopping server...", style="muted");
     }
 }
 
