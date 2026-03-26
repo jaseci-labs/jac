@@ -410,7 +410,7 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
 
 """Generate private identifier."""
 impl JSCodeGenerator.gen_private_identifier(nd: es.PrivateIdentifier) -> str {
-    return f"\#{nd.name}";
+    return f"#{nd.name}";
 }
 
 """Generate identifier."""

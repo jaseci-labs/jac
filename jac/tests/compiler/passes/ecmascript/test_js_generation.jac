@@ -960,3 +960,26 @@ test "compr no jac keywords" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
     assert_no_jac_keywords(js_code, "comprehensions.cl.jac");
 }
+
+test "private identifier generates hash prefix" {
+    import from jaclang.compiler.passes.ecmascript.estree {
+        PrivateIdentifier,
+        PropertyDefinition,
+        ClassBody,
+        ClassDeclaration,
+        Identifier,
+        Program,
+        Literal
+    }
+    # Build a minimal class with a private field: class Foo { #secret = 42; }
+    priv_id = PrivateIdentifier(name="secret");
+    prop_def = PropertyDefinition(key=priv_id, value=Literal(value=42, raw="42"));
+    cls = ClassDeclaration(id=Identifier(name="Foo"), body=ClassBody(body=[prop_def]));
+    prog = Program(body=[cls]);
+
+    js_code = es_to_js(prog);
+    assert "#secret" in js_code , (
+        f"PrivateIdentifier should emit '#secret', got: {js_code}"
+    );
+    assert "class Foo" in js_code;
+}

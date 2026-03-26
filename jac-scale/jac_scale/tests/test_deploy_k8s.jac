@@ -24,6 +24,7 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
+import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 
 """Get current git repository URL, branch, and commit hash.
 
@@ -701,6 +702,37 @@ test "deploy all in one" {
     assert hpa.spec.metrics[0].resource.target.average_utilization == 50;
     print(
         f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
+    );
+
+    # Validate HPA is updated on redeploy (not silently ignored)
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=2,
+        max_replicas=5,
+        cpu_target=70
+    );
+    hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+        name=f"{app_name}-hpa", namespace=namespace
+    );
+    assert hpa_updated.spec.min_replicas == 2 , f"Expected min_replicas=2, got {hpa_updated.spec.min_replicas}";
+    assert hpa_updated.spec.max_replicas == 5 , f"Expected max_replicas=5, got {hpa_updated.spec.max_replicas}";
+    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 70 , (
+        f"Expected cpu_target=70, got {hpa_updated.spec.metrics[
+            0
+        ].resource.target.average_utilization}"
+    );
+    print(
+        f"HPA update verified: min_replicas={hpa_updated.spec.min_replicas}, max_replicas={hpa_updated.spec.max_replicas}, cpu_target=70%"
+    );
+
+    # Restore original HPA values for remaining tests
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=1,
+        max_replicas=3,
+        cpu_target=50
     );
 
     # Validate NGINX Ingress controller resources
