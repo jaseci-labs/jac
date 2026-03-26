@@ -345,6 +345,11 @@ test "no unnecessary saves on read-only operations" {
     base_url = f"http://localhost:{port}";
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
+    def get_update_count -> int {
+        server_status = mongo_client.admin.command("serverStatus");
+        return server_status["opcounters"]["update"];
+    }
+
     try {
         db = mongo_client["jac_db"];
         collection = db["_anchors"];
@@ -372,6 +377,9 @@ test "no unnecessary saves on read-only operations" {
 
         docs_hash_before = get_docs_hash();
 
+        # Capture server-side update count before read-only operations
+        updates_before_readonly = get_update_count();
+
         # Make multiple read-only requests
         for _ in range(3) {
             res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
@@ -389,6 +397,13 @@ test "no unnecessary saves on read-only operations" {
         docs_hash_after = get_docs_hash();
         assert docs_hash_before == docs_hash_after , (
             "Read-only operations should not modify existing documents in MongoDB"
+        );
+
+        # Verify no update operations were issued to MongoDB during read-only requests.
+        updates_after_readonly = get_update_count();
+        assert updates_after_readonly == updates_before_readonly , (
+            f"Read-only operations should not issue any MongoDB update commands. "
+            f"Got {updates_after_readonly - updates_before_readonly} unexpected updates"
         );
 
         # Now create a task (this should write)
@@ -763,7 +778,7 @@ test "Redis write cycle via commit" {
         # Initial: 4 nodes in Redis (super_root, guest, admin, __system__)
         assert redis_client.dbsize() == 4 , "Redis should start with 4 initial nodes";
 
-        # Create task (goes to L1 with is_updated=True, then commit writes to L2)
+        # Create task
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 999, "title": "Redis Write Test"},
@@ -809,41 +824,46 @@ test "Redis write cycle via commit" {
     }
 }
 
-test "is_updated flag set on field modification" {
-    # Import the Task node from the fixture
+test "hash-based dirty check detects all mutation types" {
+    import from jaclang.runtimelib.serializer { Serializer }
     import sys;
     sys.path.insert(0, str(FIXTURES_DIR));
-    import from todo_app { Task }
+    import from mutation_app { Item }
 
-    # Create a Task instance
-    task = Task(id=999, title="Test is_updated", completed=False);
-    task_anchor = task.__jac__;
+    # Create an Item with mutable fields
+    item = Item(id=1);
+    anchor = item.__jac__;
 
-    # After creation, is_updated should be True (new node)
-    assert task_anchor.is_updated , "Newly created node should have is_updated=True";
+    # New anchor has hash=0 (never persisted)
+    assert anchor.hash == 0 , "New anchor should have hash=0";
 
-    # Simulate save by setting is_updated=False (as would happen after commit)
-    task_anchor.is_updated = False;
-    assert not task_anchor.is_updated , "After save simulation, is_updated should be False";
+    # Simulate persist: compute and store baseline hash
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
+    assert baseline != 0 , "Computed hash should be non-zero";
 
-    # Modify a field - this should trigger __setattr__ which sets is_updated=True
-    task.completed = True;
+    # No mutation → hash unchanged
+    assert Serializer._compute_hash(anchor) == baseline , "No mutation should yield same hash";
 
-    # Verify is_updated was set to True
-    assert task_anchor.is_updated , (
-        "Modifying 'completed' field should set is_updated=True via __setattr__"
-    );
+    # Direct field assignment
+    item.completed = True;
+    assert Serializer._compute_hash(anchor) != baseline , "Direct assignment should change hash";
 
-    # Reset flag
-    task_anchor.is_updated = False;
+    # Reset baseline
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
 
-    # Modify another field
-    task.title = "Modified Title";
+    # In-place list mutation
+    item.tags.append("urgent");
+    assert Serializer._compute_hash(anchor) != baseline , "list.append should change hash";
 
-    # Verify is_updated was set to True again
-    assert task_anchor.is_updated , (
-        "Modifying 'title' field should set is_updated=True"
-    );
+    # Reset baseline
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
+
+    # In-place dict mutation
+    item.metadata["priority"] = "high";
+    assert Serializer._compute_hash(anchor) != baseline , "dict[k]=v should change hash";
 }
 
 test "sequential requests work correctly" {
@@ -880,5 +900,84 @@ test "sequential requests work correctly" {
         }
         mongo_container.stop();
         gc.collect();
+    }
+}
+
+glob MUTATION_JAC_FILE = FIXTURES_DIR / "mutation_app.jac";
+
+"""Validates that in-place mutations (list.append, dict[k]=v) which bypass
+__setattr__ are still detected and persisted through hash comparison."""
+test "in-place mutations on list and dict are persisted via hash-based dirty check" {
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    os.environ["MONGODB_URI"] = mongo_container.get_connection_url();
+    mongo_client = MongoClient(mongo_container.get_connection_url());
+
+    redis_container = RedisContainer("redis:latest", port=6379);
+    redis_container.start();
+    redis_host = redis_container.get_container_host_ip();
+    redis_port = redis_container.get_exposed_port(6379);
+    os.environ["REDIS_URL"] = f"redis://{redis_host}:{redis_port}/0";
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server: subprocess.Popen = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+
+    try {
+        token = register_user(base_url, "mutation_tester");
+
+        # Create an item
+        post_request(base_url, "/walker/CreateItem", {"id": 1}, token);
+
+        # --- In-place list mutation (list.append) ---
+        result = post_request(
+            base_url, "/walker/AppendTag", {"id": 1, "tag": "urgent"}, token
+        );
+        assert "urgent" in result["reports"][0]["tags"];
+
+        # --- In-place dict mutation (dict[k]=v) ---
+        result = post_request(
+            base_url,
+            "/walker/SetMeta",
+            {"id": 1, "key": "priority", "value": "high"},
+            token
+        );
+        assert result["reports"][0]["metadata"]["priority"] == "high";
+
+        # --- Restart server to force reload from MongoDB ---
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        server = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+        # Read back after restart — mutations must have been persisted
+        result = post_request(base_url, "/walker/GetItems", {}, token);
+        items = result["reports"][0];
+        assert len(items) == 1 , f"Expected 1 item, got {len(items)}";
+
+        item = items[0];
+        assert "urgent" in item["tags"] , (
+            f"list.append mutation was not persisted. tags={item['tags']}"
+        );
+        assert item["metadata"].get("priority") == "high" , (
+            f"dict[k]=v mutation was not persisted. metadata={item['metadata']}"
+        );
+    } finally {
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        mongo_client.close();
+        mongo_container.stop();
+        redis_container.stop();
+        time.sleep(0.5);
+        gc.collect();
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
     }
 }

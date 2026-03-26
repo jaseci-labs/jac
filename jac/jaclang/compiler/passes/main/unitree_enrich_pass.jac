@@ -9,7 +9,6 @@ def _typebase_to_tag(t: Any) -> (str | None);
 
 """Pre-compute backend hints on every Expr and Name node."""
 obj UniTreeEnrichPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None) -> None;
     def before_pass -> None;
     def enter_expr(nd: uni.Expr) -> None;
     def enter_name(nd: uni.Name) -> None;

@@ -87,7 +87,8 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
                 is_cls=param.is_cls,
                 param_kind=param.param_kind
             ) for param in self.parameters
-        ]
+        ],
+        type_params=self.type_params,
     );
 
     # Specialize parameter types
@@ -104,6 +105,49 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
         clone.return_type = apply_solved_type_vars(
             clone.return_type, solution, class_type
         );
+    }
+
+    return clone;
+}
+
+"""Specialize function-level TypeVars using a pre-built solution mapping.
+
+Used for generic functions like `def find_parent_of_type[T](typ: type[T]) -> (T | None)`.
+The solution maps TypeVar names to concrete types (e.g., {"T": Ability}).
+"""
+impl FunctionType.specialize_func_type_vars(
+    solution: dict[(str, TypeBase)]
+) -> FunctionType {
+    import from jaclang.compiler.type_system.type_utils { apply_solved_type_vars }
+
+    clone = FunctionType(
+        func_name=self.func_name,
+        return_type=self.return_type,
+        parameters=[
+            Parameter(
+                name=param.name,
+                category=param.category,
+                param_type=param.param_type,
+                default_value=param.default_value,
+                is_self=param.is_self,
+                is_cls=param.is_cls,
+                param_kind=param.param_kind
+            ) for param in self.parameters
+        ],
+        function_flags=self.function_flags,
+        type_params=self.type_params,
+    );
+
+    # Specialize parameter types
+    for param in clone.parameters {
+        if param.param_type {
+            param.param_type = apply_solved_type_vars(param.param_type, solution);
+        }
+    }
+
+    # Specialize return type
+    if clone.return_type {
+        clone.return_type = apply_solved_type_vars(clone.return_type, solution);
     }
 
     return clone;

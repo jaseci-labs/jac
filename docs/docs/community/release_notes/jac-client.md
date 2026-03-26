@@ -2,8 +2,7 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.8 (Unreleased)
-
+## jac-client 0.3.9 (Unreleased)
 - **Auto-Install Python Dependencies for Desktop Builds**: Desktop builds now automatically install Python dependencies listed in `[dependencies]` section of `jac.toml` before bundling. No need to manually `pip install` packages - just add them to `jac.toml` and they'll be installed and bundled automatically.
 - **Scalable Plugin Bundling for Desktop**: Refactored the PyInstaller spec generation to use `collect_all()` for comprehensive, automatic package bundling. Plugin dependencies (jac-scale, byllm, jac-coder) and their transitive dependencies are now automatically discovered via `importlib.metadata.requires()` instead of manually maintained import lists. This eliminates runtime errors like "No module named 'websockets'" or "No module named 'loguru'" when plugins update their dependencies. The new system:
   - Automatically collects all data files, binaries, and submodules for each plugin
@@ -11,8 +10,9 @@ This document provides a summary of new features, improvements, and bug fixes in
   - Deduplicates collected packages to optimize bundle size
   - Works with both PyPI-installed and source-installed (`pip install -e`) packages
   - Removed ~150 lines of manual `hiddenimports.extend([...])` and `collect_submodules()` calls
+## jac-client 0.3.8 (Latest Release)
 
-## jac-client 0.3.7 (Latest Release)
+## jac-client 0.3.7
 
 - **PWA Install Banner**: PWA apps now show an automatic install prompt after `jac setup pwa` -- no manual code required. Features include a glassmorphic dark banner with slide-up animation, native Chrome/Edge install prompt integration via `beforeinstallprompt`, iOS Safari support with step-by-step "Add to Home Screen" instructions modal, and smart re-prompting with exponential backoff (7 → 14 → 28 days, max 3 dismissals). All banner settings are configurable via `[plugins.client.pwa]` in `jac.toml`: `install_banner`, `install_banner_delay`, `install_banner_position`, `install_button_text`, `install_dismiss_text`. For programmatic control, import `usePwaInstall` hook or `PwaInstallButton` component from `@jac/pwa`.
 - **Vite dev server binds to all interfaces**: Added `host: true` to Vite config and `--host` CLI flag so the dev server is accessible from outside containers/pods.
@@ -34,6 +34,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.5
 
+- **ESM & TypeScript Client Config Generation**: Added a feature to support for generating ESM and TypeScript client config files from `[plugins.client.configs]`, while preserving existing CommonJS behavior and allowing raw config templates when needed.
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
 - **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
 
@@ -207,22 +208,22 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PYPI Package Release**: First stable release (v0.1.0) now available on PyPI. Install via `pip install jac-client` to get started with Vite-powered client bundling for your Jac projects.
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5
+## jaclang 0.8.10 / byllm 0.4.5
 
-## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
+## jaclang 0.8.9 / byllm 0.4.4
 
-## jaclang 0.8.8 / jac-cloud 0.2.8 / byllm 0.4.3
+## jaclang 0.8.8 / byllm 0.4.3
 
-## jaclang 0.8.7 / jac-cloud 0.2.7 / byllm 0.4.2
+## jaclang 0.8.7 / byllm 0.4.2
 
-## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
+## jaclang 0.8.6 / byllm 0.4.1
 
-## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
+## jaclang 0.8.5 / mtllm 0.4.0
 
-## jaclang 0.8.4 / jac-cloud 0.2.4 / mtllm 0.3.9
+## jaclang 0.8.4 / mtllm 0.3.9
 
-## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
+## jaclang 0.8.3 / mtllm 0.3.8
 
-## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
+## jaclang 0.8.1 / mtllm 0.3.6
 
 ## Version 0.8.0

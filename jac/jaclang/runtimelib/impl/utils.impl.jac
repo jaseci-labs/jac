@@ -130,7 +130,7 @@ impl traverse_graph(
     connections: list,
     node_depths: dict[(NodeArchetype, int)],
     visited_nodes: list,
-    queue: list,
+    queue: list[tuple[NodeArchetype, int]],
     bfs: bool,
     dfs: Callable,
     node_limit: int,
@@ -182,7 +182,7 @@ impl traverse_graph(
             ) {
                 connections.append(new_con);
                 if bfs {
-                    queue.append([other_nd, (cur_depth + 1)]);
+                    queue.append((other_nd, (cur_depth + 1)));
                 } else {
                     dfs(other_nd, (cur_depth + 1));
                 }

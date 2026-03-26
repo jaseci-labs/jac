@@ -240,6 +240,8 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 anchor.target = Serializer._id_to_stub(NodeAnchor, target_id);
             }
         }
+
+        anchor.hash = Serializer._compute_hash(anchor);
         return anchor;
     } except Exception as e {
         logger.error(f"Failed to deserialize anchor: {e}");
@@ -297,5 +299,16 @@ impl Serializer._deserialize_archetype(
     } except Exception as e {
         logger.error(f"Failed to deserialize archetype {type_name}: {e}");
         return None;
+    }
+}
+
+"""Compute a hash of the anchor's serialized state for dirty checking."""
+impl Serializer._compute_hash(anchor: Anchor) -> int {
+    import from json { dumps }
+    try {
+        data = Serializer.serialize(anchor, include_type=True);
+        return hash(dumps(data, sort_keys=True));
+    } except Exception {
+        return 0;
     }
 }

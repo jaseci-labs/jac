@@ -338,6 +338,11 @@ jobs:
         jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
         cd jac-gpt && jac install
 
+    - name: Install Playwright dependencies
+      run: |
+        pip install playwright
+        playwright install chromium --with-deps
+
     - name: Type check jac-gpt
       working-directory: jac-gpt
       run: jac check main.jac
@@ -394,6 +399,11 @@ jobs:
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
         fi
+
+    - name: Run E2E tests
+      env:
+        SERVER_URL: http://localhost:8000
+      run: pytest jac-gpt/tests/test_e2e.jac -v
 
     - name: Stop jac-gpt server
       if: always()

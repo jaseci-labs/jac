@@ -49,8 +49,13 @@ import from jaclang.jac0core.diagnostics {
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
+    has lint_enabled: bool = True,
+        main_module: (uni.Module | None) = None,
+        _exclude_patterns: list[str] = [],
+        _project_root: str = "";
+
     """Initialize the pass with linting options."""
-    def init(ir_in: uni.Module, prog: Any) -> None;
+    def postinit -> None;
 
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
