@@ -885,7 +885,6 @@ impl TypeEvaluator._get_special_form_type(
     is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
-        and isinstance(self.prefetch.callable_class, types.ClassType)
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
@@ -976,8 +975,7 @@ impl TypeEvaluator.create_self_type(
     if not isinstance(symbol_type, types.ClassType) {
         return None;
     }
-    if not self.prefetch.callable_class
-    or not isinstance(self.prefetch.callable_class, types.ClassType) {
+    if not self.prefetch.callable_class {
         return None;
     }
     # Check if it's a _SpecialForm

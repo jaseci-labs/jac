@@ -1,4 +1,5 @@
 import os;
+import from typing { Any }
 import from jac_scale.factories.sandbox_factory { SandboxFactory }
 import from jac_scale.factories.ingress_factory { IngressFactory }
 import from jac_scale.abstractions.sandbox_environment { SandboxEnvironment }
@@ -11,6 +12,7 @@ import from jac_scale.abstractions.models.sandbox_status {
     SandboxInfo
 }
 import from jac_scale.providers.sandbox.local_sandbox { LocalSandbox }
+import from jac_scale.providers.sandbox.kubernetes_sandbox { KubernetesSandbox }
 
 # ---- SandboxConfig tests ----
 test "sandbox config has correct defaults" {
@@ -23,6 +25,7 @@ test "sandbox config has correct defaults" {
     assert config.memory_limit == "512Mi";
     assert config.security_context_enabled == True;
     assert config.network_isolation == True;
+    assert config.app_storage_limit == "1Gi";
 }
 
 test "sandbox config from_dict" {
@@ -33,7 +36,8 @@ test "sandbox config from_dict" {
             "max_per_user": 5,
             "ttl_seconds": 7200,
             "cpu_limit": "1",
-            "memory_limit": "1Gi"
+            "memory_limit": "1Gi",
+            "app_storage_limit": "2Gi"
         }
     );
     assert cfg.sandbox_type == "kubernetes";
@@ -42,12 +46,14 @@ test "sandbox config from_dict" {
     assert cfg.ttl_seconds == 7200;
     assert cfg.cpu_limit == "1";
     assert cfg.memory_limit == "1Gi";
+    assert cfg.app_storage_limit == "2Gi";
 }
 
 test "sandbox config from_dict with defaults" {
     cfg = SandboxConfig.from_dict({});
     assert cfg.sandbox_type == "docker";
     assert cfg.namespace == "jac-sandboxes";
+    assert cfg.app_storage_limit == "1Gi";
 }
 
 # ---- SandboxResult tests ----
@@ -354,4 +360,83 @@ test "local sandbox get_sandbox_id convenience" {
 
     sandbox.destroy(result.sandbox_id);
     shutil.rmtree(temp_dir, ignore_errors=True);
+}
+
+# ---- Sandbox pod security hardening tests ----
+test "build_pod_spec security hardening when enabled" {
+    config = SandboxConfig(security_context_enabled=True, app_storage_limit="2Gi");
+    sandbox = KubernetesSandbox(config=config);
+    pod: Any = sandbox._build_pod_spec("sbx-1", "cm-1", "user1", "proj1");
+
+    # Security context on main container
+    sc: Any = pod.spec.containers[0].security_context;
+    assert sc is not None;
+    assert sc.run_as_non_root;
+    assert sc.run_as_user == 1000;
+    assert not sc.allow_privilege_escalation;
+    assert "ALL" in sc.capabilities.drop;
+    assert sc.seccomp_profile.type == "RuntimeDefault";
+
+    # SA token disabled at pod level
+    assert not pod.spec.automount_service_account_token;
+
+    # app-data volume has size limit
+    app_vol: Any = None;
+    for v in pod.spec.volumes {
+        if v.name == "app-data" {
+            app_vol = v;
+        }
+    }
+    assert app_vol is not None;
+    assert app_vol.empty_dir.size_limit == "2Gi";
+
+    # Init container runs chown
+    init: Any = pod.spec.init_containers[0];
+    cmd_str: str = str(" ".join(init.command));
+    assert "chown -R 1000:1000 /app" in cmd_str;
+}
+
+test "build_pod_spec no security context when disabled but SA token still off" {
+    config = SandboxConfig(security_context_enabled=False);
+    sandbox = KubernetesSandbox(config=config);
+    pod: Any = sandbox._build_pod_spec("sbx-2", "cm-2", "user1", "proj1");
+
+    sc: Any = pod.spec.containers[0].security_context;
+    assert sc is None;
+    assert not pod.spec.automount_service_account_token;
+}
+
+test "warm pod spec security hardening matches regular pod" {
+    config = SandboxConfig(security_context_enabled=True, app_storage_limit="3Gi");
+    sandbox = KubernetesSandbox(config=config);
+    warm: Any = sandbox._build_warm_pod_spec("warm-1");
+
+    sc: Any = warm.spec.containers[0].security_context;
+    assert sc is not None;
+    assert "ALL" in sc.capabilities.drop;
+    assert sc.seccomp_profile.type == "RuntimeDefault";
+    assert sc.run_as_non_root;
+    assert sc.run_as_user == 1000;
+    assert not sc.allow_privilege_escalation;
+    assert not warm.spec.automount_service_account_token;
+
+    # Storage limit
+    app_vol: Any = None;
+    for v in warm.spec.volumes {
+        if v.name == "app-data" {
+            app_vol = v;
+        }
+    }
+    assert app_vol is not None;
+    assert app_vol.empty_dir.size_limit == "3Gi";
+}
+
+test "warm pod spec no security context when disabled" {
+    config = SandboxConfig(security_context_enabled=False);
+    sandbox = KubernetesSandbox(config=config);
+    warm: Any = sandbox._build_warm_pod_spec("warm-2");
+
+    sc: Any = warm.spec.containers[0].security_context;
+    assert sc is None;
+    assert not warm.spec.automount_service_account_token;
 }

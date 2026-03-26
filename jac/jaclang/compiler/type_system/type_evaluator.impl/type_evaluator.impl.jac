@@ -268,7 +268,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Bidirectional: adopt expected type_args only if elements match
                     if (
                         isinstance(expected_type, types.ClassType)
-                        and isinstance(self.prefetch.tuple_class, types.ClassType)
+                        and self.prefetch.tuple_class
                         and expected_type.shared == self.prefetch.tuple_class.shared
                         and expected_type.private
                         and expected_type.private.type_args
@@ -669,8 +669,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # TODO: Handle non-ClassType inner (e.g. Final[int | str]).
                     # TODO: Consider centralizing unwrap logic for all type qualifiers.
                     if (
-                        self.prefetch.final_class is not None
-                        and isinstance(self.prefetch.final_class, types.ClassType)
+                        self.prefetch.final_class
                         and base_type.shared == self.prefetch.final_class.shared
                         and base_type.private is not None
                         and base_type.private.type_args
@@ -1049,7 +1048,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Delegate attribute lookup to the prefetched FunctionType class.
                     # TODO: Add is_method_type() check and use method_class for bound methods.
                     if self.prefetch and self.prefetch.function_class {
-                        assert isinstance(self.prefetch.function_class, types.ClassType);
                         if member := self._lookup_object_member(
                             self.prefetch.function_class.clone_as_instance(),
                             expr.right.value
@@ -2328,6 +2326,10 @@ impl TypeEvaluator._assign_class(
 impl TypeEvaluator.is_sub_class(
     super_cls: types.ClassType, sub_cls: types.ClassType
 ) -> bool {
+    # Ensure MRO is computed (may be empty if loaded from JIR cache)
+    if not sub_cls.shared.mro {
+        type_utils.compute_mro_linearization(sub_cls);
+    }
     for cls in sub_cls.shared.mro {
         if cls.shared == super_cls.shared {
             return True;
@@ -2448,7 +2450,6 @@ impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.type_var_class
         and isinstance(ty, types.ClassType)
-        and isinstance(self.prefetch.type_var_class, types.ClassType)
         and ty.shared == self.prefetch.type_var_class.shared
     );
 }
@@ -2459,7 +2460,6 @@ impl TypeEvaluator.is_paramspec_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.param_spec_class
         and isinstance(ty, types.ClassType)
-        and isinstance(self.prefetch.param_spec_class, types.ClassType)
         and ty.shared == self.prefetch.param_spec_class.shared
     );
 }
@@ -2470,7 +2470,6 @@ impl TypeEvaluator.is_type_var_tuple_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.type_var_tuple_class
         and isinstance(ty, types.ClassType)
-        and isinstance(self.prefetch.type_var_tuple_class, types.ClassType)
         and ty.shared == self.prefetch.type_var_tuple_class.shared
     );
 }
@@ -2494,15 +2493,9 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         if src_type.is_literal_type()
         and self.prefetch.str_class
         and self.prefetch.literal_string_class {
-            if isinstance(self.prefetch.str_class, types.ClassType) {
-                if src_type.shared == self.prefetch.str_class.shared {
-                    if isinstance(
-                        self.prefetch.literal_string_class, types.ClassType
-                    ) {
-                        if dest_type.shared == self.prefetch.literal_string_class.shared {
-                            return True;
-                        }
-                    }
+            if src_type.shared == self.prefetch.str_class.shared {
+                if dest_type.shared == self.prefetch.literal_string_class.shared {
+                    return True;
                 }
             }
         }
@@ -2537,14 +2530,11 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         # Case 4: LiteralString -> any type that str is assignable to
         # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
         if self.prefetch.literal_string_class and self.prefetch.str_class {
-            if isinstance(self.prefetch.str_class, types.ClassType)
-            and isinstance(self.prefetch.literal_string_class, types.ClassType) {
-                if src_type.shared == self.prefetch.literal_string_class.shared {
-                    # Delegate to str for assignability check
-                    str_instance = self._convert_to_instance(self.prefetch.str_class);
-                    if self.assign_type(str_instance, dest_type) {
-                        return True;
-                    }
+            if src_type.shared == self.prefetch.literal_string_class.shared {
+                # Delegate to str for assignability check
+                str_instance = self._convert_to_instance(self.prefetch.str_class);
+                if self.assign_type(str_instance, dest_type) {
+                    return True;
                 }
             }
         }
@@ -2690,8 +2680,7 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if self.prefetch and self.prefetch.type_class {
         if isinstance(dest_type, types.ClassType)
         and isinstance(src_type, types.ClassType) {
-            if isinstance(self.prefetch.type_class, types.ClassType)
-            and dest_type.shared == self.prefetch.type_class.shared {
+            if dest_type.shared == self.prefetch.type_class.shared {
                 if src_type.is_instantiable_class() {
                     # Parameterized type[X]: check covariance
                     if dest_type.private and dest_type.private.type_args {
@@ -2861,72 +2850,93 @@ impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | N
 
 """Return the prefetched types for the type evaluator."""
 impl TypeEvaluator._prefetch_types{
-    get_types_type = lambda type_name: str  -> types.TypeBase :
-        self._get_type_from_module(self.types_module, type_name);
-    get_typing_type = lambda type_name: str  -> types.TypeBase :
-        self._get_type_from_module(self.typing_module, type_name);
-    get_builtin_type = lambda type_name: str  -> types.TypeBase :
-        self._get_type_from_module(self.builtins_module, type_name);
-    get_enum_type = lambda type_name: str  -> types.TypeBase :
-        self._get_type_from_module(self.enum_module, type_name);
-    get_jac_builtin_type = lambda type_name: str  -> types.TypeBase :
-        self._get_type_from_module(self.jac_builtins_module, type_name);
+    # Helper to fetch a type and assert it's a ClassType
+    def as_class_type(t: types.TypeBase) -> types.ClassType | None {
+        if isinstance(t, types.ClassType) {
+            return t;
+        }
+        return None;
+    }
+    # Module-specific fetch helpers that return ClassType | None
+    def get_types_class(type_name: str) -> types.ClassType | None {
+        return as_class_type(self._get_type_from_module(self.types_module, type_name));
+    }
+    def get_typing_class(type_name: str) -> types.ClassType | None {
+        return as_class_type(
+            self._get_type_from_module(self.typing_module, type_name)
+        );
+    }
+    def get_builtin_class(type_name: str) -> types.ClassType | None {
+        return as_class_type(
+            self._get_type_from_module(self.builtins_module, type_name)
+        );
+    }
+    def get_enum_class(type_name: str) -> types.ClassType | None {
+        return as_class_type(self._get_type_from_module(self.enum_module, type_name));
+    }
+    def get_jac_builtin_class(type_name: str) -> types.ClassType | None {
+        return as_class_type(
+            self._get_type_from_module(self.jac_builtins_module, type_name)
+        );
+    }
     # TODO: Pyright first try load NoneType from typeshed and if it cannot
     # then it set to unknown type.
-    self.prefetch.none_type_class = get_types_type("NoneType");
-    self.prefetch.object_class = get_builtin_type("object");
-    self.prefetch.type_class = get_builtin_type("type");
-    self.prefetch.classmethod_class = get_builtin_type("classmethod");
-    self.prefetch.union_type_class = get_types_type("UnionType");
+    self.prefetch.none_type_class = get_types_class("NoneType");
+    self.prefetch.object_class = get_builtin_class("object");
+    self.prefetch.type_class = get_builtin_class("type");
+    self.prefetch.classmethod_class = get_builtin_class("classmethod");
+    self.prefetch.union_type_class = get_types_class("UnionType");
     # self.prefetch.awaitable_class =
-    self.prefetch.function_class = get_types_type("FunctionType");
+    self.prefetch.function_class = get_types_class("FunctionType");
     # self.prefetch.method_class =
-    self.prefetch.tuple_class = get_builtin_type("tuple");
-    self.prefetch.bool_class = get_builtin_type("bool");
-    self.prefetch.int_class = get_builtin_type("int");
-    self.prefetch.float_class = get_builtin_type("float");
-    self.prefetch.str_class = get_builtin_type("str");
-    self.prefetch.bytes_class = get_builtin_type("bytes");
-    self.prefetch.dict_class = get_builtin_type("dict");
-    self.prefetch.list_class = get_builtin_type("list");
-    self.prefetch.set_class = get_builtin_type("set");
-    self.prefetch.enum_class = get_enum_type("Enum");
-    if isinstance(self.prefetch.enum_class, types.ClassType) {
+    self.prefetch.tuple_class = get_builtin_class("tuple");
+    self.prefetch.bool_class = get_builtin_class("bool");
+    self.prefetch.int_class = get_builtin_class("int");
+    self.prefetch.float_class = get_builtin_class("float");
+    self.prefetch.str_class = get_builtin_class("str");
+    self.prefetch.bytes_class = get_builtin_class("bytes");
+    self.prefetch.dict_class = get_builtin_class("dict");
+    self.prefetch.list_class = get_builtin_class("list");
+    self.prefetch.set_class = get_builtin_class("set");
+    self.prefetch.enum_class = get_enum_class("Enum");
+    if self.prefetch.enum_class {
         self.prefetch.enum_class.shared.is_enum_class = True;
     }
-    self.prefetch.protocol_class = get_typing_type("Protocol");
-    self.prefetch.any_class = get_typing_type("Any");
+    self.prefetch.protocol_class = get_typing_class("Protocol");
+    self.prefetch.any_class = get_typing_class("Any");
     # Prefetch Callable and set alias_name. This single instance is reused
     # for all Callable references, avoiding repeated ClassType creation.
     # Similar to Pyright's classType.priv.aliasName pattern.
-    self.prefetch.callable_class = get_typing_type("Callable");
-    if isinstance(self.prefetch.callable_class, types.ClassType) {
+    self.prefetch.callable_class = get_typing_class("Callable");
+    if self.prefetch.callable_class {
         self.prefetch.callable_class.private.alias_name = "Callable";
     }
     # Create LiteralString as a special type with str as base class (like Pyright)
-    if isinstance(self.prefetch.str_class, types.ClassType) {
+    if self.prefetch.str_class {
         self.prefetch.literal_string_class = self._create_special_builtin_type(
             "LiteralString", self.prefetch.str_class
         );
     }
     # Prefetched Jaclang builtin types
-    self.prefetch.root_class = get_jac_builtin_type("Root");
-    self.prefetch.root_class.shared.is_root_class = True;
-    self.prefetch.final_class = get_jac_builtin_type("Final");
-    self.prefetch.node_class = get_jac_builtin_type("Node");
-    self.prefetch.walker_class = get_jac_builtin_type("Walker");
-    self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");
+    self.prefetch.root_class = get_jac_builtin_class("Root");
+    if self.prefetch.root_class {
+        self.prefetch.root_class.shared.is_root_class = True;
+    }
+    self.prefetch.final_class = get_jac_builtin_class("Final");
+    self.prefetch.node_class = get_jac_builtin_class("Node");
+    self.prefetch.walker_class = get_jac_builtin_class("Walker");
+    self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
     # Fixed-width numeric types
-    self.prefetch.i8_class = get_jac_builtin_type("i8");
-    self.prefetch.u8_class = get_jac_builtin_type("u8");
-    self.prefetch.i16_class = get_jac_builtin_type("i16");
-    self.prefetch.u16_class = get_jac_builtin_type("u16");
-    self.prefetch.i32_class = get_jac_builtin_type("i32");
-    self.prefetch.u32_class = get_jac_builtin_type("u32");
-    self.prefetch.i64_class = get_jac_builtin_type("i64");
-    self.prefetch.u64_class = get_jac_builtin_type("u64");
-    self.prefetch.f32_class = get_jac_builtin_type("f32");
-    self.prefetch.f64_class = get_jac_builtin_type("f64");
+    self.prefetch.i8_class = get_jac_builtin_class("i8");
+    self.prefetch.u8_class = get_jac_builtin_class("u8");
+    self.prefetch.i16_class = get_jac_builtin_class("i16");
+    self.prefetch.u16_class = get_jac_builtin_class("u16");
+    self.prefetch.i32_class = get_jac_builtin_class("i32");
+    self.prefetch.u32_class = get_jac_builtin_class("u32");
+    self.prefetch.i64_class = get_jac_builtin_class("i64");
+    self.prefetch.u64_class = get_jac_builtin_class("u64");
+    self.prefetch.f32_class = get_jac_builtin_class("f32");
+    self.prefetch.f64_class = get_jac_builtin_class("f64");
 }
 
 """Load and return builtins stub module."""
