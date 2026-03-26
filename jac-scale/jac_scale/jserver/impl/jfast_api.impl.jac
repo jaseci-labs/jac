@@ -124,21 +124,48 @@ impl JFastApiServer.run_server(
                     style="warning"
                 );
             }
-            # Only pass workers if > 1 (single worker is uvicorn's default)
+            # Use gunicorn for multi-worker mode, uvicorn for single worker
             if workers > 1 {
-                uvicorn.run(
-                    app,
-                    host=host,
-                    port=current_port,
-                    workers=workers,
-                    log_config=log_config
-                );
+                # Store app in module for gunicorn workers to import
+                import from jac_scale.jserver { _worker_app_holder }
+                _worker_app_holder.app = app;
+                # Run with gunicorn + uvicorn workers
+                import from gunicorn.app.base { BaseApplication }
+
+                class GunicornApp(BaseApplication) {
+                    def init(self: GunicornApp, options: dict) -> None {
+                        self.options = options;
+                        super().__init__();
+                    }
+
+                    def load_config(self: GunicornApp) -> None {
+                        for (key, value) in self.options.items() {
+                            if key in self.cfg.settings and value is not None {
+                                self.cfg.set(key.lower(), value);
+                            }
+                        }
+                    }
+
+                    def load(self: GunicornApp) -> Any {
+                        return _worker_app_holder.app;
+                    }
+                }
+
+                gunicorn_options = {
+                    "bind": f"{host}:{current_port}",
+                    "workers": workers,
+                    "worker_class": "uvicorn.workers.UvicornWorker",
+                    "accesslog": "-",
+                    "errorlog": "-",
+                    "loglevel": "warning"
+                };
+                GunicornApp(gunicorn_options).run();
             } else {
                 uvicorn.run(app, host=host, port=current_port, log_config=log_config);
             }
             return;
         } except SystemExit as e {
-            # uvicorn raises SystemExit when port is in use
+            # gunicorn/uvicorn raises SystemExit when port is in use
             # errno 98 = EADDRINUSE (Linux), errno 10048 = WSAEADDRINUSE (Windows)
             if "Address already in use" in str(e)
             or "address already in use" in str(e) {
