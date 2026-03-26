@@ -264,7 +264,12 @@ impl JacAPIServerCore.start(
     if on_ready {
         on_ready(self.port);
     }
-    self.server.run_server(port=self.port, workers=self.workers);
+    self.server.run_server(
+        port=self.port,
+        workers=self.workers,
+        module_name=self.module_name,
+        base_path=self.base_path
+    );
 }
 
 """Print startup banner with correct port."""

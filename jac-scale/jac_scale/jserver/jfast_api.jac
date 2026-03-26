@@ -163,6 +163,8 @@ class JFastApiServer(JServer[FastAPI]) {
         host: str = '0.0.0.0',
         port: int = 8000,
         workers: int = 1,
-        max_retries: int = 10
+        max_retries: int = 10,
+        module_name: str = "__main__",
+        base_path: str = ""
     ) -> None;
 }

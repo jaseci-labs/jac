@@ -74,7 +74,9 @@ impl JFastApiServer.run_server(
     host: str = '0.0.0.0',
     port: int = 8000,
     workers: int = 1,
-    max_retries: int = 10
+    max_retries: int = 10,
+    module_name: str = "__main__",
+    base_path: str = ""
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
@@ -124,14 +126,15 @@ impl JFastApiServer.run_server(
                     style="warning"
                 );
             }
-            # Use gunicorn for multi-worker mode, uvicorn for single worker
             if workers > 1 {
-                # Store app in module for uvicorn workers to import
-                import from jac_scale.jserver { _worker_app_holder }
-                _worker_app_holder.app = app;
-                # Pass import string to uvicorn for multi-worker mode
+                # Set env vars for worker factory to recreate the app
+                import os;
+                os.environ["JAC_WORKER_MODULE"] = module_name;
+                os.environ["JAC_WORKER_BASE_PATH"] = base_path or os.getcwd();
+                # Use factory function - each worker creates its own app
                 uvicorn.run(
-                    "jac_scale.jserver._worker_app_holder:app",
+                    "jac_scale.jserver._worker_app_holder:create_app",
+                    factory=True,
                     host=host,
                     port=current_port,
                     workers=workers,
