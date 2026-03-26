@@ -16,11 +16,7 @@ def create_app() -> Any:
     # Import and load the jac module
     from jaclang.plugin.feature import JacFeature as Jac
 
-    Jac.jac_import(
-        target=module_name,
-        base_path=base_path,
-        override_name="__main__"
-    )
+    Jac.jac_import(target=module_name, base_path=base_path, override_name="__main__")
 
     # Create the server
     from jac_scale.serve import JacAPIServer
