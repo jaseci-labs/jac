@@ -91,7 +91,9 @@ impl WebTarget.start(
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(module_name=mod, port=api_port, base_path=base);
 
-    console.print(f"\n🚀 Starting server at http://localhost:{api_port}/", style="bold green");
+    console.print(
+        f"\n🚀 Starting server at http://localhost:{api_port}/", style="bold green"
+    );
     console.print("  Press Ctrl+C to stop\n", style="muted");
 
     try {
