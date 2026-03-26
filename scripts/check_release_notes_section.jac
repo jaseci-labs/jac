@@ -7,16 +7,6 @@ import subprocess;
 import sys;
 import re;
 
-glob RELEASE_NOTE_FILES = [
-    "docs/docs/community/release_notes/jaclang.md",
-    "docs/docs/community/release_notes/byllm.md",
-    "docs/docs/community/release_notes/jac-client.md",
-    "docs/docs/community/release_notes/jac-scale.md",
-    "docs/docs/community/release_notes/jac-super.md",
-    "docs/docs/community/release_notes/jac-mcp.md"
-];
-
-glob VERSION_HEADER = r"^## ([a-z][a-z0-9-]*|Version) \d+\.\d+(\.\d+)?";
 
 def get_merge_base() -> (str | None) {
     try {
@@ -46,7 +36,7 @@ def get_diff(merge_base: str, filepath: str) -> str {
     }
 }
 
-def check_file(merge_base: str, filepath: str) -> list[str] {
+def check_file(merge_base: str, filepath: str, version_header: str) -> list[str] {
     diff = get_diff(merge_base, filepath);
     if not diff {
         return [];
@@ -69,7 +59,7 @@ def check_file(merge_base: str, filepath: str) -> list[str] {
             continue;
         }
 
-        if re.match(VERSION_HEADER, content) {
+        if re.match(version_header, content) {
             is_unreleased = "(Unreleased)" in content;
             is_latest_release = "(Latest Release)" in content;
         }
@@ -99,14 +89,23 @@ def check_file(merge_base: str, filepath: str) -> list[str] {
 }
 
 def main() -> int {
+    release_note_files: dict[str, str] = {
+        "jaclang":    "docs/docs/community/release_notes/jaclang.md",
+        "byllm":      "docs/docs/community/release_notes/byllm.md",
+        "jac-client": "docs/docs/community/release_notes/jac-client.md",
+        "jac-scale":  "docs/docs/community/release_notes/jac-scale.md",
+        "jac-super":  "docs/docs/community/release_notes/jac-super.md",
+        "jac-mcp":    "docs/docs/community/release_notes/jac-mcp.md"
+    };
+    version_header = rf"^## ({'|'.join(list(release_note_files.keys()) + ['Version'])}) \d+\.\d+(\.\d+)?";
     merge_base = get_merge_base();
     if not merge_base {
         print("Could not determine merge base with origin/main -- skipping check.");
         return 0;
     }
     all_errors: list[str] = [];
-    for filepath in RELEASE_NOTE_FILES {
-        all_errors.extend(check_file(merge_base, filepath));
+    for filepath in release_note_files.values() {
+        all_errors.extend(check_file(merge_base, filepath, version_header));
     }
     if all_errors {
         print();
