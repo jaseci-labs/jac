@@ -15,6 +15,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Refactor: Native Pass `has` Declarations and Duplicate Cleanup**: `NaIRGenPass` now declares all 83 instance attributes in `has` with proper defaults. Removed ~500 lines of duplicate method declarations and stub implementations from `primitives_native`.
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 
+## Changes 
+
+- **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
+
+
 ## jaclang 0.13.1 (Latest Release)
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
@@ -22,6 +27,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: TypeVar Annotations in `self.attr` Assignments**: Type annotations on self-member assignments in generic class `init` methods (e.g., `self.value: V = input`) now correctly propagate through inheritance chains. Previously, accessing such attributes in subclasses produced false "has no attribute" errors because the TypeVar type wasn't stored on the declaration node.
 - **Fix: Ternary Expression Type Narrowing**: The type checker now applies branch-specific narrowing inside ternary (`if-else`) expressions. The walker manually traverses the true branch with narrowing from the condition and the false branch with inverse narrowing, preventing false-positive type errors when `isinstance` guards are used in ternary expressions.
 - **Fix: CFG Symbol Propagation Through Already-Linked Nodes**: `link_bbs` now propagates newly added `affected_symbols` via iterative BFS to already-linked internal CFG nodes. This fixes cases where `exit_if_stmt` linked body nodes before `_link_sequential` added upstream symbols, causing the backward CFG walk to miss narrowing predicates.
+- **Fix: Runtime Null Safety for `user_root` and `visit` Expressions**: `check_access_level` now returns `NO_ACCESS` when `user_root` is `None` instead of crashing, and `visit` gracefully handles expressions that are neither `NodeArchetype` nor `EdgeArchetype` by producing an empty traversal list instead of failing.
 - **Fix: Scope Narrowing for AtomTrailer Nodes**: The pre-cache scope narrowing check in `get_type_of_expression` now handles `AtomTrailer` nodes (attribute access like `obj.attr`) in addition to `Name` and `NameAtom` nodes. Previously, attribute access expressions inside `and` chains and ternary branches returned stale cached types, bypassing truthiness and isinstance narrowing. This eliminates 12 false positive errors in `runtime.impl.jac`.
 - **Fix: `add_scope_narrowing` Union Replacement**: When an existing scope narrowing is a `UnionType` (e.g., from truthiness excluding `None`) and a more specific type arrives (e.g., from `isinstance`), the specific type now replaces the union instead of being silently dropped.
 - **Fix: Compound `or` Guard Narrowing**: `_find_predicate_for` now handles inverted predicates in `or` conditions (e.g., `not x or not x.attr`). Previously it bailed out when any `or` operand was inverted, preventing DeMorgan narrowing on the false branch of compound `or` guards.
