@@ -1,11 +1,23 @@
 """Implementation of WebTarget methods."""
+import os;
 import types;
 import from pathlib { Path }
 import from typing { Optional }
 import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
 glob VITE_DEV_SERVER_PORT = 5173,
-     DEFAULT_FUNCTION_NAME = "app";
+     DEFAULT_FUNCTION_NAME = "app",
+     JAC_FILE_EXTENSION = ".jac";
+
+"""Extract base path and module name from entry file path."""
+def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
+    (base, mod) = os.path.split(str(entry_file));
+    base = base or "./";
+    if mod.endswith(JAC_FILE_EXTENSION) {
+        mod = mod[:-len(JAC_FILE_EXTENSION)];
+    }
+    return (base, mod);
+}
 
 """Setup web target (no-op - web works out of the box)."""
 impl WebTarget.setup(project_dir: Path) -> None { }
@@ -57,28 +69,30 @@ This method is called when using non-default targets that inherit from WebTarget
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import os;
     import from jaclang.cli.console { console }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+
+    # Build the bundle first
     bundler = ViteBundler(project_dir=project_dir);
     console.print("\n🌐 Building web bundle for production preview...", style="bold");
     self.build(entry_file, project_dir, None);
+
     # Verify dist directory exists
     dist_dir = bundler.output_dir;
-    if not dist_dir.exists() {
+    if not dist_dir or not dist_dir.exists() {
         raise RuntimeError(f"Build output not found: {dist_dir}");
     }
-    # Get module name from entry file
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if entry_file.name.endswith('.jac') {
-        mod = mod[:-4];
-    }
-    # Use Jac.get_api_server_class() to respect plugin hooks (jac-scale, etc.)
+
+    # Parse entry file to get base path and module name
+    (base, mod) = _parse_entry_file(entry_file);
+
+    # Create server using plugin hook (allows jac-scale to provide enhanced server)
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(module_name=mod, port=api_port, base_path=base);
+
     console.print(f"\n🚀 Starting server at http://localhost:{api_port}/", style="bold green");
     console.print("  Press Ctrl+C to stop\n", style="muted");
+
     try {
         server.start(dev=False, no_client=False);
     } except KeyboardInterrupt {
@@ -90,23 +104,26 @@ impl WebTarget.start(
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import os;
     import shutil;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jac_client.plugin.client { JacClient }
+
     bundler = ViteBundler(project_dir=project_dir);
+
     # Clean dist directory for fresh build
     dist_dir = bundler.output_dir;
-    if dist_dir.exists() {
+    if dist_dir and dist_dir.exists() {
         shutil.rmtree(dist_dir);
     }
-    dist_dir.mkdir(parents=True, exist_ok=True);
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if entry_file.name.endswith('.jac') {
-        mod = mod[:-4];
+    if dist_dir {
+        dist_dir.mkdir(parents=True, exist_ok=True);
     }
-    Jac.jac_import(target=mod, base_path=base, lng='jac');
+
+    # Parse entry file to get base path and module name
+    (base, mod) = _parse_entry_file(entry_file);
+
+    # Import the module
+    Jac.jac_import(target=mod, base_path=base, lng=JAC_FILE_EXTENSION[1:]);
     if Jac.program.errors_had {
         errors = '\n'.join(str(e) for e in Jac.program.errors_had);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
