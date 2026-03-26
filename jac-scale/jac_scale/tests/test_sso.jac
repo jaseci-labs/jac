@@ -261,6 +261,10 @@ obj MockScaleConfig {
     def get_monitoring_config -> dict {
         return {"enabled": False};
     }
+
+    def get_server_config -> dict {
+        return {"port": 8000, "host": "0.0.0.0", "workers": 1};
+    }
 }
 
 """Extract body content from JSONResponse or TransportResponse."""
