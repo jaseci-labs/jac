@@ -118,10 +118,18 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
+        import from jaclang.compiler.passes.main.portability_check_pass {
+            PortabilityCheckPass
+        }
         import from jaclang.compiler.passes.main.unitree_enrich_pass {
             UniTreeEnrichPass
         }
-        return [TypeCheckPass, StaticAnalysisPass, UniTreeEnrichPass];
+        return [
+            TypeCheckPass,
+            StaticAnalysisPass,
+            PortabilityCheckPass,
+            UniTreeEnrichPass
+        ];
     } except ImportError {
         return [];
     } finally {

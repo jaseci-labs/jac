@@ -1,20 +1,21 @@
 """Layout pass implementation — computes class hierarchy, C3 MRO,
 field layout, and vtable structure for all archetypes."""
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 
-impl LayoutPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
-    super.init(ir_in, prog, cancel_token);
+    super.postinit();
 }
 
-impl LayoutPass.before_pass -> None {
+impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
     module = self.ir_in;
     # Step 1: Collect all archetypes
     arch_map = self._collect_archetypes(module);
     if not arch_map {
         module.gen.layout_registry = self.registry;
-        return;
+        return ir_in;
     }
     # Step 2: Build hierarchy (parents + MRO)
     self._build_hierarchy(arch_map);
@@ -42,12 +43,13 @@ impl LayoutPass.before_pass -> None {
     }
     # Store registry on module (using setattr to avoid modifying CodeGenTarget)
     module.gen.layout_registry = self.registry;
+    return ir_in;
 }
 
 """Collect all Archetype nodes from the module, deduplicating forward declarations."""
 impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
     arch_map: dict[str, uni.Archetype] = {};
-    for nd in self.get_all_sub_nodes(module, uni.Archetype, brute_force=True) {
+    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype, brute_force=True) {
         aname = nd.name.value if nd.name else None;
         if aname is None {
             continue;
