@@ -558,11 +558,14 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
     }
 
-    # ImplDef body is not in kid list, traverse it explicitly
-    # Only process stubs linked to an impl file
+    # ImplDef body is not in kid list, traverse it explicitly.
+    # Isolate scope narrowings so guard-pattern promotions (e.g.,
+    # `if x is None { return; }` → x narrowed to NoneType) from one
+    # impl body don't leak into subsequent impl bodies.
     if isinstance(nd.body, uni.ImplDef) {
-        # ImplDef body is not in kid list, traverse it explicitly
+        self.evaluator.push_narrowing_scope();
         self.traverse(nd.body);
+        self.evaluator.pop_narrowing_scope();
     }
     # Check for missing return statements on non-None return type functions
     if (
