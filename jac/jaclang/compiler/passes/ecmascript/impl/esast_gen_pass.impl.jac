@@ -1,11 +1,3 @@
-"""Initialize EsastGenPass."""
-
-impl EsastGenPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Extract literal value from an expression."""
 impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {
     if (expr is None) {

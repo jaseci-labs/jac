@@ -64,7 +64,9 @@ Injects comments using token sequence analysis for perfect precision.
     line collapsing.
 """
 obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None);
+    has _token_cache: dict by postinit;
+
+    def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _process(ctx: uni.UniNode, nd: doc.DocType) -> doc.DocType;
     def _find_delimiters(
