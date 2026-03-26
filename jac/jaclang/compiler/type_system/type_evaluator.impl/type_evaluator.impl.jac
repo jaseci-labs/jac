@@ -2967,65 +2967,31 @@ and does the prefetch once, however if we forgot to call prefetch
 in some place then it will not be available in the evaluator, So we
 are prefetching the builtins at the constructor level once.
 """
-impl TypeEvaluator.init(program: "JacProgram") -> None {
-    # Initialize constants that have defaults in the class definition
-    self._BUILTINS_STUB_FILE_PATH: str = os.path.join(
+impl TypeEvaluator.postinit -> None {
+    # Initialize path constants (use __file__ from impl location)
+    self._BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
     );
-    self._TYPING_STUB_FILE_PATH: str = os.path.join(
+    self._TYPING_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
     );
-    self._TYPES_STUB_FILE_PATH: str = os.path.join(
+    self._TYPES_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
     );
-    self._JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
+    self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "jac_builtins.pyi"
     );
-    self._ENUM_STUB_FILE_PATH: str = os.path.join(
+    self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
-    self._SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
-        "Union",
-        "Protocol",
-        "Callable",
-        "Type",
-        "NoReturn",
-        "ClassVar",
-        "Optional",
-        "Tuple",
-        "Final",
-        "Literal",
-        "TypedDict"
-    );
-    self.program = program;
-    self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
-    self.prefetch: PrefetchedTypes = PrefetchedTypes();
-    self._pass: object | None = None;
-    self.builtins_module: uni.Module | None = None;
-    # CFG-based type narrowing cache: (id(stmt_node), sym_name) -> narrowed_type.
-    self._narrowing_cache: dict[tuple, types.TypeBase | None] = {};
-    # Scope-based narrowing stack for if/AND blocks (forward traversal).
-    # Each scope is a dict mapping narrowing keys (e.g., "x", "x.foo") to types.
-    self._narrowing_scope_stack: list[dict[str, types.TypeBase]] = [];
-    # TODO: This is a workaround. The correct fix is to utilize CFG-based narrowing
-    # for ternary expressions, similar to how if/else statements are handled.
-    # Currently, ternary uses scope-based narrowing for Names while if/else uses CFG.
-    # Once CFG properly covers ternary expressions, this counter can be removed.
-    self._in_ternary_expr_depth: int = 0;
-    # Counter for AND/OR boolean expression contexts that need scope-based
-    # Name narrowing. Incremented/decremented by TypeCheckPass enter/exit_bool_expr.
-    self._in_bool_expr_narrowing_depth: int = 0;
-    # Track symbols currently being narrowed to prevent recursive cycles.
-    # Uses id(symbol) for unique identity, avoiding name collisions between
-    # different symbols with the same name in different scopes.
-    self._narrowing_in_progress: set[int] = set();
-    # Cache for module types by resolved path to avoid redundant lookups.
-    self._module_type_cache: dict[str, types.ModuleType] = {};
+    # Initialize objects that need constructor calls
+    self.prefetch = PrefetchedTypes();
+    self._narrowing_in_progress = set();
     # NOTE: The initialization order here is important.
     self.typing_module = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
     self.types_module = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     self.enum_module = self._load_stub_module(self._ENUM_STUB_FILE_PATH);
-    # These prefetch type are essential for the builtin types.
+    # These prefetch types are essential for the builtin types.
     self.prefetch.type_var_class = self._get_type_from_module(
         self.typing_module, "TypeVar"
     );

@@ -11,6 +11,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Generic Function TypeVar Resolution**: Generic functions like `find_parent_of_type[T](typ: type[T]) -> T | None` now correctly resolve TypeVar bindings at call sites. Previously returned `Unknown` because function-level type parameters were never stored, `T | None` collapsed to `Unknown` due to `is_any_type()` short-circuiting, and `type_params` were dropped during method cloning.
 - **Refactor: Compiler Passes Converted from `class` to `obj` with `postinit`**: All compiler pass classes now use the `obj` style with `has` declarations and `postinit` methods instead of `class` with custom `init`. This aligns passes with Jac's dataclass-like initialization pattern.
 - **Refactor: Native Pass `has` Declarations and Duplicate Cleanup**: `NaIRGenPass` now declares all 83 instance attributes in `has` with proper defaults. Removed ~500 lines of duplicate method declarations and stub implementations from `primitives_native`.
+- **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 
 ## jaclang 0.13.1 (Latest Release)
 
