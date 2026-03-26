@@ -1,7 +1,7 @@
 """Implementation of base plugin configuration infrastructure."""
 import from pathlib { Path }
 import from typing { Any }
-import from jaclang.project.config { JacConfig }
+import from jaclang.project.config { JacConfig, find_project_root }
 import from jaclang.jac0core.runtime { JacRuntime }
 
 """Deep merge two dictionaries recursively."""
@@ -24,10 +24,11 @@ impl deep_merge(base: dict[str, Any], override_dict: dict[str, Any]) -> dict[str
 """Initialize config loader with project directory."""
 impl PluginConfigBase.postinit{
     full_target = JacRuntime.full_target_path;
+    project_root_result = find_project_root(Path(full_target)) if full_target else None;
     self.project_dir = (
         self.project_dir
             if self.project_dir is not None
-            else (Path(full_target).parent if full_target else Path.cwd())
+            else project_root_result[0] if project_root_result else None
     );
     self.config_file = self.project_dir / 'jac.toml';
     self._config = None;
