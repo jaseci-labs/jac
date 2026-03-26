@@ -12,7 +12,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.5.8
 
-- **Fix: Provider config from `jac.toml` ignored, defaulting to OpenAI**: `default_llm` and `PluginConfigBase` now derive the project directory from `JacRuntime.full_target_path` so the correct `jac.toml` is always read. Previously both fell back to `cwd`, causing `[plugins.byllm.model] default_model` (e.g. `gemini/gemini-1.5-flash`) to be ignored in favour of `openai/gpt-4o-mini`.
 - **Add: Configurable LiteLLM debug logging via `jac.toml`**: LiteLLM's verbose logging (HTTP requests, retries, headers) can now be toggled via `[plugins.byllm.litellm] debug = true/false` in `jac.toml`. Defaults to `false` (quiet). When disabled, `_disable_debugging()` silences LiteLLM's internal loggers, reducing stdout noise. byLLM's own exception logging (`logger.error`) is unaffected, errors are always logged and propagated regardless of this setting.
 - **Add: LLM Telemetry & Observability**: Introduced a lightweight agent telemetry publish mechanism (`byllm/telemetry.jac`) that emits structured per-invocation records (caller, user prompt, agent response, token usage, cost, and latency) at the end of every `Model.invoke()` call without storing any data in byllm itself.
 - **Add: Invocation ID correlation**: `Model.invoke()` now stamps a UUID `invocation_id` across all LLM calls in a ReAct loop, enabling external consumers (e.g., jac-scale) to correlate per-call litellm events with the top-level agent invocation into a single unified trace.
