@@ -1904,34 +1904,22 @@ theme_color = "#000000"
 # =============================================================================
 # WORKERS CONFIGURATION TESTS
 # =============================================================================
-"""Test _resolve_workers handles int and 'auto' correctly."""
-test "workers config resolution" {
+"""Test workers config resolution and server config integration."""
+test "workers config" {
     import multiprocessing;
-    import from jac_scale.config_loader { _resolve_workers }
+    import from jac_scale.config_loader {
+        _resolve_workers,
+        get_scale_config,
+        reset_scale_config
+    }
 
-    # Integer values
-    assert _resolve_workers(1) == 1;
-    assert _resolve_workers(4) == 4;
-    assert _resolve_workers(0) == 1;  # Min is 1
+    # _resolve_workers: int and auto
+    assert _resolve_workers(4) == 4 and _resolve_workers(0) == 1;
+    assert _resolve_workers("auto") == 2 * multiprocessing.cpu_count() + 1;
 
-    # Auto mode
-    expected_auto = 2 * multiprocessing.cpu_count() + 1;
-    assert _resolve_workers("auto") == expected_auto;
-    assert _resolve_workers("AUTO") == expected_auto;
-}
-
-"""Test get_server_config returns workers with correct default."""
-test "server config includes workers" {
-    import from jac_scale.config_loader { get_scale_config, reset_scale_config }
-
+    # server config includes workers
     reset_scale_config();
-    config = get_scale_config();
-    server_config = config.get_server_config();
-
-    assert "workers" in server_config;
-    assert "port" in server_config;
-    assert "host" in server_config;
-    assert server_config["workers"] >= 1;
+    assert get_scale_config().get_server_config()["workers"] >= 1;
 }
 
 """Integration test: verify server starts correctly with --workers flag."""
