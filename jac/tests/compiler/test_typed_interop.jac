@@ -135,7 +135,6 @@ test "client manifest tracks exports" {
 
 # Plain obj return should generate JS class stub + hydration wrapper
 test "hydration: plain obj return" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_return_obj.jac");
     js = mod.gen.js;
     assert "class Todo" in js , "Should emit JS class stub for Todo";
@@ -144,7 +143,6 @@ test "hydration: plain obj return" {
 
 # Nested obj (Person.address: Address) should chain hydration recursively
 test "hydration: nested obj return" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_return_nested.jac");
     js = mod.gen.js;
     assert "class Person" in js;
@@ -154,7 +152,6 @@ test "hydration: nested obj return" {
 
 # Enum fields should be hydrated as proper enum instances
 test "hydration: enum values preserved" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_return_enum.jac");
     js = mod.gen.js;
     assert "Priority" in js , "Should emit JS enum stub for Priority";
@@ -163,7 +160,6 @@ test "hydration: enum values preserved" {
 
 # Optional[T] should hydrate non-null and pass through null
 test "hydration: optional handles null" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_optional_union.jac");
     js = mod.gen.js;
     assert "class UserProfile" in js;
@@ -172,7 +168,6 @@ test "hydration: optional handles null" {
 
 # list[Obj] should hydrate each element individually
 test "hydration: list elements individually hydrated" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_collection_return.jac");
     js = mod.gen.js;
     assert "class Metric" in js;
@@ -181,7 +176,6 @@ test "hydration: list elements individually hydrated" {
 
 # Walker reports containing typed nodes should be hydrated
 test "hydration: walker reports as typed nodes" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_walker_spawn.jac");
     js = mod.gen.js;
     assert "class Project" in js or "__from_wire" in js;
@@ -189,7 +183,6 @@ test "hydration: walker reports as typed nodes" {
 
 # Nodes should be hydrated with _jac_id and graph identity
 test "hydration: graph nodes preserve identity" {
-    raise unittest.SkipTest("Graph type hydration not yet implemented");
     mod = compile_fixture("typed_graph_return.jac");
     js = mod.gen.js;
     assert "class Department" in js or "class Employee" in js;
@@ -203,7 +196,6 @@ test "hydration: graph nodes preserve identity" {
 
 # Typed obj arguments should be serialized with __to_wire
 test "serialization: obj argument uses to_wire" {
-    raise unittest.SkipTest("Typed serialization not yet implemented");
     mod = compile_fixture("typed_args_obj.jac");
     js = mod.gen.js;
     assert "__to_wire" in js;
@@ -211,7 +203,6 @@ test "serialization: obj argument uses to_wire" {
 
 # Typed objects in walker has fields should be serialized
 test "serialization: walker has fields use to_wire" {
-    raise unittest.SkipTest("Typed serialization not yet implemented");
     mod = compile_fixture("typed_walker_fields.jac");
     js = mod.gen.js;
     assert "__to_wire" in js;
@@ -219,7 +210,6 @@ test "serialization: walker has fields use to_wire" {
 
 # Full round-trip: __to_wire on send AND __from_wire on receive
 test "serialization: bidirectional round trip" {
-    raise unittest.SkipTest("Typed hydration not yet implemented");
     mod = compile_fixture("typed_bidirectional.jac");
     js = mod.gen.js;
     assert "class CartItem" in js;
@@ -236,7 +226,6 @@ test "serialization: bidirectional round trip" {
 
 # InteropManifest should collect boundary types with param + return types
 test "manifest: boundary types with params and returns" {
-    raise unittest.SkipTest("Boundary type manifest not yet implemented");
     mod = compile_fixture("typed_bidirectional.jac");
     manifest = mod.gen.interop_manifest;
     exports = manifest.server_exports_to_client;
@@ -253,7 +242,6 @@ test "manifest: boundary types with params and returns" {
 
 # Nested types (Person -> Address) should be transitively collected
 test "manifest: nested types transitively collected" {
-    raise unittest.SkipTest("Boundary type manifest not yet implemented");
     mod = compile_fixture("typed_return_nested.jac");
     manifest = mod.gen.interop_manifest;
     exports = manifest.server_exports_to_client;

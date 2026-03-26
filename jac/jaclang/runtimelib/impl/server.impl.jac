@@ -210,6 +210,21 @@ impl ExecutionManager.execute_function(
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
+        # Deserialize typed arguments from wire format
+        for (k, v) in list(args.items()) {
+            if isinstance(v, dict) and '__type__' in v {
+                deserialized = Serializer.deserialize(v);
+                if deserialized is not None {
+                    args[k] = deserialized;
+                }
+            } elif isinstance(v, list) {
+                args[k] = [
+                    Serializer.deserialize(item)
+                        if isinstance(item, dict) and '__type__' in item
+                        else item for item in v
+                ];
+            }
+        }
         func_result = func(**args);
         if iscoroutine(func_result) {
             result = await func_result;
@@ -244,6 +259,21 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
+    # Deserialize typed walker fields from wire format
+    for (k, v) in list(fields.items()) {
+        if isinstance(v, dict) and '__type__' in v {
+            deserialized = Serializer.deserialize(v);
+            if deserialized is not None {
+                fields[k] = deserialized;
+            }
+        } elif isinstance(v, list) {
+            fields[k] = [
+                Serializer.deserialize(item)
+                    if isinstance(item, dict) and '__type__' in item
+                    else item for item in v
+            ];
+        }
+    }
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);

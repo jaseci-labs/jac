@@ -952,11 +952,39 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         }
                     }
                     param_names: list[str] = [];
+                    inline_param_type_map: dict[str, str] = {};
+                    inline_ret_type: str = '';
                     if isinstance(ability_node.signature, uni.FuncSignature) {
-                        param_names = [
-                            p.name.sym_name for p in ability_node.signature.params
-                        ];
+                        sig = ability_node.signature;
+                        param_names = [p.name.sym_name for p in sig.params];
+                        for p in sig.params {
+                            if p.type_tag
+                            and p.type_tag.tag
+                            and isinstance(p.type_tag.tag, uni.Name) {
+                                inline_param_type_map[p.name.sym_name] = p.type_tag.tag.value;
+                            }
+                        }
+                        if sig.return_type {
+                            if isinstance(sig.return_type, uni.Name) {
+                                inline_ret_type = sig.return_type.value;
+                            } elif isinstance(sig.return_type, uni.AtomTrailer) {
+                                if isinstance(sig.return_type.target, uni.Name) {
+                                    inline_ret_type = sig.return_type.target.value;
+                                    if inline_ret_type == "list"
+                                    and sig.return_type.right {
+                                        if isinstance(
+                                            sig.return_type.right, uni.Name
+                                        ) {
+                                            inline_ret_type = f"list[{sig.return_type.right.value}]";
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+                    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
+                        if self.ir_in.gen.interop_manifest
+                        else {};
                     props = [];
                     for (i, arg) in enumerate(args) {
                         if isinstance(arg, es.SpreadElement) {
@@ -965,11 +993,28 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                             key = self.sync_loc(
                                 es.Literal(value=param_names[i]), jac_node=nd
                             );
+                            arg_value = arg;
+                            # Wrap typed args with __to_wire()
+                            ptype = inline_param_type_map.get(param_names[i], '');
+                            if ptype in inline_boundary
+                            and inline_boundary[ptype].kind != "enum" {
+                                arg_value = self.sync_loc(
+                                    es.CallExpression(
+                                        callee=es.MemberExpression(
+                                            object=arg,
+                                            property=es.Identifier(name='__to_wire'),
+                                            computed=False
+                                        ),
+                                        arguments=[]
+                                    ),
+                                    jac_node=nd
+                                );
+                            }
                             props.append(
                                 self.sync_loc(
                                     es.Property(
                                         key=key,
-                                        value=arg,
+                                        value=arg_value,
                                         kind='init',
                                         method=False,
                                         shorthand=False,
@@ -984,7 +1029,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         es.ObjectExpression(properties=props), jac_node=nd
                     );
                     # Generate CallExpression without await - the outer AwaitExpr handles that
-                    call_expr = self.sync_loc(
+                    result_expr: es.Expression = self.sync_loc(
                         es.CallExpression(
                             callee=self.sync_loc(
                                 es.Identifier(name='__jacCallFunction'), jac_node=nd
@@ -996,9 +1041,57 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         ),
                         jac_node=nd
                     );
+                    # Wrap return with __from_wire if return type is a boundary type
+                    if inline_ret_type in inline_boundary
+                    and inline_boundary[inline_ret_type].kind != "enum" {
+                        result_expr = self.sync_loc(
+                            es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=es.Identifier(name=inline_ret_type),
+                                    property=es.Identifier(name='__from_wire'),
+                                    computed=False
+                                ),
+                                arguments=[result_expr]
+                            ),
+                            jac_node=nd
+                        );
+                    } elif inline_ret_type.startswith("list[")
+                    and inline_ret_type.endswith("]") {
+                        inner = inline_ret_type[5:-1];
+                        if inner in inline_boundary
+                        and inline_boundary[inner].kind != "enum" {
+                            result_expr = self.sync_loc(
+                                es.CallExpression(
+                                    callee=es.MemberExpression(
+                                        object=result_expr,
+                                        property=es.Identifier(name='map'),
+                                        computed=False
+                                    ),
+                                    arguments=[
+                                        es.ArrowFunctionExpression(
+                                            params=[es.Identifier(name='x')],
+                                            body=es.CallExpression(
+                                                callee=es.MemberExpression(
+                                                    object=es.Identifier(name=inner),
+                                                    property=es.Identifier(
+                                                        name='__from_wire'
+                                                    ),
+                                                    computed=False
+                                                ),
+                                                arguments=[es.Identifier(name='x')]
+                                            ),
+                                            expression=True,
+                                            async_=False
+                                        )
+                                    ]
+                                ),
+                                jac_node=nd
+                            );
+                        }
+                    }
                     # Auto-inject __jacCallFunction import if not already done
                     self._inject_runtime_import('__jacCallFunction', nd);
-                    nd.gen.es_ast = call_expr;
+                    nd.gen.es_ast = result_expr;
                     return;
                 }
             }
@@ -2986,6 +3079,8 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         # Try to resolve the function signature from the source module
         # to get parameter names for the RPC args object
         param_names: list[str] = [];
+        param_type_map: dict[str, str] = {};
+        ret_type_name: str = '';
         if source_mod {
             sym = source_mod.lookup(func_name);
             if (sym and sym.defn) {
@@ -2999,11 +3094,34 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                 if (
                     ability_node
                     and isinstance(ability_node.signature, uni.FuncSignature)
-                    and ability_node.signature.params
                 ) {
-                    param_names = [
-                        p.name.sym_name for p in ability_node.signature.params
-                    ];
+                    sig = ability_node.signature;
+                    if sig.params {
+                        for p in sig.params {
+                            pname = p.name.sym_name;
+                            param_names.append(pname);
+                            if p.type_tag and p.type_tag.tag {
+                                if isinstance(p.type_tag.tag, uni.Name) {
+                                    param_type_map[pname] = p.type_tag.tag.value;
+                                }
+                            }
+                        }
+                    }
+                    if sig.return_type {
+                        if isinstance(sig.return_type, uni.Name) {
+                            ret_type_name = sig.return_type.value;
+                        } elif isinstance(sig.return_type, uni.AtomTrailer) {
+                            # Handle list[Type] etc.
+                            if isinstance(sig.return_type.target, uni.Name) {
+                                ret_type_name = sig.return_type.target.value;
+                                if ret_type_name == "list" and sig.return_type.right {
+                                    if isinstance(sig.return_type.right, uni.Name) {
+                                        ret_type_name = f"list[{sig.return_type.right.value}]";
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 # Analyze function body for auto-caching effects
                 if ability_node
@@ -3014,16 +3132,34 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
                 }
             }
         }
+        boundary_types = nd.gen.interop_manifest.boundary_types
+            if nd.gen.interop_manifest
+            else {};
         # Build JS function parameters
         js_params: list[es.Pattern] = [];
         for pname in param_names {
             js_params.append(self.sync_loc(es.Identifier(name=pname), jac_node=nd));
         }
-        # Build the args object: { param1: param1, param2: param2, ... }
+        # Build the args object, wrapping typed args with __to_wire()
         props: list[es.Property | es.SpreadElement] = [];
         for pname in param_names {
             key = self.sync_loc(es.Literal(value=pname), jac_node=nd);
-            value = self.sync_loc(es.Identifier(name=pname), jac_node=nd);
+            value: es.Expression = self.sync_loc(es.Identifier(name=pname), jac_node=nd);
+            # Wrap typed arguments with __to_wire()
+            ptype = param_type_map.get(pname, '');
+            if ptype in boundary_types and boundary_types[ptype].kind != "enum" {
+                value = self.sync_loc(
+                    es.CallExpression(
+                        callee=es.MemberExpression(
+                            object=es.Identifier(name=pname),
+                            property=es.Identifier(name='__to_wire'),
+                            computed=False
+                        ),
+                        arguments=[]
+                    ),
+                    jac_node=nd
+                );
+            }
             props.append(
                 self.sync_loc(
                     es.Property(
@@ -3052,7 +3188,55 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
             ),
             jac_node=nd
         );
-        await_expr = self.sync_loc(es.AwaitExpression(argument=call_expr), jac_node=nd);
+        await_expr: es.Expression = self.sync_loc(
+            es.AwaitExpression(argument=call_expr), jac_node=nd
+        );
+        # Wrap return value with __from_wire if return type is a boundary type
+        if ret_type_name in boundary_types
+        and boundary_types[ret_type_name].kind != "enum" {
+            # TypeName.__from_wire(await __jacCallFunction(...))
+            await_expr = self.sync_loc(
+                es.CallExpression(
+                    callee=es.MemberExpression(
+                        object=es.Identifier(name=ret_type_name),
+                        property=es.Identifier(name='__from_wire'),
+                        computed=False
+                    ),
+                    arguments=[await_expr]
+                ),
+                jac_node=nd
+            );
+        } elif ret_type_name.startswith("list[") and ret_type_name.endswith("]") {
+            inner = ret_type_name[5:-1];
+            if inner in boundary_types and boundary_types[inner].kind != "enum" {
+                # (await __jacCallFunction(...)).map(x => InnerType.__from_wire(x))
+                await_expr = self.sync_loc(
+                    es.CallExpression(
+                        callee=es.MemberExpression(
+                            object=await_expr,
+                            property=es.Identifier(name='map'),
+                            computed=False
+                        ),
+                        arguments=[
+                            es.ArrowFunctionExpression(
+                                params=[es.Identifier(name='x')],
+                                body=es.CallExpression(
+                                    callee=es.MemberExpression(
+                                        object=es.Identifier(name=inner),
+                                        property=es.Identifier(name='__from_wire'),
+                                        computed=False
+                                    ),
+                                    arguments=[es.Identifier(name='x')]
+                                ),
+                                expression=True,
+                                async_=False
+                            )
+                        ]
+                    ),
+                    jac_node=nd
+                );
+            }
+        }
         return_stmt = self.sync_loc(
             es.ReturnStatement(argument=await_expr), jac_node=nd
         );
@@ -3109,12 +3293,442 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     }
 }
 
+"""Emit JS class stubs for types crossing the SV/CL boundary."""
+impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
+    import from jaclang.jac0core.codeinfo { BoundaryTypeInfo }
+    manifest = nd.gen.interop_manifest;
+    if not manifest.boundary_types {
+        return [];
+    }
+    stubs: list[es.Statement] = [];
+    for (type_name, info) in manifest.boundary_types.items() {
+        if info.kind == "enum" {
+            # const Priority = Object.freeze({ LOW: "low", MEDIUM: "medium" });
+            enum_props: list[es.Property] = [];
+            for (member_name, member_val) in info.enum_members {
+                key = es.Identifier(name=member_name);
+                val = es.Literal(
+                    value=member_val if member_val is not None else member_name
+                );
+                enum_props.append(
+                    es.Property(
+                        key=key,
+                        value=val,
+                        kind='init',
+                        method=False,
+                        shorthand=False,
+                        computed=False
+                    )
+                );
+            }
+            obj_expr = es.CallExpression(
+                callee=es.MemberExpression(
+                    object=es.Identifier(name='Object'),
+                    property=es.Identifier(name='freeze'),
+                    computed=False
+                ),
+                arguments=[es.ObjectExpression(properties=enum_props)]
+            );
+            decl = es.VariableDeclaration(
+                declarations=[
+                    es.VariableDeclarator(
+                        id=es.Identifier(name=type_name), init=obj_expr
+                    )
+                ],
+                kind='const'
+            );
+            stubs.append(decl);
+        } else {
+            # Emit class with constructor, __from_wire, __to_wire
+            field_names = [f[0] for f in info.fields];
+            field_types = {f[0]: f[1] for f in info.fields};
+            # constructor(props = {})
+            ctor_stmts: list[es.Statement] = [];
+            for fname in field_names {
+                # this.field = props.hasOwnProperty("field") ? props.field : null;
+                assign = es.ExpressionStatement(
+                    expression=es.AssignmentExpression(
+                        operator='=',
+                        left=es.MemberExpression(
+                            object=es.ThisExpression(),
+                            property=es.Identifier(name=fname),
+                            computed=False
+                        ),
+                        right=es.ConditionalExpression(
+                            test=es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=es.Identifier(name='props'),
+                                    property=es.Identifier(name='hasOwnProperty'),
+                                    computed=False
+                                ),
+                                arguments=[es.Literal(value=fname)]
+                            ),
+                            consequent=es.MemberExpression(
+                                object=es.Identifier(name='props'),
+                                property=es.Identifier(name=fname),
+                                computed=False
+                            ),
+                            alternate=es.Literal(value=None)
+                        )
+                    )
+                );
+                ctor_stmts.append(assign);
+            }
+            # For node types, preserve _jac_id
+            if info.kind == "node" {
+                jac_id_assign = es.ExpressionStatement(
+                    expression=es.AssignmentExpression(
+                        operator='=',
+                        left=es.MemberExpression(
+                            object=es.ThisExpression(),
+                            property=es.Identifier(name='_jac_id'),
+                            computed=False
+                        ),
+                        right=es.ConditionalExpression(
+                            test=es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=es.Identifier(name='props'),
+                                    property=es.Identifier(name='hasOwnProperty'),
+                                    computed=False
+                                ),
+                                arguments=[es.Literal(value='_jac_id')]
+                            ),
+                            consequent=es.MemberExpression(
+                                object=es.Identifier(name='props'),
+                                property=es.Identifier(name='_jac_id'),
+                                computed=False
+                            ),
+                            alternate=es.Literal(value=None)
+                        )
+                    )
+                );
+                ctor_stmts.append(jac_id_assign);
+            }
+            ctor = es.FunctionExpression(
+                id=None,
+                params=[
+                    es.AssignmentPattern(
+                        left=es.Identifier(name='props'),
+                        right=es.ObjectExpression(properties=[])
+                    )
+                ],
+                body=es.BlockStatement(body=ctor_stmts),
+                generator=False,
+                async_=False
+            );
+            ctor_def = es.MethodDefinition(
+                key=es.Identifier(name='constructor'),
+                value=ctor,
+                kind='constructor',
+                static=False,
+                computed=False
+            );
+            # static __from_wire(d)
+            from_wire_stmts: list[es.Statement] = [];
+            # if (d === null || d === undefined) return d;
+            from_wire_stmts.append(
+                es.IfStatement(
+                    test=es.LogicalExpression(
+                        operator='||',
+                        left=es.BinaryExpression(
+                            operator='===',
+                            left=es.Identifier(name='d'),
+                            right=es.Literal(value=None)
+                        ),
+                        right=es.BinaryExpression(
+                            operator='===',
+                            left=es.Identifier(name='d'),
+                            right=es.Identifier(name='undefined')
+                        )
+                    ),
+                    consequent=es.ReturnStatement(argument=es.Identifier(name='d')),
+                    alternate=None
+                )
+            );
+            # Hydrate nested typed fields
+            for fname in field_names {
+                ftype = field_types[fname];
+                # Check if the field type is a boundary type (needs nested hydration)
+                inner_type = None;
+                is_list = False;
+                if ftype in manifest.boundary_types {
+                    inner_type = ftype;
+                } elif ftype.startswith("list[") and ftype.endswith("]") {
+                    inner = ftype[5:-1];
+                    if inner in manifest.boundary_types {
+                        inner_type = inner;
+                        is_list = True;
+                    }
+                }
+                if inner_type {
+                    if is_list {
+                        # if (d.field) d.field = d.field.map(x => InnerType.__from_wire(x));
+                        from_wire_stmts.append(
+                            es.IfStatement(
+                                test=es.MemberExpression(
+                                    object=es.Identifier(name='d'),
+                                    property=es.Identifier(name=fname),
+                                    computed=False
+                                ),
+                                consequent=es.ExpressionStatement(
+                                    expression=es.AssignmentExpression(
+                                        operator='=',
+                                        left=es.MemberExpression(
+                                            object=es.Identifier(name='d'),
+                                            property=es.Identifier(name=fname),
+                                            computed=False
+                                        ),
+                                        right=es.CallExpression(
+                                            callee=es.MemberExpression(
+                                                object=es.MemberExpression(
+                                                    object=es.Identifier(name='d'),
+                                                    property=es.Identifier(name=fname),
+                                                    computed=False
+                                                ),
+                                                property=es.Identifier(name='map'),
+                                                computed=False
+                                            ),
+                                            arguments=[
+                                                es.ArrowFunctionExpression(
+                                                    params=[es.Identifier(name='x')],
+                                                    body=es.CallExpression(
+                                                        callee=es.MemberExpression(
+                                                            object=es.Identifier(
+                                                                name=inner_type
+                                                            ),
+                                                            property=es.Identifier(
+                                                                name='__from_wire'
+                                                            ),
+                                                            computed=False
+                                                        ),
+                                                        arguments=[
+                                                            es.Identifier(name='x')
+                                                        ]
+                                                    ),
+                                                    expression=True,
+                                                    async_=False
+                                                )
+                                            ]
+                                        )
+                                    )
+                                ),
+                                alternate=None
+                            )
+                        );
+                    } else {
+                        # if (d.field) d.field = InnerType.__from_wire(d.field);
+                        from_wire_stmts.append(
+                            es.IfStatement(
+                                test=es.MemberExpression(
+                                    object=es.Identifier(name='d'),
+                                    property=es.Identifier(name=fname),
+                                    computed=False
+                                ),
+                                consequent=es.ExpressionStatement(
+                                    expression=es.AssignmentExpression(
+                                        operator='=',
+                                        left=es.MemberExpression(
+                                            object=es.Identifier(name='d'),
+                                            property=es.Identifier(name=fname),
+                                            computed=False
+                                        ),
+                                        right=es.CallExpression(
+                                            callee=es.MemberExpression(
+                                                object=es.Identifier(name=inner_type),
+                                                property=es.Identifier(
+                                                    name='__from_wire'
+                                                ),
+                                                computed=False
+                                            ),
+                                            arguments=[
+                                                es.MemberExpression(
+                                                    object=es.Identifier(name='d'),
+                                                    property=es.Identifier(name=fname),
+                                                    computed=False
+                                                )
+                                            ]
+                                        )
+                                    )
+                                ),
+                                alternate=None
+                            )
+                        );
+                    }
+                }
+            }
+            # return new TypeName(d);
+            from_wire_stmts.append(
+                es.ReturnStatement(
+                    argument=es.NewExpression(
+                        callee=es.Identifier(name=type_name),
+                        arguments=[es.Identifier(name='d')]
+                    )
+                )
+            );
+            from_wire_fn = es.FunctionExpression(
+                id=None,
+                params=[es.Identifier(name='d')],
+                body=es.BlockStatement(body=from_wire_stmts),
+                generator=False,
+                async_=False
+            );
+            from_wire_def = es.MethodDefinition(
+                key=es.Identifier(name='__from_wire'),
+                value=from_wire_fn,
+                kind='method',
+                static=True,
+                computed=False
+            );
+            # __to_wire()
+            to_wire_props: list[es.Property] = [];
+            to_wire_props.append(
+                es.Property(
+                    key=es.Literal(value='__type__'),
+                    value=es.Literal(value=type_name),
+                    kind='init',
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                )
+            );
+            for fname in field_names {
+                ftype = field_types[fname];
+                value_expr: es.Expression = es.MemberExpression(
+                    object=es.ThisExpression(),
+                    property=es.Identifier(name=fname),
+                    computed=False
+                );
+                # Serialize nested typed fields
+                if ftype in manifest.boundary_types {
+                    nested_info = manifest.boundary_types[ftype];
+                    if nested_info.kind != "enum" {
+                        # this.field ? this.field.__to_wire() : null
+                        value_expr = es.ConditionalExpression(
+                            test=es.MemberExpression(
+                                object=es.ThisExpression(),
+                                property=es.Identifier(name=fname),
+                                computed=False
+                            ),
+                            consequent=es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=value_expr,
+                                    property=es.Identifier(name='__to_wire'),
+                                    computed=False
+                                ),
+                                arguments=[]
+                            ),
+                            alternate=es.Literal(value=None)
+                        );
+                    }
+                } elif ftype.startswith("list[") and ftype.endswith("]") {
+                    inner = ftype[5:-1];
+                    if inner in manifest.boundary_types
+                    and manifest.boundary_types[inner].kind != "enum" {
+                        # this.field ? this.field.map(x => x.__to_wire()) : []
+                        value_expr = es.ConditionalExpression(
+                            test=es.MemberExpression(
+                                object=es.ThisExpression(),
+                                property=es.Identifier(name=fname),
+                                computed=False
+                            ),
+                            consequent=es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=es.MemberExpression(
+                                        object=es.ThisExpression(),
+                                        property=es.Identifier(name=fname),
+                                        computed=False
+                                    ),
+                                    property=es.Identifier(name='map'),
+                                    computed=False
+                                ),
+                                arguments=[
+                                    es.ArrowFunctionExpression(
+                                        params=[es.Identifier(name='x')],
+                                        body=es.CallExpression(
+                                            callee=es.MemberExpression(
+                                                object=es.Identifier(name='x'),
+                                                property=es.Identifier(
+                                                    name='__to_wire'
+                                                ),
+                                                computed=False
+                                            ),
+                                            arguments=[]
+                                        ),
+                                        expression=True,
+                                        async_=False
+                                    )
+                                ]
+                            ),
+                            alternate=es.ArrayExpression(elements=[])
+                        );
+                    }
+                }
+                to_wire_props.append(
+                    es.Property(
+                        key=es.Literal(value=fname),
+                        value=value_expr,
+                        kind='init',
+                        method=False,
+                        shorthand=False,
+                        computed=False
+                    )
+                );
+            }
+            # For node types, include _jac_id
+            if info.kind == "node" {
+                to_wire_props.append(
+                    es.Property(
+                        key=es.Literal(value='_jac_id'),
+                        value=es.MemberExpression(
+                            object=es.ThisExpression(),
+                            property=es.Identifier(name='_jac_id'),
+                            computed=False
+                        ),
+                        kind='init',
+                        method=False,
+                        shorthand=False,
+                        computed=False
+                    )
+                );
+            }
+            to_wire_fn = es.FunctionExpression(
+                id=None,
+                params=[],
+                body=es.BlockStatement(
+                    body=[
+                        es.ReturnStatement(
+                            argument=es.ObjectExpression(properties=to_wire_props)
+                        )
+                    ]
+                ),
+                generator=False,
+                async_=False
+            );
+            to_wire_def = es.MethodDefinition(
+                key=es.Identifier(name='__to_wire'),
+                value=to_wire_fn,
+                kind='method',
+                static=False,
+                computed=False
+            );
+            class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
+            class_decl = es.ClassDeclaration(
+                id=es.Identifier(name=type_name), superClass=None, body=class_body
+            );
+            stubs.append(class_decl);
+        }
+    }
+    return stubs;
+}
+
 """Process module node."""
 impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
     # Include stubs for def:pub functions imported via sv import
     body.extend(self.sv_import_stubs);
+    # Emit JS class stubs for types crossing the SV/CL boundary
+    body.extend(self._emit_boundary_type_stubs(nd));
     # Collect import source paths already present to avoid duplicates
     # when impl modules re-inject the same import (e.g. __jacCallFunction).
     seen_imports: set[str] = set();
