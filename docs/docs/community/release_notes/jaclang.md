@@ -15,10 +15,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Refactor: Native Pass `has` Declarations and Duplicate Cleanup**: `NaIRGenPass` now declares all 83 instance attributes in `has` with proper defaults. Removed ~500 lines of duplicate method declarations and stub implementations from `primitives_native`.
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 
-## Changes 
+## Changes
 
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
-
 
 ## jaclang 0.13.1 (Latest Release)
 
