@@ -339,6 +339,50 @@ impl TypeEvaluator._get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None 
     return None;
 }
 
+"""Get the nearest enclosing return scope: the first Ability or LambdaExpr walking up."""
+impl TypeEvaluator._get_enclosing_return_scope(
+    nd: uni.UniNode
+) -> uni.Ability | uni.LambdaExpr | None {
+    while nd := nd.parent {
+        if isinstance(nd, uni.LambdaExpr) {
+            return nd;
+        }
+        if isinstance(nd, uni.Ability) {
+            return nd;
+        }
+        if isinstance(nd, uni.ImplDef) and isinstance(nd.decl_link, uni.Ability) {
+            return nd.decl_link;
+        }
+    }
+    return None;
+}
+
+"""Get the resolved return type from an Ability or LambdaExpr, or None if unresolvable."""
+impl TypeEvaluator._get_declared_return_type(
+    scope: uni.Ability | uni.LambdaExpr
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system { types }
+
+    if isinstance(scope, uni.LambdaExpr) {
+        if (
+            isinstance(scope.signature, uni.FuncSignature)
+            and scope.signature.return_type is not None
+        ) {
+            return self._convert_to_instance(
+                self.get_type_of_expression(scope.signature.return_type)
+            );
+        }
+        return None;
+    }
+    # Ability path — resolve via get_type_of_ability (handles both annotated
+    # and unannotated cases; unannotated defaults to NoneType).
+    fn_type_base = self.get_type_of_ability(scope);
+    if not isinstance(fn_type_base, types.FunctionType) {
+        return None;
+    }
+    return self._convert_to_instance(fn_type_base.return_type);
+}
+
 """Get the enclosing function (ability) of the given node."""
 impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None {
     while nd := nd.parent {
@@ -474,7 +518,7 @@ impl TypeEvaluator._extract_type_params(
     # The type_params field on the Archetype node holds TypeParam AST nodes.
     if node_.type_params {
         for tp in node_.type_params {
-            tv = types.TypeVarType(name=tp.sym_name);
+            tv = types.TypeVarType(name=tp.sym_name, is_class_type_param=True);
             type_params.append(tv);
         }
         return type_params;
@@ -485,39 +529,130 @@ impl TypeEvaluator._extract_type_params(
     outer_names = {tp.name for tp in outer_type_params};
 
     # Handle Python-style generics: obj Box(Generic[T])
+    # Track seen TypeVar names to deduplicate (e.g. Mapping(Collection[_KT],
+    # Generic[_KT, _VT_co]) would otherwise collect _KT twice).
+    #
+    # Two-pass strategy: when Generic[...] is explicitly present in the bases,
+    # PEP 484 makes it the authoritative declaration of type parameter order.
+    # We process it FIRST so other bases don't impose encounter order.
+    # e.g. dict_values(ValuesView[_VT_co], Generic[_KT_co, _VT_co]) must produce
+    # [_KT_co, _VT_co] (from Generic), not [_VT_co, _KT_co] (encounter order).
+    #
+    # Generic detection uses two approaches:
+    #   1. is_special_form("Generic") on the resolved type (when alias_name is set).
+    #   2. AST symbol name fallback — Generic in typeshed stubs resolves to
+    #      type[_SpecialForm] without alias_name, so we check the Name node
+    #      value directly (mirroring Pyright's aliasedName approach).
+    seen_names: set[str] = set();
+    generic_base: uni.AtomTrailer | None = None;
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr
         or base_class.is_null_ok {
             continue;
         }
+        target_type = self.get_type_of_expression(base_class.target);
+        is_generic = (
+            isinstance(target_type, types.ClassType)
+            and target_type.is_special_form("Generic")
+        );
+        if (
+            not is_generic
+            and isinstance(base_class.target, uni.Name)
+            and base_class.target.value == "Generic"
+        ) {
+            is_generic = True;
+        }
+        if is_generic {
+            generic_base = base_class;
+            break;
+        }
+    }
+    if generic_base is not None {
+        self._collect_typevars_from_base(
+            generic_base, outer_names, seen_names, type_params
+        );
+    }
 
-        if isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices {
-            type_vars = base_class.right.slices[0].start;
-            if isinstance(type_vars, uni.TupleVal) {
-                for val in type_vars.values {
-                    type_var_type = self.get_type_of_expression(val);
-                    if isinstance(type_var_type, types.TypeVarType) {
-                        # Validate: TypeVar not already in use by outer scope
-                        if type_var_type.name in outer_names {
-                            self.emit_diag(E1062, val, name=type_var_type.name);
-                        }
-                        type_params.append(type_var_type);
-                    }
+    # Second pass: process all non-Generic bases for remaining TypeVars.
+    # When Generic[] was found, this only picks up TypeVars not already seen
+    # (should be none in well-formed code). When Generic[] is absent, this is
+    # the primary extraction path.
+    for base_class in node_.base_classes or [] {
+        if (not isinstance(base_class, uni.AtomTrailer))
+        or base_class.is_attr
+        or base_class.is_null_ok {
+            continue;
+        }
+        if base_class is generic_base {
+            continue;
+        }
+        self._collect_typevars_from_base(
+            base_class, outer_names, seen_names, type_params
+        );
+    }
+    return type_params;
+}
+
+"""Extract TypeVars from a single parameterized base class into type_params.
+
+Handles both single-TypeVar bases like Base[T] and multi-TypeVar bases like
+Generic[K, V]. Deduplicates by name using seen_names and validates against
+outer_names for outer-scope reuse errors.
+"""
+impl TypeEvaluator._collect_typevars_from_base(
+    base_class: uni.AtomTrailer,
+    outer_names: set[str],
+    seen_names: set[str],
+    type_params: list[types.TypeVarType]
+) -> None {
+    if not (isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices) {
+        return;
+    }
+    type_vars = base_class.right.slices[0].start;
+    if isinstance(type_vars, uni.TupleVal) {
+        for val in type_vars.values {
+            type_var_type = self.get_type_of_expression(val);
+            if isinstance(type_var_type, types.TypeVarType) {
+                if type_var_type.name in outer_names {
+                    self.emit_diag(E1062, val, name=type_var_type.name);
                 }
-            } else {
-                type_var_type = self.get_type_of_expression(type_vars);
-                if isinstance(type_var_type, types.TypeVarType) {
-                    # Validate: TypeVar not already in use by outer scope
-                    if type_var_type.name in outer_names {
-                        self.emit_diag(E1062, type_vars, name=type_var_type.name);
-                    }
-                    type_params.append(type_var_type);
+                if type_var_type.name not in seen_names {
+                    seen_names.add(type_var_type.name);
+                    # Mark as class type param since it's used in the class's base declaration
+                    class_type_var = types.TypeVarType(
+                        name=type_var_type.name,
+                        is_covariant=type_var_type.is_covariant,
+                        is_contravariant=type_var_type.is_contravariant,
+                        bound=type_var_type.bound,
+                        constraints=type_var_type.constraints,
+                        is_class_type_param=True
+                    );
+                    type_params.append(class_type_var);
                 }
             }
         }
+    } else {
+        type_var_type = self.get_type_of_expression(type_vars);
+        if isinstance(type_var_type, types.TypeVarType) {
+            if type_var_type.name in outer_names {
+                self.emit_diag(E1062, type_vars, name=type_var_type.name);
+            }
+            if type_var_type.name not in seen_names {
+                seen_names.add(type_var_type.name);
+                # Mark as class type param since it's used in the class's base declaration
+                class_type_var = types.TypeVarType(
+                    name=type_var_type.name,
+                    is_covariant=type_var_type.is_covariant,
+                    is_contravariant=type_var_type.is_contravariant,
+                    bound=type_var_type.bound,
+                    constraints=type_var_type.constraints,
+                    is_class_type_param=True
+                );
+                type_params.append(class_type_var);
+            }
+        }
     }
-    return type_params;
 }
 
 """Emit a structured diagnostic via the pass."""
@@ -738,7 +873,7 @@ match the name against known special forms and return the appropriate type.
 """
 impl TypeEvaluator._get_special_form_type(
     name: str, symbol_type: types.TypeBase
-) -> types.ClassType | types.TypeVarType | None {
+) -> types.TypeBase | None {
     if not self.prefetch {
         return None;
     }
@@ -750,7 +885,6 @@ impl TypeEvaluator._get_special_form_type(
     is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
-        and isinstance(self.prefetch.callable_class, types.ClassType)
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
@@ -792,7 +926,11 @@ impl TypeEvaluator._get_special_form_type(
     # Map special form names to their handling
     match name {
         case "Callable":
-            return self.prefetch.callable_class;
+            # Bare Callable is Callable[..., Any] per PEP 484.
+            # Return a gradual FunctionType so it's usable as a callable.
+            # The subscript handler checks is_from_callable_annotation() to
+            # recognize this as a Callable base for Callable[[int], str] syntax.
+            return types.create_callable_type([], types.AnyType(), is_gradual=True);
 
         case "Protocol":
             return self.prefetch.protocol_class;
@@ -837,8 +975,7 @@ impl TypeEvaluator.create_self_type(
     if not isinstance(symbol_type, types.ClassType) {
         return None;
     }
-    if not self.prefetch.callable_class
-    or not isinstance(self.prefetch.callable_class, types.ClassType) {
+    if not self.prefetch.callable_class {
         return None;
     }
     # Check if it's a _SpecialForm
@@ -1136,6 +1273,45 @@ A TypeVar is valid if:
 impl TypeEvaluator.validate_typevar_scope(
     expr: uni.Expr, type_var: types.TypeVarType
 ) -> None {
+    # Module-level TypeVars (defined via glob T = TypeVar("T")) are valid
+    # when used in a function/method signature (param types or return type),
+    # including impl blocks. They are NOT valid in class bodies, function
+    # bodies, or at module level outside signatures.
+    # Check this early to avoid recursive validation loops that occur when
+    # _get_function_type_params evaluates signature types.
+    if isinstance(expr, uni.Name) and expr.sym {
+        sym_decl = expr.sym.decl;
+        if sym_decl {
+            # Check if the TypeVar is declared at module level
+            is_module_level = False;
+            decl_parent = sym_decl.parent;
+            while decl_parent {
+                if isinstance(decl_parent, uni.Module) {
+                    is_module_level = True;
+                    break;
+                }
+                if isinstance(decl_parent, (uni.Archetype, uni.Ability)) {
+                    break;  # Not module-level
+                }
+                decl_parent = decl_parent.parent;
+            }
+            # If module-level, check that expr is inside a function signature
+            if is_module_level {
+                sig_check = expr.parent;
+                while sig_check {
+                    if isinstance(sig_check, uni.FuncSignature) {
+                        return;  # Valid: module-level TypeVar in function signature
+
+                    }
+                    if isinstance(sig_check, (uni.Ability, uni.Archetype, uni.Module)) {
+                        break;  # Reached a scope boundary without finding signature
+                    }
+                    sig_check = sig_check.parent;
+                }
+            }
+        }
+    }
+
     # Find IMMEDIATE enclosing scope (class or function)
     enclosing_class: uni.Archetype | None = None;
     enclosing_func: uni.Ability | None = None;
@@ -1215,4 +1391,20 @@ impl TypeEvaluator._get_outer_scope_type_params(
         current = current.parent;
     }
     return type_params;
+}
+
+"""Check if a function body contains only ellipsis (stub body)."""
+impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool {
+    has_ellipsis = False;
+    for stmt in body {
+        if isinstance(stmt, uni.Semi) {
+            continue;
+        }
+        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
+            has_ellipsis = True;
+            continue;
+        }
+        return False;
+    }
+    return has_ellipsis;
 }

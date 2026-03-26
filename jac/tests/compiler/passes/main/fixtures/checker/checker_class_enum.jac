@@ -1,5 +1,5 @@
 """Tests for class-based enum type checking (StrEnum, IntEnum)."""
-import from enum { StrEnum, IntEnum }
+import from enum { StrEnum, IntEnum, auto }
 
 class BaseClass(StrEnum) {}
 class BaseClass2(IntEnum) {}
@@ -59,3 +59,17 @@ glob cast_result: AccessLevel | None = AccessLevel.cast(1);  # OK
 glob default_val: int = AccessLevel.get_default();  # OK
 glob cast_wrong: int = AccessLevel.cast(1);  # Error: Cannot assign AccessLevel | None to int
 glob default_wrong: str = AccessLevel.get_default();  # Error: Cannot assign int to str
+
+# Test: enum.auto() should return int type (similar to Pyright's handling)
+class Priority(IntEnum) {
+    with entry {
+        LOW = auto();
+        MEDIUM = auto();
+        HIGH = auto();
+    }
+}
+
+# auto() members should work like regular IntEnum members
+glob priority: Priority = Priority.LOW;  # OK: IntEnum member to IntEnum type
+glob priority_int: int = Priority.MEDIUM;  # OK: IntEnum member is assignable to int
+glob priority_str: str = Priority.HIGH;  # Error: IntEnum member is NOT assignable to str

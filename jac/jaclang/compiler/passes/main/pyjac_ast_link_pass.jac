@@ -20,7 +20,6 @@ import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.passes { UniPass }
 """Link jac ast to python ast nodes."""
 obj PyJacAstLinkPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def link_jac_py_nodes(jac_node: uni.UniNode, py_nodes: list[ast3.AST]) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_type_alias(nd: uni.TypeAlias) -> None;

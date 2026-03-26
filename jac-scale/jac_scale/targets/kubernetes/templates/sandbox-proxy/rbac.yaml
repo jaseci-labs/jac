@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-proxy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-proxy-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-proxy-reader-binding
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-proxy
+roleRef:
+  kind: Role
+  name: sandbox-proxy-reader
+  apiGroup: rbac.authorization.k8s.io

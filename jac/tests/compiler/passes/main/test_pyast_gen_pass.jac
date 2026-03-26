@@ -44,6 +44,47 @@ test "hodge podge" {
     assert not out.errors_had;
 }
 
+test "super_init_py_to_jac_roundtrip" {
+    # Test that super().__init__() works when a Python file goes through Jac's
+    # compilation pipeline (Python AST -> Jac IR -> Python AST).
+    # This is the jac run <file>.py scenario where __init__ must be preserved.
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURES, "super_init_base.py")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) {
+        compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+        captured = io.StringIO();
+        original_stdout = sys.stdout;
+        sys.path.insert(0, FIXTURES);
+        try {
+            sys.stdout = captured;
+            module = types.ModuleType("__main__");
+            module.__dict__["__file__"] = code_gen.loc.mod_path;
+            exec(compiled, module.__dict__);
+        } finally {
+            sys.stdout = original_stdout;
+            if FIXTURES in sys.path {
+                sys.path.remove(FIXTURES);
+            }
+        }
+        output = captured.getvalue();
+        # Verify super().__init__() calls work correctly in inheritance chain
+        assert "Base init" in output , f"Expected 'Base init' in output, got: {output}";
+        assert "Child init" in output , f"Expected 'Child init' in output, got: {output}";
+        assert "GrandChild init" in output , f"Expected 'GrandChild init' in output, got: {output}";
+        # Verify the order of initialization (base classes init before derived)
+        lines = output.strip().split("\n");
+        assert lines == [
+            "Base init",
+            "Child init",
+            "Base init",
+            "Child init",
+            "GrandChild init"
+        ] , f"Unexpected initialization order: {lines}";
+    }
+}
+
 test "sem decorator" {
     code_gen = JacProgram().compile(os.path.join(FIXTURES, "codegen_sem.jac"));
 

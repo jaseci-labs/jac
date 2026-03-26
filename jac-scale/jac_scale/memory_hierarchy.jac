@@ -85,9 +85,11 @@ obj MongoBackend(PersistentMemory) {
         collection: Any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
-        mongo_url: (str | None) = None;
+        mongo_url: (str | None) = None,
+        _mem_ref: (dict[UUID, Anchor] | None) = None;
 
     def postinit -> None;
+    def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
     def is_available -> bool;
     # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);

@@ -1,7 +1,9 @@
 """Initialize CommentInjectionPass."""
-
-impl CommentInjectionPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) {
-    super.init(ir_in, prog, cancel_token);
+impl CommentInjectionPass.postinit -> None {
+    # Cache for _get_tokens to avoid redundant traversals (10M+ calls -> ~600k)
+    # Must be set BEFORE super.postinit() which calls transform()
+    self._token_cache = {};
+    super.postinit();
 }
 
 """Remove redundant line breaks after inline comments."""
@@ -865,23 +867,35 @@ impl CommentInjectionPass._doc_line_span(
     );
 }
 
-"""Extract source tokens from a DocIR node (visitor pattern)."""
+"""Extract source tokens from a DocIR node (visitor pattern).
+
+Uses caching to avoid redundant traversals - key optimization for large files.
+"""
 impl CommentInjectionPass._get_tokens(nd: doc.DocType) -> list[uni.Token] {
+    cache_key = id(nd);
+    cached = self._token_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    result: list[uni.Token];
     if isinstance(nd, doc.Text) {
-        return [nd.source_token] if nd.source_token else [];
+        result = [nd.source_token] if nd.source_token else [];
     } elif isinstance(nd, (doc.Concat, doc.Group, doc.Indent, doc.Align)) {
-        tokens = [];
+        tokens: list[uni.Token] = [];
         children = nd.parts if isinstance(nd, doc.Concat) else [nd.contents];
         for child in children {
             tokens.extend(self._get_tokens(child));
         }
-        return tokens;
+        result = tokens;
     } elif isinstance(nd, doc.IfBreak) {
-        return (
-            self._get_tokens(nd.break_contents) + self._get_tokens(nd.flat_contents)
+        result = self._get_tokens(nd.break_contents) + self._get_tokens(
+            nd.flat_contents
         );
+    } else {
+        result = [];
     }
-    return [];
+    self._token_cache[cache_key] = result;
+    return result;
 }
 
 """
@@ -980,6 +994,8 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
 
 """Inject comments using token-level precision."""
 impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Clear token cache for each transform call (impl modules reuse the same pass instance)
+    self._token_cache = {};
     self._comments: (CommentStore | None) = None;
     if isinstance(ir_in, uni.Module) {
         self._comments = CommentStore.from_module(ir_in);

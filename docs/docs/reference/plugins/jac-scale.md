@@ -1977,6 +1977,567 @@ spawn(TaskFinder(), root())
 
 ---
 
+## Sandbox Environments
+
+jac-scale includes a **sandbox system** for creating isolated, ephemeral preview environments. Each sandbox runs a user's Jac application in its own container or pod with resource limits, network isolation, and automatic cleanup -- ideal for live preview, collaborative editing, or CI/CD preview deployments.
+
+### Overview
+
+The sandbox system follows jac-scale's factory pattern: an abstract `SandboxEnvironment` interface with three provider implementations. You choose the provider via configuration, and the factory handles instantiation.
+
+| Provider | Isolation | Use Case |
+|----------|-----------|----------|
+| `local` | Subprocess | Local development, no container runtime needed |
+| `docker` | Container | Staging, basic isolation with Docker |
+| `kubernetes` | Pod | Production, full isolation with resource limits and RBAC |
+
+### Configuration
+
+Enable and configure sandboxes in `jac.toml`:
+
+```toml
+[plugins.scale.sandbox]
+enabled = true
+type = "kubernetes"              # "kubernetes", "docker", or "local"
+namespace = "jac-sandboxes"      # K8s namespace for sandbox pods
+max_per_user = 3                 # Maximum concurrent sandboxes per user
+ttl_seconds = 3600               # Auto-cleanup after this many seconds (1 hour)
+cpu_limit = "500m"               # CPU limit per sandbox
+memory_limit = "512Mi"           # Memory limit per sandbox
+base_image = "python:3.12-slim"  # Base Docker/K8s image
+storage_limit = "256Mi"          # Scratch storage (/tmp) limit
+domain_template = "{sandbox_id}.preview.example.com"  # URL template
+security_context = true          # Run as non-root, no privilege escalation
+network_isolation = true         # Isolate sandboxes from each other
+ingress_class = "nginx"          # K8s Ingress class (nginx, alb, traefik)
+tls_enabled = false              # Enable TLS via cert-manager
+tls_issuer = "letsencrypt-prod"  # cert-manager ClusterIssuer name
+proxy_mode = false               # Use shared proxy instead of per-sandbox Ingress
+warm_pool_size = 0               # Pre-initialized pods for instant startup (K8s only)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the sandbox system |
+| `type` | string | `"local"` | Provider: `"kubernetes"`, `"docker"`, or `"local"` |
+| `namespace` | string | `"jac-sandboxes"` | Kubernetes namespace for sandbox resources |
+| `max_per_user` | int | `3` | Maximum concurrent sandboxes per user |
+| `ttl_seconds` | int | `3600` | Time-to-live before automatic cleanup (seconds) |
+| `cpu_limit` | string | `"500m"` | CPU limit per sandbox (K8s format) |
+| `memory_limit` | string | `"512Mi"` | Memory limit per sandbox (K8s format) |
+| `base_image` | string | `"python:3.12-slim"` | Base container image for sandboxes |
+| `storage_limit` | string | `"256Mi"` | Ephemeral storage limit for `/tmp` |
+| `domain_template` | string | `"{sandbox_id}.preview.example.com"` | URL template (`{sandbox_id}` is replaced) |
+| `security_context` | bool | `true` | Enable security context (non-root, no privilege escalation) |
+| `network_isolation` | bool | `true` | Isolate sandboxes from each other |
+| `ingress_class` | string | `"nginx"` | Kubernetes Ingress class name |
+| `tls_enabled` | bool | `false` | Enable TLS via cert-manager |
+| `tls_issuer` | string | `"letsencrypt-prod"` | cert-manager ClusterIssuer name |
+| `proxy_mode` | bool | `false` | Use shared routing proxy (see [Proxy Mode](#proxy-mode)) |
+| `warm_pool_size` | int | `0` | Number of pre-initialized warm pods (see [Warm Pool](#warm-pool)) |
+
+**Environment Variables (override jac.toml):**
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_SANDBOX_TYPE` | Provider type (`"kubernetes"`, `"docker"`, `"local"`) |
+| `JAC_SANDBOX_NAMESPACE` | Kubernetes namespace |
+| `JAC_SANDBOX_DOMAIN` | Domain template |
+
+Configuration priority: `jac.toml` > environment variables > defaults.
+
+---
+
+### Programmatic Usage
+
+Use `SandboxFactory` to create and manage sandboxes in your Jac code:
+
+```jac
+import from jac_scale.factories.sandbox_factory { SandboxFactory }
+
+# Create sandbox using jac.toml config
+glob sandbox = SandboxFactory.get_default();
+
+# Or create with explicit type and config
+glob sandbox = SandboxFactory.create("kubernetes", {
+    "namespace": "jac-sandboxes",
+    "base_image": "python:3.12-slim",
+    "memory_limit": "1Gi",
+    "ttl_seconds": 1800,
+    "domain_template": "{sandbox_id}.preview.example.com"
+});
+```
+
+#### Creating a Sandbox
+
+```jac
+with entry {
+    result = sandbox.create(
+        user_id="user-123",
+        project_id="my-project",
+        code_path="/path/to/project/files"
+    );
+
+    if result.success {
+        print(f"Sandbox ready at: {result.url}");
+        print(f"Sandbox ID: {result.sandbox_id}");
+    }
+}
+```
+
+#### Sandbox Lifecycle
+
+```jac
+with entry {
+    # Check status
+    status = sandbox.status("jac-sbx-abc123");
+    print(f"State: {status.state}");  # pending, starting, running, stopped, error
+
+    # List user's sandboxes
+    sandboxes = sandbox.list_sandboxes("user-123");
+    for s in sandboxes {
+        print(f"{s.sandbox_id}: {s.state} - {s.url}");
+    }
+
+    # Stop a sandbox
+    sandbox.stop("jac-sbx-abc123");
+
+    # Destroy and clean up all resources
+    sandbox.destroy("jac-sbx-abc123");
+
+    # Clean up expired sandboxes (beyond TTL)
+    cleaned = sandbox.cleanup_expired();
+    print(f"Cleaned {cleaned} expired sandboxes");
+}
+```
+
+#### File Operations
+
+Read, write, and manage files inside a running sandbox:
+
+```jac
+with entry {
+    # Write a file
+    sandbox.write_file("jac-sbx-abc123", "main.jac", "with entry { print('hello'); }");
+
+    # Read a file
+    result = sandbox.read_file("jac-sbx-abc123", "main.jac");
+    print(result["content"]);
+
+    # Read binary files (images) -- returned as base64
+    result = sandbox.read_file("jac-sbx-abc123", "assets/logo.png");
+    # result = {"success": True, "content": "<base64>", "is_binary": True, "mime_type": "image/png"}
+
+    # Delete a file
+    sandbox.delete_file("jac-sbx-abc123", "old_file.jac");
+
+    # List files
+    result = sandbox.list_files("jac-sbx-abc123");
+    for f in result["files"] {
+        print(f);
+    }
+}
+```
+
+**Path Security:** All file paths are validated against directory traversal, absolute paths, and shell metacharacters. Paths like `../`, `/etc/passwd`, or strings containing `;`, `|`, `&`, `` ` `` are rejected.
+
+**Excluded Directories:** File listing automatically skips `.jac/`, `node_modules/`, `__pycache__/`, `dist/`, and `.git/`.
+
+#### Command Execution
+
+```jac
+with entry {
+    result = sandbox.exec_command("jac-sbx-abc123", "ls -la /app", timeout=30);
+    print(result["stdout"]);
+}
+```
+
+#### Log Retrieval
+
+```jac
+with entry {
+    result = sandbox.logs("jac-sbx-abc123", offset=0);
+    print(result["content"]);
+    # result["offset"] contains the byte offset for the next read (streaming)
+}
+```
+
+---
+
+### Sandbox States
+
+| State | Description |
+|-------|-------------|
+| `pending` | Pod/container created, waiting to start |
+| `starting` | Container starting, installing dependencies |
+| `running` | Application fully ready and serving traffic |
+| `stopping` | Shutdown in progress |
+| `stopped` | Container stopped |
+| `error` | Error or crash state |
+
+---
+
+### Local Sandbox Provider
+
+The `local` provider runs each sandbox as a subprocess on the host machine. No container runtime required.
+
+```toml
+[plugins.scale.sandbox]
+enabled = true
+type = "local"
+```
+
+**How it works:**
+
+- Allocates a port pair from a pool (base ports 5180-5200, stride of 2)
+- Runs `jac start main.jac --dev -p {port}` as a child process
+- Checks for readiness by scanning process output for `"Server ready"`
+- Returns `http://localhost:{port}` as the preview URL
+
+**Environment sourcing:**
+
+- Global: `~/.jac-ide/global.env` (if it exists)
+- Project: `.env` in the project directory (if it exists)
+
+**Limitations:**
+
+- No isolation between sandboxes
+- No resource limits
+- Port pool limits concurrent sandboxes (10 by default)
+- Development and testing only
+
+---
+
+### Docker Sandbox Provider
+
+The `docker` provider runs each sandbox in an isolated Docker container with resource limits.
+
+```toml
+[plugins.scale.sandbox]
+enabled = true
+type = "docker"
+base_image = "python:3.12-slim"
+memory_limit = "512Mi"
+cpu_limit = "500m"
+network_isolation = true
+```
+
+**How it works:**
+
+- Creates a Docker container from `base_image`
+- Copies project files into `/app` via tarball injection
+- Runs `jac install && jac start main.jac --dev -p 8000`
+- Applies resource limits (memory, CPU, storage)
+- Optionally creates an isolated Docker bridge network per sandbox
+- Polls container health via HTTP until ready (120s timeout)
+
+**Container labels:**
+
+| Label | Value |
+|-------|-------|
+| `jac-sandbox` | `true` |
+| `jac-sandbox-id` | `{sandbox_id}` |
+| `jac-sandbox-user` | `{user_id}` |
+| `jac-sandbox-project` | `{project_id}` |
+
+**Requirements:** Docker daemon must be running on the host.
+
+---
+
+### Kubernetes Sandbox Provider
+
+The `kubernetes` provider creates isolated pods in a dedicated namespace with RBAC, resource limits, and automatic cleanup. This is the recommended provider for production.
+
+```toml
+[plugins.scale.sandbox]
+enabled = true
+type = "kubernetes"
+namespace = "jac-sandboxes"
+base_image = "python:3.12-slim"
+memory_limit = "2Gi"
+cpu_limit = "500m"
+ttl_seconds = 3600
+max_per_user = 3
+security_context = true
+```
+
+**How it works:**
+
+1. Ensures namespace exists with label `jac-sandbox: namespace`
+2. Provisions RBAC (ServiceAccount, Role, RoleBinding) for pod management
+3. Packages project files into a ConfigMap (text files in `data`, binary files in `binaryData` as base64)
+4. Creates a pod with an init container that unpacks the ConfigMap into `/app`
+5. Main container runs `jac install && jac start main.jac --dev -p 8000`
+6. Creates a Service and Ingress (unless `proxy_mode = true`)
+7. Polls pod readiness (container ready + "Server ready" in logs, 120s timeout)
+8. Returns the preview URL
+
+**Pod naming:** `jac-sbx-{user}-{project}-{uuid}` (lowercase, max 63 chars per K8s requirements)
+
+**Pod labels:**
+
+| Label | Value |
+|-------|-------|
+| `jac-sandbox` | `true` |
+| `jac-sandbox-id` | `{sandbox_id}` |
+| `jac-sandbox-user` | `{user_id}` |
+| `jac-sandbox-project` | `{project_id}` |
+
+**Environment variables injected into sandbox pods:**
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `JAC_SANDBOX_ID` | `{sandbox_id}` | Sandbox identifier |
+| `JAC_SANDBOX_USER` | `{user_id}` | Owner user ID |
+| `JAC_SANDBOX_PROJECT` | `{project_id}` | Project ID |
+| `CHOKIDAR_USEPOLLING` | `1` | Force file watcher to use polling (for HMR) |
+| `WATCHPACK_POLLING` | `true` | Webpack polling fallback (for HMR) |
+
+**Resource configuration:**
+
+- Limits: `cpu_limit`, `memory_limit` from config
+- Requests: 100m CPU, 64Mi memory (fixed)
+- Scratch storage: `storage_limit` as tmpfs on `/tmp`
+- Active deadline: `ttl_seconds` (K8s kills the pod after this)
+- Graceful shutdown: 10 seconds
+
+**Security context (when enabled):**
+
+- `runAsNonRoot: true`
+- `runAsUser: 1000`
+- `allowPrivilegeEscalation: false`
+
+**ConfigMap limits:** Project files are packed into a single ConfigMap with a 1MB size limit. Binary files (images, fonts, etc.) are stored in the `binaryData` field using base64 encoding. Files in `.jac/`, `node_modules/`, `__pycache__/`, `dist/`, and `.git/` directories are excluded.
+
+**RBAC auto-provisioning:** On first use, the provider creates a Role (`jac-sandbox-manager`) and RoleBinding in the sandbox namespace with permissions for pods, services, configmaps, and ingresses. If running inside a K8s cluster, it binds the role to the pod's ServiceAccount (via `POD_SERVICE_ACCOUNT` and `POD_NAMESPACE` environment variables).
+
+**Automatic cleanup:** A background thread runs every 60 seconds and:
+
+1. Lists all sandbox pods in the namespace
+2. Deletes pods older than `ttl_seconds`
+3. Deletes pods in terminal states (Failed, Succeeded)
+4. Purges stale registry entries for pods that no longer exist
+
+---
+
+### Ingress Routing
+
+When using `type = "kubernetes"`, sandboxes need to be accessible from the browser. There are two routing modes:
+
+#### Per-Sandbox Ingress (default)
+
+Each sandbox gets its own Kubernetes Ingress resource:
+
+```toml
+[plugins.scale.sandbox]
+proxy_mode = false              # default
+ingress_class = "nginx"         # or "alb", "traefik"
+domain_template = "{sandbox_id}.preview.example.com"
+tls_enabled = true
+tls_issuer = "letsencrypt-prod"
+```
+
+**Traffic flow:**
+
+```
+Browser → Load Balancer → Ingress ({sandbox_id}.preview.example.com) → Service → Pod
+```
+
+Each sandbox creates:
+
+- A `ClusterIP` Service: `{sandbox_id}-svc`
+- An Ingress resource: `{sandbox_id}-ingress` with the configured hostname
+
+**Custom Ingress annotations:**
+
+```toml
+[plugins.scale.sandbox.ingress_annotations]
+"nginx.ingress.kubernetes.io/proxy-read-timeout" = "3600"
+"nginx.ingress.kubernetes.io/proxy-send-timeout" = "3600"
+```
+
+**TLS:** When `tls_enabled = true`, cert-manager is used to automatically provision TLS certificates. Requires a `ClusterIssuer` named `tls_issuer` to be deployed in the cluster.
+
+**Drawback:** Creating per-sandbox Ingress resources is slow on some cloud providers (e.g., AWS ALB target group registration takes 30-60 seconds).
+
+#### Proxy Mode
+
+A single shared proxy service routes traffic to all sandboxes by pod IP. No per-sandbox Ingress or Service is created.
+
+```toml
+[plugins.scale.sandbox]
+proxy_mode = true
+domain_template = "{sandbox_id}.preview.example.com"
+```
+
+**Traffic flow:**
+
+```
+Browser → Load Balancer → Wildcard Ingress (*.preview.example.com) → Proxy Service → Pod IP
+```
+
+**How it works:**
+
+1. A single proxy deployment runs in the sandbox namespace (2 replicas recommended)
+2. The proxy watches all pods labeled `jac-sandbox=true` via the Kubernetes Watch API
+3. It maintains an in-memory routing table: `sandbox_id → {ip, phase, ready}`
+4. Incoming requests have their `Host` header parsed to extract the `sandbox_id` (e.g., `jac-sbx-abc.preview.example.com → jac-sbx-abc`)
+5. HTTP requests are forwarded to `http://{pod_ip}:8000{path}`
+6. WebSocket connections are bidirectionally relayed (supports Vite HMR with `vite-hmr` sub-protocol)
+
+**Loading page:** When a sandbox pod isn't ready yet, the proxy returns an auto-refreshing HTML page with a loading spinner. The page refreshes every 2 seconds until the pod is ready, then serves the actual application. This only applies to browser navigation requests (`Accept: text/html`); API calls receive proper 502/503 status codes.
+
+**Advantages over per-sandbox Ingress:**
+
+- Instant routing (no Ingress provisioning delay)
+- No per-sandbox K8s resources (Service, Ingress)
+- Scales to hundreds of concurrent sandboxes
+- Native WebSocket support for HMR
+
+**Proxy environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SANDBOX_NAMESPACE` | `jac-sandboxes` | Namespace to watch for sandbox pods |
+| `SANDBOX_LABEL` | `jac-sandbox=true` | Label selector for sandbox pods |
+| `INTERNAL_PORT` | `8000` | Port on sandbox pods |
+| `PROXY_PORT` | `8080` | Port the proxy listens on |
+
+**Deploying the proxy:** K8s manifest templates are included in `jac-scale/targets/kubernetes/templates/sandbox-proxy/`:
+
+- `rbac.yaml` -- ServiceAccount + Role (get/list/watch pods) + RoleBinding
+- `deployment.yaml` -- 2-replica Deployment (replace `REPLACE_WITH_IMAGE` with your built proxy image)
+- `service.yaml` -- ClusterIP Service on port 8080
+- `ingress.yaml` -- Wildcard Ingress (replace `*.example.com` with your domain)
+
+The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_proxy.jac`. Build it with the provided Dockerfile at `jac-scale/targets/kubernetes/templates/sandbox-proxy.Dockerfile`:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang jac-scale
+COPY sandbox_proxy.jac /app/sandbox_proxy.jac
+WORKDIR /app
+EXPOSE 8080
+CMD ["jac", "run", "sandbox_proxy.jac"]
+```
+
+**Health check endpoint:** `GET /_proxy/health` returns `ok (N routes)` where N is the number of tracked sandbox pods.
+
+---
+
+### Warm Pool
+
+The warm pool pre-creates idle pods that are ready to accept code instantly, eliminating pod scheduling and image pull delays.
+
+```toml
+[plugins.scale.sandbox]
+type = "kubernetes"
+warm_pool_size = 3    # Keep 3 idle pods ready
+```
+
+**How it works:**
+
+1. On startup, the provider creates `warm_pool_size` pods using `base_image`
+2. Warm pods run a wait loop: `while [ ! -f /app/.jac-start ]; do sleep 0.5; done`
+3. When a sandbox is requested, a warm pod is claimed and relabeled with the user's sandbox ID
+4. Project code is injected via `kubectl exec` (tar stream piped into the pod)
+5. A signal file (`/app/.jac-start`) is touched, triggering `jac install && jac start`
+6. The pool automatically replenishes in the background
+
+**Warm pod labels:**
+
+| Label | Value |
+|-------|-------|
+| `jac-sandbox` | `true` |
+| `jac-sandbox-pool` | `warm` (idle) or `active` (claimed) |
+
+**Benefits:**
+
+- Eliminates ~10 seconds of pod scheduling + image pull time
+- No ConfigMap creation needed (code is injected directly)
+- Pool replenishes automatically after each claim
+
+**Fallback:** If no warm pod is available (pool exhausted), the provider falls back to the standard cold-start path (ConfigMap + new pod creation).
+
+---
+
+### HMR (Hot Module Replacement) Support
+
+When using `proxy_mode = true`, Vite HMR works through the proxy:
+
+```
+Browser (Vite client) ←→ Proxy (WebSocket relay) ←→ Pod (Vite dev server)
+```
+
+The proxy:
+
+- Detects WebSocket upgrade requests via the `Upgrade: websocket` header
+- Forwards the `Sec-WebSocket-Protocol` header (e.g., `vite-hmr`) to the backend
+- Uses a separate session with no timeout for long-lived WebSocket connections
+- Bidirectionally relays `TEXT` and `BINARY` messages
+- Properly propagates close events between both sides
+
+**File watcher polling:** Sandbox pods have `CHOKIDAR_USEPOLLING=1` and `WATCHPACK_POLLING=true` environment variables set. This forces Vite's file watcher to use polling instead of `inotify`, which is necessary because files written via `kubectl exec` don't trigger filesystem notification events.
+
+---
+
+### Troubleshooting
+
+#### Sandbox pod stuck in Pending
+
+```bash
+kubectl describe pod <pod-name> -n jac-sandboxes
+```
+
+Check events for scheduling failures, insufficient resources, or image pull errors.
+
+#### Preview shows loading page indefinitely
+
+```bash
+# Check if pod is running
+kubectl get pods -n jac-sandboxes -l jac-sandbox-id=<sandbox-id>
+
+# Check pod logs
+kubectl logs <pod-name> -n jac-sandboxes -c sandbox
+```
+
+Common causes: `jac install` failing (missing dependencies), port conflict, application crash.
+
+#### ConfigMap too large
+
+If your project exceeds the 1MB ConfigMap limit, consider:
+
+- Using `warm_pool_size > 0` (warm pools inject code via tar, no size limit)
+- Adding large files to the base image instead
+- Excluding unnecessary files from the project directory
+
+#### HMR not updating the preview
+
+Verify the proxy is forwarding WebSocket traffic:
+
+```bash
+# Check proxy logs
+kubectl logs -l app=sandbox-proxy -n jac-sandboxes
+
+# Verify proxy health
+curl http://<proxy-service>:8080/_proxy/health
+```
+
+#### Cleaning up stuck sandboxes
+
+```bash
+# List all sandbox pods
+kubectl get pods -n jac-sandboxes -l jac-sandbox=true
+
+# Delete a specific sandbox
+kubectl delete pod <pod-name> -n jac-sandboxes
+
+# Delete all sandboxes
+kubectl delete pods -n jac-sandboxes -l jac-sandbox=true
+```
+
+---
+
 ## Related Resources
 
 - [Local API Server Tutorial](../../tutorials/production/local.md)

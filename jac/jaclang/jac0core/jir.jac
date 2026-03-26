@@ -145,8 +145,8 @@ obj JirHeader {
         string_pool_size: int = 0,
         flags: int = 0;
 
-    def to_bytes(self: JirHeader) -> bytes;
-    def is_compatible(self: JirHeader) -> bool;
+    def to_bytes -> bytes;
+    def is_compatible -> bool;
 }
 
 """Create a JirHeader for the current environment."""

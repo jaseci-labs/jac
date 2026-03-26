@@ -1,35 +1,24 @@
 """Implementation for transform constructs."""
 
-"""Initialize alert."""
-impl Alert.init(
-    self: Alert,
-    msg: str,
-    loc: CodeLocInfo,
-    from_pass: type[Transform],
-    code: DiagnosticInfo | None = None,
-    related: list[tuple[str, CodeLocInfo]] | None = None,
-    help_text: str | None = None
-) -> None {
-    self.msg = msg;
-    self.loc: CodeLocInfo = loc;
-    self.from_pass: type[Transform] = from_pass;
-    self.code: DiagnosticInfo | None = code;
-    self.related: list[tuple[str, CodeLocInfo]] = related or [];
-    self.help_text: str | None = help_text or (code.help_text if code else None);
+"""Initialize alert - set help_text from code if not provided."""
+impl Alert.postinit -> None {
+    if (self.help_text is None) and self.code {
+        self.help_text = self.code.help_text;
+    }
 }
 
 """Return string representation of alert."""
-impl Alert.__str__(self: Alert) -> str {
+impl Alert.__str__ -> str {
     return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}";
 }
 
 """Return string representation of alert."""
-impl Alert.__repr__(self: Alert) -> str {
+impl Alert.__repr__ -> str {
     return self.as_log();
 }
 
 """Return the alert as a single line log as opposed to the pretty print."""
-impl Alert.as_log(self: Alert, *, colors: bool = False) -> str {
+impl Alert.as_log(*, colors: bool = False) -> str {
     import from jaclang.jac0core.helpers { ANSIColors }
     import from jaclang.jac0core.diagnostics { Severity }
     file_path: str = self.loc.mod_path;
@@ -61,7 +50,7 @@ impl Alert.as_log(self: Alert, *, colors: bool = False) -> str {
 }
 
 """Pretty prints the Alert to show the alert with source location."""
-impl Alert.pretty_print(self: Alert, *, colors: bool = False) -> str {
+impl Alert.pretty_print(*, colors: bool = False) -> str {
     import from jaclang.jac0core.helpers {
         pretty_print_source_location,
         format_related_spans
@@ -94,27 +83,16 @@ impl Alert.pretty_print(self: Alert, *, colors: bool = False) -> str {
     return result;
 }
 
-"""Initialize pass."""
-impl BaseTransform.init(
-    self: BaseTransform,
-    ir_in: T_in,
-    prog: JacProgram,
-    cancel_token: (Event | None) = None
-) -> None {
+"""Initialize pass and run transformation."""
+impl BaseTransform.postinit -> None {
     self.logger = logging.getLogger(self.__class__.__name__);
-    self.errors_had: list[Alert] = [];
-    self.warnings_had: list[Alert] = [];
-    self.prog = prog;
-    self.time_taken = 0.0;
-    self.ir_in: T_in = ir_in;
-    self.cancel_token = cancel_token;
     self.pre_transform();
-    self.ir_out: T_out = self.timed_transform(ir_in=ir_in);
+    self.ir_out = self.timed_transform(ir_in=self.ir_in);
     self.post_transform();
 }
 
 """Transform with time tracking."""
-impl BaseTransform.timed_transform(self: BaseTransform, ir_in: T_in) -> T_out {
+impl BaseTransform.timed_transform(ir_in: T_in) -> T_out {
     start_time = time.time();
     ir_out = self.transform(ir_in=ir_in);
     self.time_taken = time.time() - start_time;
@@ -122,42 +100,39 @@ impl BaseTransform.timed_transform(self: BaseTransform, ir_in: T_in) -> T_out {
 }
 
 """Pre-transform hook."""
-impl BaseTransform.pre_transform(self: BaseTransform) -> None {
+impl BaseTransform.pre_transform -> None {
     ;
 }
 
 """Post-transform hook."""
-impl BaseTransform.post_transform(self: BaseTransform) -> None {
+impl BaseTransform.post_transform -> None {
     ;
 }
 
 """Transform interface."""
 @abstractmethod
-impl BaseTransform.transform(self: BaseTransform, ir_in: T_in) -> T_out {
+impl BaseTransform.transform(ir_in: T_in) -> T_out {
     ;
 }
 
 """Log info."""
-impl BaseTransform.log_info(self: BaseTransform, msg: str) -> None {
+impl BaseTransform.log_info(msg: str) -> None {
     self.logger.info(msg);
 }
 
 """Check if the pass has been canceled."""
-impl BaseTransform.is_canceled(self: BaseTransform) -> bool {
+impl BaseTransform.is_canceled -> bool {
     return ((self.cancel_token is not None) and self.cancel_token.is_set());
 }
 
-"""Initialize pass."""
-impl Transform.init(
-    self: Transform, ir_in: T, prog: JacProgram, cancel_token: (Event | None) = None
-) -> None {
-    self.cur_node: UniNode = ir_in;
-    super.init(ir_in, prog, cancel_token);
+"""Initialize pass - set cur_node before parent postinit runs."""
+impl Transform.postinit -> None {
+    self.cur_node = self.ir_in;
+    super.postinit();
 }
 
 """Emit a structured diagnostic. Returns True if emitted (not suppressed)."""
 impl Transform.emit(
-    self: Transform,
     diag: DiagnosticInfo,
     node_override: (UniNode | None) = None,
     related: (list[tuple[str, UniNode]] | None) = None,
@@ -201,7 +176,7 @@ impl Transform.emit(
 
 """Check if a diagnostic code is suppressed by project config or inline comment."""
 impl Transform._is_suppressed(
-    self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    diag: DiagnosticInfo, loc: CodeLocInfo | None = None
 ) -> bool {
     import from jaclang.jac0core.diagnostics { LINT_ALIASES, DIAGNOSTICS }
     # Check inline suppression: # jac:ignore[CODE]
@@ -291,7 +266,6 @@ impl Transform._is_suppressed(
 
 """Emit a structured diagnostic. Returns True if emitted (not suppressed)."""
 impl Transform.emit(
-    self: Transform,
     diag: DiagnosticInfo,
     node_override: (UniNode | None) = None,
     related: (list[tuple[str, UniNode]] | None) = None,
@@ -335,7 +309,7 @@ impl Transform.emit(
 
 """Check if a diagnostic code is suppressed by project config or inline comment."""
 impl Transform._is_suppressed(
-    self: Transform, diag: DiagnosticInfo, loc: CodeLocInfo | None = None
+    diag: DiagnosticInfo, loc: CodeLocInfo | None = None
 ) -> bool {
     import from jaclang.jac0core.diagnostics { LINT_ALIASES, DIAGNOSTICS }
     # Check inline suppression: # jac:ignore[CODE]
@@ -424,9 +398,7 @@ impl Transform._is_suppressed(
 }
 
 """Pass Error."""
-impl Transform.ice(
-    self: Transform, msg: str = 'Something went horribly wrong!'
-) -> RuntimeError {
+impl Transform.ice(msg: str = 'Something went horribly wrong!') -> RuntimeError {
     self.emit(E9001, pass_name=self.__class__.__name__, details=msg);
     return RuntimeError(
         f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}"

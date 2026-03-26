@@ -221,6 +221,7 @@ impl JacAPIServerCore.start(
     self.register_api_key_endpoints();
     self.register_graph_endpoint();
     self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
         self.register_dynamic_walker_endpoint();
@@ -722,10 +723,10 @@ impl JacAPIServerCore._create_sso_callback_wrapper -> Callable[
 ] {
     import from urllib.parse { quote }
     async def sso_callback_wrapper(
-        request: Request, platform: str, operation: str
+        request: Request, platform: str
     ) -> (Response | TransportResponse) {
         # Call original sso_callback which returns TransportResponse
-        result = await self.user_manager.sso_callback(request, platform, operation);
+        result = await self.user_manager.sso_callback(request, platform);
 
         # Check if frontend redirect URL is configured
         sso_config = get_scale_config().get_sso_config();
@@ -765,7 +766,7 @@ impl JacAPIServerCore.register_sso_endpoints -> None {
                     data_type='string',
                     required=True,
                     default=None,
-                    description='SSO platform: google',
+                    description='SSO platform: google, apple, github',
                     type=ParameterType.PATH
                 ),
                 APIParameter(
@@ -773,43 +774,58 @@ impl JacAPIServerCore.register_sso_endpoints -> None {
                     data_type='string',
                     required=True,
                     default=None,
-                    description='Operation to perform: "login" or "register"',
+                    description='Operation: "login" or "register"',
                     type=ParameterType.PATH
                 )
             ],
             response_model=None,
             tags=['SSO APIs'],
             summary='Initiate SSO authentication',
-            description='Redirects to the SSO provider for authentication. Supported platforms: Google. Configure each platform by setting SSO_{PLATFORM}_CLIENT_ID and SSO_{PLATFORM}_CLIENT_SECRET environment variables.'
+            description='Redirects to the SSO provider for authentication. Supported platforms: Google, Apple, GitHub. Operations: login, register. Configure each platform in jac.toml under [plugins.scale.sso].'
         )
     );
+    sso_callback_wrapper = self._create_sso_callback_wrapper();
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/sso/{platform}/{operation}/callback',
-            callback=self._create_sso_callback_wrapper(),
+            path='/sso/{platform}/callback',
+            callback=sso_callback_wrapper,
             parameters=[
                 APIParameter(
                     name='platform',
                     data_type='string',
                     required=True,
                     default=None,
-                    description='SSO platform: google',
-                    type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='operation',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Operation to perform: "login" or "register"',
+                    description='SSO platform: google, apple, github',
                     type=ParameterType.PATH
                 )
             ],
             response_model=None,
             tags=['SSO APIs'],
-            summary='SSO callback endpoint',
-            description='Handles the callback from SSO provider after authentication. If client_auth_callback_url is configured, redirects with token/error params.'
+            summary='SSO callback endpoint (GET)',
+            description='Handles the callback from SSO provider after authentication. Logs in existing users or registers new ones automatically. If client_auth_callback_url is configured, redirects with token/error params.'
+        )
+    );
+    # Apple Sign In sends callbacks as POST - register a POST handler for the same path
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/sso/{platform}/callback',
+            callback=sso_callback_wrapper,
+            parameters=[
+                APIParameter(
+                    name='platform',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='SSO platform: google, apple, github',
+                    type=ParameterType.PATH
+                )
+            ],
+            response_model=None,
+            tags=['SSO APIs'],
+            summary='SSO callback endpoint (POST)',
+            description='Handles the POST callback from SSO providers like Apple Sign In. Logs in existing users or registers new ones automatically. If client_auth_callback_url is configured, redirects with token/error params.'
         )
     );
 }
@@ -1091,18 +1107,42 @@ impl JacAPIServerCore._create_admin_metrics_handler(
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import dataclasses;
+    import base64;
+
+    monitoring_config = get_scale_config().get_monitoring_config();
+    prometheus_password = monitoring_config.get('prometheus_admin_password', '');
+    admin_config = get_scale_config().get_admin_config();
+    admin_username = admin_config.get('username', 'admin');
 
     async def admin_metrics_handler(request: Request) -> Response {
         authorization = request.headers.get('Authorization');
-        admin_user = self.validate_admin_token(authorization);
-        if not admin_user {
+        # Accept Bearer JWT token (admin portal) or Basic Auth (Prometheus scraping)
+        authed = False;
+        if authorization {
+            if authorization.startswith('Bearer ') {
+                authed = self.validate_admin_token(authorization) is not None;
+            } elif authorization.startswith('Basic ') and prometheus_password {
+                try {
+                    decoded = base64.b64decode(authorization[6:]).decode('utf-8');
+                    parts = decoded.split(':', 1);
+                    authed = parts[0] == admin_username
+                    and parts[1] == prometheus_password;
+                } except Exception {
+                    authed = False;
+                }
+            }
+        }
+        if not authed {
             return JSONResponse(
                 status_code=403,
-                content=TransportResponse.fail(
-                    code='FORBIDDEN',
-                    message='Admin access required',
-                    meta=Meta(extra={'http_status': 403})
-                ).model_dump()
+                content=dataclasses.asdict(
+                    TransportResponse.fail(
+                        code='FORBIDDEN',
+                        message='Admin access required',
+                        meta=Meta(extra={'http_status': 403})
+                    )
+                )
             );
         }
         return original_handler();

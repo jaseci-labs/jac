@@ -1,12 +1,5 @@
 """NormalizePass implementation - rebuilds kid lists from semantic fields."""
 
-"""Initialize the NormalizePass."""
-impl NormalizePass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Normalize SubTag kid list."""
 impl NormalizePass.enter_sub_tag(nd: uni.SubTag) -> None {
     nd.set_kids(nodes=[nd.gen_token(Tok.COLON), nd.tag]);
