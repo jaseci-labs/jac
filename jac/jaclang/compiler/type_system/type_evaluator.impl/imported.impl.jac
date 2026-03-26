@@ -372,7 +372,8 @@ impl TypeEvaluator._reattach_impl_modules(mod: uni.Module, source_path: str) -> 
 impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     if self.push_symbol_resolution(symbol) {
         try {
-            return self._get_type_of_symbol(symbol);
+            result = self._get_type_of_symbol(symbol);
+            return result;
         } finally {
             self.pop_symbol_resolution(symbol);
         }

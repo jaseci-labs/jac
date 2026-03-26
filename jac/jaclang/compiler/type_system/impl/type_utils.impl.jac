@@ -760,7 +760,8 @@ def _apply_to_function(
                 is_cls=param.is_cls,
                 param_kind=param.param_kind
             ) for param in func.parameters
-        ]
+        ],
+        type_params=func.type_params,
     );
 
     # Specialize parameter types
