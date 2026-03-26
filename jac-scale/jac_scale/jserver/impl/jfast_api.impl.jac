@@ -132,13 +132,13 @@ impl JFastApiServer.run_server(
                 os.environ["JAC_WORKER_MODULE"] = module_name;
                 os.environ["JAC_WORKER_BASE_PATH"] = base_path or os.getcwd();
                 # Use factory function - each worker creates its own app
+                # Note: log_config contains lambda, can't be pickled for multiprocessing
                 uvicorn.run(
                     "jac_scale.jserver._worker_app_holder:create_app",
                     factory=True,
                     host=host,
                     port=current_port,
-                    workers=workers,
-                    log_config=log_config
+                    workers=workers
                 );
             } else {
                 uvicorn.run(app, host=host, port=current_port, log_config=log_config);
