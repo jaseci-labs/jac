@@ -71,13 +71,17 @@ obj DockerHubRegistry(ImageRegistry) {
         docker_client = docker.from_env();
         console.print(f"Building Docker image '{repository_name}'...");
         try {
-            build_logs = docker_client.images.build(
-                path=code_folder,
-                tag=repository_name,
-                dockerfile='Dockerfile',
-                rm=True,
-                platform=self.build_platform
-            );
+            build_kwargs: dict = {
+                'path': code_folder,
+                'tag': repository_name,
+                'dockerfile': 'Dockerfile',
+                'rm': True,
+                'buildargs': {'TARGETPLATFORM': self.build_platform}
+            };
+            if self.build_platform {
+                build_kwargs['platform'] = self.build_platform;
+            }
+            build_logs = docker_client.images.build(**build_kwargs);
             for chunk in build_logs[1] {
                 line = chunk.get('stream', '').strip();
                 if line {
