@@ -312,7 +312,8 @@ obj FunctionType(TypeBase) {
         return_type: (TypeBase | None) = None,
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
-        function_flags: int = 0;
+        function_flags: int = 0,
+        type_params: (list[TypeVarType] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -321,6 +322,7 @@ obj FunctionType(TypeBase) {
     def postinit -> None;
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
+    def specialize_func_type_vars(solution: dict[(str, TypeBase)]) -> FunctionType;
     def is_gradual_callable_form -> bool;
     def is_from_callable_annotation -> bool;
 }

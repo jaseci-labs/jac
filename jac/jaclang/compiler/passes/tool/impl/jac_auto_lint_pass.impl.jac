@@ -1,17 +1,12 @@
 """Initialize the JacAutoLintPass."""
-
-impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
-    self.lint_enabled: bool = True;
-    self.main_module: uni.Module | None = None;
-    self._exclude_patterns: list[str] = [];
-    self._project_root: str = "";
+impl JacAutoLintPass.postinit -> None {
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is not None and config.check?.lint {
         self._exclude_patterns = config.check.lint.exclude;
         self._project_root = str(config.project_root) if config.project_root else "";
     }
-    super.init(ir_in, prog);
+    super.postinit();
 }
 
 """Check if a file path matches any exclude pattern."""

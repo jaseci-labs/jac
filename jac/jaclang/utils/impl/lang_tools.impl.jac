@@ -123,7 +123,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     else 'Compile failed.';
 
             case 'docir':
-                return str(DocIRGenPass(ir, prog).ir_out.gen.doc_ir);
+                return str(DocIRGenPass(ir_in=ir, prog=prog).ir_out.gen.doc_ir);
 
             case 'py':
                 ir = prog.compile(file_name);
@@ -132,7 +132,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     else 'Compile failed.';
 
             case 'esast':
-                esast_pass = EsastGenPass(ir, prog);
+                esast_pass = EsastGenPass(ir_in=ir, prog=prog);
                 es_ir = esast_pass.ir_out;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
@@ -142,7 +142,7 @@ impl AstTool.ir(args: list[str]) -> str {
                 }
 
             case 'es':
-                esast_pass = EsastGenPass(ir, prog);
+                esast_pass = EsastGenPass(ir_in=ir, prog=prog);
                 es_ir = esast_pass.ir_out;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
