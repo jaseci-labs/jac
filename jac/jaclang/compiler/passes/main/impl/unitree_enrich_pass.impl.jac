@@ -84,13 +84,6 @@ impl _typebase_to_tag(t: Any) -> (str | None) {
 }
 
 
-impl UniTreeEnrichPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
-
 impl UniTreeEnrichPass.before_pass -> None {
     self._native_has_disqualifier: bool = False;
     self._native_has_entry: bool = False;

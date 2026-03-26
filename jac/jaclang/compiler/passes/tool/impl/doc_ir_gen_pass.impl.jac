@@ -1,8 +1,3 @@
-"""Initialize the DocIRGenPass."""
-impl DocIRGenPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Generate DocIR for JSX expressions."""
 impl DocIRGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     parts: list[doc.DocType] = [];

@@ -53,10 +53,3 @@ impl SemDefMatchPass.transform(ir_in: uni.Module) -> uni.Module {
     }
     return ir_in;
 }
-
-"""Initialize SemDefMatchPass."""
-impl SemDefMatchPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}

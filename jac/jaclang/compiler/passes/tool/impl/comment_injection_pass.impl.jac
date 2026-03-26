@@ -1,10 +1,9 @@
 """Initialize CommentInjectionPass."""
-
-impl CommentInjectionPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) {
+impl CommentInjectionPass.postinit -> None {
     # Cache for _get_tokens to avoid redundant traversals (10M+ calls -> ~600k)
-    # Must be set BEFORE super.init() which calls transform()
-    self._token_cache: dict[(int, list[uni.Token])] = {};
-    super.init(ir_in, prog, cancel_token);
+    # Must be set BEFORE super.postinit() which calls transform()
+    self._token_cache = {};
+    super.postinit();
 }
 
 """Remove redundant line breaks after inline comments."""

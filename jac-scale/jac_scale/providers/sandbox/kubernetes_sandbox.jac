@@ -279,7 +279,9 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 run_as_non_root=True,
                 run_as_user=1000,
                 read_only_root_filesystem=False,
-                allow_privilege_escalation=False
+                allow_privilege_escalation=False,
+                capabilities=client.V1Capabilities(drop=["ALL"]),
+                seccomp_profile=client.V1SeccompProfile(type="RuntimeDefault")
             );
         }
 
@@ -300,7 +302,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 "  target=$(echo \"$f\" | sed 's/--/\\//g'); "
                 "  mkdir -p \"/app/$(dirname \"$target\")\"; "
                 "  cp \"$f\" \"/app/$target\"; "
-                "done && echo 'Code copied to /app'"
+                "done && chown -R 1000:1000 /app && echo 'Code copied to /app'"
             ],
             volume_mounts=[
                 client.V1VolumeMount(
@@ -342,7 +344,12 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 name="code-configmap",
                 config_map=client.V1ConfigMapVolumeSource(name=cm_name)
             ),
-            client.V1Volume(name="app-data", empty_dir=client.V1EmptyDirVolumeSource()),
+            client.V1Volume(
+                name="app-data",
+                empty_dir=client.V1EmptyDirVolumeSource(
+                    size_limit=self.config.app_storage_limit
+                )
+            ),
             client.V1Volume(
                 name="tmp-scratch",
                 empty_dir=client.V1EmptyDirVolumeSource(
@@ -368,7 +375,8 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 volumes=volumes,
                 restart_policy="Never",
                 active_deadline_seconds=self.config.ttl_seconds,
-                termination_grace_period_seconds=10
+                termination_grace_period_seconds=10,
+                automount_service_account_token=False
             )
         );
         return pod;
@@ -408,7 +416,9 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 run_as_non_root=True,
                 run_as_user=1000,
                 read_only_root_filesystem=False,
-                allow_privilege_escalation=False
+                allow_privilege_escalation=False,
+                capabilities=client.V1Capabilities(drop=["ALL"]),
+                seccomp_profile=client.V1SeccompProfile(type="RuntimeDefault")
             );
         }
 
@@ -442,7 +452,12 @@ obj KubernetesSandbox(SandboxEnvironment) {
         );
 
         volumes = [
-            client.V1Volume(name="app-data", empty_dir=client.V1EmptyDirVolumeSource()),
+            client.V1Volume(
+                name="app-data",
+                empty_dir=client.V1EmptyDirVolumeSource(
+                    size_limit=self.config.app_storage_limit
+                )
+            ),
             client.V1Volume(
                 name="tmp-scratch",
                 empty_dir=client.V1EmptyDirVolumeSource(
@@ -462,7 +477,8 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 volumes=volumes,
                 restart_policy="Never",
                 active_deadline_seconds=self.config.ttl_seconds,
-                termination_grace_period_seconds=10
+                termination_grace_period_seconds=10,
+                automount_service_account_token=False
             )
         );
         return pod;
