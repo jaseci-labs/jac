@@ -28,8 +28,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         or 0
     );
     on_iteration = (
-        mt_run.call_params.get("on_iteration")
-        or self.call_params.get("on_iteration")
+        mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
     iter_count = 0;
     last_tool = "";
@@ -82,7 +81,11 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             return recovery_resp.output;
         }
         usage = resp.usage or {};
-        total_tokens += int(usage.get("total_tokens", 0) if isinstance(usage, dict) else getattr(usage, "total_tokens", 0));
+        total_tokens += int(
+            usage.get("total_tokens", 0)
+                if isinstance(usage, dict)
+                else getattr(usage, "total_tokens", 0)
+        );
         if resp.tool_calls {
             for tool_call in resp.tool_calls {
                 if tool_call.is_finish_call() {
@@ -496,11 +499,16 @@ impl BaseLLM._invoke_streaming(
                 if action == IterationAction.ABORT_WITH_SUMMARY {
                     yield StreamEvent(
                         event_type="steps_done",
-                        data={"iterations": iter_count - 1, "reason": "aborted_with_summary"}
+                        data={
+                            "iterations": iter_count - 1,
+                            "reason": "aborted_with_summary"
+                        }
                     );
                     for token in self._stream_final_answer(mt_run) {
                         if token {
-                            yield StreamEvent(event_type="chunk", data={"content": token});
+                            yield StreamEvent(
+                                event_type="chunk", data={"content": token}
+                            );
                         }
                     }
                     break;
@@ -538,8 +546,8 @@ impl BaseLLM._invoke_streaming(
             usage = resp.usage or {};
             total_tokens += int(
                 usage.get("total_tokens", 0)
-                if isinstance(usage, dict)
-                else getattr(usage, "total_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "total_tokens", 0)
             );
 
             # Yield thought if the LLM produced reasoning text
