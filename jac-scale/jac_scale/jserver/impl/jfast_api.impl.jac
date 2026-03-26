@@ -135,7 +135,7 @@ impl JFastApiServer.run_server(
                 class GunicornApp(BaseApplication) {
                     def init(self: GunicornApp, options: dict) -> None {
                         self.options = options;
-                        super().__init__();
+                        super.init();
                     }
 
                     def load_config(self: GunicornApp) -> None {
