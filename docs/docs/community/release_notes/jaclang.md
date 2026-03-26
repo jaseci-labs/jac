@@ -15,10 +15,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Refactor: Native Pass `has` Declarations and Duplicate Cleanup**: `NaIRGenPass` now declares all 83 instance attributes in `has` with proper defaults. Removed ~500 lines of duplicate method declarations and stub implementations from `primitives_native`.
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 
-## Changes 1
-
-- **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
-
 ## jaclang 0.13.1 (Latest Release)
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
