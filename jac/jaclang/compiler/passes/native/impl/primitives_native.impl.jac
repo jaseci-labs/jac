@@ -8,8 +8,7 @@ impl NativeIntEmitter.emit_to_bytes(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -66,8 +65,7 @@ impl NativeIntEmitter.emit_as_integer_ratio(
 ) -> (ir.Value | None) {
     # as_integer_ratio for int: returns (n, 1) as a 2-element tuple
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     one = ir.Constant(i64, 1);
@@ -98,8 +96,7 @@ impl NativeIntEmitter.emit_bit_length(
     # bit_length: number of bits needed to represent abs(target), excluding sign and leading zeros
     # 0.bit_length() == 0, 1.bit_length() == 1, 255.bit_length() == 8
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
@@ -135,8 +132,7 @@ impl NativeIntEmitter.emit_bit_count(
 ) -> (ir.Value | None) {
     # bit_count: number of ones in the binary representation (popcount)
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
@@ -183,8 +179,7 @@ impl NativeIntEmitter.emit_from_bytes(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -241,7 +236,7 @@ impl NativeFloatEmitter.emit_is_integer(
 ) -> (ir.Value | None) {
     # is_integer: True if float has no fractional part
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     assert b is not None , "Builder should be set in pass_ref";
     # Convert to int and back, compare
@@ -257,8 +252,7 @@ impl NativeFloatEmitter.emit_as_integer_ratio(
     # as_integer_ratio for float: returns (numerator, denominator) as tuple
     # Algorithm: multiply by 2 until integer, track denominator
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
@@ -322,8 +316,7 @@ impl NativeFloatEmitter.emit_hex(
 ) -> (ir.Value | None) {
     # float.hex(): return hex representation using C %a format
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -344,8 +337,7 @@ impl NativeFloatEmitter.emit_fromhex(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     f64 = ir.DoubleType();
     i8p = ir.IntType(8).as_pointer();
     strtod_fn = p._get_or_declare_extern("strtod", f64, [i8p, i8p.as_pointer()]);
@@ -364,8 +356,7 @@ impl NativeBoolEmitter.emit_op_and(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i1 = ir.IntType(1);
     lhs = p._coerce_type(target, i1) if target.type != i1 else target;
     rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
@@ -376,8 +367,7 @@ impl NativeBoolEmitter.emit_op_or(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i1 = ir.IntType(1);
     lhs = p._coerce_type(target, i1) if target.type != i1 else target;
     rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
@@ -388,8 +378,7 @@ impl NativeBoolEmitter.emit_op_xor(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i1 = ir.IntType(1);
     lhs = p._coerce_type(target, i1) if target.type != i1 else target;
     rhs = p._coerce_type(args[0], i1) if args[0].type != i1 else args[0];
@@ -401,8 +390,7 @@ impl NativeComplexEmitter._load_parts(
     self, ctx: NativeEmitCtx, val: ir.Value
 ) -> (tuple | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i32 = ir.IntType(32);
     z0 = ir.Constant(i32, 0);
     z1 = ir.Constant(i32, 1);
@@ -416,8 +404,7 @@ impl NativeComplexEmitter._make_complex(
     self, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
 ) -> ir.Value {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     z0 = ir.Constant(i32, 0);
@@ -502,8 +489,7 @@ impl NativeStrEmitter.emit_capitalize(
 ) -> (ir.Value | None) {
     # Capitalize: uppercase first char, lowercase the rest
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -577,8 +563,7 @@ impl NativeStrEmitter._emit_case_transform(
     self, ctx: NativeEmitCtx, target: ir.Value, cfunc_name: str
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -624,8 +609,7 @@ impl NativeStrEmitter.emit_title(
     # title: uppercase first char of each word, lowercase rest
     # Word boundary = after non-alpha character
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -692,8 +676,7 @@ impl NativeStrEmitter.emit_swapcase(
 ) -> (ir.Value | None) {
     # Swapcase: toupper if lower, tolower if upper
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -752,8 +735,7 @@ impl NativeStrEmitter.emit_count(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
@@ -793,8 +775,7 @@ impl NativeStrEmitter.emit_find(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
@@ -816,8 +797,7 @@ impl NativeStrEmitter.emit_rfind(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
@@ -871,8 +851,7 @@ impl NativeStrEmitter.emit_index(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
@@ -893,8 +872,7 @@ impl NativeStrEmitter.emit_rindex(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i64 = ir.IntType(64);
     # Reuse rfind logic
     rfind_result = self.emit_rfind(ctx, target, args);
@@ -913,8 +891,7 @@ impl NativeStrEmitter.emit_startswith(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -933,8 +910,7 @@ impl NativeStrEmitter.emit_endswith(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -963,8 +939,7 @@ impl NativeStrEmitter.emit_replace(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1050,8 +1025,7 @@ impl NativeStrEmitter.emit_lstrip(
 ) -> (ir.Value | None) {
     # lstrip: skip leading whitespace, return new string
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -1098,8 +1072,7 @@ impl NativeStrEmitter.emit_rstrip(
 ) -> (ir.Value | None) {
     # rstrip: remove trailing whitespace
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -1148,8 +1121,7 @@ impl NativeStrEmitter.emit_removeprefix(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -1199,8 +1171,7 @@ impl NativeStrEmitter.emit_removesuffix(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -1285,8 +1256,7 @@ impl NativeStrEmitter.emit_join(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1411,8 +1381,7 @@ impl NativeStrEmitter.emit_partition(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1481,8 +1450,7 @@ impl NativeStrEmitter.emit_rpartition(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1575,8 +1543,7 @@ impl NativeStrEmitter.emit_format(
 
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -1680,8 +1647,7 @@ impl NativeStrEmitter.emit_center(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1742,8 +1708,7 @@ impl NativeStrEmitter.emit_ljust(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1793,8 +1758,7 @@ impl NativeStrEmitter.emit_rjust(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1842,8 +1806,7 @@ impl NativeStrEmitter.emit_zfill(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1925,8 +1888,7 @@ impl NativeStrEmitter.emit_expandtabs(
 ) -> (ir.Value | None) {
     # expandtabs(tabsize=8): replace tabs with spaces to next tab stop
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -2068,8 +2030,7 @@ impl NativeStrEmitter._emit_char_test(
     empty_is_true: bool = False
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2132,8 +2093,7 @@ impl NativeStrEmitter.emit_isascii(
 ) -> (ir.Value | None) {
     # isascii: empty string returns True, check each char < 128
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -2189,8 +2149,7 @@ impl NativeStrEmitter.emit_isidentifier(
 ) -> (ir.Value | None) {
     # isidentifier: non-empty, first char is alpha/underscore, rest are alnum/underscore
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2255,8 +2214,7 @@ impl NativeStrEmitter.emit_islower(
 ) -> (ir.Value | None) {
     # islower: at least one cased char, all cased chars are lowercase
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2339,8 +2297,7 @@ impl NativeStrEmitter.emit_istitle(
 ) -> (ir.Value | None) {
     # istitle: uppercase chars follow non-cased, lowercase follow cased
     p = ctx.pass_ref;
-    b = p.builder;
-    assert b is not None , "Builder should be set in pass_ref";
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2415,7 +2372,7 @@ impl NativeStrEmitter.emit_isupper(
 ) -> (ir.Value | None) {
     # isupper: at least one cased char, all cased chars are uppercase
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2762,7 +2719,7 @@ impl NativeListEmitter.emit_append(
     }
     val = p._box_value_tuple(args[0]);
     val = p._coerce_type(val, helpers["elem_type"]);
-    p.builder.call(helpers["append"], [target, val]);
+    get_builder(p).call(helpers["append"], [target, val]);
     return ir.Constant(ir.IntType(64), 0);
 }
 
@@ -2778,7 +2735,7 @@ impl NativeListEmitter.emit_extend(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     src = args[0];
@@ -2819,7 +2776,7 @@ impl NativeListEmitter.emit_insert(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     insert_idx = args[0];
@@ -2868,7 +2825,7 @@ impl NativeListEmitter.emit_remove(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     search_val = p._coerce_type(args[0], helpers["elem_type"]);
@@ -2936,7 +2893,7 @@ impl NativeListEmitter.emit_pop(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -2953,7 +2910,7 @@ impl NativeListEmitter.emit_clear(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -2974,7 +2931,7 @@ impl NativeListEmitter.emit_index(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     search_val = p._coerce_type(args[0], helpers["elem_type"]);
@@ -3020,7 +2977,7 @@ impl NativeListEmitter.emit_count(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     search_val = p._coerce_type(args[0], helpers["elem_type"]);
@@ -3068,7 +3025,7 @@ impl NativeListEmitter.emit_sort(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
@@ -3157,7 +3114,7 @@ impl NativeListEmitter.emit_reverse(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -3200,7 +3157,7 @@ impl NativeListEmitter.emit_copy(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_list = b.call(helpers["new"], [], name="copy.new");
@@ -3241,7 +3198,7 @@ impl NativeDictEmitter.emit_get(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     key = args[0];
     found_i1 = b.call(helpers["contains"], [target, key], name="dget.found");
@@ -3282,7 +3239,7 @@ impl NativeDictEmitter.emit_keys(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     # Determine key type name from type_key ("key_type:val_type")
@@ -3334,7 +3291,7 @@ impl NativeDictEmitter.emit_values(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     # Determine val type name
@@ -3387,7 +3344,7 @@ impl NativeDictEmitter.emit_items(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
@@ -3471,7 +3428,7 @@ impl NativeDictEmitter.emit_pop(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     key = args[0];
@@ -3596,7 +3553,7 @@ impl NativeDictEmitter.emit_remove(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
@@ -3700,7 +3657,7 @@ impl NativeDictEmitter.emit_popitem(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     key_type = helpers["key_type"];
@@ -3760,7 +3717,7 @@ impl NativeDictEmitter.emit_setdefault(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     key = args[0];
     val_type = helpers["val_type"];
@@ -3800,7 +3757,7 @@ impl NativeDictEmitter.emit_update(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -3839,7 +3796,7 @@ impl NativeDictEmitter.emit_clear(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -3858,7 +3815,7 @@ impl NativeDictEmitter.emit_copy(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_dict = b.call(helpers["new"], [], name="dcopy.new");
@@ -3904,7 +3861,7 @@ impl NativeSetEmitter.emit_add(
         return None;
     }
     val = p._coerce_type(args[0], helpers["elem_type"]);
-    p.builder.call(helpers["add"], [target, val]);
+    get_builder(p).call(helpers["add"], [target, val]);
     return ir.Constant(ir.IntType(64), 0);
 }
 
@@ -3920,7 +3877,7 @@ impl NativeSetEmitter.emit_remove(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     elem_type = helpers["elem_type"];
@@ -4003,7 +3960,7 @@ impl NativeSetEmitter.emit_discard(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     elem_type = helpers["elem_type"];
@@ -4075,7 +4032,7 @@ impl NativeSetEmitter.emit_pop(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -4102,7 +4059,7 @@ impl NativeSetEmitter.emit_clear(
 ) -> (ir.Value | None) {
     # clear: set length to 0
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -4119,7 +4076,7 @@ impl NativeSetEmitter._emit_set_iterate(
     # Helper: set up iteration over a set, returns (helpers, b, i32, i64, set_len, elems_arr, entry_bb, loop_bb, body_bb, done_bb, idx, elem)
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -4159,7 +4116,7 @@ impl NativeSetEmitter.emit_union(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="sunion.new");
@@ -4229,7 +4186,7 @@ impl NativeSetEmitter.emit_intersection(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="sinter.new");
@@ -4284,7 +4241,7 @@ impl NativeSetEmitter.emit_difference(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="sdiff.new");
@@ -4342,7 +4299,7 @@ impl NativeSetEmitter.emit_symmetric_difference(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="ssymd.new");
@@ -4437,7 +4394,7 @@ impl NativeSetEmitter.emit_update(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -4483,7 +4440,7 @@ impl NativeSetEmitter.emit_intersection_update(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     elem_type = helpers["elem_type"];
@@ -4554,7 +4511,7 @@ impl NativeSetEmitter.emit_difference_update(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     len_ptr = b.gep(
@@ -4623,7 +4580,7 @@ impl NativeSetEmitter.emit_symmetric_difference_update(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -4681,7 +4638,7 @@ impl NativeSetEmitter.emit_issubset(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -4733,7 +4690,7 @@ impl NativeSetEmitter.emit_issuperset(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -4786,7 +4743,7 @@ impl NativeSetEmitter.emit_isdisjoint(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
@@ -4836,7 +4793,7 @@ impl NativeSetEmitter.emit_copy(
     if helpers is None {
         return None;
     }
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="scopy.new");
@@ -4955,7 +4912,7 @@ impl NativeTupleEmitter.emit_count(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     n = len(st.elements);
     count = ir.Constant(i64, 0);
@@ -4989,7 +4946,7 @@ impl NativeTupleEmitter.emit_index(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     n = len(st.elements);
     val = args[0];
@@ -5074,7 +5031,7 @@ impl NativeRangeEmitter._load_range(
     self, ctx: NativeEmitCtx, target: ir.Value
 ) -> (tuple | None) {
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i32 = ir.IntType(32);
     z0 = ir.Constant(i32, 0);
     start = b.load(
@@ -5124,7 +5081,7 @@ impl NativeRangeEmitter.emit_count(
     }
     (start, stop, step) = parts;
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     val = p._coerce_type(args[0], i64);
     found = self._in_range(ctx, val, start, stop, step);
@@ -5140,7 +5097,7 @@ impl NativeRangeEmitter.emit_index(
     }
     (start, stop, step) = parts;
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     val = p._coerce_type(args[0], i64);
     diff = b.sub(val, start, name="ri.diff");
@@ -5216,7 +5173,7 @@ impl NativeBuiltinEmitter.emit_round(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     if isinstance(arg_val.type, ir.DoubleType) {
         round_fn = p._get_or_declare_extern("round", ir.DoubleType(), [ir.DoubleType()]);
@@ -5278,7 +5235,7 @@ impl NativeBuiltinEmitter.emit_sum(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     list_val = args[0];
     # Find matching list helpers
@@ -5423,7 +5380,7 @@ impl NativeBuiltinEmitter.emit_any(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     list_val = args[0];
     helpers: (dict | None) = None;
@@ -5472,7 +5429,7 @@ impl NativeBuiltinEmitter.emit_all(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     list_val = args[0];
     helpers: (dict | None) = None;
@@ -5539,7 +5496,7 @@ impl NativeBuiltinEmitter.emit_id(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     if isinstance(arg_val.type, ir.PointerType) {
         return b.ptrtoint(arg_val, i64, name="id.ptr");
@@ -5558,7 +5515,7 @@ impl NativeBuiltinEmitter.emit_hash(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i64 = ir.IntType(64);
     # int hash = identity
     if isinstance(arg_val.type, ir.IntType) {
@@ -5606,7 +5563,7 @@ impl NativeBuiltinEmitter.emit_repr(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     rc_alloc_fn = p.rc_alloc_fn;
@@ -5644,7 +5601,7 @@ impl NativeBuiltinEmitter.emit_chr(
     }
     arg_val = args[0];
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     rc_alloc_fn = p.rc_alloc_fn;
     str_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 2)], name="chr.buf");
@@ -5674,7 +5631,7 @@ impl NativeBuiltinEmitter.emit_hex(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     rc_alloc_fn = p.rc_alloc_fn;
@@ -5704,7 +5661,7 @@ impl NativeBuiltinEmitter.emit_oct(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     rc_alloc_fn = p.rc_alloc_fn;
@@ -5733,7 +5690,7 @@ impl NativeBuiltinEmitter.emit_bin(
         return None;
     }
     p = ctx.pass_ref;
-    b = p.builder;
+    b = get_builder(p);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -5854,7 +5811,7 @@ impl NativeBuiltinEmitter.emit_pow(
         pow_fn = p._get_or_declare_extern(
             "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
         );
-        return p.builder.call(pow_fn, [base, exp], name="pow.result");
+        return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
     }
     return None;
 }

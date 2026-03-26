@@ -43,6 +43,14 @@ obj NativeEmitCtx {
 }
 
 
+"""Get the LLVM IR builder from the pass, asserting it is set."""
+def get_builder(p: NaIRGenPass) -> ir.IRBuilder {
+    b = p.builder;
+    assert b is not None , "Builder should be set in pass_ref";
+    return b;
+}
+
+
 # =============================================================================
 #  Numeric Types
 # =============================================================================
@@ -943,7 +951,7 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         if helpers is None {
             return None;
         }
-        b = p.builder;
+        b = get_builder(p);
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         del_idx = args[0];
@@ -1529,7 +1537,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         }
         arg_val = args[0];
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i64 = ir.IntType(64);
         if isinstance(arg_val.type, ir.PointerType) {
             return b.ptrtoint(arg_val, i64, name="id.ptr");
@@ -1548,7 +1556,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         }
         arg_val = args[0];
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i64 = ir.IntType(64);
         # int hash = identity
         if isinstance(arg_val.type, ir.IntType) {
@@ -1596,7 +1604,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         }
         arg_val = args[0];
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
         rc_alloc_fn = p.rc_alloc_fn;
@@ -1634,7 +1642,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         }
         arg_val = args[0];
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i8 = ir.IntType(8);
         i64 = ir.IntType(64);
         rc_alloc_fn = p.rc_alloc_fn;
@@ -1665,7 +1673,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return None;
         }
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
         rc_alloc_fn = p.rc_alloc_fn;
@@ -1695,7 +1703,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return None;
         }
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
         rc_alloc_fn = p.rc_alloc_fn;
@@ -1724,7 +1732,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return None;
         }
         p = ctx.pass_ref;
-        b = p.builder;
+        b = get_builder(p);
         i8 = ir.IntType(8);
         i8p = i8.as_pointer();
         i64 = ir.IntType(64);
@@ -1848,7 +1856,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             pow_fn = p._get_or_declare_extern(
                 "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
             );
-            return p.builder.call(pow_fn, [base, exp], name="pow.result");
+            return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
         }
         return None;
     }
