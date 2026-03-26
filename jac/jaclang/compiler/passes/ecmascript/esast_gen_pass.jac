@@ -162,7 +162,6 @@ obj SpawnCallParts {
 
 """Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None) -> None;
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;

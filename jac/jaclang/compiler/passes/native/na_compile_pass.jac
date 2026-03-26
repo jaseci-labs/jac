@@ -12,10 +12,7 @@ import from jaclang.jac0core.diagnostics { E5020, W5021, W5022, W5023, W5024, W5
 
 """JIT compile LLVM IR module to native machine code."""
 obj NativeCompilePass(Transform) {
-    def init(
-        ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-    ) -> None;
-
+    def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     # Link imported .na.jac modules at IR level (na↔na linking)
     def _compile_and_link_native_imports(

@@ -1,25 +1,18 @@
 """Implementation for uni_pass constructs."""
 
 """Initialize parser."""
-impl UniPass.init(
-    self: UniPass,
-    ir_in: uni.Module,
-    prog: JacProgram,
-    cancel_token: (Event | None) = None
-) -> None {
-    self.term_signal = False;
-    self.prune_signal = False;
-    ModuleCodegenPass.init(self, ir_in, prog, cancel_token=cancel_token);
+impl UniPass.postinit -> None {
+    super.postinit();
 }
 
 """Run once before pass."""
-impl UniPass.before_pass(self: UniPass) -> None { }
+impl UniPass.before_pass -> None { }
 
 """Run once after pass."""
-impl UniPass.after_pass(self: UniPass) -> None { }
+impl UniPass.after_pass -> None { }
 
 """Run on entering node."""
-impl UniPass.enter_node(self: UniPass, nd: uni.UniNode) -> None {
+impl UniPass.enter_node(nd: uni.UniNode) -> None {
     import from jaclang.jac0core.helpers { pascal_to_snake }
     if hasattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}") {
         getattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}")(nd);
@@ -27,7 +20,7 @@ impl UniPass.enter_node(self: UniPass, nd: uni.UniNode) -> None {
 }
 
 """Run on exiting node."""
-impl UniPass.exit_node(self: UniPass, nd: uni.UniNode) -> None {
+impl UniPass.exit_node(nd: uni.UniNode) -> None {
     import from jaclang.jac0core.helpers { pascal_to_snake }
     if hasattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}") {
         getattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}")(nd);
@@ -35,12 +28,12 @@ impl UniPass.exit_node(self: UniPass, nd: uni.UniNode) -> None {
 }
 
 """Prune traversal."""
-impl UniPass.prune(self: UniPass) -> None {
+impl UniPass.prune -> None {
     self.prune_signal = True;
 }
 
 """Recalculate parents."""
-impl UniPass.recalculate_parents(self: UniPass, nd: uni.UniNode) -> None {
+impl UniPass.recalculate_parents(nd: uni.UniNode) -> None {
     if not nd {
         return;
     }
@@ -53,7 +46,7 @@ impl UniPass.recalculate_parents(self: UniPass, nd: uni.UniNode) -> None {
 }
 
 """Run pass."""
-impl UniPass.transform(self: UniPass, ir_in: uni.Module) -> uni.Module {
+impl UniPass.transform(ir_in: uni.Module) -> uni.Module {
     self.ir_out = ir_in;
     if not isinstance(ir_in, uni.UniNode) {
         return ir_in;
@@ -68,7 +61,7 @@ impl UniPass.transform(self: UniPass, ir_in: uni.Module) -> uni.Module {
 }
 
 """Traverse tree."""
-impl UniPass.traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode {
+impl UniPass.traverse(nd: uni.UniNode) -> uni.UniNode {
     if self.is_canceled() {
         return nd;
     }
