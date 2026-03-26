@@ -28,7 +28,7 @@ impl PluginConfigBase.postinit{
     self.project_dir = (
         self.project_dir
             if self.project_dir is not None
-            else project_root_result[0] if project_root_result else None
+            else project_root_result[0] if project_root_result else Path.cwd()
     );
     self.config_file = self.project_dir / 'jac.toml';
     self._config = None;
