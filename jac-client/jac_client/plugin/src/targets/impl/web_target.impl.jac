@@ -7,7 +7,8 @@ import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
 glob VITE_DEV_SERVER_PORT = 5173,
      DEFAULT_FUNCTION_NAME = "app",
-     JAC_FILE_EXTENSION = ".jac";
+     JAC_FILE_EXTENSION = ".jac",
+     JAC_LANG_ID = "jac";
 
 """Extract base path and module name from entry file path."""
 def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
@@ -112,10 +113,10 @@ impl WebTarget.build(
 
     # Clean dist directory for fresh build
     dist_dir = bundler.output_dir;
-    if dist_dir and dist_dir.exists() {
-        shutil.rmtree(dist_dir);
-    }
     if dist_dir {
+        if dist_dir.exists() {
+            shutil.rmtree(dist_dir);
+        }
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
@@ -123,7 +124,7 @@ impl WebTarget.build(
     (base, mod) = _parse_entry_file(entry_file);
 
     # Import the module
-    Jac.jac_import(target=mod, base_path=base, lng=JAC_FILE_EXTENSION[1:]);
+    Jac.jac_import(target=mod, base_path=base, lng=JAC_LANG_ID);
     if Jac.program.errors_had {
         errors = '\n'.join(str(e) for e in Jac.program.errors_had);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
