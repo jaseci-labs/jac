@@ -14,7 +14,7 @@ def create_app() -> Any:
     base_path = os.environ.get("JAC_WORKER_BASE_PATH", os.getcwd())
 
     # Import and load the jac module
-    from jaclang.plugin.feature import JacFeature as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     Jac.jac_import(target=module_name, base_path=base_path, override_name="__main__")
 
