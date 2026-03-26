@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.9 (Unreleased)
 
+- **Jac-Scale Plugin Support for PWA/Web Targets**: Fixed `WebTarget.start()` to use `Jac.get_api_server_class()` plugin hook instead of Python's built-in `http.server`. When jac-scale is installed, `jac start --client pwa` and `jac start --client web` now automatically use jac-scale's FastAPI-based server with JWT authentication, user management, WebSocket support, and admin portal. Previously, these targets ignored jac-scale and always used the basic HTTP server.
+
 ## jac-client 0.3.8 (Latest Release)
 
 ## jac-client 0.3.7
