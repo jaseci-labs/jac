@@ -5,10 +5,11 @@ FastAPI app instance. Config is passed via environment variables.
 """
 
 import os
-from typing import Any
+
+from fastapi import FastAPI
 
 
-def create_app() -> Any:
+def create_app() -> FastAPI:
     """Factory function called by each uvicorn worker to create the app."""
     module_name = os.environ.get("JAC_WORKER_MODULE", "__main__")
     base_path = os.environ.get("JAC_WORKER_BASE_PATH", os.getcwd())
