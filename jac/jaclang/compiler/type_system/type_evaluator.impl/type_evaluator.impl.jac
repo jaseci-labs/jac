@@ -2326,6 +2326,10 @@ impl TypeEvaluator._assign_class(
 impl TypeEvaluator.is_sub_class(
     super_cls: types.ClassType, sub_cls: types.ClassType
 ) -> bool {
+    # Ensure MRO is computed (may be empty if loaded from JIR cache)
+    if not sub_cls.shared.mro {
+        type_utils.compute_mro_linearization(sub_cls);
+    }
     for cls in sub_cls.shared.mro {
         if cls.shared == super_cls.shared {
             return True;
