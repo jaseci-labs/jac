@@ -518,7 +518,7 @@ impl TypeEvaluator._extract_type_params(
     # The type_params field on the Archetype node holds TypeParam AST nodes.
     if node_.type_params {
         for tp in node_.type_params {
-            tv = types.TypeVarType(name=tp.sym_name);
+            tv = types.TypeVarType(name=tp.sym_name, is_class_type_param=True);
             type_params.append(tv);
         }
         return type_params;
@@ -619,7 +619,16 @@ impl TypeEvaluator._collect_typevars_from_base(
                 }
                 if type_var_type.name not in seen_names {
                     seen_names.add(type_var_type.name);
-                    type_params.append(type_var_type);
+                    # Mark as class type param since it's used in the class's base declaration
+                    class_type_var = types.TypeVarType(
+                        name=type_var_type.name,
+                        is_covariant=type_var_type.is_covariant,
+                        is_contravariant=type_var_type.is_contravariant,
+                        bound=type_var_type.bound,
+                        constraints=type_var_type.constraints,
+                        is_class_type_param=True
+                    );
+                    type_params.append(class_type_var);
                 }
             }
         }
@@ -631,7 +640,16 @@ impl TypeEvaluator._collect_typevars_from_base(
             }
             if type_var_type.name not in seen_names {
                 seen_names.add(type_var_type.name);
-                type_params.append(type_var_type);
+                # Mark as class type param since it's used in the class's base declaration
+                class_type_var = types.TypeVarType(
+                    name=type_var_type.name,
+                    is_covariant=type_var_type.is_covariant,
+                    is_contravariant=type_var_type.is_contravariant,
+                    bound=type_var_type.bound,
+                    constraints=type_var_type.constraints,
+                    is_class_type_param=True
+                );
+                type_params.append(class_type_var);
             }
         }
     }
@@ -855,7 +873,7 @@ match the name against known special forms and return the appropriate type.
 """
 impl TypeEvaluator._get_special_form_type(
     name: str, symbol_type: types.TypeBase
-) -> types.ClassType | types.TypeVarType | None {
+) -> types.TypeBase | None {
     if not self.prefetch {
         return None;
     }
@@ -909,7 +927,11 @@ impl TypeEvaluator._get_special_form_type(
     # Map special form names to their handling
     match name {
         case "Callable":
-            return self.prefetch.callable_class;
+            # Bare Callable is Callable[..., Any] per PEP 484.
+            # Return a gradual FunctionType so it's usable as a callable.
+            # The subscript handler checks is_from_callable_annotation() to
+            # recognize this as a Callable base for Callable[[int], str] syntax.
+            return types.create_callable_type([], types.AnyType(), is_gradual=True);
 
         case "Protocol":
             return self.prefetch.protocol_class;
@@ -1253,6 +1275,45 @@ A TypeVar is valid if:
 impl TypeEvaluator.validate_typevar_scope(
     expr: uni.Expr, type_var: types.TypeVarType
 ) -> None {
+    # Module-level TypeVars (defined via glob T = TypeVar("T")) are valid
+    # when used in a function/method signature (param types or return type),
+    # including impl blocks. They are NOT valid in class bodies, function
+    # bodies, or at module level outside signatures.
+    # Check this early to avoid recursive validation loops that occur when
+    # _get_function_type_params evaluates signature types.
+    if isinstance(expr, uni.Name) and expr.sym {
+        sym_decl = expr.sym.decl;
+        if sym_decl {
+            # Check if the TypeVar is declared at module level
+            is_module_level = False;
+            decl_parent = sym_decl.parent;
+            while decl_parent {
+                if isinstance(decl_parent, uni.Module) {
+                    is_module_level = True;
+                    break;
+                }
+                if isinstance(decl_parent, (uni.Archetype, uni.Ability)) {
+                    break;  # Not module-level
+                }
+                decl_parent = decl_parent.parent;
+            }
+            # If module-level, check that expr is inside a function signature
+            if is_module_level {
+                sig_check = expr.parent;
+                while sig_check {
+                    if isinstance(sig_check, uni.FuncSignature) {
+                        return;  # Valid: module-level TypeVar in function signature
+
+                    }
+                    if isinstance(sig_check, (uni.Ability, uni.Archetype, uni.Module)) {
+                        break;  # Reached a scope boundary without finding signature
+                    }
+                    sig_check = sig_check.parent;
+                }
+            }
+        }
+    }
+
     # Find IMMEDIATE enclosing scope (class or function)
     enclosing_class: uni.Archetype | None = None;
     enclosing_func: uni.Ability | None = None;
@@ -1332,4 +1393,20 @@ impl TypeEvaluator._get_outer_scope_type_params(
         current = current.parent;
     }
     return type_params;
+}
+
+"""Check if a function body contains only ellipsis (stub body)."""
+impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool {
+    has_ellipsis = False;
+    for stmt in body {
+        if isinstance(stmt, uni.Semi) {
+            continue;
+        }
+        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
+            has_ellipsis = True;
+            continue;
+        }
+        return False;
+    }
+    return has_ellipsis;
 }

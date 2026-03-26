@@ -52,7 +52,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         return;
     }
-    # Single anchor commit
+    # Single anchor commit (explicit save via Jac.commit)
     if anchor is not None {
         if not anchor.persistent {
             return;
@@ -60,7 +60,6 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
         if not Jac.check_write_access(anchor) {
             return;
         }
-        anchor.is_updated = True;
         try {
             self.l3.put(anchor);
             if self.l2 {
@@ -71,9 +70,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
         }
         return;
     }
-    # Batch commit: delegate to L3's sync()
-    # - SQLite: sync() does hash-based change detection (only writes changed anchors)
-    # - MongoDB: sync() checks is_updated flag (only writes modified anchors)
+    # Batch commit: delegate to L3's sync() which uses hash-based change detection.
+    # Capture L2-pending anchors BEFORE L3 sync (which updates hashes).
     if self.l3 {
         try {
             l2_pending = [];
@@ -82,8 +80,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     mem_anchor
                     for (_, mem_anchor) in list(self.__mem__.items())
                     if mem_anchor.persistent
-                    and mem_anchor.is_updated
                     and Jac.check_write_access(mem_anchor)
+                    and Serializer._compute_hash(mem_anchor) != mem_anchor.hash
                 ];
             }
             self.l3.sync();

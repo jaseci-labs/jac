@@ -289,11 +289,6 @@ impl UniNode.unparse -> str {
     return ' '.join([i.unparse() for i in self.kid]);
 }
 
-impl AtomExpr.postinit -> None {
-    Expr.postinit(self);
-    AstSymbolStubNode._init_stub(self, sym_type=SymbolType.UNKNOWN);
-}
-
 
 """Initialize."""
 impl Symbol.init(
@@ -888,11 +883,7 @@ impl SubTag.postinit -> None {
 
 
 impl Module.postinit -> None {
-    self.impl_mod: list[Module] = [];
-    self.test_mod: list[Module] = [];
-    self.variant_mod: list[Module] = [];
-    self.src_terminals: list[Token] = self.terminals;
-    self.is_raised_from_py: bool = False;
+    self.src_terminals = self.terminals;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }
