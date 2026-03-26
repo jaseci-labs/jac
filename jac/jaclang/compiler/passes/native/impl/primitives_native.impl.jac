@@ -5815,3 +5815,531 @@ impl NativeBuiltinEmitter.emit_pow(
     }
     return None;
 }
+
+impl NativeBuiltinEmitter.emit_divmod(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # divmod(a, b) -> tuple of (a // b, a % b)
+    if len(args) < 2 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
+    a = args[0];
+    v = args[1];
+    if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
+        # ZeroDivisionError check
+        izero = ir.Constant(i64, 0);
+        is_zero = b.icmp_signed("==", v, izero, name="divmod.zero.chk");
+        p._emit_runtime_raise(
+            is_zero, "ZeroDivisionError", "integer division or modulo by zero"
+        );
+        quot = b.sdiv(a, v, name="divmod.quot");
+        rem = b.srem(a, v, name="divmod.rem");
+        # Build a 2-element tuple (struct {i64, i64})
+        tuple_type = ir.LiteralStructType([i64, i64]);
+        null_ptr = ir.Constant(tuple_type.as_pointer(), None);
+        size_gep = b.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="divmod.sizeof.gep"
+        );
+        size = b.ptrtoint(size_gep, i64, name="divmod.sizeof");
+        raw_ptr = b.call(p.rc_alloc_fn, [size], name="divmod.alloc");
+        tuple_ptr = b.bitcast(raw_ptr, tuple_type.as_pointer(), name="divmod.ptr");
+        # Store quotient and remainder
+        q_ptr = b.gep(
+            tuple_ptr,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+            name="divmod.q.ptr"
+        );
+        r_ptr = b.gep(
+            tuple_ptr,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1)],
+            name="divmod.r.ptr"
+        );
+        b.store(quot, q_ptr);
+        b.store(rem, r_ptr);
+        # Register the tuple type
+        tkey = f"Tuple.2.i64.i64";
+        if tkey not in p.tuple_types {
+            p.tuple_types[tkey] = tuple_type;
+        }
+        return tuple_ptr;
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_iter(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_next(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_callable(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_getattr(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_setattr(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_hasattr(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_delattr(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_vars(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_dir(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_open(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_format(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # format(value, spec) - format value according to format spec
+    if len(args) < 2 {
+        return None;
+    }
+    arg_val = args[0];
+    spec_val = args[1];
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    rc_alloc_fn = p.rc_alloc_fn;
+    buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="fmt.buf");
+    snprintf = p._get_or_declare_extern(
+        "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+    );
+    # Build format string: "%" + spec
+    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    spec_len = b.call(strlen_fn, [spec_val], name="fmt.speclen");
+    # Allocate fmt string: "%" + spec + null = spec_len + 2
+    fmt_size = b.add(spec_len, ir.Constant(i64, 2), name="fmt.fmtsz");
+    fmt_buf = b.call(rc_alloc_fn, [fmt_size], name="fmt.fmtbuf");
+    # Store '%' at position 0
+    b.store(ir.Constant(ir.IntType(8), 37), fmt_buf);
+    # Copy spec after '%'
+    fmt_rest = b.gep(fmt_buf, [ir.Constant(i64, 1)], name="fmt.rest");
+    copy_len = b.add(spec_len, ir.Constant(i64, 1), name="fmt.copylen");
+    b.call(memcpy_fn, [fmt_rest, spec_val, copy_len]);
+    # Call snprintf with the constructed format
+    b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_buf, arg_val]);
+    return buf_ptr;
+}
+
+impl NativeBuiltinEmitter.emit_ascii(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # ascii(s) - for strings, return repr-like with non-ASCII escaped
+    # Simplified: just return repr() for now (handles basic cases)
+    return self.emit_repr(ctx, args);
+}
+
+# Type conversion builtins
+impl NativeBuiltinEmitter.emit_str(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    arg_val = args[0];
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    rc_alloc_fn = p.rc_alloc_fn;
+    buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
+    snprintf = p._get_or_declare_extern(
+        "snprintf", ir.IntType(32), [i8p, ir.IntType(64), i8p], var_arg=True
+    );
+    if isinstance(arg_val.type, ir.IntType) {
+        fmt = p._get_snprintf_fmt("%ld");
+    } elif isinstance(arg_val.type, ir.DoubleType) {
+        fmt = p._get_snprintf_fmt("%g");
+    } else {
+        fmt = p._get_snprintf_fmt("%ld");
+    }
+    fmt_ptr = b.bitcast(fmt, i8p, name="str.fmt.ptr");
+    b.call(
+        snprintf,
+        [buf_ptr, ir.Constant(ir.IntType(64), 32), fmt_ptr, arg_val],
+        name="str.snprintf"
+    );
+    return buf_ptr;
+}
+
+impl NativeBuiltinEmitter.emit_int(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    arg_val = args[0];
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
+    # int(bool) / int(int): zero-extend narrower integers to i64, return i64 directly
+    if isinstance(arg_val.type, ir.IntType) {
+        if arg_val.type.width == 64 {
+            return arg_val;
+        }
+        return b.zext(arg_val, i64, name="int.from.int");
+    }
+    # int(float): truncate double to i64 (same as Python int(3.7) == 3)
+    if isinstance(arg_val.type, ir.DoubleType) {
+        return b.fptosi(arg_val, i64, name="int.from.float");
+    }
+    # int(str): parse via strtol
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
+    endptr_alloca = b.alloca(i8p, name="endptr");
+    result_val = b.call(
+        strtol_fn, [arg_val, endptr_alloca, ir.Constant(i32, 10)], name="strtol.result"
+    );
+    endptr_val = b.load(endptr_alloca, name="endptr.val");
+    no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="int.noparse");
+    p._emit_runtime_raise(no_parse, "ValueError", "invalid literal for int()");
+    end_char = b.load(endptr_val, name="end.char");
+    has_trail = b.icmp_unsigned(
+        "!=", end_char, ir.Constant(ir.IntType(8), 0), name="int.trail"
+    );
+    p._emit_runtime_raise(has_trail, "ValueError", "invalid literal for int()");
+    return result_val;
+}
+
+impl NativeBuiltinEmitter.emit_float(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    arg_val = args[0];
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    # String to float via strtod
+    if isinstance(arg_val.type, ir.PointerType) {
+        strtod_fn = p._get_or_declare_extern(
+            "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
+        );
+        endptr_alloca = b.alloca(i8p, name="float.endptr");
+        result = b.call(strtod_fn, [arg_val, endptr_alloca], name="float.result");
+        endptr_val = b.load(endptr_alloca, name="float.endptr.val");
+        no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="float.noparse");
+        p._emit_runtime_raise(
+            no_parse, "ValueError", "could not convert string to float"
+        );
+        return result;
+    }
+    # Int to float
+    if isinstance(arg_val.type, ir.IntType) {
+        return b.sitofp(arg_val, ir.DoubleType(), name="float.from.int");
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_bool(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    arg_val = args[0];
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
+    if isinstance(arg_val.type, ir.IntType) {
+        # bool(int): nonzero is truthy
+        is_nonzero = b.icmp_signed("!=", arg_val, ir.Constant(i64, 0), name="bool.nz");
+        return b.zext(is_nonzero, i64, name="bool.result");
+    }
+    if isinstance(arg_val.type, ir.DoubleType) {
+        # bool(float): non-zero is truthy
+        is_nonzero = b.fcmp_ordered(
+            "!=", arg_val, ir.Constant(ir.DoubleType(), 0.0), name="bool.fnz"
+        );
+        return b.zext(is_nonzero, i64, name="bool.fresult");
+    }
+    if isinstance(arg_val.type, ir.PointerType) {
+        # bool(str): non-empty is truthy
+        i8p = ir.IntType(8).as_pointer();
+        if arg_val.type == i8p {
+            strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+            slen = b.call(strlen_fn, [arg_val], name="bool.slen");
+            is_nonempty = b.icmp_unsigned(
+                "!=", slen, ir.Constant(i64, 0), name="bool.nonempty"
+            );
+            return b.zext(is_nonempty, i64, name="bool.sresult");
+        }
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_list(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # list(set) -> new list with all set elements; list(list) -> copy
+    if not args {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    val = args[0];
+    # Convert set to list: set struct = {i64 len, i64 cap, elem* elems}
+    for (sk, shelpers) in p.set_helpers.items() {
+        stype = p.set_types.get(sk);
+        if stype is not None and val.type == stype.as_pointer() {
+            p._emit_list_helpers(sk, shelpers["elem_type"]);
+            lhelpers = p.list_helpers.get(sk);
+            if lhelpers is None {
+                return None;
+            }
+            new_list = b.call(lhelpers["new"], [], name="l2l.new");
+            set_len = b.call(shelpers["len"], [val], name="l2l.slen");
+            elems_ptr = b.gep(
+                val, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="l2l.elems.ptr"
+            );
+            elems_arr = b.load(elems_ptr, name="l2l.elems");
+            func = b.basic_block.function;
+            entry_bb = b.basic_block;
+            loop_bb = func.append_basic_block(name="l2l.loop");
+            body_bb = func.append_basic_block(name="l2l.body");
+            done_bb = func.append_basic_block(name="l2l.done");
+            b.branch(loop_bb);
+            b.position_at_start(loop_bb);
+            idx = b.phi(i64, name="l2l.idx");
+            idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+            at_end = b.icmp_unsigned(">=", idx, set_len, name="l2l.end");
+            b.cbranch(at_end, done_bb, body_bb);
+            b.position_at_start(body_bb);
+            ep = b.gep(elems_arr, [idx], name="l2l.ep");
+            elem = b.load(ep, name="l2l.elem");
+            b.call(lhelpers["append"], [new_list, elem]);
+            nidx = b.add(idx, ir.Constant(i64, 1), name="l2l.nidx");
+            idx.add_incoming(nidx, body_bb);
+            b.branch(loop_bb);
+            b.position_at_start(done_bb);
+            return new_list;
+        }
+    }
+    # Pass-through: if already a list, copy it
+    for (lk, lhelpers) in p.list_helpers.items() {
+        ltype = p.list_types.get(lk);
+        if ltype is not None and val.type == ltype.as_pointer() {
+            _le = p?._native_emitters?.get("list");
+            if _le is None {
+                return None;
+            }
+            _ctx2 = ctx.__class__(pass_ref=p, type_key=lk);
+            return _le.emit_copy(_ctx2, val, []);
+        }
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_dict(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # dict() with no args -> empty dict; dict(other_dict) -> copy
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    if not args {
+        # Empty dict: create a new dict[str, int] as default
+        p._emit_dict_helpers(
+            "ptr", "i64", ir.IntType(8).as_pointer(), ir.IntType(64), 0
+        );
+        helpers = p.dict_helpers.get("ptr:i64");
+        if helpers is None {
+            return None;
+        }
+        return b.call(helpers["new"], [], name="dctor.new");
+    }
+    # dict(other_dict) -> copy
+    val = args[0];
+    for (dk, dhelpers) in p.dict_helpers.items() {
+        dtype = p.dict_types.get(dk);
+        if dtype is not None and val.type == dtype.as_pointer() {
+            _de = p?._native_emitters?.get("dict");
+            if _de is None {
+                return None;
+            }
+            _ctx2 = ctx.__class__(pass_ref=p, type_key=dk);
+            return _de.emit_copy(_ctx2, val, []);
+        }
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_set(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # set(list) -> new set with all list elements; set(set) -> copy
+    if not args {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i64 = ir.IntType(64);
+    val = args[0];
+    # Convert list to set
+    for (lk, lhelpers) in p.list_helpers.items() {
+        ltype = p.list_types.get(lk);
+        if ltype is not None and val.type == ltype.as_pointer() {
+            p._emit_set_helpers(lk, lhelpers["elem_type"]);
+            shelpers = p.set_helpers.get(lk);
+            if shelpers is None {
+                return None;
+            }
+            new_set = b.call(shelpers["new"], [], name="l2s.new");
+            list_len = b.call(lhelpers["len"], [val], name="l2s.llen");
+            func = b.basic_block.function;
+            entry_bb = b.basic_block;
+            loop_bb = func.append_basic_block(name="l2s.loop");
+            body_bb = func.append_basic_block(name="l2s.body");
+            done_bb = func.append_basic_block(name="l2s.done");
+            b.branch(loop_bb);
+            b.position_at_start(loop_bb);
+            idx = b.phi(i64, name="l2s.idx");
+            idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+            at_end = b.icmp_unsigned(">=", idx, list_len, name="l2s.end");
+            b.cbranch(at_end, done_bb, body_bb);
+            b.position_at_start(body_bb);
+            elem = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
+            b.call(shelpers["add"], [new_set, elem]);
+            nidx = b.add(idx, ir.Constant(i64, 1), name="l2s.nidx");
+            idx.add_incoming(nidx, body_bb);
+            b.branch(loop_bb);
+            b.position_at_start(done_bb);
+            return new_set;
+        }
+    }
+    # Pass-through: if already a set, copy it
+    for (sk, shelpers) in p.set_helpers.items() {
+        stype = p.set_types.get(sk);
+        if stype is not None and val.type == stype.as_pointer() {
+            _se = p?._native_emitters?.get("set");
+            if _se is None {
+                return None;
+            }
+            _ctx2 = ctx.__class__(pass_ref=p, type_key=sk);
+            return _se.emit_copy(_ctx2, val, []);
+        }
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_tuple(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_frozenset(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # frozenset(x) -> same as set(x) since they share LLVM type
+    return self.emit_set(ctx, args);
+}
+
+impl NativeBuiltinEmitter.emit_bytes(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # bytes(list_of_ints) -> i8* string from list elements
+    if not args {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    val = args[0];
+    # bytes(list[int]) -> convert each int element to a byte
+    for (lk, lhelpers) in p.list_helpers.items() {
+        ltype = p.list_types.get(lk);
+        if ltype is not None and val.type == ltype.as_pointer() {
+            list_len = b.call(lhelpers["len"], [val], name="bytes.len");
+            alloc_sz = b.add(list_len, ir.Constant(i64, 1), name="bytes.alloc");
+            buf = b.call(p.rc_alloc_fn, [alloc_sz], name="bytes.buf");
+            func = b.basic_block.function;
+            entry_bb = b.basic_block;
+            loop_bb = func.append_basic_block(name="bytes.loop");
+            body_bb = func.append_basic_block(name="bytes.body");
+            done_bb = func.append_basic_block(name="bytes.done");
+            b.branch(loop_bb);
+            b.position_at_start(loop_bb);
+            idx = b.phi(i64, name="bytes.idx");
+            idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+            at_end = b.icmp_unsigned(">=", idx, list_len, name="bytes.end");
+            b.cbranch(at_end, done_bb, body_bb);
+            b.position_at_start(body_bb);
+            elem = b.call(lhelpers["get"], [val, idx], name="bytes.elem");
+            byte_val = b.trunc(elem, i8, name="bytes.trunc");
+            bp = b.gep(buf, [idx], name="bytes.bp");
+            b.store(byte_val, bp);
+            nidx = b.add(idx, ir.Constant(i64, 1), name="bytes.nidx");
+            idx.add_incoming(nidx, body_bb);
+            b.branch(loop_bb);
+            b.position_at_start(done_bb);
+            # Null-terminate
+            end_ptr = b.gep(buf, [list_len], name="bytes.endptr");
+            b.store(ir.Constant(i8, 0), end_ptr);
+            return buf;
+        }
+    }
+    return None;
+}
+
+impl NativeBuiltinEmitter.emit_bytearray(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    # bytearray(list_of_ints) -> same as bytes: i8* string
+    return self.emit_bytes(ctx, args);
+}
+
+impl NativeBuiltinEmitter.emit_complex(
+    self, ctx: NativeEmitCtx, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return None;
+}

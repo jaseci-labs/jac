@@ -1860,4 +1860,105 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         }
         return None;
     }
+
+    def emit_divmod(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_iter(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_next(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_callable(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_getattr(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_setattr(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_hasattr(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_delattr(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_vars(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_dir(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_open(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_format(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_ascii(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    # Type conversion builtins
+    def emit_str(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_int(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_float(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_bool(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_list(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_dict(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_set(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_tuple(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_frozenset(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_bytes(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_bytearray(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def emit_complex(
+        self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> (ir.Value | None);
 }
