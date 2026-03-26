@@ -25,7 +25,7 @@ def get_merge_base() -> (str | None) {
 def get_diff(merge_base: str, filepath: str) -> str {
     try {
         result = subprocess.run(
-            ["git", "diff", f"{merge_base}...HEAD", "--", filepath],
+            ["git", "diff", "-U99999", f"{merge_base}...HEAD", "--", filepath],
             capture_output=True,
             text=True,
             check=True
