@@ -548,6 +548,15 @@ obj IngressDeployer {
             ),
             'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
         };
+        if self.k8s_config.ingress_session_affinity {
+            ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-name'] = 'route';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-max-age'] = '2147483647';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-expires'] = '2147483647';
+            ingress_annotations[
+                'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+            ] = 'true';
+        }
         if self.k8s_config.domain {
             ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
         }

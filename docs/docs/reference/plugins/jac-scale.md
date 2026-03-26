@@ -1286,6 +1286,39 @@ ingress_limit_connections = 30      # more concurrent connections
 
 ---
 
+### Sticky Sessions (Cookie-Based Affinity)
+
+When your pods hold per-user state (e.g. running user processes), you need requests from the same user to always reach the same pod. jac-scale supports opt-in cookie-based session affinity via NGINX.
+
+**Enabled by default.** Disable it in `jac.toml` if not needed:
+
+```toml
+[plugins.scale.kubernetes]
+ingress_session_affinity = false
+```
+
+**How it works:**
+
+On the first response, NGINX sets a `route` cookie in the browser. Every subsequent request includes that cookie and NGINX uses it to route back to the same pod, regardless of IP changes (mobile networks, NAT, VPN, proxies). The cookie never expires in the browser.
+
+| Behaviour | Detail |
+|-----------|--------|
+| Cookie name | `route` |
+| Cookie lifetime | Never expires (`max-age` ~68 years) |
+| On pod failure | NGINX re-routes to a healthy pod and rewrites the cookie automatically |
+| IP changes (mobile/NAT) | Handled correctly - routing is cookie-based, not IP-based |
+
+**When to use:**
+
+- Your pods run stateful per-user processes (e.g. sandbox environments, background workers per user)
+- You need a user to consistently land on the pod that owns their session
+
+**Limitations:**
+
+Sticky sessions ensure routing **while a pod is alive**. If a pod is deleted (e.g. during a rolling deployment), in-flight user processes on that pod are lost. The user is automatically re-routed to a new pod, but any in-memory state is gone. For true resilience, externalize per-user state to Redis or a database so any pod can serve any user.
+
+---
+
 ### Domain & TLS (HTTPS)
 
 jac-scale supports custom domain names and automatic HTTPS via [cert-manager](https://cert-manager.io) + Let's Encrypt. TLS is a two-step process to avoid the chicken-and-egg problem (NLB hostname is unknown until after the first deploy).
