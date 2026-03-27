@@ -1,10 +1,12 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.8 (Unreleased)
+## jac-mcp 0.1.9 (Unreleased)
+
+## jac-mcp 0.1.8 (Latest Release)
 
 - **Full CLI access over MCP**: AI models can now discover and run any `jac` CLI command (including plugin-provided ones) directly from the MCP session. `list_commands` returns a lightweight summary; `get_command(name)` returns full argument details; `execute_command` runs them. Replaces the narrower `start_server`, `create_project`, and `list_templates` tools.
 
-## jac-mcp 0.1.7 (Latest Release)
+## jac-mcp 0.1.7
 
 - 2 small changes.
 - **8 new tools**: AI models can now run Jac code, lint files, convert Jac to Python or JavaScript, visualize graphs, list project templates, scaffold new projects, and start a local server - all from within the MCP session.
