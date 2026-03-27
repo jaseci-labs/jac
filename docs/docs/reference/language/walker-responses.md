@@ -269,11 +269,50 @@ with entry {
 
 1. **Prefer single reports** - Accumulate data and report once at the end
 2. **Use `with Root exit`** - Best place for final reports after traversal
-3. **Document report structure** - Comment what each report index contains
+3. **Report typed objects directly** - Return node/obj instances instead of manually constructing dicts. The runtime automatically serializes typed objects with field metadata, and client code receives them as hydrated typed instances with proper field access (e.g., `task.title` instead of `task["title"]`)
 4. **Always check `.reports`** - It may be empty or undefined
-5. **Keep reports serializable** - Stick to dicts, lists, strings, numbers, bools
+5. **Use typed return annotations** - For `def:pub` functions, annotate with `-> Task` or `-> list[Task]` instead of `-> dict` or `-> list` to enable automatic type hydration on the client
 
 ## Anti-Patterns
+
+### Don't: Manually construct dicts from typed objects
+
+```jac
+# Bad: Manual dict construction loses type information
+walker:priv BadCreate {
+    has name: str;
+
+    can create with Root entry {
+        item = here ++> Item(name=self.name);
+        report {"name": item[0].name, "data": item[0].data};  # Don't do this
+    }
+}
+
+# Good: Report the typed object directly
+walker:priv GoodCreate {
+    has name: str;
+
+    can create with Root entry {
+        item = here ++> Item(name=self.name);
+        report item[0];  # The runtime handles serialization automatically
+    }
+}
+```
+
+The same applies to `def:pub` functions -- return typed objects instead of manually constructed dicts:
+
+```jac
+# Bad: Manual dict return
+def:pub get_task(id: str) -> dict {
+    task = find_task(id);
+    return {"id": task.id, "title": task.title, "done": task.done};
+}
+
+# Good: Typed return -- client receives a hydrated Task instance
+def:pub get_task(id: str) -> Task {
+    return find_task(id);
+}
+```
 
 ### Don't: Report in a loop without accumulation
 

@@ -130,6 +130,50 @@ class JacAccessValidation {
     static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
 }
 
+"""Batch-prefetch edge stubs and their source/target nodes into L1 cache.
+Reduces N+1 database fetches to 2 batch queries for all edges of all origin nodes.
+"""
+def _prefetch_edges(origin: list[NodeArchetype]) -> None {
+    ctx = JacRuntimeInterface.get_context();
+    if not hasattr(ctx.mem, 'batch_get') {
+        return;
+    }
+    edge_ids: list = [];
+    for nd in origin {
+        nanch = nd.__jac__;
+        for edge_stub in nanch.edges {
+            if not edge_stub.is_populated() {
+                edge_ids.append(edge_stub.id);
+            }
+        }
+    }
+    if edge_ids {
+        ctx.mem.batch_get(edge_ids);
+    }
+    node_ids: list = [];
+    for nd in origin {
+        nanch = nd.__jac__;
+        for anchor in nanch.edges {
+            loaded = ctx.mem.get(anchor.id);
+            if loaded {
+                if loaded?.source
+                and loaded.source is not None
+                and not loaded.source.is_populated() {
+                    node_ids.append(loaded.source.id);
+                }
+                if loaded?.target
+                and loaded.target is not None
+                and not loaded.target.is_populated() {
+                    node_ids.append(loaded.target.id);
+                }
+            }
+        }
+    }
+    if node_ids {
+        ctx.mem.batch_get(node_ids);
+    }
+}
+
 """Jac Node Operations."""
 class JacNode {
     """Get edges connected to this node."""

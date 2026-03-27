@@ -163,6 +163,17 @@ impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
 # No-op: cache doesn't need commit
 }
 
+"""Batch get from Redis cache. Falls back to individual gets."""
+impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
+    result: dict[UUID, Anchor] = {};
+    for id in ids {
+        if (anchor := self.get(id)) {
+            result[id] = anchor;
+        }
+    }
+    return result;
+}
+
 # CacheMemory-specific methods
 """Check if key exists in cache."""
 impl RedisBackend.exists(id: UUID) -> bool {

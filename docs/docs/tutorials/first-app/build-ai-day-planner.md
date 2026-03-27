@@ -495,9 +495,9 @@ This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` 
 
 ```jac
 """Add a task and return it."""
-def:pub add_task(title: str) -> dict {
+def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+    return task[0];
 }
 ```
 
@@ -506,7 +506,7 @@ That single annotation transforms the function into two things simultaneously:
 - A server-side function you can call from Jac code
 - An HTTP endpoint that clients can call over the network
 
-Consider what this replaces in a traditional web framework: you'd need a route decorator, a request parser to extract `title` from the request body, serialization logic to convert the response to JSON, and error handling for malformed requests. In Jac, the function signature *is* the API contract. The function's parameters define the request schema, and its return type defines the response format.
+Consider what this replaces in a traditional web framework: you'd need a route decorator, a request parser to extract `title` from the request body, serialization logic to convert the response to JSON, and error handling for malformed requests. In Jac, the function signature *is* the API contract. The function's parameters define the request schema, and its return type defines the response format. When the return type is a typed object like `Task`, the runtime automatically serializes all its fields -- no manual dict construction needed.
 
 **Building the CRUD Endpoints**
 
@@ -519,25 +519,25 @@ node Task {
 }
 
 """Add a task and return it."""
-def:pub add_task(title: str) -> dict {
+def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+    return task[0];
 }
 
 """Get all tasks."""
-def:pub get_tasks -> list {
-    return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
+def:pub get_tasks -> list[Task] {
+    return [root-->][?:Task];
 }
 
 """Toggle a task's done status."""
-def:pub toggle_task(id: str) -> dict {
+def:pub toggle_task(id: str) -> Task | None {
     for task in [root-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
-            return {"id": jid(task), "title": task.title, "done": task.done};
+            return task;
         }
     }
-    return {};
+    return None;
 }
 
 """Delete a task."""
@@ -912,25 +912,25 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     }
 
     """Add a task and return it."""
-    def:pub add_task(title: str) -> dict {
+    def:pub add_task(title: str) -> Task {
         task = root ++> Task(title=title);
-        return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+        return task[0];
     }
 
     """Get all tasks."""
-    def:pub get_tasks -> list {
-        return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
+    def:pub get_tasks -> list[Task] {
+        return [root-->][?:Task];
     }
 
     """Toggle a task's done status."""
-    def:pub toggle_task(id: str) -> dict {
+    def:pub toggle_task(id: str) -> Task | None {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
-                return {"id": jid(task), "title": task.title, "done": task.done};
+                return task;
             }
         }
-        return {};
+        return None;
     }
 
     """Delete a task."""

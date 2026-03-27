@@ -142,6 +142,7 @@ impl JacAccessValidation.check_access_level(
 impl JacNode.get_edges(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[EdgeArchetype] {
+    _prefetch_edges(origin);
     edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -181,6 +182,7 @@ impl JacNode.get_edges_with_node(
     destination: ObjectSpatialDestination,
     from_visit: bool = False
 ) -> list[(EdgeArchetype | NodeArchetype)] {
+    _prefetch_edges(origin);
     loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -220,6 +222,7 @@ impl JacNode.get_edges_with_node(
 impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
+    _prefetch_edges(origin);
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
