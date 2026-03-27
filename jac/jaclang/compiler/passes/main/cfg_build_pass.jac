@@ -22,10 +22,6 @@ with entry {
 
 """CFG build pass using entry/exit visitor pattern."""
 obj CFGBuildPass(UniPass) {
-    def init(
-        ir_in: uni.Module, prog: JacProgram, cancel_token: (Event | None) = None
-    ) -> None;
-
     def before_pass -> None;
     # -- Utilities --
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
@@ -87,10 +83,6 @@ obj CFGBuildPass(UniPass) {
 obj CoalesceBBPass(UniPass) {
     has basic_blocks: dict = {},
         bb_counter: int = 0;
-
-    def init(
-        ir_in: uni.Module, prog: JacProgram, cancel_token: (Event | None) = None
-    ) -> None;
 
     def before_pass -> None;
     def get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode];

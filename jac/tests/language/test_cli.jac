@@ -1962,6 +1962,52 @@ test "jir cache preserves impl defined instance variables" {
     }
 }
 
+"""Regression: JIR cache must compute MRO for subtype checking.
+
+When a module is loaded from JIR cache, class types may have empty MRO lists.
+The is_sub_class check must compute MRO on demand to properly recognize
+subtype relationships (e.g., ClassType extends TypeBase).
+"""
+test "jir cache computes mro for subtype checking" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Create a module with base and derived classes
+        with open(os.path.join(tmpdir, "types.jac"), "w") as f {
+            f.write(
+                "obj Base { has x: int = 0; }\n"
+                "obj Derived(Base) { has y: int = 0; }\n"
+            );
+        }
+        # Create main that uses Derived where Base is expected
+        with open(os.path.join(tmpdir, "main.jac"), "w") as f {
+            f.write(
+                "import from types { Base, Derived }\n"
+                "def use_base(b: Base) -> int { return b.x; }\n"
+                "with entry { print(use_base(Derived())); }\n"
+            );
+        }
+        main_path = os.path.join(tmpdir, "main.jac");
+        # Run check twice: first creates cache, second uses it
+        outputs: list[str] = [];
+        for _ in range(2) {
+            JacRuntime.program = JacProgram();
+            (cap_out, cap_err, old_out, old_err) = _capture_output();
+            try {
+                analysis.check([main_path]);
+                outputs.append(cap_out.getvalue() + cap_err.getvalue());
+            } finally {
+                _restore_output(old_out, old_err);
+            }
+        }
+        # E1053 "Cannot assign Derived to parameter 'b' of type Base" appears if MRO not computed
+        assert "Cannot assign" not in outputs[1] , f"JIR cache lost MRO for subtype check:\n{outputs[
+            1
+        ]}";
+    }
+}
+
 """jac check on .impl.jac files should compile the base file and filter errors."""
 test "jac check on impl file redirects to base and filters errors" {
     import from jaclang.jac0core.program { JacProgram }

@@ -104,6 +104,10 @@ impl Serializer._serialize_value(
     # Generic object with __dict__
     if val?.__dict__ {
         result = Serializer._type_info(val, include_type);
+        if api_mode {
+            result['__type__'] = type(val).__name__;
+            result['__module__'] = type(val).__module__;
+        }
         for (k, v) in val.__dict__.items() {
             if not k.startswith('_') {
                 result[k] = Serializer._serialize_value(v, include_type, api_mode);

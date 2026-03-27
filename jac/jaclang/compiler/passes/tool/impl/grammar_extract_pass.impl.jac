@@ -97,15 +97,6 @@ impl GrammarRule.__repr__ -> str {
     return f"GrammarRule({self.name!r}, {self.body!r})";
 }
 
-# =========================================================================
-# GrammarExtractPass - Init
-# =========================================================================
-"""Initialize the GrammarExtractPass."""
-impl GrammarExtractPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
 
 # =========================================================================
 # GrammarExtractPass - Formatting helpers

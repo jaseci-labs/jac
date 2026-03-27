@@ -20,9 +20,113 @@ Uses manual tree-walking for function bodies to properly handle
 control flow basic blocks (if/else, while loops).
 """
 obj NaIRGenPass(ModuleCodegenPass) {
-    def init(
-        ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-    ) -> None;
+    # LLVM module and builder (initialized in postinit)
+    has llvm_module: ir.Module by postinit,
+        type_map: dict[str, ir.Type] by postinit,
+        complex_struct_type: object by postinit,
+        range_struct_type: object by postinit,
+        slice_struct_type: object by postinit,
+        jacval_type: object by postinit,
+        # Simple defaults
+        builder: (ir.IRBuilder | None) = None,
+        func_symtab: dict[str, ir.Function] = {},
+        local_vars: dict[str, ir.AllocaInstr] = {},
+        has_native_code: bool = False,
+        _fmt_strings: dict[str, ir.GlobalVariable] = {},
+        # External function cache (Phase 0)
+        extern_funcs: dict[str, ir.Function] = {},
+        clib_extern_names: set[str] = set(),
+        clib_struct_names: set[str] = set(),
+        clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Enum support (Phase 1)
+        enum_values: dict[str, ir.Constant] = {},
+        enum_types: dict[str, ir.IntType] = {},
+        enum_string_values: dict[str, list] = {},
+        enum_value_arrays: dict[str, object] = {},
+        enum_name_arrays: dict[str, object] = {},
+        var_enum_type: dict[str, str] = {},
+        struct_field_enum_type: dict[str, dict] = {},
+        loop_stack: list[tuple] = [],
+        _str_count: int = 0,
+        # Object/struct support (Phase 3)
+        struct_types: dict[str, object] = {},
+        struct_field_indices: dict[str, dict] = {},
+        struct_field_types: dict[str, dict] = {},
+        struct_field_defaults: dict[str, object] = {},
+        method_funcs: dict[str, ir.Function] = {},
+        method_ast_sigs: dict[str, object] = {},
+        type_var_map: dict[str, str] = {},
+        # List support (Phase 4)
+        list_types: dict[str, object] = {},
+        list_helpers: dict[str, dict] = {},
+        var_list_elem_type: dict[str, str] = {},
+        field_type_node: dict[str, dict] = {},
+        var_type_node: dict[str, object] = {},
+        _list_type_hint: (str | None) = None,
+        _last_type_node_hint: (object | None) = None,
+        # Inheritance / vtable support (Phase 5)
+        class_hierarchy: dict[str, str] = {},
+        class_parents: dict[str, list[str]] = {},
+        mro_order: dict[str, list[str]] = {},
+        parent_field_start: dict[str, dict[str, int]] = {},
+        arch_ast_map: dict[str, object] = {},
+        has_vtable: dict[str, bool] = {},
+        vtable_layouts: dict[str, list[str]] = {},
+        vtable_method_indices: dict[str, dict] = {},
+        vtable_globals: dict[str, ir.GlobalVariable] = {},
+        _non_overridden_methods: dict[str, set[str]] = {},
+        # Tuple support (Phase 9)
+        tuple_types: dict[str, object] = {},
+        var_tuple_type: dict[str, str] = {},
+        # Complex/Range/Slice var tracking
+        var_complex: set[str] = set(),
+        var_range: set[str] = set(),
+        var_slice: set[str] = set(),
+        # Global variable support (Phase 11)
+        global_vars: dict[str, ir.GlobalVariable] = {},
+        global_var_types: dict[str, ir.Type] = {},
+        # Dictionary support (Phase 12)
+        dict_types: dict[str, object] = {},
+        dict_helpers: dict[str, dict] = {},
+        var_dict_type: dict[str, str] = {},
+        _dict_val_type_hint: (str | None) = None,
+        # Set support (Phase 13)
+        set_types: dict[str, object] = {},
+        set_helpers: dict[str, dict] = {},
+        var_set_elem_type: dict[str, str] = {},
+        # Exception handling support (Phase 14)
+        _exc_state_type: (object | None) = None,
+        _exc_handler_global: (object | None) = None,
+        _exc_push_fn: (object | None) = None,
+        _exc_pop_fn: (object | None) = None,
+        _exc_raise_fn: (object | None) = None,
+        _exc_type_registry: dict[str, int] = {"Exception": 0},
+        _exc_type_counter: int = 1,
+        _rt_error_msgs: dict[str, object] = {},
+        # File I/O support (Phase 15)
+        _file_struct_type: (object | None) = None,
+        _file_helpers_emitted: bool = False,
+        # Primitive emitter singletons
+        _native_emitters: (dict[str, object] | None) = None,
+        _native_builtin_emitter: (object | None) = None,
+        # Reference counting support (Phase RC)
+        rc_alloc_fn: (ir.Function | None) = None,
+        rc_retain_fn: (ir.Function | None) = None,
+        rc_release_simple_fn: (ir.Function | None) = None,
+        malloc_fn: (ir.Function | None) = None,
+        free_fn: (ir.Function | None) = None,
+        struct_release_fns: dict[str, ir.Function] = {},
+        list_release_fns: dict[str, ir.Function] = {},
+        dict_release_fns: dict[str, ir.Function] = {},
+        set_release_fns: dict[str, ir.Function] = {},
+        # Lazily initialized tracking sets
+        _imported_na_paths: list[str] = [],
+        _struct_bodies_done: set[str] = set(),
+        _native_stdlib_modules: set[str] = set(),
+        _clib_paths: list[str] = [],
+        _native_emit_ctx_class: (type | None) = None;
+
+    def postinit -> None;
     # Main pass logic
     def transform(ir_in: uni.Module) -> uni.Module;
     def _register_enums(module: uni.Module) -> None;

@@ -59,7 +59,7 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = EsastGenPass(ir, prog);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
     es_ir = es_pass.ir_out;
     assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
     return es_to_js(es_ir.gen.es_ast);

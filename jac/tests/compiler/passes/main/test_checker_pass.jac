@@ -3039,3 +3039,19 @@ test "mro_reexport_through_init" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+test "scope_narrowing_isolation_between_impl_bodies" {
+    # Regression: guard-pattern narrowings (e.g., `if ctx is not None { return; }`
+    # promoting ctx→NoneType) leaked from one impl body into subsequent impl bodies
+    # sharing the same variable name.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_static_method_inherit.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Scope narrowing should not leak between impl bodies, got {len(
+        program.errors_had
+    )} errors:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

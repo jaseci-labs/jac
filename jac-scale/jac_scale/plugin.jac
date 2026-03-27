@@ -41,7 +41,8 @@ def _scale_pre_hook(context: HookContext) -> None {
         if target == 'kubernetes' {
             target_config = scale_config.get_kubernetes_config();
         } else {
-            target_config = scale_config.get_kubernetes_config();  # Default for now
+            # Custom targets load config from [plugins.scale.<target>]
+            target_config = scale_config.get_section(target);
         }
         # Create deployment target
         deployment_target = DeploymentTargetFactory.create(
@@ -326,8 +327,8 @@ class JacCmd {
             if target == 'kubernetes' {
                 target_config = scale_config.get_kubernetes_config();
             } else {
-                # For future targets, get from config
-                target_config = scale_config.get_kubernetes_config();  # Default for now
+                # Custom targets load config from [plugins.scale.<target>]
+                target_config = scale_config.get_section(target);
             }
 
             app_name = target_config.get('app_name', 'jaseci');
@@ -407,7 +408,8 @@ class JacCmd {
             if target == 'kubernetes' {
                 target_config = scale_config.get_kubernetes_config();
             } else {
-                target_config = scale_config.get_kubernetes_config();  # Default for now
+                # Custom targets load config from [plugins.scale.<target>]
+                target_config = scale_config.get_section(target);
             }
 
             # Create deployment target

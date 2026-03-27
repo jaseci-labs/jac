@@ -147,6 +147,13 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         if not arg_param_match.argument_errors {
             self.validate_arg_types(arg_param_match);
         }
+        if caller_type.type_params {
+            bindings = self._collect_type_var_bindings(caller_type, expr);
+            if bindings {
+                specialized = caller_type.specialize_func_type_vars(bindings);
+                return specialized.return_type or types.UnknownType();
+            }
+        }
         return caller_type.return_type or types.UnknownType();
     }
     if isinstance(caller_type, types.OverloadedType) {
@@ -692,6 +699,18 @@ impl TypeEvaluator.assign_type_to_type_var(
             if isinstance(member, types.TypeVarType) {
                 self.assign_type_to_type_var(member, arg_type, bindings);
             }
+        }
+        return True;
+    }
+
+    if (
+        isinstance(param_type, types.ClassType)
+        and isinstance(arg_type, types.ClassType)
+        and self._is_type_subscript(param_type)
+        and (arg_type.flags & types.TypeFlags.Instantiable)
+    ) {
+        for pta in param_type.private.type_args {
+            self.assign_type_to_type_var(pta, arg_type.clone_as_instance(), bindings);
         }
         return True;
     }
