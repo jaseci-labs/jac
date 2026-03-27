@@ -31,7 +31,9 @@ import from byllm.types {
     StreamEvent,
     ToolCall,
     Message,
-    MessageRole
+    MessageRole,
+    IterationAction,
+    IterationContext
 }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry }
@@ -76,6 +78,7 @@ obj BaseLLM {
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[str, None, None];
     def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
+    def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(
         recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime

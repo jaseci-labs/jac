@@ -2,6 +2,8 @@
 
 ## jac-mcp 0.1.8 (Unreleased)
 
+- **Full CLI access over MCP**: AI models can now discover and run any `jac` CLI command (including plugin-provided ones) directly from the MCP session. `list_commands` returns a lightweight summary; `get_command(name)` returns full argument details; `execute_command` runs them. Replaces the narrower `start_server`, `create_project`, and `list_templates` tools.
+
 ## jac-mcp 0.1.7 (Latest Release)
 
 - 2 small changes.

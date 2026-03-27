@@ -741,10 +741,23 @@ When the user clicks "Load Users":
 2. **HTTP**: Async `POST /walker/LoadUsers` with `{"nd": "root"}` and Authorization header
 3. **Server**: Authenticates user, spawns `LoadUsers` walker on root node
 4. **Server**: Walker executes, generates reports
-5. **HTTP**: Returns `{"result": {...}, "reports": [...]}`
-6. **Client**: Receives walker results as Promise (can be awaited to update UI)
+5. **Server**: `Serializer.serialize()` converts typed objects to JSON with `__type__` metadata
+6. **HTTP**: Returns `{"result": {...}, "reports": [...]}`
+7. **Client**: Receives walker results; typed objects are hydrated via `__from_wire()` into JS class instances
 
 The `__jacSpawn` function is async and retrieves the auth token from localStorage before making the request.
+
+### Typed Object Hydration
+
+The compiler automatically generates JS class stubs for server-side types (obj, node, enum) that cross the boundary. Each stub includes:
+
+- `constructor(props)` -- initializes fields from a dict
+- `static __from_wire(d)` -- hydrates a JSON dict into a typed class instance (recursive for nested types)
+- `__to_wire()` -- serializes the instance back to a JSON dict with `__type__` metadata
+
+For `def:pub` functions, the compiler wraps return values with `Type.__from_wire(await __jacCallFunction(...))` and arguments with `arg.__to_wire()`. The server-side `execute_function` and `spawn_walker` methods deserialize typed inbound arguments using `Serializer.deserialize()` when `__type__` metadata is present.
+
+This means server functions can return typed objects directly (`-> Task` instead of `-> dict`) and clients receive hydrated instances with proper field access (`task.title` instead of `task["title"]`).
 
 ### Reactive Application Example
 
