@@ -859,9 +859,9 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     # Module.init: extra attributes
     if isinstance(ir_node, self._Module) {
-        nd.setdefault('impl_mod', None);
-        nd.setdefault('test_mod', None);
-        nd.setdefault('variant_mod', None);
+        nd.setdefault('impl_mod', []);
+        nd.setdefault('test_mod', []);
+        nd.setdefault('variant_mod', []);
         nd.setdefault('src_terminals', None);
         nd.setdefault('is_raised_from_py', False);
     }

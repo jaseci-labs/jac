@@ -182,6 +182,24 @@ test "paramspec_callable_no_false_e1071" {
     assert len(e1071_errors) == 0 , f"Expected no E1071 errors for Callable[P, T], got:\n{all_errors}";
 }
 
+"""Test constrained TypeVars with ellipsis stub bodies (Pyright: typeVar10.py)."""
+test "typevar10_ellipsis_stub_no_error" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar10.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    # Ellipsis-only stub methods should not trigger E1004
+    e1004_errors = [
+        e
+        for e in errors
+        if "E1004" in e
+    ];
+    assert len(e1004_errors) == 0 , f"Expected no E1004 for ellipsis stubs, got:\n{all_errors}";
+}
+
 """Test that module-level dunder variables (__name__, __file__, etc.) type-check cleanly."""
 test "module_dunders_no_errors" {
     program = JacProgram();

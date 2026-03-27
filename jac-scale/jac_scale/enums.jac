@@ -3,6 +3,8 @@
 """Supported SSO platforms."""
 enum Platforms {
     GOOGLE = 'google',
+    APPLE = 'apple',
+    GITHUB = 'github',
 }
 
 """SSO operations."""

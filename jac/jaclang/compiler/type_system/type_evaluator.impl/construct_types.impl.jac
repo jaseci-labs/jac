@@ -72,6 +72,19 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
+    func_type_params: list[types.TypeVarType] | None = None;
+    if node_.type_params {
+        func_type_params = [
+            types.TypeVarType(
+                name=tp.sym_name,
+                bound=self._convert_to_instance(
+                    self.get_type_of_expression(tp.bound)
+                )
+                    if tp.bound
+                    else None
+            ) for tp in node_.type_params
+        ];
+    }
     if not isinstance(node_.signature, uni.FuncSignature) {
         flags = types.FunctionTypeFlags.Null;
         if node_.is_static {
@@ -82,6 +95,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             return_type=self.get_none_type(),
             parameters=None,
             function_flags=flags,
+            type_params=func_type_params,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
@@ -184,6 +198,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         return_type=return_type,
         parameters=parameters,
         function_flags=flags,
+        type_params=func_type_params,
     );
     node_.name_spec.type = func_type;
     return func_type;
@@ -221,7 +236,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     # TODO: We need to handle @dataclass decorator as well.
     is_data_class = node_.sym_category != SymbolType.TYPE;
     # Detect class-based enums: is_enum_class propagates from prefetched Enum.
-    import from jaclang.compiler.type_system { enum_utils }
     is_enum_class = any(
         isinstance(base, types.ClassType) and base.shared.is_enum_class
         for base in base_classes
@@ -269,7 +283,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
 
 """Build the type for an enum class."""
 impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
-    import from jaclang.compiler.type_system { enum_utils }
     # Return cached type if available
     if node_.name_spec.type is not None {
         return cast(types.ClassType, node_.name_spec.type);

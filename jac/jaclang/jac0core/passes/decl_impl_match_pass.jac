@@ -60,22 +60,9 @@ declarations in the main module.
         self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
     ) -> None;
 
-    """Re-resolve symbols in an impl body after symbol table synchronization.
-
-        When impl files are compiled, they don't have access to the base
-module's
-        symbols (like 'self' or archetype members). After DeclImplMatchPass
-links
-        the impl to its declaration and synchronizes symbol tables, we need to
-        re-traverse the impl body to resolve these symbols.
-        """
-    def _resolve_impl_body_symbols(
-        self: DeclImplMatchPass, impl_def: uni.ImplDef
-    ) -> None;
-
-    """Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values)."""
-    def _resolve_module_level_symbols(
-        self: DeclImplMatchPass, module: uni.Module
+    """Resolve unresolved Name and AtomTrailer symbols in a subtree."""
+    def _resolve_symbols_in_subtree(
+        self: DeclImplMatchPass, root: uni.UniNode
     ) -> None;
 
     """Populate self-member symbols from impl body to archetype's symbol table.

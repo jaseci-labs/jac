@@ -59,9 +59,6 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         db_obj = self.collection.find_one({'_id': str(_id)});
         if db_obj {
             anchor = self._load_anchor(db_obj);
-            if anchor {
-                anchor.is_updated = False;
-            }
             return anchor;
         }
     } except Exception as e {
@@ -83,7 +80,7 @@ impl MongoBackend.put(anchor: Anchor) -> None {
             {'$set': {'data': data, 'type': type(anchor).__name__}},
             upsert=True
         );
-        anchor.is_updated = False;
+        anchor.hash = Serializer._compute_hash(anchor);
     } except Exception as e {
         logger.error(f"MongoDB put failed: {e}");
     }
@@ -138,7 +135,6 @@ impl MongoBackend.query(
     try {
         for doc in self.collection.find() {
             if (anchor := self._load_anchor(doc)) {
-                anchor.is_updated = False;
                 if filter is None or filter(anchor) {
                     yield anchor;
                 }
@@ -193,22 +189,23 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only updated anchors)"""
+"""Sync - flush L1 memory to MongoDB (only changed anchors)."""
 impl MongoBackend.sync -> None {
     import from jaclang { JacRuntimeInterface as Jac }
     if not self._mem_ref or not self.client {
         return;
     }
     for (_, anchor) in list(self._mem_ref.items()) {
-        if not anchor.persistent
-        or not Jac.check_write_access(anchor)
-        or not anchor.is_updated {
+        if not anchor.persistent or not Jac.check_write_access(anchor) {
             continue;
         }
-        try {
-            self.put(anchor);
-        } except Exception as e {
-            logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+        current_hash = Serializer._compute_hash(anchor);
+        if current_hash != anchor.hash {
+            try {
+                self.put(anchor);
+            } except Exception as e {
+                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
+            }
         }
     }
 }

@@ -9,19 +9,29 @@ The entry handlers collect affected_symbols for the Pyright-style branch-skippin
 optimization used during backward CFG walks in type narrowing.
 """
 import from collections.abc { Sequence }
+import from threading { Event }
+import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 
+with entry {
+    if TYPE_CHECKING {
+        import from jaclang.jac0core.program { JacProgram }
+    }
+}
+
 """CFG build pass using entry/exit visitor pattern."""
 obj CFGBuildPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def before_pass -> None;
     # -- Utilities --
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
     def _link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None;
     def _connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) -> None;
     def _is_terminal(nd: uni.UniNode) -> bool;
-    def _find_parent_of_types(nd: uni.UniNode, types: tuple) -> (uni.UniNode | None);
+    def _find_parent_of_types(
+        nd: uni.UniNode, types: tuple[type[uni.UniCFGNode], ...]
+    ) -> (uni.UniCFGNode | None);
+
     def _find_next_cfg_stmt_after(
         parent: uni.UniNode, child: uni.UniNode
     ) -> (uni.UniCFGNode | None);
@@ -71,7 +81,9 @@ obj CFGBuildPass(UniPass) {
 
 """Fetch basic blocks."""
 obj CoalesceBBPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
+    has basic_blocks: dict = {},
+        bb_counter: int = 0;
+
     def before_pass -> None;
     def get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode];
     def enter_node(nd: uni.UniNode) -> None;
