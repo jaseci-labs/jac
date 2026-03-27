@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.2 (Unreleased)
+## jaclang 0.13.3 (Unreleased)
+
+## jaclang 0.13.2 (Latest Release)
 
 - **Fix: Windows Client Bundle Compilation**: Fixed client bundle compilation failing on Windows with `Client function 'app' not found` error. Added cross-platform path normalization for module hub lookups to handle Windows case-insensitivity and path separator differences. Extracted helper functions to the client bundle module for consistent path handling across the bundle builder and module introspector. The ES pass is now explicitly triggered when generated JavaScript is empty, ensuring code generation completes on Windows where the pass may be skipped during initial compilation due to re-entrancy guards.
 - **Fix: Windows Console Unicode Encoding**: Fixed codec encoding crashes on Windows cmd/PowerShell when printing Unicode characters (emojis, symbols). The console now detects Windows legacy terminals and replaces unencodable characters with safe fallbacks. Windows Terminal continues to use full Unicode support.
@@ -23,7 +25,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 - **Fix: Project Dependencies Now Available to Subprocesses**: Packages installed via `jac install` (stored in `.jac/venv/`) are now accessible to subprocesses spawned from your code. Previously, running `subprocess.Popen(["jac", "mcp", ...])` failed because the venv's `bin/` directory wasn't in PATH. Now `add_venv_to_path()` also prepends the venv's `bin/` directory to `os.environ["PATH"]`, so commands like `jac mcp` work correctly when jac-mcp is installed as a project dependency in `jac.toml`.
 
-## jaclang 0.13.1 (Latest Release)
+## jaclang 0.13.1
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
 - **Fix: `ExecutionContext` Field Types Corrected to Non-Optional**: Changed `system_root`, `user_root`, and `entry_node` fields on `ExecutionContext` from `NodeAnchor | None` to `NodeAnchor`. These fields are always initialized in `postinit` (defaulting to `system_root`), so the `| None` was incorrect and forced unnecessary null-guard workarounds throughout access validation and anchor persistence code.
