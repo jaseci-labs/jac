@@ -58,6 +58,22 @@ def create_test_project(tmpdir: str, toml_content: str = "") -> str {
     return project_path;
 }
 
+"""Get venv bin directory path (Scripts on Windows, bin on Unix)."""
+def get_venv_bin_dir(venv_dir: Path) -> Path {
+    return venv_dir / ("Scripts" if sys.platform == "win32" else "bin");
+}
+
+"""Set up a mock venv with site-packages and bin directories. Returns (config, bin_str, site_str)."""
+def setup_mock_venv(project_dir: Path) -> tuple[JacConfig, str, str] {
+    config = JacConfig.load(project_dir / "jac.toml");
+    venv_dir = config.get_venv_dir();
+    site_packages = get_venv_site_packages(venv_dir);
+    site_packages.mkdir(parents=True, exist_ok=True);
+    bin_dir = get_venv_bin_dir(venv_dir);
+    bin_dir.mkdir(parents=True, exist_ok=True);
+    return (config, str(bin_dir), str(site_packages));
+}
+
 # ===== TestDependencyInstaller =====
 test "DependencyInstaller init with config" {
     reset_config();
@@ -739,33 +755,20 @@ test "add_venv_to_path adds bin to PATH env" {
     saved_path = list(sys.path);
     saved_env_path = os.environ.get("PATH", "");
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        venv_dir = config.get_venv_dir();
-        # Create both site-packages and bin directory
-        site_packages = get_venv_site_packages(venv_dir);
-        site_packages.mkdir(parents=True, exist_ok=True);
-        if sys.platform == "win32" {
-            bin_dir = venv_dir / "Scripts";
-        } else {
-            bin_dir = venv_dir / "bin";
-        }
-        bin_dir.mkdir(parents=True, exist_ok=True);
-        bin_str = str(bin_dir);
+        (config, bin_str, _) = setup_mock_venv(project_dir);
 
         # Ensure bin_str is not in PATH before test
-        path_parts = os.environ.get("PATH", "").split(os.pathsep);
-        path_parts = [
-            p
-            for p in path_parts
-            if p != bin_str
-        ];
-        os.environ["PATH"] = os.pathsep.join(path_parts);
+        os.environ["PATH"] = os.pathsep.join(
+            [
+                p
+                for p in saved_env_path.split(os.pathsep)
+                if p != bin_str
+            ]
+        );
 
         add_venv_to_path(config);
 
-        # Verify bin directory was added to PATH
-        current_path = os.environ.get("PATH", "");
-        assert bin_str in current_path.split(os.pathsep);
+        assert bin_str in os.environ.get("PATH", "").split(os.pathsep);
     } finally {
         sys.path.clear();
         sys.path.extend(saved_path);
@@ -781,36 +784,17 @@ test "remove_venv_from_path removes bin from PATH env" {
     saved_path = list(sys.path);
     saved_env_path = os.environ.get("PATH", "");
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        venv_dir = config.get_venv_dir();
-        # Create both site-packages and bin directory
-        site_packages = get_venv_site_packages(venv_dir);
-        site_packages.mkdir(parents=True, exist_ok=True);
-        if sys.platform == "win32" {
-            bin_dir = venv_dir / "Scripts";
-        } else {
-            bin_dir = venv_dir / "bin";
-        }
-        bin_dir.mkdir(parents=True, exist_ok=True);
-        bin_str = str(bin_dir);
+        (config, bin_str, site_str) = setup_mock_venv(project_dir);
 
-        # Add bin_str to PATH before test
-        current_path = os.environ.get("PATH", "");
-        if bin_str not in current_path.split(os.pathsep) {
-            os.environ["PATH"] = bin_str + os.pathsep + current_path;
-        }
-
-        # Also add to sys.path so remove_venv_from_path has something to remove
-        site_str = str(site_packages);
+        # Add bin to PATH and site-packages to sys.path before test
+        os.environ["PATH"] = bin_str + os.pathsep + saved_env_path;
         if site_str not in sys.path {
             sys.path.insert(0, site_str);
         }
 
         remove_venv_from_path(config);
 
-        # Verify bin directory was removed from PATH
-        current_path = os.environ.get("PATH", "");
-        assert bin_str not in current_path.split(os.pathsep);
+        assert bin_str not in os.environ.get("PATH", "").split(os.pathsep);
     } finally {
         sys.path.clear();
         sys.path.extend(saved_path);
