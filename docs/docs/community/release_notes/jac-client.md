@@ -2,19 +2,28 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.7 (Unreleased)
+## jac-client 0.3.9 (Unreleased)
 
+- **Jac-Scale Plugin Support for PWA/Web Targets**: Fixed `WebTarget.start()` to use `Jac.get_api_server_class()` plugin hook instead of Python's built-in `http.server`. When jac-scale is installed, `jac start --client pwa` and `jac start --client web` now automatically use jac-scale's FastAPI-based server with JWT authentication, user management, WebSocket support, and admin portal. Previously, these targets ignored jac-scale and always used the basic HTTP server.
+
+## jac-client 0.3.8 (Latest Release)
+
+## jac-client 0.3.7
+
+- **PWA Install Banner**: PWA apps now show an automatic install prompt after `jac setup pwa` -- no manual code required. Features include a glassmorphic dark banner with slide-up animation, native Chrome/Edge install prompt integration via `beforeinstallprompt`, iOS Safari support with step-by-step "Add to Home Screen" instructions modal, and smart re-prompting with exponential backoff (7 → 14 → 28 days, max 3 dismissals). All banner settings are configurable via `[plugins.client.pwa]` in `jac.toml`: `install_banner`, `install_banner_delay`, `install_banner_position`, `install_button_text`, `install_dismiss_text`. For programmatic control, import `usePwaInstall` hook or `PwaInstallButton` component from `@jac/pwa`.
+- **Vite dev server binds to all interfaces**: Added `host: true` to Vite config and `--host` CLI flag so the dev server is accessible from outside containers/pods.
 - **Client-Side Error Reporting**: Added `__jacReportError` and `__jacInstallErrorHandlers` to the client runtime. Global error handlers (`window.onerror`, `unhandledrejection`) are installed at app initialization to automatically capture unhandled JS errors and forward them to the server via `POST /cl/__error__`. The `ErrorBoundary` fallback component also reports caught errors. Entry file generation (`ViteCompiler`) now imports and calls `__jacInstallErrorHandlers()` on startup for both explicit and pages-based routing modes.
 - **Per-File Source Map Generation**: The client compiler now generates `.js.map` files for each compiled `.jac` module, mapping generated JS lines back to original `.jac` source locations. Source comment headers (`/* Source: path.jac */`) are paired with standard v3 source maps for full traceability.
 - **Diagnostics Source Map Auto-Population**: `BuildContext` now auto-populates its source map from compiled JS `/* Source: */` headers when none is provided, and delegates snippet reading to the centralized `source_mapping` module.
 - **Vite Source Map Chaining**: The `jac-source-mapper` Vite plugin now loads per-file `.js.map` files and returns them as input source maps during `transform`, enabling Vite/Rollup to chain `.jac` → compiled `.js` → bundled `client.js` mappings end-to-end.
 
-## jac-client 0.3.6 (Latest Release)
+## jac-client 0.3.6
 
 - **Fix: Desktop Target Asset Loading**: Fixed an issue where images and other static assets referenced with `/static/assets/` URLs were not loading in desktop (Tauri) builds. Assets are now correctly copied from `compiled/assets/` to `dist/static/assets/` during the build process, ensuring they are available when Tauri serves the frontend bundle. This fix applies to both `jac build --client desktop` and `jac start --client desktop` commands.
 
 ## jac-client 0.3.5
 
+- **ESM & TypeScript Client Config Generation**: Added a feature to support for generating ESM and TypeScript client config files from `[plugins.client.configs]`, while preserving existing CommonJS behavior and allowing raw config templates when needed.
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
 - **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
 
@@ -188,22 +197,22 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PYPI Package Release**: First stable release (v0.1.0) now available on PyPI. Install via `pip install jac-client` to get started with Vite-powered client bundling for your Jac projects.
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5
+## jaclang 0.8.10 / byllm 0.4.5
 
-## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
+## jaclang 0.8.9 / byllm 0.4.4
 
-## jaclang 0.8.8 / jac-cloud 0.2.8 / byllm 0.4.3
+## jaclang 0.8.8 / byllm 0.4.3
 
-## jaclang 0.8.7 / jac-cloud 0.2.7 / byllm 0.4.2
+## jaclang 0.8.7 / byllm 0.4.2
 
-## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
+## jaclang 0.8.6 / byllm 0.4.1
 
-## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
+## jaclang 0.8.5 / mtllm 0.4.0
 
-## jaclang 0.8.4 / jac-cloud 0.2.4 / mtllm 0.3.9
+## jaclang 0.8.4 / mtllm 0.3.9
 
-## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
+## jaclang 0.8.3 / mtllm 0.3.8
 
-## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
+## jaclang 0.8.1 / mtllm 0.3.6
 
 ## Version 0.8.0

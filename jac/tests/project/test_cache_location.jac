@@ -33,6 +33,7 @@ test "user module cache path is under project local .jac directory" {
     old_config = config_mod._config;
     try {
         with TemporaryDirectory() as tmpdir {
+            tmpdir = os.path.realpath(tmpdir);
             project_dir = make_temp_project(Path(tmpdir));
             source_file = str(project_dir / "main.jac");
             # Load project config so the system knows we're in a project
@@ -80,6 +81,7 @@ test "external packages use global cache even with active project" {
     old_config = config_mod._config;
     try {
         with TemporaryDirectory() as tmpdir {
+            tmpdir = os.path.realpath(tmpdir);
             project_dir = make_temp_project(Path(tmpdir));
             cfg = JacConfig.load(project_dir / "jac.toml");
             set_config(cfg);
@@ -112,6 +114,7 @@ test "user module cache uses .jac dir relative to source when no project context
         config_mod._config = JacConfig();
 
         with TemporaryDirectory() as tmpdir {
+            tmpdir = os.path.realpath(tmpdir);
             source_file = str(Path(tmpdir) / "standalone.jac");
             Path(source_file).write_text(MAIN_JAC_CONTENT);
             cache_path = get_module_cache_path(source_file);

@@ -734,6 +734,26 @@ test "test_hover_types" {
         hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 52));
         assert hover is not None , "Ternary else branch hover should exist";
         assert "list[Node]" in hover.contents.value , f"Ternary else branch: expected list[Node], got: {hover.contents.value}";
+
+        # Generic function TypeVar resolution: resolved return types should appear in hover
+        typevar_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_gap_func_typevar.jac")
+        );
+        lsp.type_check_file(typevar_file);
+
+        typevar_cases: list[tuple[int, int, str, str]] = [
+            (37, 4, "ok1", "int"),
+            (42, 4, "result1", "Animal"),
+            (43, 4, "result2", "Dog"),
+            (47, 4, "result1", "Dog"),
+            (48, 4, "result2", "Cat"),
+            (51, 4, "ok_swap", "tuple"),
+        ];
+        for (line, col, var_name, expected_type) in typevar_cases {
+            hover = lsp.get_hover_info(typevar_file, lspt.Position(line, col));
+            assert hover is not None , f"Hover should exist for {var_name}";
+            assert expected_type in hover.contents.value , f"{var_name} should contain {expected_type}, got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }
@@ -940,6 +960,25 @@ test "test_cross_module_imported_func_sem_token" {
         assert call_sem is not None , "Expected sem_token for function call";
         assert call_sem[0] == JacSemTokenType.FUNCTION , (
             f"Expected FUNCTION sem token at call site, got: {call_sem[0]}"
+        );
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_format_document_lintfix" {
+    # Verifies lintfix output exactly matches the expected file.
+    setup_test();
+    try {
+        lsp = create_server(FIXTURE_DIR);
+        file_uri = uris.from_fs_path(fixture_path("format_lintfix.jac"));
+        lsp.type_check_file(file_uri);
+        edits = lsp.format_document(file_uri, auto_lint=True);
+        assert edits is not None and len(edits) > 0 , "Expected text edits from lintfix format_document";
+        lintfixed = edits[0].new_text;
+        expected = open(fixture_path("format_lintfix_expected.jac")).read();
+        assert lintfixed == expected , (
+            f"Lintfix output does not match expected.\nGOT:\n{lintfixed}\nEXPECTED:\n{expected}"
         );
     } finally {
         teardown_test();

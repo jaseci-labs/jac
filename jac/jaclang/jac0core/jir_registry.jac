@@ -1125,7 +1125,12 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="source", kind=4),
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="terminals", kind=5),
-                 FieldDesc(name="stub_only", kind=2)
+                 FieldDesc(name="stub_only", kind=2),
+                 FieldDesc(name="impl_mod", kind=5),
+                 FieldDesc(name="test_mod", kind=5),
+                 FieldDesc(name="variant_mod", kind=5),
+                 FieldDesc(name="src_terminals", kind=5),
+                 FieldDesc(name="is_raised_from_py", kind=2)
              )
          ),
          NodeSpec(
@@ -1372,6 +1377,18 @@ glob NODE_SPECS: tuple = (
          ),
          NodeSpec(
              type_idx=121,
+             class_name="Slice",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="start", kind=6),
+                 FieldDesc(name="stop", kind=6),
+                 FieldDesc(name="step", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=122,
              class_name="Source",
              is_scope=False,
              is_cfg=False,
@@ -1382,7 +1399,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=122,
+             type_idx=123,
              class_name="SpecialVarRef",
              is_scope=False,
              is_cfg=False,
@@ -1400,7 +1417,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=123,
+             type_idx=124,
              class_name="String",
              is_scope=False,
              is_cfg=False,
@@ -1418,7 +1435,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=124,
+             type_idx=125,
              class_name="SubTag",
              is_scope=False,
              is_cfg=False,
@@ -1426,7 +1443,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="tag", kind=4), )
          ),
          NodeSpec(
-             type_idx=125,
+             type_idx=126,
              class_name="SwitchCase",
              is_scope=True,
              is_cfg=True,
@@ -1434,7 +1451,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="pattern", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
-             type_idx=126,
+             type_idx=127,
              class_name="SwitchStmt",
              is_scope=False,
              is_cfg=True,
@@ -1442,7 +1459,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="target", kind=4), FieldDesc(name="cases", kind=5))
          ),
          NodeSpec(
-             type_idx=127,
+             type_idx=128,
              class_name="Test",
              is_scope=True,
              is_cfg=True,
@@ -1456,7 +1473,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=128,
+             type_idx=129,
              class_name="Token",
              is_scope=False,
              is_cfg=False,
@@ -1474,7 +1491,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=129,
+             type_idx=130,
              class_name="TryStmt",
              is_scope=True,
              is_cfg=True,
@@ -1487,7 +1504,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=130,
+             type_idx=131,
              class_name="TupleVal",
              is_scope=False,
              is_cfg=False,
@@ -1495,7 +1512,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="values", kind=5), )
          ),
          NodeSpec(
-             type_idx=131,
+             type_idx=132,
              class_name="TypeAlias",
              is_scope=True,
              is_cfg=False,
@@ -1509,7 +1526,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=132,
+             type_idx=133,
              class_name="TypeParam",
              is_scope=False,
              is_cfg=False,
@@ -1521,7 +1538,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=133,
+             type_idx=134,
              class_name="TypedCtxBlock",
              is_scope=True,
              is_cfg=True,
@@ -1532,7 +1549,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=134,
+             type_idx=135,
              class_name="UnaryExpr",
              is_scope=False,
              is_cfg=False,
@@ -1540,7 +1557,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="operand", kind=4), FieldDesc(name="op", kind=4))
          ),
          NodeSpec(
-             type_idx=135,
+             type_idx=136,
              class_name="UniCFGNode",
              is_scope=False,
              is_cfg=True,
@@ -1548,7 +1565,7 @@ glob NODE_SPECS: tuple = (
              fields=()
          ),
          NodeSpec(
-             type_idx=136,
+             type_idx=137,
              class_name="UniScopeNode",
              is_scope=True,
              is_cfg=False,
@@ -1556,7 +1573,7 @@ glob NODE_SPECS: tuple = (
              fields=()
          ),
          NodeSpec(
-             type_idx=137,
+             type_idx=138,
              class_name="VisitStmt",
              is_scope=False,
              is_cfg=True,
@@ -1568,7 +1585,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=138,
+             type_idx=139,
              class_name="WalkerStmtOnlyNode",
              is_scope=False,
              is_cfg=False,
@@ -1576,7 +1593,7 @@ glob NODE_SPECS: tuple = (
              fields=()
          ),
          NodeSpec(
-             type_idx=139,
+             type_idx=140,
              class_name="WhileStmt",
              is_scope=True,
              is_cfg=True,
@@ -1588,7 +1605,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=140,
+             type_idx=141,
              class_name="WithStmt",
              is_scope=True,
              is_cfg=True,
@@ -1600,7 +1617,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=141,
+             type_idx=142,
              class_name="YieldExpr",
              is_scope=False,
              is_cfg=False,
@@ -1734,27 +1751,28 @@ glob NODE_SPECS: tuple = (
          "ServerBlock": 118,
          "SetCompr": 119,
          "SetVal": 120,
-         "Source": 121,
-         "SpecialVarRef": 122,
-         "String": 123,
-         "SubTag": 124,
-         "SwitchCase": 125,
-         "SwitchStmt": 126,
-         "Test": 127,
-         "Token": 128,
-         "TryStmt": 129,
-         "TupleVal": 130,
-         "TypeAlias": 131,
-         "TypeParam": 132,
-         "TypedCtxBlock": 133,
-         "UnaryExpr": 134,
-         "UniCFGNode": 135,
-         "UniScopeNode": 136,
-         "VisitStmt": 137,
-         "WalkerStmtOnlyNode": 138,
-         "WhileStmt": 139,
-         "WithStmt": 140,
-         "YieldExpr": 141,
+         "Slice": 121,
+         "Source": 122,
+         "SpecialVarRef": 123,
+         "String": 124,
+         "SubTag": 125,
+         "SwitchCase": 126,
+         "SwitchStmt": 127,
+         "Test": 128,
+         "Token": 129,
+         "TryStmt": 130,
+         "TupleVal": 131,
+         "TypeAlias": 132,
+         "TypeParam": 133,
+         "TypedCtxBlock": 134,
+         "UnaryExpr": 135,
+         "UniCFGNode": 136,
+         "UniScopeNode": 137,
+         "VisitStmt": 138,
+         "WalkerStmtOnlyNode": 139,
+         "WhileStmt": 140,
+         "WithStmt": 141,
+         "YieldExpr": 142,
 
      },
      IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};

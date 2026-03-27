@@ -91,3 +91,37 @@ def test_isinstance_walrus_compound(flag: bool) -> int {
     }
     return -1;
 }
+
+# Test 8: isinstance walrus narrowing persists after nested control flow
+# Regression: narrowing was lost after a nested if/while inside the isinstance-guarded block
+# because get_narrowing_key did not unwrap AtomUnit around the walrus expression.
+obj AnchorWithName {
+    has access: int = 0;
+    has name: str = "default";
+}
+
+def get_optional_anchor_with_name() -> AnchorWithName | None {
+    return AnchorWithName();
+}
+
+def test_isinstance_walrus_nested_if() -> str {
+    if isinstance((a := get_optional_anchor_with_name()), AnchorWithName) {
+        if (a.access > 10) {
+            x = 1;
+        }
+        # a should still be narrowed to AnchorWithName here, not AnchorWithName | None
+        return a.name;  # Should NOT error
+    }
+    return "";
+}
+
+# Test 9: isinstance walrus in compound AND with nested control flow
+def test_isinstance_walrus_compound_nested_if(flag: bool) -> str {
+    if flag and isinstance((a := get_optional_anchor_with_name()), AnchorWithName) {
+        if (a.access > 10) {
+            x = 1;
+        }
+        return a.name;  # Should NOT error
+    }
+    return "";
+}

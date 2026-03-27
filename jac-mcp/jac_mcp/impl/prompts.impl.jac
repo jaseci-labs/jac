@@ -218,7 +218,7 @@ def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, Any]
     return {
         "description": description,
         "messages": [
-            {"role": "system", "content": system},
+            {"role": "assistant", "content": system},
             {"role": "user", "content": user_msg}
         ]
     };

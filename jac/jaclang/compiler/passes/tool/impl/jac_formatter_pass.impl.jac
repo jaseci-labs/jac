@@ -1,8 +1,3 @@
-"""Initialize the JacFormatPass."""
-impl JacFormatPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Recursively print a Doc node or a list of Doc nodes."""
 impl JacFormatPass.format_doc_ir(
     doc_node: (doc.DocType | None) = None,

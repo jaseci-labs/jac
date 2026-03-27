@@ -6,17 +6,13 @@ import from jaclang.jac0core.passes.uni_pass { UniPass }
 glob ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 
 """Common functionality shared across AST generation passes."""
-class BaseAstGenPass[T](UniPass) {
+obj BaseAstGenPass[T](UniPass) {
     """Concatenate impl/test bodies with the main module body."""
-    def _merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -> list;
+    def _merge_module_bodies(nd: uni.Module) -> list;
 
     """Instantiate child passes for impl and test modules."""
-    def _init_child_passes(
-        self: BaseAstGenPass, pass_class: type[ChildPassT]
-    ) -> list[ChildPassT];
+    def _init_child_passes(pass_class: type[ChildPassT]) -> list[ChildPassT];
 
     """Flatten nested AST lists while skipping ``None`` entries."""
-    def _flatten_ast_list(
-        self: BaseAstGenPass, items: list[T | list[T] | None]
-    ) -> list[T];
+    def _flatten_ast_list(items: list[T | list[T] | None]) -> list[T];
 }

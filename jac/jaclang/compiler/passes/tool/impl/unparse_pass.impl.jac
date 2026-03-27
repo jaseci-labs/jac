@@ -1,10 +1,5 @@
 """UnparsePass implementation - serializes Jac AST to source strings."""
 
-"""Initialize the UnparsePass."""
-impl UnparsePass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Join child nodes' gen.jac values with a separator."""
 def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
     return sep.join(

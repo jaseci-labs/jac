@@ -334,13 +334,21 @@ impl ViteBundler._generate_vite_config_content(
     # Calculate paths for aliases
     if entry_relative.endswith('/build/main.js') {
         compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
+        compiled_pwa_relative = entry_relative[:-13] + '/compiled/pwa_runtime.js';
         compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
     } elif entry_relative.endswith('build/main.js') {
         compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_pwa_relative = 'compiled/pwa_runtime.js';
         compiled_assets_relative = 'compiled/assets';
     } else {
         compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_pwa_relative = 'compiled/pwa_runtime.js';
         compiled_assets_relative = 'compiled/assets';
+    }
+    # Check if PWA is enabled to add @jac/pwa alias
+    pwa_alias_str = '';
+    if self.config_loader.is_pwa_enabled() {
+        pwa_alias_str = f'\n      "@jac/pwa": path.resolve(buildDir, "{compiled_pwa_relative}"),';
     }
     plugins = [];
     plugin_imports = [];
@@ -456,6 +464,7 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
+    host: true,
     watch: {{
       usePolling: true,
       interval: 100,
@@ -486,7 +495,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -609,7 +618,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
@@ -826,20 +835,18 @@ impl ViteBundler.init(
 }
 
 """Create config files from jac.toml [plugins.client.configs].
+Each key in [plugins.client.configs] becomes a <name>.config.<ext> file.
 
-Generates JavaScript config files (e.g., postcss.config.js, tailwind.config.js)
-from TOML configuration. Each key in [plugins.client.configs] becomes a config file.
-
-Example jac.toml:
+CommonJS (default) - plain TOML data, no meta keys:
     [plugins.client.configs.postcss]
     plugins = ["tailwindcss", "autoprefixer"]
+    → postcss.config.js:  module.exports = { "plugins": [...] };
 
-    [plugins.client.configs.tailwind]
-    content = ["./src/**/*.{js,jsx}"]
-
-This generates:
-    - .jac/client/configs/postcss.config.js
-    - .jac/client/configs/tailwind.config.js
+Raw template - write file content verbatim (any extension):
+    [plugins.client.configs.source]
+    extension = ".ts"
+    raw = "export default { foo: 'bar' };"
+    → source.config.ts:  export default { foo: 'bar' };
 """
 impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs = self.config_loader.get_configs();
@@ -851,11 +858,18 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs_dir.mkdir(parents=True, exist_ok=True);
     created_files: list[Path] = [];
     for (config_name, config_data) in configs.items() {
-        config_path = configs_dir / f'{config_name}.config.js';
+        if not isinstance(config_data, dict) {
+            continue;
+        }
+        extension = config_data.get('extension', '.js');
+        config_path = configs_dir / f'{config_name}.config{extension}';
 
-        # Convert the TOML config to JavaScript module.exports
-        js_content = _toml_config_to_js(config_name, config_data);
-        config_path.write_text(js_content, encoding='utf-8');
+        if 'raw' in config_data {
+            file_content = _toml_config_from_raw(config_data);
+        } else {
+            file_content = _toml_config_to_js(config_data);
+        }
+        config_path.write_text(file_content, encoding='utf-8');
         created_files.append(config_path);
     }
     return created_files;
@@ -920,17 +934,36 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-"""Convert TOML config data to JavaScript config file content.
+"""Convert TOML config data to CommonJS module.exports."""
+def _toml_config_to_js(config_data: dict) -> str {
+    return f"module.exports = {json.dumps(
+        {
+            k: v
+            for (k, v) in config_data.items()
+            if k not in CONFIG_META_KEYS
+        },
+        indent=2
+    )};\n";
+}
 
-Generates a generic module.exports with the config data as JSON.
-"""
-def _toml_config_to_js(config_name: str, config_data: dict) -> str {
-    return f"module.exports = {json.dumps(config_data, indent=2)};\n";
+"""Write the 'raw' field verbatim as config file content."""
+def _toml_config_from_raw(config_data: dict) -> str {
+    content = str(config_data.get('raw', '')).strip();
+    return content + '\n' if content else '';
 }
 
 """Build the Vite dev server command."""
 def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
-    return ['bun', 'x', 'vite', '--config', str(config_rel), '--port', str(port)];
+    return [
+        'bun',
+        'x',
+        'vite',
+        '--config',
+        str(config_rel),
+        '--port',
+        str(port),
+        '--host'
+    ];
 }
 
 """Check if a line indicates Vite server is ready."""

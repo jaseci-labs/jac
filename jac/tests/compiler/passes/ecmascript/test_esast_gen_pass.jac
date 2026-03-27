@@ -39,7 +39,7 @@ def compile_to_esast(filename: str) -> es.Program {
         f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
     );
 
-    es_pass = EsastGenPass(ir, prog);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";

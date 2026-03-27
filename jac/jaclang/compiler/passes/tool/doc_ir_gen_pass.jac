@@ -10,7 +10,6 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
 """DocIrGenPass generate DocIr for Jac code."""
 obj DocIRGenPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def text(text: str, source_token: (uni.Token | None) = None) -> doc.Text;
     def space -> doc.Text;
     def line(hard: bool = False, literal: bool = False) -> doc.Line;
@@ -108,6 +107,7 @@ obj DocIRGenPass(UniPass) {
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None;
     def exit_edge_op_ref(nd: uni.EdgeOpRef) -> None;
+    def exit_slice(nd: uni.Slice) -> None;
     def exit_index_slice(nd: uni.IndexSlice) -> None;
     def exit_gen_compr(nd: uni.GenCompr) -> None;
     def exit_set_compr(nd: uni.SetCompr) -> None;

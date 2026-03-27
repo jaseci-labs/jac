@@ -25,7 +25,7 @@ import from typing { Any }
 glob MAGIC = b"JIR\x00";
 
 """Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 9;
+glob FORMAT_VERSION: int = 10;
 
 """Header size in bytes."""
 glob HEADER_SIZE: int = 32;
@@ -60,6 +60,13 @@ optimized code on cache reload. Includes a platform header:
   [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
 """
 glob SEC_NATIVE_OBJ: int = 0x06;
+
+"""Section type: varint-encoded (node_id, str_pool_idx) pairs for Expr.backend_type_tag.
+
+Format: [count: varint] + repeat([node_id: varint] [str_pool_idx: varint])
+Only Expr nodes with non-None backend_type_tag are stored.
+"""
+glob SEC_TYPE_TAGS: int = 0x07;
 
 """Section terminator byte."""
 glob SEC_TERMINATOR: int = 0xFF;
@@ -138,8 +145,8 @@ obj JirHeader {
         string_pool_size: int = 0,
         flags: int = 0;
 
-    def to_bytes(self: JirHeader) -> bytes;
-    def is_compatible(self: JirHeader) -> bool;
+    def to_bytes -> bytes;
+    def is_compatible -> bool;
 }
 
 """Create a JirHeader for the current environment."""

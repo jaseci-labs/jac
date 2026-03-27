@@ -31,7 +31,8 @@ import from jaclang.jac0core.diagnostics {
     E0065,
     E0066,
     E0071,
-    E0075
+    E0075,
+    E0076
 }
 
 """Validates structural AST invariants after parsing."""

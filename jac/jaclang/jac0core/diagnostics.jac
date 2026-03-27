@@ -28,7 +28,7 @@ obj DiagnosticInfo {
         help_text: str | None = None,
         url_slug: str | None = None;
 
-    def format_message(self: DiagnosticInfo, **kwargs: object) -> str {
+    def format_message(**kwargs: object) -> str {
         try {
             return self.message_template.format(**kwargs);
         } except KeyError as e {
@@ -197,6 +197,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
+     E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
      # Parser: warnings
      W0060 = _warn(
          "W0060",
@@ -504,6 +505,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
      ),
+     W2014 = _warn(
+         "W2014",
+         Category.SEMANTIC,
+         "Avoid 'return' with a value in an event-driven ability — "
+         "abilities are triggered by walkers and their return values are ignored. "
+         "Update node or walker fields directly instead."
+     ),
+     E2015 = _err(
+         "E2015",
+         Category.SEMANTIC,
+         "Explicit 'self' parameter is not allowed in {arch_type} method '{name}' — "
+         "'self' is implicit in obj, node, edge, and walker methods."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -743,6 +757,33 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5072",
          Category.CODEGEN,
          "Attribute error when accessing node attributes: {error}"
+     ),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     W6001 = _warn(
+         "W6001",
+         Category.SEMANTIC,
+         "Use of JS-specific global '{name}' — use '{alternative}' for cross-codespace portability",
+         help="Jac provides common primitives that work across all codespaces (Python, JS, native)."
+     ),
+     W6002 = _warn(
+         "W6002",
+         Category.SEMANTIC,
+         "Use of JS-idiomatic method '.{method}()' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common primitives instead of JS-specific methods."
+     ),
+     W6003 = _warn(
+         "W6003",
+         Category.SEMANTIC,
+         "Use of JS-specific keyword '{name}' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common primitives instead of JS-specific keywords."
+     ),
+     W6004 = _warn(
+         "W6004",
+         Category.SEMANTIC,
+         "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common builtins instead of JS-specific properties."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Internal compiler errors (E9xxx)

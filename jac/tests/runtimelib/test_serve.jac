@@ -2,10 +2,12 @@
 
 import io;
 import os;
+import sys;
 import socket;
 import from contextlib { redirect_stdout, redirect_stderr, suppress }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from unittest.mock { MagicMock, patch }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
 
@@ -263,4 +265,27 @@ test "start with nonexistent file error" {
             os.chdir(original_cwd);
         }
     }
+}
+
+# --- Dev Mode Tests ---
+test "jac start dev auto-installs watchdog even when not in jac.toml" {
+    mock_installer = MagicMock();
+    mock_installer.install_package.return_value = True;
+    mock_config = MagicMock();
+
+    # Simulate watchdog not being installed, and a jac.toml that does NOT list watchdog
+    with patch.dict(sys.modules, {"watchdog": None}) {
+        with patch(
+            "jaclang.project.dependencies.DependencyInstaller"
+        ) as mock_di_class {
+            with patch("jaclang.project.config.get_config") as mock_get_config {
+                mock_di_class.return_value = mock_installer;
+                mock_get_config.return_value = mock_config;
+                result = execution._ensure_watchdog_installed();
+            }
+        }
+    }
+
+    assert result is True;
+    mock_installer.install_package.assert_called_once_with(["watchdog>=3.0.0"]);
 }

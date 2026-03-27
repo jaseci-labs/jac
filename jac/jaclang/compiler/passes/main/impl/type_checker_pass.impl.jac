@@ -34,56 +34,60 @@ impl TypeCheckPass.exit_formatted_value(
 
 """Handle the return statement node."""
 impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None {
-    import from jaclang.compiler.type_system { types }
+    scope = self.evaluator._get_enclosing_return_scope(nd);
+    if scope is None {
+        return;
+    }
 
-    if (fn := self.evaluator._get_enclosing_function(nd)) {
-        # Check if return type annotation is missing.
-        has_annotation = (
-            isinstance(fn.signature, uni.FuncSignature)
-            and fn.signature.return_type is not None
-        );
-        # If returning a non-None value but no annotation, require one.
-        # `return None` and bare `return` don't need an annotation.
-        # Skip for nested/inline functions (lambdas, IIFEs, closures).
-        is_toplevel_fn = isinstance(
-            fn.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
-        );
+    # Only Ability scopes need the E1003 / W2014 guards (lambdas skip these).
+    if isinstance(scope, uni.Ability) {
+        # Warn if returning a value from an event-driven ability.
+        if (
+            isinstance(scope.signature, uni.EventSignature)
+            and nd.expr
+            and not isinstance(nd.expr, uni.Null)
+        ) {
+            self.emit(W2014, node_override=nd);
+            return;
+        }
+        # For top-level abilities without a return annotation, require one.
         if (
             nd.expr
-            and not has_annotation
             and not isinstance(nd.expr, uni.Null)
-            and is_toplevel_fn
+            and isinstance(
+                scope.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
+            )
         ) {
-            self.emit(E1003, node_override=nd);
-            return;
+            has_annotation = (
+                isinstance(scope.signature, uni.FuncSignature)
+                and scope.signature.return_type is not None
+            );
+            if not has_annotation {
+                self.emit(E1003, node_override=nd);
+                return;
+            }
         }
+    }
 
-        # Get the declared return type to pass as expected_type for bidirectional inference
-        fn_type_base = self.evaluator.get_type_of_ability(fn);
-        if not isinstance(fn_type_base, types.FunctionType) {
-            return;
-        }
-        fn_type: types.FunctionType = fn_type_base;
-        return_type = self.evaluator._convert_to_instance(fn_type.return_type);
+    return_type = self.evaluator._get_declared_return_type(scope);
+    if return_type is None {
+        return;
+    }
 
-        returning_type = self.evaluator._convert_to_instance(
-            self.evaluator.get_none_type()
+    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    if nd.expr {
+        returning_type = self.evaluator.get_type_of_expression(
+            nd.expr, expected_type=return_type
         );
-        if nd.expr {
-            # Pass return type as expected_type for bidirectional inference
-            returning_type = self.evaluator.get_type_of_expression(
-                nd.expr, expected_type=return_type
-            );
-        }
+    }
 
-        if not self.evaluator.assign_type(returning_type, return_type) {
-            self.emit(
-                E1002,
-                node_override=nd,
-                actual=str(returning_type),
-                expected=str(fn_type.return_type)
-            );
-        }
+    if not self.evaluator.assign_type(returning_type, return_type) {
+        self.emit(
+            E1002,
+            node_override=nd,
+            actual=str(returning_type),
+            expected=str(return_type)
+        );
     }
 }
 
@@ -102,7 +106,7 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
         if isinstance(nd.target.right, uni.IndexSlice) {
             idx_slice: uni.IndexSlice = nd.target.right;
             for slice in idx_slice.slices {
-                slice_item: uni.IndexSlice.Slice = slice;
+                slice_item: uni.Slice = slice;
                 if slice_item.start {
                     self.evaluator.validate_typevar_in_type_expr(slice_item.start);
                 }
@@ -116,15 +120,23 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing scope for AND expressions."""
+"""Enter a boolean expression - set up narrowing scope for AND/OR expressions."""
 impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # For AND expressions, push a narrowing scope
     if nd.op.name == Tok.KW_AND {
+        # For AND: each operand's truthiness narrows subsequent operands
         self.evaluator.push_narrowing_scope();
-        # Pre-process conditions to add narrowings BEFORE children are evaluated
+        self.evaluator._in_bool_expr_narrowing_depth += 1;
         for val in nd.values {
             self.evaluator.process_condition(val);
+        }
+    } elif nd.op.name == Tok.KW_OR {
+        # For OR: each operand's falsiness narrows subsequent operands
+        # In `X or Y`, when evaluating Y, X was falsy
+        self.evaluator.push_narrowing_scope();
+        self.evaluator._in_bool_expr_narrowing_depth += 1;
+        for val in nd.values {
+            self.evaluator.process_negated_condition(val);
         }
     }
 }
@@ -132,11 +144,59 @@ impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> Non
 """Exit a boolean expression - clean up narrowing scope."""
 impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # Pop the narrowing scope for AND expressions
-    if nd.op.name == Tok.KW_AND {
+    if nd.op.name == Tok.KW_AND or nd.op.name == Tok.KW_OR {
         self.evaluator.pop_narrowing_scope();
+        self.evaluator._in_bool_expr_narrowing_depth -= 1;
     }
 }
+
+"""Enter a ternary expression - manually traverse children with branch-specific narrowing.
+
+Without this, the walker visits children in kid order without narrowing, causing
+exit_func_call etc. to type-check arguments against unnarrowed types (false positives).
+
+This handler prunes automatic child traversal and manually walks each branch with
+the correct narrowing scope and _in_ternary_expr_depth active.  This ensures:
+  - exit_* handlers fire with narrowed types (preventing false positive errors)
+  - _get_type_of_expression_core runs for each node (symbol resolution for LSP)
+  - scope narrowing is applied after resolution in the NameAtom handler
+"""
+impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
+    self.prune();
+
+    # Traverse the condition normally (no narrowing scope).
+    self.traverse(nd.condition);
+
+    # Extract narrowing info from the condition.
+    isinstance_info = self.evaluator._extract_isinstance_info(nd.condition);
+
+    # True branch: traverse with narrowing scope active.
+    self.evaluator.push_narrowing_scope();
+    if isinstance_info {
+        (narrowing_key, narrowed_type) = isinstance_info;
+        # Refine: filter the variable's existing type to preserve generic
+        # params (e.g., isinstance(x, list) on list[int]|str → list[int]).
+        refined = self.evaluator._refine_isinstance_type(
+            narrowing_key, narrowed_type, nd.condition
+        );
+        self.evaluator.add_scope_narrowing(narrowing_key, refined);
+    } else {
+        self.evaluator.process_condition(nd.condition);
+    }
+    self.evaluator._in_ternary_expr_depth += 1;
+    self.traverse(nd.value);
+    self.evaluator._in_ternary_expr_depth -= 1;
+    self.evaluator.pop_narrowing_scope();
+
+    # False branch: traverse with inverse narrowing scope active.
+    self.evaluator.push_narrowing_scope();
+    self.evaluator.process_negated_condition(nd.condition);
+    self.evaluator._in_ternary_expr_depth += 1;
+    self.traverse(nd.else_value);
+    self.evaluator._in_ternary_expr_depth -= 1;
+    self.evaluator.pop_narrowing_scope();
+}
+
 
 """Enter an if statement - set up narrowing scope for the if body."""
 impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
@@ -146,8 +206,61 @@ impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
     self.evaluator.process_condition(nd.condition);
 }
 
-"""Exit an if statement - clean up narrowing scope."""
+"""Exit an if statement - clean up narrowing scope.
+
+When the if-body always terminates (raise/return/break/continue), the only
+way to reach code after the if is via the else-path. In that case, promote
+the INVERTED narrowings from the condition to the parent scope. This handles
+patterns like:
+
+    if rt.program is None { raise ValueError(); }
+    rt.program.mtir_map  # rt.program is narrowed to Program (not None)
+"""
 impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
+    # Detect early-exit guard pattern: `if cond { raise/return; }`
+    # When the if-body always terminates and there's no else body, the code
+    # after the if only runs on the false-path. Promote the inverted narrowings
+    # to the parent scope so dotted attribute paths stay narrowed.
+    if nd.condition and self._if_body_always_terminates(nd) {
+        self.evaluator.promote_inverted_narrowings(nd.condition);
+    }
+    self.evaluator.pop_narrowing_scope();
+}
+
+"""Check if an if-statement's body always terminates (raise/return).
+
+Only handles the simple guard pattern: `if cond { raise/return; }` with
+no else body. Elif chains and else bodies are not handled because the
+narrowing semantics are more complex (each branch may narrow differently).
+"""
+impl TypeCheckPass._if_body_always_terminates(
+    self: TypeCheckPass, nd: uni.IfStmt
+) -> bool {
+    if not nd.body or nd.else_body {
+        return False;  # Has else/elif: too complex for simple promotion
+
+    }
+    last_stmt = nd.body[-1];
+    return isinstance(last_stmt, (uni.RaiseStmt, uni.ReturnStmt));
+}
+
+"""Enter a match case - narrow the match subject based on the pattern type."""
+impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
+    self.evaluator.push_narrowing_scope();
+    parent = nd.parent;
+    if isinstance(parent, uni.MatchStmt) {
+        key = self.evaluator.get_narrowing_key(parent.target);
+        if key {
+            pattern_type = self.evaluator._get_type_from_match_pattern(nd.pattern);
+            if pattern_type is not None {
+                self.evaluator.add_scope_narrowing(key, pattern_type);
+            }
+        }
+    }
+}
+
+"""Exit a match case - clean up narrowing scope."""
+impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
     self.evaluator.pop_narrowing_scope();
 }
 
@@ -186,7 +299,34 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
             return;
         } else {
-            left_type = self.evaluator.get_type_of_expression(target);
+            # Handle typed assignment: target: Type = value
+            # Propagate type annotation to the target node
+            if nd.type_tag and nd.type_tag.tag {
+                declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+                target.type = declared_type;
+                # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
+                if isinstance(target, uni.AtomTrailer) {
+                    chain = target.as_attr_list;
+                    if len(chain) >= 2 {
+                        chain[-1].type = declared_type;
+                    }
+                }
+                left_type = declared_type;
+            } else {
+                left_type = self.evaluator.get_type_of_expression(target);
+                # For field assignments (e.g., obj.field = value), the target
+                # expression type may be narrowed (e.g., NoneType inside an
+                # `if obj.field is None` block). Use the declared field type
+                # for the assignment check instead of the narrowed type.
+                if isinstance(target, uni.AtomTrailer) and target.is_attr {
+                    if isinstance(target.right, uni.Name) and target.right.sym {
+                        declared = self.evaluator.get_type_of_symbol(target.right.sym);
+                        if declared {
+                            left_type = declared;
+                        }
+                    }
+                }
+            }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
         right_type = self.evaluator.get_type_of_expression(
@@ -390,11 +530,42 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     # Validate TypeVar variance (covariant in params, contravariant in returns)
     self.evaluator.validate_typevar_variance(nd);
 
-    # ImplDef body is not in kid list, traverse it explicitly
-    # Only process stubs linked to an impl file
+    # Error if an obj/node/edge/walker method has an explicit 'self' parameter.
+    # In these archetype types, 'self' is implicit and must not appear in the signature.
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and not nd.is_static
+        and not nd.is_classmethod
+    ) {
+        owner = nd.method_owner;
+        if (
+            isinstance(owner, uni.Archetype)
+            and owner.arch_type.value in ("obj", "node", "edge", "walker")
+        ) {
+            all_params = nd.signature.get_parameters();
+            if (
+                len(all_params) > 0
+                and isinstance(all_params[0].name, uni.Name)
+                and all_params[0].name.value == "self"
+            ) {
+                self.emit(
+                    E2015,
+                    node_override=all_params[0],
+                    arch_type=owner.arch_type.value,
+                    name=nd.name_spec.sym_name
+                );
+            }
+        }
+    }
+
+    # ImplDef body is not in kid list, traverse it explicitly.
+    # Isolate scope narrowings so guard-pattern promotions (e.g.,
+    # `if x is None { return; }` → x narrowed to NoneType) from one
+    # impl body don't leak into subsequent impl bodies.
     if isinstance(nd.body, uni.ImplDef) {
-        # ImplDef body is not in kid list, traverse it explicitly
+        self.evaluator.push_narrowing_scope();
         self.traverse(nd.body);
+        self.evaluator.pop_narrowing_scope();
     }
     # Check for missing return statements on non-None return type functions
     if (
@@ -415,7 +586,9 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
         # Skip generator functions (contain yield) — they don't need explicit return
         is_generator = len(nd.get_all_sub_nodes(uni.YieldExpr)) > 0;
-        if not is_overload and not is_generator {
+        # Skip stub functions (body is only ellipsis and/or semicolons)
+        is_stub = self.evaluator._is_ellipsis_only_body(nd.body);
+        if not is_overload and not is_generator and not is_stub {
             ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
             ret_inst = self.evaluator._convert_to_instance(ret_type);
             none_type = self.evaluator._convert_to_instance(
@@ -644,7 +817,7 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
         # Skip check for UnknownType and any-like types (Any, object)
         # Following Pyright's pattern: these types are assumed to be iterable.
     } elif not isinstance(collection_type, types.UnknownType)
-    and not collection_type.is_any_type() {
+    and not self.evaluator.is_any_type(collection_type) {
         # Enum classes are iterable via EnumMeta.__iter__ which is not in the
         # Jac type system's MRO. Skip the __iter__ check for enum classes.
         is_enum = (
@@ -755,28 +928,24 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
         return;
     }
     yielded_type = self.evaluator.get_type_of_expression(nd.expr);
-    if (fn := self.evaluator._get_enclosing_function(nd)) {
-        has_annotation = (
-            isinstance(fn.signature, uni.FuncSignature)
-            and fn.signature.return_type is not None
-        );
-        if has_annotation {
-            fn_type_base = self.evaluator.get_type_of_ability(fn);
-            fn_type: types.FunctionType = fn_type_base;
-            return_type = self.evaluator._convert_to_instance(fn_type.return_type);
-            if not isinstance(return_type, types.UnknownType) {
-                if not nd.with_from {
-                    # Regular yield: check yielded value against declared return type
-                    if not self.evaluator.assign_type(yielded_type, return_type) {
-                        self.emit(
-                            E1093,
-                            node_override=nd,
-                            actual=str(yielded_type),
-                            expected=str(fn_type.return_type)
-                        );
-                    }
-                }
-            }
+    scope = self.evaluator._get_enclosing_return_scope(nd);
+    if scope is None {
+        return;
+    }
+
+    return_type = self.evaluator._get_declared_return_type(scope);
+    if return_type is None or isinstance(return_type, types.UnknownType) {
+        return;
+    }
+
+    if not nd.with_from {
+        if not self.evaluator.assign_type(yielded_type, return_type) {
+            self.emit(
+                E1093,
+                node_override=nd,
+                actual=str(yielded_type),
+                expected=str(return_type)
+            );
         }
     }
 }

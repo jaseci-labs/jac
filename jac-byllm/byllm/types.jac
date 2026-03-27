@@ -121,6 +121,22 @@ obj StreamEvent {
         data: dict;
 }
 
+"""Control action returned by on_iteration callback."""
+enum IterationAction ( StrEnum ) {
+    CONTINUE = "continue",
+    ABORT = "abort",
+    ABORT_WITH_SUMMARY = "abort_with_summary"
+}
+
+"""Loop state snapshot passed to on_iteration callback."""
+obj IterationContext {
+    has iteration: int,
+        messages: list,
+        last_tool: str,
+        last_result: str,
+        total_tokens: int;
+}
+
 # -----------------------------------------------------------------------------
 # Media content types
 # -----------------------------------------------------------------------------

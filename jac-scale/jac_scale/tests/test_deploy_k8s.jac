@@ -23,6 +23,8 @@ import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
+import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 
 """Get current git repository URL, branch, and commit hash.
 
@@ -702,6 +704,37 @@ test "deploy all in one" {
         f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
     );
 
+    # Validate HPA is updated on redeploy (not silently ignored)
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=2,
+        max_replicas=5,
+        cpu_target=70
+    );
+    hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+        name=f"{app_name}-hpa", namespace=namespace
+    );
+    assert hpa_updated.spec.min_replicas == 2 , f"Expected min_replicas=2, got {hpa_updated.spec.min_replicas}";
+    assert hpa_updated.spec.max_replicas == 5 , f"Expected max_replicas=5, got {hpa_updated.spec.max_replicas}";
+    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 70 , (
+        f"Expected cpu_target=70, got {hpa_updated.spec.metrics[
+            0
+        ].resource.target.average_utilization}"
+    );
+    print(
+        f"HPA update verified: min_replicas={hpa_updated.spec.min_replicas}, max_replicas={hpa_updated.spec.max_replicas}, cpu_target=70%"
+    );
+
+    # Restore original HPA values for remaining tests
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=1,
+        max_replicas=3,
+        cpu_target=50
+    );
+
     # Validate NGINX Ingress controller resources
     nginx_controller_name = f"{app_name}-ingress-nginx";
     nginx_cluster_resource_name = f"{namespace}-{nginx_controller_name}";
@@ -797,6 +830,24 @@ test "deploy all in one" {
     print(f"Response status code for app page: {response.status_code}");
     assert response.status_code == 200;
     print(f"Successfully reached app page at {url}");
+
+    # Verify /metrics endpoint: unauthenticated should be 403, Basic Auth should return Prometheus text
+    monitoring_cfg = app_scale_config.get_monitoring_config();
+    prometheus_password = monitoring_cfg.get(
+        'prometheus_admin_password', 'Adminpassword123'
+    );
+    admin_cfg = app_scale_config.get_admin_config();
+    admin_user = admin_cfg.get('username', 'admin');
+    metrics_url = f"http://localhost:{ingress_node_port}/metrics";
+    unauthed = requests.get(metrics_url, timeout=10);
+    assert unauthed.status_code == 403 , f"Expected 403 without auth, got {unauthed.status_code}";
+    print(f"Metrics endpoint correctly returned 403 without auth");
+    authed = requests.get(
+        metrics_url, auth=(admin_user, prometheus_password), timeout=10
+    );
+    assert authed.status_code == 200 , f"Expected 200 with Basic Auth, got {authed.status_code}";
+    assert "python_gc" in authed.text or "jac_scale" in authed.text , "Response does not look like Prometheus metrics";
+    print(f"Metrics endpoint returned 200 with Basic Auth — Prometheus scraping OK");
 
     # --- Port conflict test ---
     # Deploy the same app into a different namespace using the same ingress_node_port.
@@ -1850,4 +1901,91 @@ test "enable tls raises when no domain configured" {
         }
     }
     assert raised , "enable_tls should raise when no domain is configured";
+}
+
+test "deploy with domain set stores domain in annotation not ingress host rule" {
+    # Regression test: setting domain in jac.toml before the first deployment
+    # must NOT add a host field to the ingress rule.  Adding a host before TLS
+    # exists causes nginx to reject traffic from the raw NLB hostname, making
+    # the app unreachable.  The fix stores the domain in a jac-scale/domain
+    # annotation so --enable-tls can read it later and add the host + TLS
+    # together in one atomic step.
+    k8s_config = KubernetesConfig(
+        domain="app.example.com", cert_manager_email="user@example.com"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    # Simulate ingress not yet existing (first deploy) so create path is taken
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+
+    mock_core_v1 = unittest.mock.MagicMock();
+    # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
+    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
+    created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
+
+    # Rule must NOT have a host - wildcard routing keeps the app reachable via
+    # IP/NLB before TLS is enabled (the original bug: host set here caused nginx
+    # to reject requests arriving via the raw NLB address)
+    rule = created_body["spec"]["rules"][0];
+    assert "host" not in rule , "ingress rule must not set host before TLS is enabled";
+
+    # Domain must be persisted in the annotation so --enable-tls can read it later
+    annotations = created_body["metadata"]["annotations"];
+    assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
+    assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
+}
+
+test "redis ingress rule must not set host before TLS is enabled" {
+    # Regression test: the Redis ingress had the same if self.k8s_config.domain →
+    # host-in-rule bug as the main ingress.  Ensure the Redis rule is also
+    # wildcard (no host) when domain is set but --enable-tls has not run yet.
+    k8s_config = KubernetesConfig(
+        domain="app.example.com", cert_manager_email="user@example.com"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    # Simulate ingress not yet existing for both main and Redis ingresses
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+
+    mock_core_v1 = unittest.mock.MagicMock();
+    # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
+    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=True,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    # Two ingresses should be created: main (index 0) and Redis (index 1)
+    assert mock_networking_v1.create_namespaced_ingress.call_count == 2 , "both main and Redis ingresses should be created on first deploy";
+    redis_created_body = mock_networking_v1.create_namespaced_ingress.call_args_list[1][
+        1
+    ]["body"];
+
+    # Redis rule must NOT have a host — same requirement as the main ingress
+    redis_rule = redis_created_body["spec"]["rules"][0];
+    assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }

@@ -396,6 +396,23 @@ test "max react iterations with finish tool call" {
     assert "UNIT_TOOL_CALLS: 1" in stdout_value;
 }
 
+test "on_iteration callback ABORT and ABORT_WITH_SUMMARY" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("on_iteration_callback", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    # ABORT: hook fired, only 2 tool calls (a, b), c and d skipped
+    assert "ABORT_TRIGGERED" in stdout_value;
+    assert "ABORT_TOOLS: 2" in stdout_value;
+    assert "get_data called: a" in stdout_value;
+    assert "get_data called: b" in stdout_value;
+    # ABORT_WITH_SUMMARY: hook fired, only 2 tool calls (c, d), summary returned
+    assert "SUMMARY_TRIGGERED" in stdout_value;
+    assert "SUMMARY_TOOLS: 2" in stdout_value;
+    assert "SUMMARY_RESULT" in stdout_value;
+}
+
 test "plain text recovery - LLM bypasses finish_tool" {
     # Verifies the Bug 2B fix: when a model (e.g. gpt-4o) returns plain conversational
     # text instead of calling finish_tool, the invoke loop detects the failure,
@@ -765,4 +782,222 @@ test "finish tool error not raised for valid type" {
     result = finish_tool({"name": "Alice", "age": 30});
     assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
     assert result.age == 30 , f"Expected age=30, got '{result.age}'";
+}
+
+# =============================================================================
+# LiteLLM Debug Config Tests
+# =============================================================================
+test "litellm debug disabled by default" {
+    # Default config has debug=False, so _disable_debugging should be called
+    import from litellm._logging {
+        verbose_logger,
+        verbose_router_logger,
+        verbose_proxy_logger
+    }
+    with unittest.mock.patch.dict(
+        _byllm_llm_mod._litellm_config,
+        {"debug": False, "drop_params": True},
+        clear=True
+    ) {
+        model = Model(model_name="gpt-4o-mini");
+        # When debug is False, _disable_debugging() sets .disabled = True
+        assert verbose_logger.disabled , "verbose_logger should be disabled when debug=False";
+        assert verbose_router_logger.disabled , "verbose_router_logger should be disabled when debug=False";
+        assert verbose_proxy_logger.disabled , "verbose_proxy_logger should be disabled when debug=False";
+    }
+}
+
+test "litellm debug enabled via config" {
+    # When debug=True, _disable_debugging should NOT be called
+    import from litellm._logging {
+        verbose_logger,
+        verbose_router_logger,
+        verbose_proxy_logger
+    }
+    # Re-enable the loggers so we can verify they stay enabled
+    verbose_logger.disabled = False;
+    verbose_router_logger.disabled = False;
+    verbose_proxy_logger.disabled = False;
+
+    with unittest.mock.patch.dict(
+        _byllm_llm_mod._litellm_config,
+        {"debug": True, "drop_params": True},
+        clear=True
+    ) {
+        model = Model(model_name="gpt-4o-mini");
+        assert not verbose_logger.disabled , "verbose_logger should remain enabled when debug=True";
+        assert not verbose_router_logger.disabled , "verbose_router_logger should remain enabled when debug=True";
+        assert not verbose_proxy_logger.disabled , "verbose_proxy_logger should remain enabled when debug=True";
+    }
+}
+
+test "litellm debug default config value" {
+    # Verify the default config structure includes debug=False
+    import from byllm.config_loader { JacByllmConfig }
+    config = JacByllmConfig();
+    defaults = config.get_default_config();
+    assert "litellm" in defaults , "Default config should have 'litellm' section";
+    assert "debug" in defaults["litellm"] , "litellm defaults should include 'debug' key";
+    assert defaults["litellm"]["debug"] == False , "litellm debug should default to False";
+}
+
+test "litellm config get_litellm_config includes debug" {
+    # Verify get_litellm_config returns the debug field
+    import from byllm.config_loader { JacByllmConfig }
+    config = JacByllmConfig();
+    litellm_config = config.get_litellm_config();
+    assert "debug" in litellm_config , "get_litellm_config should return 'debug' key";
+    assert isinstance(litellm_config["debug"], bool) , "debug value should be a boolean";
+}
+
+import litellm;
+import from byllm.exceptions { AuthenticationError, RateLimitError, ModelNotFoundError }
+
+import from loguru { logger as _loguru_logger }
+
+test "exception logging works with debug disabled" {
+    # With debug=False, litellm verbose loggers are disabled but byllm's
+    # own logger.error calls should still fire and exceptions should propagate.
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            auth_err = litellm.exceptions.AuthenticationError(
+                message="Invalid API key", llm_provider="openai", model="gpt-4o-mini"
+            );
+            with unittest.mock.patch("litellm.completion", side_effect=auth_err) {
+                raised = False;
+                try {
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
+                } except AuthenticationError as e {
+                    raised = True;
+                    assert "Invalid API key" in str(e);
+                }
+                assert raised , "AuthenticationError should propagate with debug disabled";
+                log_value = log_output.getvalue();
+                assert "LLM AuthenticationError" in log_value , f"logger.error should log AuthenticationError, got: {log_value}";
+            }
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "exception logging works with debug enabled" {
+    # With debug=True, same exception handling and logging should work identically.
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": True, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            rate_err = litellm.exceptions.RateLimitError(
+                message="Rate limit exceeded",
+                llm_provider="openai",
+                model="gpt-4o-mini"
+            );
+            with unittest.mock.patch("litellm.completion", side_effect=rate_err) {
+                raised = False;
+                try {
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
+                } except RateLimitError as e {
+                    raised = True;
+                    assert "Rate limit" in str(e);
+                }
+                assert raised , "RateLimitError should propagate with debug enabled";
+                log_value = log_output.getvalue();
+                assert "LLM RateLimitError" in log_value , f"logger.error should log RateLimitError, got: {log_value}";
+            }
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "all exception types log and propagate regardless of debug" {
+    # Test all three exception types with debug disabled — verify both raise and log
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            # AuthenticationError
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.AuthenticationError(
+                    message="bad key", llm_provider="openai", model="gpt-4o-mini"
+                )
+            ) {
+                raised = False;
+                try {
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
+                } except AuthenticationError {
+                    raised = True;
+                }
+                assert raised , "AuthenticationError should propagate";
+            }
+            # RateLimitError
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.RateLimitError(
+                    message="quota exceeded",
+                    llm_provider="openai",
+                    model="gpt-4o-mini"
+                )
+            ) {
+                raised = False;
+                try {
+                    model.model_call_no_stream(
+                        {"model": "gpt-4o-mini", "messages": []}
+                    );
+                } except RateLimitError {
+                    raised = True;
+                }
+                assert raised , "RateLimitError should propagate";
+            }
+            # NotFoundError
+            with unittest.mock.patch(
+                "litellm.completion",
+                side_effect=litellm.exceptions.NotFoundError(
+                    message="model not found", model="gpt-fake", llm_provider="openai"
+                )
+            ) {
+                raised = False;
+                try {
+                    model.model_call_no_stream({"model": "gpt-fake", "messages": []});
+                } except ModelNotFoundError {
+                    raised = True;
+                }
+                assert raised , "ModelNotFoundError should propagate";
+            }
+            # Verify all three were logged
+            log_value = log_output.getvalue();
+            assert "LLM AuthenticationError" in log_value , f"Should log AuthenticationError, got: {log_value}";
+            assert "LLM RateLimitError" in log_value , f"Should log RateLimitError, got: {log_value}";
+            assert "LLM ModelNotFoundError" in log_value , f"Should log ModelNotFoundError, got: {log_value}";
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
 }

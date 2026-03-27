@@ -376,6 +376,9 @@ impl tool_to_schema(
     required: list[str] = schema.get("required", []);  # type: ignore
     for (param_name, param_info) in properties.items() {
         param_info["description"] = params_desc.get(param_name, "");  # type: ignore
+        param_info.pop(
+            "title", None
+        );  # type: ignore  # Gemini rejects 'title' in property schemas
     }
     return {
         "type": "function",

@@ -20,6 +20,7 @@ import from jaclang.jac0core.mtp {
 }
 
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.passes.transform { Transform }
 
 glob PRIMITIVE_TYPES: list[str] = [
          'int',
@@ -31,16 +32,31 @@ glob PRIMITIVE_TYPES: list[str] = [
          'list',
          'dict',
          'set',
-         'tuple'
+         'tuple',
+         'i8',
+         'u8',
+         'i16',
+         'u16',
+         'i32',
+         'u32',
+         'i64',
+         'u64',
+         'f32',
+         'f64'
      ];
 
-"""Jac MTIR Generation Pass."""
-obj MTIRGenPass(UniPass) {
+"""Jac MTIR Generation Pass.
+
+Does not need per-node traversal; uses the sub-node table to find
+all Ability nodes, so we extend Transform directly instead of UniPass.
+"""
+obj MTIRGenPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: Any,
         cancel_token: Any = None;
 
     def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
     def _is_primitive_type(type_expr: uni.Expr | None) -> bool;
     def _parse_type_expr(
         type_expr: uni.Expr | None, scope: uni.UniScopeNode
@@ -59,5 +75,5 @@ obj MTIRGenPass(UniPass) {
         expr: uni.Expr, scope: uni.UniScopeNode
     ) -> list[FunctionInfo];
 
-    def enter_ability(nd: uni.Ability) -> None;
+    def _process_ability(nd: uni.Ability) -> None;
 }
