@@ -168,7 +168,7 @@ class JFastApiServer(JServer[FastAPI]) {
 
 """Factory function for creating FastAPI app instances.
 
-Used by uvicorn import string to create app instances in worker processes.
-Reads JAC_WORKER_MODULE and JAC_WORKER_BASE_PATH from environment variables.
+In single-worker mode: Returns the pre-configured app (stored by start()).
+In multi-worker mode: Creates a new server instance per worker process.
 """
 def create_app -> FastAPI;

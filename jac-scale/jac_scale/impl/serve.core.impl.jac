@@ -259,7 +259,15 @@ impl JacAPIServerCore.start(
     if on_ready {
         on_ready(self.port);
     }
-    # Set environment variables for the factory function (used by import string)
+    # Register endpoints on this server instance (single-worker mode)
+    self._setup_endpoints(dev);
+
+    # Store the configured app for single-worker mode
+    # In single-worker mode, create_app() will return this instead of creating a new server
+    import from jac_scale.jserver.jfast_api { set_configured_app }
+    set_configured_app(self.server.create_server());
+
+    # Set environment variables for multi-worker mode (factory will use these)
     import os;
     os.environ["JAC_WORKER_MODULE"] = self.module_name;
     os.environ["JAC_WORKER_BASE_PATH"] = self.base_path;
