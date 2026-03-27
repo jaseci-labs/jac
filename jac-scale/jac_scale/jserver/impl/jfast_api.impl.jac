@@ -119,25 +119,21 @@ impl JFastApiServer.run_server(
                     style="warning"
                 );
             }
-            if workers > 1 {
-                # Pre-import to compile and cache before workers spawn
-                import jac_scale.jserver._worker_app_holder;
-                # Set env vars for worker factory to recreate the app
-                import os;
-                os.environ["JAC_WORKER_MODULE"] = module_name;
-                os.environ["JAC_WORKER_BASE_PATH"] = base_path or os.getcwd();
-                # Factory mode: each worker creates its own app instance
-                uvicorn.run(
-                    "jac_scale.jserver._worker_app_holder:create_app",
-                    factory=True,
-                    host=host,
-                    port=current_port,
-                    workers=workers,
-                    log_config=log_config
-                );
-            } else {
-                uvicorn.run(app, host=host, port=current_port, log_config=log_config);
-            }
+            # Pre-import to compile and cache before workers spawn
+            import jac_scale.jserver._worker_app_holder;
+            # Set env vars for worker factory to create the app
+            import os;
+            os.environ["JAC_WORKER_MODULE"] = module_name;
+            os.environ["JAC_WORKER_BASE_PATH"] = base_path or os.getcwd();
+            # Factory mode: single or multi-worker
+            uvicorn.run(
+                "jac_scale.jserver._worker_app_holder:create_app",
+                factory=True,
+                host=host,
+                port=current_port,
+                workers=workers,
+                log_config=log_config
+            );
             return;
         } except SystemExit as e {
             # uvicorn raises SystemExit when port is in use
