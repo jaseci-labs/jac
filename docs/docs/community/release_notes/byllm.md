@@ -2,7 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.0 (Latest Release)
+## byllm 0.6.1 (Latest Release)
+
+- **Add: ReAct loop interrupt via `on_iteration` callback**: New `on_iteration` parameter on `by llm()` fires between iterations, returning `CONTINUE`, `ABORT`, or `ABORT_WITH_SUMMARY`. Enables stop buttons, token budgets, and doom-loop detection. Backward compatible.
+
+## byllm 0.6.0
 
 - **Security: Pin litellm to safe versions**: litellm v1.82.7+ was compromised with a credential-stealing payload (supply chain attack). Pinned dependency to `<=1.82.6` which is verified safe. See [BerriAI/litellm#24512](https://github.com/BerriAI/litellm/issues/24512) for details.
 

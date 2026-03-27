@@ -420,6 +420,7 @@ Parameters passed to `by llm()` at call time:
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
+| `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 
 !!! warning "Deprecated: `method` parameter"
@@ -569,6 +570,51 @@ obj Calculator {
 }
 ```
 
+### Interrupting the ReAct Loop
+
+Use `on_iteration` to control the loop from outside - stop buttons, token budgets, or doom-loop detection:
+
+```jac
+import from byllm.types { IterationAction, IterationContext }
+
+def my_hook(ctx: IterationContext) -> IterationAction {
+    # Stop after 5 iterations
+    if ctx.iteration > 5 {
+        return IterationAction.ABORT;
+    }
+    # Stop if too many tokens used
+    if ctx.total_tokens > 10000 {
+        return IterationAction.ABORT_WITH_SUMMARY;
+    }
+    return IterationAction.CONTINUE;
+}
+
+def agent_task(question: str) -> str by llm(
+    tools=[search, read_file],
+    on_iteration=my_hook
+);
+```
+
+**`IterationContext`** fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `iteration` | int | Current iteration number (starts at 2, since iteration 1 hasn't completed yet) |
+| `last_tool` | str | Name of the last tool executed |
+| `last_result` | str | Truncated result of last tool (500 chars) |
+| `total_tokens` | int | Cumulative token usage across all iterations |
+| `messages` | list | Full message history |
+
+**`IterationAction`** values:
+
+| Action | Behavior |
+|--------|----------|
+| `CONTINUE` | Proceed to next iteration (default) |
+| `ABORT` | Stop immediately, return last tool result |
+| `ABORT_WITH_SUMMARY` | Stop and ask LLM for a final summary |
+
+The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
+
 ---
 
 ## Streaming
@@ -684,7 +730,7 @@ With `logging=True`, the user sees the first `tool_call` event after just one LL
 | `tool_call` | LLM decided to call a tool | `tool` (str), `args` (dict), `call_id` (str), `iteration` (int) |
 | `tool_result` | Tool finished executing | `tool` (str), `result` (str, truncated), `call_id` (str), `iteration` (int) |
 | `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
-| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), optionally `reason` (str) |
+| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `per_call` (list[dict]) |
 
