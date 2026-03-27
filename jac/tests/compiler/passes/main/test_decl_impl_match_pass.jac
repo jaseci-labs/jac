@@ -227,6 +227,49 @@ test "impl has var type not shadowed" {
     }
 }
 
+test "by postinit Name node sym resolves to postinit ability" {
+    # The parser emits make_special_name(KW_POST_INIT) as kid[-1] of a
+    # deferred HasVar. Without a fix, that Name's .sym is never set, which
+    # means go-to-definition won't work and W2001 fires.
+    prog = JacProgram();
+    state = prog.compile(
+        os.path.join(
+            FIXTURES, "static_analysis", "by_postinit_sym.jac"
+        ),
+        type_check=True
+    );
+
+    resolved: list = [];
+    for arch_node in state.get_all_sub_nodes(uni.Archetype) {
+        arch: uni.Archetype = arch_node;
+        for has_var_node in arch.get_has_vars() {
+            has_var: uni.HasVar = has_var_node;
+            if not has_var.defer {
+                continue;
+            }
+            assert has_var.kid , "Deferred HasVar must have kids";
+            # isinstance narrowing lets the type checker see .sym on last_kid
+            last_kid = has_var.kid[-1];
+            if isinstance(last_kid, uni.Name) {
+                sym = last_kid.sym;
+                if sym is not None {
+                    resolved.append(sym.sym_name);
+                } else {
+                    assert False , (
+                        "postinit Name in 'by postinit' has .sym=None — "
+                        "go-to-definition is broken and W2001 will fire"
+                    );
+                }
+            }
+        }
+    }
+    assert len(resolved) > 0 , "Fixture must have at least one 'by postinit' field";
+    # The postinit ability is stored under the Python name "__post_init__"
+    assert all(s == "__post_init__" for s in resolved) , (
+        f"Expected all sym_names to be '__post_init__', got: {resolved}"
+    );
+}
+
 test "class reassignment impl match" {
     # Bug: class reassignment via tuple unpacking creates second defn (Name node).
     # lookup.defn[-1] returned Name instead of Archetype, causing E2009.
