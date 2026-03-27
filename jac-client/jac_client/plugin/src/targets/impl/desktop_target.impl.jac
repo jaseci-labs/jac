@@ -9,6 +9,7 @@ import subprocess;
 import json;
 import shutil;
 import os;
+import sys;
 import platform;
 import stat;
 
@@ -20,7 +21,7 @@ glob DEFAULT_API_PORT: int = 8000,
      SUBPROCESS_TIMEOUT_SHORT: int = 5,
      SUBPROCESS_TIMEOUT_MEDIUM: int = 60,
      SUBPROCESS_TIMEOUT_LONG: int = 300,
-     SUBPROCESS_TIMEOUT_BUILD: int = 600,
+     SUBPROCESS_TIMEOUT_BUILD: int = 1800,
      DEFAULT_ICON_COLOR_RGB: tuple[int, int, int, int] = (66, 139, 202, 255),
      DEFAULT_ICON_SIZE: int = 1024,
      DEFAULT_WINDOW_WIDTH: int = 1200,
@@ -617,8 +618,9 @@ try:
 except ImportError:
     sys.exit(1)
 ''';
+        python_cmd = "python" if sys.platform == "win32" else "python3";
         result = subprocess.run(
-            ["python3", "-c", python_code, str(icon_path)],
+            [python_cmd, "-c", python_code, str(icon_path)],
             capture_output=True,
             check=True,
             timeout=SUBPROCESS_TIMEOUT_SHORT
@@ -716,6 +718,76 @@ except ImportError:
     console.warning(
         "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
     );
+
+    # Generate ICO for Windows (required by tauri-build)
+    _generate_ico_from_png(icons_dir);
+}
+
+"""Generate ICO file from PNG for Windows builds."""
+def _generate_ico_from_png(icons_dir: Path) -> None {
+    import sys;
+    png_path = icons_dir / "icon.png";
+    ico_path = icons_dir / "icon.ico";
+
+    if not png_path.exists() {
+        return;
+    }
+
+    # Try using PIL directly first (faster, better error messages)
+    try {
+        from PIL import Image;
+        img = Image.open(str(png_path));
+        # ICO needs multiple sizes - use common Windows icon sizes
+        sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
+        img.save(str(ico_path), format="ICO", sizes=sizes);
+        console.print("  ✔ Generated icon.ico for Windows", style="success");
+        return;
+    } except ImportError {
+        # PIL not available, try subprocess fallback
+        pass;
+    } except Exception as e {
+        console.warning(f"  Could not generate icon.ico: {e}");
+        return;
+    }
+
+    # Fallback: try subprocess (in case PIL is in different Python env)
+    try {
+        import subprocess;
+        python_code = '''
+import sys
+try:
+    from PIL import Image
+    img = Image.open(sys.argv[1])
+    sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+    img.save(sys.argv[2], format="ICO", sizes=sizes)
+    sys.exit(0)
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+''';
+        python_cmd = "python" if sys.platform == "win32" else "python3";
+        result = subprocess.run(
+            [python_cmd, "-c", python_code, str(png_path), str(ico_path)],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SHORT
+        );
+        if result.returncode == 0 {
+            console.print("  ✔ Generated icon.ico for Windows", style="success");
+            return;
+        } else {
+            console.warning(f"  ICO generation failed: {result.stderr}");
+        }
+    } except Exception as e {
+        console.warning(f"  ICO generation error: {e}");
+    }
+
+    # Final fallback: warn user
+    if sys.platform == "win32" {
+        console.warning(
+            "  Could not generate icon.ico - install Pillow: pip install Pillow"
+        );
+    }
 }
 
 """Generate main.rs.
@@ -768,7 +840,7 @@ static API_BASE_URL: Mutex<Option<String>> = Mutex::new(None);
 const CONFIGURED_BASE_URL: &str = "{api_base_url}";
 
 fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {{
-    // Skip sidecar launch — user manages their own backend
+    // Skip sidecar launch - user manages their own backend
     if !CONFIGURED_BASE_URL.is_empty() {{
         let mut url = API_BASE_URL.lock().unwrap();
         *url = Some(CONFIGURED_BASE_URL.to_string());
@@ -779,11 +851,19 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
     // Try to find the sidecar in bundled resources
     let resource_dir = app.path().resource_dir()?;
 
-    // Possible sidecar names
+    // Possible sidecar names (onedir paths first, then onefile fallbacks)
     let sidecar_names = if cfg!(windows) {{
-        vec!["binaries/jac-sidecar.exe", "binaries/jac-sidecar.bat"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar.exe",  // onedir mode
+            "binaries/jac-sidecar.exe",               // onefile fallback
+            "binaries/jac-sidecar.bat",               // wrapper fallback
+        ]
     }} else {{
-        vec!["binaries/jac-sidecar", "binaries/jac-sidecar.sh"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar",       // onedir mode
+            "binaries/jac-sidecar",                   // onefile fallback
+            "binaries/jac-sidecar.sh",                // wrapper fallback
+        ]
     }};
 
     let mut sidecar_path = None;
@@ -876,12 +956,30 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
 
         // Compute writable data path for runtime data (database, etc.)
         // AppImage bundles are read-only, so we need a writable location
-        if let Some(home) = std::env::var_os("HOME") {{
-            let data_path = std::path::Path::new(&home)
-                .join(".local")
-                .join("share")
-                .join("jac-app");
-            cmd.arg("--data-path").arg(data_path);
+        #[cfg(windows)]
+        {{
+            // Windows: Use LOCALAPPDATA or USERPROFILE
+            if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {{
+                let data_path = std::path::Path::new(&local_app_data).join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }} else if let Some(user_profile) = std::env::var_os("USERPROFILE") {{
+                let data_path = std::path::Path::new(&user_profile)
+                    .join("AppData")
+                    .join("Local")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
+        }}
+        #[cfg(not(windows))]
+        {{
+            // Unix: Use HOME/.local/share/jac-app
+            if let Some(home) = std::env::var_os("HOME") {{
+                let data_path = std::path::Path::new(&home)
+                    .join(".local")
+                    .join("share")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
         }}
 
         // Remove AppImage-injected Python environment variables that break system Python
@@ -1651,13 +1749,14 @@ def _check_python_and_jaclang -> None {
     }
 
     # Check jaclang using the detected python command
+    # Use longer timeout - first run compiles ~20 modules on Windows
     jaclang_ok = False;
     try {
         result = subprocess.run(
             [python_cmd, "-m", "jaclang", "--version"],
             capture_output=True,
             text=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
+            timeout=SUBPROCESS_TIMEOUT_MEDIUM
         );
         if result.returncode == 0 {
             version = result.stdout.strip();
@@ -1968,8 +2067,9 @@ try:
 except:
     sys.exit(1)  # Error or invalid
 ''';
+            python_cmd = "python" if sys.platform == "win32" else "python3";
             result = subprocess.run(
-                ["python3", "-c", check_code, str(icon_path)],
+                [python_cmd, "-c", check_code, str(icon_path)],
                 capture_output=True,
                 timeout=SUBPROCESS_TIMEOUT_SHORT
             );
@@ -2008,10 +2108,13 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
     binaries_dir = tauri_dir / "binaries";
     if not binaries_dir.exists() {
         return;  # No binaries directory, skip
-
     }
 
-    # Find sidecar wrapper script (must exist and be executable)
+    # Check for onedir mode folder first (PyInstaller onedir output)
+    onedir_folder = binaries_dir / "jac-sidecar";
+    has_onedir = onedir_folder.exists() and onedir_folder.is_dir();
+
+    # Find sidecar files (onefile mode or wrapper scripts)
     sidecar_files = [];
     for pattern in [
         "jac-sidecar.sh",
@@ -2027,7 +2130,7 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         }
     }
 
-    if not sidecar_files {
+    if not sidecar_files and not has_onedir {
         # Remove sidecar from resources if it was previously added but no longer exists
         if "bundle" in config and "resources" in config["bundle"] {
             resources = config["bundle"]["resources"];
@@ -2039,7 +2142,6 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
             ];
         }
         return;  # No sidecar found, skip
-
     }
 
     # Tauri v2 uses "resources" in bundle section for sidecars
@@ -2052,7 +2154,16 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         config["bundle"]["resources"] = [];
     }
 
-    # Add sidecar binary path (relative to tauri_dir)
+    # Add onedir folder glob pattern (all DLLs and exe inside)
+    if has_onedir {
+        onedir_resource = "binaries/jac-sidecar/**/*";
+        if onedir_resource not in config["bundle"]["resources"] {
+            config["bundle"]["resources"].append(onedir_resource);
+            console.print(f"  ✔ Added sidecar folder to config: {onedir_resource}", style="success");
+        }
+    }
+
+    # Add individual sidecar files (onefile mode or wrapper scripts)
     for sidecar_file in sidecar_files {
         rel_path = sidecar_file.relative_to(tauri_dir);
         rel_str = str(rel_path.as_posix());
@@ -2140,20 +2251,19 @@ def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
     if "icon" not in config["bundle"]
     or not config["bundle"]["icon"]
     or len(config["bundle"]["icon"]) == 0 {
-        # Scan icons directory for PNG files
+        # Scan icons directory for PNG and ICO files
         icons_dir = tauri_dir / "icons";
         icon_files = [];
         if icons_dir.exists() {
             for icon_file in icons_dir.iterdir() {
-                if icon_file.is_file() and icon_file.suffix.lower() == ".png" {
+                if icon_file.is_file() and icon_file.suffix.lower() in (".png", ".ico") {
                     # Path relative to tauri.conf.json (which is in tauri_dir)
-                    # So icons/icon.png is the correct relative path
                     icon_rel_path = icon_file.relative_to(tauri_dir);
                     icon_files.append(str(icon_rel_path.as_posix()));
                 }
             }
         }
-        # Sort to ensure consistent ordering (icon.png first if it exists)
+        # Sort to ensure consistent ordering (icon.ico, icon.png)
         icon_files.sort();
         config["bundle"]["icon"] = icon_files;
         if icon_files {
@@ -2627,6 +2737,14 @@ def _bundle_sidecar_pyinstaller(
 # Entry point for PyInstaller-bundled sidecar
 # Plugin registration for frozen apps is handled in sidecar/main.py
 
+import sys
+
+# Windows multiprocessing freeze support - MUST be called before any other imports
+# This is required for PyInstaller apps that use multiprocessing on Windows
+if sys.platform == "win32":
+    import multiprocessing
+    multiprocessing.freeze_support()
+
 from jac_client.plugin.src.targets.desktop.sidecar.main import main
 if __name__ == "__main__":
     main()
@@ -2731,32 +2849,28 @@ if __name__ == "__main__":
             return None;
         }
 
-        # Find the bundled binary
-        bundled_binary = dist_dir / binary_name;
+        # Find the bundled binary (onedir mode = folder with exe inside)
+        bundled_dir = dist_dir / "jac-sidecar";
+        bundled_binary = bundled_dir / binary_name;
+
         if not bundled_binary.exists() {
-            # Check if it's in a subdirectory (onedir mode)
-            bundled_dir = dist_dir / "jac-sidecar";
-            if bundled_dir.exists() {
-                bundled_binary = bundled_dir / binary_name;
+            # Fallback: check for onefile mode output
+            bundled_binary = dist_dir / binary_name;
+            if not bundled_binary.exists() {
+                console.warning(f"Bundled binary not found at {bundled_binary}");
+                return None;
             }
-        }
-
-        if not bundled_binary.exists() {
-            console.warning(f"Bundled binary not found at {bundled_binary}");
-            return None;
-        }
-
-        # Copy to binaries directory
-        output_path = binaries_dir / binary_name;
-        if bundled_binary.is_file() {
+            # Onefile mode - just copy the single binary
+            output_path = binaries_dir / binary_name;
             shutil.copy2(bundled_binary, output_path);
         } else {
-            # Copy entire directory for onedir mode
-            if output_path.exists() {
-                shutil.rmtree(output_path);
+            # Onedir mode - copy entire jac-sidecar folder to binaries/
+            output_dir = binaries_dir / "jac-sidecar";
+            if output_dir.exists() {
+                shutil.rmtree(output_dir);
             }
-            shutil.copytree(bundled_binary.parent, binaries_dir / "jac-sidecar");
-            output_path = binaries_dir / "jac-sidecar" / binary_name;
+            shutil.copytree(bundled_dir, output_dir);
+            output_path = output_dir / binary_name;
         }
 
         # Cleanup build artifacts
@@ -2815,6 +2929,9 @@ hiddenimports = [
     'sqlite3', 'hashlib', 'secrets', 'http.server', 'json',
     'asyncio', 'inspect', 'typing', 'pathlib',
     'pdb', 'bdb', 'cmd', 'code', 'codeop', 'readline',
+    # Windows multiprocessing support (required for frozen apps)
+    'multiprocessing', 'multiprocessing.pool', 'multiprocessing.process',
+    'multiprocessing.spawn', 'multiprocessing.popen_spawn_win32',
     # PyInstaller runtime deps - use importlib.metadata instead of pkg_resources
     'appdirs', 'setuptools',
     'packaging', 'packaging.version', 'packaging.specifiers', 'packaging.requirements',
@@ -2991,12 +3108,13 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+# Use onedir mode instead of onefile - onefile hangs on Windows + Python 3.13
+# due to temp extraction issues. onedir ships DLLs alongside exe, no extraction needed.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='{binary_name.replace(
         ".exe", ""
     )}',
@@ -3004,14 +3122,22 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,
+    console=False,  # Hide console window on Windows
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='jac-sidecar',
 )
 ''';
 }
@@ -3245,6 +3371,7 @@ def _update_tauri_config_for_dev(tauri_dir: Path) -> None {
 
 """Run tauri dev command."""
 def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
+    import sys;
     # Check if cargo is available
     try {
         subprocess.run(
@@ -3264,25 +3391,27 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
         );
     }
 
-    # Check if build tools (gcc/cc) are available
-    try {
-        subprocess.run(
-            ["cc", "--version"],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-        raise RuntimeError(
-            "Build tools not found. Install build-essential:\n"
-            "  Ubuntu/Debian: sudo apt-get install build-essential\n"
-            "  Fedora: sudo dnf install gcc gcc-c++\n"
-            "  Arch: sudo pacman -S base-devel"
-        );
+    # Check if build tools are available (skip on Windows - MSVC handles this)
+    if sys.platform != "win32" {
+        try {
+            subprocess.run(
+                ["cc", "--version"],
+                capture_output=True,
+                check=True,
+                timeout=SUBPROCESS_TIMEOUT_SHORT
+            );
+        } except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired
+        ) {
+            raise RuntimeError(
+                "Build tools not found. Install build-essential:\n"
+                "  Ubuntu/Debian: sudo apt-get install build-essential\n"
+                "  Fedora: sudo dnf install gcc gcc-c++\n"
+                "  Arch: sudo pacman -S base-devel"
+            );
+        }
     }
 
     # Check if tauri CLI is available via cargo

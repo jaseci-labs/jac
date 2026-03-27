@@ -407,12 +407,16 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
 
 """Convert a .jac relative path string to .js, handling compound extensions."""
 impl ViteCompiler._jac_path_to_js(self: ViteCompiler, rel_str: str) -> str {
+    # Convert Windows backslashes to forward slashes for JS imports
+    rel_str = rel_str.replace('\\', '/');
     for compound_ext in self.COMPOUND_EXTENSIONS {
         if rel_str.endswith(compound_ext) {
             return rel_str[:-len(compound_ext)] + '.js';
         }
     }
-    return str(Path(rel_str).with_suffix('.js'));
+    result = str(Path(rel_str).with_suffix('.js'));
+    # Ensure forward slashes in the final result (Path may reintroduce backslashes on Windows)
+    return result.replace('\\', '/');
 }
 
 """Scan pages/ directory, compile page files, and generate _routes.js manifest.

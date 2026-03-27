@@ -41,7 +41,12 @@ def _signal_handler(signum: int, frame: FrameType | None) -> None:
 
 
 # Register signal handlers early
-for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+# Note: SIGHUP doesn't exist on Windows, so we check for availability
+_signals_to_handle = [signal.SIGTERM, signal.SIGINT]
+if hasattr(signal, "SIGHUP"):
+    _signals_to_handle.append(signal.SIGHUP)
+
+for sig in _signals_to_handle:
     with contextlib.suppress(OSError, ValueError):
         signal.signal(sig, _signal_handler)
 
@@ -159,17 +164,29 @@ def main():
     if args.data_path:
         data_path = Path(args.data_path).resolve()
     else:
-        # Default: ~/.local/share/jac-app (Linux)
-        # This ensures we have a writable location even if base_path is read-only (e.g., AppImage)
-        data_path = Path.home() / ".local" / "share" / "jac-app"
+        # Platform-specific default paths
+        if sys.platform == "win32":
+            # Windows: Use LOCALAPPDATA or fallback to USERPROFILE
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                data_path = Path(local_app_data) / "jac-app"
+            else:
+                data_path = Path.home() / "AppData" / "Local" / "jac-app"
+        else:
+            # Linux/macOS: ~/.local/share/jac-app
+            data_path = Path.home() / ".local" / "share" / "jac-app"
 
     # Try to create data path with fallbacks
     fallback_paths = [
         data_path,
         Path.home() / ".jac-app",  # Fallback to home directory
     ]
-    # Add /tmp fallback only on Unix (os.getuid() doesn't exist on Windows)
-    if hasattr(os, "getuid"):
+    # Add platform-specific temp fallback
+    if sys.platform == "win32":
+        temp_dir = os.environ.get("TEMP") or os.environ.get("TMP")
+        if temp_dir:
+            fallback_paths.append(Path(temp_dir) / "jac-app")
+    elif hasattr(os, "getuid"):
         fallback_paths.append(Path("/tmp") / f"jac-app-{os.getuid()}")
 
     data_path_created = False
