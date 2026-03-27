@@ -11,7 +11,6 @@ import from jaclang.jac0core.helpers { pascal_to_snake }
 
 """Serialize Jac AST nodes to source code strings."""
 obj UnparsePass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def _comma_sep(nodes: list) -> str;
     def exit_node(nd: uni.UniNode) -> None;
     # Token types

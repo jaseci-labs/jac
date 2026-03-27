@@ -759,6 +759,33 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Attribute error when accessing node attributes: {error}"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     W6001 = _warn(
+         "W6001",
+         Category.SEMANTIC,
+         "Use of JS-specific global '{name}' — use '{alternative}' for cross-codespace portability",
+         help="Jac provides common primitives that work across all codespaces (Python, JS, native)."
+     ),
+     W6002 = _warn(
+         "W6002",
+         Category.SEMANTIC,
+         "Use of JS-idiomatic method '.{method}()' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common primitives instead of JS-specific methods."
+     ),
+     W6003 = _warn(
+         "W6003",
+         Category.SEMANTIC,
+         "Use of JS-specific keyword '{name}' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common primitives instead of JS-specific keywords."
+     ),
+     W6004 = _warn(
+         "W6004",
+         Category.SEMANTIC,
+         "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
+         help="Use Jac common builtins instead of JS-specific properties."
+     ),
+     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Internal compiler errors (E9xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}");

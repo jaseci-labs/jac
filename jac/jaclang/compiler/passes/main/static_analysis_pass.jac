@@ -9,6 +9,7 @@ import ast as ast3;
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics {
     W0062,
@@ -25,10 +26,19 @@ import from jaclang.jac0core.diagnostics {
     E2083
 }
 
-"""Static analysis pass for JacLang."""
-obj StaticAnalysisPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
-    def after_pass -> None;
+"""Static analysis pass for JacLang.
+
+Does not traverse the tree node-by-node; all analysis is performed
+in transform() via bulk sub-node queries, so we extend Transform
+directly instead of UniPass.
+"""
+obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
+    has ir_in: uni.Module,
+        prog: Any,
+        cancel_token: Any = None;
+
+    def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
     def _check_undefined_names(mod: uni.Module) -> None;
     def _check_unreachable_code(mod: uni.Module) -> None;

@@ -243,6 +243,26 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
     }
 }
 
+"""Batch get multiple anchors by ID using MongoDB $in query."""
+impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
+    result: dict[UUID, Anchor] = {};
+    if self.client is None or not ids {
+        return result;
+    }
+    str_ids = [str(to_uuid(id)) for id in ids];
+    try {
+        for doc in self.collection.find({'_id': {'$in': str_ids}}) {
+            if (anchor := self._load_anchor(doc)) {
+                anchor.is_updated = False;
+                result[UUID(doc['_id'])] = anchor;
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB batch_get failed: {e}");
+    }
+    return result;
+}
+
 """Load anchor from raw MongoDB document."""
 impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     if 'data' not in raw {

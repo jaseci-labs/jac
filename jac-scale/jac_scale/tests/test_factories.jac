@@ -138,3 +138,72 @@ test "deployment target with logger" {
         assert call_kwargs["logger"] == logger;
     }
 }
+
+test "deployment target factory register and create custom target" {
+    mock_target = unittest.mock.MagicMock();
+
+    def custom_factory(config: dict, logger: object = None) -> object {
+        mock_target.config = config;
+        mock_target.logger = logger;
+        return mock_target;
+    }
+
+    DeploymentTargetFactory.register("custom-test", custom_factory);
+    config = {"app_name": "custom-app", "namespace": "custom-ns"};
+    result = DeploymentTargetFactory.create("custom-test", config);
+    assert result is mock_target;
+    assert result.config == config;
+    # Clean up registry
+    del DeploymentTargetFactory._registry["custom-test"];
+}
+
+test "deployment target factory custom target with logger" {
+    calls: list = [];
+
+    def custom_factory(config: dict, logger: object = None) -> object {
+        calls.append({"config": config, "logger": logger});
+        return unittest.mock.MagicMock();
+    }
+
+    DeploymentTargetFactory.register("logged-test", custom_factory);
+    logger = UtilityFactory.create_logger("standard");
+    config = {"app_name": "test"};
+    DeploymentTargetFactory.create("logged-test", config, logger);
+    assert len(calls) == 1;
+    assert calls[0]["config"] == config;
+    assert calls[0]["logger"] == logger;
+    # Clean up registry
+    del DeploymentTargetFactory._registry["logged-test"];
+}
+
+test "deployment target factory custom target overrides builtin" {
+    mock_target = unittest.mock.MagicMock();
+
+    def override_factory(config: dict, logger: object = None) -> object {
+        return mock_target;
+    }
+
+    # Register a custom 'kubernetes' target to override the built-in
+    DeploymentTargetFactory.register("kubernetes", override_factory);
+    result = DeploymentTargetFactory.create("kubernetes", {"app_name": "test"});
+    assert result is mock_target;
+    # Clean up - restore built-in behavior
+    del DeploymentTargetFactory._registry["kubernetes"];
+}
+
+test "image registry factory register and create custom registry" {
+    mock_registry = unittest.mock.MagicMock();
+
+    def custom_factory(config: dict) -> object {
+        mock_registry.config = config;
+        return mock_registry;
+    }
+
+    ImageRegistryFactory.register("custom-registry", custom_factory);
+    config = {"username": "test", "password": "test"};
+    result = ImageRegistryFactory.create("custom-registry", config);
+    assert result is mock_registry;
+    assert result.config == config;
+    # Clean up registry
+    del ImageRegistryFactory._registry["custom-registry"];
+}

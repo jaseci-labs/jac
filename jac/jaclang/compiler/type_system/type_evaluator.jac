@@ -86,56 +86,56 @@ import from jaclang.jac0core.diagnostics {
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
-    has none_type_class: TypeBase | None = None,
-        object_class: TypeBase | None = None,
-        type_class: TypeBase | None = None,
-        union_type_class: TypeBase | None = None,
-        awaitable_class: TypeBase | None = None,
-        function_class: TypeBase | None = None,
-        method_class: TypeBase | None = None,
-        tuple_class: TypeBase | None = None,
-        bool_class: TypeBase | None = None,
-        int_class: TypeBase | None = None,
-        float_class: TypeBase | None = None,
-        str_class: TypeBase | None = None,
-        bytes_class: TypeBase | None = None,
-        dict_class: TypeBase | None = None,
-        list_class: TypeBase | None = None,
-        module_type_class: TypeBase | None = None,
-        typed_dict_class: TypeBase | None = None,
-        typed_dict_private_class: TypeBase | None = None,
-        supports_keys_and_get_item_class: TypeBase | None = None,
-        mapping_class: TypeBase | None = None,
-        template_class: TypeBase | None = None,
-        type_var_class: TypeBase | None = None,
-        param_spec_class: TypeBase | None = None,
-        type_var_tuple_class: TypeBase | None = None,
-        classmethod_class: TypeBase | None = None,
+    has none_type_class: types.ClassType | None = None,
+        object_class: types.ClassType | None = None,
+        type_class: types.ClassType | None = None,
+        union_type_class: types.ClassType | None = None,
+        awaitable_class: types.ClassType | None = None,
+        function_class: types.ClassType | None = None,
+        method_class: types.ClassType | None = None,
+        tuple_class: types.ClassType | None = None,
+        bool_class: types.ClassType | None = None,
+        int_class: types.ClassType | None = None,
+        float_class: types.ClassType | None = None,
+        str_class: types.ClassType | None = None,
+        bytes_class: types.ClassType | None = None,
+        dict_class: types.ClassType | None = None,
+        list_class: types.ClassType | None = None,
+        module_type_class: types.ClassType | None = None,
+        typed_dict_class: types.ClassType | None = None,
+        typed_dict_private_class: types.ClassType | None = None,
+        supports_keys_and_get_item_class: types.ClassType | None = None,
+        mapping_class: types.ClassType | None = None,
+        template_class: types.ClassType | None = None,
+        type_var_class: types.ClassType | None = None,
+        param_spec_class: types.ClassType | None = None,
+        type_var_tuple_class: types.ClassType | None = None,
+        classmethod_class: types.ClassType | None = None,
         # Prefetch from typing.pyi file
-        protocol_class: TypeBase | None = None,
-        any_class: TypeBase | None = None,
-        callable_class: TypeBase | None = None,
+        protocol_class: types.ClassType | None = None,
+        any_class: types.ClassType | None = None,
+        callable_class: types.ClassType | None = None,
         # Prefetched from jac_builtins.pyi file
-        final_class: TypeBase | None = None,
-        literal_string_class: TypeBase | None = None,
-        root_class: TypeBase | None = None,
-        node_class: TypeBase | None = None,
-        walker_class: TypeBase | None = None,
-        jsx_element_class: TypeBase | None = None,
+        final_class: types.ClassType | None = None,
+        literal_string_class: types.ClassType | None = None,
+        root_class: types.ClassType | None = None,
+        node_class: types.ClassType | None = None,
+        walker_class: types.ClassType | None = None,
+        jsx_element_class: types.ClassType | None = None,
         # Fixed-width numeric types
-        i8_class: TypeBase | None = None,
-        u8_class: TypeBase | None = None,
-        i16_class: TypeBase | None = None,
-        u16_class: TypeBase | None = None,
-        i32_class: TypeBase | None = None,
-        u32_class: TypeBase | None = None,
-        i64_class: TypeBase | None = None,
-        u64_class: TypeBase | None = None,
-        f32_class: TypeBase | None = None,
-        f64_class: TypeBase | None = None,
+        i8_class: types.ClassType | None = None,
+        u8_class: types.ClassType | None = None,
+        i16_class: types.ClassType | None = None,
+        u16_class: types.ClassType | None = None,
+        i32_class: types.ClassType | None = None,
+        u32_class: types.ClassType | None = None,
+        i64_class: types.ClassType | None = None,
+        u64_class: types.ClassType | None = None,
+        f32_class: types.ClassType | None = None,
+        f64_class: types.ClassType | None = None,
         # Prefetched enum base class
-        enum_class: TypeBase | None = None,
-        set_class: TypeBase | None = None;
+        enum_class: types.ClassType | None = None,
+        set_class: types.ClassType | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -165,7 +165,45 @@ obj NarrowingPredicate {
 
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
-    def init(program: "JacProgram") -> None;
+    has program: "JacProgram",
+        # Path constants - initialized in postinit (use __file__ from impl)
+        _BUILTINS_STUB_FILE_PATH: str by postinit,
+        _TYPING_STUB_FILE_PATH: str by postinit,
+        _TYPES_STUB_FILE_PATH: str by postinit,
+        _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _ENUM_STUB_FILE_PATH: str by postinit,
+        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+            "Union",
+            "Protocol",
+            "Callable",
+            "Type",
+            "NoReturn",
+            "ClassVar",
+            "Optional",
+            "Tuple",
+            "Final",
+            "Literal",
+            "TypedDict"
+        ),
+        # Resolution and state
+        symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
+        prefetch: PrefetchedTypes by postinit,
+        _pass: object | None = None,
+        builtins_module: uni.Module | None = None,
+        # Type narrowing
+        _narrowing_cache: dict[tuple, types.TypeBase | None] = {},
+        _narrowing_scope_stack: list[dict[str, types.TypeBase]] = [],
+        _in_ternary_expr_depth: int = 0,
+        _in_bool_expr_narrowing_depth: int = 0,
+        _narrowing_in_progress: set[int] by postinit,
+        _module_type_cache: dict[str, types.ModuleType] = {},
+        # Stub modules - initialized in postinit
+        typing_module: uni.Module by postinit,
+        types_module: uni.Module by postinit,
+        enum_module: uni.Module by postinit,
+        jac_builtins_module: uni.Module by postinit;
+
+    def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;

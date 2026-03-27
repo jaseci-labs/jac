@@ -12,25 +12,25 @@ node Task {
 }
 
 """Add a task and return it."""
-def:pub add_task(title: str) -> dict {
+def:pub add_task(title: str) -> Task {
     task = root ++> Task(id="1", title=title);
-    return {"id": task[0].id, "title": task[0].title, "done": task[0].done};
+    return task[0];
 }
 
 """Get all tasks."""
-def:pub get_tasks -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->][?:Task]];
+def:pub get_tasks -> list[Task] {
+    return [root-->][?:Task];
 }
 
 """Toggle a task's done status."""
-def:pub toggle_task(id: str) -> dict {
+def:pub toggle_task(id: str) -> Task | None {
     for task in [root-->][?:Task] {
         if task.id == id {
             task.done = not task.done;
-            return {"id": task.id, "title": task.title, "done": task.done};
+            return task;
         }
     }
-    return {};
+    return None;
 }
 
 # Client entry point imports from the standalone client module

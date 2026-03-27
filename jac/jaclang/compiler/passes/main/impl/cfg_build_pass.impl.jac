@@ -12,12 +12,6 @@ impl cfg_dot_from_file(file_name: str) -> str {
     return dot;
 }
 
-"""Initialize CoalesceBBPass."""
-impl CoalesceBBPass.init(
-    ir_in: uni.Module, prog: JacProgram, cancel_token: (Event | None) = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
 
 """Generate dot graph for CFG."""
 impl CoalesceBBPass.printgraph_cfg -> str {
@@ -209,12 +203,6 @@ impl CoalesceBBPass.before_pass -> None {
 # ============================================================================
 # CFGBuildPass
 # ============================================================================
-impl CFGBuildPass.init(
-    ir_in: uni.Module, prog: JacProgram, cancel_token: (Event | None) = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Before pass -- no state needed."""
 impl CFGBuildPass.before_pass -> None { }
 

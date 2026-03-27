@@ -247,9 +247,9 @@ test "tool names" {
     assert "jac_to_js" in names;
     assert "run_jac" in names;
     assert "graph_visualize" in names;
-    assert "list_templates" in names;
-    assert "create_project" in names;
-    assert "start_server" in names;
+    assert "list_commands" in names;
+    assert "get_command" in names;
+    assert "execute_command" in names;
 }
 
 test "explain error unexpected token" {
@@ -954,28 +954,24 @@ test "graph visualize missing code returns error" {
     assert "error" in result;
 }
 
-test "list templates via tool" {
+test "get command returns full args" {
     tp = ToolProvider();
-    result = tp.call_tool("list_templates", {});
-    assert "templates" in result;
-    assert isinstance(result["templates"], list);
-    assert len(result["templates"]) > 0;
+    result = tp.call_tool("get_command", {"name": "run"});
+    assert "name" in result;
+    assert result["name"] == "run";
+    assert "args" in result;
+    assert isinstance(result["args"], list);
+    assert len(result["args"]) > 0;
 }
 
-test "create project missing name via tool" {
+test "get command unknown returns error" {
     tp = ToolProvider();
-    result = tp.call_tool("create_project", {});
+    result = tp.call_tool("get_command", {"name": "nonexistent_cmd"});
     assert "error" in result;
 }
 
-test "start server missing filename via tool" {
+test "get command missing name returns error" {
     tp = ToolProvider();
-    result = tp.call_tool("start_server", {});
-    assert "error" in result;
-}
-
-test "start server nonexistent file via tool" {
-    tp = ToolProvider();
-    result = tp.call_tool("start_server", {"filename": "/nonexistent/app.jac"});
+    result = tp.call_tool("get_command", {});
     assert "error" in result;
 }

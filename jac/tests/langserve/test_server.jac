@@ -734,6 +734,26 @@ test "test_hover_types" {
         hover = lsp.get_hover_info(ternary_file, lspt.Position(7, 52));
         assert hover is not None , "Ternary else branch hover should exist";
         assert "list[Node]" in hover.contents.value , f"Ternary else branch: expected list[Node], got: {hover.contents.value}";
+
+        # Generic function TypeVar resolution: resolved return types should appear in hover
+        typevar_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("checker/checker_gap_func_typevar.jac")
+        );
+        lsp.type_check_file(typevar_file);
+
+        typevar_cases: list[tuple[int, int, str, str]] = [
+            (37, 4, "ok1", "int"),
+            (42, 4, "result1", "Animal"),
+            (43, 4, "result2", "Dog"),
+            (47, 4, "result1", "Dog"),
+            (48, 4, "result2", "Cat"),
+            (51, 4, "ok_swap", "tuple"),
+        ];
+        for (line, col, var_name, expected_type) in typevar_cases {
+            hover = lsp.get_hover_info(typevar_file, lspt.Position(line, col));
+            assert hover is not None , f"Hover should exist for {var_name}";
+            assert expected_type in hover.contents.value , f"{var_name} should contain {expected_type}, got: {hover.contents.value}";
+        }
     } finally {
         teardown_test();
     }
