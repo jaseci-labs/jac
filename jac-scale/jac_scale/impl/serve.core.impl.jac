@@ -169,7 +169,6 @@ impl JacAPIServerCore._setup_endpoints(dev: bool = False) -> None {
     self.register_graph_endpoint();
     self.register_admin_endpoints();
     self.register_llm_telemetry_endpoints();
-    self.register_scheduler_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
         self.register_dynamic_walker_endpoint();
