@@ -1069,14 +1069,20 @@ cl {
 }
 ```
 
-> **Note:** The `cn()` utility is a local file you create in your project (shadcn/ui pattern):
+> **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
 >
-> ```typescript
-> // lib/utils.ts
-> import { type ClassValue, clsx } from "clsx"
-> import { twMerge } from "tailwind-merge"
-> export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+> ```jac
+> # lib/utils.cl.jac
+> import from "clsx" { clsx }
+> import from "tailwind-merge" { twMerge }
+>
+> def:pub cn(inputs: Any) -> str {
+>     args = [].slice.call(arguments);
+>     return twMerge(clsx(args));
+> }
 > ```
+>
+> Requires `clsx` and `tailwind-merge` in `[dependencies.npm]`.
 
 ### JSX Syntax Reference
 
@@ -1349,6 +1355,33 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 |---|---|
 | Vite plugins (Tailwind v4, custom plugins) | `[plugins.client.vite]` |
 | PostCSS / Tailwind v3 / ESLint / Prettier | `[plugins.client.configs]` |
+
+### shadcn/ui Configuration
+
+The `[jac-shadcn]` section configures the shadcn/ui component system. This controls the visual style, color theme, font, and border radius used by shadcn components in your project.
+
+```toml
+[jac-shadcn]
+style = "nova"            # Component style variant
+baseColor = "neutral"     # Base color palette
+theme = "amber"           # Accent color theme
+font = "inter"            # Font family
+radius = "default"        # Border radius preset
+menuAccent = "subtle"     # Menu accent style
+menuColor = "default"     # Menu color scheme
+registry = "https://jac-shadcn.jaseci.org"  # Component registry URL
+```
+
+| Key | Description | Examples |
+|-----|-------------|---------|
+| `style` | Component style variant | `"nova"`, `"default"` |
+| `baseColor` | Base neutral color palette | `"neutral"`, `"slate"`, `"zinc"`, `"gray"` |
+| `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
+| `font` | Typography font family | `"inter"`, `"geist"`, `"system"` |
+| `radius` | Border radius preset | `"default"`, `"sm"`, `"md"`, `"lg"`, `"none"` |
+| `registry` | shadcn component registry URL | Custom registry for Jac-compatible components |
+
+shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
 
 ### TypeScript Configuration
 
@@ -1943,6 +1976,61 @@ Anchors provide persistent object references across sessions, allowing nodes and
 
 ---
 
+## JavaScript Interop
+
+### Constructing Browser Objects
+
+Jac does not have a `new` keyword. Use `Reflect.construct()` to instantiate browser built-in constructors:
+
+```jac
+cl {
+    # WebSocket
+    ws = Reflect.construct(WebSocket, [url]);
+
+    # URL
+    url = Reflect.construct(URL, [String(baseUrl)]);
+
+    # Date
+    now = Reflect.construct(Date, []);
+
+    # Promise
+    p = Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+        resolve.call(None, "done");
+    }]);
+
+    # CustomEvent
+    evt = Reflect.construct(CustomEvent, ["my-event", {"detail": data}]);
+}
+```
+
+### Callback Invocations
+
+When passing callbacks to be invoked later, use `.call(None, ...)`:
+
+```jac
+cl {
+    handler = myCallback;
+    ws.onmessage = lambda(e: Any) {
+        handler.call(None, JSON.parse(e.data));
+    };
+}
+```
+
+### Module-Level State
+
+Use `glob` for state shared across a module:
+
+```jac
+cl {
+    glob initialized: bool = false;
+    glob cache: Any = null;
+}
+```
+
+For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutorials/fullstack/advanced-patterns.md).
+
+---
+
 ## Development Tools
 
 ### Hot Module Replacement (HMR)
@@ -1974,6 +2062,8 @@ Provides:
 - [Fullstack Setup Tutorial](../../tutorials/fullstack/setup.md)
 - [Components Tutorial](../../tutorials/fullstack/components.md)
 - [State Management Tutorial](../../tutorials/fullstack/state.md)
+- [NPM Packages & UI Libraries](../../tutorials/fullstack/npm-and-libraries.md)
+- [Advanced Patterns & JS Interop](../../tutorials/fullstack/advanced-patterns.md)
 - [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
 - [Authentication Tutorial](../../tutorials/fullstack/auth.md)
 - [Routing Tutorial](../../tutorials/fullstack/routing.md)
