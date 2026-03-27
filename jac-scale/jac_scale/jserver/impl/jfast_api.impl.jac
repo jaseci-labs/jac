@@ -855,40 +855,13 @@ impl JFastApiServer.init(
     self.app.middleware('http')(request_context_middleware);
 }
 
-# Module-level storage for the configured app (used in single-worker mode)
-# In multi-worker mode, each worker process has its own empty _configured_app
-glob _configured_app: FastAPI | None = None;
-
-"""Store the configured FastAPI app for single-worker mode.
-
-Called by start() after endpoints are registered. In single-worker mode,
-create_app() will return this app instead of creating a new server.
-"""
-def set_configured_app(app: FastAPI) -> None {
-    global _configured_app;
-    _configured_app = app;
-}
-
 """Factory function for creating FastAPI app instances.
 
-In single-worker mode: Returns the pre-configured app (stored by start()).
-In multi-worker mode: Creates a new server instance per worker process.
-
-This enables both:
-- Import string format (required by uvicorn)
-- Proper instance isolation (one server in single-worker, many in multi-worker)
+Called by uvicorn via import string (production-grade approach).
+This is the ONLY place where endpoints and metrics are registered.
+The CLI's JacAPIServer instance is just a shell for calling uvicorn.
 """
 impl create_app -> FastAPI {
-    global _configured_app;
-
-    # Single-worker mode: return the pre-configured app
-    # (start() stored it before calling uvicorn)
-    if _configured_app is not None {
-        return _configured_app;
-    }
-
-    # Multi-worker mode: each worker creates its own server instance
-    # (each worker process starts with _configured_app = None)
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
@@ -899,7 +872,7 @@ impl create_app -> FastAPI {
     # Import the jac module to load walker/function definitions
     Jac.jac_import(target=module_name, base_path=base_path, override_name="__main__");
 
-    # Create server and setup all endpoints
+    # Create server and setup all endpoints (including metrics)
     import from jac_scale.serve { JacAPIServer }
     server = JacAPIServer(module_name=module_name, base_path=base_path);
     server.introspector.load();

@@ -92,8 +92,16 @@ impl JacAPIServerCore.postinit -> None {
         }
         self.server.app.add_middleware(CustomHeadersMiddleware);
     }
-    # Initialize Prometheus metrics if enabled
+    # Note: Metrics are initialized in _setup_endpoints() to avoid duplicate
+    # registration when using import string pattern (server created twice)
+}
+
+"""Register all API endpoints. Called only in create_app() factory - not in CLI's server instance."""
+impl JacAPIServerCore._setup_endpoints(dev: bool = False) -> None {
+    # Initialize Prometheus metrics (only done here, not in postinit, to avoid
+    # duplicate registration when using import string pattern)
     import from jac_scale.factories.utility_factory { UtilityFactory }
+    import from starlette.middleware.base { BaseHTTPMiddleware }
     metrics_config = get_scale_config().get_monitoring_config();
     self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
     if self._metrics.is_enabled() {
@@ -152,10 +160,7 @@ impl JacAPIServerCore.postinit -> None {
         );
         logger.info(f"Prometheus metrics enabled at {metrics_endpoint} (admin-only)");
     }
-}
 
-"""Register all API endpoints. Called by start() and can be reused by factory functions."""
-impl JacAPIServerCore._setup_endpoints(dev: bool = False) -> None {
     self.register_create_user_endpoint();
     self.register_login_endpoint();
     self.register_page_endpoint();
@@ -259,15 +264,11 @@ impl JacAPIServerCore.start(
     if on_ready {
         on_ready(self.port);
     }
-    # Register endpoints on this server instance (single-worker mode)
-    self._setup_endpoints(dev);
+    # Note: Endpoints are NOT registered here. They are registered in create_app()
+    # factory function, which is called by uvicorn. This avoids creating two
+    # JacAPIServer instances with duplicate metrics registration.
 
-    # Store the configured app for single-worker mode
-    # In single-worker mode, create_app() will return this instead of creating a new server
-    import from jac_scale.jserver.jfast_api { set_configured_app }
-    set_configured_app(self.server.create_server());
-
-    # Set environment variables for multi-worker mode (factory will use these)
+    # Set environment variables for worker processes (factory will use these)
     import os;
     os.environ["JAC_WORKER_MODULE"] = self.module_name;
     os.environ["JAC_WORKER_BASE_PATH"] = self.base_path;
