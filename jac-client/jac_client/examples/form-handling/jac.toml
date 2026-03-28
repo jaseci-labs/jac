@@ -2,7 +2,6 @@
 name = "form-handling"
 version = "1.0.0"
 description = "Jac client application: form-handling"
-entry-point = "main.jac"
 
 [dependencies]
 

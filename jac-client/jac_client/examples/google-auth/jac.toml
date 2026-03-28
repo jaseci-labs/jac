@@ -2,7 +2,6 @@
 name = "google-auth"
 version = "1.0.0"
 description = "Jac client application: google-auth"
-entry-point = "main.jac"
 
 [dependencies]
 

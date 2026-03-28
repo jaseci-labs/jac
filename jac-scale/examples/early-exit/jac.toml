@@ -2,7 +2,6 @@
 name = "new-app"
 version = "1.0.0"
 description = "Jac client application: new-app"
-entry-point = "src/app.jac"
 
 [dependencies.npm]
 react = "^19.2.0"

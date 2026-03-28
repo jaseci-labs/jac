@@ -433,7 +433,7 @@ def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
     deps_section = f"\n{deps}" if deps else "";
     dev_deps_section = f"\n{dev_deps}" if dev_deps else "";
 
-    toml_content = f'[project]\nname = "test-project"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "app.jac"\n\n[dependencies.npm]{deps_section}\n\n[dev-dependencies.npm]{dev_deps_section}\n';
+    toml_content = f'[project]\nname = "test-project"\nversion = "1.0.0"\ndescription = "Test project"\n\n[dependencies.npm]{deps_section}\n\n[dev-dependencies.npm]{dev_deps_section}\n';
     config_path = os.path.join(temp_dir, "jac.toml");
     with open(config_path, "w") as f {
         f.write(toml_content);
@@ -471,7 +471,7 @@ test "add npm with mixed deps" {
             os.chdir(temp_dir);
 
             # Create jac.toml with both pypi and npm sections
-            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\nentry-point = "app.jac"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -842,7 +842,7 @@ test "config files from jac toml" {
             os.chdir(temp_dir);
 
             # Create jac.toml with postcss and tailwind configs
-            toml_content = '[project]\nname = "test-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[plugins.client.configs.postcss]\nplugins = ["tailwindcss", "autoprefixer"]\n\n[plugins.client.configs.tailwind]\ncontent = ["./**/*.jac", "./.jac/client/**/*.{js,jsx}"]\nplugins = []\n\n[plugins.client.configs.tailwind.theme.extend]\ncolors = { primary = "#3490dc" }\n';
+            toml_content = '[project]\nname = "test-configs"\nversion = "1.0.0"\ndescription = "Test project"\n\n[plugins.client.configs.postcss]\nplugins = ["tailwindcss", "autoprefixer"]\n\n[plugins.client.configs.tailwind]\ncontent = ["./**/*.jac", "./.jac/client/**/*.{js,jsx}"]\nplugins = []\n\n[plugins.client.configs.tailwind.theme.extend]\ncolors = { primary = "#3490dc" }\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -896,7 +896,7 @@ test "raw template config files from jac toml" {
 
             # Create jac.toml with raw template config
             raw_content = 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";\n\nexport const docs = defineDocs({\n  dir: "content/docs",\n});\n\nexport default defineConfig({});';
-            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
+            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -937,7 +937,7 @@ test "npmrc from jac toml" {
 
             # Create jac.toml with npm scoped registry and auth config
             # Include required npm deps to avoid auto-injection modifying the file
-            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1242,7 +1242,7 @@ test "path aliases in generated vite and tsconfig" {
             os.chdir(temp_dir);
 
             # Create jac.toml with path aliases
-            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\nentry-point = "main.jac"\n\n[plugins.client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
+            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\n\n[plugins.client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);

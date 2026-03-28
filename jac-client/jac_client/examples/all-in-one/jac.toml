@@ -2,7 +2,6 @@
 name = "all-in-one"
 version = "1.0.0"
 description = "Jac client application: all-in-one"
-entry-point = "main.jac"
 
 [jacpack]
 name = "all-in-one"

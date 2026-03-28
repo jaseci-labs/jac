@@ -115,7 +115,7 @@ def get_minimal_desktop_jac -> str {
 
 """Get minimal jac.toml content for desktop testing."""
 def get_minimal_jac_toml(name: str = "test-desktop-app") -> str {
-    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "1.0.0"\n\n[serve]\nbase_route_app = "app"\n';
+    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "1.0.0"\n\n[serve]\nbase_route_app = "app"\n';
 }
 
 # =============================================================================
@@ -454,7 +454,7 @@ test "sidecar module runs directly" {
         # Create a simple backend-only Jac file (no client code)
         backend_jac = '"""Simple backend for sidecar testing."""\n\ndef:pub greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n\ndef:pub add(a: int, b: int) -> int {\n    return a + b;\n}\n\ndef:pub get_status() -> dict {\n    return {"status": "ok", "version": "1.0.0"};\n}\n';
         (project_dir / "main.jac").write_text(backend_jac);
-        jac_toml = '[project]\nname = "sidecar-test"\nversion = "1.0.0"\ndescription = "Sidecar test"\nentry-point = "main.jac"\n';
+        jac_toml = '[project]\nname = "sidecar-test"\nversion = "1.0.0"\ndescription = "Sidecar test"\n';
         (project_dir / "jac.toml").write_text(jac_toml);
         # Start sidecar by running main.py directly
         port = get_free_port();

@@ -20,7 +20,6 @@ obj ProjectConfig {
         license: str = "",
         readme: str = "README.md",
         jac_version: str = "",
-        entry_point: str = "main.jac",
         urls: dict[str, str] = {};
 }
 

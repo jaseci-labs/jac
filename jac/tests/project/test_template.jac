@@ -120,7 +120,7 @@ test "bundle handles binary files" {
         assets_dir.mkdir();
         jac_toml = template_dir / "jac.toml";
         jac_toml.write_text(
-            "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nentry-point = \"main.jac\"\n\n[jacpack]\nname = \"binary-test\"\ndescription = \"Template with binary files\"\njaclang = \"0.9.0\"\n"
+            "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\n\n[jacpack]\nname = \"binary-test\"\ndescription = \"Template with binary files\"\njaclang = \"0.9.0\"\n"
         );
         main_jac = template_dir / "main.jac";
         main_jac.write_text('print("Hello");');
@@ -192,7 +192,6 @@ test "load extracts config" {
     template = load_template_from_directory(template_dir);
     assert "project" in template.config;
     assert template.config["project"]["name"] == "{{name}}";
-    assert template.config["project"]["entry-point"] == "main.jac";
 }
 
 # --- RoundTrip tests ---

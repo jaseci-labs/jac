@@ -5,7 +5,6 @@
 name = "{{name}}"
 version = "0.1.0"
 description = "Project created from minimal template"
-entry-point = "main.jac"
 
 [dependencies]
 

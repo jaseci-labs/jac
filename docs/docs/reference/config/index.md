@@ -31,7 +31,6 @@ The auto-generated `jac.toml` for a `--use client` project looks like:
 [project]
 name = "myapp"
 version = "0.0.1"
-entry-point = "main.jac"
 ```
 
 You typically don't need to modify this file until you add dependencies or customize settings.
@@ -51,7 +50,6 @@ version = "1.0.0"
 description = "My Jac application"
 authors = ["Your Name <you@example.com>"]
 license = "MIT"
-entry-point = "main.jac"
 jac-version = ">=0.9.0"
 
 [project.urls]
@@ -66,7 +64,6 @@ repository = "https://github.com/user/repo"
 | `description` | Brief description |
 | `authors` | List of authors |
 | `license` | License identifier |
-| `entry-point` | Main file (default: `main.jac`) |
 | `jac-version` | Required Jac version |
 
 ---
@@ -515,7 +512,6 @@ jac start --port 3000
 name = "my-ai-app"
 version = "1.0.0"
 description = "An AI-powered application"
-entry-point = "main.jac"
 
 [dependencies]
 byllm = ">=0.4.8"

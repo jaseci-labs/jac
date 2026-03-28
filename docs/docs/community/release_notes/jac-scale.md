@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.10 (Unreleased)
 
+- **Config Cleanup**: Removed unused `entry-point` field from example and fixture `jac.toml` files.
+
 ## jac-scale 0.2.9 (Latest Release)
 
 - **Performance: MongoBackend.batch_get()**: New `batch_get(ids)` uses `find({_id: {$in: [...]}})` so edge traversals hit MongoDB with 2-3 queries instead of one per anchor. On cold starts with 100 edges this cuts 201 round-trips down to 3.

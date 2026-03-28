@@ -2,7 +2,6 @@
 name = "scale-feats"
 version = "1.0.0"
 description = "Jac client application: scale-feats"
-entry-point = "main.jac"
 
 [dependencies]
 

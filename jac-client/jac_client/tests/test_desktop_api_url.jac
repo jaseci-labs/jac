@@ -185,7 +185,7 @@ test "setup generates main rs with sidecar support" {
             '"""Test."""\ndef:pub hello() -> str { return "hi"; }\n'
         );
         (project_dir / "jac.toml").write_text(
-            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            '[project]\nname = "test"\nversion = "1.0.0"\n'
         );
         # Run setup
         env = get_env_with_bun();

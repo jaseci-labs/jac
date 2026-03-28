@@ -5,8 +5,7 @@
     "project": {
       "name": "{{name}}",
       "version": "1.0.0",
-      "description": "Jac client application: {{name}}",
-      "entry-point": "main.jac"
+      "description": "Jac client application: {{name}}"
     },
     "dependencies": {},
     "dependencies.npm": {

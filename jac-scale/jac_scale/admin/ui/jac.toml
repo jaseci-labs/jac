@@ -2,7 +2,6 @@
 name = "jac-scale-admin"
 version = "1.0.0"
 description = "JAC-Scale Admin Portal"
-entry-point = "main.jac"
 
 [serve]
 base_route_app = "app"

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.3 (Unreleased)
 
+- **Config Cleanup: Removed Unused `entry-point` Field**: The `entry-point` field in `jac.toml`'s `[project]` section has been removed. This field was defined but never used by any CLI command -- `jac start` and other commands always defaulted to `main.jac` regardless of the config value.
+
 ## jaclang 0.13.2 (Latest Release)
 
 - **Typed Interop: dict[K,V] Return Hydration and Walker Spawn Serialization**: The ES codegen now supports `dict[str, T]` return types with automatic value hydration (`Object.fromEntries(Object.entries(...).map(...))`), wraps `list[T]` returns at call sites with `.map(x => T.__from_wire(x))`, and serializes typed walker `has` fields with `__to_wire()` when spawning from client code. The interop analysis pass also now correctly extracts multi-parameter subscript types (e.g., `dict[str, Metric]` was previously reduced to bare `dict`).

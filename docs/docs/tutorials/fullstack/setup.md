@@ -76,7 +76,6 @@ cl {
 name = "myapp"
 version = "1.0.0"
 description = "Jac client application"
-entry-point = "main.jac"
 
 [dependencies]
 
@@ -264,7 +263,6 @@ cl {
 [project]
 name = "myapp"
 version = "0.1.0"
-entry-point = "main.jac"
 
 [plugins.client]
 # Client-specific config

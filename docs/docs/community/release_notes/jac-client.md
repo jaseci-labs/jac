@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.10 (Unreleased)
 
+- **Config Cleanup**: Removed unused `entry-point` field from example `jac.toml` files and jacpack templates.
+
 ## jac-client 0.3.9 (Latest Release)
 
 - **Updated Examples to Use Typed Interop Pattern**: The `basic-full-stack`, `full-stack-with-auth`, and `little-x` examples now use the typed object hydration pattern (`__from_wire`/`__to_wire`) for server/client communication.

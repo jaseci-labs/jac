@@ -2034,7 +2034,6 @@ test "config_loader_dependency_management" {
             """[project]
 name = "test-project"
 version = "1.0.0"
-entry-point = "main.jac"
 
 [serve]
 base_route_app = "app"

@@ -337,13 +337,7 @@ def _handle_build_target(ctx: HookContext) -> None {
     try {
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
-            entry_file = config.entry_point;
-        }
-        if not entry_file {
-            console.error("No entry file specified. Use: jac build <file>");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
+            entry_file = "main.jac";
         }
 
         entry_path = Path(entry_file);
@@ -384,13 +378,7 @@ def _get_start_context(ctx: HookContext) -> tuple | None {
 
     entry_file = ctx.get_arg("filename", None);
     if not entry_file {
-        entry_file = config.entry_point;
-    }
-    if not entry_file {
-        console.error("No entry file specified. Use: jac start <file>");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return None;
+        entry_file = "main.jac";
     }
 
     entry_path = Path(entry_file);

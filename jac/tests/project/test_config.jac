@@ -18,7 +18,7 @@ import from jaclang.project.config {
 import jaclang.project.config as config_mod;
 
 glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures"),
-     JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main.jac\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
+     JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
      MAIN_JAC_CONTENT = "\"\"\"Test main file.\"\"\"\n\nwith entry {\n    print(\"Hello, World!\");\n}\n",
      BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[plugins.client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
      PROD_TOML = "[serve]\nport = 80\n\n[plugins.client]\nminify = true\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n",
@@ -178,7 +178,6 @@ test "load basic config" {
         assert cfg.project.name == "test-project";
         assert cfg.project.version == "0.1.0";
         assert cfg.project.description == "A test project";
-        assert cfg.project.entry_point == "main.jac";
     }
 }
 
@@ -290,7 +289,7 @@ test "parse minimal config" {
 
 test "parse full config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
+    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
 
     # Project
@@ -298,7 +297,6 @@ test "parse full config" {
     assert cfg.project.version == "1.2.3";
     assert cfg.project.description == "A full project";
     assert cfg.project.license == "MIT";
-    assert cfg.project.entry_point == "app.jac";
 
     # Dependencies
     assert "numpy" in cfg.dependencies;
@@ -784,9 +782,9 @@ test "merge project kebab case" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[project]\nentry-point = \"app.jac\"\n");
+        overlay.write_text("[project]\njac-version = \"1.0.0\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert cfg.project.entry_point == "app.jac";
+        assert cfg.project.jac_version == "1.0.0";
     }
 }
 
@@ -1226,10 +1224,10 @@ test "apply profile check with lint" {
 test "apply profile project kebab case" {
     config_mod._config = None;
     cfg = JacConfig.from_toml_str(
-        "[project]\nname = \"test\"\nentry-point = \"main.jac\"\n\n[environments.alt]\n[environments.alt.project]\nentry-point = \"app.jac\"\n"
+        "[project]\nname = \"test\"\njac-version = \"1.0.0\"\n\n[environments.alt]\n[environments.alt.project]\njac-version = \"2.0.0\"\n"
     );
     cfg.apply_profile("alt");
-    assert cfg.project.entry_point == "app.jac";
+    assert cfg.project.jac_version == "2.0.0";
 }
 
 test "apply profile dependencies and scripts" {

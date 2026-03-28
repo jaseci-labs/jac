@@ -743,7 +743,6 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             license=proj.get("license", ""),
             readme=proj.get("readme", "README.md"),
             jac_version=proj.get("jac-version", ""),
-            entry_point=proj.get("entry-point", "main.jac"),
             urls=proj.get("urls", {})
         );
     }

@@ -139,8 +139,7 @@ def _register_default_template(registry: TemplateRegistry) -> None {
                 "project": {
                     "name": "{{name}}",
                     "version": "0.1.0",
-                    "description": "A Jac project",
-                    "entry-point": "main.jac"
+                    "description": "A Jac project"
                 },
                 "dependencies": {},
                 "dev-dependencies": {"watchdog": ">=3.0.0"}
