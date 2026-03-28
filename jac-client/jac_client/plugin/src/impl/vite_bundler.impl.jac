@@ -498,6 +498,18 @@ export default defineConfig({{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
+      "/admin": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/graph": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/redoc": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
     }},
 {server_config_str}
   }},

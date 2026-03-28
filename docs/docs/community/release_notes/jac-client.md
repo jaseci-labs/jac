@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.10 (Unreleased)
 
-- **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs` and `/openapi.json` to the API backend, so developers can browse FastAPI Swagger UI from the client URL without switching ports.
+- **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs`, `/redoc`, `/openapi.json`, `/admin`, and `/graph` to the API backend, so developers can access all dev tools from the client URL without switching ports.
 - **Fix: Windows Client Compilation and Page Routing**: Fixed multiple Windows-specific issues preventing client apps from compiling and running. (1) **Path normalization**: Module hub lookups now use cross-platform path comparison, handling Windows case-insensitivity and backslash separators. (2) **JS generation**: The ES pass is now explicitly triggered when generated JavaScript is empty, fixing page files compiling to empty output. (3) **Import paths**: Backslashes are now normalized to forward slashes in generated JavaScript imports, fixing Vite build errors like `"page" is not exported`. These fixes are no-ops on Linux/macOS where paths already work correctly.
 
 ## jac-client 0.3.9 (Latest Release)
