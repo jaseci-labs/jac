@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.3 (Unreleased)
 
+- **Fix: Windows Client Bundle Compilation**: Fixed client bundle compilation failing on Windows with `Client function 'app' not found` error. Added cross-platform path normalization for module hub lookups to handle Windows case-insensitivity and path separator differences. Extracted helper functions to the client bundle module for consistent path handling across the bundle builder and module introspector. The ES pass is now explicitly triggered when generated JavaScript is empty, ensuring code generation completes on Windows where the pass may be skipped during initial compilation due to re-entrancy guards.
+- **Fix: Windows Console Unicode Encoding**: Fixed codec encoding crashes on Windows cmd/PowerShell when printing Unicode characters (emojis, symbols). The console now detects Windows legacy terminals and replaces unencodable characters with safe fallbacks. Windows Terminal continues to use full Unicode support.
+
 ## jaclang 0.13.2 (Latest Release)
 
 - **Typed Interop: dict[K,V] Return Hydration and Walker Spawn Serialization**: The ES codegen now supports `dict[str, T]` return types with automatic value hydration (`Object.fromEntries(Object.entries(...).map(...))`), wraps `list[T]` returns at call sites with `.map(x => T.__from_wire(x))`, and serializes typed walker `has` fields with `__to_wire()` when spawning from client code. The interop analysis pass also now correctly extracts multi-parameter subscript types (e.g., `dict[str, Metric]` was previously reduced to bare `dict`).
