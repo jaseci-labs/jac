@@ -128,6 +128,7 @@ test "endpoint filtering and startup" {
     sp = _start_server(port);
     try {
         # Scheduled walkers should NOT be accessible via /walker/
+        # Dynamic mode uses catch-all routes, so check for non-200 (not just 404)
         for name in [
             "StaticIntervalWalker",
             "StaticCronWalker",
@@ -135,7 +136,7 @@ test "endpoint filtering and startup" {
             "DynamicScheduledWalker"
         ] {
             resp = requests.post(f"{base_url}/walker/{name}", json={}, timeout=5);
-            assert resp.status_code == 404 , f"{name} must not be a /walker endpoint";
+            assert resp.status_code != 200 , f"{name} must not be a /walker endpoint";
         }
 
         # Scheduled functions should NOT be accessible via /function/
@@ -146,7 +147,7 @@ test "endpoint filtering and startup" {
             "dynamic_scheduled_func"
         ] {
             resp = requests.post(f"{base_url}/function/{name}", json={}, timeout=5);
-            assert resp.status_code == 404 , f"{name} must not be a /function endpoint";
+            assert resp.status_code != 200 , f"{name} must not be a /function endpoint";
         }
 
         # Regular walker and function should be accessible
