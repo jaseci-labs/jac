@@ -4,18 +4,19 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. Install everything at once with:
+**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. If you prefer pip:
 
 ```bash
 pip install jaseci
 ```
 
-Verify your versions meet the minimum requirements:
+Verify your installation meets the minimum requirements:
 
 ```bash
 jac --version
-pip show jac-client jac-scale byllm
 ```
+
+The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
 
 | Package | Minimum Version |
 |---------|----------------|
@@ -312,7 +313,7 @@ with entry {
 Run it with `jac <your-filename>.jac`. Your graph now looks like:
 
 !!! tip "Running examples multiple times"
-    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, run `jac clean --all` to clear the graph database.
+    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, delete the `.jac/` directory in the folder where you ran the script: `rm -rf .jac/`. (Starting in Part 3 when you create a project, you can use `jac clean --all` instead.)
 
 ```mermaid
 graph LR
@@ -456,6 +457,8 @@ This is useful when data isn't appearing as expected.
 - **`jid(node)`** -- get the built-in unique identifier of any node
 - **`del`** -- remove a node from the graph
 
+> **Deep Dive:** [Object-Spatial Programming](../../reference/language/osp.md) covers the full graph model including typed edges, walkers, and advanced traversals. [Comprehensions & Filters](../../reference/language/advanced.md) has the complete filter syntax reference.
+
 !!! example "Try It Yourself"
     After creating three tasks, mark one as done (`task.done = True`), then use `[root-->][?:Task, done == False]` to list only pending tasks. Verify that the completed task doesn't appear.
 
@@ -472,7 +475,10 @@ jac create day-planner --use client
 cd day-planner
 ```
 
-You can delete the scaffolded `main.jac` -- you'll replace it with the code below. Also create a `styles.css` file in the project root (we'll fill it in Part 4).
+!!! note "Bun required"
+    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+
+You can delete the scaffolded `main.jac` -- you'll replace it with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
 **Node Identity with `jid()`**
 
@@ -1034,6 +1040,8 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`async`** -- marks functions that perform asynchronous operations
 - **JSX syntax** -- `{expression}`, `{[... for x in list]}`, event handlers with lambdas
 - **List comprehensions and `+` operator** -- `[expr for x in list]`, `[x for x in list if cond]`, and `list + [item]` for immutable state updates
+
+> **Deep Dive:** [jac-client Reference](../../reference/plugins/jac-client.md) covers the full frontend API including routing, npm package imports, and advanced component patterns. The [Full-Stack tutorials](../fullstack/setup.md) go deeper on each topic.
 
 !!! example "Try It Yourself"
     Add a "Clear All" button below the task count that deletes every task. You'll need a new `def:pub clear_all_tasks` endpoint on the server and an `async` method in the component that calls it and resets the `tasks` list.
@@ -1708,6 +1716,8 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 - **`sem Type.field = "..."`** -- semantic hints that guide LLM field interpretation
 - **`-> list[Type] by llm()`** -- get validated structured output from the LLM
 - **Jac's type system is the LLM's output schema** -- name things clearly and `by llm()` handles the rest
+
+> **Deep Dive:** [byLLM Reference](../../reference/plugins/byllm.md) covers all AI integration options including model configuration, multi-provider support, and advanced prompt control. [Structured Outputs tutorial](../ai/structured-outputs.md) has more examples of `obj` + `sem` patterns.
 
 !!! example "Try It Yourself"
     Add `SOCIAL` and `FINANCE` to the `Category` enum. Then test how the AI categorizes tasks like "Call mom", "Pay rent", and "Gym at 6pm".
@@ -3408,6 +3418,8 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 | `walker:priv` | Per-user walker with data isolation via private root nodes |
 | Node abilities | When the logic naturally belongs to the data type |
 | Walker abilities | When the logic naturally belongs to the traversal |
+
+> **Deep Dive:** [Object-Spatial Programming Reference](../../reference/language/osp.md) covers advanced walker patterns, entry/exit semantics, and multi-hop traversals. [Walker Patterns](../../reference/language/walker-responses.md) has a quick reference for common walker response patterns.
 
 !!! example "Try It Yourself"
     Write a `CountTasks` walker that reports the total number of tasks and how many are done, without collecting the full task list. Use `self.total: int` and `self.completed: int` counters that increment as the walker visits each `Task` node.
