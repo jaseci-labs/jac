@@ -961,6 +961,88 @@ test "compr no jac keywords" {
     assert_no_jac_keywords(js_code, "comprehensions.cl.jac");
 }
 
+test "await expression parenthesized as member expression object" {
+    # BUG: When AwaitExpression is the object of a MemberExpression,
+    # the unparser generates `await foo().prop` which JS parses as
+    # `await (foo().prop)` instead of the intended `(await foo()).prop`.
+    # This manifests at runtime when typed list returns use:
+    #   await __jacCallFunction("get_items",{}).map(x => T.__from_wire(x))
+    # which calls .map() on the Promise, not the resolved array.
+    import from jaclang.compiler.passes.ecmascript.estree {
+        AwaitExpression,
+        CallExpression,
+        MemberExpression,
+        Identifier,
+        ArrowFunctionExpression,
+        Program,
+        ExpressionStatement
+    }
+
+    # Build: (await fetchData()).map(x => x)
+    await_call = AwaitExpression(
+        argument=CallExpression(callee=Identifier(name="fetchData"), arguments=[])
+    );
+    map_call = CallExpression(
+        callee=MemberExpression(
+            object=await_call, property=Identifier(name="map"), computed=False
+        ),
+        arguments=[
+            ArrowFunctionExpression(
+                params=[Identifier(name="x")],
+                body=Identifier(name="x"),
+                expression=True,
+                async_=False
+            )
+        ]
+    );
+    prog = Program(body=[ExpressionStatement(expression=map_call)]);
+    js_code = es_to_js(prog);
+
+    # The await MUST be parenthesized when used as a member expression object
+    assert "(await fetchData())" in js_code , (
+        f"AwaitExpression as MemberExpression object must be parenthesized. Got: {js_code}"
+    );
+    assert "(await fetchData()).map(" in js_code , (
+        f"Expected (await fetchData()).map(...), got: {js_code}"
+    );
+    # Must NOT have unparenthesized form
+    assert "await fetchData().map(" not in js_code , (
+        f"BUG: await not parenthesized before .map(). Got: {js_code}"
+    );
+}
+
+test "list concat in impl file uses array spread not string plus" {
+    # BUG: In .impl.jac files, `items = items + [item]` compiles to
+    # JS string concatenation `M + [J]` instead of array spread `[...M, J]`
+    # or `[...M, ...J]`.
+    fixture = "list_concat_impl.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The JS output must NOT contain raw `+` between array expressions
+    # (which would be string concatenation in JS).
+    # Look for the pattern: variable + [expression] which is the bug
+    lines = js_code.split('\n');
+    has_raw_plus_array = False;
+    for line in lines {
+        stripped = line.strip();
+        # Detect pattern: something + [something] that isn't in a string
+        if '+ [' in stripped and 'items' in stripped.lower() {
+            has_raw_plus_array = True;
+        }
+    }
+
+    # Should use spread syntax [...items, item] or .concat()
+    has_spread = "[..." in js_code;
+    has_concat = ".concat(" in js_code;
+    has_push = ".push(" in js_code;
+
+    assert (has_spread or has_concat or has_push) or not has_raw_plus_array , (
+        "List concatenation in impl file must use array spread/concat, " + "not JS `+` operator (which produces string concatenation)"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "private identifier generates hash prefix" {
     import from jaclang.compiler.passes.ecmascript.estree {
         PrivateIdentifier,

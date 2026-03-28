@@ -1889,9 +1889,27 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
     } else {
         operator = ES_BINARY_OPS.get(op_name) if op_name else '+';
         operator = operator or '+';
-        bin_expr = self.sync_loc(
-            es.BinaryExpression(operator=operator, left=left, right=right), jac_node=nd
-        );
+        # Heuristic: when `+` is used with an ArrayExpression on either side,
+        # emit array spread syntax [...left, ...right] instead of raw `+`
+        # which would produce string concatenation in JS. This handles the
+        # case where type info is unavailable (e.g. in .impl.jac files) but
+        # the programmer clearly intended list concatenation.
+        if operator == '+'
+        and (
+            isinstance(left, es.ArrayExpression)
+            or isinstance(right, es.ArrayExpression)
+        ) {
+            left_spread = es.SpreadElement(argument=left);
+            right_spread = es.SpreadElement(argument=right);
+            bin_expr = self.sync_loc(
+                es.ArrayExpression(elements=[left_spread, right_spread]), jac_node=nd
+            );
+        } else {
+            bin_expr = self.sync_loc(
+                es.BinaryExpression(operator=operator, left=left, right=right),
+                jac_node=nd
+            );
+        }
     }
     nd.gen.es_ast = bin_expr;
 }
