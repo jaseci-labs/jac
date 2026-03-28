@@ -4,7 +4,11 @@ Walks the module AST to detect calls between different codespace contexts
 (server/Python, native/LLVM, client/JavaScript) and builds an InteropManifest.
 """
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+import from jaclang.jac0core.codeinfo {
+    BoundaryTypeInfo,
+    InteropBinding,
+    InteropContext
+}
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 """Identify cross-boundary function calls between sv, na, and cl contexts.
 
@@ -47,4 +51,27 @@ linking
 
     """Check if a function call crosses context boundaries."""
     def enter_func_call(self: InteropAnalysisPass, nd: uni.FuncCall) -> None;
+
+    """Extract the inner type name from a subscript expression."""
+    def _extract_subscript_inner(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> str;
+
+    """Extract all user-defined type names from a subscript."""
+    def _extract_all_subscript_types(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> list[str];
+
+    """Extract all user-defined type names from a type annotation expression."""
+    def _extract_all_type_names(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> list[str];
+
+    """Collect a type that crosses the codespace boundary into the manifest."""
+    def _collect_boundary_type(
+        self: InteropAnalysisPass, type_name: str, source_mod: (uni.Module | None)
+    ) -> None;
+
+    """After all nodes visited, collect boundary types from SV->CL bindings."""
+    def after_pass(self: InteropAnalysisPass) -> None;
 }

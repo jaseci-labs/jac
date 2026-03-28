@@ -1,5 +1,27 @@
-"""Initialise the builder with an optional override for the runtime path."""
+"""Lookup module in hub with cross-platform path normalization (Windows case/separators)."""
+impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
+    if path_key in hub {
+        return hub[path_key];
+    }
+    # Fallback: normalized lookup for Windows
+    normalized_key = os.path.normcase(path_key);
+    for hub_path in hub.keys() {
+        if os.path.normcase(hub_path) == normalized_key {
+            return hub[hub_path];
+        }
+    }
+    return None;
+}
 
+"""Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
+impl _ensure_js_generated(mod: Module, program: Any) -> None {
+    if mod and not mod.gen.js {
+        import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+        EsastGenPass(ir_in=mod, prog=program);
+    }
+}
+
+"""Initialise the builder with an optional override for the runtime path."""
 impl ClientBundleBuilder.postinit -> None {
     if not self.runtime_path {
         self.runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
@@ -18,8 +40,7 @@ impl ClientBundleBuilder.build(
     module_path = module.__file__.replace('.py', '.jac');
     source_path = Path(module_path).resolve();
     import from jaclang { JacRuntime as Jac }
-    # Ensure module is compiled so we have the manifest for cache signature
-    mod = Jac.program.mod.hub.get(str(source_path));
+    mod = _lookup_module_in_hub(str(source_path), Jac.program.mod.hub);
     if not mod {
         (_, mod) = self._compile_to_js(source_path);
     }
@@ -230,21 +251,21 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module]
     import from jaclang { JacRuntime as Jac }
     program = Jac.program;
     source_key = str(source_path);
-    if (source_key in program.mod.hub) {
-        mod = program.mod.hub[source_key];
-        return ((mod.gen.js or ''), mod);
+    mod = _lookup_module_in_hub(source_key, program.mod.hub);
+    if not mod {
+        prev_error_count = len(program.errors_had);
+        mod = program.compile(source_key);
+        new_errors = program.errors_had[prev_error_count:];
+        if new_errors {
+            formatted = '\n'.join(str(err) for err in new_errors);
+            raise ClientBundleError(
+                f"Failed to compile '{source_path}' for client bundle:{formatted}"
+            );
+        }
     }
-    # Save current error count so we only check for NEW errors from this compile.
-    prev_error_count = len(program.errors_had);
-    mod = program.compile(source_key);
-    new_errors = program.errors_had[prev_error_count:];
-    if new_errors {
-        formatted = '\n'.join(str(err) for err in new_errors);
-        raise ClientBundleError(
-            f"Failed to compile '{source_path}' for client bundle:{formatted}"
-        );
-    }
-    return ((mod.gen.js or ''), mod);
+    # Ensure JS is generated (may be skipped on Windows during initial compile)
+    _ensure_js_generated(mod, program);
+    return ((mod.gen.js or ''), mod) if mod else ('', mod);
 }
 
 """Remove ES6 import statements for modules that are bundled.

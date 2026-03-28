@@ -58,6 +58,22 @@ def create_test_project(tmpdir: str, toml_content: str = "") -> str {
     return project_path;
 }
 
+"""Get venv bin directory path (Scripts on Windows, bin on Unix)."""
+def get_venv_bin_dir(venv_dir: Path) -> Path {
+    return venv_dir / ("Scripts" if sys.platform == "win32" else "bin");
+}
+
+"""Set up a mock venv with site-packages and bin directories. Returns (config, bin_str, site_str)."""
+def setup_mock_venv(project_dir: Path) -> tuple[JacConfig, str, str] {
+    config = JacConfig.load(project_dir / "jac.toml");
+    venv_dir = config.get_venv_dir();
+    site_packages = get_venv_site_packages(venv_dir);
+    site_packages.mkdir(parents=True, exist_ok=True);
+    bin_dir = get_venv_bin_dir(venv_dir);
+    bin_dir.mkdir(parents=True, exist_ok=True);
+    return (config, str(bin_dir), str(site_packages));
+}
+
 # ===== TestDependencyInstaller =====
 test "DependencyInstaller init with config" {
     reset_config();
@@ -728,6 +744,61 @@ test "add_venv_dir_not_exists" {
     } finally {
         sys.path.clear();
         sys.path.extend(saved_path);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "add_venv_to_path adds bin to PATH env" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    saved_path = list(sys.path);
+    saved_env_path = os.environ.get("PATH", "");
+    try {
+        (config, bin_str, _) = setup_mock_venv(project_dir);
+
+        # Ensure bin_str is not in PATH before test
+        os.environ["PATH"] = os.pathsep.join(
+            [
+                p
+                for p in saved_env_path.split(os.pathsep)
+                if p != bin_str
+            ]
+        );
+
+        add_venv_to_path(config);
+
+        assert bin_str in os.environ.get("PATH", "").split(os.pathsep);
+    } finally {
+        sys.path.clear();
+        sys.path.extend(saved_path);
+        os.environ["PATH"] = saved_env_path;
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "remove_venv_from_path removes bin from PATH env" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    saved_path = list(sys.path);
+    saved_env_path = os.environ.get("PATH", "");
+    try {
+        (config, bin_str, site_str) = setup_mock_venv(project_dir);
+
+        # Add bin to PATH and site-packages to sys.path before test
+        os.environ["PATH"] = bin_str + os.pathsep + saved_env_path;
+        if site_str not in sys.path {
+            sys.path.insert(0, site_str);
+        }
+
+        remove_venv_from_path(config);
+
+        assert bin_str not in os.environ.get("PATH", "").split(os.pathsep);
+    } finally {
+        sys.path.clear();
+        sys.path.extend(saved_path);
+        os.environ["PATH"] = saved_env_path;
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }

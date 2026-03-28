@@ -574,24 +574,16 @@ cl {
                 return;
             }
             result = root spawn create_todo(text=input.strip());
-            setTodos(todos.concat([result.reports[0][0]]));
+            newTodo = result.reports[0][0];
+            setTodos(todos.concat([newTodo]));
             setInput("");
         }
 
         # Toggle todo
         async def toggleTodo(id: Any) -> None {
-            id spawn toggle_todo();
-            setTodos(
-                [
-                    {
-                        "_jac_id": todo._jac_id,
-                        "text": todo.text,
-                        "done": not todo.done
-                    }
-                        if todo._jac_id == id
-                        else todo for todo in todos
-                ]
-            );
+            result = id spawn toggle_todo();
+            updated = result.reports[0][0];
+            setTodos([updated if todo._jac_id == id else todo for todo in todos]);
         }
 
         # Delete todo

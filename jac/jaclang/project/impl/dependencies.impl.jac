@@ -321,6 +321,7 @@ impl get_venv_site_packages(venv_dir: Path) -> Path {
 # Venv Path Management Implementation
 # ===============================================================================
 impl add_venv_to_path(config: JacConfig | None = None) -> None {
+    import os;
     import sys;
     import from jaclang.project.config { get_config }
     if config is None {
@@ -329,14 +330,36 @@ impl add_venv_to_path(config: JacConfig | None = None) -> None {
     if config is None {
         return;
     }
-    site_packages = get_venv_site_packages(config.get_venv_dir());
+    venv_dir = config.get_venv_dir();
+    site_packages = get_venv_site_packages(venv_dir);
     site_str = str(site_packages);
     if site_packages.exists() and site_str not in sys.path {
         sys.path.insert(0, site_str);
     }
+    # Also add venv bin directory to PATH for subprocess calls (e.g., jac mcp)
+    if sys.platform == "win32" {
+        bin_dir = venv_dir / "Scripts";
+    } else {
+        bin_dir = venv_dir / "bin";
+    }
+    if bin_dir.exists() {
+        # Resolve and normalize path to handle symlinks consistently
+        bin_str = os.path.normpath(str(bin_dir.resolve()));
+        current_path = os.environ.get("PATH", "");
+        # Normalize existing paths for comparison
+        path_parts = [
+            os.path.normpath(p)
+            for p in current_path.split(os.pathsep)
+            if p
+        ];
+        if bin_str not in path_parts {
+            os.environ["PATH"] = bin_str + os.pathsep + current_path;
+        }
+    }
 }
 
 impl remove_venv_from_path(config: JacConfig | None = None) -> None {
+    import os;
     import sys;
     import from jaclang.project.config { get_config }
     if config is None {
@@ -345,10 +368,32 @@ impl remove_venv_from_path(config: JacConfig | None = None) -> None {
     if config is None {
         return;
     }
-    site_packages = get_venv_site_packages(config.get_venv_dir());
+    venv_dir = config.get_venv_dir();
+    site_packages = get_venv_site_packages(venv_dir);
     site_str = str(site_packages);
     if site_str in sys.path {
         sys.path.remove(site_str);
+    }
+    # Also remove venv bin directory from PATH
+    if sys.platform == "win32" {
+        bin_dir = venv_dir / "Scripts";
+    } else {
+        bin_dir = venv_dir / "bin";
+    }
+    # Resolve and normalize path to match how it was added
+    bin_str = os.path.normpath(str(bin_dir.resolve()))
+        if bin_dir.exists()
+        else str(bin_dir);
+    current_path = os.environ.get("PATH", "");
+    path_parts = current_path.split(os.pathsep);
+    # Filter out the bin path (comparing normalized versions)
+    new_parts = [
+        p
+        for p in path_parts
+        if os.path.normpath(p) != bin_str
+    ];
+    if len(new_parts) != len(path_parts) {
+        os.environ["PATH"] = os.pathsep.join(new_parts);
     }
 }
 
