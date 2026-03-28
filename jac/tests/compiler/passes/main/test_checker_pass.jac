@@ -2827,9 +2827,9 @@ test "root_cause_5_string_slice_loses_type" {
         if e.loc and 234 <= e.loc.first_line <= 254
     ];
     # PARTIALLY FIXED: str.__getitem__ now returns str via protocol matching fallback.
-    # Remaining 3: while-loop re-assignment degrades str to Unknown (.startswith x2),
-    # plus chained s[0].upper() — evaluation ordering in AtomTrailer chain.
-    assert len(rc5_errors) == 3 , f"Expected 3 string-slice errors, got {len(
+    # s[0].upper() chaining now works (LiteralString flags fix propagates Instantiable).
+    # Remaining 2: while-loop re-assignment degrades str to Unknown (.startswith x2).
+    assert len(rc5_errors) == 2 , f"Expected 2 string-slice errors, got {len(
         rc5_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc5_errors);
 }
@@ -3014,10 +3014,11 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Total: RC1(0) + RC2(5) + RC3(0) + RC4(0) + RC5(3) + RC6(15) + RC7(8) + RC8(4) + RC9(3) = 38
+    # Total: RC1(0) + RC2(5) + RC3(0) + RC4(0) + RC5(2) + RC6(15) + RC7(8) + RC8(4) + RC9(3) = 37
     # Name-target cascade suppression removed — each Unknown Name attribute
     # access is now reported as a real diagnostic.
-    assert len(program.errors_had) == 38 , f"Expected 38 total errors, got {len(
+    # RC5 dropped from 3→2: LiteralString flags fix resolved s[0].upper() chain.
+    assert len(program.errors_had) == 37 , f"Expected 37 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

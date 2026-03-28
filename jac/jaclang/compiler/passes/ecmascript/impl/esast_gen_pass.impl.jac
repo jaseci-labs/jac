@@ -1183,28 +1183,18 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
         self._ensure_emitters();
         _type_name = "";
-        if (
-            isinstance(_obj_type, jtypes.ClassType)
-            and _obj_type.shared
-            and _obj_type.shared.class_name in self._primitive_type_names
-        ) {
-            _type_name = _obj_type.shared.class_name;
-        }
-        if not _type_name {
-            _method_name = callee.property.name
-                if isinstance(callee.property, es.Identifier)
-                else "";
-            if _method_name {
-                _str_e = self._primitive_emitters.get("str");
-                _dict_e = self._primitive_emitters.get("dict");
-                _list_e = self._primitive_emitters.get("list");
-                _emit_key = "emit_" + _method_name;
-                if (
-                    getattr(_str_e, _emit_key, None)
-                    and not getattr(_dict_e, _emit_key, None)
-                    and not getattr(_list_e, _emit_key, None)
-                ) {
-                    _type_name = "str";
+        if isinstance(_obj_type, jtypes.ClassType) and _obj_type.shared {
+            # Direct match (e.g. str, list, dict).
+            if _obj_type.shared.class_name in self._primitive_type_names {
+                _type_name = _obj_type.shared.class_name;
+            } else {
+                # Walk the MRO to catch subtypes like LiteralString → str.
+                for _base in _obj_type.shared.mro {
+                    if _base.shared
+                    and _base.shared.class_name in self._primitive_type_names {
+                        _type_name = _base.shared.class_name;
+                        break;
+                    }
                 }
             }
         }
