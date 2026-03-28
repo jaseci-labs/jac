@@ -847,7 +847,7 @@ test "compr list method call" {
 
 test "str methods on local vars and chained calls" {
     import tempfile;
-    source = 'def:pub T() -> JsxElement {\n    has text: str = "hi";\n    temp = text.strip();\n    a = temp.lower();\n    b = text.strip().lower();\n    return <div>{a}{b}</div>;\n}\n';
+    source = 'def:pub T() -> JsxElement {\n    has text: str = "hi";\n    temp = text.strip();\n    a = temp.lower();\n    b = text.strip().lower();\n    c = text.upper().strip();\n    d = text.strip().upper();\n    e = text.upper().strip().lower();\n    return <div>{a}{b}{c}{d}{e}</div>;\n}\n';
     tmp = tempfile.NamedTemporaryFile(suffix=".cl.jac", mode="w", delete=False);
     tmp.write(source);
     tmp.close();
@@ -855,6 +855,9 @@ test "str methods on local vars and chained calls" {
     os.remove(tmp.name);
     assert "temp.toLowerCase()" in js_code , "str.lower() on local var should map to .toLowerCase()";
     assert "text.trim().toLowerCase()" in js_code , "chained str.strip().lower() should map to .trim().toLowerCase()";
+    assert "text.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
+    assert "text.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
+    assert "text.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
 }
 
 test "compr list ternary output" {
