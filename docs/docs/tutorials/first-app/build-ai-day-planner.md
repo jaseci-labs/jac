@@ -725,7 +725,7 @@ onChange={lambda e: any -> None { task_text = e.target.value; }}
 
 **Transparent Server Calls**
 
-This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching typed client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible. And because the server declares `-> Task` as the return type, the client receives a proper `Task` object with `.title`, `.done`, and `.id` fields -- not a raw dictionary.
+This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching typed client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible. And because the server declares `-> Task` as the return type, the client receives a proper `Task` object with `.title` and `.done` fields, and you can use `jid(task)` to get its unique identity -- no raw dictionaries or manual ID management.
 
 ```jac
     async def add_new_task -> None {
@@ -744,7 +744,7 @@ This is one of the most important concepts to understand in Jac's full-stack mod
 <!-- jac-skip -->
 ```jac
 {[
-    <div key={t.id} class="task-item">
+    <div key={jid(t)} class="task-item">
         <span>{t.title}</span>
     </div> for t in tasks
 ]}
@@ -796,7 +796,7 @@ cl def:pub app -> JsxElement {
                 <button class="btn-add" onClick={add_new_task}>Add</button>
             </div>
             {[
-                <div key={t.id} class="task-item">
+                <div key={jid(t)} class="task-item">
                     <span class="task-title">{t.title}</span>
                 </div> for t in tasks
             ]}
@@ -829,12 +829,12 @@ cl def:pub app -> JsxElement {
 
     async def toggle(id: str) -> None {
         updated = await toggle_task(id);
-        tasks = [updated if t.id == id else t for t in tasks];
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
     async def remove(id: str) -> None {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
     remaining = len([t for t in tasks if not t.done]);
@@ -855,18 +855,18 @@ cl def:pub app -> JsxElement {
                 <button class="btn-add" onClick={add_new_task}>Add</button>
             </div>
             {[
-                <div key={t.id} class="task-item">
+                <div key={jid(t)} class="task-item">
                     <input
                         type="checkbox"
                         checked={t.done}
-                        onChange={lambda -> None { toggle(t.id); }}
+                        onChange={lambda -> None { toggle(jid(t)); }}
                     />
                     <span class={"task-title " + ("task-done" if t.done else "")}>
                         {t.title}
                     </span>
                     <button
                         class="btn-delete"
-                        onClick={lambda -> None { remove(t.id); }}
+                        onClick={lambda -> None { remove(jid(t)); }}
                     >
                         X
                     </button>
@@ -880,7 +880,7 @@ cl def:pub app -> JsxElement {
 There are several important patterns to understand in this code:
 
 - **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`). These are the same Python-style comprehensions you may already know, and they're essential for working with reactive state.
-- **Replacing items** in a list uses `[updated if t.id == id else t for t in tasks]`. Since `toggle_task` returns the updated `Task` object directly, you can swap it in place -- crucial for immutable state updates.
+- **Replacing items** in a list uses `[updated if jid(t) == id else t for t in tasks]`. Since `toggle_task` returns the updated `Task` object directly, you can swap it in place -- crucial for immutable state updates.
 - **`tasks + [task]`** creates a new list with the item appended, rather than mutating the existing list. This immutability is important because the reactive system needs to detect that the list has changed.
 - **`async`** marks methods that call the server, since network calls are inherently asynchronous.
 
@@ -964,12 +964,12 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
 
         async def toggle(id: str) -> None {
             updated = await toggle_task(id);
-            tasks = [updated if t.id == id else t for t in tasks];
+            tasks = [updated if jid(t) == id else t for t in tasks];
         }
 
         async def remove(id: str) -> None {
             await delete_task(id);
-            tasks = [t for t in tasks if t.id != id];
+            tasks = [t for t in tasks if jid(t) != id];
         }
 
         remaining = len([t for t in tasks if not t.done]);
@@ -990,18 +990,18 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <button class="btn-add" onClick={add_new_task}>Add</button>
                 </div>
                 {[
-                    <div key={t.id} class="task-item">
+                    <div key={jid(t)} class="task-item">
                         <input
                             type="checkbox"
                             checked={t.done}
-                            onChange={lambda -> None { toggle(t.id); }}
+                            onChange={lambda -> None { toggle(jid(t)); }}
                         />
                         <span class={"task-title " + ("task-done" if t.done else "")}>
                             {t.title}
                         </span>
                         <button
                             class="btn-delete"
-                            onClick={lambda -> None { remove(t.id); }}
+                            onClick={lambda -> None { remove(jid(t)); }}
                         >
                             X
                         </button>
@@ -1272,12 +1272,12 @@ cl def:pub app -> JsxElement {
 
     async def toggle(id: str) -> None {
         updated = await toggle_task(id);
-        tasks = [updated if t.id == id else t for t in tasks];
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
     async def remove(id: str) -> None {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
     async def generate_meal_list -> None {
@@ -1317,11 +1317,11 @@ cl def:pub app -> JsxElement {
                         <button class="btn-add" onClick={add_new_task}>Add</button>
                     </div>
                     {[
-                        <div key={t.id} class="task-item">
+                        <div key={jid(t)} class="task-item">
                             <input
                                 type="checkbox"
                                 checked={t.done}
-                                onChange={lambda -> None { toggle(t.id); }}
+                                onChange={lambda -> None { toggle(jid(t)); }}
                             />
                             <span class={"task-title " + ("task-done" if t.done else "")}>
                                 {t.title}
@@ -1331,7 +1331,7 @@ cl def:pub app -> JsxElement {
                             ) if t.category and t.category != "other" else None}
                             <button
                                 class="btn-delete"
-                                onClick={lambda -> None { remove(t.id); }}
+                                onClick={lambda -> None { remove(jid(t)); }}
                             >
                                 X
                             </button>
@@ -1566,12 +1566,12 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 
         async def toggle(id: str) -> None {
             updated = await toggle_task(id);
-            tasks = [updated if t.id == id else t for t in tasks];
+            tasks = [updated if jid(t) == id else t for t in tasks];
         }
 
         async def remove(id: str) -> None {
             await delete_task(id);
-            tasks = [t for t in tasks if t.id != id];
+            tasks = [t for t in tasks if jid(t) != id];
         }
 
         async def generate_meal_list -> None {
@@ -1611,11 +1611,11 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <button class="btn-add" onClick={add_new_task}>Add</button>
                         </div>
                         {[
-                            <div key={t.id} class="task-item">
+                            <div key={jid(t)} class="task-item">
                                 <input
                                     type="checkbox"
                                     checked={t.done}
-                                    onChange={lambda -> None { toggle(t.id); }}
+                                    onChange={lambda -> None { toggle(jid(t)); }}
                                 />
                                 <span class={"task-title " + ("task-done" if t.done else "")}>
                                     {t.title}
@@ -1625,7 +1625,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                                 ) if t.category and t.category != "other" else None}
                                 <button
                                     class="btn-delete"
-                                    onClick={lambda -> None { remove(t.id); }}
+                                    onClick={lambda -> None { remove(jid(t)); }}
                                 >
                                     X
                                 </button>
@@ -2077,11 +2077,11 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     ) if len(tasks) == 0 else (
                                         <div>
                                             {[
-                                                <div key={t.id} class="task-item">
+                                                <div key={jid(t)} class="task-item">
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda -> None { toggleTask(t.id); }}
+                                                        onChange={lambda -> None { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
@@ -2091,7 +2091,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     ) if t.category and t.category != "other" else None}
                                                     <button
                                                         class="btn-delete"
-                                                        onClick={lambda -> None { deleteTask(t.id); }}
+                                                        onClick={lambda -> None { deleteTask(jid(t)); }}
                                                     >
                                                         X
                                                     </button>
@@ -2249,12 +2249,12 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     impl app.toggleTask(id: str) -> None {
         updated = await toggle_task(id);
-        tasks = [updated if t.id == id else t for t in tasks];
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
     impl app.deleteTask(id: str) -> None {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
     impl app.handleLogin -> None {
@@ -3035,11 +3035,11 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     ) if len(tasks) == 0 else (
                                         <div>
                                             {[
-                                                <div key={t.id} class="task-item">
+                                                <div key={jid(t)} class="task-item">
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda -> None { toggleTask(t.id); }}
+                                                        onChange={lambda -> None { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
@@ -3049,7 +3049,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     ) if t.category and t.category != "other" else None}
                                                     <button
                                                         class="btn-delete"
-                                                        onClick={lambda -> None { deleteTask(t.id); }}
+                                                        onClick={lambda -> None { deleteTask(jid(t)); }}
                                                     >
                                                         X
                                                     </button>
@@ -3209,12 +3209,12 @@ All the complete files are in the collapsible sections below. Create each file, 
     impl app.toggleTask(id: str) -> None {
         response = root spawn ToggleTask(task_id=id);
         updated = response.reports[0];
-        tasks = [updated if t.id == id else t for t in tasks];
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
     impl app.deleteTask(id: str) -> None {
         root spawn DeleteTask(task_id=id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
     impl app.handleLogin -> None {
