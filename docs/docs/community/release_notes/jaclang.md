@@ -2,7 +2,12 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.2 (Unreleased)
+## jaclang 0.13.3 (Unreleased)
+
+- **Fix: Windows Client Bundle Compilation**: Fixed client bundle compilation failing on Windows with `Client function 'app' not found` error. Added cross-platform path normalization for module hub lookups to handle Windows case-insensitivity and path separator differences. Extracted helper functions to the client bundle module for consistent path handling across the bundle builder and module introspector. The ES pass is now explicitly triggered when generated JavaScript is empty, ensuring code generation completes on Windows where the pass may be skipped during initial compilation due to re-entrancy guards.
+- **Fix: Windows Console Unicode Encoding**: Fixed codec encoding crashes on Windows cmd/PowerShell when printing Unicode characters (emojis, symbols). The console now detects Windows legacy terminals and replaces unencodable characters with safe fallbacks. Windows Terminal continues to use full Unicode support.
+
+## jaclang 0.13.2 (Latest Release)
 
 - **Typed Interop: dict[K,V] Return Hydration and Walker Spawn Serialization**: The ES codegen now supports `dict[str, T]` return types with automatic value hydration (`Object.fromEntries(Object.entries(...).map(...))`), wraps `list[T]` returns at call sites with `.map(x => T.__from_wire(x))`, and serializes typed walker `has` fields with `__to_wire()` when spawning from client code. The interop analysis pass also now correctly extracts multi-parameter subscript types (e.g., `dict[str, Metric]` was previously reduced to bare `dict`).
 - **Fix: ES Codegen RecursionError on Walker/Typed Arg Fixtures**: Guarded an unprotected `get_type_evaluator()` call in `exit_func_call` that caused infinite recursion when compiling fixtures with walker spawns or typed function arguments.
@@ -20,7 +25,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Refactor: TypeEvaluator Converted to `obj` Style with `has` and `postinit`**: `TypeEvaluator` now uses explicit `has` declarations for all 24 instance attributes with proper defaults, replacing the manual `init` method with `postinit`.
 - **Fix: Project Dependencies Now Available to Subprocesses**: Packages installed via `jac install` (stored in `.jac/venv/`) are now accessible to subprocesses spawned from your code. Previously, running `subprocess.Popen(["jac", "mcp", ...])` failed because the venv's `bin/` directory wasn't in PATH. Now `add_venv_to_path()` also prepends the venv's `bin/` directory to `os.environ["PATH"]`, so commands like `jac mcp` work correctly when jac-mcp is installed as a project dependency in `jac.toml`.
 
-## jaclang 0.13.1 (Latest Release)
+## jaclang 0.13.1
 
 - **Fix: MRO Resolution for Classes Imported Through Python `__init__.py` Re-exports**: Inheriting from a class imported through a Python package's `__init__.py` re-export (e.g., `from pkg import Base` where `pkg/__init__.py` does `from .submod import Base`) now works correctly. Previously, the base class resolved to `UnknownType`, breaking the MRO and causing false "has no attribute" errors on inherited members.
 - **Fix: `ExecutionContext` Field Types Corrected to Non-Optional**: Changed `system_root`, `user_root`, and `entry_node` fields on `ExecutionContext` from `NodeAnchor | None` to `NodeAnchor`. These fields are always initialized in `postinit` (defaulting to `system_root`), so the `| None` was incorrect and forced unnecessary null-guard workarounds throughout access validation and anchor persistence code.
@@ -42,6 +47,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.0
 
+- **Performance: Batch Edge Prefetch**: Edge traversal (`-->`, `->:E:->`, etc.) now collects all edge/target IDs up front and loads them in two batch queries instead of one-at-a-time. No syntax changes; same `-->` operators, just fewer DB round-trips under the hood.
 - **First-Class Fixed-Width Numeric Types**: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` are now first-class builtin types, on par with `int` and `float`. They are recognized as keywords by the lexer, parsed as `BuiltinType` AST nodes, and prefetched by the type evaluator -- eliminating prior special-case handling where they were resolved as plain identifiers.
 - **Type Checker: TypeVar Union and Overload Resolution**: Fixed three root causes that made generic method return types resolve to `<Unknown>`: (1) `TypeVarType.is_any_type()` short-circuited the `|` operator so `_VT | None` in typeshed stubs became `UnknownType` instead of a proper union; (2) `is_annotation_type()` did not recognize `TypeVarType` as valid for union creation; (3) added TypeVar constraint solving to overload resolution -- method-level TypeVars (e.g., `_D` in `ContextVar.get(default: _D) -> _D | _T`) are now inferred from call arguments with bounds, constraints, and consistency validation via the existing `assign_type_to_type_var` infrastructure. This fixes `dict[K,V].get()`, `ContextVar[T].get()`, and similar generic methods returning `<Unknown>` for user-defined types.
 - **Type Checker: `typing.cast()` Special-Form**: `cast(T, val)` now returns `T` instead of matching the `object` overload and returning `Any`. The type checker detects `typing.cast` calls and extracts the target type directly.

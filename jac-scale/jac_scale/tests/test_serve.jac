@@ -1379,7 +1379,7 @@ test "websocket functionality" {
 glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
-     dm_api_port: int = dm_vite_port + 1,
+     dm_api_port: int = get_free_port(),
      dm_base_url: str = f"http://localhost:{dm_api_port}";
 
 """Extract data from TransportResponse envelope for dev mode."""
@@ -1409,6 +1409,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         str(dm_test_file),
         "--port",
         str(dm_vite_port),
+        "--api_port",
+        str(dm_api_port),
         "--dev"
     ];
 
@@ -1834,29 +1836,37 @@ test "pwa target uses jac-scale server" {
 
     with tempfile.TemporaryDirectory() as temp_dir {
         temp_path = Path(temp_dir);
-
         # Create minimal jac app
         main_jac = temp_path / "main.jac";
-        main_jac.write_text('cl { def:pub app -> JsxElement { return <div>Test</div>; } }');
-
+        main_jac.write_text(
+            'cl { def:pub app -> JsxElement { return <div>Test</div>; } }'
+        );
         jac_toml = temp_path / "jac.toml";
-        jac_toml.write_text('''[project]
+        jac_toml.write_text(
+            '''[project]
 name = "test-pwa"
 version = "1.0.0"
 
 [plugins.client.pwa]
 theme_color = "#000000"
-''');
-
+'''
+        );
         # Start server with --client pwa
         server = subprocess.Popen(
-            [str(jac_executable), "start", "--client", "pwa", "main.jac", "-p", str(port)],
+            [
+                str(jac_executable),
+                "start",
+                "--client",
+                "pwa",
+                "main.jac",
+                "-p",
+                str(port)
+            ],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
         );
-
         try {
             # Wait for server to start and verify /docs endpoint (jac-scale's FastAPI)
             for _ in range(30) {
@@ -1864,10 +1874,12 @@ theme_color = "#000000"
                     resp = requests.get(f"http://127.0.0.1:{port}/docs", timeout=2);
                     if resp.status_code == 200 {
                         # /docs exists = jac-scale's FastAPI server is running
-                        assert "swagger" in resp.text.lower() or "openapi" in resp.text.lower(), (
+                        assert "swagger" in resp.text.lower()
+                        or "openapi" in resp.text.lower() , (
                             "/docs should be FastAPI Swagger UI"
                         );
                         return;  # Test passed
+
                     }
                 } except (requests.ConnectionError, requests.Timeout) {
                     time.sleep(1);

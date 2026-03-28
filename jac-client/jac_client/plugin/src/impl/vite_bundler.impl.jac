@@ -490,6 +490,14 @@ export default defineConfig({{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
+      "/docs": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/openapi.json": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
     }},
 {server_config_str}
   }},

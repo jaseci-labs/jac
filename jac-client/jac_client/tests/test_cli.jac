@@ -1219,6 +1219,8 @@ test "vite config generation" {
             assert "globalThis.__JAC_API_BASE_URL__" in dev_config_content;
             assert '"http://localhost:8001"' in dev_config_content;  # API port
             assert "/walker" in dev_config_content;  # Walker endpoint proxy
+            assert "/docs" in dev_config_content;  # FastAPI docs proxy
+            assert "/openapi.json" in dev_config_content;  # OpenAPI spec proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
 

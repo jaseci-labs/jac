@@ -2,6 +2,10 @@ import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.client_bundle {
+    _lookup_module_in_hub,
+    _ensure_js_generated
+}
 
 glob _client_error_logger = logging.getLogger("jaclang.client_errors");
 
@@ -351,10 +355,12 @@ impl ModuleIntrospector._load_manifest -> None {
     }
     mod_path = getattr(self._module, '__file__', None);
     if mod_path {
-        mod = Jac.program.mod.hub.get(mod_path);
-        # If module not in hub, compile it to get the manifest
+        mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub);
         if not mod {
             mod = Jac.program.compile(mod_path);
+        }
+        if mod and mod.gen.client_manifest and not mod.gen.client_manifest.exports {
+            _ensure_js_generated(mod, Jac.program);
         }
         if (mod and mod.gen.client_manifest) {
             manifest = mod.gen.client_manifest;
