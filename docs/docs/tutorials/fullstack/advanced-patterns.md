@@ -202,9 +202,9 @@ Use `glob` for state that persists across component renders and is shared across
 
 ```jac
 # Module-level state (like JavaScript module variables)
-glob monacoInitialized: bool = false;
-glob cachedConfig: Any = null;
-glob initPromise: Any = null;
+glob monacoInitialized: bool = False;
+glob cachedConfig: Any = None;
+glob initPromise: Any = None;
 
 async def:pub initializeOnce() -> Any {
     if monacoInitialized {
@@ -419,8 +419,9 @@ def:pub useSafeSubmit() -> Any {
         } except Exception as e {
             console.error("[submit] Failed:", e);
             return None;
+        } finally {
+            sendingRef.current = False;
         }
-        sendingRef.current = False;
     }
 
     return submit;
@@ -458,9 +459,10 @@ The compiled JavaScript lives in `.jac/client/`. When debugging tricky issues, i
 ```
 .jac/
 └── client/
-    ├── src/          # Generated JS/TSX from your .cl.jac files
+    ├── compiled/     # Generated JS from your .cl.jac files
     ├── dist/         # Production build output
-    └── configs/      # Generated config files (vite, tailwind, etc.)
+    ├── configs/      # Generated config files (vite, tailwind, etc.)
+    └── node_modules/ # Installed npm dependencies
 ```
 
 Browser DevTools source maps should point back to your original `.jac` files when available.
