@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.10 (Unreleased)
 
+- **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs` and `/openapi.json` to the API backend, so developers can browse FastAPI Swagger UI from the client URL without switching ports.
+
 ## jac-client 0.3.9 (Latest Release)
 
 - **Updated Examples to Use Typed Interop Pattern**: The `basic-full-stack`, `full-stack-with-auth`, and `little-x` examples now use the typed object hydration pattern (`__from_wire`/`__to_wire`) for server/client communication.
