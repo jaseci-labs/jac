@@ -224,6 +224,11 @@ impl JacAPIServerCore.start(
     self.register_llm_telemetry_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
+        # Enable FastAPI docs only in dev mode
+        self.server.app.docs_url = "/docs";
+        self.server.app.openapi_url = "/openapi.json";
+        self.server.app.redoc_url = "/redoc";
+        self.server.app.setup();
         self.register_dynamic_walker_endpoint();
         self.register_dynamic_function_endpoint();
         self.register_dynamic_introspection_endpoints();

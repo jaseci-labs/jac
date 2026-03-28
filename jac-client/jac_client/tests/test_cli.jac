@@ -1221,6 +1221,9 @@ test "vite config generation" {
             assert "/walker" in dev_config_content;  # Walker endpoint proxy
             assert "/docs" in dev_config_content;  # FastAPI docs proxy
             assert "/openapi.json" in dev_config_content;  # OpenAPI spec proxy
+            assert "/admin" in dev_config_content;  # Admin portal proxy
+            assert "/graph" in dev_config_content;  # Graph visualization proxy
+            assert "/redoc" in dev_config_content;  # ReDoc API docs proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
 
