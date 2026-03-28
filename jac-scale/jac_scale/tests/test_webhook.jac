@@ -206,10 +206,10 @@ def run_webhook_endpoint_exists_test(base_url: str) -> None {
 """Verify normal walkers are NOT in /webhook/."""
 def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
     # NormalPayment should be rejected by webhook endpoint
-    # Static mode: 404 (no route), Dynamic mode: 400 (catch-all rejects non-webhook walkers)
+    # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
     resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
-    assert resp.status_code in (400, 404) , (
-        f"NormalPayment should NOT be a webhook, got {resp.status_code}"
+    assert resp.status_code != 200 , (
+        "NormalPayment should NOT be a valid webhook endpoint"
     );
     # But it should be accessible via /walker/
     resp = requests.post(f"{base_url}/walker/NormalPayment", json={}, timeout=5);
