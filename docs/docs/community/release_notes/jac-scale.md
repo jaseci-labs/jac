@@ -2,14 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.10 (Unreleased)
+## jac-scale 0.2.11 (Unreleased)
+
+## jac-scale 0.2.10 (Latest Release)
 
 - **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
 - **Security: FastAPI docs disabled in production**: `/docs`, `/redoc`, and `/openapi.json` are no longer exposed in production. They are only available in dev mode.
 - **Health check endpoint**: Added `GET /healthz` for liveness checks. Returns `{"status": "ok"}` with no authentication required. Useful for Kubernetes probes and monitoring.
 - **Warm Pool TTL**: Added `warm_pool_ttl` config to control warm pod lifetime independently from sandbox `ttl_seconds`. Default `0` means warm pods live indefinitely until claimed, preventing the pool from emptying after the sandbox TTL expires.
 
-## jac-scale 0.2.9 (Latest Release)
+## jac-scale 0.2.9
 
 - **Ingress Rate Limiting (DDoS Protection)**: Added configurable NGINX rate limiting to the Kubernetes ingress. Limits sustained requests per second, burst headroom, and concurrent connections per client IP using the leaky bucket algorithm. Returns `429 Too Many Requests` when limits are exceeded. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`: `ingress_limit_rps` (default: 20), `ingress_limit_burst_multiplier` (default: 5), `ingress_limit_connections` (default: 20).
 - **Cookie-Based Sticky Sessions (optional)**: Added opt-in session affinity via NGINX cookie (`route`). When enabled, every user is pinned to the same pod regardless of IP changes (mobile, NAT, proxies). Cookie never expires in the browser. On pod failure NGINX automatically re-routes and rewrites the cookie. Enabled by default. Disable via `ingress_session_affinity = false` in `[plugins.scale.kubernetes]`.
