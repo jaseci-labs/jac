@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.3 (Unreleased)
+## jaclang 0.13.4 (Unreleased)
+
+## jaclang 0.13.3 (Latest Release)
 
 - **ES Codegen: `jid()` Builtin for Unified Node Identity**: Added `jid()` as a builtin function in the ES codegen, providing a consistent API for accessing node identity across both server and client code. On the client side, `jid(node)` emits `node._jac_id` in the generated JavaScript. The previous implicit `.id` alias (`this.id = this._jac_id`) on generated node class constructors has been removed in favor of the explicit `jid()` call.
 - **Fix: Windows Client Bundle Compilation**: Fixed client bundle compilation failing on Windows with `Client function 'app' not found` error. Added cross-platform path normalization for module hub lookups to handle Windows case-insensitivity and path separator differences. Extracted helper functions to the client bundle module for consistent path handling across the bundle builder and module introspector. The ES pass is now explicitly triggered when generated JavaScript is empty, ensuring code generation completes on Windows where the pass may be skipped during initial compilation due to re-entrancy guards.
@@ -10,7 +12,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: JIR Cache Preserves `code_context` for `.cl.jac` / `.sv.jac` / `.na.jac` Modules**: The JIR binary cache now serializes the per-node `code_context` field (`CLIENT`, `SERVER`, `NATIVE`) via a new overlay byte (bit 3 of overlay flags). Previously, `code_context` was a `postinit` field not included in the JIR spec, so it always defaulted to `SERVER` on cache reload. This caused `.cl.jac` modules loaded from cache as transitive dependencies to lose their `CLIENT` context, making the ES code generator filter out all statements and produce empty JavaScript, breaking the admin UI and other client builds on second compilation.
 - **Fix: ES Codegen Await Precedence and List Concatenation**: Fixed two ECMAScript code generation bugs affecting full-stack apps. (1) **Await in member access**: `AwaitExpression` used as the object of a `MemberExpression` (e.g., `(await fn()).map(...)`) was not parenthesized, causing `.map()` to bind to the Promise instead of the resolved value. The ES unparser now parenthesizes `AwaitExpression`, `YieldExpression`, and other low-precedence expressions when they appear as member access targets. (2) **List `+` in impl files**: When the type evaluator cannot determine the operand type (common in `.impl.jac` files), `list + [item]` fell through to the generic `BinaryExpression('+')` handler, producing JS string concatenation instead of array concatenation. A new heuristic in `exit_binary_expr` detects `ArrayExpression` operands and emits `[...left, ...right]` spread syntax as a safe fallback.
 
-## jaclang 0.13.2 (Latest Release)
+## jaclang 0.13.2
 
 - **Typed Interop: dict[K,V] Return Hydration and Walker Spawn Serialization**: The ES codegen now supports `dict[str, T]` return types with automatic value hydration (`Object.fromEntries(Object.entries(...).map(...))`), wraps `list[T]` returns at call sites with `.map(x => T.__from_wire(x))`, and serializes typed walker `has` fields with `__to_wire()` when spawning from client code. The interop analysis pass also now correctly extracts multi-parameter subscript types (e.g., `dict[str, Metric]` was previously reduced to bare `dict`).
 - **Fix: ES Codegen RecursionError on Walker/Typed Arg Fixtures**: Guarded an unprotected `get_type_evaluator()` call in `exit_func_call` that caused infinite recursion when compiling fixtures with walker spawns or typed function arguments.

@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.11 (Unreleased)
+## jac-scale 0.2.12 (Unreleased)
+
+## jac-scale 0.2.11 (Latest Release)
 
 - **Fix: Admin portal build fails from PyPI install**: `jac.toml` and `styles/*.css` were excluded from the wheel because `pyproject.toml` package-data only included `*.jac` files. The admin portal's `jac build` command needs these files to discover the project config and generate Tailwind CSS output.
 
-## jac-scale 0.2.10 (Latest Release)
+## jac-scale 0.2.10
 
 - **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
 - **Security: FastAPI docs disabled in production**: `/docs`, `/redoc`, and `/openapi.json` are no longer exposed in production. They are only available in dev mode.
