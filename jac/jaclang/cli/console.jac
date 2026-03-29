@@ -33,9 +33,9 @@ obj JacConsole {
     def warning(message: str, emoji: bool = True) -> None;
     def info(message: str, emoji: bool = True) -> None;
     def print_header(title: str, version: str | None = None) -> None;
-    def print_urls(urls: Any, symbol: str = '➜') -> None;
+    def print_urls(urls: Any, symbol: str = '') -> None;
     def print_next_steps(steps: list[str], title: str = 'Next Steps') -> None;
-    def print_list(items: list[str], style: str = 'success', symbol: str = '✔') -> None;
+    def print_list(items: list[str], style: str = 'success', symbol: str = '') -> None;
     def print_table(
         headers: list[str], rows: list[list[str]], title: str | None = None
     ) -> None;

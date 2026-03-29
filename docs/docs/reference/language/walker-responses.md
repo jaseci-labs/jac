@@ -305,7 +305,7 @@ The same applies to `def:pub` functions -- return typed objects instead of manua
 # Bad: Manual dict return
 def:pub get_task(id: str) -> dict {
     task = find_task(id);
-    return {"id": task.id, "title": task.title, "done": task.done};
+    return {"id": jid(task), "title": task.title, "done": task.done};
 }
 
 # Good: Typed return -- client receives a hydrated Task instance

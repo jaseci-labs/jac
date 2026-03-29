@@ -46,18 +46,18 @@ Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data is
 
 ```jac
 node Task {
-    has id: str;
     has title: str;
     has created_at: str;
     has completed: bool = False;
 }
 ```
 
+Every node automatically gets a unique identifier from the runtime, accessible via `jid(node)`. You never need to manage IDs manually.
+
 ### Create Walker Endpoints
 
 ```jac
 import from datetime { datetime }
-import uuid;
 
 walker:pub get_tasks {
     can fetch with Root entry {
@@ -70,9 +70,7 @@ walker:pub add_task {
 
     can create with Root entry {
         new_task = Task(
-            id=str(uuid.uuid4()),
             title=self.title,
-            completed=False,
             created_at=datetime.now().isoformat()
         );
         root ++> new_task;
@@ -85,7 +83,7 @@ walker:pub toggle_task {
 
     can toggle with Root entry {
         for task in [-->][?:Task] {
-            if task.id == self.task_id {
+            if jid(task) == self.task_id {
                 task.completed = not task.completed;
                 report task;  # Report the updated Task node
                 return;
@@ -99,7 +97,7 @@ walker:pub delete_task {
 
     can remove with Root entry {
         for task in [-->][?:Task] {
-            if task.id == self.task_id {
+            if jid(task) == self.task_id {
                 del task;
                 report {"success": True};
                 return;
@@ -155,7 +153,7 @@ cl {
         }
 
         return <ul>
-            {[<li key={task.id}>{task.title}</li> for task in tasks]}
+            {[<li key={jid(task)}>{task.title}</li> for task in tasks]}
         </ul>;
     }
 }
@@ -211,7 +209,7 @@ cl {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
-                tasks = [updated if t.id == task_id else t for t in tasks];
+                tasks = [updated if jid(t) == task_id else t for t in tasks];
             }
         }
 
@@ -219,7 +217,7 @@ cl {
         async def handle_delete(task_id: str) -> None {
             result = root spawn delete_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
-                tasks = [t for t in tasks if t.id != task_id];
+                tasks = [t for t in tasks if jid(t) != task_id];
             }
         }
 
@@ -242,16 +240,16 @@ cl {
 
             <ul className="task-list">
                 {[
-                    <li key={task.id}>
+                    <li key={jid(task)}>
                         <input
                             type="checkbox"
                             checked={task.completed}
-                            onChange={lambda -> None { handle_toggle(task.id); }}
+                            onChange={lambda -> None { handle_toggle(jid(task)); }}
                         />
                         <span className={task.completed and "completed"}>
                             {task.title}
                         </span>
-                        <button onClick={lambda -> None { handle_delete(task.id); }}>
+                        <button onClick={lambda -> None { handle_delete(jid(task)); }}>
                             Delete
                         </button>
                     </li>
@@ -408,7 +406,6 @@ cl {
 
 # === Backend: Data Model ===
 node Task {
-    has id: str;
     has title: str;
     has completed: bool = False;
 }
@@ -424,8 +421,7 @@ walker:pub add_task {
     has title: str;
 
     can create with Root entry {
-        import uuid;
-        task = Task(id=str(uuid.uuid4()), title=self.title);
+        task = Task(title=self.title);
         root ++> task;
         report task;
     }
@@ -436,7 +432,7 @@ walker:pub toggle_task {
 
     can toggle with Root entry {
         for t in [-->][?:Task] {
-            if t.id == self.task_id {
+            if jid(t) == self.task_id {
                 t.completed = not t.completed;
                 report t;
                 return;
@@ -475,7 +471,7 @@ cl {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
-                tasks = [updated if t.id == task_id else t for t in tasks];
+                tasks = [updated if jid(t) == task_id else t for t in tasks];
             }
         }
 
@@ -500,9 +496,9 @@ cl {
                 <ul>
                     {[
                         <li
-                            key={t.id}
+                            key={jid(t)}
                             style={{"textDecoration": t.completed and "line-through"}}
-                            onClick={lambda -> None { toggle(t.id); }}
+                            onClick={lambda -> None { toggle(jid(t)); }}
                         >
                             {t.title}
                         </li>
