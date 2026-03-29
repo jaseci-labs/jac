@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.4 (Unreleased)
 
+- **ES Codegen: `jid()` Moved to Client Runtime**: `jid()` is now a proper runtime function (`_jac.builtin.jid()`) instead of an inline property access (`x._jac_id`). This provides clear, actionable error messages when called on `null` (e.g. server returned an error) or non-node objects, with stack traces pointing to the `.jac` source line. The `assert_no_jac_keywords` test was also improved to strip string literals before scanning, preventing false positives from English words in error messages.
+
 ## jaclang 0.13.3 (Latest Release)
 
 - **ES Codegen: `jid()` Builtin for Unified Node Identity**: Added `jid()` as a builtin function in the ES codegen, providing a consistent API for accessing node identity across both server and client code. On the client side, `jid(node)` emits `node._jac_id` in the generated JavaScript. The previous implicit `.id` alias (`this.id = this._jac_id`) on generated node class constructors has been removed in favor of the explicit `jid()` call.
