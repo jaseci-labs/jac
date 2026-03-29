@@ -72,8 +72,8 @@ def _start_server(port: int) -> subprocess.Popen {
             raise RuntimeError(f"Server died.\nSTDOUT: {out}\nSTDERR: {err}");
         }
         try {
-            r = requests.get(f"{base_url}/docs", timeout=2);
-            if r.status_code in (200, 404) {
+            r = requests.get(f"{base_url}/healthz", timeout=2);
+            if r.status_code == 200 {
                 return proc;
             }
         } except requests.RequestException {

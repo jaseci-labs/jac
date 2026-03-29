@@ -101,8 +101,8 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
-            r = requests.get(f"{base_url}/docs", timeout=1);
-            if r.status_code in (200, 404) {
+            r = requests.get(f"{base_url}/healthz", timeout=1);
+            if r.status_code == 200 {
                 return server;
             }
         } except Exception {
