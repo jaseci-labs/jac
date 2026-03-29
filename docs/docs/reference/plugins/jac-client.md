@@ -196,7 +196,7 @@ cl {
 The compiler generates JavaScript class stubs with `__from_wire`/`__to_wire` methods for each type that crosses the boundary. This works for:
 
 - **`obj` types** -- fields are hydrated recursively (nested objects are also typed)
-- **`node` types** -- same as obj, plus `_jac_id` is preserved for graph identity
+- **`node` types** -- same as obj, plus graph identity is preserved (access via `jid(node)`)
 - **`enum` types** -- emitted as frozen JavaScript objects
 - **`list[T]` returns** -- each element is individually hydrated
 - **Bidirectional** -- typed objects sent as function arguments or walker `has` fields are serialized with `__type__` metadata and deserialized on the server
