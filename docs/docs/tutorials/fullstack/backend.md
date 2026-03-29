@@ -31,7 +31,7 @@ Jac offers two ways to create backend endpoints:
 
 | Approach | Syntax | Best For |
 |----------|--------|----------|
-| **Functions** | `def:pub get_tasks -> list { ... }` | Simple CRUD, quick prototyping |
+| **Functions** | `def:pub get_tasks -> list[Task] { ... }` | Simple CRUD, quick prototyping |
 | **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
 
 Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
@@ -61,16 +61,7 @@ import uuid;
 
 walker:pub get_tasks {
     can fetch with Root entry {
-        tasks = [-->][?:Task];
-        report [
-            {
-                "id": t.id,
-                "title": t.title,
-                "completed": t.completed,
-                "created_at": t.created_at
-            }
-            for t in tasks
-        ];
+        report [-->][?:Task];  # Reports typed Task nodes directly
     }
 }
 
@@ -85,11 +76,7 @@ walker:pub add_task {
             created_at=datetime.now().isoformat()
         );
         root ++> new_task;
-        report {
-            "id": new_task.id,
-            "title": new_task.title,
-            "completed": new_task.completed
-        };
+        report new_task;  # Report the typed Task node
     }
 }
 
@@ -100,11 +87,10 @@ walker:pub toggle_task {
         for task in [-->][?:Task] {
             if task.id == self.task_id {
                 task.completed = not task.completed;
-                report {"success": True, "completed": task.completed};
+                report task;  # Report the updated Task node
                 return;
             }
         }
-        report {"success": False, "error": "Task not found"};
     }
 }
 
@@ -119,7 +105,6 @@ walker:pub delete_task {
                 return;
             }
         }
-        report {"success": False, "error": "Task not found"};
     }
 }
 ```
@@ -170,7 +155,7 @@ cl {
         }
 
         return <ul>
-            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
+            {[<li key={task.id}>{task.title}</li> for task in tasks]}
         </ul>;
     }
 }
@@ -224,20 +209,17 @@ cl {
         # Toggle task completion
         async def handle_toggle(task_id: str) -> None {
             result = root spawn toggle_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [
-                    {**t, "completed": not t["completed"]}
-                    if t["id"] == task_id else t
-                    for t in tasks
-                ];
+            if result.reports and result.reports.length > 0 {
+                updated = result.reports[0];
+                tasks = [updated if t.id == task_id else t for t in tasks];
             }
         }
 
         # Delete task
         async def handle_delete(task_id: str) -> None {
             result = root spawn delete_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [t for t in tasks if t["id"] != task_id];
+            if result.reports and result.reports.length > 0 {
+                tasks = [t for t in tasks if t.id != task_id];
             }
         }
 
@@ -260,16 +242,16 @@ cl {
 
             <ul className="task-list">
                 {[
-                    <li key={task["id"]}>
+                    <li key={task.id}>
                         <input
                             type="checkbox"
-                            checked={task["completed"]}
-                            onChange={lambda -> None { handle_toggle(task["id"]); }}
+                            checked={task.completed}
+                            onChange={lambda -> None { handle_toggle(task.id); }}
                         />
-                        <span className={task["completed"] and "completed"}>
-                            {task["title"]}
+                        <span className={task.completed and "completed"}>
+                            {task.title}
                         </span>
-                        <button onClick={lambda -> None { handle_delete(task["id"]); }}>
+                        <button onClick={lambda -> None { handle_delete(task.id); }}>
                             Delete
                         </button>
                     </li>

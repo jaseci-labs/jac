@@ -102,6 +102,19 @@ obj NativeModuleLayout {
         tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict);
 }
 
+"""Metadata for a type (obj, node, enum) that crosses a codespace boundary.
+
+    Collected by InteropAnalysisPass, consumed by EsastGenPass to emit
+    JS class stubs with __from_wire/__to_wire methods.
+    """
+obj BoundaryTypeInfo {
+    has name: str,
+        kind: str,  # "obj", "node", "walker", "enum"
+        fields: list[tuple[(str, str)]] = field(default_factory=`list),
+        enum_members: list[tuple[(str, Any)]] = field(default_factory=`list),
+        nested_types: list[str] = field(default_factory=`list);
+}
+
 """A function callable across codespace boundaries.
 
     Records that a function defined in `source_context` is called from
@@ -134,6 +147,7 @@ obj InteropBinding {
     """
 obj InteropManifest {
     has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
+        boundary_types: dict[(str, BoundaryTypeInfo)] = field(default_factory=`dict),
         native_module_imports: dict[(str, NativeModuleInfo)] = field(
             default_factory=`dict
         ),

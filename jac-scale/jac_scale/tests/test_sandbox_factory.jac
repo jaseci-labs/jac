@@ -440,3 +440,53 @@ test "warm pod spec no security context when disabled" {
     assert sc is None;
     assert not warm.spec.automount_service_account_token;
 }
+
+# ---- Warm pool TTL tests ----
+test "sandbox config warm_pool_ttl defaults to zero" {
+    config = SandboxConfig();
+    assert config.warm_pool_ttl == 0;
+}
+
+test "sandbox config warm_pool_ttl from_dict" {
+    cfg = SandboxConfig.from_dict({"warm_pool_ttl": 7200});
+    assert cfg.warm_pool_ttl == 7200;
+}
+
+test "sandbox config warm_pool_ttl from_dict defaults to zero" {
+    cfg = SandboxConfig.from_dict({});
+    assert cfg.warm_pool_ttl == 0;
+}
+
+test "warm pod spec no activeDeadlineSeconds when warm_pool_ttl is zero" {
+    config = SandboxConfig(warm_pool_size=3, warm_pool_ttl=0);
+    sandbox = KubernetesSandbox(config=config);
+    warm: Any = sandbox._build_warm_pod_spec("warm-ttl-0");
+
+    assert warm.spec.active_deadline_seconds is None;
+}
+
+test "warm pod spec uses warm_pool_ttl when set" {
+    config = SandboxConfig(warm_pool_size=3, warm_pool_ttl=7200);
+    sandbox = KubernetesSandbox(config=config);
+    warm: Any = sandbox._build_warm_pod_spec("warm-ttl-7200");
+
+    assert warm.spec.active_deadline_seconds == 7200;
+}
+
+test "warm pod spec ttl independent from sandbox ttl" {
+    config = SandboxConfig(ttl_seconds=1800, warm_pool_size=3, warm_pool_ttl=0);
+    sandbox = KubernetesSandbox(config=config);
+    warm: Any = sandbox._build_warm_pod_spec("warm-independent");
+
+    # Warm pod should NOT inherit sandbox ttl_seconds
+    assert warm.spec.active_deadline_seconds is None;
+}
+
+test "regular pod spec still uses sandbox ttl_seconds" {
+    config = SandboxConfig(ttl_seconds=1800, warm_pool_size=3, warm_pool_ttl=0);
+    sandbox = KubernetesSandbox(config=config);
+    pod: Any = sandbox._build_pod_spec("sbx-ttl", "cm-ttl", "user1", "proj1");
+
+    # Regular pod should use ttl_seconds
+    assert pod.spec.active_deadline_seconds == 1800;
+}

@@ -690,7 +690,7 @@ with entry {
 walker Cleanup {
     can check with Todo entry {
         if here.completed {
-            node_id = here.id;
+            node_id = jid(here);
             del here;
             report {"deleted": node_id};
         }
@@ -712,7 +712,7 @@ walker:priv DeleteWithChildren {
 
     can delete with Todo entry {
         # Delete if this is the target or a child of the target
-        if here.id == self.parent_id or here.parent_id == self.parent_id {
+        if jid(here) == self.parent_id or here.parent_id == self.parent_id {
             del here;
         }
     }
@@ -1038,7 +1038,7 @@ walker:priv UpdateItem {
     has new_name: str;
     can find with Root entry { visit [-->]; }
     can update with Item entry {
-        if here.id == self.item_id {
+        if jid(here) == self.item_id {
             here.name = self.new_name;
             report here;
         }
@@ -1050,7 +1050,7 @@ walker:priv DeleteItem {
     has item_id: str;
     can find with Root entry { visit [-->]; }
     can remove with Item entry {
-        if here.id == self.item_id {
+        if jid(here) == self.item_id {
             del here;
             report {"deleted": self.item_id};
         }

@@ -46,27 +46,18 @@ cl {
             if not inputValue.strip() {
                 return;
             }
-            newTodo = {"id": Date.now(), "text": inputValue.strip(), "done": False};
             response = root spawn create_todo(text=inputValue.strip());
-            newTodos = todos.concat([response.reports[0][0]]);
-            todos = newTodos;
+            newTodo = response.reports[0][0];
+            todos = todos.concat([newTodo]);
             inputValue = "";
         }
 
         # Toggle todo completion status
         async def toggleTodo(id: Any) -> None {
             print("toggleTodo", id);
-            id spawn toggle_todo();
-            todos = [
-                {
-                    "_jac_id": todo._jac_id,
-                    "text": todo.text,
-                    "done": not todo.done,
-                    "id": todo.id
-                }
-                    if todo._jac_id == id
-                    else todo for todo in todos
-            ];
+            result = id spawn toggle_todo();
+            updated = result.reports[0][0];
+            todos = [updated if todo._jac_id == id else todo for todo in todos];
         }
 
         # Delete a todo

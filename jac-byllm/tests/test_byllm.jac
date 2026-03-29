@@ -396,6 +396,23 @@ test "max react iterations with finish tool call" {
     assert "UNIT_TOOL_CALLS: 1" in stdout_value;
 }
 
+test "on_iteration callback ABORT and ABORT_WITH_SUMMARY" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("on_iteration_callback", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    # ABORT: hook fired, only 2 tool calls (a, b), c and d skipped
+    assert "ABORT_TRIGGERED" in stdout_value;
+    assert "ABORT_TOOLS: 2" in stdout_value;
+    assert "get_data called: a" in stdout_value;
+    assert "get_data called: b" in stdout_value;
+    # ABORT_WITH_SUMMARY: hook fired, only 2 tool calls (c, d), summary returned
+    assert "SUMMARY_TRIGGERED" in stdout_value;
+    assert "SUMMARY_TOOLS: 2" in stdout_value;
+    assert "SUMMARY_RESULT" in stdout_value;
+}
+
 test "plain text recovery - LLM bypasses finish_tool" {
     # Verifies the Bug 2B fix: when a model (e.g. gpt-4o) returns plain conversational
     # text instead of calling finish_tool, the invoke loop detects the failure,

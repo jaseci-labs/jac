@@ -109,6 +109,28 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - Manages scaling and load balancing
         [Kubernetes Deployment Reference](https://docs.jaseci.org/tutorials/production/kubernetes/)
 
+??? "Common Issues"
+
+    ??? question "I installed Jac with the one-line installer but `pip show` says packages aren't installed."
+        The one-line installer uses [uv](https://docs.astral.sh/uv/) to install Jac in an isolated environment, separate from your system Python. This means `pip show` and `pip list` won't find Jac packages. Use `jac --version` instead -- it lists all installed plugins and their versions.
+
+    ??? question "`jac clean --all` says 'No jac.toml found'."
+        `jac clean` requires a Jac project (a directory with `jac.toml`). If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac init` or `jac create <name>`.
+
+    ??? question "I see 'Address already in use' when running `jac start`."
+        Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start main.jac --port 3000`.
+
+    ??? question "My frontend shows data but fields are empty or undefined."
+        When returning node objects directly from `def:pub` endpoints, the serialized JSON uses internal field names like `_jac_id` instead of `id`. For reliable client-side access, return explicit dictionaries from your endpoints:
+        ```jac
+        # Instead of: return task;
+        # Use:
+        return {"id": jid(task), "title": task.title, "done": task.done};
+        ```
+
+    ??? question "`jac create --use client` fails or asks about Bun."
+        The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+
 ??? "Debugging & Support"
 
     ??? question "Where's the best place to get help?"
