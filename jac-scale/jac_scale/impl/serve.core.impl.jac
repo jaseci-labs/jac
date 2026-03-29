@@ -209,6 +209,7 @@ impl JacAPIServerCore.start(
             }
         }
     }
+    self.register_health_endpoint();
     self.register_create_user_endpoint();
     self.register_login_endpoint();
     self.register_page_endpoint();
@@ -838,6 +839,25 @@ impl JacAPIServerCore.register_sso_endpoints -> None {
 # ============================================================================
 # HMR (Hot Module Replacement) Support
 # ============================================================================
+"""Register the /healthz endpoint for liveness checks."""
+impl JacAPIServerCore.register_health_endpoint -> None {
+    async def health_check -> dict {
+        return {"status": "ok"};
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz',
+            callback=health_check,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check',
+            description='Returns 200 if the server is running'
+        )
+    );
+}
+
 """Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }

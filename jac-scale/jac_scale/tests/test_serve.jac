@@ -252,6 +252,11 @@ def teardown_serve_server(sp: subprocess.Popen | None) -> None {
 test "static and schema endpoints" {
     client = make_client();
     try {
+        # Test: health check endpoint
+        response = client.get("/healthz");
+        assert response.status_code == 200 , "Health check should return 200";
+        assert response.json() == {"status": "ok"};
+
         # Test: docs are disabled in production mode
         response = client.get("/docs");
         assert response.status_code == 404 , "Docs should be disabled in production mode";
