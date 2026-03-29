@@ -119,7 +119,6 @@ walker:priv InternalProcess { }
 sv {
     # Server-only block
     node User {
-        has id: str;
         has email: str;
     }
 }
