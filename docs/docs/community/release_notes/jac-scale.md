@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.10 (Unreleased)
 
+- **Dev Mode: Individual Walker/Function Endpoints in OpenAPI Docs**: In dev mode (`jac start --dev`), individual walker and function endpoints (e.g., `/walker/CreateTask`, `/walker/PublicInfo`) now appear in the Swagger UI alongside the dynamic catch-all routes. Previously, only the generic `/walker/{walker_name}` catch-all was shown, making it hard to discover and test specific walkers from the docs page.
 - **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
 - **Security: FastAPI docs disabled in production**: `/docs`, `/redoc`, and `/openapi.json` are no longer exposed in production. They are only available in dev mode.
 - **Health check endpoint**: Added `GET /healthz` for liveness checks. Returns `{"status": "ok"}` with no authentication required. Useful for Kubernetes probes and monitoring.

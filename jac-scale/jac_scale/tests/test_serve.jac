@@ -1623,6 +1623,49 @@ test "dev mode operations" {
     }
 }
 
+test "dev mode shows individual walker endpoints in openapi docs" {
+    sp = setup_dev_mode_server();
+    try {
+        # Fetch OpenAPI schema
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200 , (
+            f"OpenAPI endpoint returned {response.status_code}"
+        );
+        schema = response.json();
+        paths = list(schema.get("paths", {}).keys());
+
+        # Individual walker endpoints should appear (not just catch-all)
+        assert "/walker/CreateTask" in paths , (
+            f"Individual walker endpoint /walker/CreateTask not in OpenAPI docs. "
+            f"Walker paths: {[
+                p
+                for p in paths
+                if 'walker' in p.lower()
+            ]}"
+        );
+        assert "/walker/PublicInfo" in paths , (
+            f"Individual walker endpoint /walker/PublicInfo not in OpenAPI docs. "
+            f"Walker paths: {[
+                p
+                for p in paths
+                if 'walker' in p.lower()
+            ]}"
+        );
+
+        # Dynamic catch-all should also be present (for HMR)
+        assert "/walker/{walker_name}" in paths , (
+            f"Dynamic catch-all /walker/{{walker_name}} not in OpenAPI docs. "
+            f"Walker paths: {[
+                p
+                for p in paths
+                if 'walker' in p.lower()
+            ]}"
+        );
+    } finally {
+        teardown_dev_mode_server(sp);
+    }
+}
+
 # =============================================================================
 # GROUP 7: PORT FALLBACK TESTS
 # =============================================================================

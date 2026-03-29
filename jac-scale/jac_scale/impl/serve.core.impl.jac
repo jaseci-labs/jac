@@ -223,23 +223,24 @@ impl JacAPIServerCore.start(
     self.register_graph_endpoint();
     self.register_admin_endpoints();
     self.register_llm_telemetry_endpoints();
-    # Use dynamic routing for HMR support, static routing for production
+    # Register walker/function endpoints (both modes need them for OpenAPI docs)
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.register_websocket_endpoints();
     if dev {
         # Enable FastAPI docs only in dev mode
         self.server.app.docs_url = "/docs";
         self.server.app.openapi_url = "/openapi.json";
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
+        # Dynamic catch-all endpoints handle walkers/functions added via HMR
+        # after startup (specific routes registered above take priority)
         self.register_dynamic_walker_endpoint();
         self.register_dynamic_function_endpoint();
         self.register_dynamic_introspection_endpoints();
         self.register_dynamic_webhook_endpoint();
         self.register_dynamic_websocket_endpoint();
-    } else {
-        self.register_walkers_endpoints();
-        self.register_functions_endpoints();
-        self.register_webhook_endpoints();
-        self.register_websocket_endpoints();
     }
     self.register_root_asset_endpoint();
     self._register_client_error_endpoint();
