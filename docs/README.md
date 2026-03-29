@@ -4,7 +4,7 @@
 
 When adding content to the documentations maintain the document structure used in [docs](./docs/) folder. To include a new file or content into the documentation, edit the [mkdocs.yml](./mkdocs.yml) file.
 
-As an example consider adding a new 'example.md' file residing in file path './docs/learn' in to the [mkdocs.yml](./mkdocs.yml) file, under the 'for_contributors' subsection. The file should change as following.
+As an example consider adding a new 'example.md' file residing in file path './docs/learn' in to the [mkdocs.yml](./mkdocs.yml) file, under the 'for_contributors' subsection. The  file should change as following.
 
 ```yaml
 ...
