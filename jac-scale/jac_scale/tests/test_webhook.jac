@@ -146,8 +146,8 @@ def _start_server(
         }
 
         try {
-            response = requests.get(f"{base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Server started successfully on port {port}");
                 server_ready = True;
                 break;

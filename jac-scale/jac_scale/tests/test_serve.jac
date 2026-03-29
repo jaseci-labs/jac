@@ -151,8 +151,8 @@ def _start_server(
         }
 
         try {
-            response = requests.get(f"{base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Server started successfully on port {port}");
                 server_ready = True;
                 break;
@@ -1437,8 +1437,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         }
 
         try {
-            response = requests.get(f"{dm_base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{dm_base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Dev mode server started successfully on API port {dm_api_port}");
                 server_ready = True;
                 break;
@@ -1765,8 +1765,8 @@ test "server startup - port fallback integration" {
         );
 
         # Verify first server is running
-        response = requests.get(f"http://localhost:{port1}/docs", timeout=5);
-        assert response.status_code in (200, 404) , "First server should be running";
+        response = requests.get(f"http://localhost:{port1}/healthz", timeout=5);
+        assert response.status_code == 200 , "First server should be running";
 
         # Try to start second server on same port - should fallback to next port
         jac_executable = Path(sys.executable).parent / "jac";
@@ -1800,8 +1800,10 @@ test "server startup - port fallback integration" {
             # Check if server is responding on fallback ports
             for test_port in range(port1 + 1, port1 + 5) {
                 try {
-                    resp = requests.get(f"http://localhost:{test_port}/docs", timeout=1);
-                    if resp.status_code in (200, 404) {
+                    resp = requests.get(
+                        f"http://localhost:{test_port}/healthz", timeout=1
+                    );
+                    if resp.status_code == 200 {
                         actual_port = test_port;
                         break;
                     }
