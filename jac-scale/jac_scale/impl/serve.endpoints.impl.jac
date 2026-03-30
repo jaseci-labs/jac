@@ -122,9 +122,24 @@ impl JacAPIServerEndpoints.create_walker_callback(
         if nd {
             kwargs['_jac_spawn_node'] = nd;
         }
+        # Set current user for LLM limits enforcement
+        try {
+            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            _user_token = current_request_user.set(username or Con.GUEST.value);
+        } except Exception {
+            _user_token = None;
+        }
         result = await self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
+        # Reset ContextVar
+        if _user_token is not None {
+            try {
+                current_request_user.reset(_user_token);
+            } except Exception {
+                _ = 0;
+            }
+        }
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             return StreamingResponse(
                 result,
@@ -249,9 +264,24 @@ impl JacAPIServerEndpoints.create_function_callback(
             }
         }
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
+        # Set current user for LLM limits enforcement
+        try {
+            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            _user_token = current_request_user.set(username or Con.GUEST.value);
+        } except Exception {
+            _user_token = None;
+        }
         result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
+        # Reset ContextVar
+        if _user_token is not None {
+            try {
+                current_request_user.reset(_user_token);
+            } except Exception {
+                _ = 0;
+            }
+        }
         # Handle streaming responses (generators/async generators)
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             return StreamingResponse(
@@ -651,9 +681,27 @@ impl JacAPIServerEndpoints.register_dynamic_walker_endpoint -> None {
             kwargs['_jac_spawn_node'] = nd;
         }
 
+        # Set current user for LLM limits enforcement
+        _user_token = None;
+        try {
+            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            _user_token = current_request_user.set(username or Con.GUEST.value);
+        } except Exception {
+            _ = 0;
+        }
+
         result = await self.execution_manager.spawn_walker(
             walkers[walker_name], kwargs, (username or Con.GUEST.value)
         );
+
+        # Reset ContextVar
+        if _user_token is not None {
+            try {
+                current_request_user.reset(_user_token);
+            } except Exception {
+                _ = 0;
+            }
+        }
 
         # Handle streaming responses (generators/async generators)
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
@@ -849,9 +897,27 @@ impl JacAPIServerEndpoints.register_dynamic_function_endpoint -> None {
             }
         }
 
+        # Set current user for LLM limits enforcement
+        _user_token = None;
+        try {
+            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            _user_token = current_request_user.set(username or Con.GUEST.value);
+        } except Exception {
+            _ = 0;
+        }
+
         result = await self.execution_manager.execute_function(
             functions[function_name], kwargs, (username or Con.GUEST.value)
         );
+
+        # Reset ContextVar
+        if _user_token is not None {
+            try {
+                current_request_user.reset(_user_token);
+            } except Exception {
+                _ = 0;
+            }
+        }
         # Handle streaming responses (generators/async generators)
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             return StreamingResponse(

@@ -118,6 +118,7 @@ obj ScaleTestClient {
         self._server.register_graph_endpoint();
         self._server.register_admin_endpoints();
         self._server.register_llm_telemetry_endpoints();
+        self._server.register_llm_limits_endpoints();
         self._server.register_walkers_endpoints();
         self._server.register_functions_endpoints();
         self._server.register_webhook_endpoints();

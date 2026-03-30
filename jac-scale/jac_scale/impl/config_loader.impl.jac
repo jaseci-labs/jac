@@ -104,7 +104,16 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'system_user_password': 'system_secret',
             'collection': 'scheduled_jobs'
         },
-        'telemetry': {'max_traces': 1000}
+        'telemetry': {'max_traces': 1000},
+        'llm_limits': {
+            'enabled': True,
+            'default_budget_limit': 0,
+            'default_budget_period': 'monthly',
+            'default_rpm': 0,
+            'default_tpm': 0,
+            'default_allowed_models': [],
+            'enforcement_mode': 'strict'
+        }
     };
 }
 
@@ -311,6 +320,21 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any]
         'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
         or scheduler_config.get('system_user_password', 'system_secret'),
         'collection': scheduler_config.get('collection', 'scheduled_jobs')
+    };
+}
+
+"""Get LLM limits configuration from jac.toml."""
+impl JacScaleConfig.get_llm_limits_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    llm_limits_config = config.get('llm_limits', {});
+    return {
+        'enabled': llm_limits_config.get('enabled', True),
+        'default_budget_limit': float(llm_limits_config.get('default_budget_limit', 0)),
+        'default_budget_period': llm_limits_config.get('default_budget_period', 'monthly'),
+        'default_rpm': int(llm_limits_config.get('default_rpm', 0)),
+        'default_tpm': int(llm_limits_config.get('default_tpm', 0)),
+        'default_allowed_models': llm_limits_config.get('default_allowed_models', []),
+        'enforcement_mode': llm_limits_config.get('enforcement_mode', 'strict')
     };
 }
 

@@ -202,14 +202,6 @@ cl {
             />;
     }
 
-    def:pub RateLimitsPage -> JsxElement {
-        return
-            <PlaceholderCard
-                title="Rate Limits"
-                message="Rate limit configuration coming soon"
-            />;
-    }
-
     def:pub CorsPage -> JsxElement {
         return
             <PlaceholderCard

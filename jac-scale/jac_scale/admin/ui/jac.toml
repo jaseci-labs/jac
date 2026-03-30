@@ -16,9 +16,9 @@ plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
 [dependencies.npm]
-jac-client-node = "1.0.4"
+jac-client-node = "1.0.7"
 tailwindcss = "latest"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+"@jac-client/dev-deps" = "2.0.0"
 "@tailwindcss/vite" = "^4.1.17"
