@@ -75,8 +75,32 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
     kwargs.pop('markup', None);
     kwargs.pop('highlight', None);
     kwargs.pop('style', None);
-    # Plain print - user data is never modified
-    print(*args, **kwargs);
+    # Handle Windows console encoding - replace unencodable chars
+    if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
+        # Windows cmd/PowerShell can't handle many Unicode chars
+        encoding: str = str(getattr(sys.stdout, 'encoding', None) or 'cp1252');
+        processed_args: list = [];
+        for arg in args {
+            if isinstance(arg, str) {
+                try {
+                    # Test if string can be encoded with current console encoding
+                    arg.encode(encoding);
+                    processed_args.append(arg);
+                } except UnicodeEncodeError {
+                    # Replace unencodable chars with ?
+                    processed_args.append(
+                        arg.encode(encoding, errors='replace').decode(encoding)
+                    );
+                }
+            } else {
+                processed_args.append(arg);
+            }
+        }
+        print(*processed_args, **kwargs);
+    } else {
+        # Plain print - user data is never modified
+        print(*args, **kwargs);
+    }
     # Flush for piped/subprocess output
     sys.stdout.flush();
 }
@@ -176,7 +200,11 @@ impl JacConsole.print_header(title: str, version: str | None = None) -> None {
 }
 
 """Print a list of labeled URLs."""
-impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
+impl JacConsole.print_urls(urls: Any, symbol: str = '') -> None {
+    # Use Unicode arrow if emoji supported, otherwise ASCII
+    if not symbol {
+        symbol = '>' if not self.use_emoji else '➜';
+    }
     items = urls.items() if isinstance(urls, dict) else urls;
     for (label, url) in items {
         padded_label = f"{label}:".ljust(10);
@@ -209,8 +237,12 @@ impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') ->
 
 """Print a list of items with colored symbols."""
 impl JacConsole.print_list(
-    items: list[str], style: str = 'success', symbol: str = '✔'
+    items: list[str], style: str = 'success', symbol: str = ''
 ) -> None {
+    # Use Unicode checkmark if emoji supported, otherwise ASCII
+    if not symbol {
+        symbol = '*' if not self.use_emoji else '✔';
+    }
     color_map = {'success': GREEN, 'warning': YELLOW, 'error': RED, 'info': CYAN};
     color = color_map.get(style, GREEN);
     for item in items {

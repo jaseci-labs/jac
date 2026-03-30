@@ -28,11 +28,11 @@ A protocol-independent request container that normalizes requests from different
 
 ```jac
 obj TransportRequest {
-    has method: str,                                    # HTTP method (GET, POST, etc.)
-        path: str,                                      # Request path
+    has method: str,                                   # HTTP method (GET, POST, etc.)
+        path: str,                                     # Request path
         headers: dict[(str, str)] = {},                # Request headers
         body: Any = None,                              # Request body
-        query_params: dict[(str, <>list[str])] = {},  # Query parameters
+        query_params: dict[(str, list[str])] = {},     # Query parameters
         metadata: dict[(str, Any)] = {};               # Custom metadata
 }
 ```
