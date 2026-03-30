@@ -108,8 +108,8 @@ obj JacScaleTestRunner {
             }
 
             try {
-                response = requests.get(f"{self.base_url}/docs", timeout=2);
-                if response.status_code in (200, 404) {
+                response = requests.get(f"{self.base_url}/healthz", timeout=2);
+                if response.status_code == 200 {
                     print(f"Server started on port {self.port}");
                     server_ready = True;
                     break;

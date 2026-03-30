@@ -1,3 +1,4 @@
+import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
@@ -5,6 +6,8 @@ import from jaclang.runtimelib.client_bundle {
     _lookup_module_in_hub,
     _ensure_js_generated
 }
+
+glob _client_error_logger = logging.getLogger("jaclang.client_errors");
 
 impl UserManager.postinit -> None {
     import sqlite3;
@@ -1900,6 +1903,44 @@ impl JacAPIServer.start(
             self.scheduler.stop();
         }
     }
+}
+
+"""Handle a client-side error report posted to /cl/__error__.
+
+Logs the error via the client_errors logger and prints to console.
+Requires at least a 'message' field in the JSON payload.
+"""
+def _handle_client_error(handler: Any, data: dict[str, Any]) -> None {
+    message = data.get('message', '');
+    if not message {
+        Jac.send_json(handler, 400, {'error': 'Missing required field: message'});
+        return;
+    }
+    stack = data.get('stack', '');
+    url = data.get('url', '');
+    source = data.get('source', '');
+    timestamp = data.get('timestamp', '');
+    # Log to the client_errors logger
+    log_parts = [f"[Client] {message}"];
+    if stack {
+        log_parts.append(f"  Stack: {stack}");
+    }
+    if url {
+        log_parts.append(f"  URL: {url}");
+    }
+    if source {
+        log_parts.append(f"  Source: {source}");
+    }
+    log_message = '\n'.join(log_parts);
+    _client_error_logger.error(log_message);
+    # Also print to console for dev visibility
+    console.error(f"[Client] {message}");
+    if stack {
+        for line in stack.split('\n') {
+            console.print(f"    {line}");
+        }
+    }
+    Jac.send_json(handler, 200, {'ok': True});
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""
