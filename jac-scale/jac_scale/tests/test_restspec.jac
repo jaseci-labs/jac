@@ -173,7 +173,7 @@ test "get func with params" {
 test "openapi specs" {
     client = make_client("restspec_fixtures.jac");
     try {
-        spec = client.get("/openapi.json").json();
+        spec = client._server.server.app.openapi();
         paths = spec["paths"];
 
         assert "/custom/walker" in paths;
@@ -213,7 +213,7 @@ test "restspec path parameters" {
         auth = {"Authorization": f"Bearer {extract_data(login.json())['token']}"};
 
         # --- OpenAPI schema: routes registered with correct path templates ---
-        spec = client.get("/openapi.json").json();
+        spec = client._server.server.app.openapi();
         paths = spec["paths"];
         assert "/items/{item_id}" in paths and "get" in paths["/items/{item_id}"];
         assert "/users/{user_id}/orders" in paths
@@ -291,7 +291,7 @@ test "restspec path parameters" {
 test "walker with default node parameter route" {
     client = make_client("restspec_fixtures.jac");
     try {
-        spec = client.get("/openapi.json").json();
+        spec = client._server.server.app.openapi();
         paths = spec["paths"];
 
         walker_paths_with_param = [

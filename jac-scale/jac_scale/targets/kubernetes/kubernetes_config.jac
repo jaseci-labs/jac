@@ -58,6 +58,14 @@ obj KubernetesConfig(BaseConfig) {
         redis_password: str = 'password',
         # Ingress configuration
         ingress_node_port: int = 30080,
+        # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
+        # limit_rps: sustained requests/sec per client IP.
+        # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
+        # limit_connections: max concurrent open connections per client IP.
+        ingress_limit_rps: int = 20,
+        ingress_limit_burst_multiplier: int = 5,
+        ingress_limit_connections: int = 20,
+        ingress_session_affinity: bool = True,
         # Domain / TLS configuration
         domain: str = "",
         cert_manager_email: str = "";
@@ -122,6 +130,10 @@ obj KubernetesConfig(BaseConfig) {
                 'redis_password': self.redis_password,
                 # Ingress configuration
                 'ingress_node_port': self.ingress_node_port,
+                'ingress_limit_rps': self.ingress_limit_rps,
+                'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
+                'ingress_limit_connections': self.ingress_limit_connections,
+                'ingress_session_affinity': self.ingress_session_affinity,
                 # Domain / TLS configuration
                 'domain': self.domain,
                 'cert_manager_email': self.cert_manager_email
@@ -186,6 +198,12 @@ obj KubernetesConfig(BaseConfig) {
             redis_username=config.get('redis_username', 'admin'),
             redis_password=config.get('redis_password', 'password'),
             ingress_node_port=config.get('ingress_node_port', 30080),
+            ingress_limit_rps=config.get('ingress_limit_rps', 20),
+            ingress_limit_burst_multiplier=config.get(
+                'ingress_limit_burst_multiplier', 5
+            ),
+            ingress_limit_connections=config.get('ingress_limit_connections', 20),
+            ingress_session_affinity=config.get('ingress_session_affinity', True),
             domain=config.get('domain', ''),
             cert_manager_email=config.get('cert_manager_email', '')
         );

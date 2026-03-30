@@ -7,7 +7,7 @@ name = "jac-highlighter"
 version = "0.0.1"
 description = "A Pygments lexer for the Jac programming language."
 dependencies = [
-    "pygments",
+    "pygments<2.20",
     "mkdocs",
     "mkdocs-material",
     "mkdocs-redirects",

@@ -67,8 +67,8 @@ cl {
 
         async def addEmployee(name: str, role: str) -> None {
             if selectedDept {
-                result = selectedDept._jac_id spawn add_employee(
-                    name=name, role=role, dept_id=selectedDept._jac_id
+                result = jid(selectedDept) spawn add_employee(
+                    name=name, role=role, dept_id=jid(selectedDept)
                 );
                 newEmp = result.reports[0][0];
             }

@@ -917,6 +917,23 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       }
       return h;
     },
+    jid(obj) {
+      if (obj === null || obj === undefined) {
+        throw new _jac.exc.TypeError(
+          "jid() called on " + String(obj)
+          + " -- the server may have returned an error instead of a node."
+          + " Check that your endpoint returned successfully before using jid()."
+        );
+      }
+      if (obj._jac_id === undefined) {
+        throw new _jac.exc.TypeError(
+          "jid() expected a node or edge with graph identity, but received "
+          + (typeof obj === "object" ? JSON.stringify(Object.keys(obj)) : typeof obj)
+          + ". Only node and edge archetypes have a jid."
+        );
+      }
+      return obj._jac_id;
+    },
     hash(obj) { return _jac.builtin.id(obj); },
     repr(obj) { return JSON.stringify(obj); },
     pow(base, exp, mod) {

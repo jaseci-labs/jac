@@ -93,6 +93,8 @@ obj JacAPIServerCore {
     def register_update_password_endpoint -> None;
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
+    # Health check
+    def register_health_endpoint -> None;
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
