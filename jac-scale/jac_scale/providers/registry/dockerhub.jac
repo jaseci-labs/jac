@@ -52,7 +52,7 @@ obj DockerHubRegistry(ImageRegistry) {
 
         # Ensure .dockerignore excludes local override files
         dockerignore_path = os.path.join(code_folder, '.dockerignore');
-        ignore_entries = ['jac.local.toml', 'jac.*.toml'];
+        ignore_entries = ['jac.local.toml', 'jac.*.toml', '.env', '.jac/'];
         existing_entries: list[str] = [];
         if os.path.exists(dockerignore_path) {
             with open(dockerignore_path, 'r') as f {
@@ -104,18 +104,22 @@ obj DockerHubRegistry(ImageRegistry) {
             docker_client.login(
                 username=self.docker_username, password=self.docker_password
             );
+            seen_statuses: set = set();
             for chunk in docker_client.images.push(
                 image_name, stream=True, decode=True
             ) {
-                if 'status' in chunk {
-                    detail = chunk.get('progressDetail', {});
-                    if detail {
-                        console.print(f"  {chunk['status']} {detail}");
-                    } else {
-                        console.print(f"  {chunk['status']}");
-                    }
-                } elif 'error' in chunk {
+                if 'error' in chunk {
                     raise RuntimeError(f"Push failed: {chunk['error']}");
+                }
+                if 'status' in chunk and not chunk.get('progressDetail') {
+                    layer_id = chunk.get('id', '');
+                    status = chunk['status'];
+                    key = f"{layer_id}:{status}";
+                    if key not in seen_statuses {
+                        seen_statuses.add(key);
+                        msg = f"  [{layer_id}] {status}" if layer_id else f"  {status}";
+                        console.print(msg);
+                    }
                 }
             }
         } except APIError as e {
