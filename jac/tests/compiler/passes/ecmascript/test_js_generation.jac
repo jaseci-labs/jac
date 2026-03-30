@@ -88,6 +88,12 @@ do not trigger false positives.
 def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
     import re;
 
+    # Strip string literals so English words inside error messages
+    # and other quoted text don't trigger false positives.
+    code_without_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', js_code);
+    code_without_strings = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code_without_strings);
+    code_without_strings = re.sub(r"`(?:[^`\\]|\\.)*`", "``", code_without_strings);
+
     # Each entry: (keyword, pattern that matches Jac *statement* usage)
     # e.g. ``has varname`` at the start of a statement, not ``let has = ...``
     jac_keywords = [
@@ -105,7 +111,7 @@ def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
     ];
 
     for (kw_name, pattern) in jac_keywords {
-        assert not re.search(pattern, js_code) , (
+        assert not re.search(pattern, code_without_strings) , (
             f"Jac keyword '{kw_name}' leaked into JavaScript for {fixture_name}"
         );
     }

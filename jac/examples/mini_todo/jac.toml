@@ -1,0 +1,22 @@
+[project]
+name = "mini-todo"
+version = "1.0.0"
+description = "Minimal full-stack AI todo app"
+entry-point = "main.jac"
+
+[dependencies.npm]
+jac-client-node = "1.0.7"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "2.0.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+[plugins.byllm.model]
+default_model = "claude-sonnet-4-20250514"
