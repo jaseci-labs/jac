@@ -32,7 +32,31 @@ jobs:
         pip install watchdog
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest -x jac/tests/compiler jac/tests/language jac/tests/project jac/tests/utils -n auto
+
+  test-typecheck-lsp:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run typechecking and LSP tests
+      run: pytest -x jac/tests/typecheck jac/tests/langserve jac/tests/runtimelib -n auto
 
   test-client:
     runs-on: ubuntu-latest
