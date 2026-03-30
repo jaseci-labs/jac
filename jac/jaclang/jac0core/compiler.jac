@@ -238,14 +238,6 @@ obj _SetupProgress {
 
 glob setup_progress = _SetupProgress();
 
-"""Recalculate parent pointers after mutating node children."""
-def _recalculate_parents(nd: uni.UniNode) -> None {
-    for child in nd.kid {
-        child.parent = nd;
-        _recalculate_parents(child);
-    }
-}
-
 """Coerce a module to a specific code context by unfolding its target block type.
 
 Unfolds elements from `unfold_type` blocks, keeps `skip_types` blocks as-is,
@@ -296,7 +288,6 @@ def _coerce_module(
     }
     new_kid.extend(module.body);
     module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
-    _recalculate_parents(module);
 }
 
 """Coerce a .cl.jac module to client context."""
