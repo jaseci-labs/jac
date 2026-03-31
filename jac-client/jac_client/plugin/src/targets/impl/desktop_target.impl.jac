@@ -21,7 +21,7 @@ glob DEFAULT_API_PORT: int = 8000,
      SUBPROCESS_TIMEOUT_SHORT: int = 5,
      SUBPROCESS_TIMEOUT_MEDIUM: int = 60,
      SUBPROCESS_TIMEOUT_LONG: int = 300,
-     SUBPROCESS_TIMEOUT_BUILD: int = 1800,
+     SUBPROCESS_TIMEOUT_BUILD: int = 3600,
      DEFAULT_ICON_COLOR_RGB: tuple[int, int, int, int] = (66, 139, 202, 255),
      DEFAULT_ICON_SIZE: int = 1024,
      DEFAULT_WINDOW_WIDTH: int = 1200,
@@ -2886,7 +2886,7 @@ if __name__ == "__main__":
         );
         return output_path;
     } except subprocess.TimeoutExpired {
-        console.warning("PyInstaller timed out after 10 minutes");
+        console.warning("PyInstaller timed out after 60 minutes");
         return None;
     } except Exception as e {
         console.warning(f"PyInstaller error: {e}");
