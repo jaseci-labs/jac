@@ -951,6 +951,7 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_webhook_endpoints();
     self.register_websocket_endpoints();
     # Post-registration
+    self.register_scheduler_endpoints();
     self.register_root_asset_endpoint();
     self._register_client_error_endpoint();
     self._configure_openapi_security();
@@ -1156,9 +1157,6 @@ impl JacAPIServerCore._setup_scheduler -> None {
 
     # Start APScheduler background thread
     jac_scheduler.start();
-
-    # Register /jobs REST endpoints
-    self.register_scheduler_endpoints();
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""
