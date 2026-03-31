@@ -735,7 +735,7 @@ def _generate_ico_from_png(icons_dir: Path) -> None {
 
     # Try using PIL directly first (faster, better error messages)
     try {
-        from PIL import Image;
+        import from PIL {Image}
         img = Image.open(str(png_path));
         # ICO needs multiple sizes - use common Windows icon sizes
         sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
@@ -744,7 +744,7 @@ def _generate_ico_from_png(icons_dir: Path) -> None {
         return;
     } except ImportError {
         # PIL not available, try subprocess fallback
-        pass;
+
     } except Exception as e {
         console.warning(f"  Could not generate icon.ico: {e}");
         return;
@@ -3122,7 +3122,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Hide console window on Windows
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
