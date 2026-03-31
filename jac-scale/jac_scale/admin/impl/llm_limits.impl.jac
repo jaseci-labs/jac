@@ -545,7 +545,7 @@ obj LLMLimitsStore {
                     }
                 } except Exception {
                     # If parsing fails, skip auto-reset
-                    _ = 0;
+                    ;
                 }
             }
             # Now check current spend against budget
@@ -560,7 +560,7 @@ obj LLMLimitsStore {
                         reset_dt = datetime.fromisoformat(reset_at);
                         reset_msg = f" Resets at {reset_dt.strftime('%Y-%m-%d %H:%M UTC')}";
                     } except Exception {
-                        _ = 0;
+                        ;
                     }
                 }
                 return {
@@ -812,7 +812,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                         kwargs['api_key'] = _active_provider_keys[provider];
                     }
                 } except Exception {
-                    _ = 0;
+                    ;
                 }
             }
 
@@ -886,7 +886,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                         kwargs['api_key'] = _active_provider_keys[provider];
                     }
                 } except Exception {
-                    _ = 0;
+                    ;
                 }
             }
 
