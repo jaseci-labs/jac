@@ -50,18 +50,12 @@ impl DeclImplMatchPass.transform(
     for module in all_modules {
         for arch in module.get_all_sub_nodes(uni.Archetype) {
             for has_var in arch.get_has_vars() {
-                if (
-                    has_var.defer
-                    and has_var.kid
-                    and isinstance(has_var.kid[-1], uni.Name)
-                ) {
-                    postinit_nd: uni.Name = has_var.kid[-1];
-                    if postinit_nd.sym is None {
-                        postinit_sym = arch.names_in_scope.get("__post_init__");
-                        if postinit_sym is not None {
-                            postinit_nd._sym = postinit_sym;
-                        }
-                    }
+                if not (has_var.defer and has_var.kid and isinstance(has_var.kid[-1], uni.Name)) { continue; }
+                postinit_nd: uni.Name = has_var.kid[-1];
+                if postinit_nd.sym is not None { continue; }
+                postinit_sym = arch.names_in_scope.get("__post_init__");
+                if postinit_sym is not None {
+                    postinit_nd._sym = postinit_sym;
                 }
             }
         }
