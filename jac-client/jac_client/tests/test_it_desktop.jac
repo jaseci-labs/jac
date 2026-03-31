@@ -115,7 +115,7 @@ def get_minimal_desktop_jac -> str {
 
 """Get minimal jac.toml content for desktop testing."""
 def get_minimal_jac_toml(name: str = "test-desktop-app") -> str {
-    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "1.0.0"\n\n[serve]\nbase_route_app = "app"\n';
+    return f'[project]\nname = "{name}"\nversion = "1.0.0"\ndescription = "Desktop test app"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[serve]\nbase_route_app = "app"\n';
 }
 
 # =============================================================================

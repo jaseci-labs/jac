@@ -104,11 +104,9 @@ test "create jac app" {
                 with open(package_json_path) as f {
                     package_data = json.load(f);
                 }
-                # Verify default dependencies are in package.json
-                assert "jac-client-node" in package_data.get("dependencies", {});
-                assert "@jac-client/dev-deps" in package_data.get(
-                    "devDependencies", {}
-                );
+                # Verify core dependencies are in package.json (individual packages)
+                assert "react" in package_data.get("dependencies", {});
+                assert "vite" in package_data.get("devDependencies", {});
             }
         } finally {
             # Return to original directory
@@ -270,11 +268,9 @@ test "create jac app with button component" {
                 with open(package_json_path) as f {
                     package_data = json.load(f);
                 }
-                # Verify default dependencies are in package.json
-                assert "jac-client-node" in package_data.get("dependencies", {});
-                assert "@jac-client/dev-deps" in package_data.get(
-                    "devDependencies", {}
-                );
+                # Verify core dependencies are in package.json (individual packages)
+                assert "react" in package_data.get("dependencies", {});
+                assert "vite" in package_data.get("devDependencies", {});
             }
         } finally {
             # Return to original directory
@@ -375,11 +371,9 @@ test "create jac app installs default packages" {
                 with open(package_json_path) as f {
                     package_data = json.load(f);
                 }
-                # Verify default dependencies are in package.json
-                assert "jac-client-node" in package_data.get("dependencies", {});
-                assert "@jac-client/dev-deps" in package_data.get(
-                    "devDependencies", {}
-                );
+                # Verify core dependencies are in package.json (individual packages)
+                assert "react" in package_data.get("dependencies", {});
+                assert "vite" in package_data.get("devDependencies", {});
             }
         } finally {
             # Return to original directory
@@ -896,7 +890,7 @@ test "raw template config files from jac toml" {
 
             # Create jac.toml with raw template config
             raw_content = 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";\n\nexport const docs = defineDocs({\n  dir: "content/docs",\n});\n\nexport default defineConfig({});';
-            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
+            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -937,7 +931,7 @@ test "npmrc from jac toml" {
 
             # Create jac.toml with npm scoped registry and auth config
             # Include required npm deps to avoid auto-injection modifying the file
-            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\njac-client-node = "1.0.7"\n\n[dependencies.npm.dev]\n"@jac-client/dev-deps" = "2.0.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1076,19 +1070,20 @@ test "vite build prompts for missing client deps" {
             data = tomllib.load(f);
         }
         npm_deps = data.get("dependencies", {}).get("npm", {});
-        # Now uses meta-packages instead of individual deps
-        assert "jac-client-node" in npm_deps , "jac-client-node should be in dependencies.npm";
+        # Uses individual deps directly (not meta-packages)
+        assert "react" in npm_deps , "react should be in dependencies.npm";
+        assert "react-dom" in npm_deps , "react-dom should be in dependencies.npm";
         npm_dev = npm_deps.get("dev", {});
-        assert "@jac-client/dev-deps" in npm_dev , "@jac-client/dev-deps should be in dev dependencies";
+        assert "vite" in npm_dev , "vite should be in dev dependencies";
         # Verify the generated package.json also picked up the deps
         package_json = project_dir / ".jac" / "client" / "configs" / "package.json";
         assert package_json.exists() , "package.json should have been generated";
         with open(package_json) as f {
             pkg = json.load(f);
         }
-        # jac-client-node bundles react, @jac-client/dev-deps bundles vite
-        assert pkg["dependencies"].get("jac-client-node") , "package.json should have jac-client-node";
-        assert pkg["devDependencies"].get("@jac-client/dev-deps") , "package.json should have @jac-client/dev-deps";
+        # Individual deps should be in package.json
+        assert pkg["dependencies"].get("react") , "package.json should have react";
+        assert pkg["devDependencies"].get("vite") , "package.json should have vite";
     }
 }
 
