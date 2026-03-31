@@ -99,7 +99,7 @@ obj JacAPIServerCore {
     def _register_client_error_endpoint -> None;
     # HMR support
     def enable_hmr(hot_reloader: Any) -> None;
-    def _clear_user_routes -> None;
+    def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
     # API key management
@@ -187,7 +187,6 @@ obj JacAPIServerStatic {
 obj JacAPIServer(JacAPIServerCore, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _core_endpoint_count: int = 0,
         _hot_reloader: Any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,

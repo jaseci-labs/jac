@@ -209,21 +209,6 @@ impl JacAPIServerCore.start(
             }
         }
     }
-    self.register_health_endpoint();
-    self.register_create_user_endpoint();
-    self.register_login_endpoint();
-    self.register_page_endpoint();
-    self.register_refresh_token_endpoint();
-    self.register_sso_endpoints();
-    self.register_client_js_endpoint();
-    self.register_static_file_endpoint();
-    self.register_update_username_endpoint();
-    self.register_update_password_endpoint();
-    self.register_api_key_endpoints();
-    self.register_graph_endpoint();
-    self.register_admin_endpoints();
-    self.register_llm_telemetry_endpoints();
-    # Register named endpoints for both dev and production
     if dev {
         # Enable FastAPI docs only in dev mode
         self.server.app.docs_url = "/docs";
@@ -231,13 +216,7 @@ impl JacAPIServerCore.start(
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
     }
-    # Save boundary so HMR knows which endpoints are user-defined (walkers/functions/webhooks)
-    self._core_endpoint_count = len(self.server._endpoints);
-    # Register named endpoints (individual walker/function names visible in OpenAPI docs)
-    self.register_walkers_endpoints();
-    self.register_functions_endpoints();
-    self.register_webhook_endpoints();
-    self.register_websocket_endpoints();
+    self._register_endpoints();
     if dev {
         # Add middleware to refresh endpoints on HMR file changes
         import from starlette.requests { Request as StarletteRequest }
@@ -253,9 +232,6 @@ impl JacAPIServerCore.start(
             return await call_next(request);
         }
     }
-    self.register_root_asset_endpoint();
-    self._register_client_error_endpoint();
-    self._configure_openapi_security();
     self.user_manager.create_user(Con.GUEST.value, '__no_password__');
     self._setup_scheduler();
     # Find an available port (may differ from requested if port is in use)
@@ -952,32 +928,51 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     logger.debug("Dynamic routing enabled for jac-scale");
 }
 
-"""Remove user-defined routes (walkers, functions, webhooks, websockets) from app and endpoint list."""
-impl JacAPIServerCore._clear_user_routes -> None {
-    import from starlette.routing { WebSocketRoute }
-    # Collect paths of user endpoints (everything after core endpoints)
-    user_paths = {ep.path for ep in self.server._endpoints[self._core_endpoint_count:]};
-    # Remove matching routes + WebSocket routes (which bypass _endpoints)
-    self.server.app.routes[:] = [
-        r
-        for r in self.server.app.routes
-        if not (r?.path and (r.path in user_paths or isinstance(r, WebSocketRoute)))
-    ];
-    # Trim endpoints back to core only
-    self.server._endpoints[:] = self.server._endpoints[:self._core_endpoint_count];
-}
-
-"""Refresh dev endpoints after HMR reload - removes stale routes and re-registers named endpoints."""
-impl JacAPIServerCore._refresh_dev_endpoints -> None {
-    self._hmr_pending = False;
-    self.introspector.load(force_reload=True);
-    self._clear_user_routes();
-    start = len(self.server._endpoints);
+"""Register all endpoints (core + user-defined). Called at startup and on HMR refresh."""
+impl JacAPIServerCore._register_endpoints -> None {
+    # Core endpoints
+    self.register_health_endpoint();
+    self.register_create_user_endpoint();
+    self.register_login_endpoint();
+    self.register_page_endpoint();
+    self.register_refresh_token_endpoint();
+    self.register_sso_endpoints();
+    self.register_client_js_endpoint();
+    self.register_static_file_endpoint();
+    self.register_update_username_endpoint();
+    self.register_update_password_endpoint();
+    self.register_api_key_endpoints();
+    self.register_graph_endpoint();
+    self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
+    # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();
     self.register_webhook_endpoints();
-    self.server.execute_from(start);
     self.register_websocket_endpoints();
+    # Post-registration
+    self.register_root_asset_endpoint();
+    self._register_client_error_endpoint();
+    self._configure_openapi_security();
+}
+
+"""Refresh all endpoints after HMR reload - clears routes and re-registers from scratch."""
+impl JacAPIServerCore._refresh_dev_endpoints -> None {
+    import from fastapi.routing { APIRoute }
+    import from starlette.routing { WebSocketRoute }
+    self._hmr_pending = False;
+    self.introspector.load(force_reload=True);
+    # Clear all registered endpoints and their FastAPI routes
+    # (docs routes are plain starlette.Route, not APIRoute, so they're preserved)
+    self.server._endpoints[:] = [];
+    self.server.app.routes[:] = [
+        r
+        for r in self.server.app.routes
+        if not isinstance(r, (APIRoute, WebSocketRoute))
+    ];
+    # Re-register everything from scratch
+    self._register_endpoints();
+    self.server.execute_from(0);
     self.server.app.openapi_schema = None;
 }
 
