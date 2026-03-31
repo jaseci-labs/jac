@@ -245,7 +245,7 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
             }
             # Topology index lives only on root anchors
             anchor.topology_index_data = None;
-            if isinstance(getattr(anchor, 'archetype', None), Root) {
+            if isinstance(anchor.__dict__.get('archetype'), Root) {
                 if (topo_b64 := data.get('topology_index_data')) {
                     import from base64 { b64decode }
                     anchor.topology_index_data = b64decode(topo_b64);
