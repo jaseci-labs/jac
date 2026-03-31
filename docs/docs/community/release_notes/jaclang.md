@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.4 (Unreleased)
 
+- **Feat: Topology Index Persists Across Sessions**: The topology index (`topology_index_data` on root `NodeAnchor`) now survives Serializer round-trips via base64 encoding, enabling DB-backed graphs (MongoDB, SQLite) to retain the adjacency index across sessions instead of rebuilding from scratch. The index is excluded from `_compute_hash` dirty-checking since it's a derived cache, and serialization is scoped to root anchors only to avoid overhead on regular nodes.
 - **Fix: False W2003 Warning on `by llm()` Parameters**: Parameters in GenAI abilities (`def foo(x: str) -> T by llm()`) no longer trigger spurious "defined but never used" warnings. The static analysis pass now recognizes `is_genai_ability` alongside `needs_impl` when skipping parameter usage checks.
 - **ES Codegen: `jid()` Moved to Client Runtime**: `jid()` is now a proper runtime function (`_jac.builtin.jid()`) instead of an inline property access (`x._jac_id`). This provides clear, actionable error messages when called on `null` (e.g. server returned an error) or non-node objects, with stack traces pointing to the `.jac` source line. The `assert_no_jac_keywords` test was also improved to strip string literals before scanning, preventing false positives from English words in error messages.
 
