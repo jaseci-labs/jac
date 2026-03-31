@@ -80,6 +80,19 @@ test "impl file warnings: undefined name and unreachable code are reported" {
     assert any("Unreachable" in w for w in warning_msgs) , f"Expected unreachable code warning from impl file, got: {warning_msgs}";
 }
 
+test "by-llm ability params produce no unused warnings" {
+    file_path = os.path.join(FIXTURES, "genai_ability_params.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    unused_warnings = [
+        w
+        for w in warning_msgs
+        if "defined but never used" in w
+    ];
+    assert len(unused_warnings) == 0 , f"Expected no unused warnings for by-llm params, got: {unused_warnings}";
+}
+
 test "classmethod and staticmethod on obj produce warnings" {
     file_path = os.path.join(FIXTURES, "classmethod_on_obj.jac");
     prog = JacProgram();

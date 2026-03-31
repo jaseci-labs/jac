@@ -64,9 +64,9 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         if name in ("self", "super", "init", "postinit") {
             continue;
         }
-        # Skip parameters of abstract abilities (no body to use them in)
+        # Skip parameters of abstract abilities and by-llm abilities
         if sym.sym_type == SymbolType.VAR and isinstance(scope, uni.Ability) {
-            if scope.needs_impl {
+            if scope.needs_impl or scope.is_genai_ability {
                 continue;
             }
         }
