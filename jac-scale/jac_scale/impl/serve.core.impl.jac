@@ -972,7 +972,7 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
     ];
     # Re-register everything from scratch
     self._register_endpoints();
-    self.server.execute_from(0);
+    self.server.execute();
     self.server.app.openapi_schema = None;
 }
 

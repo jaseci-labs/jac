@@ -139,7 +139,6 @@ class JFastApiServer(JServer[FastAPI]) {
     ) -> tuple[int, int, int, str];
 
     def execute(self: JFastApiServer) -> None;
-    def execute_from(self: JFastApiServer, start: int) -> None;
     def create_server(self: JFastApiServer) -> FastAPI;
     def _create_fastapi_route(
         self: JFastApiServer, method: HTTPMethod, endpoint: JEndPoint
