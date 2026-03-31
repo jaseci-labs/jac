@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.11 (Unreleased)
 
+- **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
+
 ## jac-client 0.3.10 (Latest Release)
 
 - **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs`, `/redoc`, `/openapi.json`, `/admin`, and `/graph` to the API backend, so developers can access all dev tools from the client URL without switching ports.

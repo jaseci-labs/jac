@@ -18,30 +18,27 @@ import from jaclang.project.plugin_config { deep_merge }
 
 # Runtime dependencies (always injected)
 glob CORE_RUNTIME_DEPS: dict[str, str] = {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0",
-    "react-error-boundary": "^5.0.0"
-};
-
-# Optional runtime dependencies (injected by default, separable later)
-glob OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
-    "react-hook-form": "^7.71.0",
-    "zod": "^4.3.6",
-    "@hookform/resolvers": "^5.2.2"
-};
-
-# Dev/build dependencies (always injected)
-glob CORE_DEV_DEPS: dict[str, str] = {
-    "vite": "^6.4.1",
-    "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.3.3",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0"
-};
-
-# Legacy meta-package names (for migration)
-glob LEGACY_META_PACKAGES = {"jac-client-node", "@jac-client/dev-deps"};
+         "react": "^18.2.0",
+         "react-dom": "^18.2.0",
+         "react-router-dom": "^6.22.0",
+         "react-error-boundary": "^5.0.0"
+     },
+     # Optional runtime dependencies (injected by default, separable later)
+     OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
+         "react-hook-form": "^7.71.0",
+         "zod": "^4.3.6",
+         "@hookform/resolvers": "^5.2.2"
+     },
+     # Dev/build dependencies (always injected)
+     CORE_DEV_DEPS: dict[str, str] = {
+         "vite": "^6.4.1",
+         "@vitejs/plugin-react": "^4.2.1",
+         "typescript": "^5.3.3",
+         "@types/react": "^18.2.0",
+         "@types/react-dom": "^18.2.0"
+     },
+     # Legacy meta-package names (for migration)
+     LEGACY_META_PACKAGES = {"jac-client-node","@jac-client/dev-deps"};
 
 # ============================================================================
 # DEPENDENCY MANAGEMENT HELPERS
@@ -84,9 +81,7 @@ Removes the meta-package entry and injects the individual deps it contained.
 Returns updated deps dict and whether migration occurred.
 """
 def _migrate_legacy_meta_packages(
-    jac_config: Any,
-    npm_deps: dict,
-    npm_dev_deps: dict
+    jac_config: Any, npm_deps: dict, npm_dev_deps: dict
 ) -> tuple[dict, dict, bool] {
     migrated = False;
 
@@ -105,7 +100,9 @@ def _migrate_legacy_meta_packages(
                 npm_deps[name] = version;
             }
         }
-        console.print("  [green]✔[/green] Replaced jac-client-node with individual packages");
+        console.print(
+            "  [green]✔[/green] Replaced jac-client-node with individual packages"
+        );
         migrated = True;
     }
 
@@ -122,7 +119,9 @@ def _migrate_legacy_meta_packages(
                 npm_dev_deps[name] = version;
             }
         }
-        console.print("  [green]✔[/green] Replaced @jac-client/dev-deps with individual packages");
+        console.print(
+            "  [green]✔[/green] Replaced @jac-client/dev-deps with individual packages"
+        );
         migrated = True;
     }
 
@@ -204,14 +203,20 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     # Ensure core runtime dependencies are present
     all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
     (npm_deps, added) = _ensure_dependencies(
-        jac_config, npm_deps, all_runtime, is_dev=False,
+        jac_config,
+        npm_deps,
+        all_runtime,
+        is_dev=False,
         description="Core client runtime library."
     );
     needs_reinstall = needs_reinstall or added;
 
     # Ensure core dev/build dependencies are present
     (npm_dev_deps, added) = _ensure_dependencies(
-        jac_config, npm_dev_deps, CORE_DEV_DEPS, is_dev=True,
+        jac_config,
+        npm_dev_deps,
+        CORE_DEV_DEPS,
+        is_dev=True,
         description="Build toolchain dependency."
     );
     needs_reinstall = needs_reinstall or added;
@@ -350,7 +355,11 @@ impl JacClientConfig.check_runtime_version(
 
     # Check all core deps are present
     all_required = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-    missing = [name for name in all_required if name not in npm_deps];
+    missing = [
+        name
+        for name in all_required
+        if name not in npm_deps
+    ];
     if missing {
         return (False, user_react, required_react);
     }

@@ -427,7 +427,7 @@ def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
     deps_section = f"\n{deps}" if deps else "";
     dev_deps_section = f"\n{dev_deps}" if dev_deps else "";
 
-    toml_content = f'[project]\nname = "test-project"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "app.jac"\n\n[dependencies.npm]{deps_section}\n\n[dev-dependencies.npm]{dev_deps_section}\n';
+    toml_content = f'[project]\nname = "test-project"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "app.jac"\n\n[dependencies.npm]{deps_section}\n\n[dependencies.npm.dev]{dev_deps_section}\n';
     config_path = os.path.join(temp_dir, "jac.toml");
     with open(config_path, "w") as f {
         f.write(toml_content);
