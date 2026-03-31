@@ -230,8 +230,6 @@ impl JacAPIServerCore.start(
         self.server.app.openapi_url = "/openapi.json";
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
-        # Register introspection endpoints for programmatic discovery
-        self.register_dynamic_introspection_endpoints();
     }
     # Register named endpoints (individual walker/function names visible in OpenAPI docs)
     self.register_walkers_endpoints();
