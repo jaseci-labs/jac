@@ -223,23 +223,35 @@ impl JacAPIServerCore.start(
     self.register_graph_endpoint();
     self.register_admin_endpoints();
     self.register_llm_telemetry_endpoints();
-    # Use dynamic routing for HMR support, static routing for production
+    # Register named endpoints for both dev and production
     if dev {
         # Enable FastAPI docs only in dev mode
         self.server.app.docs_url = "/docs";
         self.server.app.openapi_url = "/openapi.json";
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
-        self.register_dynamic_walker_endpoint();
-        self.register_dynamic_function_endpoint();
+        # Register introspection endpoints for programmatic discovery
         self.register_dynamic_introspection_endpoints();
-        self.register_dynamic_webhook_endpoint();
-        self.register_dynamic_websocket_endpoint();
-    } else {
-        self.register_walkers_endpoints();
-        self.register_functions_endpoints();
-        self.register_webhook_endpoints();
-        self.register_websocket_endpoints();
+    }
+    # Register named endpoints (individual walker/function names visible in OpenAPI docs)
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.register_websocket_endpoints();
+    if dev {
+        # Add middleware to refresh endpoints on HMR file changes
+        import from starlette.requests { Request as StarletteRequest }
+        import from starlette.responses { Response as StarletteResponse }
+        _self = self;
+        @self.server.app.middleware("http")
+        async def hmr_refresh_middleware(
+            request: StarletteRequest, call_next: Any
+        ) -> StarletteResponse {
+            if _self._hmr_pending {
+                _self._refresh_dev_endpoints();
+            }
+            return await call_next(request);
+        }
     }
     self.register_root_asset_endpoint();
     self._register_client_error_endpoint();
@@ -938,6 +950,33 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     # Register callback with the watcher
     hot_reloader.watcher.add_callback(on_change);
     logger.debug("Dynamic routing enabled for jac-scale");
+}
+
+"""Remove user-defined routes (walkers, functions, webhooks, websockets) from app and endpoint list."""
+impl JacAPIServerCore._clear_user_routes -> None {
+    _USER_ROUTE_PREFIXES = ('/walker/', '/function/', '/webhook/', '/ws/');
+    self.server.app.routes[:] = [
+        r for r in self.server.app.routes
+        if not (r?.path and r.path.startswith(_USER_ROUTE_PREFIXES))
+    ];
+    self.server._endpoints[:] = [
+        ep for ep in self.server._endpoints
+        if not ep.path.startswith(_USER_ROUTE_PREFIXES)
+    ];
+}
+
+"""Refresh dev endpoints after HMR reload - removes stale routes and re-registers named endpoints."""
+impl JacAPIServerCore._refresh_dev_endpoints -> None {
+    self._hmr_pending = False;
+    self.introspector.load(force_reload=True);
+    self._clear_user_routes();
+    start = len(self.server._endpoints);
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.server.execute_from(start);
+    self.register_websocket_endpoints();
+    self.server.app.openapi_schema = None;
 }
 
 # ============================================================================

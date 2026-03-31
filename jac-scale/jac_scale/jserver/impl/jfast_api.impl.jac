@@ -737,6 +737,14 @@ impl JFastApiServer.execute(self: JFastApiServer) -> None {
     super.execute();
 }
 
+"""Execute only endpoints added after the given index, sorted by route priority.
+Used for incremental route registration (e.g. HMR reload)."""
+impl JFastApiServer.execute_from(self: JFastApiServer, start: int) -> None {
+    for ep in sorted(self._endpoints[start:], key=self._route_priority) {
+        self._create_fastapi_route(ep.method, ep);
+    }
+}
+
 """
 Calculate route priority for sorting. More specific routes get higher priority (lower number).
 Priority rules:

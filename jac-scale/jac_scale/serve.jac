@@ -99,6 +99,8 @@ obj JacAPIServerCore {
     def _register_client_error_endpoint -> None;
     # HMR support
     def enable_hmr(hot_reloader: Any) -> None;
+    def _clear_user_routes -> None;
+    def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
     # API key management
     def get_api_key_manager -> ApiKeyManager;
