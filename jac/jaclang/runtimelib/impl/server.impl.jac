@@ -208,18 +208,10 @@ impl ExecutionManager.execute_function(
     if not root_id {
         return {'error': 'User not found'};
     }
-    # Propagate username to LLM limits enforcement via litellm module attribute.
-    # Cannot use jac cross-package imports here (jaclang -> jac_scale fails),
-    # so we stamp it directly on the litellm Python module which both sides can access.
-    try {
-        import litellm;
-        litellm._jac_current_user = username;
-    } except Exception {
-        _ = 0;
-    }
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
+    ctx.user_name = username;
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
@@ -259,12 +251,6 @@ impl ExecutionManager.execute_function(
         return {'error': str(e)};
     } finally {
         ctx.call_state.reset(call_token);
-        try {
-            import litellm;
-            litellm._jac_current_user = '';
-        } except Exception {
-            _ = 0;
-        }
     }
 }
 
@@ -296,6 +282,7 @@ impl ExecutionManager.spawn_walker(
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
+    ctx.user_name = username;
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {

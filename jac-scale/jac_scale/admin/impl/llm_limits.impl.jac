@@ -3,7 +3,6 @@ import logging;
 import threading;
 import time;
 import functools;
-import from contextvars { ContextVar }  # kept for backward compat
 import from datetime { datetime, UTC, timedelta }
 import from typing { Any }
 import from fastapi { Request }
@@ -16,16 +15,6 @@ import from jac_scale.jserver.jserver {
     ParameterType
 }
 glob logger = logging.getLogger(__name__);
-
-# ContextVar for propagating the current request's username into litellm calls.
-# Set in walker/function callbacks (serve.endpoints), read in the enforcement wrapper.
-glob current_request_user: ContextVar = ContextVar('current_request_user', default='');
-
-# User propagation: the username is stamped on the litellm module object
-# by ExecutionManager (in jaclang core) before each walker/function execution.
-# The enforcement wrapper reads it via getattr(litellm, '_jac_current_user', '').
-# This avoids cross-package jac imports which don't work at runtime.
-
 
 obj LLMUserLimits {
     """Per-user limit configuration."""
@@ -776,9 +765,13 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
 
         @functools.wraps(_original_completion)
         def _guarded_completion(*args: Any, **kwargs: Any) -> Any {
-            # Read username from litellm module attribute (set by ExecutionManager)
-            raw_user = getattr(litellm, '_jac_current_user', '');
-            username = raw_user if raw_user else ANONYMOUS_USER;
+            # Read username from Jac's per-request ExecutionContext
+            try {
+                import from jaclang { JacRuntime as _Jac }
+                username = _Jac.get_context().user_name or ANONYMOUS_USER;
+            } except Exception {
+                username = ANONYMOUS_USER;
+            }
             model = kwargs.get('model', '') or (args[0] if args else '');
             call_meta = kwargs.get('metadata', {}) or {};
 
@@ -841,9 +834,13 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
 
         @functools.wraps(_original_acompletion)
         async def _guarded_acompletion(*args: Any, **kwargs: Any) -> Any {
-            # Read username from litellm module attribute (set by ExecutionManager)
-            raw_user = getattr(litellm, '_jac_current_user', '');
-            username = raw_user if raw_user else ANONYMOUS_USER;
+            # Read username from Jac's per-request ExecutionContext
+            try {
+                import from jaclang { JacRuntime as _Jac }
+                username = _Jac.get_context().user_name or ANONYMOUS_USER;
+            } except Exception {
+                username = ANONYMOUS_USER;
+            }
             model = kwargs.get('model', '') or (args[0] if args else '');
             call_meta = kwargs.get('metadata', {}) or {};
 
