@@ -751,21 +751,22 @@ test "uninstall package from devdependencies" {
         try {
             os.chdir(temp_dir);
 
-            # Create jac.toml with a dev-dependency
+            # Create jac.toml with a user-added dev-dependency
+            # (not a core auto-injected one, since those get re-added)
             config_path = _create_jac_toml(
-                temp_dir, dev_deps='"@types/react" = "^18.0.0"'
+                temp_dir, dev_deps='"@tailwindcss/vite" = "^4.1.17"'
             );
 
             # Run remove --npm -d command
             result = run(
-                ["jac", "remove", "--npm", "-d", "@types/react"],
+                ["jac", "remove", "--npm", "-d", "@tailwindcss/vite"],
                 capture_output=True,
                 text=True,
             );
 
             # Should succeed
             assert result.returncode == 0;
-            assert "Removing @types/react (npm)" in result.stdout;
+            assert "Removing @tailwindcss/vite (npm)" in result.stdout;
             assert "Removed 1 package(s)" in result.stdout;
 
             # Verify package was removed from jac.toml
@@ -774,7 +775,7 @@ test "uninstall package from devdependencies" {
             }
 
             npm_deps = updated_config.get("dependencies", {}).get("npm", {});
-            assert "@types/react" not in npm_deps.get("dev", {});
+            assert "@tailwindcss/vite" not in npm_deps.get("dev", {});
         } finally {
             os.chdir(original_cwd);
         }
