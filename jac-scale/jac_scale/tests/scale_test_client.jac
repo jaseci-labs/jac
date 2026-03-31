@@ -108,6 +108,7 @@ obj ScaleTestClient {
         self._server.load_module();
 
         # Register all endpoints (same as start() but without run_server)
+        self._server.register_health_endpoint();
         self._server.register_create_user_endpoint();
         self._server.register_login_endpoint();
         self._server.register_refresh_token_endpoint();

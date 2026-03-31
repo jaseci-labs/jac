@@ -576,3 +576,18 @@ test "admin pagination" {
         client.close();
     }
 }
+
+# ============================================================================
+# Admin UI Packaging Tests
+# ============================================================================
+test "admin ui includes jac.toml and styles for build" {
+    import from pathlib { Path }
+    import jac_scale.admin;
+    admin_dir = Path(jac_scale.admin.__file__).parent;
+    ui_dir = admin_dir / "ui";
+
+    assert ui_dir.exists() , "Admin UI directory should exist";
+    assert (ui_dir / "main.jac").exists() , "main.jac should exist";
+    assert (ui_dir / "jac.toml").exists() , "jac.toml must be packaged for admin build";
+    assert (ui_dir / "styles" / "main.css").exists() , "styles/main.css must be packaged for Tailwind";
+}

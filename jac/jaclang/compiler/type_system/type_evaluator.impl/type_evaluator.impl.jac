@@ -1109,6 +1109,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     self.get_type_of_expression(assign.value);
                 }
                 return base_type;
+            } elif isinstance(expr.right, uni.FilterCompr) {
+                # Filter comprehension trailer: <expr>[?:Type] or <expr>[?:Type, field==val]
+                # Evaluate the filter (resolves symbols in compares, computes list[FilterType]).
+                filter_result = self.get_type_of_expression(expr.right);
+                # If the filter inferred a concrete list type, use it.
+                if not isinstance(filter_result, types.UnknownType) {
+                    return filter_result;
+                }
+                # No type filter — return the base type unchanged (preserves list[Any] from edge traversal).
+                return base_type;
             } else {  # <expr>[<expr>]
                 # --- Handle Callable special form ---
                 # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
@@ -1553,6 +1563,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         #     );
                         # }
                     }
+                    # Return list[FilterType] — the filter narrows elements to the given type.
+                    if self.prefetch and self.prefetch.list_class {
+                        list_type = self.prefetch.list_class.clone_as_instance();
+                        filter_inst = self._convert_to_instance(filter_type);
+                        list_type.private.type_args = [filter_inst];
+                        return list_type;
+                    }
                 }
             }
 
@@ -1717,12 +1734,22 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.EdgeRefTrailer():
             # Edge traversal: [node-->], [node<--], [node->:Edge:->], etc.
-            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only)
-            # TODO: Infer more specific types from filters like [?:Profile]
+            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only).
+            # Two syntax forms place FilterCompr differently:
+            #   [root-->][?:Todo]  — FilterCompr is sibling in AtomTrailer (handled there)
+            #   [-->[?:Todo]]      — FilterCompr is in EdgeRefTrailer.chain (handled here)
             if self.prefetch and self.prefetch.list_class {
+                element_type: types.TypeBase = types.AnyType();
+                for chain_item in expr.chain {
+                    if isinstance(chain_item, uni.FilterCompr) and chain_item.f_type {
+                        ft = self.get_type_of_expression(chain_item.f_type);
+                        if isinstance(ft, types.ClassType) {
+                            element_type = self._convert_to_instance(ft);
+                        }
+                    }
+                }
                 list_type = self.prefetch.list_class.clone_as_instance();
-                # Return list[Any] so indexing returns Any (allows attribute access)
-                list_type.private.type_args = [types.AnyType()];
+                list_type.private.type_args = [element_type];
                 return list_type;
             }
             return types.UnknownType();

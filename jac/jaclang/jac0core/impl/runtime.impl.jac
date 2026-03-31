@@ -142,6 +142,7 @@ impl JacAccessValidation.check_access_level(
 impl JacNode.get_edges(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[EdgeArchetype] {
+    _prefetch_edges(origin);
     edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -181,6 +182,7 @@ impl JacNode.get_edges_with_node(
     destination: ObjectSpatialDestination,
     from_visit: bool = False
 ) -> list[(EdgeArchetype | NodeArchetype)] {
+    _prefetch_edges(origin);
     loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -220,6 +222,7 @@ impl JacNode.get_edges_with_node(
 impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
+    _prefetch_edges(origin);
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -1848,7 +1851,7 @@ impl JacByLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 }
 
 """Call the LLM model."""
-impl JacByLLM.call_llm(model: object, mt_run: MTRuntime) -> Any {
+impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
     import from jaclang.utils { NonGPT }
     try {
         random_value_for_type = cast(
@@ -1874,7 +1877,7 @@ impl JacByLLM.call_llm(model: object, mt_run: MTRuntime) -> Any {
 }
 
 """Python library mode decorator for Jac's by llm() syntax."""
-impl JacByLLM.`by(model: object) -> Callable {
+impl JacByLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
             invoke_args: dict[((int | str), object)] = {};
@@ -1895,7 +1898,7 @@ impl JacByLLM.`by(model: object) -> Callable {
 }
 
 impl JacByLLM.filter_visitable_by(
-    connected_nodes: list[NodeArchetype], model: object, descriptions: str = ''
+    connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
 ) -> list[NodeArchetype] {
     import from jaclang.jac0core.helpers { _describe_nodes_list }
     visitable_list: list = [];
@@ -1943,7 +1946,7 @@ impl JacByLLM.by_operator(lhs: Any, rhs: Any) -> Any {
     in call_llm. Plugins (e.g. byllm) override this to return a configured
     Model instance based on jac.toml settings.
     """
-impl JacByLLM.default_llm -> object {
+impl JacByLLM.default_llm -> LLMModel {
     _cache = getattr(JacByLLM, '_default_llm_instance', None);
     if (_cache is not None) {
         return _cache;

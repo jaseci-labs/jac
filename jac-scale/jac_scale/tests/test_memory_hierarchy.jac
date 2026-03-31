@@ -101,8 +101,8 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
-            r = requests.get(f"{base_url}/docs", timeout=1);
-            if r.status_code in (200, 404) {
+            r = requests.get(f"{base_url}/healthz", timeout=1);
+            if r.status_code == 200 {
                 return server;
             }
         } except Exception {
@@ -900,6 +900,126 @@ test "sequential requests work correctly" {
         }
         mongo_container.stop();
         gc.collect();
+    }
+}
+
+test "batch_get reduces MongoDB queries for edge traversals" {
+    # Validates: When traversing N edges, batch_get uses $in queries instead of N individual finds.
+    # Creates 10 tasks (10 edges + 10 nodes), restarts server to clear L1,
+    # then reads all tasks and verifies MongoDB query count is much less than 20.
+    if not JAC_FILE.exists() {
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
+    }
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    mongo_uri = mongo_container.get_connection_url();
+    os.environ["MONGODB_URI"] = mongo_uri;
+    mongo_client = MongoClient(mongo_uri);
+
+    # No Redis — force all reads through MongoDB to measure query count accurately
+    env_backup = {};
+    if "REDIS_URL" in os.environ {
+        env_backup["REDIS_URL"] = os.environ["REDIS_URL"];
+        del os.environ["REDIS_URL"];
+    }
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+    num_tasks = 10;
+
+    try {
+        db = mongo_client["jac_db"];
+        collection = db["_anchors"];
+
+        # Create N tasks (each creates 1 node + 1 edge = 2 anchors)
+        for i in range(num_tasks) {
+            res = requests.post(
+                f"{base_url}/walker/CreateTask",
+                json={"id": i, "title": f"Batch task {i}"},
+                timeout=5
+            );
+            assert res.status_code == 200 , f"Task {i} creation failed: {res.status_code}";
+        }
+
+        # Verify all tasks were stored in MongoDB
+        # 4 initial + num_tasks * 2 (node + edge per task)
+        expected_docs = 4 + num_tasks * 2;
+        actual_docs = collection.count_documents({});
+        assert actual_docs == expected_docs , (
+            f"Expected {expected_docs} docs in MongoDB, got {actual_docs}"
+        );
+
+        # Restart server to clear L1 memory — forces reads from L3 (MongoDB)
+        server.terminate();
+        server.wait(timeout=2);
+        server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+        # Capture MongoDB query count before the read traversal
+        server_status_before = mongo_client.admin.command("serverStatus");
+        queries_before = server_status_before["opcounters"]["query"];
+
+        # Read all tasks — this triggers _prefetch_edges -> batch_get
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=10);
+        assert res.status_code == 200;
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks = response_data["reports"][0];
+        assert len(tasks) == num_tasks , (
+            f"Expected {num_tasks} tasks, got {len(tasks)}"
+        );
+
+        # Capture MongoDB query count after read
+        server_status_after = mongo_client.admin.command("serverStatus");
+        queries_after = server_status_after["opcounters"]["query"];
+
+        # Without batch_get: would need ~20+ individual find() calls (1 per edge + 1 per node)
+        # With batch_get: should be ~2-4 calls (batch edges + batch nodes + root load)
+        queries_used = queries_after - queries_before;
+        max_expected_queries = num_tasks;  # Should be well under N queries
+        assert queries_used < max_expected_queries , (
+            f"batch_get should reduce queries: used {queries_used} queries to traverse "
+            f"{num_tasks} edges, expected fewer than {max_expected_queries}. "
+            f"batch_get may not be working."
+        );
+    } finally {
+        if server {
+            server.terminate();
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
+        }
+
+        system_dbs = {"admin","config","local"};
+        for db_name in mongo_client.list_database_names() {
+            if db_name not in system_dbs {
+                mongo_client.drop_database(db_name);
+            }
+        }
+        mongo_client.close();
+        mongo_container.stop();
+
+        # Restore environment
+        for (key, value) in env_backup.items() {
+            os.environ[key] = value;
+        }
+
+        time.sleep(0.5);
+        gc.collect();
+
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
     }
 }
 

@@ -23,6 +23,7 @@ import from typing {
     Any,
     Literal,
     ParamSpec,
+    Protocol,
     TypeAlias,
     TypeVar,
     cast,
@@ -128,6 +129,50 @@ class JacAccessValidation {
 
     """Access validation."""
     static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
+}
+
+"""Batch-prefetch edge stubs and their source/target nodes into L1 cache.
+Reduces N+1 database fetches to 2 batch queries for all edges of all origin nodes.
+"""
+def _prefetch_edges(origin: list[NodeArchetype]) -> None {
+    ctx = JacRuntimeInterface.get_context();
+    if not hasattr(ctx.mem, 'batch_get') {
+        return;
+    }
+    edge_ids: list = [];
+    for nd in origin {
+        nanch = nd.__jac__;
+        for edge_stub in nanch.edges {
+            if not edge_stub.is_populated() {
+                edge_ids.append(edge_stub.id);
+            }
+        }
+    }
+    if edge_ids {
+        ctx.mem.batch_get(edge_ids);
+    }
+    node_ids: list = [];
+    for nd in origin {
+        nanch = nd.__jac__;
+        for anchor in nanch.edges {
+            loaded = ctx.mem.get(anchor.id);
+            if loaded {
+                if loaded?.source
+                and loaded.source is not None
+                and not loaded.source.is_populated() {
+                    node_ids.append(loaded.source.id);
+                }
+                if loaded?.target
+                and loaded.target is not None
+                and not loaded.target.is_populated() {
+                    node_ids.append(loaded.target.id);
+                }
+            }
+        }
+    }
+    if node_ids {
+        ctx.mem.batch_get(node_ids);
+    }
 }
 
 """Jac Node Operations."""
@@ -576,6 +621,17 @@ class JacResponseBuilder {
     ) -> None;
 }
 
+"""Protocol defining the minimal contract for LLM model objects.
+
+    Both the core stub (returned when no plugin is loaded) and plugin
+    implementations (e.g. byllm's BaseLLM/Model) satisfy this protocol.
+    """
+obj LLMModel(Protocol) {
+    has call_params: dict[(str, object)];
+
+    def __call__(**kwargs: object) -> LLMModel;
+}
+
 """Jac byLLM integration."""
 class JacByLLM {
     """Get byLLM library."""
@@ -589,13 +645,13 @@ class JacByLLM {
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
 
     """Call the LLM model."""
-    static def call_llm(model: object, mt_run: MTRuntime) -> Any;
+    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
 
     """Python library mode decorator for Jac's by llm() syntax."""
-    static def `by(model: object) -> Callable;
+    static def `by(model: LLMModel) -> Callable;
 
     static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: object, descriptions: str = ''
+        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
     ) -> list[NodeArchetype];
 
     """by operator feature for expression composition.
@@ -613,7 +669,7 @@ class JacByLLM {
         in call_llm. Plugins (e.g. byllm) override this to return a configured
         Model instance based on jac.toml settings.
         """
-    static def default_llm -> object;
+    static def default_llm -> LLMModel;
 
     """Add MTIR to the node's MTIR map."""
     static def add_mtir_to_map(scope: str, mtir: Info) -> None;

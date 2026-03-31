@@ -100,6 +100,42 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
 }
 
+"""Batch get with tiered read-through: check L1, then batch L3 misses, promote all."""
+impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
+    result: dict[UUID, Anchor] = {};
+    missing_ids: list[UUID] = [];
+    for id in ids {
+        if (anchor := self.__mem__.get(id)) {
+            result[id] = anchor;
+        } else {
+            missing_ids.append(id);
+        }
+    }
+    if missing_ids and self.l3 {
+        # Use batch_get if L3 supports it (MongoBackend), fall back to get() (SqliteMemory)
+        l3_results: dict[UUID, Anchor] = {};
+        if hasattr(self.l3, 'batch_get') {
+            l3_results = self.l3.batch_get(missing_ids);
+        } else {
+            for mid in missing_ids {
+                if (a := self.l3.get(mid)) {
+                    l3_results[mid] = a;
+                }
+            }
+        }
+        for (id, anchor) in l3_results.items() {
+            self.__mem__[id] = anchor;
+            if self.l2 {
+                try {
+                    self.l2.put(anchor);
+                } except Exception { }
+            }
+            result[id] = anchor;
+        }
+    }
+    return result;
+}
+
 """Close all backends."""
 impl ScaleTieredMemory.close -> None {
     self.commit();

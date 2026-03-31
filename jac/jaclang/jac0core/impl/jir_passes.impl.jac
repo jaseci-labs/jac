@@ -106,6 +106,8 @@ impl JirWriter._get_node_id(ir_node: (UniNode | None)) -> int {
 
 impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     import from jaclang.jac0core.unitree { UniScopeNode, UniCFGNode, NameAtom, Symbol }
+    import from jaclang.jac0core.unitree { ContextAwareNode }
+    import from jaclang.jac0core.constant { CodeContext }
 
     cls_name = type(ir_node).__name__;
     type_idx = NAME_TO_IDX.get(cls_name);
@@ -117,6 +119,7 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
 
     is_scope = isinstance(ir_node, UniScopeNode);
     is_cfg = isinstance(ir_node, UniCFGNode);
+    is_context_aware = isinstance(ir_node, ContextAwareNode);
 
     # Write type index as varint
     _write_varint(buf, type_idx);
@@ -131,6 +134,9 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     }
     if isinstance(ir_node, NameAtom) {
         overlay_flags |= 4;
+    }
+    if is_context_aware {
+        overlay_flags |= 8;
     }
     buf.append(overlay_flags);
 
@@ -238,6 +244,18 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
             _write_varint(buf, self._pool.intern(str(sym_cat.value)));
         } else {
             _write_varint(buf, self._pool.intern(''));
+        }
+    }
+
+    # Write code_context overlay (postinit field, not in spec)
+    if is_context_aware {
+        ctx = ir_node.code_context;
+        if ctx == CodeContext.CLIENT {
+            buf.append(1);
+        } elif ctx == CodeContext.NATIVE {
+            buf.append(2);
+        } else {
+            buf.append(0);  # SERVER (default)
         }
     }
 }
@@ -826,7 +844,8 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         nd.setdefault('from_walker', False);
     }
 
-    # ContextAwareNode.postinit: code_context (by postinit -> not in __init__, defaults to SERVER)
+    # ContextAwareNode.postinit: code_context (backward compat for old JIR
+    # files without the overlay; new files read it from the bit-3 overlay)
     if isinstance(ir_node, self._ContextAwareNode) {
         nd.setdefault('code_context', self._CodeContext_SERVER);
     }
@@ -909,6 +928,20 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
     }
     if overlay_flags & 4 and isinstance(ir_node, NameAtomT) {
         pos = self._read_name_atom_overlay(data, pos, ir_node);
+    }
+    if overlay_flags & 8 {
+        import from jaclang.jac0core.unitree { ContextAwareNode }
+        import from jaclang.jac0core.constant { CodeContext }
+        ctx_byte = data[pos];
+        pos += 1;
+        if isinstance(ir_node, ContextAwareNode) {
+            if ctx_byte == 1 {
+                ir_node.code_context = CodeContext.CLIENT;
+            } elif ctx_byte == 2 {
+                ir_node.code_context = CodeContext.NATIVE;
+            }
+            # 0 = SERVER, already the default from postinit
+        }
     }
 
     return pos;

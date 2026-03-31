@@ -536,8 +536,27 @@ obj IngressDeployer {
         ingress_annotations: dict = {
             'nginx.ingress.kubernetes.io/proxy-body-size': '0',
             'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600'
+            'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+            'nginx.ingress.kubernetes.io/limit-rps': str(
+                self.k8s_config.ingress_limit_rps
+            ),
+            'nginx.ingress.kubernetes.io/limit-burst-multiplier': str(
+                self.k8s_config.ingress_limit_burst_multiplier
+            ),
+            'nginx.ingress.kubernetes.io/limit-connections': str(
+                self.k8s_config.ingress_limit_connections
+            ),
+            'nginx.ingress.kubernetes.io/limit-req-status-code': '429'
         };
+        if self.k8s_config.ingress_session_affinity {
+            ingress_annotations['nginx.ingress.kubernetes.io/affinity'] = 'cookie';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-name'] = 'route';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-max-age'] = '2147483647';
+            ingress_annotations['nginx.ingress.kubernetes.io/session-cookie-expires'] = '2147483647';
+            ingress_annotations[
+                'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+            ] = 'true';
+        }
         if self.k8s_config.domain {
             ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
         }

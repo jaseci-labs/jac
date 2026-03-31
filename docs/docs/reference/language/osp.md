@@ -161,7 +161,6 @@ node SecureRoom {
 
 ```jac
 node Entity {
-    has id: str;
     has created_at: str;
 }
 
@@ -619,7 +618,7 @@ with entry {
 
     <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
-    new_node = here ++> Todo(id="123", title="Buy groceries");
+    new_node = here ++> Todo(title="Buy groceries");
     created_todo = new_node[0];  # Access the actual node
     report created_todo;
     ```
@@ -690,7 +689,7 @@ with entry {
 walker Cleanup {
     can check with Todo entry {
         if here.completed {
-            node_id = here.id;
+            node_id = jid(here);
             del here;
             report {"deleted": node_id};
         }
@@ -712,7 +711,7 @@ walker:priv DeleteWithChildren {
 
     can delete with Todo entry {
         # Delete if this is the target or a child of the target
-        if here.id == self.parent_id or here.parent_id == self.parent_id {
+        if jid(here) == self.parent_id or here.parent_id == self.parent_id {
             del here;
         }
     }
@@ -1038,7 +1037,7 @@ walker:priv UpdateItem {
     has new_name: str;
     can find with Root entry { visit [-->]; }
     can update with Item entry {
-        if here.id == self.item_id {
+        if jid(here) == self.item_id {
             here.name = self.new_name;
             report here;
         }
@@ -1050,7 +1049,7 @@ walker:priv DeleteItem {
     has item_id: str;
     can find with Root entry { visit [-->]; }
     can remove with Item entry {
-        if here.id == self.item_id {
+        if jid(here) == self.item_id {
             del here;
             report {"deleted": self.item_id};
         }
@@ -1062,7 +1061,6 @@ walker:priv DeleteItem {
 
 ```jac
 node Item {
-    has id: str;
     has name: str;
 }
 
@@ -1081,7 +1079,7 @@ walker:priv SearchItems {
     can check with Item entry {
         if self.query.lower() in here.name.lower() {
             self.matches.append({
-                "id": here.id,
+                "id": jid(here),
                 "name": here.name,
                 "score": calculate_relevance(here, self.query)
             });
@@ -1109,7 +1107,7 @@ walker:priv GetTree {
             children.append(self.build_tree(child));
         }
         return {
-            "id": node.id,
+            "id": jid(node),
             "name": node.name,
             "children": children
         };

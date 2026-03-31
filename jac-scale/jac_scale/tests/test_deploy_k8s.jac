@@ -809,6 +809,74 @@ test "deploy all in one" {
     assert "/db-dashboard" in ingress_paths , f"Main ingress must route '/db-dashboard'; got paths: {ingress_paths}";
     print(f"Main Ingress '{ingress_name}' exists with routes: {ingress_paths}");
 
+    # Validate rate limiting annotations are present with correct default values
+    ingress_annotations = main_ingress.metadata.annotations or {};
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-rps") == "20" , (
+        f"Expected limit-rps=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-rps'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-burst-multiplier"
+    ) == "5" , (
+        f"Expected limit-burst-multiplier=5, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-burst-multiplier'
+        )}"
+    );
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-connections") == "20" , (
+        f"Expected limit-connections=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-connections'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-req-status-code"
+    ) == "429" , (
+        f"Expected limit-req-status-code=429, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-req-status-code'
+        )}"
+    );
+    print(
+        f"Rate limiting annotations verified: rps=20, burst-multiplier=5, connections=20, status=429"
+    );
+
+    # Validate sticky session annotations are present (enabled by default)
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/affinity") == "cookie" , (
+        f"Expected affinity=cookie, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/affinity'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-name"
+    ) == "route" , (
+        f"Expected session-cookie-name=route, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-name'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-max-age"
+    ) == "2147483647" , (
+        f"Expected session-cookie-max-age=2147483647, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-max-age'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-expires"
+    ) == "2147483647" , (
+        f"Expected session-cookie-expires=2147483647, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-expires'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-change-on-failure"
+    ) == "true" , (
+        f"Expected session-cookie-change-on-failure=true, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+        )}"
+    );
+    print(
+        "Sticky session annotations verified: affinity=cookie, cookie-name=route, max-age=2147483647"
+    );
+
     ri_ingress = networking_v1.read_namespaced_ingress(
         name=redis_ingress_name, namespace=namespace
     );

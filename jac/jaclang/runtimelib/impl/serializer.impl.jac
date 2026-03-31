@@ -77,6 +77,16 @@ impl Serializer._serialize_value(
         }
         if isinstance(val, NodeAnchor) {
             result['edges'] = [str(e.id) for e in val.edges];
+            # Topology index lives only on root anchors
+            if val.topology_index_data is not None
+            and isinstance(val.archetype, Root) {
+                import from base64 { b64encode }
+                result['topology_index_data'] = b64encode(
+                    val.topology_index_data
+                ).decode(
+                    'ascii'
+                );
+            }
         }
         if isinstance(val, EdgeAnchor) {
             result |= {
@@ -104,6 +114,10 @@ impl Serializer._serialize_value(
     # Generic object with __dict__
     if val?.__dict__ {
         result = Serializer._type_info(val, include_type);
+        if api_mode {
+            result['__type__'] = type(val).__name__;
+            result['__module__'] = type(val).__module__;
+        }
         for (k, v) in val.__dict__.items() {
             if not k.startswith('_') {
                 result[k] = Serializer._serialize_value(v, include_type, api_mode);
@@ -229,6 +243,14 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 }
                 anchor.edges = edges;
             }
+            # Topology index lives only on root anchors
+            anchor.topology_index_data = None;
+            if isinstance(anchor.__dict__.get('archetype'), Root) {
+                if (topo_b64 := data.get('topology_index_data')) {
+                    import from base64 { b64decode }
+                    anchor.topology_index_data = b64decode(topo_b64);
+                }
+            }
         }
         if isinstance(anchor, EdgeAnchor) {
             anchor.is_undirected = data.get('is_undirected', False);
@@ -307,6 +329,12 @@ impl Serializer._compute_hash(anchor: Anchor) -> int {
     import from json { dumps }
     try {
         data = Serializer.serialize(anchor, include_type=True);
+        # Exclude topology_index_data from hash — it's a derived cache,
+        # not user-mutable state. Including it would double the cost of
+        # every serialize round-trip for large graphs.
+        if isinstance(data, dict) {
+            data.pop('topology_index_data', None);
+        }
         return hash(dumps(data, sort_keys=True));
     } except Exception {
         return 0;
