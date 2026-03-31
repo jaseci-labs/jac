@@ -959,19 +959,12 @@ impl JacAPIServerCore._register_endpoints -> None {
 
 """Refresh all endpoints after HMR reload - clears routes and re-registers from scratch."""
 impl JacAPIServerCore._refresh_dev_endpoints -> None {
-    import from fastapi.routing { APIRoute }
-    import from starlette.routing { WebSocketRoute }
     self._hmr_pending = False;
     self.introspector.load(force_reload=True);
-    # Clear all registered endpoints and their FastAPI routes
-    # (docs routes are plain starlette.Route, not APIRoute, so they're preserved)
+    # Clear all routes and endpoints, then re-setup docs and re-register
     self.server._endpoints[:] = [];
-    self.server.app.routes[:] = [
-        r
-        for r in self.server.app.routes
-        if not isinstance(r, (APIRoute, WebSocketRoute))
-    ];
-    # Re-register everything from scratch
+    self.server.app.routes.clear();
+    self.server.app.setup();
     self._register_endpoints();
     self.server.execute();
     self.server.app.openapi_schema = None;
