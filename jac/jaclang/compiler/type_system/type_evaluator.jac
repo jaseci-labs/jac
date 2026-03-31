@@ -171,6 +171,7 @@ obj TypeEvaluator {
         _TYPING_STUB_FILE_PATH: str by postinit,
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",
@@ -201,7 +202,8 @@ obj TypeEvaluator {
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
-        jac_builtins_module: uni.Module by postinit;
+        jac_builtins_module: uni.Module by postinit,
+        dom_types_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;

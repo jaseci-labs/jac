@@ -3018,6 +3018,9 @@ impl TypeEvaluator.postinit -> None {
     self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "jac_builtins.pyi"
     );
+    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "dom_types.pyi"
+    );
     self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
@@ -3040,8 +3043,15 @@ impl TypeEvaluator.postinit -> None {
     );
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(self._JAC_BUILTINS_STUB_FILE_PATH);
+    self.dom_types_module = self._load_stub_module(self._DOM_TYPES_STUB_FILE_PATH);
     # This avoids parent_scope chaining which can cause recursion issues
     for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
+        if name not in self.builtins_module.names_in_scope {
+            self.builtins_module.names_in_scope[name] = sym;
+        }
+    }
+    # Merge DOM types (Event, ChangeEvent, HTMLElement, etc.) into builtins
+    for (name, sym) in self.dom_types_module.names_in_scope.items() {
         if name not in self.builtins_module.names_in_scope {
             self.builtins_module.names_in_scope[name] = sym;
         }
