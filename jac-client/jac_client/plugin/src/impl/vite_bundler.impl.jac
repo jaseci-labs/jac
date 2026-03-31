@@ -1,4 +1,19 @@
 import from jaclang.cli.console { console }
+import from jac_client.plugin.utils { get_bun }
+import from jaclang.runtimelib.client_bundle { ClientBundleError }
+
+
+"""Resolve the bun binary path or raise an error."""
+def _require_bun -> str {
+    bun = get_bun();
+    if not bun {
+        raise ClientBundleError(
+            'Bun is required but could not be found or installed. '
+            'Install manually: https://bun.sh'
+        ) from None;
+    }
+    return bun;
+}
 
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
@@ -717,13 +732,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import sys;
     import time;
     import shutil;
-    import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
-    # Ensure bun is available before proceeding
-    if not ensure_bun_available() {
-        raise ClientBundleError(
-            'Bun is required. Install manually: https://bun.sh'
-        ) from None;
-    }
+    import from jac_client.plugin.utils { ensure_client_deps }
+    # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
+    bun = _require_bun();
     # Ensure client npm deps are configured; prompt to install defaults if missing
     if not ensure_client_deps(self.config_loader) {
         raise ClientBundleError(
@@ -756,40 +767,33 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             if configs_npmrc.exists() and not build_npmrc.exists() {
                 shutil.copy2(configs_npmrc, build_npmrc);
             }
-            try {
-                # Install to .jac/client/node_modules with progress feedback
-                console.print("\n  ⏳ Installing dependencies...\n");
-                start_time = time.time();
-                result = subprocess.run(
-                    ['bun', 'install'],
-                    cwd=build_dir,
-                    check=False,
-                    text=True,
-                    capture_output=True
-                );
-                elapsed = time.time() - start_time;
-                if result.returncode != 0 {
-                    error_output = result.stderr or result.stdout;
-                    error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
-                    raise ClientBundleError(error_msg) from None;
-                }
-                console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
-            } except FileNotFoundError {
-                # This shouldn't happen since we check for bun at the start
-                raise ClientBundleError(
-                    'Bun command not found. Install Bun: https://bun.sh'
-                ) from None;
+            # Install to .jac/client/node_modules with progress feedback
+            console.print("\n  ⏳ Installing dependencies...\n");
+            start_time = time.time();
+            result = subprocess.run(
+                [bun, 'install'],
+                cwd=build_dir,
+                check=False,
+                text=True,
+                capture_output=True
+            );
+            elapsed = time.time() - start_time;
+            if result.returncode != 0 {
+                error_output = result.stderr or result.stdout;
+                error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
+                raise ClientBundleError(error_msg) from None;
             }
+            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
         }
         if self.config_path {
             # Make config path relative to build_dir (where vite runs from)
             try {
                 config_rel = self.config_path.relative_to(build_dir);
-                command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
+                command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
             } except ValueError {
                 # Config is outside client build dir, use absolute path
                 command = [
-                    'bun',
+                    bun,
                     'x',
                     'vite',
                     'build',
@@ -801,9 +805,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             generated_config = self.create_vite_config(entry_file);
             # Config is in configs/, make it relative to build_dir
             config_rel = generated_config.relative_to(build_dir);
-            command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
+            command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
         } else {
-            command = ['bun', 'run', 'build'];
+            command = [bun, 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
         console.print("\n  ⏳ Building client bundle...\n");
@@ -974,8 +978,9 @@ def _toml_config_from_raw(config_data: dict) -> str {
 
 """Build the Vite dev server command."""
 def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
+    bun = _require_bun();
     return [
-        'bun',
+        bun,
         'x',
         'vite',
         '--config',
@@ -1130,6 +1135,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
 
 """Ensure dev dependencies are installed."""
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
+    bun = _require_bun();
     import time;
     node_modules = build_dir / 'node_modules';
     if node_modules.exists() {
@@ -1153,9 +1159,7 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
-        result = subprocess.run(
-            ['bun', 'install'], cwd=build_dir, check=False, text=True
-        );
+        result = subprocess.run([bun, 'install'], cwd=build_dir, check=False, text=True);
         elapsed = time.time() - start_time;
 
         if result.returncode != 0 {
