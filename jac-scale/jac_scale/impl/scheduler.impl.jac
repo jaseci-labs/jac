@@ -161,7 +161,7 @@ impl JacScaleScheduler.create_job(
     interval: (float | None) = None,
     cron: (str | None) = None,
     date: (str | None) = None,
-    created_by: str = 'system',
+    created_by: str = '__system__',
     root_id: (str | None) = None
 ) -> dict {
     if self._apscheduler is None {

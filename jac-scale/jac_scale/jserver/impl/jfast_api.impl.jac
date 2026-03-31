@@ -205,8 +205,7 @@ impl JFastApiServer._get_python_type(
         'boolean': bool,
         'list': `list,
         'dict': `dict,
-        'object': `dict,
-        'email': EmailStr
+        'object': `dict
     };
     return type_mapping.get(type_string.lower(), str);
 }

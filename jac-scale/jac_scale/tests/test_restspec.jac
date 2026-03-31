@@ -60,8 +60,8 @@ test "default method walker" {
 test "custom method func" {
     client = make_client("restspec_fixtures.jac");
     try {
-        client.post("/user/register", json={"username": "u1", "password": "p1", "email": "test@test.com"});
-        login = client.post("/user/login", json={"username": "u1", "password": "p1", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u1", "password": "p1"});
+        login = client.post("/user/login", json={"username": "u1", "password": "p1"});
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -78,8 +78,8 @@ test "custom method func" {
 test "custom path func" {
     client = make_client("restspec_fixtures.jac");
     try {
-        client.post("/user/register", json={"username": "u1", "password": "p1", "email": "test@test.com"});
-        login = client.post("/user/login", json={"username": "u1", "password": "p1", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u1", "password": "p1"});
+        login = client.post("/user/login", json={"username": "u1", "password": "p1"});
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -97,8 +97,8 @@ test "custom path func" {
 test "post method func" {
     client = make_client("restspec_fixtures.jac");
     try {
-        client.post("/user/register", json={"username": "u1", "password": "p1", "email": "test@test.com"});
-        login = client.post("/user/login", json={"username": "u1", "password": "p1", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u1", "password": "p1"});
+        login = client.post("/user/login", json={"username": "u1", "password": "p1"});
         token = extract_data(login.json())["token"];
 
         response = client.post(
@@ -116,8 +116,8 @@ test "post method func" {
 test "default method func" {
     client = make_client("restspec_fixtures.jac");
     try {
-        client.post("/user/register", json={"username": "u1", "password": "p1", "email": "test@test.com"});
-        login = client.post("/user/login", json={"username": "u1", "password": "p1", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u1", "password": "p1"});
+        login = client.post("/user/login", json={"username": "u1", "password": "p1"});
         token = extract_data(login.json())["token"];
 
         response = client.post(
@@ -151,8 +151,8 @@ test "get walker with params" {
 test "get func with params" {
     client = make_client("restspec_fixtures.jac");
     try {
-        client.post("/user/register", json={"username": "u1", "password": "p1", "email": "test@test.com"});
-        login = client.post("/user/login", json={"username": "u1", "password": "p1", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u1", "password": "p1"});
+        login = client.post("/user/login", json={"username": "u1", "password": "p1"});
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -206,7 +206,7 @@ test "restspec path parameters" {
     client = make_client("restspec_fixtures.jac");
     try {
         # Obtain an auth token (functions require auth, walkers are public)
-        client.post("/user/register", json={"username": "u_pp", "password": "p_pp", "email": "test@test.com"});
+        client.post("/user/register", json={"username": "u_pp", "password": "p_pp"});
         login = client.post(
             "/user/login", json={"username": "u_pp", "password": "p_pp"}
         );

@@ -439,14 +439,6 @@ impl JacAPIServerCore.register_create_user_endpoint -> None {
                     default=None,
                     description='Password for new user',
                     type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='email',
-                    data_type='email',
-                    required=True,
-                    default=None,
-                    description='Email address for new user',
-                    type=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -457,13 +449,11 @@ impl JacAPIServerCore.register_create_user_endpoint -> None {
     );
 }
 
-impl JacAPIServerCore.create_user(
-    username: str, password: str, email: str
-) -> TransportResponse {
+impl JacAPIServerCore.create_user(username: str, password: str) -> TransportResponse {
     import traceback;
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     try {
-        res = self.user_manager.create_user(username, password, email);
+        res = self.user_manager.create_user(username, password);
         if ('error' in res) {
             return TransportResponse.fail(
                 code='USER_EXISTS',
@@ -1109,14 +1099,14 @@ impl JacAPIServerCore.register_api_key_endpoints -> None {
     );
 }
 
-"""Create the system user, initialise JacScaleScheduler, and register /jobs endpoints."""
+"""Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
 impl JacAPIServerCore._setup_scheduler -> None {
     scheduler_config = get_scale_config().get_scheduler_config();
     system_password = scheduler_config.get('system_user_password', 'system_secret');
     try {
-        self.user_manager.create_user('system', system_password);
+        self.user_manager.create_user('__system__', system_password);
     } except Exception { }
-    system_token = self.user_manager.create_jwt_token('system');
+    system_token = self.user_manager.create_jwt_token('__system__');
 
     # Initialise JacScaleScheduler singleton
     jac_scheduler = JacScaleScheduler.instance();

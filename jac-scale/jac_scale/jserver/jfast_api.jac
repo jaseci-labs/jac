@@ -39,7 +39,6 @@ import from pydantic { BaseModel, Field, create_model }
 import from .jserver { APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType }
 import from jaclang.runtimelib.transport { TransportResponse }
 import from jaclang.jac0core.runtime { JacRuntime, JacRuntimeInterface }
-import from pydantic { EmailStr }
 
 glob logger = logging.getLogger(__name__),
      EndpointResponse: TypeAlias = Response | BaseModel | dict[

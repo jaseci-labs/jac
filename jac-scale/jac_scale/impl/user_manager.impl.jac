@@ -84,10 +84,8 @@ impl JacScaleUserManager._ensure_connection -> None {
 # ============================================================================
 # User CRUD - delegate to storage or parent
 # ============================================================================
-impl JacScaleUserManager.create_user(
-    username: str, password: str, email: str | None = None
-) -> dict[str, str] {
-    return self._storage.create_user(username, password, email)
+impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, str] {
+    return self._storage.create_user(username, password)
         if self._storage
         else super.create_user(username, password);
 }

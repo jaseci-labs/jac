@@ -35,10 +35,7 @@ obj JacScaleUserManager(UserManager) {
     def postinit -> None;
     def _ensure_connection -> None;
     def _init_sqlite_schema -> None;
-    def create_user(
-        username: str, password: str, email: str | None = None
-    ) -> dict[str, str];
-
+    def create_user(username: str, password: str) -> dict[str, str];
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def get_root_id(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);

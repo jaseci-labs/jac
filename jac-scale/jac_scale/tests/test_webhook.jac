@@ -223,7 +223,7 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
     username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123", "email": "test@test.com"},
+        json={"username": username, "password": "password123"},
         timeout=10
     );
     assert register_response.status_code == 201;
@@ -292,7 +292,7 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
     username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123", "email": "test@test.com"},
+        json={"username": username, "password": "password123"},
         timeout=10
     );
     assert register_response.status_code == 201;
@@ -343,7 +343,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
     username = f"payment_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123", "email": "test@test.com"},
+        json={"username": username, "password": "password123"},
         timeout=10
     );
     assert register_response.status_code == 201;
@@ -404,7 +404,7 @@ def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
     username = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123", "email": "test@test.com"},
+        json={"username": username, "password": "password123"},
         timeout=10
     );
     assert register_response.status_code == 201;
@@ -430,7 +430,7 @@ def run_webhook_revoked_api_key_test(base_url: str) -> None {
     username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123", "email": "test@test.com"},
+        json={"username": username, "password": "password123"},
         timeout=10
     );
     assert register_response.status_code == 201;

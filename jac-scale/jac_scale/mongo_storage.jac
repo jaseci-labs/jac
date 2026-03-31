@@ -10,9 +10,7 @@ obj MongoUserStorage {
     has users_col: Collection,
         sso_col: Collection;
 
-    def create_user(
-        username: str, password: str, email: str | None = None
-    ) -> dict[str, str] {
+    def create_user(username: str, password: str) -> dict[str, str] {
         import from jaclang.jac0core.constructs { Root }
         import from jaclang { JacRuntime as Jac }
         import secrets;
@@ -29,7 +27,6 @@ obj MongoUserStorage {
         self.users_col.insert_one(
             {
                 'username': username,
-                'email': email,
                 'password_hash': password_hash,
                 'token': token,
                 'root_id': root_id,

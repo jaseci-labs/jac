@@ -15,7 +15,7 @@ glob _jac_scale_scheduler: (JacScaleScheduler | None) = None,
 obj JacScaleScheduler {
     has _apscheduler: Any | None = None,
         _system_token: str | None = None,
-        _system_username: str = 'system',
+        _system_username: str = '__system__',
         _collection: str = 'scheduled_jobs',
         _db: Any | None = None,
         _in_memory_jobs: dict[str, Any] = {},
@@ -36,7 +36,7 @@ obj JacScaleScheduler {
         interval: (float | None) = None,
         cron: (str | None) = None,
         date: (str | None) = None,
-        created_by: str = 'system',
+        created_by: str = '__system__',
         root_id: (str | None) = None
     ) -> dict;
 

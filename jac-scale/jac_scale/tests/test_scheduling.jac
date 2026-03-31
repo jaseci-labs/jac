@@ -103,7 +103,7 @@ def _stop_server(proc: subprocess.Popen | None) -> None {
 def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> str {
     requests.post(
         f"{base_url}/user/register",
-        json={"username": user, "password": pwd, "email": "test@test.com"},
+        json={"username": user, "password": pwd},
         timeout=5
     );
     resp = requests.post(
@@ -162,13 +162,13 @@ test "endpoint filtering and startup" {
         resp = requests.post(f"{base_url}/jobs", json={}, timeout=5);
         assert resp.status_code != 404 , "/jobs POST should be registered";
 
-        # system user created at startup
+        # __system__ user created at startup
         resp = requests.post(
             f"{base_url}/user/login",
-            json={"username": "system", "password": "system_secret"},
+            json={"username": "__system__", "password": "system_secret"},
             timeout=5
         ).json();
-        assert resp.get("ok") , "system user must exist and authenticate";
+        assert resp.get("ok") , "__system__ user must exist and authenticate";
         assert _data(resp).get("token");
     } finally {
         _stop_server(sp);

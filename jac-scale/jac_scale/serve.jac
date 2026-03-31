@@ -74,7 +74,7 @@ obj JacAPIServerCore {
     # User/Auth endpoints
     def login(username: str, password: str) -> TransportResponse;
     def register_login_endpoint -> None;
-    def create_user(username: str, password: str, email: str) -> TransportResponse;
+    def create_user(username: str, password: str) -> TransportResponse;
     def register_create_user_endpoint -> None;
     def refresh_token(token: (str | None) = None) -> TransportResponse;
     def register_refresh_token_endpoint -> None;

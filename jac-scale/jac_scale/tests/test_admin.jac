@@ -75,7 +75,7 @@ test "admin login non-admin user rejected" {
 
         client.post(
             "/user/register",
-            json={"username": f"nonmin_{uuid.uuid4().hex[:8]}", "password": "testpass", "email": "test@test.com"}
+            json={"username": f"nonmin_{uuid.uuid4().hex[:8]}", "password": "testpass"}
         );
 
         response = client.post(

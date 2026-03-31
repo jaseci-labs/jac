@@ -191,9 +191,9 @@ obj ScaleTestClient {
     }
 
     """Register a user and return (username, token) tuple."""
-    def register_user(username: str, password: str, email: str = "test@test.com") -> tuple[str, str] {
+    def register_user(username: str, password: str) -> tuple[str, str] {
         response = self.post(
-            "/user/register", json={"username": username, "password": password, "email": email}
+            "/user/register", json={"username": username, "password": password}
         );
         data = response.json();
         if data.get("ok") and data.get("data") {
