@@ -43,12 +43,6 @@ impl DeclImplMatchPass.transform(
             }
         }
     }
-    # Resolve 'by postinit' Name nodes in HasVar declarations.
-    # The parser emits make_special_name(KW_POST_INIT) as kid[-1] of every
-    # deferred HasVar. _resolve_symbols_in_subtree is never called for ArchHas
-    # nodes, so that Name's .sym stays None — causing W2001 and breaking
-    # go-to-definition. The ability is stored as "__post_init__" (Python name),
-    # so use_lookup("postinit") silently misses it; look up directly instead.
     all_modules: list = [ir_in] + ir_in.impl_mod + ir_in.variant_mod;
     for variant_module in ir_in.variant_mod {
         all_modules.extend(variant_module.impl_mod);
