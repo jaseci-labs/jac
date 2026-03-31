@@ -23,6 +23,7 @@ import from typing {
     Any,
     Literal,
     ParamSpec,
+    Protocol,
     TypeAlias,
     TypeVar,
     cast,
@@ -620,6 +621,17 @@ class JacResponseBuilder {
     ) -> None;
 }
 
+"""Protocol defining the minimal contract for LLM model objects.
+
+    Both the core stub (returned when no plugin is loaded) and plugin
+    implementations (e.g. byllm's BaseLLM/Model) satisfy this protocol.
+    """
+obj LLMModel(Protocol) {
+    has call_params: dict[(str, object)];
+
+    def __call__(**kwargs: object) -> LLMModel;
+}
+
 """Jac byLLM integration."""
 class JacByLLM {
     """Get byLLM library."""
@@ -633,13 +645,13 @@ class JacByLLM {
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
 
     """Call the LLM model."""
-    static def call_llm(model: object, mt_run: MTRuntime) -> Any;
+    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
 
     """Python library mode decorator for Jac's by llm() syntax."""
-    static def `by(model: object) -> Callable;
+    static def `by(model: LLMModel) -> Callable;
 
     static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: object, descriptions: str = ''
+        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
     ) -> list[NodeArchetype];
 
     """by operator feature for expression composition.
@@ -657,7 +669,7 @@ class JacByLLM {
         in call_llm. Plugins (e.g. byllm) override this to return a configured
         Model instance based on jac.toml settings.
         """
-    static def default_llm -> object;
+    static def default_llm -> LLMModel;
 
     """Add MTIR to the node's MTIR map."""
     static def add_mtir_to_map(scope: str, mtir: Info) -> None;

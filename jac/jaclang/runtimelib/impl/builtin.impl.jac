@@ -105,7 +105,7 @@ impl _get_store -> Callable[..., Any] {
 }
 
 """Get default LLM model instance lazily."""
-impl _get_llm -> object {
+impl _get_llm -> LLMModel {
     return _get_jac().default_llm();
 }
 
