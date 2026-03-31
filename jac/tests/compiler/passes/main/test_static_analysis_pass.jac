@@ -91,6 +91,17 @@ test "by postinit field should not emit W2001 undefined name warning" {
     ];
     assert len(postinit_undefined) == 0 ,
         f"Expected no W2001 for 'by postinit', got: {postinit_undefined}";
+test "by-llm ability params produce no unused warnings" {
+    file_path = os.path.join(FIXTURES, "genai_ability_params.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    unused_warnings = [
+        w
+        for w in warning_msgs
+        if "defined but never used" in w
+    ];
+    assert len(unused_warnings) == 0 , f"Expected no unused warnings for by-llm params, got: {unused_warnings}";
 }
 
 test "classmethod and staticmethod on obj produce warnings" {
