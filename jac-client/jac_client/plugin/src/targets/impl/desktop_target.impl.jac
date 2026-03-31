@@ -2838,14 +2838,13 @@ if __name__ == "__main__":
                 str(build_dir),
                 str(spec_path)
             ],
-            capture_output=True,
-            text=True,
+            capture_output=False,
             timeout=SUBPROCESS_TIMEOUT_BUILD,
             cwd=str(project_dir)
         );
 
         if result.returncode != 0 {
-            console.warning(f"PyInstaller failed:\n{result.stderr}");
+            console.warning("PyInstaller failed (see output above)");
             return None;
         }
 
