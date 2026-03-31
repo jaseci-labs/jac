@@ -396,3 +396,22 @@ walker:pub NormalWalker {
 def normal_func -> dict {
     return {"message": "normal function endpoint"};
 }
+
+# ============================================================================
+# LLM Enforcement Test Walker
+# ============================================================================
+"""Walker that calls litellm.completion to test rate limiting, key injection,
+and username propagation. Import is deferred into the walker body so that
+tests can patch litellm.completion before make_client() is called."""
+walker CallLlm {
+    has model: str = "gpt-4o-mini";
+
+    can run with Root entry {
+        import litellm;
+        litellm.completion(
+            model=self.model,
+            messages=[{"role": "user", "content": "hi"}]
+        );
+        report {"called": True};
+    }
+}

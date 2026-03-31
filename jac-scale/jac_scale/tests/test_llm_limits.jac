@@ -1,10 +1,28 @@
 """Tests for LLM usage limits admin endpoints."""
 
+import types;
+import unittest.mock;
 import from typing { Any }
 import from jac_scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
     extract_data
+}
+
+"""Build a minimal fake litellm ModelResponse for use in mocks.
+
+cost   – value placed in _hidden_params["response_cost"]
+tokens – total_tokens; prompt_tokens is fixed at 10, completion = tokens-10
+"""
+def _fake_llm_response(cost: float = 0.001, tokens: int = 30) -> Any {
+    resp: Any = types.SimpleNamespace();
+    usage: Any = types.SimpleNamespace();
+    usage.prompt_tokens = 10;
+    usage.completion_tokens = tokens - 10;
+    usage.total_tokens = tokens;
+    resp.usage = usage;
+    resp._hidden_params = {"response_cost": cost};
+    return resp;
 }
 
 # ============================================================================
@@ -279,78 +297,147 @@ test "llm usage requires auth" {
 }
 
 # ============================================================================
-# API Key Config Tests
+# Provider Keys Config Tests
 # ============================================================================
 
-test "llm config get api key status" {
+test "llm provider keys get empty" {
     client = make_client();
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/config/api-key",
+            "/admin/llm/config/provider-keys",
             headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
-        assert "has_key" in data;
-        assert data["has_key"] is False;
+        assert isinstance(data, dict);
     } finally {
         client.close();
     }
 }
 
-test "llm config set and clear api key" {
+test "llm provider keys set and verify masked" {
     client = make_client();
     try {
         token = client.admin_login();
 
-        # Set key
         set_resp = client.put(
-            "/admin/llm/config/api-key",
+            "/admin/llm/config/provider-keys/openai",
             json={"api_key": "sk-test-1234567890"},
             headers={"Authorization": f"Bearer {token}"}
         );
         assert set_resp.status_code == 200;
         set_data = extract_data(set_resp.json());
-        assert set_data["has_key"] is True;
+        assert "masked_key" in set_data;
         assert "****" in set_data["masked_key"];
+        assert set_data["masked_key"].endswith("7890");
 
-        # Verify status
-        status_resp = client.get(
-            "/admin/llm/config/api-key",
+        # Verify appears in list
+        list_data = extract_data(
+            client.get(
+                "/admin/llm/config/provider-keys",
+                headers={"Authorization": f"Bearer {token}"}
+            ).json()
+        );
+        assert "openai" in list_data;
+
+        # Cleanup
+        client.delete(
+            "/admin/llm/config/provider-keys/openai",
             headers={"Authorization": f"Bearer {token}"}
         );
-        status_data = extract_data(status_resp.json());
-        assert status_data["has_key"] is True;
-
-        # Clear key
-        clear_resp = client.delete(
-            "/admin/llm/config/api-key",
-            headers={"Authorization": f"Bearer {token}"}
-        );
-        assert clear_resp.status_code == 200;
-
-        # Verify cleared
-        final_resp = client.get(
-            "/admin/llm/config/api-key",
-            headers={"Authorization": f"Bearer {token}"}
-        );
-        final_data = extract_data(final_resp.json());
-        assert final_data["has_key"] is False;
     } finally {
         client.close();
     }
 }
 
-test "llm config api key requires auth" {
+test "llm provider keys delete removes key" {
     client = make_client();
     try {
-        assert client.get("/admin/llm/config/api-key").status_code == 403;
+        token = client.admin_login();
+
+        client.put(
+            "/admin/llm/config/provider-keys/anthropic",
+            json={"api_key": "sk-ant-test-12345678"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+
+        del_resp = client.delete(
+            "/admin/llm/config/provider-keys/anthropic",
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert del_resp.status_code == 200;
+
+        list_data = extract_data(
+            client.get(
+                "/admin/llm/config/provider-keys",
+                headers={"Authorization": f"Bearer {token}"}
+            ).json()
+        );
+        assert "anthropic" not in list_data;
+    } finally {
+        client.close();
+    }
+}
+
+test "llm provider keys multiple providers independent" {
+    client = make_client();
+    try {
+        token = client.admin_login();
+
+        client.put(
+            "/admin/llm/config/provider-keys/openai",
+            json={"api_key": "sk-openai-test-key-1234"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        client.put(
+            "/admin/llm/config/provider-keys/anthropic",
+            json={"api_key": "sk-ant-test-key-5678"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+
+        list_data = extract_data(
+            client.get(
+                "/admin/llm/config/provider-keys",
+                headers={"Authorization": f"Bearer {token}"}
+            ).json()
+        );
+        assert "openai" in list_data;
+        assert "anthropic" in list_data;
+
+        # Delete only openai — anthropic must survive
+        client.delete(
+            "/admin/llm/config/provider-keys/openai",
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        list_after = extract_data(
+            client.get(
+                "/admin/llm/config/provider-keys",
+                headers={"Authorization": f"Bearer {token}"}
+            ).json()
+        );
+        assert "openai" not in list_after;
+        assert "anthropic" in list_after;
+
+        # Cleanup
+        client.delete(
+            "/admin/llm/config/provider-keys/anthropic",
+            headers={"Authorization": f"Bearer {token}"}
+        );
+    } finally {
+        client.close();
+    }
+}
+
+test "llm provider keys requires auth" {
+    client = make_client();
+    try {
+        assert client.get("/admin/llm/config/provider-keys").status_code == 403;
         assert client.put(
-            "/admin/llm/config/api-key",
+            "/admin/llm/config/provider-keys/openai",
             json={"api_key": "sk-test"}
         ).status_code == 403;
-        assert client.delete("/admin/llm/config/api-key").status_code == 403;
+        assert client.delete("/admin/llm/config/provider-keys/openai").status_code == 403;
     } finally {
         client.close();
     }
@@ -440,5 +527,214 @@ test "llm limits full lifecycle" {
         assert fallback_data["budget_limit"] == 50.0;
     } finally {
         client.close();
+    }
+}
+
+# ============================================================================
+# LLM Enforcement Tests
+#
+# Strategy: patch litellm.completion BEFORE make_client() so that when
+# register_llm_limits_endpoints() runs during server startup it captures our
+# mock as _original_completion inside the _guarded_completion closure.
+# Requests then flow:  litellm.completion (= _guarded_completion)
+#                           → _original_completion (= mock)
+# All enforcement logic (limits checks, key injection, usage recording) runs
+# normally; only the actual network call is replaced.
+# ============================================================================
+
+test "llm enforcement provider key injected into litellm kwargs" {
+    captured: dict[str, Any] = {};
+    fake = _fake_llm_response(cost=0.001, tokens=30);
+
+    def mock_completion(*args: Any, **kwargs: Any) -> Any {
+        captured.update(kwargs);
+        return fake;
+    }
+
+    with unittest.mock.patch("litellm.completion", mock_completion) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+
+            # Set an openai provider key via admin
+            client.put(
+                "/admin/llm/config/provider-keys/openai",
+                json={"api_key": "sk-test-injected-key"},
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # Register a user and make a walker call
+            (_, user_token) = client.register_user("inject_user", "Pass123!");
+            client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+
+            # The guarded wrapper should have injected the provider key
+            assert captured.get("api_key") == "sk-test-injected-key";
+
+            # Cleanup
+            client.delete(
+                "/admin/llm/config/provider-keys/openai",
+                headers={"Authorization": f"Bearer {token}"}
+            );
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm enforcement username propagated to usage tracking" {
+    fake = _fake_llm_response(cost=0.005, tokens=50);
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("usage_alice", "Pass123!");
+
+            client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+
+            # Usage should be recorded under the authenticated username
+            usage_data = extract_data(
+                client.get(
+                    "/admin/llm/usage/usage_alice",
+                    headers={"Authorization": f"Bearer {token}"}
+                ).json()
+            );
+            assert usage_data["total_requests"] >= 1;
+            assert usage_data["total_tokens"] >= 50;
+            assert usage_data["total_cost"] >= 0.005;
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm enforcement model not in allowed list blocks request" {
+    # No litellm mock needed — the model check fires before _original_completion
+    fake = _fake_llm_response();
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("model_bob", "Pass123!");
+
+            # Allow only gpt-4o; walker will call gpt-4o-mini
+            client.put(
+                "/admin/llm/limits/model_bob",
+                json={
+                    "budget_limit": 100.0,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "allowed_models": ["gpt-4o"],
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            resp = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            body = resp.json();
+            assert not body.get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm enforcement rpm limit blocks after first request" {
+    fake = _fake_llm_response();
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("rpm_carol", "Pass123!");
+
+            # Set rpm_limit=1 so the second call in the same minute is blocked
+            client.put(
+                "/admin/llm/limits/rpm_carol",
+                json={
+                    "budget_limit": 100.0,
+                    "budget_period": "monthly",
+                    "rpm_limit": 1,
+                    "tpm_limit": 1000000,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # First call — allowed, increments rpm counter to 1
+            first = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert first.json().get("ok");
+
+            # Second call — counter(1) >= limit(1) → blocked
+            second = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not second.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm enforcement budget limit blocks after spend exceeded" {
+    # cost per call = 0.005; budget = 0.001 → blocked on second call
+    fake = _fake_llm_response(cost=0.005, tokens=30);
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("budget_dave", "Pass123!");
+
+            client.put(
+                "/admin/llm/limits/budget_dave",
+                json={
+                    "budget_limit": 0.001,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # First call — succeeds and records cost=0.005 (exceeds budget)
+            first = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert first.json().get("ok");
+
+            # Second call — total_cost(0.005) >= budget_limit(0.001) → blocked
+            second = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not second.json().get("ok");
+        } finally {
+            client.close();
+        }
     }
 }

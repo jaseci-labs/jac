@@ -57,15 +57,22 @@ cl {
         );
     }
 
-    async def:pub getApiKeyStatus(token: str) -> dict {
-        return await get("/admin/llm/config/api-key", token);
+    async def:pub getProviderKeys(token: str) -> dict {
+        return await get("/admin/llm/config/provider-keys", token);
     }
 
-    async def:pub setApiKey(token: str, apiKey: str) -> dict {
-        return await put("/admin/llm/config/api-key", {"api_key": apiKey}, token);
+    async def:pub setProviderKey(token: str, provider: str, apiKey: str) -> dict {
+        return await put(
+            "/admin/llm/config/provider-keys/" + encodeURIComponent(provider),
+            {"api_key": apiKey},
+            token
+        );
     }
 
-    async def:pub clearApiKey(token: str) -> dict {
-        return await del("/admin/llm/config/api-key", token);
+    async def:pub deleteProviderKey(token: str, provider: str) -> dict {
+        return await del(
+            "/admin/llm/config/provider-keys/" + encodeURIComponent(provider),
+            token
+        );
     }
 }

@@ -20,9 +20,9 @@ cl {
         deleteUserLimits,
         getAllUsage,
         resetUserUsage,
-        getApiKeyStatus,
-        setApiKey,
-        clearApiKey
+        getProviderKeys,
+        setProviderKey,
+        deleteProviderKey
     }
     import from ....services.userService { getUsers }
 
@@ -59,10 +59,12 @@ cl {
             addTpm: str = "0",
             addModels: str = "",
             addError: str = "",
-            # API key state
-            hasApiKey: bool = False,
-            maskedKey: str = "",
-            newApiKey: str = "",
+            # Per-provider API key state
+            providerKeysList: list = [],
+            providerKeysData: Any = {},
+            selectedProvider: str = "openai",
+            customProviderName: str = "",
+            newProviderKey: str = "",
             # Per-user usage list
             allUsage: list = [];
 
@@ -112,11 +114,11 @@ cl {
                     users = usersResult["data"]["users"];
                     userList = Array.from(users) if users else [];
                 }
-                # Load API key status
-                keyResult = await getApiKeyStatus(auth["authToken"]);
-                if keyResult and keyResult["ok"] and keyResult["data"] {
-                    hasApiKey = keyResult["data"]["has_key"] or False;
-                    maskedKey = keyResult["data"]["masked_key"] or "";
+                # Load per-provider API keys
+                keysResult = await getProviderKeys(auth["authToken"]);
+                if keysResult and keysResult["ok"] and keysResult["data"] {
+                    providerKeysData = keysResult["data"];
+                    providerKeysList = Array.from(Object.keys(keysResult["data"]));
                 }
             } except Exception as e {
                 console.error("loadData error:", e);
@@ -243,33 +245,40 @@ cl {
             }
         }
 
-        # ── API Key handlers ─────────────────────────────────────────────
+        # ── Provider key handlers ────────────────────────────────────────
 
-        async def handleSetApiKey -> None {
-            if not newApiKey.strip() {
+        async def handleSetProviderKey -> None {
+            p = (customProviderName.strip().lower()
+                 if selectedProvider == "other"
+                 else selectedProvider);
+            k = newProviderKey.strip();
+            if not p {
+                alert["showAlert"]("Provider name is required", "error");
+                return;
+            }
+            if not k {
                 alert["showAlert"]("API key cannot be empty", "error");
                 return;
             }
-            result = await setApiKey(auth["authToken"], newApiKey.strip());
+            result = await setProviderKey(auth["authToken"], p, k);
             if result and result["ok"] {
-                hasApiKey = (result["data"] and result["data"]["has_key"]) or False;
-                maskedKey = (result["data"] and result["data"]["masked_key"]) or "";
-                newApiKey = "";
-                alert["showAlert"]("API key updated", "success");
+                customProviderName = "";
+                newProviderKey = "";
+                await loadData();
+                alert["showAlert"](f"Key set for {p}", "success");
             } else {
-                alert["showAlert"]("Failed to update API key", "error");
+                alert["showAlert"]("Failed to set provider key", "error");
             }
         }
 
-        async def handleClearApiKey -> None {
-            result = await clearApiKey(auth["authToken"]);
+        async def handleDeleteProviderKey(provider: str) -> None {
+            result = await deleteProviderKey(auth["authToken"], provider);
             if result and result["ok"] {
-                hasApiKey = False;
-                maskedKey = "";
-                newApiKey = "";
-                alert["showAlert"]("API key cleared — using jac.toml / env vars", "success");
+                providerKeysList = [p for p in providerKeysList if p != provider];
+                await loadData();
+                alert["showAlert"](f"Key cleared for {provider}", "success");
             } else {
-                alert["showAlert"]("Failed to clear API key", "error");
+                alert["showAlert"]("Failed to clear provider key", "error");
             }
         }
 
@@ -335,47 +344,73 @@ cl {
         return
             <div className="space-y-4">
                 <Card className="overflow-hidden">
-                    <CardHeader
-                        title="LLM API Key"
-                        action={hasApiKey
-                            and <Button variant="danger" size="sm" onClick={handleClearApiKey}>
-                                Clear Key
-                            </Button>}
-                    />
+                    <CardHeader title="LLM Provider API Keys"/>
                     <CardBody className="p-4">
                         <p className="text-xs text-slate-500 mb-3">
-                            Override the LLM provider API key at runtime. When set, all byllm calls use this key instead of jac.toml / environment variables.
+                            Set API keys per provider at runtime. When set, byllm calls for that provider use this key instead of jac.toml / environment variables.
                         </p>
-                        {hasApiKey
-                        and <div className="mb-3 p-3 bg-slate-800 rounded-lg flex items-center justify-between">
-                            <div>
-                                <span className="text-xs text-slate-400">
-                                    Active key:
-                                </span>
-                                <span className="ml-2 text-sm text-white font-mono">
-                                    {maskedKey}
-                                </span>
-                            </div>
-                            <Badge text="Active" variant="success"/>
+                        {len(providerKeysList) > 0
+                        and <div className="mb-3 space-y-2">
+                            {[
+                                <div key={provider} className="p-3 bg-slate-800 rounded-lg flex items-center justify-between">
+                                    <div>
+                                        <span className="text-xs text-slate-400 capitalize">{provider}:</span>
+                                        <span className="ml-2 text-sm text-white font-mono">{providerKeysData[provider]["masked_key"]}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge text="Active" variant="success"/>
+                                        <Button variant="danger" size="sm" onClick={lambda -> None { handleDeleteProviderKey(provider);}}>
+                                            Remove
+                                        </Button>
+                                    </div>
+                                </div>
+                                for provider in providerKeysList
+                            ]}
                         </div>}
-                        {not hasApiKey
+                        {len(providerKeysList) == 0
                         and <div className="mb-3 p-3 bg-slate-800 rounded-lg">
                             <span className="text-xs text-slate-400">
-                                No runtime key set — using jac.toml / environment variables
+                                No provider keys set — using jac.toml / environment variables
                             </span>
                         </div>}
-                        <div className="flex gap-2">
-                            <div className="flex-1">
-                                <Input
-                                    type="password"
-                                    value={newApiKey}
-                                    onChange={lambda e: Any -> None { newApiKey = e.target.value;}}
-                                    placeholder="sk-proj-..."
-                                />
+                        <div className="space-y-2">
+                            <div className="flex gap-2 items-end">
+                                <div className="w-48">
+                                    <Select
+                                        label="Provider"
+                                        value={selectedProvider}
+                                        onChange={lambda e: Any -> None { selectedProvider = e.target.value;}}
+                                        options={[
+                                            {"value": "openai",    "label": "OpenAI (OPENAI_API_KEY)"},
+                                            {"value": "anthropic", "label": "Anthropic (ANTHROPIC_API_KEY)"},
+                                            {"value": "gemini",    "label": "Gemini (GEMINI_API_KEY)"},
+                                            {"value": "mistral",   "label": "Mistral (MISTRAL_API_KEY)"},
+                                            {"value": "groq",      "label": "Groq (GROQ_API_KEY)"},
+                                            {"value": "cohere",    "label": "Cohere (COHERE_API_KEY)"},
+                                            {"value": "azure",     "label": "Azure OpenAI (AZURE_API_KEY)"},
+                                            {"value": "other",     "label": "Other…"}
+                                        ]}
+                                    />
+                                </div>
+                                {selectedProvider == "other"
+                                and <Input
+                                    value={customProviderName}
+                                    onChange={lambda e: Any -> None { customProviderName = e.target.value;}}
+                                    placeholder="provider name"
+                                />}
+                                <div className="flex-1">
+                                    <Input
+                                        type="password"
+                                        label="API Key"
+                                        value={newProviderKey}
+                                        onChange={lambda e: Any -> None { newProviderKey = e.target.value;}}
+                                        placeholder="sk-..."
+                                    />
+                                </div>
+                                <Button onClick={handleSetProviderKey}>
+                                    Set Key
+                                </Button>
                             </div>
-                            <Button onClick={handleSetApiKey}>
-                                Set Key
-                            </Button>
                         </div>
                     </CardBody>
                 </Card>

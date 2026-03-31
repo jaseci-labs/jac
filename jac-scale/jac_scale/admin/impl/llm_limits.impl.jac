@@ -113,6 +113,7 @@ obj LLMUsageCounters {
             "total_requests": self.total_requests,
             "request_count_minute": self.request_count_minute,
             "token_count_minute": self.token_count_minute,
+            "minute_window": self.minute_window,
             "updated_at": self.updated_at
         };
     }
@@ -713,9 +714,11 @@ obj LLMLimitsStore {
 # Global store instance
 glob _llm_limits_store: LLMLimitsStore | None = None;
 
-# Active LLM API key — hot-swappable at runtime via admin endpoint.
-# When set (non-empty), overrides the api_key on every litellm call.
-glob _active_api_key: str = "";
+# Per-provider API keys — hot-swappable at runtime via admin endpoints.
+# Keys are provider names as returned by litellm.get_llm_provider(), e.g.
+# {"openai": "sk-...", "anthropic": "sk-ant-...", "gemini": "AIza..."}
+# When a provider key is present it overrides jac.toml / env vars for that provider.
+glob _active_provider_keys: dict = {};
 
 """Get the global limits store instance (None if not initialized)."""
 def get_llm_limits_store -> LLMLimitsStore | None {
@@ -800,9 +803,17 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             # Inject username into metadata for post-call tracking
             call_meta['jac_username'] = username;
             kwargs['metadata'] = call_meta;
-            # Hot-swap API key if admin has set one
-            if _active_api_key {
-                kwargs['api_key'] = _active_api_key;
+            # Inject per-provider API key if admin has configured one
+            if _active_provider_keys and 'api_key' not in kwargs {
+                try {
+                    provider_key = kwargs.get('model', '') or (args[0] if args else '');
+                    provider = litellm.get_llm_provider(provider_key)[1];
+                    if provider and provider in _active_provider_keys {
+                        kwargs['api_key'] = _active_provider_keys[provider];
+                    }
+                } except Exception {
+                    _ = 0;
+                }
             }
 
             start_ts = time.time();
@@ -866,9 +877,17 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             store.increment_rpm(username);
             call_meta['jac_username'] = username;
             kwargs['metadata'] = call_meta;
-            # Hot-swap API key if admin has set one
-            if _active_api_key {
-                kwargs['api_key'] = _active_api_key;
+            # Inject per-provider API key if admin has configured one
+            if _active_provider_keys and 'api_key' not in kwargs {
+                try {
+                    provider_key = kwargs.get('model', '') or (args[0] if args else '');
+                    provider = litellm.get_llm_provider(provider_key)[1];
+                    if provider and provider in _active_provider_keys {
+                        kwargs['api_key'] = _active_provider_keys[provider];
+                    }
+                } except Exception {
+                    _ = 0;
+                }
             }
 
             start_ts = time.time();
@@ -1240,20 +1259,38 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         )
     );
 
-    # ── API Key Management ─────────────────────────────────────────────
+    # ── Per-Provider API Key Management ───────────────────────────────────
+    # Keys stored as {"_id": "provider_keys", "keys": {"openai": "sk-...", ...}}
 
-    # Load persisted API key from MongoDB on startup
-    global _active_api_key;
+    # Load persisted provider keys from MongoDB on startup
+    global _active_provider_keys;
     if store._db {
-        key_doc = store._db["llm_config"].find_one({"_id": "api_key"});
-        if key_doc and key_doc.get("value") {
-            _active_api_key = key_doc["value"];
-            logger.info("LLM limits: active API key loaded from database");
+        keys_doc = store._db["llm_config"].find_one({"_id": "provider_keys"});
+        if keys_doc and keys_doc.get("keys") {
+            _active_provider_keys = dict(keys_doc["keys"]);
+            logger.info(
+                f"LLM limits: provider keys loaded for: {list(_active_provider_keys.keys())}"
+            );
         }
     }
 
-    # GET /admin/llm/config/api-key
-    async def get_api_key_handler(request: Request) -> JSONResponse {
+    def _mask_key(key: str) -> str {
+        return "****" + key[-4:] if len(key) >= 4 else "****";
+    }
+
+    def _persist_provider_keys -> None {
+        if store._db {
+            store._db["llm_config"].update_one(
+                {"_id": "provider_keys"},
+                {"$set": {"keys": _active_provider_keys}},
+                upsert=True
+            );
+        }
+    }
+
+    # GET /admin/llm/config/provider-keys
+    # Returns all configured providers with masked keys
+    async def get_provider_keys_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1261,33 +1298,33 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                 content={"ok": False, "error": {"message": "Unauthorized"}}
             );
         }
-        # Mask the key for display — show only last 4 chars
-        masked = "";
-        if _active_api_key {
-            masked = "****" + _active_api_key[-4:];
+        result: dict = {};
+        for provider in _active_provider_keys {
+            key = _active_provider_keys[provider];
+            if key {
+                result[provider] = {"has_key": True, "masked_key": _mask_key(key)};
+            }
         }
-        return JSONResponse(content={
-            "ok": True,
-            "data": {"has_key": bool(_active_api_key), "masked_key": masked}
-        });
+        return JSONResponse(content={"ok": True, "data": result});
     }
 
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path="/admin/llm/config/api-key",
-            callback=get_api_key_handler,
+            path="/admin/llm/config/provider-keys",
+            callback=get_provider_keys_handler,
             parameters=[],
             response_model=None,
             tags=["LLM Config"],
-            summary="Get Active LLM API Key Status",
-            description="Check if an active API key override is set (masked)."
+            summary="Get Provider API Keys",
+            description="List all configured provider API keys (masked)."
         )
     );
 
-    # PUT /admin/llm/config/api-key
-    async def set_api_key_handler(request: Request) -> JSONResponse {
-        global _active_api_key;
+    # PUT /admin/llm/config/provider-keys/{provider}
+    # Body: {"api_key": "sk-..."}
+    async def set_provider_key_handler(request: Request, provider: str) -> JSONResponse {
+        global _active_provider_keys;
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1295,44 +1332,54 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                 content={"ok": False, "error": {"message": "Unauthorized"}}
             );
         }
-        body = await request.json();
-        new_key = body.get("api_key", "");
-        _active_api_key = str(new_key);
-        # Persist to MongoDB
-        if store._db {
-            store._db["llm_config"].update_one(
-                {"_id": "api_key"},
-                {"$set": {"value": _active_api_key}},
-                upsert=True
+        provider = provider.strip().lower();
+        if not provider {
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": {"message": "Provider name required"}}
             );
         }
-        masked = "";
-        if _active_api_key {
-            masked = "****" + _active_api_key[-4:];
+        body = await request.json();
+        new_key = str(body.get("api_key", "")).strip();
+        if not new_key {
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": {"message": "api_key is required"}}
+            );
         }
-        logger.info(f"LLM limits: API key updated via admin ({masked})");
+        _active_provider_keys[provider] = new_key;
+        _persist_provider_keys();
+        logger.info(f"LLM limits: API key set for provider '{provider}' ({_mask_key(new_key)})");
         return JSONResponse(content={
             "ok": True,
-            "data": {"has_key": bool(_active_api_key), "masked_key": masked}
+            "data": {"provider": provider, "masked_key": _mask_key(new_key)}
         });
     }
 
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.PUT,
-            path="/admin/llm/config/api-key",
-            callback=set_api_key_handler,
-            parameters=[],
+            path="/admin/llm/config/provider-keys/{provider}",
+            callback=set_provider_key_handler,
+            parameters=[
+                APIParameter(
+                    name="provider",
+                    required=True,
+                    default=None,
+                    description="Provider name, e.g. openai, anthropic, gemini",
+                    type=ParameterType.PATH
+                )
+            ],
             response_model=None,
             tags=["LLM Config"],
-            summary="Set Active LLM API Key",
-            description="Hot-swap the LLM provider API key at runtime. Pass empty string to clear."
+            summary="Set Provider API Key",
+            description="Set or update the runtime API key for a specific LLM provider."
         )
     );
 
-    # DELETE /admin/llm/config/api-key
-    async def delete_api_key_handler(request: Request) -> JSONResponse {
-        global _active_api_key;
+    # DELETE /admin/llm/config/provider-keys/{provider}
+    async def delete_provider_key_handler(request: Request, provider: str) -> JSONResponse {
+        global _active_provider_keys;
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1340,31 +1387,44 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                 content={"ok": False, "error": {"message": "Unauthorized"}}
             );
         }
-        _active_api_key = "";
-        if store._db {
-            store._db["llm_config"].delete_one({"_id": "api_key"});
+        provider = provider.strip().lower();
+        if provider not in _active_provider_keys {
+            return JSONResponse(
+                status_code=404,
+                content={"ok": False, "error": {"message": f"No key configured for '{provider}'"}}
+            );
         }
-        logger.info("LLM limits: API key cleared via admin");
+        _active_provider_keys.pop(provider);
+        _persist_provider_keys();
+        logger.info(f"LLM limits: API key cleared for provider '{provider}'");
         return JSONResponse(content={
             "ok": True,
-            "data": {"message": "API key cleared — falling back to jac.toml / env vars"}
+            "data": {"message": f"Key cleared for '{provider}' — falling back to jac.toml / env vars"}
         });
     }
 
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.DELETE,
-            path="/admin/llm/config/api-key",
-            callback=delete_api_key_handler,
-            parameters=[],
+            path="/admin/llm/config/provider-keys/{provider}",
+            callback=delete_provider_key_handler,
+            parameters=[
+                APIParameter(
+                    name="provider",
+                    required=True,
+                    default=None,
+                    description="Provider name to remove key for",
+                    type=ParameterType.PATH
+                )
+            ],
             response_model=None,
             tags=["LLM Config"],
-            summary="Clear Active LLM API Key",
-            description="Remove the runtime API key override. Falls back to jac.toml config."
+            summary="Delete Provider API Key",
+            description="Remove the runtime API key for a specific LLM provider."
         )
     );
 
     logger.info(
-        "LLM limits endpoints registered: /admin/llm/{limits,usage,config/api-key}"
+        "LLM limits endpoints registered: /admin/llm/{limits,usage,config/provider-keys}"
     );
 }
