@@ -10,11 +10,11 @@ def categorize(title: str) -> Category by llm();
 
 def:pub add_todo(title: str) -> Todo {
     category = str(categorize(title)).split(".")[-1].lower();
-    return (root ++> Todo(title=title, category=category))[0];
+    return (root() ++> Todo(title=title, category=category))[0];
 }
 
 def:pub get_todos -> list[Todo] {
-    return [root-->][?:Todo];
+    return [root()-->][?:Todo];
 }
 
 cl def:pub app -> JsxElement {
