@@ -954,13 +954,14 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
 
 """Remove user-defined routes (walkers, functions, webhooks, websockets) from app and endpoint list."""
 impl JacAPIServerCore._clear_user_routes -> None {
+    import from starlette.routing { WebSocketRoute }
     # Collect paths of user endpoints (everything after core endpoints)
     user_paths = {ep.path for ep in self.server._endpoints[self._core_endpoint_count:]};
-    # Remove matching routes from FastAPI app
+    # Remove matching routes + WebSocket routes (which bypass _endpoints)
     self.server.app.routes[:] = [
         r
         for r in self.server.app.routes
-        if not (r?.path and r.path in user_paths)
+        if not (r?.path and (r.path in user_paths or isinstance(r, WebSocketRoute)))
     ];
     # Trim endpoints back to core only
     self.server._endpoints[:] = self.server._endpoints[:self._core_endpoint_count];
