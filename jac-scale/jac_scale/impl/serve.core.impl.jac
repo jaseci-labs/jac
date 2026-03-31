@@ -231,6 +231,8 @@ impl JacAPIServerCore.start(
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
     }
+    # Save boundary so HMR knows which endpoints are user-defined (walkers/functions/webhooks)
+    self._core_endpoint_count = len(self.server._endpoints);
     # Register named endpoints (individual walker/function names visible in OpenAPI docs)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();
@@ -952,17 +954,16 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
 
 """Remove user-defined routes (walkers, functions, webhooks, websockets) from app and endpoint list."""
 impl JacAPIServerCore._clear_user_routes -> None {
-    _USER_ROUTE_PREFIXES = ('/walker/', '/function/', '/webhook/', '/ws/');
+    # Collect paths of user endpoints (everything after core endpoints)
+    user_paths = {ep.path for ep in self.server._endpoints[self._core_endpoint_count:]};
+    # Remove matching routes from FastAPI app
     self.server.app.routes[:] = [
         r
         for r in self.server.app.routes
-        if not (r?.path and r.path.startswith(_USER_ROUTE_PREFIXES))
+        if not (r?.path and r.path in user_paths)
     ];
-    self.server._endpoints[:] = [
-        ep
-        for ep in self.server._endpoints
-        if not ep.path.startswith(_USER_ROUTE_PREFIXES)
-    ];
+    # Trim endpoints back to core only
+    self.server._endpoints[:] = self.server._endpoints[:self._core_endpoint_count];
 }
 
 """Refresh dev endpoints after HMR reload - removes stale routes and re-registers named endpoints."""
