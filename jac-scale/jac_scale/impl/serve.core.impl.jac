@@ -956,11 +956,13 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
 impl JacAPIServerCore._clear_user_routes -> None {
     _USER_ROUTE_PREFIXES = ('/walker/', '/function/', '/webhook/', '/ws/');
     self.server.app.routes[:] = [
-        r for r in self.server.app.routes
+        r
+        for r in self.server.app.routes
         if not (r?.path and r.path.startswith(_USER_ROUTE_PREFIXES))
     ];
     self.server._endpoints[:] = [
-        ep for ep in self.server._endpoints
+        ep
+        for ep in self.server._endpoints
         if not ep.path.startswith(_USER_ROUTE_PREFIXES)
     ];
 }
