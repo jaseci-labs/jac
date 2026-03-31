@@ -397,4 +397,13 @@ variables
 
     def exit_semi(nd: uni.Semi) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
+
+    """Resolve Self to the appropriate Python construct based on context."""
+    def _resolve_self_type(nd: uni.Name) -> ast3.expr | None;
+
+    """Check if a node is in a type annotation context."""
+    def _is_in_type_annotation(nd: uni.UniNode) -> bool;
+
+    """Check if a node is or is a descendant of another node."""
+    def _is_descendant_of(nd: uni.UniNode, ancestor: uni.UniNode) -> bool;
 }
