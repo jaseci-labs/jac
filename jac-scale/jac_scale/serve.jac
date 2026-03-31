@@ -151,12 +151,8 @@ obj JacAPIServerEndpoints {
     def get_ws_manager -> WebSocketConnectionManager;
     def create_websocket_handler(walker_name: str) -> Callable;
     def register_websocket_endpoints -> None;
-    # Dynamic HMR endpoints
-    def register_dynamic_walker_endpoint -> None;
-    def register_dynamic_function_endpoint -> None;
+    # Introspection endpoints (dev mode)
     def register_dynamic_introspection_endpoints -> None;
-    def register_dynamic_webhook_endpoint -> None;
-    def register_dynamic_websocket_endpoint -> None;
 }
 
 """Scheduler job management REST API endpoints."""
