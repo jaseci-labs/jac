@@ -387,8 +387,8 @@ cl {
                 <input
                     type="text"
                     value={input}
-                    onChange={lambda e: Any  -> None { setInput(e.target.value);}}
-                    onKeyPress={lambda e: Any  -> None { if e.key == "Enter" {
+                    onChange={lambda e: Any -> None { setInput(e.target.value);}}
+                    onKeyPress={lambda e: Any -> None { if e.key == "Enter" {
                         addTodo();
                     }}}
                     placeholder="What needs to be done?"

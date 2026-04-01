@@ -15,7 +15,7 @@ cl {
                 <p>
                     Count:{count}
                 </p>
-                <button onClick={lambda e: Any  -> None { count = count + 1;}}>
+                <button onClick={lambda e: Any -> None { count = count + 1;}}>
                     Increment
                 </button>
             </div>;

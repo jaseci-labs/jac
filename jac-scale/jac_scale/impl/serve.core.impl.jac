@@ -209,41 +209,29 @@ impl JacAPIServerCore.start(
             }
         }
     }
-    self.register_health_endpoint();
-    self.register_create_user_endpoint();
-    self.register_login_endpoint();
-    self.register_page_endpoint();
-    self.register_refresh_token_endpoint();
-    self.register_sso_endpoints();
-    self.register_client_js_endpoint();
-    self.register_static_file_endpoint();
-    self.register_update_username_endpoint();
-    self.register_update_password_endpoint();
-    self.register_api_key_endpoints();
-    self.register_graph_endpoint();
-    self.register_admin_endpoints();
-    self.register_llm_telemetry_endpoints();
-    # Use dynamic routing for HMR support, static routing for production
     if dev {
         # Enable FastAPI docs only in dev mode
         self.server.app.docs_url = "/docs";
         self.server.app.openapi_url = "/openapi.json";
         self.server.app.redoc_url = "/redoc";
         self.server.app.setup();
-        self.register_dynamic_walker_endpoint();
-        self.register_dynamic_function_endpoint();
-        self.register_dynamic_introspection_endpoints();
-        self.register_dynamic_webhook_endpoint();
-        self.register_dynamic_websocket_endpoint();
-    } else {
-        self.register_walkers_endpoints();
-        self.register_functions_endpoints();
-        self.register_webhook_endpoints();
-        self.register_websocket_endpoints();
     }
-    self.register_root_asset_endpoint();
-    self._register_client_error_endpoint();
-    self._configure_openapi_security();
+    self._register_endpoints();
+    if dev {
+        # Add middleware to refresh endpoints on HMR file changes
+        import from starlette.requests { Request as StarletteRequest }
+        import from starlette.responses { Response as StarletteResponse }
+        _self = self;
+        @self.server.app.middleware("http")
+        async def hmr_refresh_middleware(
+            request: StarletteRequest, call_next: Any
+        ) -> StarletteResponse {
+            if _self._hmr_pending {
+                _self._refresh_dev_endpoints();
+            }
+            return await call_next(request);
+        }
+    }
     self.user_manager.create_user(Con.GUEST.value, '__no_password__');
     self._setup_scheduler();
     # Find an available port (may differ from requested if port is in use)
@@ -940,6 +928,48 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     logger.debug("Dynamic routing enabled for jac-scale");
 }
 
+"""Register all endpoints (core + user-defined). Called at startup and on HMR refresh."""
+impl JacAPIServerCore._register_endpoints -> None {
+    # Core endpoints
+    self.register_health_endpoint();
+    self.register_create_user_endpoint();
+    self.register_login_endpoint();
+    self.register_page_endpoint();
+    self.register_refresh_token_endpoint();
+    self.register_sso_endpoints();
+    self.register_client_js_endpoint();
+    self.register_static_file_endpoint();
+    self.register_update_username_endpoint();
+    self.register_update_password_endpoint();
+    self.register_api_key_endpoints();
+    self.register_graph_endpoint();
+    self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
+    # User-defined endpoints (walkers, functions, webhooks)
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.register_websocket_endpoints();
+    # Post-registration
+    self.register_scheduler_endpoints();
+    self.register_root_asset_endpoint();
+    self._register_client_error_endpoint();
+    self._configure_openapi_security();
+}
+
+"""Refresh all endpoints after HMR reload - clears routes and re-registers from scratch."""
+impl JacAPIServerCore._refresh_dev_endpoints -> None {
+    self._hmr_pending = False;
+    self.introspector.load(force_reload=True);
+    # Clear all routes and endpoints, then re-setup docs and re-register
+    self.server._endpoints[:] = [];
+    self.server.app.routes.clear();
+    self.server.app.setup();
+    self._register_endpoints();
+    self.server.execute();
+    self.server.app.openapi_schema = None;
+}
+
 # ============================================================================
 # API Key Management
 # ============================================================================
@@ -1120,9 +1150,6 @@ impl JacAPIServerCore._setup_scheduler -> None {
 
     # Start APScheduler background thread
     jac_scheduler.start();
-
-    # Register /jobs REST endpoints
-    self.register_scheduler_endpoints();
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""

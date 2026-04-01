@@ -1,5 +1,6 @@
-"""Copy custom asset files (based on jac.toml configuration) from source to destination recursively."""
+import from jaclang.cli.console { console }
 
+"""Copy custom asset files (based on jac.toml configuration) from source to destination recursively."""
 impl AssetProcessor.copy_custom_asset_types(
     self: AssetProcessor,
     src_dir: Path,
@@ -28,8 +29,12 @@ impl AssetProcessor.copy_custom_asset_types(
                     dest_file = destination / item.name;
                 }
                 dest_file.parent.mkdir(parents=True, exist_ok=True);
-                with contextlib.suppress(OSError, shutil.Error) {
+                try {
                     shutil.copy2(item, dest_file);
+                } except (OSError, shutil.Error) as e {
+                    console.warning(
+                        f"Failed to copy custom asset '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);
@@ -75,8 +80,12 @@ impl AssetProcessor.copy_typescript_files(
                     dest_file = destination / item.name;
                 }
                 dest_file.parent.mkdir(parents=True, exist_ok=True);
-                with contextlib.suppress(OSError, shutil.Error) {
+                try {
                     shutil.copy2(item, dest_file);
+                } except (OSError, shutil.Error) as e {
+                    console.warning(
+                        f"Failed to copy TypeScript file '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);
@@ -115,8 +124,12 @@ impl AssetProcessor.copy_assets(
                     dest_file = destination / item.name;
                 }
                 dest_file.parent.mkdir(parents=True, exist_ok=True);
-                with contextlib.suppress(OSError, shutil.Error) {
+                try {
                     shutil.copy2(item, dest_file);
+                } except (OSError, shutil.Error) as e {
+                    console.warning(
+                        f"Failed to copy asset '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);

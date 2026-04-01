@@ -100,6 +100,28 @@ def collect_field_names(
     return [field.sym_name for field in arch.get_has_vars()];
 }
 
+"""Build a dotted key string from a Name or AtomTrailer expression.
+
+Returns keys like "x" or "obj.speed" for use in affected_symbols.
+Returns None for expressions that cannot be represented as a key.
+"""
+def get_expr_key(expr: uni.Expr) -> str | None {
+    if isinstance(expr, uni.Name) {
+        return expr.value;
+    }
+    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        base = get_expr_key(expr.target);
+        if base and isinstance(expr.right, uni.Name) {
+            return f"{base}.{expr.right.value}";
+        }
+    }
+    # Unwrap parentheses
+    if isinstance(expr, uni.AtomUnit) and expr.value {
+        return get_expr_key(expr.value);
+    }
+    return None;
+}
+
 """Collect symbols narrowed by a condition expression.
 
 Extracted from CFGBuildPass._collect_narrowing_symbols.
@@ -121,6 +143,10 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
             }
             if isinstance(first_arg, uni.Name) {
                 symbols.add(first_arg.value);
+            } elif isinstance(first_arg, uni.AtomTrailer) and first_arg.is_attr {
+                if key := get_expr_key(first_arg) {
+                    symbols.add(key);
+                }
             } elif (
                 isinstance(first_arg, uni.BinaryExpr)
                 and isinstance(first_arg.op, uni.Token)
@@ -145,6 +171,10 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
         }
         if isinstance(left, uni.Name) {
             symbols.add(left.value);
+        } elif isinstance(left, uni.AtomTrailer) and left.is_attr {
+            if key := get_expr_key(left) {
+                symbols.add(key);
+            }
         } elif isinstance(left, uni.BinaryExpr) {
             if (
                 isinstance(left.op, uni.Token)
@@ -175,6 +205,12 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     elif isinstance(condition, uni.Name) {
         symbols.add(condition.value);
     }
+    # Pattern: x.attr (truthiness check like `if obj.field:`) — collect 'x.attr'
+    elif isinstance(condition, uni.AtomTrailer) and condition.is_attr {
+        if key := get_expr_key(condition) {
+            symbols.add(key);
+        }
+    }
     # Pattern: (x := expr) walrus operator — collect 'x'
     elif (
         isinstance(condition, uni.BinaryExpr)
@@ -199,6 +235,10 @@ def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
         for target in nd.target {
             if isinstance(target, uni.Name) {
                 symbols.add(target.value);
+            } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+                if key := get_expr_key(target) {
+                    symbols.add(key);
+                }
             }
         }
     }

@@ -47,8 +47,8 @@ def:pub TestButton(text: str, onClick: Any, variant: str) -> JsxElement {
                 "fontWeight": "600",
                 "transition": "all 0.2s"
             }}
-            onMouseOver={lambda e: Any  -> None { e.target.style.backgroundColor = hover_color;}}
-            onMouseOut={lambda e: Any  -> None { e.target.style.backgroundColor = bg_color;}}
+            onMouseOver={lambda e: Any -> None { e.target.style.backgroundColor = hover_color;}}
+            onMouseOut={lambda e: Any -> None { e.target.style.backgroundColor = bg_color;}}
         >
             {text}
         </button>;
@@ -369,7 +369,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={testMessage}
-                            onChange={lambda e: Any  -> None { testMessage = e.target.value;}}
+                            onChange={lambda e: Any -> None { testMessage = e.target.value;}}
                             placeholder="Enter test message..."
                             style={{
                                 "flex": "1",
@@ -486,7 +486,7 @@ def:pub FeaturesTest -> JsxElement {
                             <input
                                 type="text"
                                 value={stringInput}
-                                onChange={lambda e: Any  -> None { stringInput = e.target.value;}}
+                                onChange={lambda e: Any -> None { stringInput = e.target.value;}}
                                 style={{
                                     "flex": "1",
                                     "padding": "10px",
@@ -516,7 +516,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={numberList}
-                            onChange={lambda e: Any  -> None { numberList = e.target.value;}}
+                            onChange={lambda e: Any -> None { numberList = e.target.value;}}
                             placeholder="Enter numbers (comma-separated)"
                             style={{
                                 "flex": "1",

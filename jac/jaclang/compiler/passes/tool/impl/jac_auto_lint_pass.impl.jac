@@ -31,14 +31,22 @@ impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
 
 """Remove empty parentheses from function signatures with no parameters."""
 impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
-    if not self.lint_enabled or self._is_suppressed(W3005) {
+    if not self.lint_enabled {
         return;
     }
-    sig = ability_node.signature;
-    if not isinstance(sig, uni.FuncSignature) {
-        return;
+    if not self.report_only and not self._is_suppressed(W3005) {
+        sig = ability_node.signature;
+        if isinstance(sig, uni.FuncSignature) {
+            self._remove_empty_parens_from_sig(ability_node, sig, "signature");
+        }
     }
-    self._remove_empty_parens_from_sig(ability_node, sig, "signature");
+    if ability_node.body is not None and isinstance(ability_node.body, list) {
+        self._check_unnecessary_pass(list(ability_node.body), ability_node);
+    }
+    name = ability_node.name_spec.sym_name if ability_node.name_spec else "<anonymous>";
+    self._check_unnecessary_none_return(
+        ability_node, ability_node.body, ability_node.signature, name
+    );
 }
 
 """Remove @staticmethod decorator tokens and add static keyword to ability's kid list.
@@ -106,7 +114,7 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -
 """Process ability to convert @staticmethod decorator to static keyword, __init__/__post_init__ to init/postinit,
 and combine consecutive has statements in function bodies."""
 impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     if ability_node.decorators {
@@ -185,7 +193,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
 
 """Process ImplDef to combine consecutive has statements."""
 impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     impl_node = nd;
@@ -204,7 +212,7 @@ impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
 
 """Remove empty parentheses from impl signatures with no parameters."""
 impl JacAutoLintPass.exit_impl_def(nd: uni.ImplDef) -> None {
-    if not self.lint_enabled or self._is_suppressed(W3005) {
+    if not self.lint_enabled or self.report_only or self._is_suppressed(W3005) {
         return;
     }
     spec = nd.spec;
@@ -220,7 +228,7 @@ This implementation avoids calling normalize() to preserve comment associations.
 We update the kid list by removing merged statements and keeping the combined ones.
 """
 impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     enum_node = nd;
@@ -249,7 +257,7 @@ This implementation avoids calling normalize() to preserve comment associations.
 We update the kid list by removing merged statements and keeping the combined ones.
 """
 impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     arch = nd;
@@ -518,7 +526,7 @@ impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
 
 """Process module to transform with entry blocks in-place."""
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     module = nd;
@@ -587,7 +595,7 @@ This also handles SpecialVarRef where the underlying name should
 never have backtick escaping since it's already recognized as a special keyword.
 """
 impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     if not nd.is_kwesc or isinstance(nd, uni.SpecialVarRef) {
@@ -613,7 +621,7 @@ here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     if nd.orig.is_kwesc and self.emit(W3006, node_override=nd, name=nd.orig.value) {
@@ -634,7 +642,7 @@ These should never have backtick escaping since they are recognized as
 built-in type tokens in the grammar.
 """
 impl JacAutoLintPass.enter_builtin_type(nd: uni.BuiltinType) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     if nd.is_kwesc and self.emit(W3006, node_override=nd, name=nd.value) {
@@ -803,7 +811,7 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
-    if self._is_suppressed(W3007) {
+    if self.report_only or self._is_suppressed(W3007) {
         return;
     }
     replacement = self._convert_hasattr_to_null_ok(nd);
@@ -1105,7 +1113,7 @@ Also converts patterns like:
 - x?.attr if x?.attr else default -> x?.attr or default
 """
 impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
-    if not self.lint_enabled {
+    if not self.lint_enabled or self.report_only {
         return;
     }
     if not self._is_suppressed(W3008) and self._convert_ternary_to_or(if_else_node) {
@@ -1147,7 +1155,7 @@ When an expression contains both null-safe and regular accesses for the same
 object and attribute, convert the regular accesses to null-safe.
 """
 impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
-    if not self.lint_enabled or self._is_suppressed(W3007) {
+    if not self.lint_enabled or self.report_only or self._is_suppressed(W3007) {
         return;
     }
     trailers: list[uni.AtomTrailer] = [];
@@ -1394,7 +1402,7 @@ When users write `import from X { ... };` inside a function/ability, the semicol
 is parsed as a separate Semi statement. This removes those unnecessary semicolons.
 """
 impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
-    if not self.lint_enabled or import_node.from_loc is None {
+    if not self.lint_enabled or self.report_only or import_node.from_loc is None {
         return;
     }
     parent = import_node.parent;
@@ -1488,7 +1496,7 @@ Bare print() calls should use the console abstraction instead.
 Only flags calls where the target is a simple Name "print" (not console.print, etc.).
 """
 impl JacAutoLintPass._check_no_print(nd: uni.FuncCall) -> None {
-    if not isinstance(nd.target, uni.Name) {
+    if self.report_only or not isinstance(nd.target, uni.Name) {
         return;
     }
     if nd.target.value != "print" {
@@ -1847,17 +1855,113 @@ impl JacAutoLintPass.exit_archetype(nd: uni.Archetype) -> None {
     if not self.lint_enabled {
         return;
     }
-    if nd.body is not None {
+    if nd.body is not None and isinstance(nd.body, list) {
         self._check_unnecessary_pass(list(nd.body), nd);
     }
 }
 
-"""Visitor: check ability bodies for unnecessary pass."""
-impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
+"""Visitor: check lambda bodies for unnecessary -> None."""
+impl JacAutoLintPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if not self.lint_enabled {
         return;
     }
-    if ability_node.body is not None {
-        self._check_unnecessary_pass(list(ability_node.body), ability_node);
+    self._check_unnecessary_none_return(nd, nd.body, nd.signature, "lambda");
+}
+
+"""W3037: Warn on unnecessary '-> None' return type annotation."""
+impl JacAutoLintPass._check_unnecessary_none_return(
+    nd: (uni.Ability | uni.LambdaExpr),
+    body: (list | uni.Expr),
+    sig: (uni.FuncSignature | None),
+    name: str
+) -> None {
+    if self._is_suppressed(W3037) {
+        return;
     }
+    # Must have a FuncSignature with an explicit return_type
+    if not isinstance(sig, uni.FuncSignature) or sig.return_type is None {
+        return;
+    }
+    # Check if return type is explicitly 'None'
+    ret = sig.return_type;
+    is_none_return = (
+        isinstance(ret, uni.Null)
+        or (isinstance(ret, uni.BuiltinType) and ret.value == "None")
+        or (isinstance(ret, uni.Name) and ret.value == "None")
+    );
+    if not is_none_return {
+        return;
+    }
+    # Only check block bodies (list of statements), not expression bodies
+    if not isinstance(body, list) {
+        return;
+    }
+    # If body has no return statements, -> None is unnecessary
+    if not self._body_has_return_stmt(body) {
+        self.emit(W3037, node_override=sig.return_type, name=name);
+    }
+}
+
+"""Check if a body contains any return statements (not in nested functions/lambdas)."""
+impl JacAutoLintPass._body_has_return_stmt(body: list) -> bool {
+    for stmt in body {
+        if isinstance(stmt, uni.ReturnStmt) {
+            return True;
+        }
+        # Recurse into control flow but NOT into nested Ability/LambdaExpr
+        if isinstance(stmt, uni.IfStmt) {
+            if self._body_has_return_stmt(list(stmt.body)) {
+                return True;
+            }
+            eb = stmt.else_body;
+            while eb is not None {
+                if isinstance(eb, uni.ElseIf) {
+                    if self._body_has_return_stmt(list(eb.body)) {
+                        return True;
+                    }
+                    eb = eb.else_body;
+                } elif isinstance(eb, uni.ElseStmt) {
+                    if self._body_has_return_stmt(list(eb.body)) {
+                        return True;
+                    }
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+        if isinstance(stmt, uni.InForStmt) or isinstance(stmt, uni.WhileStmt) {
+            if self._body_has_return_stmt(list(stmt.body)) {
+                return True;
+            }
+        }
+        if isinstance(stmt, uni.TryStmt) {
+            if self._body_has_return_stmt(list(stmt.body)) {
+                return True;
+            }
+            for handler in (stmt.excepts or []) {
+                if self._body_has_return_stmt(list(handler.body)) {
+                    return True;
+                }
+            }
+            if stmt.finally_body {
+                if self._body_has_return_stmt(list(stmt.finally_body.body)) {
+                    return True;
+                }
+            }
+        }
+        if isinstance(stmt, uni.MatchStmt) {
+            for case in stmt.cases {
+                if self._body_has_return_stmt(list(case.body)) {
+                    return True;
+                }
+            }
+        }
+        if isinstance(stmt, uni.WithStmt) {
+            if self._body_has_return_stmt(list(stmt.body)) {
+                return True;
+            }
+        }
+    }
+    return False;
 }

@@ -165,6 +165,9 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
         try {
             prog = JacProgram.jac_file_linter(str(path_obj));
             error_count = 0;
+            for warning in prog.warnings_had {
+                console.warning(f"{warning}");
+            }
             for error in prog.errors_had {
                 console.error(f"{error}");
                 error_count += 1;

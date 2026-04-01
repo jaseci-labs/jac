@@ -4,7 +4,8 @@ When an expression has type Unknown, calling methods on it should
 produce errors or warnings — not silently accept any method name.
 This is a major source of missed bugs in practice.
 
-Unknown source: bare generic list.pop() returns Unknown.
+Unknown source: magic method resolution on Any-typed values fails,
+producing genuine Unknown (e.g. Any + 1 -> Unknown).
 
 Expected errors: 4
   1. unknown_val.nonexistent()    — method call on Unknown should error
@@ -14,14 +15,12 @@ Expected errors: 4
 """
 
 with entry {
-    # Bare generic list — .pop() returns Unknown
+    # Any + int -> Unknown (magic method __add__ unresolved on Any)
     items: list = [1, 2, 3];
-    unknown_val = items.pop();
+    any_val = items.pop();
+    unknown_val = any_val + 1;
 
     # Calling arbitrary methods on Unknown should NOT pass silently.
-    # A production checker either:
-    #   (a) errors because Unknown has no known methods, or
-    #   (b) warns that type inference failed and methods are unchecked
     unknown_val.nonexistent();       # Error: no such method
     unknown_val.strip();             # Error: Unknown has no .strip
     unknown_val.append(1);           # Error: Unknown has no .append
