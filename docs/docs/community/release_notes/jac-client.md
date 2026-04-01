@@ -5,6 +5,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.3.11 (Unreleased)
 
 - **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
+- **Desktop Plugin Bundling Config**: Added `get_plugins_config()` to `DesktopConfig` for reading the `[desktop.plugins]` section from `jac.toml`, controlling which Jac plugins (jac-scale, byllm, jac-coder) are bundled into desktop apps.
+- **Fix: Vite Define Skips Empty API URL**: The Vite config no longer injects `__JAC_API_BASE_URL__: undefined` when no API URL is configured, preventing conflicts with Tauri's runtime injection in desktop builds.
+- **Fix: HTML Script Tag Escaping**: Fixed `</script>` sequences in JSON payloads within `<script>` tags being incorrectly interpreted as tag closers by escaping `</` to `<\/`.
 
 ## jac-client 0.3.8 (Latest Release)
 
