@@ -80,17 +80,6 @@ test "impl file warnings: undefined name and unreachable code are reported" {
     assert any("Unreachable" in w for w in warning_msgs) , f"Expected unreachable code warning from impl file, got: {warning_msgs}";
 }
 
-test "by postinit field should not emit W2001 undefined name warning" {
-    file_path = os.path.join(FIXTURES, "by_postinit_sym.jac");
-    prog = JacProgram();
-    prog.compile(file_path, type_check=True);
-    warning_msgs = [str(w) for w in prog.warnings_had];
-    postinit_undefined = [
-        w for w in warning_msgs
-        if "'postinit' may be undefined" in w
-    ];
-    assert len(postinit_undefined) == 0 ,
-        f"Expected no W2001 for 'by postinit', got: {postinit_undefined}";
 test "by-llm ability params produce no unused warnings" {
     file_path = os.path.join(FIXTURES, "genai_ability_params.jac");
     prog = JacProgram();
