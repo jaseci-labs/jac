@@ -415,3 +415,26 @@ walker CallLlm {
         report {"called": True};
     }
 }
+
+"""Walker that calls litellm.completion with stream=True to test streaming
+enforcement: pre-call checks fire immediately, usage is recorded after the
+generator is fully consumed."""
+walker CallLlmStream {
+    has model: str = "gpt-4o-mini";
+
+    can run with Root entry {
+        import litellm;
+        # Call via Any-typed ref to bypass overload resolution on stream=True
+        import from typing { Any }
+        _completion: Any = litellm.completion;
+        stream_result: Any = _completion(
+            model=self.model,
+            messages=[{"role": "user", "content": "hi"}],
+            stream=True
+        );
+        for _chunk in stream_result {
+            ;
+        }
+        report {"streamed": True};
+    }
+}

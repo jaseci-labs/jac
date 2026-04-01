@@ -124,7 +124,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
         }
         # Set current user for LLM limits enforcement
         try {
-            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            import from jac_scale.admin.llm_limits { current_request_user }
             _user_token = current_request_user.set(username or Con.GUEST.value);
         } except Exception {
             _user_token = None;
@@ -266,7 +266,7 @@ impl JacAPIServerEndpoints.create_function_callback(
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
         # Set current user for LLM limits enforcement
         try {
-            import from jac_scale.admin.impl.llm_limits { current_request_user }
+            import from jac_scale.admin.llm_limits { current_request_user }
             _user_token = current_request_user.set(username or Con.GUEST.value);
         } except Exception {
             _user_token = None;

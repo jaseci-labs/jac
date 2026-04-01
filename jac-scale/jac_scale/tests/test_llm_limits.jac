@@ -25,6 +25,45 @@ def _fake_llm_response(cost: float = 0.001, tokens: int = 30) -> Any {
     return resp;
 }
 
+
+"""Build a fake streaming response — a list of chunk SimpleNamespaces.
+
+The final chunk carries usage + _hidden_params (cost), mirroring what
+litellm emits when stream_options={"include_usage": True} is set.
+Intermediate chunks have no usage and no finish_reason.
+"""
+def _fake_stream_chunks(cost: float = 0.002, tokens: int = 40) -> list {
+    def _choice(finish_reason: Any = None) -> Any {
+        c: Any = types.SimpleNamespace();
+        c.finish_reason = finish_reason;
+        return c;
+    }
+
+    # Two intermediate chunks with no usage
+    chunk1: Any = types.SimpleNamespace();
+    chunk1.choices = [_choice()];
+    chunk1.usage = None;
+    chunk1._hidden_params = {};
+
+    chunk2: Any = types.SimpleNamespace();
+    chunk2.choices = [_choice()];
+    chunk2.usage = None;
+    chunk2._hidden_params = {};
+
+    # Final chunk: finish_reason="stop" + usage + cost
+    final_usage: Any = types.SimpleNamespace();
+    final_usage.prompt_tokens = 10;
+    final_usage.completion_tokens = tokens - 10;
+    final_usage.total_tokens = tokens;
+
+    final_chunk: Any = types.SimpleNamespace();
+    final_chunk.choices = [_choice("stop")];
+    final_chunk.usage = final_usage;
+    final_chunk._hidden_params = {"response_cost": cost};
+
+    return [chunk1, chunk2, final_chunk];
+}
+
 # ============================================================================
 # Default Limits Tests
 # ============================================================================
@@ -724,6 +763,265 @@ test "llm enforcement budget limit blocks after spend exceeded" {
                 headers={"Authorization": f"Bearer {user_token}"}
             );
             assert not second.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+# ============================================================================
+# Streaming Enforcement Tests
+# ============================================================================
+
+test "llm streaming debug" {
+    import sys;
+    # Compare username resolution: streaming vs non-streaming
+    fake_resp = _fake_llm_response(cost=0.002, tokens=30);
+    chunks = _fake_stream_chunks(cost=0.003, tokens=45);
+
+    captured_users: list = [];
+    def mock_capture(*args: Any, **kwargs: Any) -> Any {
+        import sys;
+        # Check all possible module keys for llm_limits
+        llm_mods: Any = {k: sys.modules[k] for k in list(sys.modules.keys()) if 'llm_limits' in k};
+        for (mk, mod) in llm_mods.items() {
+            cru = getattr(mod, 'current_request_user', None);
+            if cru is not None {
+                u = cru.get();
+                captured_users.append(("stream=" + str(kwargs.get("stream", False)), mk, u));
+            }
+        }
+        if not llm_mods {
+            captured_users.append(("stream=" + str(kwargs.get("stream", False)), "(no_mod)", "(no_var)"));
+        }
+        if kwargs.get("stream") {
+            return iter(chunks);
+        }
+        return fake_resp;
+    }
+
+    with unittest.mock.patch("litellm.completion", mock_capture) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, u1) = client.register_user("ns_user2", "Pass123!");
+            (_, u2) = client.register_user("st_user2", "Pass123!");
+
+            # Check if serve.endpoints can import current_request_user
+            import sys;
+            try {
+                import from jac_scale.admin.impl.llm_limits { current_request_user as cru_test }
+                sys.stderr.write(f"[DEBUG] import from impl path OK: id={id(cru_test)}\n");
+            } except Exception as imp_err {
+                sys.stderr.write(f"[DEBUG] import from impl path FAILED: {imp_err}\n");
+            }
+            try {
+                import from jac_scale.admin.llm_limits { current_request_user as cru_test2 }
+                sys.stderr.write(f"[DEBUG] import from non-impl path OK: id={id(cru_test2)}\n");
+            } except Exception as imp_err2 {
+                sys.stderr.write(f"[DEBUG] import from non-impl path FAILED: {imp_err2}\n");
+            }
+
+            client.post("/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {u1}"});
+            client.post("/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {u2}"});
+
+            sys.stderr.write(f"[DEBUG] captured users in wrapper: {captured_users}\n");
+
+            ns_usage = client.get("/admin/llm/usage/ns_user2", headers={"Authorization": f"Bearer {token}"}).json();
+            st_usage = client.get("/admin/llm/usage/st_user2", headers={"Authorization": f"Bearer {token}"}).json();
+            anon_usage = client.get("/admin/llm/usage/__anonymous__", headers={"Authorization": f"Bearer {token}"}).json();
+            sys.stderr.write(f"[DEBUG] ns_user usage: {ns_usage.get('data',{}).get('total_requests')}\n");
+            sys.stderr.write(f"[DEBUG] st_user usage: {st_usage.get('data',{}).get('total_requests')}\n");
+            sys.stderr.write(f"[DEBUG] __anonymous__ usage: {anon_usage.get('data',{}).get('total_requests')}\n");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm streaming usage recorded after generator consumed" {
+    # The mock returns an iterable of chunks; the wrapper must consume the
+    # generator fully and then record cost + tokens in the store.
+    chunks = _fake_stream_chunks(cost=0.003, tokens=45);
+
+    with unittest.mock.patch("litellm.completion", return_value=iter(chunks)) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("stream_eve", "Pass123!");
+
+            resp = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert resp.json().get("ok");
+
+            # Usage must be recorded after the generator was exhausted
+            usage_data = extract_data(
+                client.get(
+                    "/admin/llm/usage/stream_eve",
+                    headers={"Authorization": f"Bearer {token}"}
+                ).json()
+            );
+            assert usage_data["total_requests"] >= 1;
+            assert usage_data["total_tokens"] >= 45;
+            assert usage_data["total_cost"] >= 0.003;
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm streaming pre-call model block still fires" {
+    # Model allowlist check happens before any chunk is yielded — streaming
+    # should not bypass the pre-call enforcement path.
+    chunks = _fake_stream_chunks();
+
+    with unittest.mock.patch("litellm.completion", return_value=iter(chunks)) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("stream_frank", "Pass123!");
+
+            # Allow only gpt-4o; walker will request gpt-4o-mini
+            client.put(
+                "/admin/llm/limits/stream_frank",
+                json={
+                    "budget_limit": 100.0,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "allowed_models": ["gpt-4o"],
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            resp = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not resp.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm streaming rpm limit blocks after first stream" {
+    # RPM is incremented pre-call, so it applies equally to streaming calls.
+    chunks = _fake_stream_chunks();
+
+    with unittest.mock.patch("litellm.completion", return_value=iter(chunks)) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("stream_grace", "Pass123!");
+
+            client.put(
+                "/admin/llm/limits/stream_grace",
+                json={
+                    "budget_limit": 100.0,
+                    "budget_period": "monthly",
+                    "rpm_limit": 1,
+                    "tpm_limit": 1000000,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # First streaming call — allowed, rpm counter becomes 1
+            first = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert first.json().get("ok");
+
+            # Second call — counter(1) >= limit(1) → blocked
+            second = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not second.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm streaming budget blocks after cost recorded" {
+    # After a streaming call completes, the cost is recorded. A second call
+    # that would exceed the budget must be blocked.
+    # cost per stream = 0.005; budget = 0.001 → blocked on second call
+    chunks = _fake_stream_chunks(cost=0.005, tokens=30);
+
+    with unittest.mock.patch("litellm.completion", return_value=iter(chunks)) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("stream_hank", "Pass123!");
+
+            client.put(
+                "/admin/llm/limits/stream_hank",
+                json={
+                    "budget_limit": 0.001,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            first = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert first.json().get("ok");
+
+            second = client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not second.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm streaming include_usage injected into kwargs" {
+    # The wrapper must auto-inject stream_options={"include_usage": True}
+    # so that litellm sends usage on the final chunk.
+    captured: Any = {};
+    chunks = _fake_stream_chunks();
+
+    def mock_completion_capture(*args: Any, **kwargs: Any) -> Any {
+        captured.update(kwargs);
+        return iter(chunks);
+    }
+
+    with unittest.mock.patch("litellm.completion", mock_completion_capture) {
+        client = make_client();
+        try {
+            (_, user_token) = client.register_user("stream_iris", "Pass123!");
+            client.post(
+                "/walker/CallLlmStream",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            stream_opts = captured.get("stream_options") or {};
+            assert stream_opts.get("include_usage") == True;
         } finally {
             client.close();
         }

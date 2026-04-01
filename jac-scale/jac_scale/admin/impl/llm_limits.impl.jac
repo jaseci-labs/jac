@@ -5,6 +5,7 @@ import time;
 import functools;
 import from datetime { datetime, UTC, timedelta }
 import from typing { Any }
+import from contextvars { ContextVar }
 import from fastapi { Request }
 import from fastapi.responses { JSONResponse }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
@@ -16,6 +17,98 @@ import from jac_scale.jserver.jserver {
 }
 
 glob logger = logging.getLogger(__name__);
+
+# ContextVar set by the walker/function callback before each request so that
+# the litellm enforcement wrapper can identify which user made the call,
+# regardless of how Jac's execution context is structured internally.
+glob current_request_user: ContextVar = ContextVar('current_request_user', default='');
+
+
+"""Iterator wrapper for a streaming litellm response.
+
+Replaces the nested-generator approach so that no `yield` keyword appears
+inside the guarded-completion closures.  This avoids a Jac transpiler
+ambiguity where a `yield` inside a nested `def` can cause the outer
+function to be treated as a generator, preventing pre-call enforcement
+from running synchronously.
+
+Usage:
+    wrapper = _StreamWrapper(gen, store, username, model, call_meta, start_ts)
+    return iter(wrapper)
+"""
+obj _StreamWrapper {
+    has _gen: Any = None,
+        _store: Any = None,
+        _username: str = "",
+        _model: str = "",
+        _call_meta: dict = {},
+        _start_ts: float = 0.0,
+        _p_tok: int = 0,
+        _c_tok: int = 0,
+        _t_tok: int = 0,
+        _cost: float = 0.0,
+        _last_chunk: Any = None,
+        _finished: bool = False,
+        _done: bool = False;
+
+    def __iter__ -> Any {
+        return self;
+    }
+
+    def __next__ -> Any {
+        if self._done {
+            raise StopIteration();
+        }
+        try {
+            chunk = next(self._gen);
+            self._last_chunk = chunk;
+            chunk_usage = getattr(chunk, 'usage', None);
+            if chunk_usage {
+                self._p_tok = getattr(chunk_usage, 'prompt_tokens', 0) or 0;
+                self._c_tok = getattr(chunk_usage, 'completion_tokens', 0) or 0;
+                self._t_tok = getattr(chunk_usage, 'total_tokens', 0) or 0;
+            }
+            for choice in (getattr(chunk, 'choices', []) or []) {
+                if getattr(choice, 'finish_reason', None) {
+                    self._finished = True;
+                }
+            }
+            return chunk;
+        } except StopIteration {
+            self._done = True;
+            self._record();
+            raise;
+        } except Exception {
+            self._done = True;
+            self._record();
+            raise;
+        }
+    }
+
+    def _record -> None {
+        try {
+            if self._last_chunk and hasattr(self._last_chunk, '_hidden_params') {
+                self._cost = self._last_chunk._hidden_params.get('response_cost', 0) or 0.0;
+            }
+            elapsed_ms = (time.time() - self._start_ts) * 1000;
+            status = "success" if self._finished else "partial";
+            self._store.record_usage(self._username, float(self._cost), int(self._t_tok));
+            self._store.log_llm_call(
+                username=self._username,
+                model=self._model,
+                status=status,
+                cost=float(self._cost),
+                tokens=int(self._t_tok),
+                prompt_tokens=int(self._p_tok),
+                completion_tokens=int(self._c_tok),
+                latency_ms=elapsed_ms,
+                call_metadata=self._call_meta
+            );
+        } except Exception as rec_err {
+            logger.debug(f"LLM limits: stream post-call recording error: {rec_err}");
+        }
+    }
+}
 
 obj LLMUserLimits {
     """Per-user limit configuration."""
@@ -805,13 +898,8 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
 
         @functools.wraps(_original_completion)
         def _guarded_completion(*args: Any, **kwargs: Any) -> Any {
-            # Read username from Jac's per-request ExecutionContext
-            try {
-                import from jaclang { JacRuntime as _Jac }
-                username = _Jac.get_context().user_name or ANONYMOUS_USER;
-            } except Exception {
-                username = ANONYMOUS_USER;
-            }
+            # Read username from the ContextVar set by the walker callback
+            username = current_request_user.get() or ANONYMOUS_USER;
             model = kwargs.get('model', '') or (args[0] if args else '');
             call_meta = kwargs.get('metadata', {}) or {};
 
@@ -852,6 +940,29 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             }
 
             start_ts = time.time();
+
+            # Streaming path: wrap the iterator so usage is recorded after
+            # the last chunk is consumed (or the stream is abandoned).
+            # Uses _StreamWrapper (a plain iterator class) instead of a
+            # nested generator to avoid Jac transpiler ambiguity.
+            if kwargs.get('stream') {
+                # Ensure litellm emits a usage object on the final chunk
+                stream_opts = kwargs.get('stream_options') or {};
+                stream_opts['include_usage'] = True;
+                kwargs['stream_options'] = stream_opts;
+
+                result = _original_completion(*args, **kwargs);
+                return _StreamWrapper(
+                    _gen=iter(result),
+                    _store=store,
+                    _username=username,
+                    _model=model,
+                    _call_meta=call_meta,
+                    _start_ts=start_ts
+                );
+            }
+
+            # Non-streaming path
             result = _original_completion(*args, **kwargs);
             elapsed_ms = (time.time() - start_ts) * 1000;
 
@@ -885,13 +996,8 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
 
         @functools.wraps(_original_acompletion)
         async def _guarded_acompletion(*args: Any, **kwargs: Any) -> Any {
-            # Read username from Jac's per-request ExecutionContext
-            try {
-                import from jaclang { JacRuntime as _Jac }
-                username = _Jac.get_context().user_name or ANONYMOUS_USER;
-            } except Exception {
-                username = ANONYMOUS_USER;
-            }
+            # Read username from the ContextVar set by the walker callback
+            username = current_request_user.get() or ANONYMOUS_USER;
             model = kwargs.get('model', '') or (args[0] if args else '');
             call_meta = kwargs.get('metadata', {}) or {};
 
@@ -929,6 +1035,27 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             }
 
             start_ts = time.time();
+
+            # Streaming path: same _StreamWrapper approach as sync.
+            # litellm's async stream also supports __iter__ via its
+            # CustomStreamWrapper, so _StreamWrapper works for both.
+            if kwargs.get('stream') {
+                stream_opts = kwargs.get('stream_options') or {};
+                stream_opts['include_usage'] = True;
+                kwargs['stream_options'] = stream_opts;
+
+                result = await _original_acompletion(*args, **kwargs);
+                return _StreamWrapper(
+                    _gen=iter(result),
+                    _store=store,
+                    _username=username,
+                    _model=model,
+                    _call_meta=call_meta,
+                    _start_ts=start_ts
+                );
+            }
+
+            # Non-streaming path
             result = await _original_acompletion(*args, **kwargs);
             elapsed_ms = (time.time() - start_ts) * 1000;
 
