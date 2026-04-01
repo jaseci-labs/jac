@@ -141,13 +141,22 @@ obj LocalSandbox(SandboxEnvironment) {
         process = rec.get("process");
         if process is not None {
             try {
-                pid = int(getattr(process, "pid"));
-                os.killpg(os.getpgid(pid), int(signal.SIGTERM));
+                import sys;
+                if sys.platform == "win32" {
+                    process.terminate();
+                } else {
+                    pid = int(getattr(process, "pid"));
+                    os.killpg(os.getpgid(pid), int(signal.SIGTERM));
+                }
                 getattr(process, "wait")(timeout=5);
             } except (ProcessLookupError, subprocess.TimeoutExpired) {
                 try {
-                    pid2 = int(getattr(process, "pid"));
-                    os.killpg(os.getpgid(pid2), int(signal.SIGKILL));
+                    if sys.platform == "win32" {
+                        process.kill();
+                    } else {
+                        pid2 = int(getattr(process, "pid"));
+                        os.killpg(os.getpgid(pid2), int(signal.SIGKILL));
+                    }
                 } except ProcessLookupError {
                     ;
                 }
@@ -238,7 +247,8 @@ obj LocalSandbox(SandboxEnvironment) {
             sid = self._sandbox_id(user_id, project_id);
 
             preview_suffix = f"-{project_id}" if project_id else "";
-            preview_dir = f"/tmp/jac-preview-{user_id}{preview_suffix}";
+            import tempfile;
+            preview_dir = os.path.join(tempfile.gettempdir(), f"jac-preview-{user_id}{preview_suffix}");
 
             if key in self._registry {
                 rec_d: dict = dict(self._registry[key]);
@@ -333,15 +343,18 @@ obj LocalSandbox(SandboxEnvironment) {
             log_path = os.path.join(preview_dir, ".jac-preview.log");
             log_file = open(log_path, "w", encoding="utf-8");
 
-            process = subprocess.Popen(
-                shell_cmd,
-                shell=True,
-                executable="/bin/bash",
-                cwd=preview_dir,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid
-            );
+            import sys;
+            popen_kwargs = {
+                "shell": True,
+                "cwd": preview_dir,
+                "stdout": log_file,
+                "stderr": subprocess.STDOUT
+            };
+            if sys.platform != "win32" {
+                popen_kwargs["executable"] = "/bin/bash";
+                popen_kwargs["preexec_fn"] = os.setsid;
+            }
+            process = subprocess.Popen(shell_cmd, **popen_kwargs);
 
             self._registry[key] = {
                 "sandbox_id": sid,
