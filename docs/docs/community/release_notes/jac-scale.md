@@ -5,7 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.12 (Unreleased)
 
 - **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
-- **LLM Usage Controls**: Per-user budget caps, RPM/TPM rate limits, model allowlists, and per-provider API key injection for all LiteLLM calls made from walkers — including streaming responses. Walkers call `litellm.completion` normally; jac-scale wraps at startup and enforces limits against the authenticated user. Usage persists to MongoDB when configured. Configure via `[plugins.scale.llm_limits]` in `jac.toml`.
+- **LLM Usage Controls**: Per-user budget caps, RPM/TPM rate limits, model allowlists, and per-provider API key injection for all LiteLLM calls made from walkers (including streaming responses). Walkers call `litellm.completion` normally; jac-scale wraps at startup and enforces limits against the authenticated user. Usage persists to MongoDB when configured. Configure via `[plugins.scale.llm_limits]` in `jac.toml`.
 
 ## jac-scale 0.2.11 (Latest Release)
 

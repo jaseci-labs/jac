@@ -1882,16 +1882,16 @@ Requests to the metrics endpoint itself are excluded from tracking.
 
 ## LLM Usage Controls
 
-jac-scale provides per-user LLM budget caps, rate limits, model allowlists, and a full audit trail for every LiteLLM call made from within walkers. Enforcement is transparent — walkers call `litellm.completion` / `litellm.acompletion` normally; jac-scale wraps those calls at server startup.
+jac-scale provides per-user LLM budget caps, rate limits, model allowlists, and a full audit trail for every LiteLLM call made from within walkers. Enforcement is transparent: walkers call `litellm.completion` / `litellm.acompletion` normally; jac-scale wraps those calls at server startup.
 
 ### How It Works
 
 When the server starts, jac-scale installs a thin wrapper around `litellm.completion` and `litellm.acompletion`. Every LLM call from within a walker passes through this wrapper, which:
 
-1. **Identifies the caller** — reads the authenticated username from the request context.
-2. **Runs pre-call checks** — validates the request against the user's model allowlist, RPM counter, and remaining budget. Blocked calls raise an exception immediately (no tokens consumed).
-3. **Injects provider API keys** — if an admin has stored a key for the model's provider, it is injected into the call automatically.
-4. **Records usage** — after the call completes (including after a streaming response is fully consumed), cost and token counts are persisted to the usage store.
+1. **Identifies the caller**: reads the authenticated username from the request context.
+2. **Runs pre-call checks**: validates the request against the user's model allowlist, RPM counter, and remaining budget. Blocked calls raise an exception immediately (no tokens consumed).
+3. **Injects provider API keys**: if an admin has stored a key for the model's provider, it is injected into the call automatically.
+4. **Records usage**: after the call completes (including after a streaming response is fully consumed), cost and token counts are persisted to the usage store.
 
 For **streaming responses** (`stream=True`), jac-scale wraps the returned iterator so that usage is recorded only after the last chunk is consumed, ensuring the budget counter is accurate before the next call.
 
@@ -1916,7 +1916,7 @@ default_allowed_models = []        # empty = all models allowed
 | `default_budget_period` | string | `"monthly"` | Budget reset cadence: `"daily"`, `"weekly"`, or `"monthly"` |
 | `default_rpm` | int | `0` | Default requests-per-minute cap (0 = unlimited) |
 | `default_tpm` | int | `0` | Default tokens-per-minute cap (0 = unlimited) |
-| `default_allowed_models` | list | `[]` | Default model allowlist — empty means all models are allowed |
+| `default_allowed_models` | list | `[]` | Default model allowlist (empty means all models are allowed) |
 
 > **Note:** Without MongoDB, usage counters are held in memory only and do not survive restarts. Configure `[plugins.scale.database.mongodb_uri]` for production.
 
