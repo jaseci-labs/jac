@@ -1880,6 +1880,179 @@ Requests to the metrics endpoint itself are excluded from tracking.
 
 ---
 
+## LLM Usage Controls
+
+jac-scale provides per-user LLM budget caps, rate limits, model allowlists, and a full audit trail for every LiteLLM call made from within walkers. Enforcement is transparent — walkers call `litellm.completion` / `litellm.acompletion` normally; jac-scale wraps those calls at server startup.
+
+### How It Works
+
+When the server starts, jac-scale installs a thin wrapper around `litellm.completion` and `litellm.acompletion`. Every LLM call from within a walker passes through this wrapper, which:
+
+1. **Identifies the caller** — reads the authenticated username from the request context.
+2. **Runs pre-call checks** — validates the request against the user's model allowlist, RPM counter, and remaining budget. Blocked calls raise an exception immediately (no tokens consumed).
+3. **Injects provider API keys** — if an admin has stored a key for the model's provider, it is injected into the call automatically.
+4. **Records usage** — after the call completes (including after a streaming response is fully consumed), cost and token counts are persisted to the usage store.
+
+For **streaming responses** (`stream=True`), jac-scale wraps the returned iterator so that usage is recorded only after the last chunk is consumed, ensuring the budget counter is accurate before the next call.
+
+### Configuration
+
+```toml
+[plugins.scale.llm_limits]
+enabled = true
+enforcement_mode = "strict"        # "strict" blocks the call; "warn" logs and continues
+default_budget_limit = 0           # USD per period; 0 = unlimited
+default_budget_period = "monthly"  # "daily", "weekly", "monthly"
+default_rpm = 0                    # requests per minute; 0 = unlimited
+default_tpm = 0                    # tokens per minute; 0 = unlimited
+default_allowed_models = []        # empty = all models allowed
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable LLM enforcement |
+| `enforcement_mode` | string | `"strict"` | `"strict"` raises an exception on violations; `"warn"` logs and continues |
+| `default_budget_limit` | float | `0` | Default USD budget per period for new users (0 = unlimited) |
+| `default_budget_period` | string | `"monthly"` | Budget reset cadence: `"daily"`, `"weekly"`, or `"monthly"` |
+| `default_rpm` | int | `0` | Default requests-per-minute cap (0 = unlimited) |
+| `default_tpm` | int | `0` | Default tokens-per-minute cap (0 = unlimited) |
+| `default_allowed_models` | list | `[]` | Default model allowlist — empty means all models are allowed |
+
+> **Note:** Without MongoDB, usage counters are held in memory only and do not survive restarts. Configure `[plugins.scale.database.mongodb_uri]` for production.
+
+### Setting Limits per User
+
+Limits are managed through the admin API. All endpoints require an admin bearer token.
+
+```bash
+# View a user's current limits
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/limits/alice
+
+# Set per-user limits
+curl -X PUT \
+     -H "Authorization: Bearer <admin_token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "budget_limit": 5.00,
+           "budget_period": "monthly",
+           "rpm_limit": 60,
+           "tpm_limit": 100000,
+           "allowed_models": ["gpt-4o-mini", "gpt-4o"],
+           "enabled": true
+         }' \
+     http://localhost:8000/admin/llm/limits/alice
+
+# View default limits (applied to all users without explicit limits)
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/limits/default
+```
+
+### Viewing Usage
+
+```bash
+# Per-user usage summary
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/usage/alice
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "username": "alice",
+    "total_requests": 42,
+    "total_tokens": 18500,
+    "total_cost": 0.037,
+    "period_start": "2025-04-01T00:00:00Z",
+    "period_end": "2025-05-01T00:00:00Z"
+  }
+}
+```
+
+### Provider API Key Management
+
+Admins can store API keys per LLM provider. The wrapper automatically injects the correct key for the model being called, so walkers never need to handle credentials directly.
+
+```bash
+# Store a key for OpenAI
+curl -X PUT \
+     -H "Authorization: Bearer <admin_token>" \
+     -H "Content-Type: application/json" \
+     -d '{"api_key": "sk-..."}' \
+     http://localhost:8000/admin/llm/config/provider-keys/openai
+
+# Remove a key
+curl -X DELETE \
+     -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/config/provider-keys/openai
+```
+
+Supported provider names follow LiteLLM's provider convention (e.g., `openai`, `anthropic`, `azure`, `cohere`, `replicate`).
+
+### LLM Telemetry
+
+jac-scale subscribes to LiteLLM's callback system to build a detailed trace for every LLM call, including streaming responses. Traces are grouped by agent invocation when used with byllm.
+
+```bash
+# Aggregate summary: call count, tokens, cost, latency
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/telemetry/summary
+
+# Paginated trace list
+curl -H "Authorization: Bearer <admin_token>" \
+     "http://localhost:8000/admin/llm/telemetry/traces?page=1&page_size=20"
+
+# Single trace detail
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/telemetry/traces/<trace_id>
+
+# Available filter options (models, callers, date range)
+curl -H "Authorization: Bearer <admin_token>" \
+     http://localhost:8000/admin/llm/telemetry/filters
+```
+
+The admin portal includes a visual telemetry dashboard at `/admin` → **LLM** section, showing per-model breakdowns, cost trends, and trace detail views.
+
+### Admin API Reference
+
+#### LLM Limits Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/llm/limits/default` | Get default limits |
+| PUT | `/admin/llm/limits/default` | Update default limits |
+| GET | `/admin/llm/limits/{username}` | Get per-user limits |
+| PUT | `/admin/llm/limits/{username}` | Set per-user limits |
+| DELETE | `/admin/llm/limits/{username}` | Remove per-user limits (reverts to default) |
+
+#### LLM Usage Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/llm/usage/{username}` | Get usage for a user |
+| DELETE | `/admin/llm/usage/{username}` | Reset usage counters for a user |
+
+#### Provider Key Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PUT | `/admin/llm/config/provider-keys/{provider}` | Store a provider API key |
+| DELETE | `/admin/llm/config/provider-keys/{provider}` | Remove a provider API key |
+
+#### Telemetry Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/llm/telemetry/summary` | Aggregate usage statistics |
+| GET | `/admin/llm/telemetry/traces` | Paginated trace list |
+| GET | `/admin/llm/telemetry/traces/{id}` | Single trace detail |
+| GET | `/admin/llm/telemetry/filters` | Available filter options |
+
+---
+
 ## Kubernetes Secrets
 
 Manage sensitive environment variables securely in Kubernetes deployments using the `[plugins.scale.secrets]` section.
