@@ -32,6 +32,28 @@ impl InteropAnalysisPass._extract_type_name(
     if isinstance(expr, uni.Token) {
         return expr.value;
     }
+    # Handle BuiltinType (list, dict, set, etc.)
+    if isinstance(expr, uni.BuiltinType) {
+        return expr?.sym_name or str(getattr(expr, 'value', 'int'));
+    }
+    # Handle subscript types like list[Todo]
+    if isinstance(expr, uni.AtomTrailer) {
+        target_name = self._extract_type_name(expr.target);
+        if expr.right {
+            # Right is typically IndexSlice -> Slice -> ListVal -> [types]
+            inner = self._extract_subscript_inner(expr.right);
+            if inner {
+                return f"{target_name}[{inner}]";
+            }
+        }
+        return target_name;
+    }
+    # Handle union types like Todo | None -> "Todo | None"
+    if isinstance(expr, uni.BinaryExpr) {
+        left = self._extract_type_name(expr.left);
+        right = self._extract_type_name(expr.right);
+        return f"{left} | {right}";
+    }
     return 'int';
 }
 
@@ -232,5 +254,301 @@ impl InteropAnalysisPass.enter_func_call(
             route=[caller_ctx, callee_ctx]
         );
         manifest.bindings[func_name] = binding;
+    }
+}
+
+"""Extract the inner type name from a subscript (IndexSlice/Slice/ListVal)."""
+impl InteropAnalysisPass._extract_subscript_inner(
+    self: InteropAnalysisPass, expr: (uni.UniNode | None)
+) -> str {
+    if expr is None {
+        return '';
+    }
+    # Direct Name or Token
+    if isinstance(expr, uni.Name) {
+        return expr.value;
+    }
+    if isinstance(expr, uni.Token) {
+        return expr.value;
+    }
+    # IndexSlice -> walk children to find Slice/ListVal
+    if isinstance(expr, uni.IndexSlice) {
+        for k in expr.kid {
+            result = self._extract_subscript_inner(k);
+            if result {
+                return result;
+            }
+        }
+    }
+    # Slice -> walk children
+    if isinstance(expr, uni.Slice) {
+        for k in expr.kid {
+            result = self._extract_subscript_inner(k);
+            if result {
+                return result;
+            }
+        }
+    }
+    # ListVal/TupleVal -> extract all type params (e.g. dict[str, Metric] -> "str, Metric")
+    if isinstance(expr, (uni.ListVal, uni.TupleVal)) {
+        if expr.values {
+            parts = [self._extract_type_name(v) for v in expr.values];
+            return ', '.join(
+                p
+                for p in parts
+                if p
+            );
+        }
+    }
+    return '';
+}
+
+"""Extract all user-defined type names from a subscript (IndexSlice tree)."""
+impl InteropAnalysisPass._extract_all_subscript_types(
+    self: InteropAnalysisPass, expr: (uni.UniNode | None)
+) -> list[str] {
+    if expr is None {
+        return [];
+    }
+    result: list[str] = [];
+    if isinstance(expr, (uni.Name, uni.Token)) {
+        result.extend(self._extract_all_type_names(expr));
+        return result;
+    }
+    if isinstance(expr, (uni.ListVal, uni.TupleVal)) {
+        for v in expr.values {
+            result.extend(self._extract_all_type_names(v));
+        }
+        return result;
+    }
+    # Walk children for IndexSlice, Slice, etc.
+    if hasattr(expr, 'kid') {
+        for k in expr.kid {
+            result.extend(self._extract_all_subscript_types(k));
+        }
+    }
+    return result;
+}
+
+"""Extract all user-defined type names from a type annotation expression."""
+impl InteropAnalysisPass._extract_all_type_names(
+    self: InteropAnalysisPass, expr: (uni.UniNode | None)
+) -> list[str] {
+    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    if expr is None {
+        return [];
+    }
+    if isinstance(expr, uni.Name) {
+        if expr.value not in prims {
+            return [expr.value];
+        }
+        return [];
+    }
+    if isinstance(expr, uni.Token) {
+        if expr.value not in prims {
+            return [expr.value];
+        }
+        return [];
+    }
+    # BuiltinType (list, dict, etc.) — not user-defined
+    if isinstance(expr, uni.BuiltinType) {
+        return [];
+    }
+    # Subscript: list[Todo] -> extract inner types (walk into IndexSlice/Slice/ListVal)
+    if isinstance(expr, uni.AtomTrailer) {
+        result: list[str] = [];
+        result.extend(self._extract_all_type_names(expr.target));
+        if expr.right {
+            result.extend(self._extract_all_subscript_types(expr.right));
+        }
+        return result;
+    }
+    # Union: Todo | None -> extract both sides
+    if isinstance(expr, uni.BinaryExpr) {
+        result: list[str] = [];
+        result.extend(self._extract_all_type_names(expr.left));
+        result.extend(self._extract_all_type_names(expr.right));
+        return result;
+    }
+    return [];
+}
+
+"""Collect a type that crosses the codespace boundary into the manifest."""
+impl InteropAnalysisPass._collect_boundary_type(
+    self: InteropAnalysisPass, type_name: str, source_mod: (uni.Module | None)
+) -> None {
+    prims = {'str','int','float','bool','None','Any','list','dict','tuple','set','frozenset','bytes','object','type','JsxElement'};
+    if type_name in prims {
+        return;
+    }
+    manifest = self.ir_in.gen.interop_manifest;
+    if type_name in manifest.boundary_types {
+        return;
+    }
+    # Look up the type in the source module or current module
+    search_mods = [];
+    if source_mod {
+        search_mods.append(source_mod);
+    }
+    search_mods.append(self.ir_in);
+    arch_node = None;
+    for mod in search_mods {
+        sym = mod.sym_tab.lookup(type_name, deep=True) if mod.sym_tab else None;
+        if sym and sym.defn {
+            arch_node = sym.defn[0];
+            if isinstance(arch_node, uni.NameAtom) and arch_node.parent {
+                arch_node = arch_node.parent;
+            }
+            break;
+        }
+    }
+    if arch_node is None {
+        return;
+    }
+    # Handle Archetype (obj, node, walker)
+    if isinstance(arch_node, uni.Archetype) {
+        arch_type = arch_node.arch_type;
+        kind = "obj";
+        if hasattr(arch_type, 'name') {
+            name_val = arch_type.name;
+            if name_val == "KW_NODE" or "node" in str(name_val).lower() {
+                kind = "node";
+            } elif name_val == "KW_WALKER" or "walker" in str(name_val).lower() {
+                kind = "walker";
+            }
+        }
+        fields: list[tuple[(str, str)]] = [];
+        nested: list[str] = [];
+        # Extract has declarations (walk through ArchHas -> HasVar)
+        if arch_node.body {
+            body_items = arch_node.body
+                if isinstance(arch_node.body, list)
+                else [arch_node.body];
+            for item in body_items {
+                has_vars: list = [];
+                if isinstance(item, uni.HasVar) {
+                    has_vars = [item];
+                } elif isinstance(item, uni.ArchHas) {
+                    # ArchHas contains HasVar nodes as children
+                    has_vars = [
+                        k
+                        for k in item.kid
+                        if isinstance(k, uni.HasVar)
+                    ];
+                }
+                for hv in has_vars {
+                    field_name = hv.sym_name;
+                    field_type = "Any";
+                    if hv.type_tag {
+                        field_type = self._extract_type_name(hv.type_tag.tag);
+                        for nested_type in self._extract_all_type_names(
+                            hv.type_tag.tag
+                        ) {
+                            if nested_type != type_name {
+                                nested.append(nested_type);
+                            }
+                        }
+                    }
+                    fields.append((field_name, field_type));
+                }
+            }
+        }
+        info = BoundaryTypeInfo(
+            name=type_name, kind=kind, fields=fields, nested_types=nested
+        );
+        manifest.boundary_types[type_name] = info;
+        # Recursively collect nested types
+        for nt in nested {
+            self._collect_boundary_type(nt, source_mod);
+        }
+        return;
+    }
+    # Handle Enum
+    if isinstance(arch_node, uni.Enum) {
+        members: list[tuple[(str, Any)]] = [];
+        if arch_node.body {
+            body_items = arch_node.body
+                if isinstance(arch_node.body, list)
+                else [arch_node.body];
+            for item in body_items {
+                if isinstance(item, uni.Assignment) {
+                    # Enum member: NAME = value
+                    member_name = '';
+                    member_val = None;
+                    if isinstance(item.target, uni.Name) {
+                        member_name = item.target.value;
+                    }
+                    if item.value {
+                        if isinstance(item.value, uni.MultiString) {
+                            # String literal — extract from first string token
+                            if item.value.strings {
+                                s = item.value.strings[0];
+                                raw = getattr(s, 'value', str(s));
+                                if isinstance(raw, str) {
+                                    member_val = raw.strip('"').strip("'");
+                                } else {
+                                    member_val = raw;
+                                }
+                            }
+                        } elif isinstance(item.value, uni.Token) {
+                            member_val = item.value.value;
+                        }
+                    }
+                    if member_name {
+                        members.append((member_name, member_val));
+                    }
+                }
+            }
+        }
+        info = BoundaryTypeInfo(name=type_name, kind="enum", enum_members=members);
+        manifest.boundary_types[type_name] = info;
+        return;
+    }
+}
+
+"""After all nodes visited, collect boundary types from SV->CL bindings
+and server-side archetypes that may cross the boundary."""
+impl InteropAnalysisPass.after_pass(self: InteropAnalysisPass) -> None {
+    manifest = self.ir_in.gen.interop_manifest;
+    # Collect types from explicit SV->CL function bindings
+    for binding in manifest.server_exports_to_client {
+        if binding.ast_node and isinstance(binding.ast_node, uni.Ability) {
+            sig = binding.ast_node.signature;
+            if isinstance(sig, uni.FuncSignature) {
+                if sig.return_type {
+                    for tn in self._extract_all_type_names(sig.return_type) {
+                        self._collect_boundary_type(tn, None);
+                    }
+                }
+                for p in sig.params {
+                    if p.type_tag {
+                        for tn in self._extract_all_type_names(p.type_tag.tag) {
+                            self._collect_boundary_type(tn, None);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    # Collect all server-side archetypes (obj, node, walker, enum) as potential
+    # boundary types — they may be passed via walker reports/spawn fields.
+    # Only collect types defined outside of CL context.
+    has_client = False;
+    if self.ir_in and self.ir_in.body {
+        for item in self.ir_in.body {
+            if isinstance(item, uni.ClientBlock) {
+                has_client = True;
+                break;
+            }
+        }
+    }
+    if has_client and self.ir_in and self.ir_in.body {
+        for item in self.ir_in.body {
+            if isinstance(item, uni.Archetype) and not item.in_client_context() {
+                self._collect_boundary_type(item.sym_name, None);
+            } elif isinstance(item, uni.Enum) and not item.in_client_context() {
+                self._collect_boundary_type(item.sym_name, None);
+            }
+        }
     }
 }

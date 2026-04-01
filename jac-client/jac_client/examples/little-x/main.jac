@@ -13,10 +13,8 @@ node Profile {
     }
 
     can get with get_profile entry {
-        follwers = [
-            {"id": jid(i), "username": i.username} for i in [self-->[?:Profile]]
-        ];
-        report {"user": self, "followers": follwers};
+        followers = [self-->[?:Profile]];
+        report {"user": self, "followers": followers};
     }
 
     can follow with follow_request entry {

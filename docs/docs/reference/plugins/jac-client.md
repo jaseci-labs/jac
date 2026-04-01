@@ -119,7 +119,6 @@ walker:priv InternalProcess { }
 sv {
     # Server-only block
     node User {
-        has id: str;
         has email: str;
     }
 }
@@ -148,6 +147,70 @@ Start the server:
 
 ```bash
 jac start main.jac --port 8000
+```
+
+### Typed Object Passing
+
+Objects crossing the server/client boundary are automatically serialized and hydrated as typed instances. You can return typed objects directly from server functions and walkers instead of manually constructing dicts:
+
+```jac
+node Task {
+    has title: str,
+        done: bool = False;
+}
+
+# Server: return typed objects directly
+def:pub get_tasks -> list[Task] {
+    return [root-->][?:Task];
+}
+
+def:pub create_task(title: str) -> Task {
+    task = root ++> Task(title=title);
+    return task[0];
+}
+
+# Client: receives hydrated Task instances
+cl {
+    sv import from .main { get_tasks, create_task }
+
+    def:pub app -> JsxElement {
+        has tasks: list = [];
+
+        async can with entry {
+            tasks = await get_tasks();  # list of Task objects
+        }
+
+        async def addTask(title: str) -> None {
+            task = await create_task(title);  # a Task object
+            tasks = tasks + [task];
+        }
+
+        return <div>
+            {[<span key={t.title}>{t.title} - {t.done}</span> for t in tasks]}
+        </div>;
+    }
+}
+```
+
+The compiler generates JavaScript class stubs with `__from_wire`/`__to_wire` methods for each type that crosses the boundary. This works for:
+
+- **`obj` types** -- fields are hydrated recursively (nested objects are also typed)
+- **`node` types** -- same as obj, plus graph identity is preserved (access via `jid(node)`)
+- **`enum` types** -- emitted as frozen JavaScript objects
+- **`list[T]` returns** -- each element is individually hydrated
+- **Bidirectional** -- typed objects sent as function arguments or walker `has` fields are serialized with `__type__` metadata and deserialized on the server
+
+Walker reports also benefit from typed hydration:
+
+```jac
+walker:pub create_todo {
+    has text: str;
+
+    can create with Root entry {
+        new_todo = here ++> Task(title=self.text);
+        report new_todo;  # Client receives a typed Task, not a raw dict
+    }
+}
 ```
 
 ### Module Introspection

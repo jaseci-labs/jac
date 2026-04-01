@@ -1976,19 +1976,6 @@ impl PyastGenPass.assert_helper(nd: uni.AssertStmt) -> None {
             assert_args_list = [res.inst, res.clss];
         }
     }
-    if (
-        isinstance(nd.condition, uni.FuncCall)
-        and isinstance(self.py_ast_val(nd.condition), ast3.Call)
-    ) {
-        func = nd.condition.target;
-        if (isinstance(func, uni.Name) and (func.value == 'almostEqual')) {
-            assert_func_name = 'assertAlmostEqual';
-            assert_args_list = [];
-            for param in nd.condition.params {
-                assert_args_list.append(self.py_ast_val(param));
-            }
-        }
-    }
     assert_func_expr: ast3.Attribute = self.sync(
         ast3.Attribute(
             value=self.sync(ast3.Name(id=Con.JAC_CHECK.value, ctx=ast3.Load())),

@@ -222,3 +222,39 @@ test "bundle caching with imports" {
     assert bundle1.hash == bundle3.hash;
     assert bundle1.code == bundle3.code;
 }
+
+# =============================================================================
+# Windows: JS generation and path normalization
+# =============================================================================
+test "JS bundle generated not empty on Windows" {
+    # Windows may skip EsastGenPass during initial compilation due to re-entrancy guards.
+    # This test verifies JS code is actually generated (not empty).
+    (module, ) = Jac.jac_import("client_app", FIXTURES);
+    builder = Jac.get_client_bundle_builder();
+    bundle = builder.build(module);
+
+    # Bundle must have actual JS code, not be empty
+    assert len(bundle.code) > 100 , "JS bundle is empty or too small - EsastGenPass may have been skipped";
+    assert "function" in bundle.code , "No functions in JS bundle - generation failed";
+}
+
+test "no backslashes in JS import paths" {
+    # Windows backslashes in JS import paths break Vite builds.
+    # All import paths must use forward slashes.
+    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
+    builder = Jac.get_client_bundle_builder();
+    bundle = builder.build(module);
+
+    # Check that no backslashes appear in import/from statements or module markers
+    lines = bundle.code.split("\n");
+    for line in lines {
+        # Check import/from statements
+        if "from " in line or "import " in line {
+            assert "\\" not in line , f"Backslash in JS import path breaks Vite: {line}";
+        }
+        # Check module comment markers (e.g., "// Imported .jac module: .client_ui_components")
+        if "// Imported .jac module:" in line {
+            assert "\\" not in line , f"Backslash in module marker breaks paths: {line}";
+        }
+    }
+}

@@ -66,6 +66,9 @@ obj Memory {
     ) -> (Anchor | None) abs;
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
+    def get_gc -> list[Anchor] abs;
+    def remove_from_gc(anchor: Anchor) -> None abs;
+    def get_mem -> dict[UUID, Anchor] abs;
 }
 
 """Cache Memory Interface.
@@ -125,7 +128,6 @@ obj VolatileMemory(Memory) {
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
-    # Additional methods for garbage collection tracking
     def get_gc -> list[Anchor];
     def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];
@@ -184,7 +186,6 @@ obj SqliteMemory(PersistentMemory) {
     # PersistentMemory interface
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
-    # Additional methods
     def get_gc -> list[Anchor];
     def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];
@@ -217,4 +218,5 @@ obj TieredMemory(VolatileMemory) {
     def close -> None;
     def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
+    def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
 }

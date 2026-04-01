@@ -366,6 +366,16 @@ impl ResourceProvider._index_bundled -> None {
             "path": str(patterns_path)
         };
     }
+    understand_path = content_dir / "understand.md";
+    if understand_path.exists() {
+        self._resources["jac://guide/understand"] = {
+            "uri": "jac://guide/understand",
+            "name": "Jac & Jaseci Knowledge Map",
+            "description": "Orientation map: what Jac and Jaseci are, the 3 core paradigms, and which resource URI to fetch for any task",
+            "mimeType": "text/markdown",
+            "path": str(understand_path)
+        };
+    }
 }
 
 """Index bundled docs copied at release time."""
