@@ -467,6 +467,40 @@ test "test_stub_impl_hover_and_goto_def" {
     }
 }
 
+test "test_go_to_definition_by_postinit_same_file" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        file_uri = uris.from_fs_path(
+            passes_main_fixture_abs_path("static_analysis/by_postinit_sym.jac")
+        );
+        lsp.type_check_file(file_uri);
+        # 'postinit' on line 2 (has msg: str by postinit;) col 19 -> should go to def postinit on line 3
+        result = lsp.get_definition(file_uri, lspt.Position(1, 20));
+        assert result is not None , "Expected go-to-def for 'postinit' in by postinit, got None";
+        assert "by_postinit_sym.jac:2:" in str(result) , f"Expected definition at line 3 (0-indexed 2), got: {result}";
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_go_to_definition_by_postinit_impl_file" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        file_uri = uris.from_fs_path(
+            passes_main_fixture_abs_path("static_analysis/by_postinit_sym_impl.jac")
+        );
+        lsp.type_check_file(file_uri);
+        # 'postinit' on line 2 (has msg: str by postinit;) col 19 -> should go to impl Greeter.postinit in .impl.jac
+        result = lsp.get_definition(file_uri, lspt.Position(1, 20));
+        assert result is not None , "Expected go-to-def for 'postinit' in by postinit (impl file), got None";
+        assert "by_postinit_sym_impl" in str(result) , f"Expected definition in by_postinit_sym_impl, got: {result}";
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_go_to_definition_impl_body_self_attr" {
     setup_test();
     try {
