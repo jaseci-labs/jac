@@ -76,14 +76,18 @@ impl __getEndpointEffects -> dict {
         initEl = None;
         try {
             initEl = document.getElementById("__jac_init__");
-        } except Exception {
-            ;
+        } except Exception as e {
+            console.warn("[jac-client] Failed to find __jac_init__ element:", e);
         }
         if initEl {
             try {
                 data = JSON.parse(initEl.textContent);
                 globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
-            } except Exception {
+            } except Exception as e {
+                console.warn(
+                    "[jac-client] Failed to parse __jac_init__ data, using empty effects:",
+                    e
+                );
                 globalThis.__jacEndpointEffects__ = {};
             }
         } else {
@@ -461,7 +465,9 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
         errMsg = error.error.message if error.error else str(error);
         errStack = error.error.stack if error.error else "";
         __jacReportError(errMsg, errStack, "", "ErrorBoundary");
-    } except Exception { }
+    } except Exception as e {
+        console.warn("[jac-client] ErrorFallback: failed to report error:", e);
+    }
     return
         <div
             role="alert"
@@ -1030,7 +1036,8 @@ impl __jacReportError(
             }
         );
     } except Exception {
-    # Silently ignore - never let error reporting cause more errors
+    # Intentionally silent - error reporting must never throw, as that
+    # could cause infinite loops or mask the original error.
     }
 }
 

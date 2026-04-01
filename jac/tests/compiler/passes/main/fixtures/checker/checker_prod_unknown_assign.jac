@@ -5,10 +5,8 @@ variable should either error or warn — it should NOT silently pass.
 A production type checker must treat Unknown as a signal that type
 inference failed, not as a universal "any" type.
 
-Unknown sources used here:
-  - Bare generic list.pop() returns Unknown (no type param on list)
-  - Method on bare dict returns Unknown
-  - getattr() returns Unknown
+Unknown source: magic method resolution on Any-typed values fails,
+producing genuine Unknown (e.g. Any + 1 -> Unknown).
 
 Expected errors: 5
   1. bad1: int = unknown_val     — Unknown should not assign to int silently
@@ -19,13 +17,13 @@ Expected errors: 5
 """
 
 with entry {
-    # Bare generic list (no type param) — .pop() returns Unknown
+    # Any + int -> Unknown (magic method __add__ unresolved on Any)
     items: list = [1, 2, 3];
-    unknown_val = items.pop();
+    any_val = items.pop();
+    unknown_val = any_val + 1;
 
     # A production checker should flag these assignments rather than
-    # silently accepting them. Unknown is assignable to everything
-    # because is_any_type() returns True for UnknownType.
+    # silently accepting them.
     bad1: int = unknown_val;        # Should warn/error: Unknown -> int
     bad2: str = unknown_val;        # Should warn/error: Unknown -> str
     bad3: list[int] = unknown_val;  # Should warn/error: Unknown -> list

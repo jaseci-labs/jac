@@ -154,7 +154,8 @@ impl getManifest -> dict {
         }
 
         return await response.json();
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to fetch manifest:", e);
         return {};
     }
 }
@@ -177,7 +178,8 @@ impl getAppIcon -> str {
 
         # Fallback to first icon
         return icons[0].src or "";
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to get app icon:", e);
         return "";
     }
 }
@@ -186,7 +188,8 @@ impl getAppName -> str {
     try {
         manifest = await getManifest();
         return manifest.name or manifest.short_name or "";
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to get app name:", e);
         return "";
     }
 }
@@ -200,8 +203,10 @@ impl getPwaUserPrefs -> dict {
         if stored {
             return JSON.parse(stored);
         }
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn(
+            "[jac-pwa] Failed to read PWA user preferences from localStorage:", e
+        );
     }
 
     return {
@@ -223,16 +228,18 @@ impl setPwaUserPrefs(prefs: dict) -> None {
         current = getPwaUserPrefs();
         merged = Object.assign({}, current, prefs);
         localStorage.setItem(PWA_STORAGE_KEY, JSON.stringify(merged));
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn(
+            "[jac-pwa] Failed to save PWA user preferences to localStorage:", e
+        );
     }
 }
 
 impl resetPwaUserPrefs -> None {
     try {
         localStorage.removeItem(PWA_STORAGE_KEY);
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to reset PWA user preferences:", e);
     }
 }
 

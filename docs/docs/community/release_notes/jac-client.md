@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.11 (Unreleased)
 
+- **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
+
+## jac-client 0.3.8 (Latest Release)
+
 - **Auto-install Bun to .jac/bin/**: Bun is now automatically downloaded and managed inside the project's `.jac/bin/` directory when not found on the system PATH. No global install required, no interactive prompts, no PATH configuration needed. All callers resolve the bun binary via `get_bun()` which returns the absolute path directly, bypassing PATH entirely. Pinned to Bun v1.3.11 with automatic upgrades when the pinned version changes.
 
 ## jac-client 0.3.10 (Latest Release)
