@@ -1128,3 +1128,36 @@ test "inline suppress multiple codes" {
     # Only line 5 should fire
     assert len(no_print_errors) == 1;
 }
+
+# ── TestW3037UnnecessaryNoneReturn ───────────────────────────────────────
+test "W3037 auto-fix removes unnecessary -> None from abilities" {
+    input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Functions without return should have -> None removed
+    assert "def no_return_with_none {" in formatted;
+    assert "def with_params(x: int, y: str) {" in formatted;
+
+    # Methods without return should have -> None removed
+    assert "def method(self: Foo) {" in formatted;
+
+    # Functions WITH a return statement should keep -> None
+    assert "def has_return_with_none -> None" in formatted;
+
+    # Functions with non-None return type should be untouched
+    assert "def no_return_with_type -> int" in formatted;
+}
+
+test "W3037 auto-fix removes unnecessary -> None from lambdas" {
+    input_path = auto_lint_fixture_path("unnecessary_none_return.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Paren-less lambda with typed param: -> None removed, param kept
+    assert "lambda e: str {" in formatted;
+    assert "lambda x: int" in formatted and "y: int {" in formatted;
+
+    # Lambda with no params: -> None removed
+    assert "lambda {" in formatted;
+}
