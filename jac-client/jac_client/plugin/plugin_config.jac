@@ -152,7 +152,9 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
             template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
         } except Exception as e {
             import from jaclang.cli.console { console }
-            console.warning(f"Failed to locate template package for '{template_name}': {e}");
+            console.warning(
+                f"Failed to locate template package for '{template_name}': {e}"
+            );
             return None;
         }
     }

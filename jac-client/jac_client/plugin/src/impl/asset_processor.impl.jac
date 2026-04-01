@@ -1,7 +1,6 @@
 import from jaclang.cli.console { console }
 
 """Copy custom asset files (based on jac.toml configuration) from source to destination recursively."""
-
 impl AssetProcessor.copy_custom_asset_types(
     self: AssetProcessor,
     src_dir: Path,
@@ -33,7 +32,9 @@ impl AssetProcessor.copy_custom_asset_types(
                 try {
                     shutil.copy2(item, dest_file);
                 } except (OSError, shutil.Error) as e {
-                    console.warning(f"Failed to copy custom asset '{item}' to '{dest_file}': {e}");
+                    console.warning(
+                        f"Failed to copy custom asset '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);
@@ -82,7 +83,9 @@ impl AssetProcessor.copy_typescript_files(
                 try {
                     shutil.copy2(item, dest_file);
                 } except (OSError, shutil.Error) as e {
-                    console.warning(f"Failed to copy TypeScript file '{item}' to '{dest_file}': {e}");
+                    console.warning(
+                        f"Failed to copy TypeScript file '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);
@@ -124,7 +127,9 @@ impl AssetProcessor.copy_assets(
                 try {
                     shutil.copy2(item, dest_file);
                 } except (OSError, shutil.Error) as e {
-                    console.warning(f"Failed to copy asset '{item}' to '{dest_file}': {e}");
+                    console.warning(
+                        f"Failed to copy asset '{item}' to '{dest_file}': {e}"
+                    );
                 }
             } elif item.is_dir() {
                 copy_recursive(item, destination, base);

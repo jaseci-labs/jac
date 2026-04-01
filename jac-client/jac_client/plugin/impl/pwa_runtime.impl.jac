@@ -204,7 +204,9 @@ impl getPwaUserPrefs -> dict {
             return JSON.parse(stored);
         }
     } except Exception as e {
-        console.warn("[jac-pwa] Failed to read PWA user preferences from localStorage:", e);
+        console.warn(
+            "[jac-pwa] Failed to read PWA user preferences from localStorage:", e
+        );
     }
 
     return {
@@ -227,7 +229,9 @@ impl setPwaUserPrefs(prefs: dict) -> None {
         merged = Object.assign({}, current, prefs);
         localStorage.setItem(PWA_STORAGE_KEY, JSON.stringify(merged));
     } except Exception as e {
-        console.warn("[jac-pwa] Failed to save PWA user preferences to localStorage:", e);
+        console.warn(
+            "[jac-pwa] Failed to save PWA user preferences to localStorage:", e
+        );
     }
 }
 

@@ -94,7 +94,9 @@ impl ViteCompiler._create_pages_entry_content(
             auth_redirect = config.routing.get('auth_redirect', '/login');
         }
     } except Exception as e {
-        console.warning(f"Failed to load routing config, using default auth_redirect='/login': {e}");
+        console.warning(
+            f"Failed to load routing config, using default auth_redirect='/login': {e}"
+        );
     }
     # Check if main.jac exists and exports app (used as wrapper)
     app_module = self.compiled_dir / f"{module_path.stem}.js";

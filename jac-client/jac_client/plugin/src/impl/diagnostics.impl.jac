@@ -123,7 +123,9 @@ impl BaseDetector.find_importing_file(
             }
         } except Exception as e {
             import from jaclang.cli.console { console }
-            console.warning(f"Failed to read '{jac_file}' while scanning for imports: {e}");
+            console.warning(
+                f"Failed to read '{jac_file}' while scanning for imports: {e}"
+            );
             continue;
         }
     }

@@ -84,7 +84,10 @@ impl __getEndpointEffects -> dict {
                 data = JSON.parse(initEl.textContent);
                 globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
             } except Exception as e {
-                console.warn("[jac-client] Failed to parse __jac_init__ data, using empty effects:", e);
+                console.warn(
+                    "[jac-client] Failed to parse __jac_init__ data, using empty effects:",
+                    e
+                );
                 globalThis.__jacEndpointEffects__ = {};
             }
         } else {
