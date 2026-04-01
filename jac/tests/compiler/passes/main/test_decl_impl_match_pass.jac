@@ -228,9 +228,6 @@ test "impl has var type not shadowed" {
 }
 
 test "by postinit Name node sym resolves to postinit ability" {
-    # The parser emits make_special_name(KW_POST_INIT) as kid[-1] of a
-    # deferred HasVar. Without a fix, that Name's .sym is never set, which
-    # means go-to-definition won't work and W2001 fires.
     prog = JacProgram();
     state = prog.compile(
         os.path.join(
@@ -248,7 +245,6 @@ test "by postinit Name node sym resolves to postinit ability" {
                 continue;
             }
             assert has_var.kid , "Deferred HasVar must have kids";
-            # isinstance narrowing lets the type checker see .sym on last_kid
             last_kid = has_var.kid[-1];
             if isinstance(last_kid, uni.Name) {
                 sym = last_kid.sym;
@@ -264,7 +260,6 @@ test "by postinit Name node sym resolves to postinit ability" {
         }
     }
     assert len(resolved) > 0 , "Fixture must have at least one 'by postinit' field";
-    # The postinit ability is stored under the Python name "__post_init__"
     assert all(s == "__post_init__" for s in resolved) , (
         f"Expected all sym_names to be '__post_init__', got: {resolved}"
     );
