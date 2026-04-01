@@ -285,6 +285,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1035 = _err(
          "E1035", Category.TYPE, "Type \"{src}\" is not assignable to type \"{dest}\""
      ),
+     # Bare generic warning
+     W1036 = _warn(
+         "W1036",
+         Category.TYPE,
+         "Generic type \"{type}\" used without type arguments, defaulting to"
+         " \"{type}[Any]\"; consider adding explicit type arguments"
+     ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),

@@ -18,7 +18,7 @@ def:pub get_todos -> list[Todo] {
 }
 
 cl def:pub app -> JsxElement {
-    has todos: list = [],
+    has todos: list[Todo] = [],
         text: str = "";
 
     async can with entry {
