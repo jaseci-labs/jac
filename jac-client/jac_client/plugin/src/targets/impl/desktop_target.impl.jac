@@ -2540,7 +2540,10 @@ def _run_tauri_build(tauri_dir: Path, target_platform: Optional[str] = None) -> 
 
 """Bundle sidecar for desktop distribution.
 
-Creates a wrapper script that requires system Python and jaclang to be installed.
+By default, uses PyInstaller to create a standalone binary with Python + jaclang bundled.
+If PyInstaller fails or is unavailable, falls back to wrapper script that requires system Python.
+
+Set JAC_SIDECAR_STANDALONE=0 to skip PyInstaller and use wrapper script.
 """
 def _bundle_sidecar(
     entry_file: Path,
@@ -2559,8 +2562,455 @@ def _bundle_sidecar(
     is_windows = target_platform == "windows"
     or (target_platform is None and platform_module.system() == "Windows");
 
-    # Create wrapper script
+    # Use PyInstaller by default for standalone distribution (no Python required on user machine)
+    # Set JAC_SIDECAR_STANDALONE=0 to use wrapper script instead (requires Python + jaclang)
+    use_pyinstaller = os.environ.get("JAC_SIDECAR_STANDALONE", "1") != "0";
+
+    if use_pyinstaller {
+        result = _bundle_sidecar_pyinstaller(
+            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config
+        );
+        if result {
+            return result;
+        }
+        console.warning("PyInstaller bundling failed, falling back to wrapper script");
+    }
+
+    # Fallback: Create wrapper script
     return _create_sidecar_wrapper(binaries_dir, is_windows);
+}
+
+"""Bundle sidecar using PyInstaller for standalone distribution."""
+def _bundle_sidecar_pyinstaller(
+    entry_file: Path,
+    project_dir: Path,
+    tauri_dir: Path,
+    binaries_dir: Path,
+    is_windows: bool,
+    plugins_config: dict | None = None
+) -> Path | None {
+    import sys;
+    import shutil;
+
+    # Check if PyInstaller is available
+    try {
+        result = subprocess.run(
+            [sys.executable, "-m", "PyInstaller", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        );
+        if result.returncode != 0 {
+            console.warning(
+                "PyInstaller not installed. Install with: pip install pyinstaller"
+            );
+            return None;
+        }
+        pyinstaller_version = result.stdout.strip();
+        console.print(f"  Using PyInstaller {pyinstaller_version}", style="muted");
+    } except Exception as e {
+        console.warning(f"PyInstaller check failed: {e}");
+        return None;
+    }
+
+    # Determine output binary name
+    binary_name = "jac-sidecar.exe" if is_windows else "jac-sidecar";
+
+    # Create entry script for PyInstaller (can't use -m syntax in spec)
+    entry_script = tauri_dir / "sidecar_entry.py";
+    with open(entry_script, "w") as f {
+        f.write(
+            '''#!/usr/bin/env python3
+# Entry point for PyInstaller-bundled sidecar
+# Plugin registration for frozen apps is handled in sidecar/main.py
+
+from jac_client.plugin.src.targets.desktop.sidecar.main import main
+if __name__ == "__main__":
+    main()
+'''
+        );
+    }
+
+    # Auto-install Python dependencies from jac.toml before bundling
+    jac_toml_path = project_dir / "jac.toml";
+    if jac_toml_path.exists() {
+        try {
+            import tomllib;
+            with open(jac_toml_path, "rb") as f {
+                toml_data = tomllib.load(f);
+            }
+            python_deps = toml_data.get("dependencies", {});
+
+            # Count valid dependencies first
+            dep_count = 0;
+            for (name, version) in python_deps.items() {
+                if isinstance(version, str) {
+                    dep_count += 1;
+                }
+            }
+
+            if dep_count > 0 {
+                console.print(f"  Installing {dep_count} Python dependencies from jac.toml...", style="muted");
+
+                # Install each dependency
+                for (name, version) in python_deps.items() {
+                    # Skip sub-tables (npm, git, etc.) - only process string values
+                    if not isinstance(version, str) {
+                        continue;
+                    }
+
+                    # Build pip install spec
+                    if version and not version.startswith("*") {
+                        dep_spec = f"{name}{version}";
+                    } else {
+                        dep_spec = name;
+                    }
+
+                    try {
+                        result = subprocess.run(
+                            [sys.executable, "-m", "pip", "install", dep_spec, "-q"],
+                            capture_output=True,
+                            text=True,
+                            timeout=120
+                        );
+                        if result.returncode == 0 {
+                            console.print(f"    ✔ {dep_spec}", style="success");
+                        } else {
+                            console.warning(f"    ✖ Failed to install {dep_spec}: {result.stderr.strip()}");
+                        }
+                    } except Exception as e {
+                        console.warning(f"    ✖ Failed to install {dep_spec}: {e}");
+                    }
+                }
+            }
+        } except Exception as e {
+            console.warning(f"  Could not read dependencies from jac.toml: {e}");
+        }
+    }
+
+    # Create PyInstaller spec file
+    spec_path = tauri_dir / "jac-sidecar.spec";
+    spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name, plugins_config);
+    with open(spec_path, "w") as f {
+        f.write(spec_content);
+    }
+    console.print(f"  Generated PyInstaller spec: {spec_path.name}", style="muted");
+
+    # Run PyInstaller
+    console.print(
+        "  Bundling sidecar with PyInstaller (this may take a while)...", style="muted"
+    );
+    dist_dir = tauri_dir / "dist";
+    build_dir = tauri_dir / "build";
+
+    try {
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "PyInstaller",
+                "--clean",
+                "--noconfirm",
+                "--distpath",
+                str(dist_dir),
+                "--workpath",
+                str(build_dir),
+                str(spec_path)
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_BUILD,
+            cwd=str(project_dir)
+        );
+
+        if result.returncode != 0 {
+            console.warning(f"PyInstaller failed:\n{result.stderr}");
+            return None;
+        }
+
+        # Find the bundled binary
+        bundled_binary = dist_dir / binary_name;
+        if not bundled_binary.exists() {
+            # Check if it's in a subdirectory (onedir mode)
+            bundled_dir = dist_dir / "jac-sidecar";
+            if bundled_dir.exists() {
+                bundled_binary = bundled_dir / binary_name;
+            }
+        }
+
+        if not bundled_binary.exists() {
+            console.warning(f"Bundled binary not found at {bundled_binary}");
+            return None;
+        }
+
+        # Copy to binaries directory
+        output_path = binaries_dir / binary_name;
+        if bundled_binary.is_file() {
+            shutil.copy2(bundled_binary, output_path);
+        } else {
+            # Copy entire directory for onedir mode
+            if output_path.exists() {
+                shutil.rmtree(output_path);
+            }
+            shutil.copytree(bundled_binary.parent, binaries_dir / "jac-sidecar");
+            output_path = binaries_dir / "jac-sidecar" / binary_name;
+        }
+
+        # Cleanup build artifacts
+        if build_dir.exists() {
+            shutil.rmtree(build_dir);
+        }
+
+        console.print(
+            f"  ✔ Bundled standalone sidecar: {output_path.name}", style="success"
+        );
+        console.print(
+            f"  Size: {output_path.stat().st_size / 1024 / 1024:.1f} MB", style="muted"
+        );
+        return output_path;
+    } except subprocess.TimeoutExpired {
+        console.warning("PyInstaller timed out after 10 minutes");
+        return None;
+    } except Exception as e {
+        console.warning(f"PyInstaller error: {e}");
+        return None;
+    }
+}
+
+"""Generate PyInstaller spec file for sidecar bundling."""
+def _generate_pyinstaller_spec(
+    entry_script: Path, project_dir: Path, binary_name: str,
+    plugins_config: dict | None = None
+) -> str {
+    # Default plugins config - all enabled
+    if plugins_config is None {
+        plugins_config = {
+            'jac_scale': True,
+            'byllm': True,
+            'jac_coder': True
+        };
+    }
+
+    # Convert plugins config to Python code string for the spec file
+    plugins_config_str = str(plugins_config);
+
+    # entry_script is the actual Python file to bundle (sidecar_entry.py)
+    return f'''# -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec for Jac Sidecar
+# Auto-generated by jac-client desktop build
+
+import sys
+from pathlib import Path
+
+# Plugin configuration from [desktop.plugins] in jac.toml
+PLUGINS_CONFIG = {plugins_config_str}
+
+# Manual hidden imports - only for stdlib and PyInstaller runtime deps
+# (pip packages like jaclang, jac_client, websockets are handled by collect_all() below)
+hiddenimports = [
+    # Python stdlib modules (can't be collected via collect_all)
+    'sqlite3', 'hashlib', 'secrets', 'http.server', 'json',
+    'asyncio', 'inspect', 'typing', 'pathlib',
+    'pdb', 'bdb', 'cmd', 'code', 'codeop', 'readline',
+    # PyInstaller runtime deps - use importlib.metadata instead of pkg_resources
+    'appdirs', 'setuptools',
+    'packaging', 'packaging.version', 'packaging.specifiers', 'packaging.requirements',
+    'importlib.metadata', 'importlib.resources',
+    # jaraco packages (setuptools deps for Python 3.12+)
+    'jaraco', 'jaraco.functools', 'jaraco.context', 'jaraco.text',
+]
+
+# Check plugin availability (collect_all() below handles the actual bundling)
+print("\\n[Checking plugins...]")
+if PLUGINS_CONFIG.get('jac_scale', True):
+    try:
+        import jac_scale
+        print("  jac_scale: available")
+    except ImportError:
+        print("  jac_scale: not installed")
+else:
+    print("  jac_scale: disabled in config")
+
+if PLUGINS_CONFIG.get('byllm', True):
+    try:
+        import byllm
+        print("  byllm: available")
+    except ImportError:
+        print("  byllm: not installed")
+else:
+    print("  byllm: disabled in config")
+
+if PLUGINS_CONFIG.get('jac_coder', True):
+    try:
+        import jac_coder
+        print("  jac_coder: available")
+    except ImportError:
+        print("  jac_coder: not installed")
+else:
+    print("  jac_coder: disabled in config")
+
+# Use collect_all() for comprehensive package bundling (scalable approach)
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
+
+datas = []
+binaries = []
+all_hiddenimports = []
+
+def safe_collect_all(pkg_name):
+    """Safely collect all data, binaries, and imports for a package."""
+    try:
+        d, b, h = collect_all(pkg_name)
+        print(f"  collect_all('{{pkg_name}}'): {{len(d)}} datas, {{len(b)}} binaries, {{len(h)}} imports")
+        return d, b, h
+    except Exception as e:
+        print(f"  collect_all('{{pkg_name}}'): skipped - {{e}}")
+        return [], [], []
+
+def get_package_deps(pkg_name):
+    """Get direct dependencies of a package from its metadata."""
+    try:
+        from importlib.metadata import requires
+        reqs = requires(pkg_name) or []
+        deps = []
+        for req in reqs:
+            # Parse requirement string (e.g., "litellm>=1.81.15,<1.83.0" -> "litellm")
+            dep_name = req.split('[')[0].split('>')[0].split('<')[0].split('=')[0].split('!')[0].split(';')[0].strip()
+            if dep_name:
+                # Convert package name to module name
+                module_name = dep_name.replace('-', '_')
+                deps.append(module_name)
+        return deps
+    except Exception:
+        return []
+
+def collect_with_deps(pkg_name, collected=None):
+    """Collect a package and its dependencies recursively."""
+    if collected is None:
+        collected = set()
+    if pkg_name in collected:
+        return [], [], []
+    collected.add(pkg_name)
+
+    all_d, all_b, all_h = safe_collect_all(pkg_name)
+
+    # Also collect direct dependencies
+    for dep in get_package_deps(pkg_name):
+        if dep not in collected:
+            d, b, h = safe_collect_all(dep)
+            all_d += d
+            all_b += b
+            all_h += h
+            collected.add(dep)
+
+    return all_d, all_b, all_h
+
+# Track collected packages to avoid duplicates
+collected_packages = set()
+
+# Core packages - always bundle completely (with their dependencies)
+print("\\n[Collecting core packages...]")
+for pkg in ['jaclang', 'jac_client', 'setuptools', 'appdirs', 'packaging']:
+    d, b, h = collect_with_deps(pkg, collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# Plugin packages - bundle based on config (with their dependencies)
+print("\\n[Collecting plugin packages...]")
+if PLUGINS_CONFIG.get('jac_scale', True):
+    d, b, h = collect_with_deps('jac_scale', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+if PLUGINS_CONFIG.get('byllm', True):
+    d, b, h = collect_with_deps('byllm', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+if PLUGINS_CONFIG.get('jac_coder', True):
+    d, b, h = collect_with_deps('jac_coder', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# Merge collected imports with manual hiddenimports
+hiddenimports.extend(all_hiddenimports)
+
+# Add project .jac files
+project_dir = Path(r'{project_dir}')
+for jac_file in project_dir.rglob('*.jac'):
+    rel_path = jac_file.relative_to(project_dir)
+    datas.append((str(jac_file), str(rel_path.parent) or '.'))
+
+# Add jac.toml if exists
+jac_toml = project_dir / 'jac.toml'
+if jac_toml.exists():
+    datas.append((str(jac_toml), '.'))
+
+# Read Python dependencies from jac.toml and add to hiddenimports
+try:
+    import tomllib
+    with open(jac_toml, 'rb') as f:
+        toml_data = tomllib.load(f)
+    # Get [dependencies] section (Python packages)
+    python_deps = toml_data.get('dependencies', {{}})
+    for dep_name, dep_version in python_deps.items():
+        # Skip sub-tables like npm, git, etc.
+        if isinstance(dep_version, str):
+            # Convert package name to module name (e.g., jac-scale -> jac_scale)
+            module_name = dep_name.replace('-', '_')
+            hiddenimports.append(module_name)
+            try:
+                hiddenimports += collect_submodules(module_name)
+            except Exception:
+                pass
+    print(f"Added {{len([d for d in python_deps.values() if isinstance(d, str)])}} Python dependencies from jac.toml")
+except Exception as e:
+    print(f"Warning: Could not read Python dependencies from jac.toml: {{e}}")
+
+# Note: collect_all() already handles submodules, data files, and binaries
+# No need for separate collect_submodules() calls
+
+a = Analysis(
+    [r'{entry_script}'],
+    pathex=[str(project_dir)],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=list(set(hiddenimports)),  # deduplicate
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'pkg_resources'],
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='{binary_name.replace(
+        ".exe", ""
+    )}',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+''';
 }
 
 """Create wrapper script for sidecar (requires system Python)."""
