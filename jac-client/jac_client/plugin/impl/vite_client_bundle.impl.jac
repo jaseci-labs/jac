@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Clean up the compiled directory and its contents."""
 
 impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> None {
@@ -7,8 +9,10 @@ impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> 
     project_dir = self.vite_package_json.parent;
     temp_dir = project_dir / 'compiled';
     if temp_dir.exists() {
-        with contextlib.suppress(OSError, shutil.Error) {
+        try {
             shutil.rmtree(temp_dir);
+        } except (OSError, shutil.Error) as e {
+            console.warning(f"Failed to clean up compiled directory '{temp_dir}': {e}");
         }
     }
 }
