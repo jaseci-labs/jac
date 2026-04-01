@@ -8,6 +8,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Desktop Plugin Bundling Config**: Added `get_plugins_config()` to `DesktopConfig` for reading the `[desktop.plugins]` section from `jac.toml`, controlling which Jac plugins (jac-scale, byllm, jac-coder) are bundled into desktop apps.
 - **Fix: Vite Define Skips Empty API URL**: The Vite config no longer injects `__JAC_API_BASE_URL__: undefined` when no API URL is configured, preventing conflicts with Tauri's runtime injection in desktop builds.
 - **Fix: HTML Script Tag Escaping**: Fixed `</script>` sequences in JSON payloads within `<script>` tags being incorrectly interpreted as tag closers by escaping `</` to `<\/`.
+- **Desktop Sidecar Overhaul**: Complete rewrite of sidecar process management with signal handling (`SIGTERM`/`SIGINT`/`SIGHUP`), stderr redirect (`JAC_USE_STDERR=1`) to avoid `BrokenPipeError` after Tauri closes stdout, writable data path (`--data-path` / `JAC_DATA_PATH`) for read-only AppImage environments with fallback probing, and manual plugin registration for PyInstaller-frozen apps.
+- **Runtime API URL Injection for Desktop**: Desktop builds no longer embed `__JAC_API_BASE_URL__` at compile time. Instead, Tauri injects the sidecar URL into the webview via `initialization_script` after discovering the dynamically allocated port. Added `get_api_url` Tauri command as fallback for timing edge cases.
+- **AppImage Environment Support**: Generated Rust code removes AppImage-injected `PYTHONHOME`/`PYTHONPATH`/`PYTHONDONTWRITEBYTECODE` variables that break bundled Python, and looks up `main.jac` in bundled Tauri resources before searching parent directories.
+- **Bundled Jac Sources for Desktop**: Desktop builds now copy all `.jac` files, `jac.toml`, and `assets/` directory into `src-tauri/jac/` as Tauri bundle resources, enabling fully self-contained desktop distributions.
+- **Desktop Target Refactoring**: Extracted constants (`DEFAULT_API_PORT`, `SUBPROCESS_TIMEOUT_*`, `DEFAULT_WINDOW_*`) and helper functions (`_check_command_available`, `_is_fuse_error`, `_join_path`) to reduce duplication. Fixed `platform` parameter shadowing.
 
 ## jac-client 0.3.8 (Latest Release)
 
