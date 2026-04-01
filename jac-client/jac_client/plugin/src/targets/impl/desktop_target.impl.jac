@@ -2840,7 +2840,7 @@ if __name__ == "__main__":
                 sys.executable,
                 "-m",
                 "PyInstaller",
-                "--clean",
+                # "--clean",
                 "--noconfirm",
                 "--distpath",
                 str(dist_dir),
