@@ -2737,7 +2737,11 @@ def _bundle_sidecar_pyinstaller(
 # Entry point for PyInstaller-bundled sidecar
 # Plugin registration for frozen apps is handled in sidecar/main.py
 
+import os
 import sys
+
+# Force UTF-8 mode on Windows to avoid charmap codec errors
+os.environ["PYTHONUTF8"] = "1"
 
 # Windows multiprocessing freeze support - MUST be called before any other imports
 # This is required for PyInstaller apps that use multiprocessing on Windows
@@ -2816,6 +2820,12 @@ if __name__ == "__main__":
         f.write(spec_content);
     }
     console.print(f"  Generated PyInstaller spec: {spec_path.name}", style="muted");
+
+    # Create runtime hook to force UTF-8 mode (fixes charmap errors on Windows)
+    runtime_hook = tauri_dir / "rthook_utf8.py";
+    with open(runtime_hook, "w") as f {
+        f.write("import os; os.environ['PYTHONUTF8'] = '1'\n");
+    }
 
     # Run PyInstaller
     console.print(
@@ -3100,7 +3110,7 @@ a = Analysis(
     hiddenimports=list(set(hiddenimports)),  # deduplicate
     hookspath=[],
     hooksconfig={{}},
-    runtime_hooks=[],
+    runtime_hooks=[str(Path(r'{entry_script}').parent / 'rthook_utf8.py')],
     excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'pkg_resources'],
     noarchive=False,
 )
