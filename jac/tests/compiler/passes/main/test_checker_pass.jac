@@ -1224,7 +1224,8 @@ test "list_indexing" {
         os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    # Bare list[Any] indexing yields Any, so len(some[0]) is valid.
+    assert len(program.errors_had) == 0;
 }
 
 test "range_function" {

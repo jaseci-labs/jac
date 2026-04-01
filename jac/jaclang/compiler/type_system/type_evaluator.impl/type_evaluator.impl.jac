@@ -2516,6 +2516,10 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if isinstance(dest_type, types.UnknownType) {
         return True;
     }
+    # Any is compatible with everything in both directions (PEP 484).
+    if isinstance(src_type, types.AnyType) or isinstance(dest_type, types.AnyType) {
+        return True;
+    }
     # Literal type assignability rules (similar to Pyright's literalValue handling)
     if self.prefetch
     and isinstance(src_type, types.ClassType)
