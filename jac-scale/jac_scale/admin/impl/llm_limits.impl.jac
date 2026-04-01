@@ -16,12 +16,11 @@ import from jac_scale.jserver.jserver {
     ParameterType
 }
 
-glob logger = logging.getLogger(__name__);
-
-# ContextVar set by the walker/function callback before each request so that
-# the litellm enforcement wrapper can identify which user made the call,
-# regardless of how Jac's execution context is structured internally.
-glob current_request_user: ContextVar = ContextVar('current_request_user', default='');
+glob logger = logging.getLogger(__name__),
+     # ContextVar set by the walker/function callback before each request so that
+     # the litellm enforcement wrapper can identify which user made the call,
+     # regardless of how Jac's execution context is structured internally.
+     current_request_user: ContextVar = ContextVar('current_request_user', default='');
 
 
 """Iterator wrapper for a streaming litellm response.
@@ -88,11 +87,16 @@ obj _StreamWrapper {
     def _record -> None {
         try {
             if self._last_chunk and hasattr(self._last_chunk, '_hidden_params') {
-                self._cost = self._last_chunk._hidden_params.get('response_cost', 0) or 0.0;
+                self._cost = self._last_chunk._hidden_params.get(
+                    'response_cost', 0
+                )
+                or 0.0;
             }
             elapsed_ms = (time.time() - self._start_ts) * 1000;
             status = "success" if self._finished else "partial";
-            self._store.record_usage(self._username, float(self._cost), int(self._t_tok));
+            self._store.record_usage(
+                self._username, float(self._cost), int(self._t_tok)
+            );
             self._store.log_llm_call(
                 username=self._username,
                 model=self._model,
