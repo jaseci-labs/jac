@@ -1876,7 +1876,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         );
                         if next_type and not isinstance(next_type, types.UnknownType) {
                             elem_type = self._convert_to_instance(next_type);
-                        } elif len(iter_type.private.type_args) == 1 {
+                        } elif iter_type.private
+                        and iter_type.private.type_args
+                        and len(iter_type.private.type_args) == 1 {
                             # Fallback: try to extract from type_args
                             elem_type = iter_type.private.type_args[0];
                             # If element type is a TypeVar, specialize it using collection's type_args
@@ -2038,7 +2040,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     }
 
                     # Fallback: try to extract from type_args if __next__ didn't work
-                    if len(iter_type.private.type_args) == 1 {
+                    if iter_type.private
+                    and iter_type.private.type_args
+                    and len(iter_type.private.type_args) == 1 {
                         elem_type = iter_type.private.type_args[0];
                         # If element type is already concrete (e.g. Iterator[int]
                         # from range.__iter__), use it directly.
@@ -2517,6 +2521,10 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     # recursive type alias _ClassInfo, unresolved stub). Accept any
     # source — this is not the caller's fault.
     if isinstance(dest_type, types.UnknownType) {
+        return True;
+    }
+    # Any is compatible with everything in both directions (PEP 484).
+    if isinstance(src_type, types.AnyType) or isinstance(dest_type, types.AnyType) {
         return True;
     }
     # Literal type assignability rules (similar to Pyright's literalValue handling)
