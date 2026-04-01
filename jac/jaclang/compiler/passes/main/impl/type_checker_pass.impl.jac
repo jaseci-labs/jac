@@ -281,6 +281,21 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             left_type = self.evaluator.get_type_of_symbol(target.sym);
             # Cache the type on the Name node for hover info
             target.type = left_type;
+            # Warn on bare generic type annotations (e.g. x: list = [])
+            if (
+                nd.type_tag
+                and nd.type_tag.tag
+                and isinstance(left_type, types.ClassType)
+                and left_type.shared
+                and left_type.shared.type_params
+                and (not left_type.private or not left_type.private.type_args)
+            ) {
+                self.emit(
+                    W1036,
+                    node_override=nd.type_tag.tag,
+                    type=left_type.shared.class_name
+                );
+            }
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
             # Individual element types are inferred by _eval_unpacking_names.
@@ -303,6 +318,22 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             # Propagate type annotation to the target node
             if nd.type_tag and nd.type_tag.tag {
                 declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+                # Warn on bare generic type annotations (e.g. list instead of list[T])
+                if (
+                    isinstance(declared_type, types.ClassType)
+                    and declared_type.shared
+                    and declared_type.shared.type_params
+                    and (
+                        not declared_type.private
+                        or not declared_type.private.type_args
+                    )
+                ) {
+                    self.emit(
+                        W1036,
+                        node_override=nd.type_tag.tag,
+                        type=declared_type.shared.class_name
+                    );
+                }
                 target.type = declared_type;
                 # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
                 if isinstance(target, uni.AtomTrailer) {
@@ -758,8 +789,25 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
 
 """Set type on class fields (has vars) and validate initializer type."""
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
+    import from jaclang.compiler.type_system { types }
     if (sym := nd.sym) {
-        nd.type = self.evaluator.get_type_of_symbol(sym);
+        declared_type = self.evaluator.get_type_of_symbol(sym);
+        nd.type = declared_type;
+        # Warn on bare generic type annotations (e.g. has items: list instead of list[T])
+        if (
+            nd.type_tag
+            and nd.type_tag.tag
+            and isinstance(declared_type, types.ClassType)
+            and declared_type.shared
+            and declared_type.shared.type_params
+            and (not declared_type.private or not declared_type.private.type_args)
+        ) {
+            self.emit(
+                W1036,
+                node_override=nd.type_tag.tag,
+                type=declared_type.shared.class_name
+            );
+        }
         # If there's an initializer, check that its type is compatible
         # with the declared type (e.g., bad1: int = unknown_val;).
         if nd.value is not None and nd.type is not None {

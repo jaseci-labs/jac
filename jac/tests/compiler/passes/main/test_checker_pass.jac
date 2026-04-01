@@ -1224,7 +1224,8 @@ test "list_indexing" {
         os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    # Bare list[Any] indexing yields Any, so len(some[0]) is valid.
+    assert len(program.errors_had) == 0;
 }
 
 test "range_function" {
@@ -3066,4 +3067,37 @@ test "scope_narrowing_isolation_between_impl_bodies" {
     assert len(program.errors_had) == 0 , f"Scope narrowing should not leak between impl bodies, got {len(
         program.errors_had
     )} errors:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "bare_generic_iteration_yields_any" {
+    # Bare generic types like `list` (no type args) should be treated as
+    # list[Any] per PEP 484, so iterating yields Any (not Unknown).
+    # Only the typed list[int] assignment mismatch should error.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_iteration.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 error (int->str), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        b: str = t;   # <-- Error (int not assignable to str)
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # Bare generics should produce W1036 warnings nudging toward explicit type args
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    assert len(bare_generic_warnings) == 3 , f"Expected 3 W1036 warnings (list, dict, list), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
