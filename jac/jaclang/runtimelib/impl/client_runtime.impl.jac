@@ -272,7 +272,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: Any  -> None { newPath = __jacGetPath();if not newPath {
+        lambda event: Any -> None { newPath = __jacGetPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
@@ -753,9 +753,9 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
         value.then(
-            lambda nd: Any  -> None { __jacApplyRender(renderer, rootEl, nd);}
+            lambda nd: Any -> None { __jacApplyRender(renderer, rootEl, nd);}
         ).catch(
-            lambda err: Any  -> None { console.error(
+            lambda err: Any -> None { console.error(
                 "[Jac] Error resolving client function promise", err
             );}
         );
@@ -787,7 +787,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: Any  -> None { __jacExecuteHydration();},
+            lambda _event: Any -> None { __jacExecuteHydration();},
             {"once": True}
         );
     }
@@ -947,7 +947,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     scope.addEventListener(
         "error",
-        lambda event: Any  -> None { __jacReportError(
+        lambda event: Any -> None { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -957,7 +957,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     scope.addEventListener(
         "unhandledrejection",
-        lambda event: Any  -> None { reason = event.reason;message = "";stack = "";if reason {
+        lambda event: Any -> None { reason = event.reason;message = "";stack = "";if reason {
             message = reason.message or str(reason);
             stack = reason.stack or "";
         } else {

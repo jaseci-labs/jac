@@ -44,20 +44,20 @@ cl {
                         label="Username"
                         type="text"
                         value={newUsername}
-                        onChange={lambda e: Any  -> None { newUsername = e.target.value;}}
+                        onChange={lambda e: Any -> None { newUsername = e.target.value;}}
                         className="mb-3"
                     />
                     <Input
                         label="Password"
                         type="password"
                         value={newPassword}
-                        onChange={lambda e: Any  -> None { newPassword = e.target.value;}}
+                        onChange={lambda e: Any -> None { newPassword = e.target.value;}}
                         className="mb-3"
                     />
                     <Select
                         label="Role"
                         value={newRole}
-                        onChange={lambda e: Any  -> None { newRole = e.target.value;}}
+                        onChange={lambda e: Any -> None { newRole = e.target.value;}}
                         options={ROLE_OPTIONS}
                         className="mb-4"
                     />

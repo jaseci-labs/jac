@@ -144,8 +144,8 @@ cl {
                     <input
                         type="text"
                         value={inputValue}
-                        onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
-                        onKeyPress={lambda e: Any  -> None { if e.key == "Enter" {
+                        onChange={lambda e: Any -> None { inputValue = e.target.value;}}
+                        onKeyPress={lambda e: Any -> None { if e.key == "Enter" {
                             addTodo();
                         }}}
                         placeholder="What needs to be done?"
@@ -361,7 +361,7 @@ cl {
                             </button>
                         )
                             if todos.some(
-                                lambda todo: Any  -> bool { return todo.done; }
+                                lambda todo: Any -> bool { return todo.done; }
                             )
                             else None}
                     </div>

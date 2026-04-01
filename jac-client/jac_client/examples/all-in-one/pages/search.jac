@@ -62,7 +62,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
+                            onChange={lambda e: Any -> None { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",

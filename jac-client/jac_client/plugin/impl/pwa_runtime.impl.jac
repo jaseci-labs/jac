@@ -79,7 +79,7 @@ impl useIsStandalone -> bool {
         lambda -> Any {
         # Listen for display-mode changes
         mediaQuery = window.matchMedia("(display-mode: standalone)");handler = lambda e:
-            Any  -> None { setStandalone(e.matches);};mediaQuery.addEventListener(
+            Any -> None { setStandalone(e.matches);};mediaQuery.addEventListener(
             "change", handler
         );return lambda -> None { mediaQuery.removeEventListener("change", handler);}; },
         []
@@ -101,7 +101,7 @@ impl captureInstallPrompt -> None {
 
     window.addEventListener(
         "beforeinstallprompt",
-        lambda e: Any  -> None { e.preventDefault();window.__jacPwaPrompt = e;window.dispatchEvent(
+        lambda e: Any -> None { e.preventDefault();window.__jacPwaPrompt = e;window.dispatchEvent(
             Reflect.construct(CustomEvent, ["jac:pwa:promptready"])
         );}
     );
@@ -836,7 +836,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: Any  -> None { e.stopPropagation();}}
+                    onClick={lambda e: Any -> None { e.stopPropagation();}}
                 >
                     <div className="jac-pwa-ios-guide__title">
                         {title}

@@ -97,7 +97,7 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
-                                onChange={lambda e: any  -> None { autoRefresh = e.target.checked;}}
+                                onChange={lambda e: any -> None { autoRefresh = e.target.checked;}}
                                 className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh
