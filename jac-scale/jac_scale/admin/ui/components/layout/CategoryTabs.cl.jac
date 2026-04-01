@@ -5,7 +5,7 @@ cl {
         categories: list, activeCategory: str, onCategoryChange: Any
     ) -> JsxElement {
         def makeHandler(catId: str, defaultTab: str) -> Any {
-            return lambda e: Any  -> None { onCategoryChange(catId, defaultTab);};
+            return lambda e: Any -> None { onCategoryChange(catId, defaultTab);};
         }
 
         return

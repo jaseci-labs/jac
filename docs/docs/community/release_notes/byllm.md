@@ -2,6 +2,10 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
+## byllm 0.6.2 (Unreleased)
+
+- **Type Safety: `BaseLLM` implements `LLMModel` protocol**: `BaseLLM` now extends the `LLMModel` protocol defined in jaclang core, and the byllm plugin's `default_llm` hook returns `LLMModel` instead of `object`. This enables type-safe LLM model references across the full chain from the type checker through the runtime.
+
 ## byllm 0.6.1 (Latest Release)
 
 - **Add: ReAct loop interrupt via `on_iteration` callback**: New `on_iteration` parameter on `by llm()` fires between iterations, returning `CONTINUE`, `ABORT`, or `ABORT_WITH_SUMMARY`. Enables stop buttons, token budgets, and doom-loop detection. Backward compatible.

@@ -2,7 +2,7 @@ glob x = 5,
      y = 2;
 
 test "a" {
-    assert almostEqual(5, x);
+    assert 5 == x;
 }
 
 test "b" {

@@ -54,12 +54,12 @@ with entry:__main__ {
 glob expected_area = 78.53981633974483;
 
 test "calc area" {
-    assert almostEqual(calculate_area(RAD), expected_area);
+    assert calculate_area(RAD) == expected_area;
 }
 
 test "circle area" {
     c = Circle(RAD);
-    assert almostEqual(c.area(), expected_area);
+    assert c.area() == expected_area;
 }
 
 test "circle type" {

@@ -2,7 +2,7 @@ glob a = 5,
      b = 2;
 
 test "t1" {
-    assert almostEqual(a, 6);
+    assert a == 6;
 }
 
 test "t2" {

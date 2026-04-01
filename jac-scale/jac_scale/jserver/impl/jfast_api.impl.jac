@@ -737,6 +737,7 @@ impl JFastApiServer.execute(self: JFastApiServer) -> None {
     super.execute();
 }
 
+
 """
 Calculate route priority for sorting. More specific routes get higher priority (lower number).
 Priority rules:

@@ -79,7 +79,7 @@ impl useIsStandalone -> bool {
         lambda -> Any {
         # Listen for display-mode changes
         mediaQuery = window.matchMedia("(display-mode: standalone)");handler = lambda e:
-            Any  -> None { setStandalone(e.matches);};mediaQuery.addEventListener(
+            Any -> None { setStandalone(e.matches);};mediaQuery.addEventListener(
             "change", handler
         );return lambda -> None { mediaQuery.removeEventListener("change", handler);}; },
         []
@@ -101,7 +101,7 @@ impl captureInstallPrompt -> None {
 
     window.addEventListener(
         "beforeinstallprompt",
-        lambda e: Any  -> None { e.preventDefault();window.__jacPwaPrompt = e;window.dispatchEvent(
+        lambda e: Any -> None { e.preventDefault();window.__jacPwaPrompt = e;window.dispatchEvent(
             Reflect.construct(CustomEvent, ["jac:pwa:promptready"])
         );}
     );
@@ -154,7 +154,8 @@ impl getManifest -> dict {
         }
 
         return await response.json();
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to fetch manifest:", e);
         return {};
     }
 }
@@ -177,7 +178,8 @@ impl getAppIcon -> str {
 
         # Fallback to first icon
         return icons[0].src or "";
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to get app icon:", e);
         return "";
     }
 }
@@ -186,7 +188,8 @@ impl getAppName -> str {
     try {
         manifest = await getManifest();
         return manifest.name or manifest.short_name or "";
-    } except Exception {
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to get app name:", e);
         return "";
     }
 }
@@ -200,8 +203,10 @@ impl getPwaUserPrefs -> dict {
         if stored {
             return JSON.parse(stored);
         }
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn(
+            "[jac-pwa] Failed to read PWA user preferences from localStorage:", e
+        );
     }
 
     return {
@@ -223,16 +228,18 @@ impl setPwaUserPrefs(prefs: dict) -> None {
         current = getPwaUserPrefs();
         merged = Object.assign({}, current, prefs);
         localStorage.setItem(PWA_STORAGE_KEY, JSON.stringify(merged));
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn(
+            "[jac-pwa] Failed to save PWA user preferences to localStorage:", e
+        );
     }
 }
 
 impl resetPwaUserPrefs -> None {
     try {
         localStorage.removeItem(PWA_STORAGE_KEY);
-    } except Exception {
-        ;
+    } except Exception as e {
+        console.warn("[jac-pwa] Failed to reset PWA user preferences:", e);
     }
 }
 
@@ -829,7 +836,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: Any  -> None { e.stopPropagation();}}
+                    onClick={lambda e: Any -> None { e.stopPropagation();}}
                 >
                     <div className="jac-pwa-ios-guide__title">
                         {title}

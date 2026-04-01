@@ -1623,6 +1623,70 @@ test "dev mode operations" {
     }
 }
 
+"""Test that dev mode shows named endpoints in OpenAPI spec and HMR adds new ones."""
+test "dev mode named endpoints and HMR refresh" {
+    sp = setup_dev_mode_server();
+    try {
+        # Test: OpenAPI spec shows named walker endpoints (not generic {walker_name})
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200;
+        paths = response.json().get("paths", {});
+
+        # Named endpoints should exist (from test_api.jac fixture)
+        assert "/walker/CreateTask" in paths , f"Expected /walker/CreateTask in OpenAPI paths, got: {list(
+            paths.keys()
+        )}";
+        assert "/walker/ListTasks" in paths , f"Expected /walker/ListTasks in OpenAPI paths";
+        assert "/walker/PublicInfo" in paths , f"Expected /walker/PublicInfo in OpenAPI paths";
+        assert "/function/add_numbers" in paths , f"Expected /function/add_numbers in OpenAPI paths";
+
+        # Generic catch-all should NOT exist
+        assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
+        assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
+
+        # Test: HMR adds new walker to OpenAPI spec
+        # Append a new walker to the fixture file
+        greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
+        with open(str(dm_test_file), 'a') as f {
+            f.write(greet_walker);
+        }
+
+        # Wait for HMR to detect the change, then trigger a request to flush it
+        time.sleep(3);
+        # Make a request to trigger the HMR middleware refresh
+        requests.get(f"{dm_base_url}/healthz", timeout=10);
+        time.sleep(1);
+
+        # Fetch updated OpenAPI spec
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200;
+        paths = response.json().get("paths", {});
+
+        assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
+            paths.keys()
+        )}";
+
+        # New walker should also be callable
+        response = requests.post(
+            f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10
+        );
+        assert response.status_code == 200;
+        data = _extract_data_dev(response.json());
+        assert data["reports"][0]["message"] == "Hello, Jaseci!";
+    } finally {
+        # Remove the appended walker from fixture file to not pollute other tests
+        with open(str(dm_test_file), 'r') as f {
+            original = f.read();
+        }
+        if greet_walker in original {
+            with open(str(dm_test_file), 'w') as f {
+                f.write(original.replace(greet_walker, ''));
+            }
+        }
+        teardown_dev_mode_server(sp);
+    }
+}
+
 # =============================================================================
 # GROUP 7: PORT FALLBACK TESTS
 # =============================================================================

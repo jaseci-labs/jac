@@ -20,11 +20,11 @@ cl {
             print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: Any  -> None { count = count + 1;};
+        handleIncrement = lambda e: Any -> None { count = count + 1;};
 
-        handleDecrement = lambda e: Any  -> None { count = count - 1;};
+        handleDecrement = lambda e: Any -> None { count = count - 1;};
 
-        handleReset = lambda e: Any  -> None { count = 0;};
+        handleReset = lambda e: Any -> None { count = 0;};
 
         return
             <Container>

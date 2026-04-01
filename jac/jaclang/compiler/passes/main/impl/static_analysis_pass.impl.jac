@@ -92,10 +92,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd._py_ctx_func != ast3.Load {
             continue;
         }
-        # Skip well-known builtins and special names
+        # Skip well-known Python builtins and special names
         import builtins;
-        if name_nd.value in dir(builtins)
-        or name_nd.value in ("self", "super", "almostEqual") {
+        if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
             continue;
         }
         # root is a Jac ambient builtin — warn if used bare (not as root() call)
