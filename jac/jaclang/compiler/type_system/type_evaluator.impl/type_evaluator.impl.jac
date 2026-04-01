@@ -1454,12 +1454,28 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.BoolExpr():
             # AND/OR return operand values, not bool: `x and y` → y if x truthy, else x
             # The type should be the union of all operand types (Python semantics).
-            # Narrowing (isinstance/truthiness) handled by TypeCheckPass.enter_bool_expr
+            #
+            # Progressive narrowing: in `x is not None and x.bark()`, the 2nd
+            # operand needs `x` narrowed by the 1st. We push a scope and apply
+            # narrowing after each operand so subsequent operands see it.
+            is_and = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_AND;
             is_or = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_OR;
             operand_types: list[TypeBase] = [];
             num_values = len(expr.values);
+            if is_and or is_or {
+                self.push_narrowing_scope();
+                self._in_bool_expr_narrowing_depth += 1;
+            }
             for i in range(num_values) {
                 op_type = self.get_type_of_expression(expr.values[i]);
+                # After evaluating operand i, apply narrowing for subsequent operands.
+                # AND: each operand's truthiness narrows the next (x truthy → narrow x)
+                # OR: each operand's falsiness narrows the next (x falsy → narrow ¬x)
+                if is_and {
+                    self.process_condition(expr.values[i]);
+                } elif is_or {
+                    self.process_negated_condition(expr.values[i]);
+                }
                 # Pyright-style OR result narrowing: for `x or y`, the result
                 # type of non-last operands excludes always-falsy types (None)
                 # because if the operand were falsy, OR short-circuits to the
@@ -1471,6 +1487,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 self._collect_unique_types(op_type, operand_types);
+            }
+            if is_and or is_or {
+                self._in_bool_expr_narrowing_depth -= 1;
+                self.pop_narrowing_scope();
             }
             if len(operand_types) == 1 {
                 return operand_types[0];

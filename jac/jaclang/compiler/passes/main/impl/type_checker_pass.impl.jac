@@ -120,81 +120,26 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing scope for AND/OR expressions."""
+"""Enter a boolean expression — prune to let the evaluator handle progressive
+narrowing (each AND/OR operand needs narrowing from prior operands)."""
 impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    if nd.op.name == Tok.KW_AND {
-        # For AND: each operand's truthiness narrows subsequent operands
-        self.evaluator.push_narrowing_scope();
-        self.evaluator._in_bool_expr_narrowing_depth += 1;
-        for val in nd.values {
-            self.evaluator.process_condition(val);
-        }
-    } elif nd.op.name == Tok.KW_OR {
-        # For OR: each operand's falsiness narrows subsequent operands
-        # In `X or Y`, when evaluating Y, X was falsy
-        self.evaluator.push_narrowing_scope();
-        self.evaluator._in_bool_expr_narrowing_depth += 1;
-        for val in nd.values {
-            self.evaluator.process_negated_condition(val);
-        }
-    }
-}
-
-"""Exit a boolean expression - clean up narrowing scope."""
-impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
-    import from jaclang.jac0core.constant { Tokens as Tok }
     if nd.op.name == Tok.KW_AND or nd.op.name == Tok.KW_OR {
-        self.evaluator.pop_narrowing_scope();
-        self.evaluator._in_bool_expr_narrowing_depth -= 1;
+        self.prune();
+        self.evaluator.get_type_of_expression(nd);
     }
 }
 
-"""Enter a ternary expression - manually traverse children with branch-specific narrowing.
+"""Exit a boolean expression."""
+impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None { }
 
-Without this, the walker visits children in kid order without narrowing, causing
-exit_func_call etc. to type-check arguments against unnarrowed types (false positives).
-
-This handler prunes automatic child traversal and manually walks each branch with
-the correct narrowing scope and _in_ternary_expr_depth active.  This ensures:
-  - exit_* handlers fire with narrowed types (preventing false positive errors)
-  - _get_type_of_expression_core runs for each node (symbol resolution for LSP)
-  - scope narrowing is applied after resolution in the NameAtom handler
-"""
+"""Enter a ternary expression — prune to let the evaluator handle branch
+traversal with proper narrowing context (ternary is an expression, not a CFG node)."""
 impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
     self.prune();
-
-    # Traverse the condition normally (no narrowing scope).
-    self.traverse(nd.condition);
-
-    # Extract narrowing info from the condition.
-    isinstance_info = self.evaluator._extract_isinstance_info(nd.condition);
-
-    # True branch: traverse with narrowing scope active.
-    self.evaluator.push_narrowing_scope();
-    if isinstance_info {
-        (narrowing_key, narrowed_type) = isinstance_info;
-        # Refine: filter the variable's existing type to preserve generic
-        # params (e.g., isinstance(x, list) on list[int]|str → list[int]).
-        refined = self.evaluator._refine_isinstance_type(
-            narrowing_key, narrowed_type, nd.condition
-        );
-        self.evaluator.add_scope_narrowing(narrowing_key, refined);
-    } else {
-        self.evaluator.process_condition(nd.condition);
-    }
-    self.evaluator._in_ternary_expr_depth += 1;
-    self.traverse(nd.value);
-    self.evaluator._in_ternary_expr_depth -= 1;
-    self.evaluator.pop_narrowing_scope();
-
-    # False branch: traverse with inverse narrowing scope active.
-    self.evaluator.push_narrowing_scope();
-    self.evaluator.process_negated_condition(nd.condition);
-    self.evaluator._in_ternary_expr_depth += 1;
-    self.traverse(nd.else_value);
-    self.evaluator._in_ternary_expr_depth -= 1;
-    self.evaluator.pop_narrowing_scope();
+    # The evaluator's IfElseExpr case handles narrowing for both branches
+    # via push/pop scope + process_condition/process_negated_condition.
+    self.evaluator.get_type_of_expression(nd);
 }
 
 
