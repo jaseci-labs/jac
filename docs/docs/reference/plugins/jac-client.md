@@ -1453,6 +1453,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | `filename` | Path to .jac file | `main.jac` |
 | `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
 | `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `-d, --docker` | Use Docker for production builds (Linux desktop only) | `false` |
 
 **Examples:**
 
@@ -1474,7 +1475,46 @@ jac build --client desktop --platform windows
 
 # Build for all platforms
 jac build --client desktop --platform all
+
+# Production build with Docker (recommended for distribution)
+jac build --client desktop --docker
 ```
+
+#### Production Builds with Docker
+
+For distributing desktop apps to end users, use the `--docker` flag to build in a controlled Ubuntu 22.04 environment. This ensures GLIBC compatibility with most Linux distributions (2022+).
+
+```bash
+# Production build (creates .deb, .rpm, .AppImage)
+jac build --client desktop --docker
+```
+
+**What Docker build provides:**
+
+| Feature | Description |
+|---------|-------------|
+| GLIBC 2.35 | Compatible with Ubuntu 22.04+, Fedora 36+, most modern distros |
+| Standalone sidecar | Python/jaclang bundled via PyInstaller - no user installation needed |
+| Multiple formats | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (universal) |
+
+**Output location:**
+
+```
+src-tauri/target/release/bundle/
+├── appimage/
+│   └── your-app_1.0.0_amd64.AppImage
+├── deb/
+│   └── your-app_1.0.0_amd64.deb
+└── rpm/
+    └── your-app-1.0.0-1.x86_64.rpm
+```
+
+**Requirements:**
+
+- Docker installed and running
+- ~5GB disk space for build
+
+**Note:** Without `--docker`, builds use your local system which may produce binaries incompatible with older Linux distributions.
 
 ### jac setup
 
@@ -1568,6 +1608,31 @@ jac build --client desktop --platform linux
 - Linux: `.AppImage`, `.deb`, or `.rpm`
 
 **Configuration:** Edit `src-tauri/tauri.conf.json` to customize window size, title, and app metadata.
+
+**Python Dependencies:**
+
+Desktop builds automatically install and bundle Python dependencies from `jac.toml`:
+
+```toml
+[dependencies]
+websockets = ">=12.0"
+httpx = ">=0.27.0"
+```
+
+These are auto-installed before bundling - no manual `pip install` needed.
+
+**Plugin Bundling:**
+
+Desktop builds automatically bundle Jac plugins (jac-scale, byllm, jac-coder) and their dependencies into the sidecar executable. Configure which plugins to include via `[desktop.plugins]` in `jac.toml`:
+
+```toml
+[desktop.plugins]
+jac_scale = true   # Include jac-scale (default: true)
+byllm = true       # Include byllm/litellm for LLM support (default: true)
+jac_coder = true   # Include jac-coder for AI coding features (default: true)
+```
+
+**Note:** Plugins must be installed (`pip install jac-scale byllm jac-coder`) before building. The build automatically discovers and bundles all plugin dependencies from their package metadata.
 
 ### PWA Target
 
