@@ -13,6 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **AppImage Environment Support**: Generated Rust code removes AppImage-injected `PYTHONHOME`/`PYTHONPATH`/`PYTHONDONTWRITEBYTECODE` variables that break bundled Python, and looks up `main.jac` in bundled Tauri resources before searching parent directories.
 - **Bundled Jac Sources for Desktop**: Desktop builds now copy all `.jac` files, `jac.toml`, and `assets/` directory into `src-tauri/jac/` as Tauri bundle resources, enabling fully self-contained desktop distributions.
 - **Desktop Target Refactoring**: Extracted constants (`DEFAULT_API_PORT`, `SUBPROCESS_TIMEOUT_*`, `DEFAULT_WINDOW_*`) and helper functions (`_check_command_available`, `_is_fuse_error`, `_join_path`) to reduce duplication. Fixed `platform` parameter shadowing.
+- **Docker Production Builds for Desktop (`--docker` flag)**: Added `jac build --client desktop --docker` to build desktop apps in an Ubuntu 22.04 Docker container, ensuring GLIBC 2.35 compatibility with most modern Linux distributions (2022+). The Docker build produces `.deb`, `.rpm`, and `.AppImage` packages. Automatically detects GLIBC version and warns when building on systems with newer GLIBC that may produce incompatible binaries.
 
 ## jac-client 0.3.8 (Latest Release)
 

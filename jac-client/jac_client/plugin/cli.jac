@@ -52,6 +52,12 @@ with entry {
             choices=["windows", "macos", "linux", "all"],
             short="p"  # Use -p for platform
         ),
+        Arg.create(
+            "docker",
+            typ=bool,
+            default=False,
+            help="Use Docker for production builds (Linux only, ensures GLIBC compatibility)"
+        ),
 
     ],
     examples=[
@@ -295,6 +301,7 @@ def _handle_build_target(ctx: HookContext) -> None {
 
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
+    use_docker = ctx.get_arg("docker", False);
 
     # Get config and project_dir first (needed for factory)
     config = get_config();
@@ -351,6 +358,45 @@ def _handle_build_target(ctx: HookContext) -> None {
             entry_path = project_dir / entry_path;
         }
 
+        # Check if Docker build requested (desktop only)
+        if use_docker and target_name == "desktop" {
+            import subprocess;
+            import from pathlib { Path as P2 }
+            docker_script = None;
+            try {
+                import jac_client.plugin.src.targets.desktop as desktop_mod;
+                if hasattr(desktop_mod, "__path__") {
+                    desktop_paths = list(desktop_mod.__path__);
+                    if desktop_paths {
+                        docker_script = P2(str(desktop_paths[0]) + "/docker/build.sh");
+                    }
+                }
+            } except Exception { }
+            if docker_script and docker_script.exists() {
+                console.print("\n🐳 Running Docker production build...", style="bold");
+                result = subprocess.run(
+                    ["bash", str(docker_script), str(project_dir)],
+                    cwd=str(project_dir)
+                );
+                if result.returncode == 0 {
+                    bundle_dir = project_dir / "src-tauri" / "target" / "release" / "bundle";
+                    console.success(f"Build complete: {bundle_dir}");
+                    ctx.set_data("cancel_execution", True);
+                    ctx.set_data("cancel_return_code", 0);
+                    return;
+                } else {
+                    console.error("Docker build failed");
+                    ctx.set_data("cancel_execution", True);
+                    ctx.set_data("cancel_return_code", 1);
+                    return;
+                }
+            } else {
+                console.error("Docker build script not found");
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
+        }
         # Polymorphic call - each target handles its own build logic
         bundle_path = target.build(entry_path, project_dir, platform);
 
