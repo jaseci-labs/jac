@@ -14,6 +14,7 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
+
 glob logger = logging.getLogger(__name__);
 
 obj LLMUserLimits {
@@ -46,7 +47,7 @@ obj LLMUserLimits {
 
 """Compute the next budget reset timestamp for a given period."""
 def _compute_next_reset(period: str, from_time: Any = None) -> str {
-    now = from_time if from_time else datetime.now(UTC);
+    now = from_time or datetime.now(UTC);
     if period == "daily" {
         # Next midnight UTC
         next_reset = (now + timedelta(days=1)).replace(
@@ -61,32 +62,22 @@ def _compute_next_reset(period: str, from_time: Any = None) -> str {
         next_reset = (now + timedelta(days=days_until_monday)).replace(
             hour=0, minute=0, second=0, microsecond=0
         );
-    } elif period == "monthly" {
-        # 1st of next month midnight UTC
-        if now.month == 12 {
-            next_reset = now.replace(
-                year=now.year + 1, month=1, day=1,
-                hour=0, minute=0, second=0, microsecond=0
-            );
-        } else {
-            next_reset = now.replace(
-                month=now.month + 1, day=1,
-                hour=0, minute=0, second=0, microsecond=0
-            );
-        }
+    } elif now.month == 12 {
+        # monthly december: wrap to Jan 1 of next year
+        next_reset = now.replace(
+            year=now.year + 1,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        );
     } else {
-        # Default to monthly for unknown periods
-        if now.month == 12 {
-            next_reset = now.replace(
-                year=now.year + 1, month=1, day=1,
-                hour=0, minute=0, second=0, microsecond=0
-            );
-        } else {
-            next_reset = now.replace(
-                month=now.month + 1, day=1,
-                hour=0, minute=0, second=0, microsecond=0
-            );
-        }
+        # monthly (or unknown period): 1st of next month midnight UTC
+        next_reset = now.replace(
+            month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0
+        );
     }
     return next_reset.isoformat();
 }
@@ -168,13 +159,14 @@ obj LLMLimitsStore {
                 );
             }
         } except Exception as e {
-            logger.warning(f"LLM limits: MongoDB init failed, usage will NOT persist: {e}");
+            logger.warning(
+                f"LLM limits: MongoDB init failed, usage will NOT persist: {e}"
+            );
             self._db = None;
         }
     }
 
     # ── Limits CRUD ──────────────────────────────────────────────────────
-
     """Get limits for a user, falling back to __default__ if none set."""
     def get_user_limits(username: str) -> dict | None {
         now_str = datetime.now(UTC).isoformat();
@@ -212,7 +204,8 @@ obj LLMLimitsStore {
             budget_reset_at = _compute_next_reset(budget_period);
         }
         # Support legacy budget_limit_monthly field
-        budget_val = limits.get("budget_limit", 0) or limits.get("budget_limit_monthly", 0);
+        budget_val = limits.get("budget_limit", 0)
+        or limits.get("budget_limit_monthly", 0);
         doc = {
             "username": username,
             "budget_limit": float(budget_val or 0),
@@ -226,9 +219,7 @@ obj LLMLimitsStore {
         };
         if self._db {
             self._db[self._limits_collection].update_one(
-                {"username": username},
-                {"$set": doc},
-                upsert=True
+                {"username": username}, {"$set": doc}, upsert=True
             );
         }
         with self._lock {
@@ -293,7 +284,11 @@ obj LLMLimitsStore {
         if self._db {
             cursor = self._db[self._limits_collection].find(
                 {"username": {"$ne": "__default__"}}
-            ).skip(offset).limit(limit);
+            ).skip(
+                offset
+            ).limit(
+                limit
+            );
             items = [];
             for doc in cursor {
                 doc.pop("_id", None);
@@ -302,7 +297,11 @@ obj LLMLimitsStore {
             total = self._db[self._limits_collection].count_documents(
                 {"username": {"$ne": "__default__"}}
             );
-            return {"items": items, "total": total, "has_more": (offset + limit) < total};
+            return {
+                "items": items,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
         with self._lock {
             all_items = [
@@ -312,12 +311,15 @@ obj LLMLimitsStore {
             ];
             total = len(all_items);
             page = all_items[offset:offset + limit];
-            return {"items": page, "total": total, "has_more": (offset + limit) < total};
+            return {
+                "items": page,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
     }
 
     # ── Usage tracking ───────────────────────────────────────────────────
-
     """Get current monthly period string (YYYY-MM)."""
     def _current_period -> str {
         return datetime.now(UTC).strftime("%Y-%m");
@@ -370,18 +372,22 @@ obj LLMLimitsStore {
     def get_all_usage(limit: int = 50, offset: int = 0) -> dict {
         period = self._current_period();
         if self._db {
-            cursor = self._db[self._usage_collection].find(
-                {"period": period}
-            ).skip(offset).limit(limit);
+            cursor = self._db[self._usage_collection].find({"period": period}).skip(
+                offset
+            ).limit(
+                limit
+            );
             items = [];
             for doc in cursor {
                 doc.pop("_id", None);
                 items.append(doc);
             }
-            total = self._db[self._usage_collection].count_documents(
-                {"period": period}
-            );
-            return {"items": items, "total": total, "has_more": (offset + limit) < total};
+            total = self._db[self._usage_collection].count_documents({"period": period});
+            return {
+                "items": items,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
         with self._lock {
             all_items = [
@@ -391,7 +397,11 @@ obj LLMLimitsStore {
             ];
             total = len(all_items);
             page = all_items[offset:offset + limit];
-            return {"items": page, "total": total, "has_more": (offset + limit) < total};
+            return {
+                "items": page,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
     }
 
@@ -427,9 +437,7 @@ obj LLMLimitsStore {
             key = f"{username}:{period}";
             if key not in self._usage {
                 self._usage[key] = LLMUsageCounters(
-                    username=username,
-                    period=period,
-                    minute_window=current_window
+                    username=username, period=period, minute_window=current_window
                 );
             }
             counters = self._usage[key];
@@ -448,12 +456,18 @@ obj LLMLimitsStore {
         if self._db {
             # Check if minute window rolled over; if so, reset counters
             self._db[self._usage_collection].update_one(
-                {"username": username, "period": period, "minute_window": {"$ne": current_window}},
-                {"$set": {
-                    "request_count_minute": 0,
-                    "token_count_minute": 0,
-                    "minute_window": current_window
-                }}
+                {
+                    "username": username,
+                    "period": period,
+                    "minute_window": {"$ne": current_window}
+                },
+                {
+                    "$set": {
+                        "request_count_minute": 0,
+                        "token_count_minute": 0,
+                        "minute_window": current_window
+                    }
+                }
             );
             # Atomically increment
             self._db[self._usage_collection].update_one(
@@ -479,9 +493,7 @@ obj LLMLimitsStore {
             key = f"{username}:{period}";
             if key not in self._usage {
                 self._usage[key] = LLMUsageCounters(
-                    username=username,
-                    period=period,
-                    minute_window=current_window
+                    username=username, period=period, minute_window=current_window
                 );
             }
             counters = self._usage[key];
@@ -497,7 +509,6 @@ obj LLMLimitsStore {
     }
 
     # ── Enforcement ──────────────────────────────────────────────────────
-
     """Pre-call check. Returns allowed or blocked with reason. Auto-resets budget on period rollover."""
     def check_limits(username: str, model: str = "") -> dict {
         limits = self.get_user_limits(username);
@@ -513,7 +524,8 @@ obj LLMLimitsStore {
             };
         }
         # Budget check with auto-reset on period rollover
-        budget_limit = limits.get("budget_limit", 0) or limits.get("budget_limit_monthly", 0);
+        budget_limit = limits.get("budget_limit", 0)
+        or limits.get("budget_limit_monthly", 0);
         if budget_limit > 0 {
             budget_period = limits.get("budget_period", "monthly");
             budget_reset_at = limits.get("budget_reset_at", "");
@@ -558,7 +570,9 @@ obj LLMLimitsStore {
                 if reset_at {
                     try {
                         reset_dt = datetime.fromisoformat(reset_at);
-                        reset_msg = f" Resets at {reset_dt.strftime('%Y-%m-%d %H:%M UTC')}";
+                        reset_msg = f" Resets at {reset_dt.strftime(
+                            '%Y-%m-%d %H:%M UTC'
+                        )}";
                     } except Exception {
                         ;
                     }
@@ -616,7 +630,6 @@ obj LLMLimitsStore {
     }
 
     # ── Audit Log ────────────────────────────────────────────────────────
-
     """Persist an audit log entry for every LLM call (or blocked attempt)."""
     def log_llm_call(
         username: str,
@@ -629,8 +642,11 @@ obj LLMLimitsStore {
         latency_ms: float = 0.0,
         blocked: bool = False,
         block_reason: str = "",
-        call_metadata: dict = {}
+        call_metadata: dict | None = None
     ) -> None {
+        if call_metadata is None {
+            call_metadata = {};
+        }
         now = datetime.now(UTC);
         entry = {
             "timestamp": now.isoformat(),
@@ -683,42 +699,61 @@ obj LLMLimitsStore {
             }
             cursor = self._db[self._log_collection].find(query).sort(
                 "ts_epoch", -1
-            ).skip(offset).limit(limit);
+            ).skip(
+                offset
+            ).limit(
+                limit
+            );
             items: list = [];
             for doc in cursor {
                 doc.pop("_id", None);
                 items.append(doc);
             }
             total = self._db[self._log_collection].count_documents(query);
-            return {"items": items, "total": total, "has_more": (offset + limit) < total};
+            return {
+                "items": items,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
         # In-memory fallback
         with self._log_buffer_lock {
             filtered = list(self._log_buffer);
             if filter_username {
-                filtered = [e for e in filtered if e["username"] == filter_username];
+                filtered = [
+                    e
+                    for e in filtered
+                    if e["username"] == filter_username
+                ];
             }
             if blocked_only {
-                filtered = [e for e in filtered if e.get("blocked")];
+                filtered = [
+                    e
+                    for e in filtered
+                    if e.get("blocked")
+                ];
             }
             # Newest first
             filtered = list(reversed(filtered));
             total = len(filtered);
             page = filtered[offset:offset + limit];
-            return {"items": page, "total": total, "has_more": (offset + limit) < total};
+            return {
+                "items": page,
+                "total": total,
+                "has_more": (offset + limit) < total
+            };
         }
     }
 }
 
 
 # Global store instance
-glob _llm_limits_store: LLMLimitsStore | None = None;
-
-# Per-provider API keys — hot-swappable at runtime via admin endpoints.
-# Keys are provider names as returned by litellm.get_llm_provider(), e.g.
-# {"openai": "sk-...", "anthropic": "sk-ant-...", "gemini": "AIza..."}
-# When a provider key is present it overrides jac.toml / env vars for that provider.
-glob _active_provider_keys: dict = {};
+glob _llm_limits_store: LLMLimitsStore | None = None,
+     # Per-provider API keys — hot-swappable at runtime via admin endpoints.
+     # Keys are provider names as returned by litellm.get_llm_provider(), e.g.
+     # {"openai": "sk-...", "anthropic": "sk-ant-...", "gemini": "AIza..."}
+     # When a provider key is present it overrides jac.toml / env vars for that provider.
+     _active_provider_keys: dict = {};
 
 """Get the global limits store instance (None if not initialized)."""
 def get_llm_limits_store -> LLMLimitsStore | None {
@@ -746,14 +781,16 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
 
     # Set default limits from config if none exist
     if not store.get_default_limits() {
-        store.set_default_limits({
-            "budget_limit": limits_cfg.get('default_budget_limit', 0),
-            "budget_period": limits_cfg.get('default_budget_period', 'monthly'),
-            "rpm_limit": limits_cfg.get('default_rpm', 0),
-            "tpm_limit": limits_cfg.get('default_tpm', 0),
-            "allowed_models": limits_cfg.get('default_allowed_models', []),
-            "enabled": True
-        });
+        store.set_default_limits(
+            {
+                "budget_limit": limits_cfg.get('default_budget_limit', 0),
+                "budget_period": limits_cfg.get('default_budget_period', 'monthly'),
+                "rpm_limit": limits_cfg.get('default_rpm', 0),
+                "tpm_limit": limits_cfg.get('default_tpm', 0),
+                "allowed_models": limits_cfg.get('default_allowed_models', []),
+                "enabled": True
+            }
+        );
         logger.info("LLM limits: default limits initialized from config");
     }
 
@@ -783,19 +820,17 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             if not check["allowed"] {
                 # Log the blocked attempt
                 store.log_llm_call(
-                    username=username, model=model, status="blocked",
-                    blocked=True, block_reason=check["reason"],
+                    username=username,
+                    model=model,
+                    status="blocked",
+                    blocked=True,
+                    block_reason=check["reason"],
                     call_metadata=call_meta
                 );
                 if enforcement_mode == 'strict' {
-                    raise Exception(
-                        f"LLM request blocked: {check['reason']}"
-                    );
-                } else {
-                    logger.warning(
-                        f"LLM limits warning for {username}: {check['reason']}"
-                    );
+                    raise Exception(f"LLM request blocked: {check['reason']}");
                 }
+                logger.warning(f"LLM limits warning for {username}: {check['reason']}");
             }
 
             # Increment RPM counter before the call
@@ -832,10 +867,15 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                 }
                 store.record_usage(username, float(cost), int(t_tok));
                 store.log_llm_call(
-                    username=username, model=model, status="success",
-                    cost=float(cost), tokens=int(t_tok),
-                    prompt_tokens=int(p_tok), completion_tokens=int(c_tok),
-                    latency_ms=elapsed_ms, call_metadata=call_meta
+                    username=username,
+                    model=model,
+                    status="success",
+                    cost=float(cost),
+                    tokens=int(t_tok),
+                    prompt_tokens=int(p_tok),
+                    completion_tokens=int(c_tok),
+                    latency_ms=elapsed_ms,
+                    call_metadata=call_meta
                 );
             } except Exception as rec_err {
                 logger.debug(f"LLM limits: post-call recording error: {rec_err}");
@@ -859,19 +899,17 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             check = store.check_limits(username, model);
             if not check["allowed"] {
                 store.log_llm_call(
-                    username=username, model=model, status="blocked",
-                    blocked=True, block_reason=check["reason"],
+                    username=username,
+                    model=model,
+                    status="blocked",
+                    blocked=True,
+                    block_reason=check["reason"],
                     call_metadata=call_meta
                 );
                 if enforcement_mode == 'strict' {
-                    raise Exception(
-                        f"LLM request blocked: {check['reason']}"
-                    );
-                } else {
-                    logger.warning(
-                        f"LLM limits warning for {username}: {check['reason']}"
-                    );
+                    raise Exception(f"LLM request blocked: {check['reason']}");
                 }
+                logger.warning(f"LLM limits warning for {username}: {check['reason']}");
             }
 
             store.increment_rpm(username);
@@ -906,10 +944,15 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
                 }
                 store.record_usage(username, float(cost), int(t_tok));
                 store.log_llm_call(
-                    username=username, model=model, status="success",
-                    cost=float(cost), tokens=int(t_tok),
-                    prompt_tokens=int(p_tok), completion_tokens=int(c_tok),
-                    latency_ms=elapsed_ms, call_metadata=call_meta
+                    username=username,
+                    model=model,
+                    status="success",
+                    cost=float(cost),
+                    tokens=int(t_tok),
+                    prompt_tokens=int(p_tok),
+                    completion_tokens=int(c_tok),
+                    latency_ms=elapsed_ms,
+                    call_metadata=call_meta
                 );
             } except Exception as rec_err {
                 logger.debug(f"LLM limits: async post-call recording error: {rec_err}");
@@ -1021,9 +1064,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
     );
 
     # GET /admin/llm/limits/{username}
-    async def get_user_limits_handler(
-        request: Request, username: str
-    ) -> JSONResponse {
+    async def get_user_limits_handler(request: Request, username: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1064,9 +1105,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
     );
 
     # PUT /admin/llm/limits/{username}
-    async def set_user_limits_handler(
-        request: Request, username: str
-    ) -> JSONResponse {
+    async def set_user_limits_handler(request: Request, username: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1116,7 +1155,10 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         if not deleted {
             return JSONResponse(
                 status_code=404,
-                content={"ok": False, "error": {"message": "No user-specific limits found"}}
+                content={
+                    "ok": False,
+                    "error": {"message": "No user-specific limits found"}
+                }
             );
         }
         return JSONResponse(
@@ -1147,9 +1189,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
     );
 
     # GET /admin/llm/usage/{username}
-    async def get_user_usage_handler(
-        request: Request, username: str
-    ) -> JSONResponse {
+    async def get_user_usage_handler(request: Request, username: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1221,9 +1261,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
     );
 
     # POST /admin/llm/usage/{username}/reset
-    async def reset_usage_handler(
-        request: Request, username: str
-    ) -> JSONResponse {
+    async def reset_usage_handler(request: Request, username: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
             return JSONResponse(
@@ -1269,7 +1307,9 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         if keys_doc and keys_doc.get("keys") {
             _active_provider_keys = dict(keys_doc["keys"]);
             logger.info(
-                f"LLM limits: provider keys loaded for: {list(_active_provider_keys.keys())}"
+                f"LLM limits: provider keys loaded for: {list(
+                    _active_provider_keys.keys()
+                )}"
             );
         }
     }
@@ -1349,11 +1389,15 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         }
         _active_provider_keys[provider] = new_key;
         _persist_provider_keys();
-        logger.info(f"LLM limits: API key set for provider '{provider}' ({_mask_key(new_key)})");
-        return JSONResponse(content={
-            "ok": True,
-            "data": {"provider": provider, "masked_key": _mask_key(new_key)}
-        });
+        logger.info(
+            f"LLM limits: API key set for provider '{provider}' ({_mask_key(new_key)})"
+        );
+        return JSONResponse(
+            content={
+                "ok": True,
+                "data": {"provider": provider, "masked_key": _mask_key(new_key)}
+            }
+        );
     }
 
     self.server.add_endpoint(
@@ -1378,7 +1422,9 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
     );
 
     # DELETE /admin/llm/config/provider-keys/{provider}
-    async def delete_provider_key_handler(request: Request, provider: str) -> JSONResponse {
+    async def delete_provider_key_handler(
+        request: Request, provider: str
+    ) -> JSONResponse {
         global _active_provider_keys;
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -1391,16 +1437,23 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         if provider not in _active_provider_keys {
             return JSONResponse(
                 status_code=404,
-                content={"ok": False, "error": {"message": f"No key configured for '{provider}'"}}
+                content={
+                    "ok": False,
+                    "error": {"message": f"No key configured for '{provider}'"}
+                }
             );
         }
         _active_provider_keys.pop(provider);
         _persist_provider_keys();
         logger.info(f"LLM limits: API key cleared for provider '{provider}'");
-        return JSONResponse(content={
-            "ok": True,
-            "data": {"message": f"Key cleared for '{provider}' — falling back to jac.toml / env vars"}
-        });
+        return JSONResponse(
+            content={
+                "ok": True,
+                "data": {
+                    "message": f"Key cleared for '{provider}' — falling back to jac.toml / env vars"
+                }
+            }
+        );
     }
 
     self.server.add_endpoint(

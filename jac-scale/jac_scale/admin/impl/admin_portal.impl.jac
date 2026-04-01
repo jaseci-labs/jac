@@ -850,11 +850,9 @@ impl JacAPIServerAdmin.admin_get_config(
     import os;
     cwd = Path(os.getcwd());
     # Determine config file path based on profile
-    if profile == "default" {
-        config_path = cwd / "jac.toml";
-    } else {
-        config_path = cwd / f"jac.{profile}.toml";
-    }
+    config_path = cwd / "jac.toml"
+        if profile == "default"
+        else cwd / f"jac.{profile}.toml";
     if not config_path.exists() {
         # Return empty content if file doesn't exist
         return TransportResponse.success(
@@ -893,11 +891,9 @@ impl JacAPIServerAdmin.admin_update_config(
     import toml;
     cwd = Path(os.getcwd());
     # Determine config file path based on profile
-    if profile == "default" {
-        config_path = cwd / "jac.toml";
-    } else {
-        config_path = cwd / f"jac.{profile}.toml";
-    }
+    config_path = cwd / "jac.toml"
+        if profile == "default"
+        else cwd / f"jac.{profile}.toml";
     # Validate TOML syntax before saving
     try {
         toml.loads(content);
@@ -1198,7 +1194,8 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
         try {
             # Copy source files (skip .jac build artifacts)
             shutil.copytree(
-                ui_dir, tmp_dir / "ui",
+                ui_dir,
+                tmp_dir / "ui",
                 ignore=shutil.ignore_patterns('.jac', 'node_modules', '__pycache__')
             );
             build_dir = tmp_dir / "ui";

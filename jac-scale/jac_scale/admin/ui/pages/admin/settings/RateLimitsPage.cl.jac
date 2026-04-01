@@ -72,7 +72,6 @@ cl {
         alert = useAlert();
 
         # ── Data loading ─────────────────────────────────────────────────
-
         async def loadData -> None {
             loading = True;
             try {
@@ -129,21 +128,25 @@ cl {
         useEffect(lambda -> None { loadData();}, []);
 
         # ── Default limits save ──────────────────────────────────────────
-
         async def handleSaveDefaults -> None {
             models_list = [
                 m.strip()
                 for m in defModels.split(",")
                 if m.strip()
-            ] if defModels.strip() else [];
-            result = await setDefaultLimits(auth["authToken"], {
-                "budget_limit": parseFloat(defBudget) or 0,
-                "budget_period": defPeriod,
-                "rpm_limit": parseInt(defRpm) or 0,
-                "tpm_limit": parseInt(defTpm) or 0,
-                "allowed_models": models_list,
-                "enabled": defEnabled
-            });
+            ]
+                if defModels.strip()
+                else [];
+            result = await setDefaultLimits(
+                auth["authToken"],
+                {
+                    "budget_limit": parseFloat(defBudget) or 0,
+                    "budget_period": defPeriod,
+                    "rpm_limit": parseInt(defRpm) or 0,
+                    "tpm_limit": parseInt(defTpm) or 0,
+                    "allowed_models": models_list,
+                    "enabled": defEnabled
+                }
+            );
             if result and result["ok"] {
                 alert["showAlert"]("Default limits saved", "success");
             } else {
@@ -152,7 +155,6 @@ cl {
         }
 
         # ── Edit user modal handlers ─────────────────────────────────────
-
         def openEditModal(user: dict) -> None {
             editUsername = user["username"] or "";
             editBudget = str(user["budget_limit"] or 0);
@@ -171,15 +173,21 @@ cl {
                 m.strip()
                 for m in editModels.split(",")
                 if m.strip()
-            ] if editModels.strip() else [];
-            result = await setUserLimits(auth["authToken"], editUsername, {
-                "budget_limit": parseFloat(editBudget) or 0,
-                "budget_period": editPeriod,
-                "rpm_limit": parseInt(editRpm) or 0,
-                "tpm_limit": parseInt(editTpm) or 0,
-                "allowed_models": models_list,
-                "enabled": editEnabled
-            });
+            ]
+                if editModels.strip()
+                else [];
+            result = await setUserLimits(
+                auth["authToken"],
+                editUsername,
+                {
+                    "budget_limit": parseFloat(editBudget) or 0,
+                    "budget_period": editPeriod,
+                    "rpm_limit": parseInt(editRpm) or 0,
+                    "tpm_limit": parseInt(editTpm) or 0,
+                    "allowed_models": models_list,
+                    "enabled": editEnabled
+                }
+            );
             if result and result["ok"] {
                 alert["showAlert"](f"Limits updated for {editUsername}", "success");
                 showEditModal = False;
@@ -210,7 +218,6 @@ cl {
         }
 
         # ── Add user modal handlers ──────────────────────────────────────
-
         async def handleAddUser -> None {
             if not addUsername.strip() {
                 addError = "Username is required";
@@ -220,15 +227,21 @@ cl {
                 m.strip()
                 for m in addModels.split(",")
                 if m.strip()
-            ] if addModels.strip() else [];
-            result = await setUserLimits(auth["authToken"], addUsername.strip(), {
-                "budget_limit": parseFloat(addBudget) or 0,
-                "budget_period": addPeriod,
-                "rpm_limit": parseInt(addRpm) or 0,
-                "tpm_limit": parseInt(addTpm) or 0,
-                "allowed_models": models_list,
-                "enabled": True
-            });
+            ]
+                if addModels.strip()
+                else [];
+            result = await setUserLimits(
+                auth["authToken"],
+                addUsername.strip(),
+                {
+                    "budget_limit": parseFloat(addBudget) or 0,
+                    "budget_period": addPeriod,
+                    "rpm_limit": parseInt(addRpm) or 0,
+                    "tpm_limit": parseInt(addTpm) or 0,
+                    "allowed_models": models_list,
+                    "enabled": True
+                }
+            );
             if result and result["ok"] {
                 alert["showAlert"](f"Limits set for {addUsername}", "success");
                 showAddModal = False;
@@ -246,11 +259,12 @@ cl {
         }
 
         # ── Provider key handlers ────────────────────────────────────────
-
         async def handleSetProviderKey -> None {
-            p = (customProviderName.strip().lower()
-                 if selectedProvider == "other"
-                 else selectedProvider);
+            p = (
+                customProviderName.strip().lower()
+                    if selectedProvider == "other"
+                    else selectedProvider
+            );
             k = newProviderKey.strip();
             if not p {
                 alert["showAlert"]("Provider name is required", "error");
@@ -274,7 +288,11 @@ cl {
         async def handleDeleteProviderKey(provider: str) -> None {
             result = await deleteProviderKey(auth["authToken"], provider);
             if result and result["ok"] {
-                providerKeysList = [p for p in providerKeysList if p != provider];
+                providerKeysList = [
+                    p
+                    for p in providerKeysList
+                    if p != provider
+                ];
                 await loadData();
                 alert["showAlert"](f"Key cleared for {provider}", "success");
             } else {
@@ -283,9 +301,10 @@ cl {
         }
 
         # ── Helpers ──────────────────────────────────────────────────────
-
         def formatCost(val: Any) -> str {
-            if not val { return "$0.00"; }
+            if not val {
+                return "$0.00";
+            }
             return "$" + parseFloat(val).toFixed(2);
         }
 
@@ -298,22 +317,31 @@ cl {
         }
 
         def formatNumber(val: Any) -> str {
-            if not val { return "0"; }
+            if not val {
+                return "0";
+            }
             n = parseInt(val);
-            if n >= 1000000 { return (n / 1000000).toFixed(1) + "M"; }
-            if n >= 1000 { return (n / 1000).toFixed(1) + "K"; }
+            if n >= 1000000 {
+                return (n / 1000000).toFixed(1) + "M";
+            }
+            if n >= 1000 {
+                return (n / 1000).toFixed(1) + "K";
+            }
             return str(n);
         }
 
         def formatTokens(tokens: Any) -> str {
             t = parseInt(tokens) or 0;
-            if t >= 1000000 { return (t / 1000000).toFixed(1) + "M"; }
-            if t >= 1000 { return (t / 1000).toFixed(1) + "K"; }
+            if t >= 1000000 {
+                return (t / 1000000).toFixed(1) + "M";
+            }
+            if t >= 1000 {
+                return (t / 1000).toFixed(1) + "K";
+            }
             return str(t);
         }
 
         # ── Table columns ───────────────────────────────────────────────
-
         limitsColumns = [
             {"key": "username", "label": "User"},
             {"key": "budget", "label": "Budget"},
@@ -333,7 +361,6 @@ cl {
         ];
 
         # ── Render ───────────────────────────────────────────────────────
-
         if loading {
             return
                 <div className="p-8 text-center text-slate-500">
@@ -352,19 +379,35 @@ cl {
                         {len(providerKeysList) > 0
                         and <div className="mb-3 space-y-2">
                             {[
-                                <div key={provider} className="p-3 bg-slate-800 rounded-lg flex items-center justify-between">
+                                <div
+                                    key={provider}
+                                    className="p-3 bg-slate-800 rounded-lg flex items-center justify-between"
+                                >
                                     <div>
-                                        <span className="text-xs text-slate-400 capitalize">{provider}:</span>
-                                        <span className="ml-2 text-sm text-white font-mono">{providerKeysData[provider]["masked_key"]}</span>
+                                        <span
+                                            className="text-xs text-slate-400 capitalize"
+                                        >
+                                            {provider}:
+                                        </span>
+                                        <span
+                                            className="ml-2 text-sm text-white font-mono"
+                                        >
+                                            {providerKeysData[provider]["masked_key"]}
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Badge text="Active" variant="success"/>
-                                        <Button variant="danger" size="sm" onClick={lambda -> None { handleDeleteProviderKey(provider);}}>
+                                        <Button
+                                            variant="danger"
+                                            size="sm"
+                                            onClick={lambda -> None { handleDeleteProviderKey(
+                                                provider
+                                            );}}
+                                        >
                                             Remove
                                         </Button>
                                     </div>
-                                </div>
-                                for provider in providerKeysList
+                                </div> for provider in providerKeysList
                             ]}
                         </div>}
                         {len(providerKeysList) == 0
@@ -379,23 +422,44 @@ cl {
                                     <Select
                                         label="Provider"
                                         value={selectedProvider}
-                                        onChange={lambda e: Any -> None { selectedProvider = e.target.value;}}
+                                        onChange={lambda e: Any  -> None { selectedProvider = e.target.value;}}
                                         options={[
-                                            {"value": "openai",    "label": "OpenAI (OPENAI_API_KEY)"},
-                                            {"value": "anthropic", "label": "Anthropic (ANTHROPIC_API_KEY)"},
-                                            {"value": "gemini",    "label": "Gemini (GEMINI_API_KEY)"},
-                                            {"value": "mistral",   "label": "Mistral (MISTRAL_API_KEY)"},
-                                            {"value": "groq",      "label": "Groq (GROQ_API_KEY)"},
-                                            {"value": "cohere",    "label": "Cohere (COHERE_API_KEY)"},
-                                            {"value": "azure",     "label": "Azure OpenAI (AZURE_API_KEY)"},
-                                            {"value": "other",     "label": "Other…"}
+                                            {
+                                                "value": "openai",
+                                                "label": "OpenAI (OPENAI_API_KEY)"
+                                            },
+                                            {
+                                                "value": "anthropic",
+                                                "label": "Anthropic (ANTHROPIC_API_KEY)"
+                                            },
+                                            {
+                                                "value": "gemini",
+                                                "label": "Gemini (GEMINI_API_KEY)"
+                                            },
+                                            {
+                                                "value": "mistral",
+                                                "label": "Mistral (MISTRAL_API_KEY)"
+                                            },
+                                            {
+                                                "value": "groq",
+                                                "label": "Groq (GROQ_API_KEY)"
+                                            },
+                                            {
+                                                "value": "cohere",
+                                                "label": "Cohere (COHERE_API_KEY)"
+                                            },
+                                            {
+                                                "value": "azure",
+                                                "label": "Azure OpenAI (AZURE_API_KEY)"
+                                            },
+                                            {"value": "other", "label": "Other…"}
                                         ]}
                                     />
                                 </div>
                                 {selectedProvider == "other"
                                 and <Input
                                     value={customProviderName}
-                                    onChange={lambda e: Any -> None { customProviderName = e.target.value;}}
+                                    onChange={lambda e: Any  -> None { customProviderName = e.target.value;}}
                                     placeholder="provider name"
                                 />}
                                 <div className="flex-1">
@@ -403,7 +467,7 @@ cl {
                                         type="password"
                                         label="API Key"
                                         value={newProviderKey}
-                                        onChange={lambda e: Any -> None { newProviderKey = e.target.value;}}
+                                        onChange={lambda e: Any  -> None { newProviderKey = e.target.value;}}
                                         placeholder="sk-..."
                                     />
                                 </div>
@@ -442,23 +506,39 @@ cl {
                         {len(allUsage) == 0
                         and <div className="p-6 text-center text-slate-500 text-sm">
                             No LLM usage recorded yet.
-                        </div>}
-                        {len(allUsage) > 0
+                        </div>}{len(allUsage) > 0
                         and <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="text-slate-400 border-b border-slate-700 text-xs uppercase">
-                                        <th className="text-left py-2 px-4">User</th>
-                                        <th className="text-right py-2 px-3">Requests</th>
-                                        <th className="text-right py-2 px-3">Tokens</th>
-                                        <th className="text-right py-2 px-3">Cost</th>
-                                        <th className="text-right py-2 px-3">Period</th>
+                                    <tr
+                                        className="text-slate-400 border-b border-slate-700 text-xs uppercase"
+                                    >
+                                        <th className="text-left py-2 px-4">
+                                            User
+                                        </th>
+                                        <th className="text-right py-2 px-3">
+                                            Requests
+                                        </th>
+                                        <th className="text-right py-2 px-3">
+                                            Tokens
+                                        </th>
+                                        <th className="text-right py-2 px-3">
+                                            Cost
+                                        </th>
+                                        <th className="text-right py-2 px-3">
+                                            Period
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {[
-                                        <tr key={u["username"]} className="border-b border-slate-800 text-slate-300">
-                                            <td className="py-2 px-4 font-mono text-teal-300 text-xs">
+                                        <tr
+                                            key={u["username"]}
+                                            className="border-b border-slate-800 text-slate-300"
+                                        >
+                                            <td
+                                                className="py-2 px-4 font-mono text-teal-300 text-xs"
+                                            >
                                                 {u["username"]}
                                             </td>
                                             <td className="text-right py-2 px-3">
@@ -467,10 +547,14 @@ cl {
                                             <td className="text-right py-2 px-3">
                                                 {formatTokens(u["total_tokens"] or 0)}
                                             </td>
-                                            <td className="text-right py-2 px-3 text-amber-400">
+                                            <td
+                                                className="text-right py-2 px-3 text-amber-400"
+                                            >
                                                 {formatCost(u["total_cost"] or 0)}
                                             </td>
-                                            <td className="text-right py-2 px-3 text-slate-500 text-xs">
+                                            <td
+                                                className="text-right py-2 px-3 text-slate-500 text-xs"
+                                            >
                                                 {u["period"] or ""}
                                             </td>
                                         </tr> for u in allUsage
@@ -496,7 +580,7 @@ cl {
                                 label="Budget ($)"
                                 type="number"
                                 value={defBudget}
-                                onChange={lambda e: Any -> None { defBudget = e.target.value;}}
+                                onChange={lambda e: Any  -> None { defBudget = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Select
@@ -509,20 +593,20 @@ cl {
                                 label="Requests/min (RPM)"
                                 type="number"
                                 value={defRpm}
-                                onChange={lambda e: Any -> None { defRpm = e.target.value;}}
+                                onChange={lambda e: Any  -> None { defRpm = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Input
                                 label="Tokens/min (TPM)"
                                 type="number"
                                 value={defTpm}
-                                onChange={lambda e: Any -> None { defTpm = e.target.value;}}
+                                onChange={lambda e: Any  -> None { defTpm = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Input
                                 label="Allowed Models"
                                 value={defModels}
-                                onChange={lambda e: Any -> None { defModels = e.target.value;}}
+                                onChange={lambda e: Any  -> None { defModels = e.target.value;}}
                                 placeholder="gpt-4o, gpt-4o-mini"
                             />
                         </div>
@@ -531,7 +615,9 @@ cl {
                 <Card className="overflow-hidden">
                     <CardHeader
                         title="Per-User Limits"
-                        action={<Button onClick={lambda -> None { showAddModal = True;}}>
+                        action={<Button
+                            onClick={lambda -> None { showAddModal = True;}}
+                        >
                             Add User Override
                         </Button>}
                     />
@@ -539,8 +625,7 @@ cl {
                         {len(userLimits) == 0
                         and <div className="p-8 text-center text-slate-500 text-sm">
                             No user-specific limits configured. All users follow default limits.
-                        </div>}
-                        {len(userLimits) > 0
+                        </div>}{len(userLimits) > 0
                         and <DataTable columns={limitsColumns}>
                             {[
                                 <TableRow key={item["username"]}>
@@ -562,46 +647,58 @@ cl {
                                         {formatNumber(item["tpm_limit"] or 0)}
                                     </TableCell>
                                     <TableCell>
-                                        {formatCost(getUserUsageVal(item["username"], "total_cost"))}
+                                        {formatCost(
+                                            getUserUsageVal(
+                                                item["username"], "total_cost"
+                                            )
+                                        )}
                                     </TableCell>
                                     <TableCell>
-                                        {formatNumber(getUserUsageVal(item["username"], "total_requests"))}
+                                        {formatNumber(
+                                            getUserUsageVal(
+                                                item["username"], "total_requests"
+                                            )
+                                        )}
                                     </TableCell>
                                     <TableCell>
-                                        {(item["enabled"] is not False) and <Badge text="Active" variant="success"/>}
-                                        {(item["enabled"] is False) and <Badge text="Disabled" variant="warning"/>}
+                                        {(item["enabled"] is not False)
+                                        and <Badge text="Active" variant="success"/>}{(
+                                            item["enabled"] is False
+                                        )
+                                        and <Badge text="Disabled" variant="warning"/>}
                                     </TableCell>
                                     <TableCell align="right">
                                         <div className="flex gap-1 justify-end">
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={lambda -> None { openEditModal(item);}}
+                                                onClick={lambda -> None { openEditModal(
+                                                    item
+                                                );}}
                                             >
                                                 Edit
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={lambda -> None {
-                                                    handleResetUsage(item["username"]);
-                                                }}
+                                                onClick={lambda -> None { handleResetUsage(
+                                                    item["username"]
+                                                );}}
                                             >
                                                 Reset
                                             </Button>
                                             <Button
                                                 variant="danger"
                                                 size="sm"
-                                                onClick={lambda -> None {
-                                                    handleDeleteUser(item["username"]);
-                                                }}
+                                                onClick={lambda -> None { handleDeleteUser(
+                                                    item["username"]
+                                                );}}
                                             >
                                                 Remove
                                             </Button>
                                         </div>
                                     </TableCell>
-                                </TableRow>
-                                for item in userLimits
+                                </TableRow> for item in userLimits
                             ]}
                         </DataTable>}
                     </CardBody>
@@ -617,7 +714,7 @@ cl {
                             label="Monthly Budget ($)"
                             type="number"
                             value={editBudget}
-                            onChange={lambda e: Any -> None { editBudget = e.target.value;}}
+                            onChange={lambda e: Any  -> None { editBudget = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Select
@@ -630,20 +727,20 @@ cl {
                             label="Requests/min (RPM)"
                             type="number"
                             value={editRpm}
-                            onChange={lambda e: Any -> None { editRpm = e.target.value;}}
+                            onChange={lambda e: Any  -> None { editRpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Tokens/min (TPM)"
                             type="number"
                             value={editTpm}
-                            onChange={lambda e: Any -> None { editTpm = e.target.value;}}
+                            onChange={lambda e: Any  -> None { editTpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Allowed Models (comma-separated)"
                             value={editModels}
-                            onChange={lambda e: Any -> None { editModels = e.target.value;}}
+                            onChange={lambda e: Any  -> None { editModels = e.target.value;}}
                             placeholder="gpt-4o, gpt-4o-mini (empty = all)"
                         />
                     </div>
@@ -667,13 +764,15 @@ cl {
                     <div className="space-y-3">
                         {addError and <InlineAlert message={addError} type="error"/>}
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">
+                            <label
+                                className="block text-sm font-medium text-slate-300 mb-1"
+                            >
                                 User
                             </label>
                             <select
                                 className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm"
                                 value={addUsername}
-                                onChange={lambda e: Any -> None { addUsername = e.target.value;}}
+                                onChange={lambda e: Any  -> None { addUsername = e.target.value;}}
                             >
                                 <option value="">
                                     Select a user...
@@ -681,8 +780,7 @@ cl {
                                 {[
                                     <option key={u["username"]} value={u["username"]}>
                                         {u["username"]}
-                                    </option>
-                                    for u in userList
+                                    </option> for u in userList
                                 ]}
                             </select>
                         </div>
@@ -690,7 +788,7 @@ cl {
                             label="Monthly Budget ($)"
                             type="number"
                             value={addBudget}
-                            onChange={lambda e: Any -> None { addBudget = e.target.value;}}
+                            onChange={lambda e: Any  -> None { addBudget = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Select
@@ -703,20 +801,20 @@ cl {
                             label="Requests/min (RPM)"
                             type="number"
                             value={addRpm}
-                            onChange={lambda e: Any -> None { addRpm = e.target.value;}}
+                            onChange={lambda e: Any  -> None { addRpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Tokens/min (TPM)"
                             type="number"
                             value={addTpm}
-                            onChange={lambda e: Any -> None { addTpm = e.target.value;}}
+                            onChange={lambda e: Any  -> None { addTpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Allowed Models (comma-separated)"
                             value={addModels}
-                            onChange={lambda e: Any -> None { addModels = e.target.value;}}
+                            onChange={lambda e: Any  -> None { addModels = e.target.value;}}
                             placeholder="gpt-4o, gpt-4o-mini (empty = all)"
                         />
                     </div>

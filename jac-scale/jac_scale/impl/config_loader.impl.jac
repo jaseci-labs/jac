@@ -336,7 +336,9 @@ impl JacScaleConfig.get_llm_limits_config(self: JacScaleConfig) -> dict[str, Any
     return {
         'enabled': llm_limits_config.get('enabled', True),
         'default_budget_limit': float(llm_limits_config.get('default_budget_limit', 0)),
-        'default_budget_period': llm_limits_config.get('default_budget_period', 'monthly'),
+        'default_budget_period': llm_limits_config.get(
+            'default_budget_period', 'monthly'
+        ),
         'default_rpm': int(llm_limits_config.get('default_rpm', 0)),
         'default_tpm': int(llm_limits_config.get('default_tpm', 0)),
         'default_allowed_models': llm_limits_config.get('default_allowed_models', []),

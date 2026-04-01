@@ -28,14 +28,12 @@ def _fake_llm_response(cost: float = 0.001, tokens: int = 30) -> Any {
 # ============================================================================
 # Default Limits Tests
 # ============================================================================
-
 test "llm limits get default limits" {
     client = make_client();
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/limits/default",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/default", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -79,8 +77,7 @@ test "llm limits set default limits" {
 
         # Verify the update
         get_resp = client.get(
-            "/admin/llm/limits/default",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/default", headers={"Authorization": f"Bearer {token}"}
         );
         data = extract_data(get_resp.json());
         assert data["budget_limit"] == 25.0;
@@ -96,14 +93,12 @@ test "llm limits set default limits" {
 # ============================================================================
 # Per-User Limits Tests
 # ============================================================================
-
 test "llm limits list user limits empty" {
     client = make_client();
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/limits",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -136,8 +131,7 @@ test "llm limits set user limits" {
 
         # Verify in list
         list_resp = client.get(
-            "/admin/llm/limits",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits", headers={"Authorization": f"Bearer {token}"}
         );
         data = extract_data(list_resp.json());
         assert data["total"] >= 1;
@@ -165,14 +159,19 @@ test "llm limits get user limits" {
         # Set limits first
         client.put(
             "/admin/llm/limits/alice",
-            json={"budget_limit": 10.0, "budget_period": "monthly", "rpm_limit": 60, "tpm_limit": 100000, "enabled": True},
+            json={
+                "budget_limit": 10.0,
+                "budget_period": "monthly",
+                "rpm_limit": 60,
+                "tpm_limit": 100000,
+                "enabled": True
+            },
             headers={"Authorization": f"Bearer {token}"}
         );
 
         # Get specific user limits
         response = client.get(
-            "/admin/llm/limits/alice",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/alice", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -191,21 +190,25 @@ test "llm limits delete user limits" {
         # Set limits
         client.put(
             "/admin/llm/limits/bob",
-            json={"budget_limit": 5.0, "budget_period": "daily", "rpm_limit": 10, "tpm_limit": 10000, "enabled": True},
+            json={
+                "budget_limit": 5.0,
+                "budget_period": "daily",
+                "rpm_limit": 10,
+                "tpm_limit": 10000,
+                "enabled": True
+            },
             headers={"Authorization": f"Bearer {token}"}
         );
 
         # Delete
         response = client.delete(
-            "/admin/llm/limits/bob",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/bob", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
 
         # Verify gone from list
         list_resp = client.get(
-            "/admin/llm/limits",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits", headers={"Authorization": f"Bearer {token}"}
         );
         data = extract_data(list_resp.json());
         for item in data["items"] {
@@ -222,8 +225,7 @@ test "llm limits requires auth" {
         # All endpoints should reject without auth
         assert client.get("/admin/llm/limits").status_code == 403;
         assert client.put(
-            "/admin/llm/limits/testuser",
-            json={"budget_limit": 5.0}
+            "/admin/llm/limits/testuser", json={"budget_limit": 5.0}
         ).status_code == 403;
         assert client.delete("/admin/llm/limits/testuser").status_code == 403;
     } finally {
@@ -234,14 +236,12 @@ test "llm limits requires auth" {
 # ============================================================================
 # Usage Tracking Tests
 # ============================================================================
-
 test "llm usage get all usage empty" {
     client = make_client();
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/usage",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/usage", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -299,7 +299,6 @@ test "llm usage requires auth" {
 # ============================================================================
 # Provider Keys Config Tests
 # ============================================================================
-
 test "llm provider keys get empty" {
     client = make_client();
     try {
@@ -434,8 +433,7 @@ test "llm provider keys requires auth" {
     try {
         assert client.get("/admin/llm/config/provider-keys").status_code == 403;
         assert client.put(
-            "/admin/llm/config/provider-keys/openai",
-            json={"api_key": "sk-test"}
+            "/admin/llm/config/provider-keys/openai", json={"api_key": "sk-test"}
         ).status_code == 403;
         assert client.delete("/admin/llm/config/provider-keys/openai").status_code == 403;
     } finally {
@@ -446,7 +444,6 @@ test "llm provider keys requires auth" {
 # ============================================================================
 # Integration: Full Limits Lifecycle
 # ============================================================================
-
 test "llm limits full lifecycle" {
     client = make_client();
     try {
@@ -480,16 +477,14 @@ test "llm limits full lifecycle" {
 
         # 3. Verify default
         def_resp = client.get(
-            "/admin/llm/limits/default",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/default", headers={"Authorization": f"Bearer {token}"}
         );
         def_data = extract_data(def_resp.json());
         assert def_data["budget_limit"] == 50.0;
 
         # 4. Verify user override
         user_resp = client.get(
-            "/admin/llm/limits/poweruser",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/poweruser", headers={"Authorization": f"Bearer {token}"}
         );
         user_data = extract_data(user_resp.json());
         assert user_data["budget_limit"] == 100.0;
@@ -497,8 +492,7 @@ test "llm limits full lifecycle" {
 
         # 5. Check usage is zero
         usage_resp = client.get(
-            "/admin/llm/usage/poweruser",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/usage/poweruser", headers={"Authorization": f"Bearer {token}"}
         );
         usage_data = extract_data(usage_resp.json());
         assert usage_data["total_cost"] == 0.0;
@@ -512,15 +506,13 @@ test "llm limits full lifecycle" {
 
         # 7. Delete user limits
         del_resp = client.delete(
-            "/admin/llm/limits/poweruser",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/poweruser", headers={"Authorization": f"Bearer {token}"}
         );
         assert del_resp.status_code == 200;
 
         # 8. Verify user falls back to default
         fallback_resp = client.get(
-            "/admin/llm/limits/poweruser",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/limits/poweruser", headers={"Authorization": f"Bearer {token}"}
         );
         fallback_data = extract_data(fallback_resp.json());
         # After deletion, should get default limits
@@ -541,7 +533,6 @@ test "llm limits full lifecycle" {
 # All enforcement logic (limits checks, key injection, usage recording) runs
 # normally; only the actual network call is replaced.
 # ============================================================================
-
 test "llm enforcement provider key injected into litellm kwargs" {
     captured: dict[str, Any] = {};
     fake = _fake_llm_response(cost=0.001, tokens=30);

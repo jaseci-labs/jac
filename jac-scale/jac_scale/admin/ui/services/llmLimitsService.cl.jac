@@ -13,15 +13,12 @@ cl {
 
     async def:pub getAllLimits(token: str, limit: int = 50, offset: int = 0) -> dict {
         return await get(
-            "/admin/llm/limits?limit=" + str(limit) + "&offset=" + str(offset),
-            token
+            "/admin/llm/limits?limit=" + str(limit) + "&offset=" + str(offset), token
         );
     }
 
     async def:pub getUserLimits(token: str, username: str) -> dict {
-        return await get(
-            "/admin/llm/limits/" + encodeURIComponent(username), token
-        );
+        return await get("/admin/llm/limits/" + encodeURIComponent(username), token);
     }
 
     async def:pub setUserLimits(token: str, username: str, limits: dict) -> dict {
@@ -31,29 +28,22 @@ cl {
     }
 
     async def:pub deleteUserLimits(token: str, username: str) -> dict {
-        return await del(
-            "/admin/llm/limits/" + encodeURIComponent(username), token
-        );
+        return await del("/admin/llm/limits/" + encodeURIComponent(username), token);
     }
 
     async def:pub getAllUsage(token: str, limit: int = 50, offset: int = 0) -> dict {
         return await get(
-            "/admin/llm/usage?limit=" + str(limit) + "&offset=" + str(offset),
-            token
+            "/admin/llm/usage?limit=" + str(limit) + "&offset=" + str(offset), token
         );
     }
 
     async def:pub getUserUsage(token: str, username: str) -> dict {
-        return await get(
-            "/admin/llm/usage/" + encodeURIComponent(username), token
-        );
+        return await get("/admin/llm/usage/" + encodeURIComponent(username), token);
     }
 
     async def:pub resetUserUsage(token: str, username: str) -> dict {
         return await post(
-            "/admin/llm/usage/" + encodeURIComponent(username) + "/reset",
-            {},
-            token
+            "/admin/llm/usage/" + encodeURIComponent(username) + "/reset", {}, token
         );
     }
 
@@ -71,8 +61,7 @@ cl {
 
     async def:pub deleteProviderKey(token: str, provider: str) -> dict {
         return await del(
-            "/admin/llm/config/provider-keys/" + encodeURIComponent(provider),
-            token
+            "/admin/llm/config/provider-keys/" + encodeURIComponent(provider), token
         );
     }
 }
