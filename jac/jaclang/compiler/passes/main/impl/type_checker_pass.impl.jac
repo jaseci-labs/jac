@@ -198,71 +198,17 @@ impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -
 }
 
 
-"""Enter an if statement - set up narrowing scope for the if body."""
-impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
-    # Push a narrowing scope for the if body
-    self.evaluator.push_narrowing_scope();
-    # Process the condition to add narrowings
-    self.evaluator.process_condition(nd.condition);
-}
+"""Enter an if statement — CFG handles narrowing, no scope needed."""
+impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None { }
 
-"""Exit an if statement - clean up narrowing scope.
+"""Exit an if statement — CFG handles narrowing via backward walk."""
+impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None { }
 
-When the if-body always terminates (raise/return/break/continue), the only
-way to reach code after the if is via the else-path. In that case, promote
-the INVERTED narrowings from the condition to the parent scope. This handles
-patterns like:
+"""Enter a match case — CFG handles narrowing via MatchStmt predecessor."""
+impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None { }
 
-    if rt.program is None { raise ValueError(); }
-    rt.program.mtir_map  # rt.program is narrowed to Program (not None)
-"""
-impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
-    # Detect early-exit guard pattern: `if cond { raise/return; }`
-    # When the if-body always terminates and there's no else body, the code
-    # after the if only runs on the false-path. Promote the inverted narrowings
-    # to the parent scope so dotted attribute paths stay narrowed.
-    if nd.condition and self._if_body_always_terminates(nd) {
-        self.evaluator.promote_inverted_narrowings(nd.condition);
-    }
-    self.evaluator.pop_narrowing_scope();
-}
-
-"""Check if an if-statement's body always terminates (raise/return).
-
-Only handles the simple guard pattern: `if cond { raise/return; }` with
-no else body. Elif chains and else bodies are not handled because the
-narrowing semantics are more complex (each branch may narrow differently).
-"""
-impl TypeCheckPass._if_body_always_terminates(
-    self: TypeCheckPass, nd: uni.IfStmt
-) -> bool {
-    if not nd.body or nd.else_body {
-        return False;  # Has else/elif: too complex for simple promotion
-
-    }
-    last_stmt = nd.body[-1];
-    return isinstance(last_stmt, (uni.RaiseStmt, uni.ReturnStmt));
-}
-
-"""Enter a match case - narrow the match subject based on the pattern type."""
-impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
-    self.evaluator.push_narrowing_scope();
-    parent = nd.parent;
-    if isinstance(parent, uni.MatchStmt) {
-        key = self.evaluator.get_narrowing_key(parent.target);
-        if key {
-            pattern_type = self.evaluator._get_type_from_match_pattern(nd.pattern);
-            if pattern_type is not None {
-                self.evaluator.add_scope_narrowing(key, pattern_type);
-            }
-        }
-    }
-}
-
-"""Exit a match case - clean up narrowing scope."""
-impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None {
-    self.evaluator.pop_narrowing_scope();
-}
+"""Exit a match case — CFG handles narrowing."""
+impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None { }
 
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
