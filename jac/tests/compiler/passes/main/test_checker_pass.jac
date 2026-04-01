@@ -1478,6 +1478,17 @@ test "type_narrowing" {
     }
 }
 
+test "expr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_expr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0, f"Expected no type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
 test "reassign_in_branch" {
     program = JacProgram();
     mod = program.compile(
