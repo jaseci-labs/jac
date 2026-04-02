@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.12 (Unreleased)
 
 - **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- **HPA: Memory scaling and stabilization windows**: The Kubernetes HPA now scales on both CPU and memory utilization by default (both at 70%). Either metric can be disabled by setting it to `null`. Added configurable stabilization windows: `scale_up_stabilization_window` (default: 60s) prevents reacting to short-lived CPU/memory spikes, and `scale_down_stabilization_window` (default: 300s) prevents premature replica removal. CPU default raised from 50% to 70%. Configure via `[plugins.scale.kubernetes]` in `jac.toml`.
+- **Fix: Kubernetes config consistency between `config_loader` and `plugin_config`**: 18 fields present in `KubernetesConfig` were missing from the `get_default_config` defaults in `config_loader` and the schema in `plugin_config`, including `health_check_path`, `python_image`, `busybox_image`, `pvc_size`, `jaseci_branch`, `jaseci_commit`, `install_jaseci`, `additional_packages`, `domain`, `cert_manager_email`, and others. These fields already worked at runtime via `from_dict` fallbacks but were invisible to users inspecting default config. All fields are now declared consistently across `KubernetesConfig`, `config_loader`, and `plugin_config`.
 - 2 small refactors/changes.
 
 ## jac-scale 0.2.11 (Latest Release)
