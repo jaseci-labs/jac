@@ -210,8 +210,8 @@ obj KubernetesTarget(DeploymentTarget) {
             jaclang_v = packages.get('jaclang', 'latest');
             scale_v = packages.get('jac_scale', 'latest');
             client_v = packages.get('jac_client', 'latest');
-            byllm_v = packages.get('byllm', 'none');
-            mcp_v = packages.get('jac_mcp', 'none');
+            byllm_v = packages.get('byllm', 'latest');
+            mcp_v = packages.get('jac_mcp', 'latest');
             if jaclang_v == 'latest' {
                 commands.append('pip install jaclang');
             } else {
