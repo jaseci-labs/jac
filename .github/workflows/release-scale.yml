@@ -56,6 +56,21 @@ jobs:
       - name: Install build tools
         run: |
           pip install build twine
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install jaclang and jac-scale
+        working-directory: .
+        run: |
+          pip install -e ./jac
+          pip install -e ./jac-scale
+      - name: Pre-build admin dashboard
+        run: |
+          cd jac_scale/admin/ui
+          jac build main.jac
+          mkdir -p ../_dist
+          cp -r .jac/client/dist/* ../_dist/
       - name: Build and publish package
         run: |
           python -m build

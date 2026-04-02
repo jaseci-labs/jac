@@ -1162,26 +1162,42 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
     return summary;
 }
 
-"""Get the admin dist directory path - in the running app's .jac folder."""
-impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
+"""Resolve the admin package directory (where admin_portal.jac lives)."""
+def _get_admin_package_dir() -> Path {
+    import from jac_scale.admin { admin_portal }
+    return Path(admin_portal.__file__).parent;
+}
+
+"""Get the runtime build output directory for admin client."""
+def _get_admin_runtime_dist_dir() -> Path {
     import os;
-    # Use the current working directory (where the app is being run from)
-    cwd = Path(os.getcwd());
-    return cwd / ".jac" / "admin";
+    return Path(os.getcwd()) / ".jac" / "admin";
+}
+
+"""Get the admin dist directory path - prefer pre-built assets shipped with the package."""
+impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
+    # First check for pre-built assets shipped with the package
+    prebuilt_dir = _get_admin_package_dir() / "_dist";
+    if (prebuilt_dir / "index.html").exists() {
+        logger.debug("Serving admin client from pre-built package assets");
+        return prebuilt_dir;
+    }
+    # Fall back to runtime build location
+    return _get_admin_runtime_dist_dir();
 }
 
 """Build the admin client from admin/ui source."""
 impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
-    dist_dir = self.get_admin_dist_dir();
+    # Always write to the runtime build directory, not the pre-built package dir
+    dist_dir = _get_admin_runtime_dist_dir();
     index_file = dist_dir / "index.html";
-    # Check if already built
-    if not force and index_file.exists() {
+    # Check if already built (also check pre-built package assets)
+    if not force and (index_file.exists() or (self.get_admin_dist_dir() / "index.html").exists()) {
         logger.debug("Admin client already built");
         return True;
     }
     # Get admin UI source directory
-    import from jac_scale.admin { admin_portal }
-    admin_dir = Path(admin_portal.__file__).parent;
+    admin_dir = _get_admin_package_dir();
     ui_dir = admin_dir / "ui";
     if not (ui_dir / "main.jac").exists() {
         logger.error(f"Admin UI source not found at {ui_dir}");
