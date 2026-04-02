@@ -472,6 +472,44 @@ test "admin index page" {
     }
 }
 
+test "admin serves pre-built dashboard with valid html" {
+    client = make_client();
+    try {
+        response = client.get("/admin/");
+        if response.status_code == 200 {
+            content = response.text;
+            assert "<!DOCTYPE html>" in content or "<html" in content;
+            assert "<script" in content or "<link" in content;
+        }
+    } finally {
+        client.close();
+    }
+}
+
+test "admin static assets served correctly" {
+    client = make_client();
+    try {
+        # First get the index to find asset references
+        index_resp = client.get("/admin/");
+        if index_resp.status_code == 200 {
+            import re;
+            content = index_resp.text;
+            # Find JS/CSS asset paths in the HTML
+            asset_paths = re.findall(r'(?:src|href)="([^"]+\.(?:js|css))"', content);
+            for asset_path in asset_paths {
+                # Normalize path relative to /admin/
+                if not asset_path.startswith("/") {
+                    asset_path = f"/admin/{asset_path}";
+                }
+                asset_resp = client.get(asset_path);
+                assert asset_resp.status_code == 200, f"Asset {asset_path} returned {asset_resp.status_code}";
+            }
+        }
+    } finally {
+        client.close();
+    }
+}
+
 # ============================================================================
 # Integration Tests
 # ============================================================================
