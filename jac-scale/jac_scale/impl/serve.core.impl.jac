@@ -943,8 +943,10 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_update_password_endpoint();
     self.register_api_key_endpoints();
     self.register_graph_endpoint();
-    self.register_admin_endpoints();
+    # Register LLM API endpoints BEFORE admin catch-all so they aren't shadowed
     self.register_llm_telemetry_endpoints();
+    self.register_llm_limits_endpoints();
+    self.register_admin_endpoints();
     # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();

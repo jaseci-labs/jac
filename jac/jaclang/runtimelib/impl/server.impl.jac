@@ -211,6 +211,7 @@ impl ExecutionManager.execute_function(
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
+    ctx.user_name = username;
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
@@ -281,6 +282,7 @@ impl ExecutionManager.spawn_walker(
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
+    ctx.user_name = username;
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
@@ -1899,6 +1901,7 @@ impl JacAPIServer.start(
         }
     }
 }
+
 
 """Handle a client-side error report posted to /cl/__error__.
 

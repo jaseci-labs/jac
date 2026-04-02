@@ -18,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: False W2003 Warning on `cl def` Has Variables**: Assignments to `has`-declared variables inside nested abilities of a `cl def` (e.g., `can with entry { items = get_items(); }`) no longer trigger spurious "defined but never used" warnings. The symbol table build pass now recognizes these as state mutations of the enclosing component's reactive `has` variables rather than new local variable definitions. Bare assignments to `has` names inside `obj` methods still correctly warn (use `self.x` instead).
 - 1 small refactor/change.
 - **ES Codegen: `jid()` Moved to Client Runtime**: `jid()` is now a proper runtime function (`_jac.builtin.jid()`) instead of an inline property access (`x._jac_id`). This provides clear, actionable error messages when called on `null` (e.g. server returned an error) or non-node objects, with stack traces pointing to the `.jac` source line. The `assert_no_jac_keywords` test was also improved to strip string literals before scanning, preventing false positives from English words in error messages.
+- **Runtime: `user_name` on `ExecutionContext`**: Added `user_name: str = ""` to `ExecutionContext`. The server sets this from the authenticated username in both `execute_function` and `spawn_walker`, making the current user's identity available to walkers and functions without threading it through every call argument.
 
 ## jaclang 0.13.3 (Latest Release)
 

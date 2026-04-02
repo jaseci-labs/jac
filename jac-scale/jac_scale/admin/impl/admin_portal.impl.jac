@@ -850,11 +850,9 @@ impl JacAPIServerAdmin.admin_get_config(
     import os;
     cwd = Path(os.getcwd());
     # Determine config file path based on profile
-    if profile == "default" {
-        config_path = cwd / "jac.toml";
-    } else {
-        config_path = cwd / f"jac.{profile}.toml";
-    }
+    config_path = cwd / "jac.toml"
+        if profile == "default"
+        else cwd / f"jac.{profile}.toml";
     if not config_path.exists() {
         # Return empty content if file doesn't exist
         return TransportResponse.success(
@@ -893,11 +891,9 @@ impl JacAPIServerAdmin.admin_update_config(
     import toml;
     cwd = Path(os.getcwd());
     # Determine config file path based on profile
-    if profile == "default" {
-        config_path = cwd / "jac.toml";
-    } else {
-        config_path = cwd / f"jac.{profile}.toml";
-    }
+    config_path = cwd / "jac.toml"
+        if profile == "default"
+        else cwd / f"jac.{profile}.toml";
     # Validate TOML syntax before saving
     try {
         toml.loads(content);
@@ -1188,41 +1184,59 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
         return False;
     }
     logger.info("Building admin client...");
+    import shutil;
+    import tempfile;
     try {
-        # Run jac build in the UI directory
-        result = subprocess.run(
-            ["jac", "build", "main.jac"],
-            cwd=str(ui_dir),
-            capture_output=True,
-            text=True,
-            timeout=300
-        );
+        # Copy UI source to a temp directory to isolate from the parent
+        # Python package. Building inside jac_scale/ causes the JAC compiler
+        # to pick up parent package modules, producing empty compiled files.
+        tmp_dir = Path(tempfile.mkdtemp(prefix="jac_admin_build_"));
+        try {
+            # Copy source files (skip .jac build artifacts)
+            shutil.copytree(
+                ui_dir,
+                tmp_dir / "ui",
+                ignore=shutil.ignore_patterns('.jac', 'node_modules', '__pycache__')
+            );
+            build_dir = tmp_dir / "ui";
 
-        if result.returncode != 0 {
-            logger.error(f"Admin client build failed: {result.stderr}");
-            return False;
-        }
+            # Run jac build in the isolated temp directory
+            result = subprocess.run(
+                ["jac", "build", "main.jac"],
+                cwd=str(build_dir),
+                capture_output=True,
+                text=True,
+                timeout=300
+            );
 
-        # Copy built files to .jac/admin
-        ui_dist = ui_dir / ".jac" / "client" / "dist";
-        if ui_dist.exists() {
-            import shutil;
-            dist_dir.mkdir(parents=True, exist_ok=True);
-            for item in ui_dist.iterdir() {
-                dest = dist_dir / item.name;
-                if item.is_dir() {
-                    if dest.exists() {
-                        shutil.rmtree(dest);
+            if result.returncode != 0 {
+                logger.error(f"Admin client build failed: {result.stderr}");
+                return False;
+            }
+
+            # Copy built files to .jac/admin
+            tmp_dist = build_dir / ".jac" / "client" / "dist";
+            if tmp_dist.exists() {
+                dist_dir.mkdir(parents=True, exist_ok=True);
+                for item in tmp_dist.iterdir() {
+                    dest = dist_dir / item.name;
+                    if item.is_dir() {
+                        if dest.exists() {
+                            shutil.rmtree(dest);
+                        }
+                        shutil.copytree(item, dest);
+                    } else {
+                        shutil.copy2(item, dest);
                     }
-                    shutil.copytree(item, dest);
-                } else {
-                    shutil.copy2(item, dest);
                 }
             }
-        }
 
-        logger.info("Admin client built successfully");
-        return True;
+            logger.info("Admin client built successfully");
+            return True;
+        } finally {
+            # Clean up temp directory
+            shutil.rmtree(tmp_dir, ignore_errors=True);
+        }
     } except subprocess.TimeoutExpired {
         logger.error("Admin client build timed out");
         return False;
