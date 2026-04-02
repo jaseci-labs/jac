@@ -1354,6 +1354,8 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                         posonlyargs=[],
                         args=[self.sync(ast3.arg(arg='self', annotation=None))]
                             if nd.is_method
+                            and not nd.is_static
+                            and not nd.is_classmethod
                             else [],
                         vararg=None,
                         kwonlyargs=[],

@@ -5,7 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.3.11 (Unreleased)
 
 - **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
-- 1 small refactor/change.
+- 2 small refactors/changes.
 
 ## jac-client 0.3.8 (Latest Release)
 
