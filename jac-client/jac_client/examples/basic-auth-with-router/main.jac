@@ -20,7 +20,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: Any) -> None {
+        def handleLogout(e: Any) {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -129,11 +129,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: Any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: Any) {
             password = e.target.value;
         }
 
@@ -253,11 +253,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: Any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: Any) {
             password = e.target.value;
         }
 

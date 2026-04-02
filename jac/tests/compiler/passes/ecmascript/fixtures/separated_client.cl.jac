@@ -39,7 +39,7 @@ def:pub app()  -> JsxElement {
         <div>
             {todos.map(
                 lambda  todo: Any  -> Any{ return <div
-                    key={todo._jac_id}
+                    key={jid(todo)}
                 >
                     <span>
                         {todo.text}

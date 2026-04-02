@@ -62,3 +62,9 @@ def get_command(name: str) -> dict[str, Any];
 def execute_command(
     command: str, args: list[str] | None = None, timeout: int = 30
 ) -> dict[str, Any];
+
+"""Get the Jac & Jaseci knowledge map with resource URIs for any task."""
+def understand_jac_and_jaseci -> dict[str, Any];
+
+"""Fetch a Jac/Jaseci doc resource by URI (from understand_jac_and_jaseci)."""
+def get_resource(uri: str) -> dict[str, Any];

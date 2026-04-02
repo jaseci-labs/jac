@@ -4,7 +4,8 @@ When Unknown values are used in if/elif conditions or isinstance checks,
 the type checker should not silently accept them. Narrowing Unknown
 should either preserve Unknown or produce a diagnostic.
 
-Unknown source: bare generic list.pop() returns Unknown.
+Unknown source: magic method resolution on Any-typed values fails,
+producing genuine Unknown (e.g. Any + 1 -> Unknown).
 
 Expected errors: 3
   1. bad1: str = x after isinstance  — type should be narrowed or flagged
@@ -13,9 +14,10 @@ Expected errors: 3
 """
 
 with entry {
-    # Bare generic list — .pop() returns Unknown
+    # Any + int -> Unknown (magic method __add__ unresolved on Any)
     items: list = [1, 2, 3];
-    x = items.pop();
+    any_val = items.pop();
+    x = any_val + 1;
 
     # isinstance on Unknown — should narrow or flag
     if isinstance(x, int) {

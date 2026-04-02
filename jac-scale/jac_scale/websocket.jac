@@ -13,7 +13,7 @@ obj WebSocketConnectionManager {
     has _active_connections: dict[str, list[WebSocket]] = {};
 
     """Accept and track a new WebSocket connection for a walker."""
-    async def connect(websocket: WebSocket, walker_name: str) -> None {
+    async def connect(websocket: WebSocket, walker_name: str) {
         await websocket.accept();
         if walker_name not in self._active_connections {
             self._active_connections[walker_name] = [];
@@ -26,7 +26,7 @@ obj WebSocketConnectionManager {
     }
 
     """Remove a WebSocket connection for a walker."""
-    def disconnect(websocket: WebSocket, walker_name: str) -> None {
+    def disconnect(websocket: WebSocket, walker_name: str) {
         if walker_name in self._active_connections {
             self._active_connections[walker_name] = [
                 ws
@@ -46,7 +46,7 @@ obj WebSocketConnectionManager {
     }
 
     """Broadcast a message to all connections for a walker."""
-    async def broadcast(walker_name: str, message: dict) -> None {
+    async def broadcast(walker_name: str, message: dict) {
         for ws in self.get_connections(walker_name) {
             await ws.send_json(message);
         }

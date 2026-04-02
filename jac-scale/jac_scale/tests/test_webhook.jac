@@ -146,8 +146,8 @@ def _start_server(
         }
 
         try {
-            response = requests.get(f"{base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Server started successfully on port {port}");
                 server_ready = True;
                 break;
@@ -192,30 +192,28 @@ def _stop_server(server_process: subprocess.Popen | None) -> None {
 # Shared webhook test functions
 """Verify webhook endpoints are registered for walkers with webhook protocol."""
 def run_webhook_endpoint_exists_test(base_url: str) -> None {
-    response = requests.get(f"{base_url}/openapi.json", timeout=5);
-    assert response.status_code == 200;
-    schema = response.json();
-    paths = schema.get("paths", {});
-
-    assert "/webhook/PaymentReceived" in paths , (
-        f"Expected /webhook/PaymentReceived in paths: {list(paths.keys())}"
+    # Hit endpoints directly — non-404 means the route is registered
+    resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
+    assert resp.status_code != 404 , (
+        "Expected /webhook/PaymentReceived to be registered"
     );
-    assert "/webhook/MinimalWebhook" in paths , (
-        f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
+    resp = requests.post(f"{base_url}/webhook/MinimalWebhook", json={}, timeout=5);
+    assert resp.status_code != 404 , (
+        "Expected /webhook/MinimalWebhook to be registered"
     );
 }
 
 """Verify normal walkers are NOT in /webhook/."""
 def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
-    response = requests.get(f"{base_url}/openapi.json", timeout=5);
-    assert response.status_code == 200;
-    schema = response.json();
-    paths = schema.get("paths", {});
-
-    assert "/webhook/NormalPayment" not in paths , (
-        "NormalPayment should NOT have webhook endpoint but found in paths"
+    # NormalPayment should be rejected by webhook endpoint
+    # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
+    resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
+    assert resp.status_code != 200 , (
+        "NormalPayment should NOT be a valid webhook endpoint"
     );
-    assert "/walker/NormalPayment" in paths or "/walker/{walker_name}" in paths , (
+    # But it should be accessible via /walker/
+    resp = requests.post(f"{base_url}/walker/NormalPayment", json={}, timeout=5);
+    assert resp.status_code != 404 , (
         "NormalPayment should be accessible via /walker/ endpoint"
     );
 }
@@ -508,9 +506,7 @@ test "webhook without mongo - endpoint exists" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        response = client.get("/openapi.json");
-        assert response.status_code == 200;
-        schema = response.json();
+        schema = client._server.server.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/PaymentReceived" in paths , (
@@ -531,9 +527,7 @@ test "webhook without mongo - normal walker not in webhook" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        response = client.get("/openapi.json");
-        assert response.status_code == 200;
-        schema = response.json();
+        schema = client._server.server.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/NormalPayment" not in paths , (

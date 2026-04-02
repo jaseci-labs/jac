@@ -16,7 +16,7 @@ cl {
             txType: str,
             isBusiness: bool,
             clientName: str
-        ) -> None {
+        ) {
             newTx = {
                 "id": Date.now().toString(),
                 "description": description,
@@ -31,7 +31,7 @@ cl {
         }
 
         # Delete a transaction by ID
-        def deleteTransaction(id: str) -> None {
+        def deleteTransaction(id: str) {
             filtered = [
                 tx
                 for tx in transactions

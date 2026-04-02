@@ -156,11 +156,41 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+obj NarrowingTarget {
+    has key: str,  # "x" or "bmw.speed"
+        declared_type: TypeBase,
+        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+}
+
 """Represents a narrowing operation from a conditional predicate."""
 obj NarrowingPredicate {
-    has sym_name: str,
+    has key: str,
         narrow_type: TypeBase,
         is_inverted: bool = False;
+}
+
+"""Classification of a leaf narrowing condition."""
+enum NarrowingKind {
+    ISINSTANCE = "isinstance",
+    CALLABLE = "callable",
+    NONE_IS = "none_is",
+    NONE_IS_NOT = "none_is_not",
+    TRUTHINESS = "truthiness",
+    LITERAL_EQ = "literal_eq",
+    LITERAL_NE = "literal_ne"
+}
+
+"""Result of classifying a leaf condition node.
+
+Captures the narrowing-kind-specific info extracted from the AST.
+Structural wrappers (parens, NOT, AND, OR) are handled by callers
+before reaching classification.
+"""
+obj ConditionInfo {
+    has kind: NarrowingKind,
+        key: str,
+        narrow_type: (TypeBase | None) = None;
 }
 
 """Type evaluator for JacLang."""
@@ -171,6 +201,7 @@ obj TypeEvaluator {
         _TYPING_STUB_FILE_PATH: str by postinit,
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",
@@ -196,12 +227,14 @@ obj TypeEvaluator {
         _in_ternary_expr_depth: int = 0,
         _in_bool_expr_narrowing_depth: int = 0,
         _narrowing_in_progress: set[int] by postinit,
+        _narrowing_in_progress_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
-        jac_builtins_module: uni.Module by postinit;
+        jac_builtins_module: uni.Module by postinit,
+        dom_types_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -476,26 +509,31 @@ obj TypeEvaluator {
     def get_scope_narrowing(key: str) -> types.TypeBase | None;
     def get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
+    def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
     def process_condition(condition: uni.Expr) -> None;
     def process_negated_condition(condition: uni.Expr) -> None;
     def promote_inverted_narrowings(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
+    def get_narrowed_type_for_expr(
+        expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
+    ) -> TypeBase | None;
+
     def _compute_narrowed_at(
-        symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+        target: NarrowingTarget, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
-        symbol: uni.Symbol, condition: uni.Expr
+        target: NarrowingTarget, condition: uni.Expr
     ) -> NarrowingPredicate | None;
 
     def _apply_narrowing(
         predicate: NarrowingPredicate,
         incoming: TypeBase | None,
         is_true_branch: bool,
-        symbol: uni.Symbol
+        target: NarrowingTarget
     ) -> TypeBase | None;
 
     def _refine_isinstance_type(
@@ -512,5 +550,9 @@ obj TypeEvaluator {
     def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
+    def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _is_callable_type(t: TypeBase) -> bool;
+    def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
+    def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
     def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
 }

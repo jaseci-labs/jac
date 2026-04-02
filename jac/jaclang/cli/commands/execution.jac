@@ -36,10 +36,9 @@ glob registry = get_registry();
             help="Configuration profile to load (e.g. prod, staging)"
         ),
         Arg.create(
-            "show_errors",
-            typ=bool,
-            default=False,
-            help="Show type check errors and warnings after execution",
+            "diagnostics",
+            default="",
+            help="Diagnostic verbosity: error (default, fail on errors), all (errors+warnings), none (silent)",
             short="e"
         ),
         Arg.create(
@@ -52,7 +51,8 @@ glob registry = get_registry();
         ("jac run --no-cache app.jac", "Run without caching"),
         ("jac run --autonative app.jac", "Run with native auto-promotion"),
         ("jac run --profile prod app.jac", "Run with production profile"),
-        ("jac run -e app.jac", "Run and show type check diagnostics"),
+        ("jac run -e all app.jac", "Run and show all diagnostics (errors+warnings)"),
+        ("jac run -e none app.jac", "Run silently, suppress all diagnostics"),
         ("jac run script.jac arg1 arg2", "Run with script arguments"),
 
     ],
@@ -63,7 +63,7 @@ def run(
     main: bool = True,
     cache: bool = True,
     autonative: bool = False,
-    show_errors: bool = False,
+    diagnostics: str = "",
     args: list = []
 ) -> int;
 

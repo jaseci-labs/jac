@@ -1854,6 +1854,10 @@ impl ESBuiltinEmitter.emit_id(self, ctx: ESEmitCtx, args: list[str]) -> (str | N
     return _rt("builtin", "id", args);
 }
 
+impl ESBuiltinEmitter.emit_jid(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+    return _rt("builtin", "jid", args);
+}
+
 impl ESBuiltinEmitter.emit_hash(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     return _rt("builtin", "hash", args);
 }

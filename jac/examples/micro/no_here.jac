@@ -3,11 +3,11 @@
 obj MyObj {
     has a: int;
 
-    def init(a: int) -> None {
+    def init(a: int) {
         self.a = a;
     }
 
-    def set_a(val: int) -> None {
+    def set_a(val: int) {
         self.a = val;
     }
 }

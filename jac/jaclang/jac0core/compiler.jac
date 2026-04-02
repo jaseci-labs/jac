@@ -124,11 +124,13 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.unitree_enrich_pass {
             UniTreeEnrichPass
         }
+        import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             TypeCheckPass,
             StaticAnalysisPass,
             PortabilityCheckPass,
-            UniTreeEnrichPass
+            UniTreeEnrichPass,
+            JacLintCheckPass
         ];
     } except ImportError {
         return [];
@@ -238,14 +240,6 @@ obj _SetupProgress {
 
 glob setup_progress = _SetupProgress();
 
-"""Recalculate parent pointers after mutating node children."""
-def _recalculate_parents(nd: uni.UniNode) -> None {
-    for child in nd.kid {
-        child.parent = nd;
-        _recalculate_parents(child);
-    }
-}
-
 """Coerce a module to a specific code context by unfolding its target block type.
 
 Unfolds elements from `unfold_type` blocks, keeps `skip_types` blocks as-is,
@@ -257,7 +251,7 @@ def _coerce_module(
     skip_types: tuple,
     context: CodeContext,
     skip_token: (Tok | None) = None
-) -> None {
+) {
     elements: list[uni.ElementStmt] = [];
     for stmt in module.body {
         if isinstance(stmt, unfold_type) {
@@ -296,11 +290,10 @@ def _coerce_module(
     }
     new_kid.extend(module.body);
     module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
-    _recalculate_parents(module);
 }
 
 """Coerce a .cl.jac module to client context."""
-def _coerce_client_module(module: uni.Module) -> None {
+def _coerce_client_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.ClientBlock,
@@ -311,7 +304,7 @@ def _coerce_client_module(module: uni.Module) -> None {
 }
 
 """Coerce a .sv.jac module to server context."""
-def _coerce_server_module(module: uni.Module) -> None {
+def _coerce_server_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.ServerBlock,
@@ -321,7 +314,7 @@ def _coerce_server_module(module: uni.Module) -> None {
 }
 
 """Coerce a .na.jac module to native context."""
-def _coerce_native_module(module: uni.Module) -> None {
+def _coerce_native_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.NativeBlock,

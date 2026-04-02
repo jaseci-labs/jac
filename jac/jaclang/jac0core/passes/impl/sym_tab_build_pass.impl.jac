@@ -115,6 +115,18 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
                 and self._outer_has_type_annotation(outer)
             ) {
                 outer.add_use(i.name_spec);
+            } elif (
+                (nd.type_tag is None)
+                and (
+                    (outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
+                )
+                and outer_has.sym_type == SymbolType.HAS_VAR
+                and isinstance(outer_has.parent_tab, uni.Ability)
+            ) {
+                # In cl def components, has variables are reactive state owned by
+                # the enclosing ability (not an archetype). Assignments to these
+                # names in nested abilities are state mutations, not new locals.
+                outer_has.add_use(i.name_spec);
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {

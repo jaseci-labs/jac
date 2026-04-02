@@ -125,55 +125,61 @@ test "jac cli run" {
     assert "Hello World!" in stdout_value;
 }
 
-test "show errors flag" {
-    # Create a temp file with known type errors and a with entry block
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
-        tmp.write(
-            'glob x: str = 5;\n'
-            'glob y: int = "hello";\n'
-            'with entry { print("ran"); }\n'
-        );
-        tmp_path = tmp.name;
-    }
-    try {
-        # Without --show-errors: program runs, summary line shown, no detailed errors
-        captured_out = io.StringIO();
-        captured_err = io.StringIO();
-        sys.stdout = captured_out;
-        sys.stderr = captured_err;
-        try {
-            execution.run(tmp_path);
-        } finally {
-            sys.stdout = sys.__stdout__;
-            sys.stderr = sys.__stderr__;
-        }
-        stdout_val = captured_out.getvalue();
-        stderr_val = captured_err.getvalue();
-        combined = stdout_val + stderr_val;
-        assert "ran" in stdout_val , "Program should still execute";
-        assert "error(s)" in combined , "Summary line should appear";
-        assert "Cannot assign" not in combined , (
-            "Detailed errors should not appear without --show-errors"
-        );
+test "diagnostics flag" {
+    err_file = os.path.join(
+        JAC_ROOT, "tests", "compiler", "fixtures", "new_keyword_err.jac"
+    );
 
-        # With --show-errors: detailed errors shown
-        captured_out2 = io.StringIO();
-        captured_err2 = io.StringIO();
-        sys.stdout = captured_out2;
-        sys.stderr = captured_err2;
-        try {
-            execution.run(tmp_path, show_errors=True);
-        } finally {
-            sys.stdout = sys.__stdout__;
-            sys.stderr = sys.__stderr__;
-        }
-        combined2 = captured_out2.getvalue() + captured_err2.getvalue();
-        assert "Cannot assign" in combined2 , (
-            "Detailed errors should appear with --show-errors"
-        );
+    # Default (diagnostics="error"): errors shown, returns 1
+    captured_out = io.StringIO();
+    captured_err = io.StringIO();
+    sys.stdout = captured_out;
+    sys.stderr = captured_err;
+    try {
+        result = execution.run(err_file);
     } finally {
-        os.unlink(tmp_path);
+        sys.stdout = sys.__stdout__;
+        sys.stderr = sys.__stderr__;
     }
+    combined = captured_out.getvalue() + captured_err.getvalue();
+    assert "'new' is not supported in Jac" in combined , (
+        "Detailed errors should appear by default"
+    );
+    assert result == 1 , "Should return exit code 1 on errors";
+
+    # diagnostics="all": errors shown
+    captured_out2 = io.StringIO();
+    captured_err2 = io.StringIO();
+    sys.stdout = captured_out2;
+    sys.stderr = captured_err2;
+    try {
+        result2 = execution.run(err_file, diagnostics="all");
+    } finally {
+        sys.stdout = sys.__stdout__;
+        sys.stderr = sys.__stderr__;
+    }
+    combined2 = captured_out2.getvalue() + captured_err2.getvalue();
+    assert "'new' is not supported in Jac" in combined2 , (
+        "Detailed errors should appear with diagnostics=all"
+    );
+    assert result2 == 1 , "Should return exit code 1 on errors";
+
+    # diagnostics="none": no errors shown, returns 0
+    captured_out3 = io.StringIO();
+    captured_err3 = io.StringIO();
+    sys.stdout = captured_out3;
+    sys.stderr = captured_err3;
+    try {
+        result3 = execution.run(err_file, diagnostics="none");
+    } finally {
+        sys.stdout = sys.__stdout__;
+        sys.stderr = sys.__stderr__;
+    }
+    combined3 = captured_out3.getvalue() + captured_err3.getvalue();
+    assert "'new' is not supported in Jac" not in combined3 , (
+        "Errors should not appear with diagnostics=none"
+    );
+    assert result3 == 0 , "Should return exit code 0 with diagnostics=none";
 }
 
 test "jac cli run python file" {
@@ -818,6 +824,11 @@ test "cli error exit codes" {
     assert "not found" in stderr;
 
     # Test successful run returns exit code 0
+    # Clear stale errors from previous sub-tests so only hello.jac's
+    # own diagnostics affect the exit code.
+    _rt = __import__("jaclang.jac0core.runtime", fromlist=["JacRuntime"]);
+    _rt.JacRuntime.program.errors_had.clear();
+    _rt.JacRuntime.program.warnings_had.clear();
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
@@ -2047,5 +2058,70 @@ test "jac check on impl file redirects to base and filters errors" {
             f"Base file errors should be filtered out when checking impl file. "
             f"Output:\n{output}"
         );
+    }
+}
+
+"""Regression: JIR cache must preserve code_context for .cl.jac modules.
+
+When a .cl.jac file is compiled, its body items get code_context=CLIENT via
+_coerce_client_module. The JIR serializer must persist this per-node context
+so that the ES code generator includes (not filters out) client statements
+when the module is loaded from cache.
+"""
+test "jir cache preserves code context for cl jac files" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.constant { CodeContext }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+    import from jaclang.jac0core.unitree { ContextAwareNode }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Create a .cl.jac module with a pub global and a pub function
+        cl_jac_path = os.path.join(tmpdir, "api.cl.jac");
+        with open(cl_jac_path, "w") as f {
+            f.write(
+                'cl {\n'
+                '    glob:pub baseUrl = "http://localhost";\n'
+                '    def:pub fetchData() -> str { return baseUrl; }\n'
+                '}\n'
+            );
+        }
+        # Compile the .cl.jac file
+        program = JacProgram();
+        mod = program.compile(cl_jac_path);
+        # Verify code_context is CLIENT after compilation
+        client_stmts = [
+            s
+            for s in mod.body
+            if isinstance(s, ContextAwareNode)
+        ];
+        assert len(client_stmts) > 0 , "No ContextAwareNode statements found";
+        for stmt in client_stmts {
+            assert stmt.code_context == CodeContext.CLIENT , (
+                f"Before JIR: {type(stmt).__name__} has "
+                f"code_context={stmt.code_context}, expected CLIENT"
+            );
+        }
+        # Round-trip through JIR: write then read
+        writer = JirWriter();
+        jir_bytes = writer.write_module(mod);
+        reader = JirReader();
+        restored_mod = reader.read_module(jir_bytes);
+        # Verify code_context is preserved after JIR round-trip
+        restored_stmts = [
+            s
+            for s in restored_mod.body
+            if isinstance(s, ContextAwareNode)
+        ];
+        assert len(restored_stmts) == len(client_stmts) , (
+            f"JIR round-trip changed stmt count: "
+            f"{len(client_stmts)} -> {len(restored_stmts)}"
+        );
+        for stmt in restored_stmts {
+            assert stmt.code_context == CodeContext.CLIENT , (
+                f"After JIR: {type(stmt).__name__} has "
+                f"code_context={stmt.code_context}, expected CLIENT. "
+                f"JIR cache lost code_context."
+            );
+        }
     }
 }

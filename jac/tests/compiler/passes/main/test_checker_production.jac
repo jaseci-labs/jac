@@ -171,3 +171,34 @@ test "prod b7 no return annotation is none" {
     f"Functions without return annotation must be -> None, not Unknown. "
     f"Currently construct_types.impl.jac defaults to UnknownType.";
 }
+
+# =========================================================================
+#  C. FILTER COMPREHENSION TYPE INFERENCE
+#
+#  When a filter comprehension has a type filter (e.g., [?:Todo]),
+#  the result must be inferred as list[FilteredType]. The type checker
+#  must not produce Unknown or unparameterized list for these expressions.
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# C1: Filter comprehension with type filter must infer list[T]
+# -------------------------------------------------------------------------
+test "prod c1 filter compr type" {
+    program = compile_and_check("checker_prod_filter_compr_type.jac");
+
+    # [root-->][?:Todo] must infer as list[Todo].
+    # Return type checks in get_todos/get_others must pass (no E1002).
+    # Assigning list[Todo] to str/dict must error.
+    e1002_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1002"
+    ];
+    assert len(e1002_errors) == 0 , f"C1: Filter comprehension returns Unknown instead of list[T]. "
+    f"Expected 0 E1002 (return type mismatch) errors but got {len(e1002_errors)}. "
+    f"[root-->][?:Todo] must infer as list[Todo], not Unknown.";
+
+    assert len(program.errors_had) >= 2 , f"C1: Filter comprehension type inference failed. "
+    f"Expected >= 2 errors (str/dict assignment) but got {len(program.errors_had)}. "
+    f"Filter comprehensions with type filter must infer list[FilteredType].";
+}

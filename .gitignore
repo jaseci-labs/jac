@@ -11,6 +11,7 @@ venv
 *.jir
 *.jbc
 _precompiled/
+_dist/
 **/content/docs/
 _planning/
 
@@ -78,3 +79,4 @@ CLAUDE.local.md
 
 jactastic/**
 .mcp.json
+.gstack/
