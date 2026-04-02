@@ -4,6 +4,7 @@
 
 - 1 small refactor/change.
 - **Knowledge map tools**: `understand_jac_and_jaseci` and `get_resource` tools for on-demand doc fetching with size-tagged URIs, expanded fullstack coverage, enum-validated example categories, and leaner tool/server descriptions.
+- **Client-side and full-stack pitfalls**: Added new pitfalls documentation covering client-side `.cl.jac` and full-stack gotchas.
 
 ## jac-mcp 0.1.8 (Latest Release)
 
