@@ -51,8 +51,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
       - name: Download precompiled artifacts
         uses: actions/download-artifact@v4
         with:
@@ -65,7 +63,6 @@ jobs:
           pip install -e ../jac-client
           pip install -e .
           jac run scripts/build_admin_ui.jac
-          pip uninstall -y jac-scale jac-client jaclang
       - name: Install build tools
         run: |
           pip install build twine

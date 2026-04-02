@@ -347,6 +347,8 @@ jac-scale includes a built-in admin portal for managing users, roles, and SSO co
 
 Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
 
+When installed from PyPI, the dashboard is pre-built and loads instantly. When running from source (editable install without pre-built assets), the dashboard is built on first access -- this requires Node.js and takes up to 300 seconds.
+
 ### Configuration
 
 ```toml

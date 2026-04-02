@@ -1162,60 +1162,46 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
     return summary;
 }
 
-"""Get the admin dist directory path - in the running app's .jac folder."""
-impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
-    import os;
-    # Use the current working directory (where the app is being run from)
-    cwd = Path(os.getcwd());
-    return cwd / ".jac" / "admin";
+"""Resolve the admin package directory (where admin_portal.jac lives)."""
+def _get_admin_package_dir() -> Path {
+    import from jac_scale.admin { admin_portal }
+    return Path(admin_portal.__file__).parent;
 }
 
-"""Copy pre-built admin assets from the installed package to the dist directory."""
-def _copy_dir_contents(src: Path, dst: Path) {
-    import shutil;
-    dst.mkdir(parents=True, exist_ok=True);
-    for item in src.iterdir() {
-        dest = dst / item.name;
-        if item.is_dir() {
-            if dest.exists() {
-                shutil.rmtree(dest);
-            }
-            shutil.copytree(item, dest);
-        } else {
-            shutil.copy2(item, dest);
-        }
+"""Get the runtime build output directory for admin client."""
+def _get_admin_runtime_dist_dir() -> Path {
+    import os;
+    return Path(os.getcwd()) / ".jac" / "admin";
+}
+
+"""Get the admin dist directory path - prefer pre-built assets shipped with the package."""
+impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
+    # Check for pre-built assets shipped with the package
+    prebuilt_dir = _get_admin_package_dir() / "_dist";
+    if (prebuilt_dir / "index.html").exists() {
+        logger.debug("Serving admin client from pre-built package assets");
+        return prebuilt_dir;
     }
+    # Fall back to runtime build location
+    return _get_admin_runtime_dist_dir();
 }
 
 """Build the admin client from admin/ui source."""
 impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
-    dist_dir = self.get_admin_dist_dir();
-    index_file = dist_dir / "index.html";
-    # Check if already built/deployed
-    if not force and index_file.exists() {
+    # If pre-built assets exist in the package, no build needed
+    prebuilt_dir = _get_admin_package_dir() / "_dist";
+    if not force and (prebuilt_dir / "index.html").exists() {
+        logger.info("Using pre-built admin client from package");
+        return True;
+    }
+    # Check runtime build cache
+    dist_dir = _get_admin_runtime_dist_dir();
+    if not force and (dist_dir / "index.html").exists() {
         logger.debug("Admin client already built");
         return True;
     }
-
-    import from jac_scale.admin { admin_portal }
-    admin_dir = Path(admin_portal.__file__).parent;
-
-    # Check for pre-built assets bundled with the package
-    bundled_dist = admin_dir / "_dist";
-    if bundled_dist.exists() and (bundled_dist / "index.html").exists() {
-        logger.info("Using pre-built admin client from package");
-        try {
-            _copy_dir_contents(bundled_dist, dist_dir);
-            logger.info("Pre-built admin client deployed successfully");
-            return True;
-        } except Exception as e {
-            logger.error(f"Failed to deploy pre-built admin client: {e}");
-            return False;
-        }
-    }
-
     # Fall back to building from source (dev mode)
-    ui_dir = admin_dir / "ui";
+    ui_dir = _get_admin_package_dir() / "ui";
     if not (ui_dir / "main.jac").exists() {
         logger.error(f"Admin UI source not found at {ui_dir}");
         return False;
@@ -1237,9 +1223,21 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
         }
 
         # Copy built files to .jac/admin
+        import shutil;
         ui_dist = ui_dir / ".jac" / "client" / "dist";
         if ui_dist.exists() {
-            _copy_dir_contents(ui_dist, dist_dir);
+            dist_dir.mkdir(parents=True, exist_ok=True);
+            for item in ui_dist.iterdir() {
+                dest = dist_dir / item.name;
+                if item.is_dir() {
+                    if dest.exists() {
+                        shutil.rmtree(dest);
+                    }
+                    shutil.copytree(item, dest);
+                } else {
+                    shutil.copy2(item, dest);
+                }
+            }
         }
 
         logger.info("Admin client built successfully");

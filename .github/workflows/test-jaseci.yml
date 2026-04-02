@@ -282,9 +282,6 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v2
-
     - name: Install jaclang for precompilation
       run: pip install -e jac
 
