@@ -19,19 +19,17 @@ import jaclang.lsp.types as lspt;
 def debug(msg: str) -> None;
 
 """Check syntax on change."""
-async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
+async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
 """Check syntax on change."""
-async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
+async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
 """Check syntax on change with debouncing."""
-async def did_change(
-    ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
-) -> None {
+async def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
     debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
 }
@@ -45,7 +43,7 @@ def lintfix_formatting(
 ) -> list[lspt.TextEdit];
 
 """Check syntax on file creation."""
-def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) -> None { }
+def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) { }
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 

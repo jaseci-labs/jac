@@ -72,7 +72,7 @@ def _check_dependency_version(
 }
 
 """Clear node_modules to force dependency reinstall."""
-def _clear_node_modules(project_dir: Path | None) -> None {
+def _clear_node_modules(project_dir: Path | None) {
     if project_dir is not None {
         node_modules: Path = project_dir / '.jac' / 'client' / 'node_modules';
         if node_modules.exists() {

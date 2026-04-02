@@ -39,7 +39,7 @@ class DeploymentTargetFactory {
         factory: Callable that accepts (config: dict, logger: Logger | None)
                  and returns a DeploymentTarget instance
     """
-    static def register(target_type: str, factory: TargetFactory) -> None {
+    static def register(target_type: str, factory: TargetFactory) {
         DeploymentTargetFactory._registry[target_type] = factory;
     }
 

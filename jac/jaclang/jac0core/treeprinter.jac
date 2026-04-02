@@ -371,7 +371,7 @@ class SymbolTree {
 
     """Set parent node."""
     @parent.setter
-    def parent(self: SymbolTree, parent_node: (SymbolTree | None)) -> None {
+    def parent(self: SymbolTree, parent_node: (SymbolTree | None)) {
         if parent_node {
             self.__parent = parent_node;
             parent_node.kid.append(self);
@@ -497,7 +497,7 @@ def printgraph_symtab_tree(nd: UniScopeNode) -> str {
         label = f"{label} {shape} {style} {fillcolor}".strip();
         return f"[label={label}]";
     }
-    def gen_dot_graph(nd: SymbolTree) -> None {
+    def gen_dot_graph(nd: SymbolTree) {
         dot_lines.append(f"{gen_node_id(nd)} {gen_node_parameters(nd)};");
         for kid_node in nd.kid {
             if kid_node {

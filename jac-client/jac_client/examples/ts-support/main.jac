@@ -21,12 +21,12 @@ cl {
                 <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
                     <Button
                         label="Increment"
-                        onClick={lambda -> None { count = count + 1;}}
+                        onClick={lambda { count = count + 1;}}
                         variant="primary"
                     />
                     <Button
                         label="Reset"
-                        onClick={lambda -> None { count = 0;}}
+                        onClick={lambda { count = 0;}}
                         variant="secondary"
                     />
                 </div>

@@ -314,7 +314,7 @@ def _npm_install_handler(
     package_name: str,
     version: str | None = None,
     is_dev: bool = False
-) -> None {
+) {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     if config.project_root is None {
@@ -331,7 +331,7 @@ def _npm_install_handler(
 }
 
 """Install all npm packages from jac.toml."""
-def _npm_install_all_handler(config: JacConfig) -> None {
+def _npm_install_all_handler(config: JacConfig) {
     if config.project_root is None {
         raise RuntimeError("No project root found");
     }
@@ -340,9 +340,7 @@ def _npm_install_all_handler(config: JacConfig) -> None {
 }
 
 """Remove an npm package."""
-def _npm_remove_handler(
-    config: JacConfig, package_name: str, is_dev: bool = False
-) -> None {
+def _npm_remove_handler(config: JacConfig, package_name: str, is_dev: bool = False) {
     if config.project_root is None {
         raise RuntimeError("No project root found");
     }
@@ -363,7 +361,7 @@ def _npm_remove_handler(
 }
 
 """Regenerate package.json from jac.toml and run bun install."""
-def _regenerate_and_install(project_dir: Path) -> None {
+def _regenerate_and_install(project_dir: Path) {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils { ensure_bun_available }
 

@@ -21,7 +21,7 @@ obj GoogleSSOProvider(SSOProvider) {
         _google_sso: (GoogleSSO | None) = None;
 
     """Initialize the Google SSO provider."""
-    def postinit -> None {
+    def postinit {
         self._google_sso = GoogleSSO(
             client_id=self.client_id,
             client_secret=self.client_secret,
