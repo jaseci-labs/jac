@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.12 (Unreleased)
 
 - **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- **Pre-built Admin Dashboard**: The admin portal UI is now pre-built during the PyPI release and shipped as a package asset. Previously, the first request to `/admin` triggered a full `jac build` (~300s, required Node.js at runtime). Now the dashboard loads instantly from pre-built assets included in the wheel. Runtime building is preserved as a fallback for local development from source.
 - 2 small refactors/changes.
 
 ## jac-scale 0.2.11 (Latest Release)
