@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.13 (Unreleased)
 
-- added jac-mcp to default packages in kubernetes
+- **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.
 
 ## jac-scale 0.2.12 (Latest Release)
 
