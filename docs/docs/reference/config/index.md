@@ -346,6 +346,12 @@ model = "gpt-4"
 temperature = 0.7
 api_key = "${OPENAI_API_KEY}"
 
+# Server settings (jac-scale)
+[plugins.scale.server]
+port = 8000
+host = "0.0.0.0"
+docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
+
 # Webhook settings (jac-scale)
 [plugins.scale.webhook]
 secret = "your-webhook-secret-key"

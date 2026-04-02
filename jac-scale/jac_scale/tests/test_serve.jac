@@ -77,7 +77,7 @@ def _extract_transport_response_data(
 }
 
 """Delete SQLite database files and legacy shelf files."""
-def _cleanup_db_files(fixtures_dir: Path) -> None {
+def _cleanup_db_files(fixtures_dir: Path) {
     for pattern in [
         "*.db",
         "*.db-wal",
@@ -180,7 +180,7 @@ def _start_server(
 }
 
 """Stop server process."""
-def _stop_server(server_process: subprocess.Popen | None) -> None {
+def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
@@ -241,7 +241,7 @@ def setup_serve_server -> subprocess.Popen {
 }
 
 """Teardown the serve server."""
-def teardown_serve_server(sp: subprocess.Popen | None) -> None {
+def teardown_serve_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(sv_fixtures_dir);
 }
@@ -257,9 +257,9 @@ test "static and schema endpoints" {
         assert response.status_code == 200 , "Health check should return 200";
         assert response.json() == {"status": "ok"};
 
-        # Test: docs are disabled in production mode
+        # Test: docs are enabled by default (docs_enabled config defaults to true)
         response = client.get("/docs");
-        assert response.status_code == 404 , "Docs should be disabled in production mode";
+        assert response.status_code == 200 , "Docs should be enabled by default";
 
         # Test: custom response headers from config (use /graph which is always available)
         response = client.get("/graph");
@@ -271,7 +271,7 @@ test "static and schema endpoints" {
         assert "cross-origin-embedder-policy" in response.headers;
         assert response.headers["cross-origin-embedder-policy"] == "require-corp";
 
-        # Test: OpenAPI schema via app.openapi() (not HTTP since docs are disabled in production)
+        # Test: OpenAPI schema via app.openapi()
         openapi_spec = client._server.server.app.openapi();
         paths = openapi_spec.get("paths", {});
 
@@ -1084,7 +1084,7 @@ test "websocket functionality" {
     sp = setup_serve_server();
     try {
         # Test: websocket connect and echo
-        async def test_echo -> None {
+        async def test_echo {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
                 response = json.loads(await ws.recv());
@@ -1102,7 +1102,7 @@ test "websocket functionality" {
         asyncio.run(test_echo());
 
         # Test: websocket minimal walker
-        async def test_minimal -> None {
+        async def test_minimal {
             async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
                 await ws.send(json.dumps({}));
                 response = json.loads(await ws.recv());
@@ -1119,7 +1119,7 @@ test "websocket functionality" {
         asyncio.run(test_minimal());
 
         # Test: websocket multiple messages
-        async def test_multiple -> None {
+        async def test_multiple {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 for i in range(3) {
                     await ws.send(
@@ -1150,7 +1150,7 @@ test "websocket functionality" {
         );
 
         # Test: websocket nonexistent walker
-        async def test_nonexistent -> None {
+        async def test_nonexistent {
             try {
                 async with websockets.connect(
                     f"{sv_ws_url}/ws/NonExistentWalker"
@@ -1165,7 +1165,7 @@ test "websocket functionality" {
         asyncio.run(test_nonexistent());
 
         # Test: http walker not accessible via ws
-        async def test_http_via_ws -> None {
+        async def test_http_via_ws {
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
                     await ws.recv();
@@ -1178,7 +1178,7 @@ test "websocket functionality" {
         asyncio.run(test_http_via_ws());
 
         # Test: private websocket requires auth
-        async def test_private_no_auth -> None {
+        async def test_private_no_auth {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(json.dumps({"message": "hello"}));
                 response = json.loads(await ws.recv());
@@ -1208,7 +1208,7 @@ test "websocket functionality" {
         assert response.status_code == 200 , f"Failed to login: {response.text}";
         token = response.json()["data"]["token"];
 
-        async def test_private_with_token(t: str) -> None {
+        async def test_private_with_token(t: str) {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(
                     json.dumps({"message": "authenticated hello", "token": t})
@@ -1244,7 +1244,7 @@ test "websocket functionality" {
         assert response.status_code == 200;
         query_token = response.json()["data"]["token"];
 
-        async def test_query_token(t: str) -> None {
+        async def test_query_token(t: str) {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateWebSocket?token={t}"
             ) as ws {
@@ -1262,7 +1262,7 @@ test "websocket functionality" {
         asyncio.run(test_query_token(query_token));
 
         # Test: broadcast websocket all clients receive
-        async def test_broadcast -> None {
+        async def test_broadcast {
             async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
                 async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
                     await asyncio.sleep(0.1);
@@ -1299,7 +1299,7 @@ test "websocket functionality" {
         asyncio.run(test_broadcast());
 
         # Test: private broadcast requires auth
-        async def test_private_broadcast_no_auth -> None {
+        async def test_private_broadcast_no_auth {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat"
             ) as ws {
@@ -1335,7 +1335,7 @@ test "websocket functionality" {
             );
         }
 
-        async def test_private_broadcast_with_auth(u: list) -> None {
+        async def test_private_broadcast_with_auth(u: list) {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[0]['token']}"
             ) as ws1 {
@@ -1466,7 +1466,7 @@ def setup_dev_mode_server -> subprocess.Popen {
 }
 
 """Teardown the dev mode server."""
-def teardown_dev_mode_server(sp: subprocess.Popen | None) -> None {
+def teardown_dev_mode_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(dm_fixtures_dir);
 }
