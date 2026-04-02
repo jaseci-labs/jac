@@ -508,7 +508,7 @@ def _count_jac_files(directory: str) -> int {
 """Print startup message based on mode."""
 def _print_startup_message(
     dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
-) -> None {
+) {
     import from importlib.metadata { version as pkg_version }
 
     # Print header

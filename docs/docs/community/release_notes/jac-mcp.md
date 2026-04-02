@@ -2,6 +2,7 @@
 
 ## jac-mcp 0.1.9 (Unreleased)
 
+- 1 small refactor/change.
 - **Knowledge map tools**: `understand_jac_and_jaseci` and `get_resource` tools for on-demand doc fetching with size-tagged URIs, expanded fullstack coverage, enum-validated example categories, and leaner tool/server descriptions.
 
 ## jac-mcp 0.1.8 (Latest Release)

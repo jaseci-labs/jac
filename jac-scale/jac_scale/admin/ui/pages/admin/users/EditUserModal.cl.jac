@@ -19,7 +19,7 @@ cl {
             editResetPassword: bool = initialResetRequired,
             editError: str = "";
 
-        async def handleSubmit(e: Any) -> None {
+        async def handleSubmit(e: Any) {
             e.preventDefault();
             editError = "";
             result = await onUpdate(username, editRole, editResetPassword);
@@ -30,7 +30,7 @@ cl {
             }
         }
 
-        def handleClose -> None {
+        def handleClose {
             editError = "";
             onClose();
         }
@@ -42,7 +42,7 @@ cl {
                     <Select
                         label="Role"
                         value={editRole}
-                        onChange={lambda e: Any -> None { editRole = e.target.value;}}
+                        onChange={lambda e: Any { editRole = e.target.value;}}
                         options={ROLE_OPTIONS}
                         className="mb-3"
                     />
@@ -51,7 +51,7 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={editResetPassword}
-                                onChange={lambda e: Any -> None { editResetPassword = e.target.checked;}}
+                                onChange={lambda e: Any { editResetPassword = e.target.checked;}}
                                 className="w-4 h-4 rounded border-slate-600 bg-slate-950 text-orange-500 focus:ring-orange-500 focus:ring-offset-0"
                             />
                             <span className="text-xs text-slate-400">

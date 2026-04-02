@@ -50,7 +50,7 @@ def:pub FieldExamples -> Any {
         lambda data: any -> bool { return data.passwordField == data.confirmPassword; },
         {message: "Passwords do not match", path: ["confirmPassword"],}
     );
-    async def handleSubmit(data: dict) -> None {
+    async def handleSubmit(data: dict) {
         console.log("Form submitted:", data);
         alert("Form submitted! Check console for data.");
     }

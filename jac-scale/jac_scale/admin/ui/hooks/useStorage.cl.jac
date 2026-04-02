@@ -10,14 +10,14 @@ cl {
         return "";
     }
 
-    def:pub setStorage(key: str, value: str) -> None {
+    def:pub setStorage(key: str, value: str) {
         storage = globalThis.localStorage;
         if storage {
             storage.setItem(key, value);
         }
     }
 
-    def:pub removeStorage(key: str) -> None {
+    def:pub removeStorage(key: str) {
         storage = globalThis.localStorage;
         if storage {
             storage.removeItem(key);

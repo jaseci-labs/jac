@@ -30,21 +30,21 @@ cl {
         auth = useAuth();
         alert = useAlert();
 
-        async def loadUsers -> None {
+        async def loadUsers {
             result = await getUsers(auth["authToken"]);
             if result["ok"] and result["data"] {
                 users = result["data"]["users"];
             }
         }
 
-        async def loadSSO -> None {
+        async def loadSSO {
             result = await getSSOProviders(auth["authToken"]);
             if result["ok"] and result["data"] {
                 ssoProviders = result["data"]["providers"];
             }
         }
 
-        useEffect(lambda -> None { loadUsers();loadSSO();}, []);
+        useEffect(lambda { loadUsers();loadSSO();}, []);
 
         async def handleCreate(username: str, password: str, role: str) -> dict {
             result = await createUser(username, password, role, auth["authToken"]);
@@ -85,7 +85,7 @@ cl {
             }
         }
 
-        def openEditModal(username: str, role: str, resetRequired: bool) -> None {
+        def openEditModal(username: str, role: str, resetRequired: bool) {
             editUsername = username;
             editRole = role;
             editResetRequired = resetRequired;
@@ -93,13 +93,11 @@ cl {
         }
 
         def makeEditHandler(username: str, role: str, resetRequired: bool) -> Any {
-            return lambda e: Any -> None { openEditModal(
-                username, role, resetRequired
-            );};
+            return lambda e: Any { openEditModal(username, role, resetRequired);};
         }
 
         def makeDeleteHandler(username: str) -> Any {
-            return lambda e: Any -> None { handleDelete(username);};
+            return lambda e: Any { handleDelete(username);};
         }
 
         totalUsers = len(users);
@@ -135,9 +133,7 @@ cl {
                 <Card className="overflow-hidden">
                     <CardHeader
                         title="Users"
-                        action={<Button
-                            onClick={lambda -> None { showCreateModal = True;}}
-                        >
+                        action={<Button onClick={lambda { showCreateModal = True;}}>
                             Add User
                         </Button>}
                     />
@@ -185,12 +181,12 @@ cl {
                 </Card>
                 <CreateUserModal
                     isOpen={showCreateModal}
-                    onClose={lambda -> None { showCreateModal = False;}}
+                    onClose={lambda { showCreateModal = False;}}
                     onCreate={handleCreate}
                 />
                 <EditUserModal
                     isOpen={showEditModal}
-                    onClose={lambda -> None { showEditModal = False;}}
+                    onClose={lambda { showEditModal = False;}}
                     onUpdate={handleUpdate}
                     username={editUsername}
                     initialRole={editRole}

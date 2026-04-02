@@ -196,7 +196,7 @@ def _extract_script_args(registry: object) -> list {
 }
 
 """Load project configuration from jac.toml if present."""
-def _load_project_config -> None {
+def _load_project_config {
     try {
         import from jaclang.project.config { get_config, set_config }
         import from jaclang.project.dependencies { add_venv_to_path }
@@ -219,7 +219,7 @@ def _load_project_config -> None {
 }
 
 """Initialize the dependency registry from plugin hooks."""
-def _initialize_dependency_registry -> None {
+def _initialize_dependency_registry {
     try {
         import from jaclang.project.dep_registry { initialize_dependency_registry }
         initialize_dependency_registry();
@@ -229,7 +229,7 @@ def _initialize_dependency_registry -> None {
 }
 
 """Initialize the template registry from plugin hooks."""
-def _initialize_template_registry -> None {
+def _initialize_template_registry {
     try {
         import from jaclang.project.template_registry { initialize_template_registry }
         initialize_template_registry();
@@ -291,7 +291,7 @@ Only overrides an arg if:
   2. The arg value equals the argparse default (user didn't explicitly pass it)
   3. The config has an explicitly-set value (from file or profile, not just the object default)
 """
-def _apply_config_defaults(config: object, args_dict: dict) -> None {
+def _apply_config_defaults(config: object, args_dict: dict) {
     # (arg_name, argparse_default, config_value, raw_data_section, raw_data_key)
     bridges: list = [
         ("port", 8000, config.serve.port, "serve", "port"),

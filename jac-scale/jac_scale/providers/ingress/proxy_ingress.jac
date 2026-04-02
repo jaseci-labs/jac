@@ -21,7 +21,7 @@ obj ProxyIngressProvider(IngressProvider) {
         return f"{protocol}://{hostname}";
     }
 
-    def delete_route(sandbox_id: str, namespace: str) -> None {
+    def delete_route(sandbox_id: str, namespace: str) {
         ;
     }
 

@@ -19,19 +19,19 @@ impl JacFileWatcher.start -> None {
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
     watcher = self;
     class JacEventHandler(FileSystemEventHandler) {
-        def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) -> None {
+        def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) {
             if not event.is_directory {
                 watcher._on_change(event.src_path, ChangeType.MODIFIED);
             }
         }
 
-        def on_created(inner_self: JacEventHandler, event: FileSystemEvent) -> None {
+        def on_created(inner_self: JacEventHandler, event: FileSystemEvent) {
             if not event.is_directory {
                 watcher._on_change(event.src_path, ChangeType.CREATED);
             }
         }
 
-        def on_deleted(inner_self: JacEventHandler, event: FileSystemEvent) -> None {
+        def on_deleted(inner_self: JacEventHandler, event: FileSystemEvent) {
             if not event.is_directory {
                 watcher._on_change(event.src_path, ChangeType.DELETED);
             }
@@ -51,7 +51,7 @@ impl JacFileWatcher.start -> None {
     self._running = True;
     self._last_flush = time.time();
     # Start debounce flush thread
-    def flush_loop -> None {
+    def flush_loop {
         while self._running {
             time.sleep(float(self._debounce_ms) / 1000.0);
             self._debounce_flush();

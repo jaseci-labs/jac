@@ -909,7 +909,7 @@ def generate_plugin_helpers(
             name: str, sig_nodef: inspect.Signature, doc: str, method: Callable
         ) -> Callable {
             @wraps(method)
-            def placeholder(*args: object, **kwargs: object) -> None {
+            def placeholder(*args: object, **kwargs: object) {
                 ;
             }
             placeholder.__name__ = name;
