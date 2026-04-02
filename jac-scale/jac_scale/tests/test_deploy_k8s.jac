@@ -699,9 +699,24 @@ test "deploy all in one" {
     assert hpa.metadata.name == f"{app_name}-hpa";
     assert hpa.spec.min_replicas == 1;
     assert hpa.spec.max_replicas == 3;
-    assert hpa.spec.metrics[0].resource.target.average_utilization == 50;
+    assert hpa.spec.metrics[0].resource.target.average_utilization == 70 , (
+        f"Expected cpu_target=70, got {hpa.spec.metrics[
+            0
+        ].resource.target.average_utilization}"
+    );
+    assert hpa.spec.metrics[1].resource.target.average_utilization == 70 , (
+        f"Expected memory_target=70, got {hpa.spec.metrics[
+            1
+        ].resource.target.average_utilization}"
+    );
+    assert hpa.spec.behavior.scale_up.stabilization_window_seconds == 60 , (
+        f"Expected scale_up_stabilization_window=60, got {hpa.spec.behavior.scale_up.stabilization_window_seconds}"
+    );
+    assert hpa.spec.behavior.scale_down.stabilization_window_seconds == 300 , (
+        f"Expected scale_down_stabilization_window=300, got {hpa.spec.behavior.scale_down.stabilization_window_seconds}"
+    );
     print(
-        f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
+        f"HPA verified: min={hpa.spec.min_replicas}, max={hpa.spec.max_replicas}, cpu=70%, memory=70%, scale_up_window=60s, scale_down_window=300s"
     );
 
     # Validate HPA is updated on redeploy (not silently ignored)
@@ -710,20 +725,34 @@ test "deploy all in one" {
         deployment_name=app_name,
         min_replicas=2,
         max_replicas=5,
-        cpu_target=70
+        cpu_target=80,
+        memory_target=85,
+        scale_up_stabilization_window=120,
+        scale_down_stabilization_window=600
     );
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
     );
     assert hpa_updated.spec.min_replicas == 2 , f"Expected min_replicas=2, got {hpa_updated.spec.min_replicas}";
     assert hpa_updated.spec.max_replicas == 5 , f"Expected max_replicas=5, got {hpa_updated.spec.max_replicas}";
-    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 70 , (
-        f"Expected cpu_target=70, got {hpa_updated.spec.metrics[
+    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 80 , (
+        f"Expected cpu_target=80, got {hpa_updated.spec.metrics[
             0
         ].resource.target.average_utilization}"
     );
+    assert hpa_updated.spec.metrics[1].resource.target.average_utilization == 85 , (
+        f"Expected memory_target=85, got {hpa_updated.spec.metrics[
+            1
+        ].resource.target.average_utilization}"
+    );
+    assert hpa_updated.spec.behavior.scale_up.stabilization_window_seconds == 120 , (
+        f"Expected scale_up_stabilization_window=120, got {hpa_updated.spec.behavior.scale_up.stabilization_window_seconds}"
+    );
+    assert hpa_updated.spec.behavior.scale_down.stabilization_window_seconds == 600 , (
+        f"Expected scale_down_stabilization_window=600, got {hpa_updated.spec.behavior.scale_down.stabilization_window_seconds}"
+    );
     print(
-        f"HPA update verified: min_replicas={hpa_updated.spec.min_replicas}, max_replicas={hpa_updated.spec.max_replicas}, cpu_target=70%"
+        f"HPA update verified: min={hpa_updated.spec.min_replicas}, max={hpa_updated.spec.max_replicas}, cpu=80%, memory=85%, scale_up_window=120s, scale_down_window=600s"
     );
 
     # Restore original HPA values for remaining tests
@@ -732,7 +761,10 @@ test "deploy all in one" {
         deployment_name=app_name,
         min_replicas=1,
         max_replicas=3,
-        cpu_target=50
+        cpu_target=70,
+        memory_target=70,
+        scale_up_stabilization_window=60,
+        scale_down_stabilization_window=300
     );
 
     # Validate NGINX Ingress controller resources
