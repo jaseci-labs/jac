@@ -79,3 +79,7 @@ CLAUDE.local.md
 jactastic/**
 .mcp.json
 .gstack/
+
+jacBuilder-dev/**
+
+jac-code-main/**
