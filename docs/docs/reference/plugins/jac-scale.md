@@ -1445,7 +1445,7 @@ liveness_failure_threshold = 5
 
 ### Horizontal Pod Autoscaling (HPA)
 
-jac-scale creates a Kubernetes HPA that scales the application pod count up or down based on average CPU utilization across all pods.
+jac-scale creates a Kubernetes HPA that scales the application pod count up or down based on average CPU and memory utilization across all pods. When multiple metrics are configured, Kubernetes scales up if **any** metric exceeds its target, and scales down only when **all** metrics are below their targets.
 
 **Defaults:**
 
@@ -1453,7 +1453,10 @@ jac-scale creates a Kubernetes HPA that scales the application pod count up or d
 |----------|---------|-------------|
 | `min_replicas` | `1` | Minimum number of pods (HPA lower bound) |
 | `max_replicas` | `3` | Maximum number of pods (HPA upper bound) |
-| `cpu_utilization_target`  | `50` | Average CPU % across pods that triggers scale-out |
+| `cpu_utilization_target` | `70` | Average CPU % across pods that triggers scale-out. Set to `null` to disable CPU scaling |
+| `memory_utilization_target` | `70` | Average memory % across pods that triggers scale-out. Set to `null` to disable memory scaling |
+| `scale_up_stabilization_window` | `60` | Seconds the HPA looks back before scaling up; prevents reacting to short-lived spikes |
+| `scale_down_stabilization_window` | `300` | Seconds the HPA looks back before scaling down; prevents premature replica removal |
 
 **To change in `jac.toml`:**
 
@@ -1461,10 +1464,20 @@ jac-scale creates a Kubernetes HPA that scales the application pod count up or d
 [plugins.scale.kubernetes]
 min_replicas = 2
 max_replicas = 10
-cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
+cpu_utilization_target = 70          # Scale out when average CPU exceeds 70%
+memory_utilization_target = 80       # Scale out when average memory exceeds 80%
+scale_up_stabilization_window = 60   # Wait 60s of consistent load before adding pods
+scale_down_stabilization_window = 300 # Wait 5 min before removing pods
 ```
 
-> HPA requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+**Disable a metric:**
+
+```toml
+[plugins.scale.kubernetes]
+cpu_utilization_target = null        # Scale on memory only
+```
+
+> `cpu_utilization_target` requires `cpu_request` to be set. `memory_utilization_target` requires `memory_request` to be set. Without resource requests, Kubernetes cannot compute utilization percentages.
 
 ---
 
