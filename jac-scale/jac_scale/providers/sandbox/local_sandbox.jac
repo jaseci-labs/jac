@@ -247,8 +247,16 @@ obj LocalSandbox(SandboxEnvironment) {
             sid = self._sandbox_id(user_id, project_id);
 
             preview_suffix = f"-{project_id}" if project_id else "";
-            import tempfile;
-            preview_dir = os.path.join(tempfile.gettempdir(), f"jac-preview-{user_id}{preview_suffix}");
+
+            # If code_path is a real directory, run directly from it (desktop mode).
+            # Only copy to temp dir if code_path doesn't exist or is not a directory.
+            if code_path and os.path.isdir(code_path) {
+                preview_dir = code_path;
+            } else {
+                import tempfile;
+                preview_dir = os.path.join(tempfile.gettempdir(), f"jac-preview-{user_id}{preview_suffix}");
+                os.makedirs(preview_dir, exist_ok=True);
+            }
 
             if key in self._registry {
                 rec_d: dict = dict(self._registry[key]);
@@ -258,20 +266,6 @@ obj LocalSandbox(SandboxEnvironment) {
                 }
             } else {
                 previous_port = 0;
-                real_code = os.path.realpath(code_path) if code_path else "";
-                real_preview = os.path.realpath(preview_dir);
-                if real_code and real_code != real_preview {
-                    if os.path.exists(preview_dir) {
-                        shutil.rmtree(preview_dir);
-                    }
-                    if os.path.isdir(code_path) {
-                        shutil.copytree(code_path, preview_dir, symlinks=True);
-                    } else {
-                        os.makedirs(preview_dir, exist_ok=True);
-                    }
-                } elif not os.path.exists(preview_dir) {
-                    os.makedirs(preview_dir, exist_ok=True);
-                }
             }
 
             if previous_port
@@ -306,37 +300,57 @@ obj LocalSandbox(SandboxEnvironment) {
             activate_script = self._find_activate_script();
             jac_bin = self._find_jac_binary();
 
-            src_dir = code_path or "";
-            home_dir = str(Path.home());
-            global_env = os.path.join(home_dir, ".jac-ide", "global.env");
-            project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
-            env_sources = "";
-            if os.path.isfile(global_env) {
-                env_sources += f"source \"{global_env}\"; ";
-            }
-            if project_env_file and os.path.isfile(project_env_file) {
-                env_sources += f"source \"{project_env_file}\"; ";
-            }
-            env_prefix = "";
-            if env_sources {
-                env_prefix = f"set -a; {env_sources}set +a; ";
-            }
+            import sys;
+            is_windows = sys.platform == "win32";
 
             existing_rec: dict = dict(self._registry.get(key, {}));
             needs_install = not (key in self._registry)
             or bool(existing_rec.get("needs_install", True));
 
-            if activate_script {
-                if needs_install {
-                    shell_cmd = f"{env_prefix}source {activate_script} && jac install && jac start main.jac -p {port} --dev";
-                } else {
-                    shell_cmd = f"{env_prefix}source {activate_script} && jac start main.jac -p {port} --dev";
+            if is_windows {
+                # Windows: use cmd.exe syntax (call for activate, & for chaining)
+                parts = [];
+                if activate_script {
+                    parts.append(f"call \"{activate_script}\"");
                 }
-            } else {
+                # Load .env files by reading them with set /p or for loop
+                src_dir = code_path or "";
+                project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
                 if needs_install {
-                    shell_cmd = f"{env_prefix}{jac_bin} install && {jac_bin} start main.jac -p {port} --dev";
+                    parts.append(f"{jac_bin} install");
+                }
+                parts.append(f"{jac_bin} start main.jac -p {port} --dev");
+                shell_cmd = " && ".join(parts);
+            } else {
+                # Unix: use bash syntax
+                src_dir = code_path or "";
+                home_dir = str(Path.home());
+                global_env = os.path.join(home_dir, ".jac-ide", "global.env");
+                project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
+                env_sources = "";
+                if os.path.isfile(global_env) {
+                    env_sources += f"source \"{global_env}\"; ";
+                }
+                if project_env_file and os.path.isfile(project_env_file) {
+                    env_sources += f"source \"{project_env_file}\"; ";
+                }
+                env_prefix = "";
+                if env_sources {
+                    env_prefix = f"set -a; {env_sources}set +a; ";
+                }
+
+                if activate_script {
+                    if needs_install {
+                        shell_cmd = f"{env_prefix}source {activate_script} && jac install && jac start main.jac -p {port} --dev";
+                    } else {
+                        shell_cmd = f"{env_prefix}source {activate_script} && jac start main.jac -p {port} --dev";
+                    }
                 } else {
-                    shell_cmd = f"{env_prefix}{jac_bin} start main.jac -p {port} --dev";
+                    if needs_install {
+                        shell_cmd = f"{env_prefix}{jac_bin} install && {jac_bin} start main.jac -p {port} --dev";
+                    } else {
+                        shell_cmd = f"{env_prefix}{jac_bin} start main.jac -p {port} --dev";
+                    }
                 }
             }
 
