@@ -277,7 +277,7 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
         }
     }
 
-    def render_section(section_name: str, section_data: dict, indent: str = "") -> None {
+    def render_section(section_name: str, section_data: dict, indent: str = "") {
         # Separate simple values from nested dicts
         simple_values: dict = {};
         nested_sections: dict = {};
@@ -332,7 +332,7 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
 }
 
 """Create project-root .gitignore with entries."""
-def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
+def _create_root_gitignore(project_path: Path, entries: list[str]) {
     gitignore_path = project_path / ".gitignore";
     with open(gitignore_path, "w") as f {
         f.write("\n".join(entries) + "\n");

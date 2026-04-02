@@ -628,6 +628,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Mutable default argument '{type}' — use None and assign inside the function [mutable-default]"
      ),
+     W3037 = _warn(
+         "W3037",
+         Category.LINT,
+         "Unnecessary '-> None' return type annotation on '{name}'; "
+         "functions without a return statement implicitly return None "
+         "[unnecessary-none-return]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -650,7 +657,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "identical-branches": "W3025",
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
-         "mutable-default": "W3036"
+         "mutable-default": "W3036",
+         "unnecessary-none-return": "W3037"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

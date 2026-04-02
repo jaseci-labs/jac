@@ -17,7 +17,7 @@ obj LocalIngressProvider(IngressProvider) {
         return url;
     }
 
-    def delete_route(sandbox_id: str, namespace: str) -> None {
+    def delete_route(sandbox_id: str, namespace: str) {
         self._routes.pop(sandbox_id, None);
     }
 

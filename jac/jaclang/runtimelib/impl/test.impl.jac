@@ -132,7 +132,7 @@ impl parametrize(
         display = f"{base_name} [{param_id}]";
         func_name = f"{base_name}_{param_id}";
         def make_fn(p: Any) -> Callable {
-            def fn -> None {
+            def fn {
                 test_func(p);
             }
             return fn;

@@ -58,7 +58,7 @@ def _convert_transport_response_to_json_response(
 """Custom logging handler that routes logs to jac-super console."""
 class ConsoleLogHandler(logging.Handler) {
     """A logging handler that forwards log messages to jac-super's console."""
-    def emit(self: ConsoleLogHandler, record: logging.LogRecord) -> None {
+    def emit(self: ConsoleLogHandler, record: logging.LogRecord) {
         import from jaclang.cli.console { console }
         message = self.format(record);
         console.print(f"  {message}");

@@ -17,7 +17,7 @@ cl {
 
         auth = useAuth();
 
-        async def loadTraces -> None {
+        async def loadTraces {
             try {
                 result = await getLLMTraces(auth["authToken"]);
                 if result["ok"] and result["data"] {
@@ -33,7 +33,7 @@ cl {
             isLoading = False;
         }
 
-        async def loadTraceDetail(traceId: str) -> None {
+        async def loadTraceDetail(traceId: str) {
             detailLoading = True;
             showDetail = True;
             result = await getLLMTraceDetail(auth["authToken"], traceId);
@@ -43,12 +43,12 @@ cl {
             detailLoading = False;
         }
 
-        useEffect(lambda -> None { loadTraces();}, []);
+        useEffect(lambda { loadTraces();}, []);
 
         useEffect(
             lambda -> any { if not autoRefresh {
                 return undefined;
-            }interval = setInterval(lambda -> None { loadTraces();}, 15000);return lambda -> None { clearInterval(
+            }interval = setInterval(lambda { loadTraces();}, 15000);return lambda { clearInterval(
                 interval
             );}; },
             [autoRefresh]
@@ -109,7 +109,7 @@ cl {
                 <div className="space-y-4">
                     <div className="flex items-center gap-3">
                         <Button
-                            onClick={lambda -> None { showDetail = False;selectedTrace = {};}}
+                            onClick={lambda { showDetail = False;selectedTrace = {};}}
                             variant="secondary"
                         >
                             Back to Traces
@@ -314,13 +314,13 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
-                                onChange={lambda e: any  -> None { autoRefresh = e.target.checked;}}
+                                onChange={lambda e: any { autoRefresh = e.target.checked;}}
                                 className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh
                         </label>
                         <Button
-                            onClick={lambda -> None { isLoading = True;loadTraces();}}
+                            onClick={lambda { isLoading = True;loadTraces();}}
                             variant="secondary"
                         >
                             Refresh
@@ -344,9 +344,7 @@ cl {
                         <div
                             key={trace["invocation_id"]}
                             className="bg-slate-900 border border-slate-800 rounded-lg p-4 cursor-pointer hover:border-teal-500/50 transition-colors"
-                            onClick={lambda -> None { loadTraceDetail(
-                                trace["invocation_id"]
-                            );}}
+                            onClick={lambda { loadTraceDetail(trace["invocation_id"]);}}
                         >
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">

@@ -197,7 +197,7 @@ impl AstTool.py_uni_nodes -> str {
 impl AstTool.pass_template -> str {
     output = 'import jaclang.jac0core.unitree as ast\nfrom jaclang.jac0core.passes import Pass\n\nclass SomePass(Pass):\n';
     """Emit to output.""";
-    def emit(to_append: str) -> None {
+    def emit(to_append: str) {
         nonlocal output;
         output += '\n    ' + to_append;
     }

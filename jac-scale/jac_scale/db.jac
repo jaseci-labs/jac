@@ -76,7 +76,7 @@ def get_redis_client(uri: (str | None) = None) -> Redis {
 }
 
 """Close a specific MongoDB client connection."""
-def close_mongo_client(uri: (str | None) = None) -> None {
+def close_mongo_client(uri: (str | None) = None) {
     global _mongo_clients;
 
     # Resolve URI (silently skip if config not found)
@@ -90,7 +90,7 @@ def close_mongo_client(uri: (str | None) = None) -> None {
 }
 
 """Close a specific Redis client connection."""
-def close_redis_client(uri: (str | None) = None) -> None {
+def close_redis_client(uri: (str | None) = None) {
     global _redis_clients;
 
     # Resolve URI (silently skip if config not found)
@@ -104,7 +104,7 @@ def close_redis_client(uri: (str | None) = None) -> None {
 }
 
 """Close all MongoDB and Redis connections."""
-def close_all_db_connections -> None {
+def close_all_db_connections {
     global _mongo_clients,_redis_clients;
 
     # Close all MongoDB clients

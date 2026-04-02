@@ -919,7 +919,7 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
 impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     self._hot_reloader = hot_reloader;
     # Callback when file changes - sets pending flag
-    def on_change(event: Any) -> None {
+    def on_change(event: Any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }
