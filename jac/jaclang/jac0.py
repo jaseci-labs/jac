@@ -1899,17 +1899,13 @@ class CodeGen:
         body = node.body
         # Stitch impls
         impls = self.impl_registry.get(node.name, [])
-        # Build lookup of stub FuncDefs (;-terminated) for decorator merging
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         stub_lookup: dict[str, FuncDef] = {}
         if impls:
             for n in body:
                 if isinstance(n, FuncDef):
                     stub_name = _dunder_names.get(n.name, n.name)
-                    is_stub = len(n.body) == 1 and isinstance(n.body[0], PassStmt)
-                    if is_stub:
-                        stub_lookup[stub_name] = n
-        # Determine which stubs to skip (have matching impl)
+                    stub_lookup[stub_name] = n
         impl_method_names: set[str] = set()
         for impl in impls:
             parts = impl.target.split(".")
@@ -1921,14 +1917,18 @@ class CodeGen:
         else:
             prev_in_class = self._in_class
             self._in_class = True
-            # Emit body but skip stubs that have matching impls
             for bnode in body:
                 if isinstance(bnode, FuncDef):
                     fname = _dunder_names.get(bnode.name, bnode.name)
                     if fname in impl_method_names and fname in stub_lookup:
-                        continue  # Skip stub; impl will provide the method
+                        continue
                 self._emit(bnode)
             for impl in impls:
+                parts = impl.target.split(".")
+                mname = parts[-1] if len(parts) > 1 else parts[0]
+                mname = _dunder_names.get(mname, mname)
+                if mname not in stub_lookup:
+                    continue
                 self._emit_impl_as_method(impl, stub_lookup)
             self._in_class = prev_in_class
         self.indent -= 1
