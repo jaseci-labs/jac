@@ -84,7 +84,7 @@ obj _StreamWrapper {
         }
     }
 
-    def _record -> None {
+    def _record {
         try {
             if self._last_chunk and hasattr(self._last_chunk, '_hidden_params') {
                 self._cost = self._last_chunk._hidden_params.get(
@@ -223,7 +223,7 @@ obj LLMLimitsStore {
         _usage_collection: str = "llm_user_usage",
         _log_collection: str = "llm_usage_log";
 
-    def postinit -> None {
+    def postinit {
         self._lock = threading.Lock();
         self._log_buffer_lock = threading.Lock();
         self._limits = {};
@@ -740,7 +740,7 @@ obj LLMLimitsStore {
         blocked: bool = False,
         block_reason: str = "",
         call_metadata: dict | None = None
-    ) -> None {
+    ) {
         if call_metadata is None {
             call_metadata = {};
         }
@@ -1449,7 +1449,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
         return "****" + key[-4:] if len(key) >= 4 else "****";
     }
 
-    def _persist_provider_keys -> None {
+    def _persist_provider_keys {
         if store._db {
             store._db["llm_config"].update_one(
                 {"_id": "provider_keys"},

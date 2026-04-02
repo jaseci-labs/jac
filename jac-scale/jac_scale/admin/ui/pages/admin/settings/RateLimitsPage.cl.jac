@@ -72,7 +72,7 @@ cl {
         alert = useAlert();
 
         # ── Data loading ─────────────────────────────────────────────────
-        async def loadData -> None {
+        async def loadData {
             loading = True;
             try {
                 # Load defaults
@@ -125,10 +125,10 @@ cl {
             loading = False;
         }
 
-        useEffect(lambda -> None { loadData();}, []);
+        useEffect(lambda { loadData();}, []);
 
         # ── Default limits save ──────────────────────────────────────────
-        async def handleSaveDefaults -> None {
+        async def handleSaveDefaults {
             models_list = [
                 m.strip()
                 for m in defModels.split(",")
@@ -155,7 +155,7 @@ cl {
         }
 
         # ── Edit user modal handlers ─────────────────────────────────────
-        def openEditModal(user: dict) -> None {
+        def openEditModal(user: dict) {
             editUsername = user["username"] or "";
             editBudget = str(user["budget_limit"] or 0);
             editPeriod = str(user["budget_period"] or "monthly");
@@ -168,7 +168,7 @@ cl {
             showEditModal = True;
         }
 
-        async def handleSaveUser -> None {
+        async def handleSaveUser {
             models_list = [
                 m.strip()
                 for m in editModels.split(",")
@@ -197,7 +197,7 @@ cl {
             }
         }
 
-        async def handleDeleteUser(username: str) -> None {
+        async def handleDeleteUser(username: str) {
             result = await deleteUserLimits(auth["authToken"], username);
             if result and result["ok"] {
                 alert["showAlert"](f"Limits removed for {username}", "success");
@@ -207,7 +207,7 @@ cl {
             }
         }
 
-        async def handleResetUsage(username: str) -> None {
+        async def handleResetUsage(username: str) {
             result = await resetUserUsage(auth["authToken"], username);
             if result and result["ok"] {
                 alert["showAlert"](f"Usage reset for {username}", "success");
@@ -285,7 +285,7 @@ cl {
             }
         }
 
-        async def handleDeleteProviderKey(provider: str) -> None {
+        async def handleDeleteProviderKey(provider: str) {
             result = await deleteProviderKey(auth["authToken"], provider);
             if result and result["ok"] {
                 providerKeysList = [
@@ -400,7 +400,7 @@ cl {
                                         <Button
                                             variant="danger"
                                             size="sm"
-                                            onClick={lambda -> None { handleDeleteProviderKey(
+                                            onClick={lambda { handleDeleteProviderKey(
                                                 provider
                                             );}}
                                         >
@@ -422,7 +422,7 @@ cl {
                                     <Select
                                         label="Provider"
                                         value={selectedProvider}
-                                        onChange={lambda e: Any  -> None { selectedProvider = e.target.value;}}
+                                        onChange={lambda e: Any { selectedProvider = e.target.value;}}
                                         options={[
                                             {
                                                 "value": "openai",
@@ -459,7 +459,7 @@ cl {
                                 {selectedProvider == "other"
                                 and <Input
                                     value={customProviderName}
-                                    onChange={lambda e: Any  -> None { customProviderName = e.target.value;}}
+                                    onChange={lambda e: Any { customProviderName = e.target.value;}}
                                     placeholder="provider name"
                                 />}
                                 <div className="flex-1">
@@ -467,7 +467,7 @@ cl {
                                         type="password"
                                         label="API Key"
                                         value={newProviderKey}
-                                        onChange={lambda e: Any  -> None { newProviderKey = e.target.value;}}
+                                        onChange={lambda e: Any { newProviderKey = e.target.value;}}
                                         placeholder="sk-..."
                                     />
                                 </div>
@@ -580,33 +580,33 @@ cl {
                                 label="Budget ($)"
                                 type="number"
                                 value={defBudget}
-                                onChange={lambda e: Any  -> None { defBudget = e.target.value;}}
+                                onChange={lambda e: Any { defBudget = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Select
                                 label="Period"
                                 value={defPeriod}
-                                onChange={lambda e: Any  -> None { defPeriod = e.target.value;}}
+                                onChange={lambda e: Any { defPeriod = e.target.value;}}
                                 options={periodOptions}
                             />
                             <Input
                                 label="Requests/min (RPM)"
                                 type="number"
                                 value={defRpm}
-                                onChange={lambda e: Any  -> None { defRpm = e.target.value;}}
+                                onChange={lambda e: Any { defRpm = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Input
                                 label="Tokens/min (TPM)"
                                 type="number"
                                 value={defTpm}
-                                onChange={lambda e: Any  -> None { defTpm = e.target.value;}}
+                                onChange={lambda e: Any { defTpm = e.target.value;}}
                                 placeholder="0 = unlimited"
                             />
                             <Input
                                 label="Allowed Models"
                                 value={defModels}
-                                onChange={lambda e: Any  -> None { defModels = e.target.value;}}
+                                onChange={lambda e: Any { defModels = e.target.value;}}
                                 placeholder="gpt-4o, gpt-4o-mini"
                             />
                         </div>
@@ -615,9 +615,7 @@ cl {
                 <Card className="overflow-hidden">
                     <CardHeader
                         title="Per-User Limits"
-                        action={<Button
-                            onClick={lambda -> None { showAddModal = True;}}
-                        >
+                        action={<Button onClick={lambda { showAddModal = True;}}>
                             Add User Override
                         </Button>}
                     />
@@ -672,16 +670,14 @@ cl {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={lambda -> None { openEditModal(
-                                                    item
-                                                );}}
+                                                onClick={lambda { openEditModal(item);}}
                                             >
                                                 Edit
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={lambda -> None { handleResetUsage(
+                                                onClick={lambda { handleResetUsage(
                                                     item["username"]
                                                 );}}
                                             >
@@ -690,7 +686,7 @@ cl {
                                             <Button
                                                 variant="danger"
                                                 size="sm"
-                                                onClick={lambda -> None { handleDeleteUser(
+                                                onClick={lambda { handleDeleteUser(
                                                     item["username"]
                                                 );}}
                                             >
@@ -705,7 +701,7 @@ cl {
                 </Card>
                 <Modal
                     isOpen={showEditModal}
-                    onClose={lambda -> None { showEditModal = False;}}
+                    onClose={lambda { showEditModal = False;}}
                     title={"Edit Limits: " + editUsername}
                 >
                     <div className="space-y-3">
@@ -714,40 +710,40 @@ cl {
                             label="Monthly Budget ($)"
                             type="number"
                             value={editBudget}
-                            onChange={lambda e: Any  -> None { editBudget = e.target.value;}}
+                            onChange={lambda e: Any { editBudget = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Select
                             label="Period"
                             value={editPeriod}
-                            onChange={lambda e: Any  -> None { editPeriod = e.target.value;}}
+                            onChange={lambda e: Any { editPeriod = e.target.value;}}
                             options={periodOptions}
                         />
                         <Input
                             label="Requests/min (RPM)"
                             type="number"
                             value={editRpm}
-                            onChange={lambda e: Any  -> None { editRpm = e.target.value;}}
+                            onChange={lambda e: Any { editRpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Tokens/min (TPM)"
                             type="number"
                             value={editTpm}
-                            onChange={lambda e: Any  -> None { editTpm = e.target.value;}}
+                            onChange={lambda e: Any { editTpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Allowed Models (comma-separated)"
                             value={editModels}
-                            onChange={lambda e: Any  -> None { editModels = e.target.value;}}
+                            onChange={lambda e: Any { editModels = e.target.value;}}
                             placeholder="gpt-4o, gpt-4o-mini (empty = all)"
                         />
                     </div>
                     <ModalFooter>
                         <Button
                             variant="ghost"
-                            onClick={lambda -> None { showEditModal = False;}}
+                            onClick={lambda { showEditModal = False;}}
                         >
                             Cancel
                         </Button>
@@ -758,7 +754,7 @@ cl {
                 </Modal>
                 <Modal
                     isOpen={showAddModal}
-                    onClose={lambda -> None { showAddModal = False;}}
+                    onClose={lambda { showAddModal = False;}}
                     title="Add User Override"
                 >
                     <div className="space-y-3">
@@ -772,7 +768,7 @@ cl {
                             <select
                                 className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm"
                                 value={addUsername}
-                                onChange={lambda e: Any  -> None { addUsername = e.target.value;}}
+                                onChange={lambda e: Any { addUsername = e.target.value;}}
                             >
                                 <option value="">
                                     Select a user...
@@ -788,40 +784,40 @@ cl {
                             label="Monthly Budget ($)"
                             type="number"
                             value={addBudget}
-                            onChange={lambda e: Any  -> None { addBudget = e.target.value;}}
+                            onChange={lambda e: Any { addBudget = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Select
                             label="Period"
                             value={addPeriod}
-                            onChange={lambda e: Any  -> None { addPeriod = e.target.value;}}
+                            onChange={lambda e: Any { addPeriod = e.target.value;}}
                             options={periodOptions}
                         />
                         <Input
                             label="Requests/min (RPM)"
                             type="number"
                             value={addRpm}
-                            onChange={lambda e: Any  -> None { addRpm = e.target.value;}}
+                            onChange={lambda e: Any { addRpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Tokens/min (TPM)"
                             type="number"
                             value={addTpm}
-                            onChange={lambda e: Any  -> None { addTpm = e.target.value;}}
+                            onChange={lambda e: Any { addTpm = e.target.value;}}
                             placeholder="0 = unlimited"
                         />
                         <Input
                             label="Allowed Models (comma-separated)"
                             value={addModels}
-                            onChange={lambda e: Any  -> None { addModels = e.target.value;}}
+                            onChange={lambda e: Any { addModels = e.target.value;}}
                             placeholder="gpt-4o, gpt-4o-mini (empty = all)"
                         />
                     </div>
                     <ModalFooter>
                         <Button
                             variant="ghost"
-                            onClick={lambda -> None { showAddModal = False;}}
+                            onClick={lambda { showAddModal = False;}}
                         >
                             Cancel
                         </Button>
