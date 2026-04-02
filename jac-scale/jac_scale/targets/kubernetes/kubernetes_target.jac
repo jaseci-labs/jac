@@ -1419,12 +1419,94 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
+            # request missing  → critical: disables the metric (HPA cannot compute utilization)
+            # limit missing    → non-critical: warns only, metric still works
+            # both targets None → warn: HPA has no metrics and will not scale
+            cpu_target = self.k8s_config.cpu_utilization_target;
+            memory_target = self.k8s_config.memory_utilization_target;
+            critical_missing = [];
+            non_critical_missing = [];
+            if cpu_target is not None {
+                if self.k8s_config.cpu_request is None {
+                    critical_missing.append(
+                        "cpu_request (cpu_utilization_target will be ignored)"
+                    );
+                    cpu_target = None;
+                }
+                if self.k8s_config.cpu_limit is None {
+                    non_critical_missing.append("cpu_limit");
+                }
+            }
+            if memory_target is not None {
+                if self.k8s_config.memory_request is None {
+                    critical_missing.append(
+                        "memory_request (memory_utilization_target will be ignored)"
+                    );
+                    memory_target = None;
+                }
+                if self.k8s_config.memory_limit is None {
+                    non_critical_missing.append("memory_limit");
+                }
+            }
+            if cpu_target is None and memory_target is None {
+                if critical_missing {
+                    if non_critical_missing {
+                        self.logger.warning(
+                            f"HPA: {', '.join(critical_missing)}. "
+                            f"Also missing (non-critical): {', '.join(
+                                non_critical_missing
+                            )}. "
+                            f"HPA has no active metrics and will not scale the deployment. "
+                            f"Configure the missing values in [plugins.scale.kubernetes]."
+                        );
+                    } else {
+                        self.logger.warning(
+                            f"HPA: {', '.join(critical_missing)}. "
+                            f"HPA has no active metrics and will not scale the deployment. "
+                            f"Configure the missing values in [plugins.scale.kubernetes]."
+                        );
+                    }
+                } else {
+                    self.logger.warning(
+                        "HPA: both cpu_utilization_target and memory_utilization_target are disabled. "
+                        "HPA has no active metrics and will not scale the deployment."
+                    );
+                }
+            } else {
+                if critical_missing {
+                    scales_on = "HPA will scale on CPU only."
+                        if cpu_target is not None
+                        else "HPA will scale on memory only.";
+                    if non_critical_missing {
+                        self.logger.warning(
+                            f"HPA: {', '.join(critical_missing)}. "
+                            f"Also missing (non-critical): {', '.join(
+                                non_critical_missing
+                            )}. "
+                            f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                        );
+                    } else {
+                        self.logger.warning(
+                            f"HPA: {', '.join(critical_missing)}. "
+                            f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                        );
+                    }
+                } elif non_critical_missing {
+                    self.logger.warning(
+                        f"HPA: {', '.join(non_critical_missing)} not configured. "
+                        f"HPA will still scale but setting limits is recommended for proper resource management."
+                    );
+                }
+            }
             create_hpa(
                 namespace=namespace,
                 deployment_name=app_name,
                 min_replicas=self.k8s_config.min_replicas,
                 max_replicas=self.k8s_config.max_replicas,
-                cpu_target=self.k8s_config.cpu_utilization_target
+                cpu_target=cpu_target,
+                memory_target=memory_target,
+                scale_up_stabilization_window=self.k8s_config.scale_up_stabilization_window,
+                scale_down_stabilization_window=self.k8s_config.scale_down_stabilization_window
             );
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
