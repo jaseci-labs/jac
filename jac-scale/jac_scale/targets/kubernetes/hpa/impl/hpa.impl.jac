@@ -7,10 +7,36 @@ impl create_hpa(
     deployment_name: str,
     min_replicas: int = 1,
     max_replicas: int = 3,
-    cpu_target: int = 50
+    cpu_target: int | None = 70,
+    memory_target: int | None = 70,
+    scale_up_stabilization_window: int = 60,
+    scale_down_stabilization_window: int = 300
 ) -> None {
     autoscaling_v2 = AutoscalingV2Api();
     hpa_name = f"{deployment_name}-hpa";
+    metrics = [];
+    if cpu_target is not None {
+        metrics.append(
+            V2MetricSpec(
+                `type='Resource',
+                resource=V2ResourceMetricSource(
+                    name='cpu',
+                    target={'type': 'Utilization', 'averageUtilization': cpu_target}
+                )
+            )
+        );
+    }
+    if memory_target is not None {
+        metrics.append(
+            V2MetricSpec(
+                `type='Resource',
+                resource=V2ResourceMetricSource(
+                    name='memory',
+                    target={'type': 'Utilization', 'averageUtilization': memory_target}
+                )
+            )
+        );
+    }
     hpa = V2HorizontalPodAutoscaler(
         api_version='autoscaling/v2',
         kind='HorizontalPodAutoscaler',
@@ -21,18 +47,15 @@ impl create_hpa(
             ),
             min_replicas=min_replicas,
             max_replicas=max_replicas,
-            metrics=[
-                V2MetricSpec(
-                    `type='Resource',
-                    resource=V2ResourceMetricSource(
-                        name='cpu',
-                        target={
-                            'type': 'Utilization',
-                            'averageUtilization': cpu_target
-                        }
-                    )
+            metrics=metrics,
+            behavior=V2HorizontalPodAutoscalerBehavior(
+                scale_up=V2HPAScalingRules(
+                    stabilization_window_seconds=scale_up_stabilization_window
+                ),
+                scale_down=V2HPAScalingRules(
+                    stabilization_window_seconds=scale_down_stabilization_window
                 )
-            ]
+            )
         )
     );
     try {
