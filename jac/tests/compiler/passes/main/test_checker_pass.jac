@@ -1224,7 +1224,8 @@ test "list_indexing" {
         os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    # Bare list[Any] indexing yields Any, so len(some[0]) is valid.
+    assert len(program.errors_had) == 0;
 }
 
 test "range_function" {
@@ -1476,6 +1477,17 @@ test "type_narrowing" {
             expected_errors[i], program.errors_had[i].pretty_print()
         );
     }
+}
+
+test "expr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_expr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
 test "reassign_in_branch" {
@@ -1895,9 +1907,9 @@ test "compound_and_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Structural protocol matching (SupportsIndex, Sized, etc.) resolved the
-    # previously-expected errors in this fixture.
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    # CFG correctly reports x.offspring error after early-exit if-body
+    # (line 203: Animal has no offspring — only reachable on false branch).
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2947,9 +2959,8 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # PARTIALLY FIXED: attr access on Any|T unions now works (2 of original 4 fixed).
-    # Remaining: AnyType in result union not recognized as assignable to concrete types.
-    assert len(rc9_errors) == 3 , f"Expected 3 any-in-union errors, got {len(
+    # CFG narrowing resolved 1 of 3 any-in-union errors.
+    assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
@@ -3014,11 +3025,9 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Total: RC1(0) + RC2(5) + RC3(0) + RC4(0) + RC5(2) + RC6(15) + RC7(8) + RC8(4) + RC9(3) = 37
-    # Name-target cascade suppression removed — each Unknown Name attribute
-    # access is now reported as a real diagnostic.
-    # RC5 dropped from 3→2: LiteralString flags fix resolved s[0].upper() chain.
-    assert len(program.errors_had) == 37 , f"Expected 37 total errors, got {len(
+    # RC9 dropped 3→2 (CFG resolved 1 any-in-union error).
+    # Total: 37 - 1 = 36
+    assert len(program.errors_had) == 36 , f"Expected 36 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -3055,4 +3064,37 @@ test "scope_narrowing_isolation_between_impl_bodies" {
     assert len(program.errors_had) == 0 , f"Scope narrowing should not leak between impl bodies, got {len(
         program.errors_had
     )} errors:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "bare_generic_iteration_yields_any" {
+    # Bare generic types like `list` (no type args) should be treated as
+    # list[Any] per PEP 484, so iterating yields Any (not Unknown).
+    # Only the typed list[int] assignment mismatch should error.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_iteration.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 error (int->str), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        b: str = t;   # <-- Error (int not assignable to str)
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # Bare generics should produce W1036 warnings nudging toward explicit type args
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    assert len(bare_generic_warnings) == 3 , f"Expected 3 W1036 warnings (list, dict, list), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }

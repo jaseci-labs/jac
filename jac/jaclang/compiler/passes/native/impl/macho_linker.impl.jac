@@ -1488,7 +1488,7 @@ def _write_section_header(
     flags: int,
     reserved1: int,
     reserved2: int
-) -> None {
+) {
     sn = sectname.encode("utf-8");
     sg = segname.encode("utf-8");
     buf[offset:offset + 16] = sn + b"\x00" * (16 - len(sn));

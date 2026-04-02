@@ -3,7 +3,7 @@
 cl {
     def:pub SubTabs(tabs: list, activeTab: str, onTabChange: Any) -> JsxElement {
         def makeHandler(tabId: str) -> Any {
-            return lambda e: Any  -> None { onTabChange(tabId);};
+            return lambda e: Any { onTabChange(tabId);};
         }
 
         return

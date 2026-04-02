@@ -218,4 +218,5 @@ obj TieredMemory(VolatileMemory) {
     def close -> None;
     def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
+    def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
 }

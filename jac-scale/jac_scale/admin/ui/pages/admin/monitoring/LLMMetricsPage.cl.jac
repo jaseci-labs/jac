@@ -14,7 +14,7 @@ cl {
 
         auth = useAuth();
 
-        async def loadSummary -> None {
+        async def loadSummary {
             result = await getLLMSummary(auth["authToken"]);
             if result["ok"] and result["data"] {
                 summary = result["data"];
@@ -26,12 +26,12 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda -> None { loadSummary();}, []);
+        useEffect(lambda { loadSummary();}, []);
 
         useEffect(
             lambda -> any { if not autoRefresh {
                 return undefined;
-            }interval = setInterval(lambda -> None { loadSummary();}, 15000);return lambda -> None { clearInterval(
+            }interval = setInterval(lambda { loadSummary();}, 15000);return lambda { clearInterval(
                 interval
             );}; },
             [autoRefresh]
@@ -97,13 +97,13 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
-                                onChange={lambda e: any  -> None { autoRefresh = e.target.checked;}}
+                                onChange={lambda e: any { autoRefresh = e.target.checked;}}
                                 className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh
                         </label>
                         <Button
-                            onClick={lambda -> None { isLoading = True;loadSummary();}}
+                            onClick={lambda { isLoading = True;loadSummary();}}
                             variant="secondary"
                         >
                             Refresh

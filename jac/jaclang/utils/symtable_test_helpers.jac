@@ -38,7 +38,7 @@ def assert_symbol_exists(
 }
 
 """Assert that a symbol is declared at specific line and column."""
-def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) -> None {
+def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) {
     decl_info = str(symbol);
     expected_decl = f"{line}:{col}";
     assert expected_decl in decl_info , (
@@ -47,9 +47,7 @@ def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) -> None {
 }
 
 """Assert that a symbol has definitions at specific locations."""
-def assert_symbol_defns_at(
-    symbol: Symbol, expected_defns: list[tuple[int, int]]
-) -> None {
+def assert_symbol_defns_at(symbol: Symbol, expected_defns: list[tuple[int, int]]) {
     symbol_str = str(symbol);
     for (line, col) in expected_defns {
         expected_defn = f"{line}:{col}";
@@ -60,9 +58,7 @@ def assert_symbol_defns_at(
 }
 
 """Assert that a symbol has uses at specific locations."""
-def assert_symbol_uses_at(
-    symbol: Symbol, expected_uses: list[tuple[int, int]]
-) -> None {
+def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) {
     symbol_uses_str = str(symbol.uses);
     for (line, col) in expected_uses {
         expected_use = f"{line}:{col}";
@@ -80,7 +76,7 @@ def assert_symbol_complete(
     decl: tuple[int, int],
     defns: list[tuple[int, int]] | None = None,
     uses: list[tuple[int, int]] | None = None
-) -> None {
+) {
     symbol = assert_symbol_exists(sym_table, symbol_name, symbol_type);
     assert_symbol_decl_at(symbol, decl[0], decl[1]);
 

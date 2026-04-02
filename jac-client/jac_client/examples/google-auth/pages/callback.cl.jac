@@ -9,7 +9,7 @@ def:pub OAuthCallback -> JsxElement {
     auth = useContext(AuthContext);
 
     useEffect(
-        lambda() -> None {
+        lambda() {
         # Async function to handle SSO callback
         async def handleSSOCallback -> None {
             print("Handling SSO Callback...", window.location.href);

@@ -71,7 +71,7 @@ obj HookCaller {
         _hookimpls: list[HookImpl] by postinit,
         _firstresult: bool = False;
 
-    def postinit -> None {
+    def postinit {
         self._hookimpls = [];
     }
 
@@ -94,7 +94,7 @@ obj PluginManager {
         _plugin_distinfo: list[tuple[(object, Any)]] by postinit,
         hook: HookRelay by postinit;
 
-    def postinit -> None {
+    def postinit {
         self._name2plugin = {};
         self._plugin2name = {};
         self._plugin_distinfo = [];

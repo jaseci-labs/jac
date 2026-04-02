@@ -11,14 +11,14 @@ cl {
 
         auth = useAuth();
 
-        async def loadSSO -> None {
+        async def loadSSO {
             result = await getSSOProviders(auth["authToken"]);
             if result["ok"] and result["data"] {
                 ssoProviders = result["data"]["providers"];
             }
         }
 
-        useEffect(lambda -> None { loadSSO();}, []);
+        useEffect(lambda { loadSSO();}, []);
 
         columns = [
             {"key": "platform", "label": "Provider"},

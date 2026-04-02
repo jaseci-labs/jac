@@ -96,7 +96,7 @@ obj DockerHubRegistry(ImageRegistry) {
         return repository_name;
     }
 
-    def push_image(image_name: str) -> None {
+    def push_image(image_name: str) {
         # Push Docker image to DockerHub
         docker_client = docker.from_env();
         console.print(f"Pushing Docker image '{image_name}' to DockerHub...");

@@ -235,8 +235,28 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
     ctx = Jac.get_context();
     import from jaclang.jac0core.archetype { NodeAnchor }
 
+    # Load all needed nodes in one batch to avoid N+1 queries on DB backends.
+    import from jaclang.runtimelib.memory { TieredMemory }
+    if isinstance(ctx.mem, TieredMemory) {
+        loaded: dict = ctx.mem.batch_get(list(node_ids));
+    } else {
+        loaded: dict = {
+            nid: a
+            for nid in node_ids
+            if (a := ctx.mem.get(nid))
+        };
+    }
+
     if origin {
-        # Walk edges in order, only load targets in the planned set
+        # Prefetch edge anchors so the ordered walk doesn't trigger
+        # N individual DB loads for edge stubs.
+        if isinstance(ctx.mem, TieredMemory) {
+            edge_ids = [e.id for nd in origin for e in nd.__jac__.edges];
+            if edge_ids {
+                ctx.mem.batch_get(edge_ids);
+            }
+        }
+        # Walk edges in order, only emit targets in the planned set
         seen: set = set();
         result = [];
         for nd in origin {
@@ -245,7 +265,7 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
                 tgt = eanch.target;
                 if tgt and tgt.id in node_ids and tgt.id not in seen {
                     seen.add(tgt.id);
-                    anchor = ctx.mem.get(tgt.id);
+                    anchor = loaded.get(tgt.id);
                     if isinstance(anchor, NodeAnchor) and anchor.archetype {
                         result.append(anchor.archetype);
                     }
@@ -256,7 +276,7 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
                 and src.id != nanch.id
                 and src.id not in seen {
                     seen.add(src.id);
-                    anchor = ctx.mem.get(src.id);
+                    anchor = loaded.get(src.id);
                     if isinstance(anchor, NodeAnchor) and anchor.archetype {
                         result.append(anchor.archetype);
                     }
@@ -266,13 +286,10 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
         return result;
     }
 
-    # Fallback: no origin, just load by ID (unordered)
-    result = [];
-    for nid in node_ids {
-        anchor = ctx.mem.get(nid);
-        if isinstance(anchor, NodeAnchor) and anchor.archetype {
-            result.append(anchor.archetype);
-        }
-    }
-    return result;
+    # No origin — return in arbitrary order
+    return [
+        a.archetype
+        for a in loaded.values()
+        if isinstance(a, NodeAnchor) and a.archetype
+    ];
 }
