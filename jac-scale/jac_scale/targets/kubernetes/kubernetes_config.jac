@@ -21,7 +21,10 @@ obj KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         min_replicas: int = 1,
         max_replicas: int = 3,
-        cpu_utilization_target: int = 50,
+        cpu_utilization_target: int = 70,
+        memory_utilization_target: int = 70,
+        scale_up_stabilization_window: int = 60,
+        scale_down_stabilization_window: int = 300,
         health_check_path: str = '/docs',
         # Runtime configuration
         python_image: str = 'python:3.12-slim',
@@ -92,6 +95,9 @@ obj KubernetesConfig(BaseConfig) {
                 'min_replicas': self.min_replicas,
                 'max_replicas': self.max_replicas,
                 'cpu_utilization_target': self.cpu_utilization_target,
+                'memory_utilization_target': self.memory_utilization_target,
+                'scale_up_stabilization_window': self.scale_up_stabilization_window,
+                'scale_down_stabilization_window': self.scale_down_stabilization_window,
                 'health_check_path': self.health_check_path,
                 # Runtime configuration
                 'python_image': self.python_image,
@@ -163,7 +169,14 @@ obj KubernetesConfig(BaseConfig) {
             liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
             min_replicas=config.get('min_replicas', 1),
             max_replicas=config.get('max_replicas', 3),
-            cpu_utilization_target=config.get('cpu_utilization_target', 50),
+            cpu_utilization_target=config.get('cpu_utilization_target', 70),
+            memory_utilization_target=config.get('memory_utilization_target', 70),
+            scale_up_stabilization_window=config.get(
+                'scale_up_stabilization_window', 60
+            ),
+            scale_down_stabilization_window=config.get(
+                'scale_down_stabilization_window', 300
+            ),
             health_check_path=config.get('health_check_path', '/docs'),
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
