@@ -62,35 +62,3 @@ tailwindcss = "latest"
 [environments.response.headers]
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
-
-
-# Desktop target configuration (Tauri)
-[desktop]
-name = "all-in-one"
-identifier = "all.in.one"
-version = "1.0.0"
-
-[desktop.window]
-title = "all-in-one"
-width = 1200
-height = 800
-min_width = 800
-min_height = 600
-resizable = true
-fullscreen = false
-
-[desktop.platforms]
-windows = true
-macos = true
-linux = true
-
-[desktop.features]
-system_tray = false
-auto_update = false
-notifications = false
-
-# Jac plugins to bundle (set to false to exclude from build)
-[desktop.plugins]
-jac_scale = true   # FastAPI server, auth, scaling features
-byllm = false       # LLM providers integration (litellm)
-jac_coder = false   # AI coding assistant
