@@ -216,7 +216,7 @@ def _generate_index_html(
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
     project_dir: Path
-) -> None {
+) {
     import html;
     import json;
     import from jac_client.plugin.client { HeaderBuilder }

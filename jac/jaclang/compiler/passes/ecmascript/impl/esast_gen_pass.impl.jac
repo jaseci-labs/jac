@@ -4270,7 +4270,7 @@ impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> di
     is_writer = False;
     touches: set[str] = set();
     """Recursively scan a node and its descendants for effects.""";
-    def _scan(nd: uni.UniNode) -> None {
+    def _scan(nd: uni.UniNode) {
         nonlocal is_writer;
 
         # Edge creation: BinaryExpr with ConnectOp operator (++>, <++, <++>)

@@ -251,7 +251,7 @@ def _coerce_module(
     skip_types: tuple,
     context: CodeContext,
     skip_token: (Tok | None) = None
-) -> None {
+) {
     elements: list[uni.ElementStmt] = [];
     for stmt in module.body {
         if isinstance(stmt, unfold_type) {
@@ -293,7 +293,7 @@ def _coerce_module(
 }
 
 """Coerce a .cl.jac module to client context."""
-def _coerce_client_module(module: uni.Module) -> None {
+def _coerce_client_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.ClientBlock,
@@ -304,7 +304,7 @@ def _coerce_client_module(module: uni.Module) -> None {
 }
 
 """Coerce a .sv.jac module to server context."""
-def _coerce_server_module(module: uni.Module) -> None {
+def _coerce_server_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.ServerBlock,
@@ -314,7 +314,7 @@ def _coerce_server_module(module: uni.Module) -> None {
 }
 
 """Coerce a .na.jac module to native context."""
-def _coerce_native_module(module: uni.Module) -> None {
+def _coerce_native_module(module: uni.Module) {
     _coerce_module(
         module,
         unfold_type=uni.NativeBlock,

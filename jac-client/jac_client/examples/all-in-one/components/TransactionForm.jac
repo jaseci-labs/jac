@@ -104,9 +104,7 @@ cl {
                             id="description"
                             type="text"
                             value={description}
-                            onChange={lambda e: Any -> None { setDescription(
-                                e.target.value
-                            );}}
+                            onChange={lambda e: Any { setDescription(e.target.value);}}
                             placeholder="Enter description..."
                             className="form-input"
                         />
@@ -119,7 +117,7 @@ cl {
                             id="amount"
                             type="number"
                             value={amount}
-                            onChange={lambda e: Any -> None { setAmount(e.target.value);}}
+                            onChange={lambda e: Any { setAmount(e.target.value);}}
                             placeholder="0.00"
                             min="0"
                             step="0.01"
@@ -133,9 +131,7 @@ cl {
                         <select
                             id="category"
                             value={category}
-                            onChange={lambda e: Any -> None { setCategory(
-                                e.target.value
-                            );}}
+                            onChange={lambda e: Any { setCategory(e.target.value);}}
                             className="form-select"
                         >
                             {[
@@ -153,9 +149,7 @@ cl {
                         <select
                             id="client"
                             value={clientName}
-                            onChange={lambda e: Any -> None { setClientName(
-                                e.target.value
-                            );}}
+                            onChange={lambda e: Any { setClientName(e.target.value);}}
                             className="form-select"
                         >
                             <option value="">

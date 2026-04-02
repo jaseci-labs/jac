@@ -417,7 +417,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return True;
     }
 
-    def cleanup -> None {
+    def cleanup {
     # Cleanup is handled by the deployment target
     }
 

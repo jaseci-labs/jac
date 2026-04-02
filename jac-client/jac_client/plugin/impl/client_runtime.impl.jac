@@ -515,7 +515,7 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
                     {error.error.message}
                 </pre>
                 <button
-                    onClick={lambda -> None { error.resetErrorBoundary();}}
+                    onClick={lambda { error.resetErrorBoundary();}}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",
@@ -891,7 +891,7 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type="checkbox"
                             checked={isVisible}
-                            onChange={lambda e: any -> None { setPasswordVisible(
+                            onChange={lambda e: any { setPasswordVisible(
                                 lambda prev: any -> dict { newState = Object.assign(
                                     {}, prev
                                 );newState[fieldName] = not isVisible;return newState; }
@@ -1052,7 +1052,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     window.addEventListener(
         "error",
-        lambda event: Any -> None { __jacReportError(
+        lambda event: Any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -1062,7 +1062,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any -> None { reason = event.reason;message = "";stack = "";if reason {
+        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
             message = reason.message or str(reason);
             stack = reason.stack or "";
         } else {

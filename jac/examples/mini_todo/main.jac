@@ -25,7 +25,7 @@ cl def:pub app -> JsxElement {
         todos = await get_todos();
     }
 
-    async def add -> None {
+    async def add {
         if text.strip() {
             todo = await add_todo(text.strip());
             todos = todos + [todo];
@@ -37,8 +37,8 @@ cl def:pub app -> JsxElement {
         <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent -> None { text = e.target.value;}}
-                onKeyPress={lambda e: KeyboardEvent -> None { if e.key == "Enter" {
+                onChange={lambda e: ChangeEvent { text = e.target.value;}}
+                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                     add();
                 }}}
                 placeholder="Add a todo..."

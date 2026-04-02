@@ -204,7 +204,7 @@ obj CodeGenTarget {
     }
 
     @doc_ir.setter
-    def doc_ir(value: Doc) -> None {
+    def doc_ir(value: Doc) {
         self._doc_ir = value;
     }
 }
@@ -269,16 +269,16 @@ obj CodeLocInfo {
         return self.last_tok;
     }
 
-    def update_token_range(first_tok: Token, last_tok: Token) -> None {
+    def update_token_range(first_tok: Token, last_tok: Token) {
         self.first_tok = first_tok;
         self.last_tok = last_tok;
     }
 
-    def update_first_token(first_tok: Token) -> None {
+    def update_first_token(first_tok: Token) {
         self.first_tok = first_tok;
     }
 
-    def update_last_token(last_tok: Token) -> None {
+    def update_last_token(last_tok: Token) {
         self.last_tok = last_tok;
     }
 

@@ -1326,7 +1326,7 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     # so the formatter places comments correctly relative to the signature
     old_first_tok = old_spec.loc.first_tok;
     old_last_tok = old_spec.loc.last_tok;
-    def _fix_token_positions(nd: uni.UniNode) -> None {
+    def _fix_token_positions(nd: uni.UniNode) {
         if isinstance(nd, uni.Token) {
             nd.orig_src = old_first_tok.orig_src;
             nd.line_no = old_first_tok.line_no;
@@ -1898,7 +1898,44 @@ impl JacAutoLintPass._check_unnecessary_none_return(
     }
     # If body has no return statements, -> None is unnecessary
     if not self._body_has_return_stmt(body) {
-        self.emit(W3037, node_override=sig.return_type, name=name);
+        if not self.emit(W3037, node_override=sig.return_type, name=name) {
+            return;
+        }
+        if self.report_only {
+            return;
+        }
+        # Auto-fix: remove '-> None' from FuncSignature
+        sig.return_type = None;
+        new_kid: list[uni.UniNode] = [];
+        skip_next = False;
+        for kid in sig.kid {
+            if isinstance(kid, uni.Token) and kid.name == Tok.RETURN_HINT {
+                skip_next = True;
+                continue;
+            }
+            if skip_next {
+                skip_next = False;
+                continue;
+            }
+            new_kid.append(kid);
+        }
+        if len(new_kid) > 0 {
+            sig.set_kids(nodes=new_kid);
+        } else {
+            # Signature had only -> None (no params): remove it entirely.
+            # All downstream passes (pyast_gen, esast_gen, unparse, normalize,
+            # doc_ir_gen) already guard .signature access with None/isinstance checks.
+            if isinstance(nd, uni.LambdaExpr) {
+                nd.signature = None;
+            } elif isinstance(nd, uni.Ability) {
+                nd.signature = None;
+            }
+            nd.kid = [
+                k
+                for k in nd.kid
+                if k is not sig
+            ];
+        }
     }
 }
 

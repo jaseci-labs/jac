@@ -21,7 +21,7 @@ impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> No
     self._server = server;
 
     # Register the dynamic handler via the public API in jaclang's scheduler.
-    def _dynamic_handler(task: Any) -> None {
+    def _dynamic_handler(task: Any) {
         self._execute_task(task.name, self._system_username, task.is_walker);
     }
     Scheduler.instance().dynamic_handler = _dynamic_handler;
@@ -81,7 +81,7 @@ impl JacScaleScheduler.register_static_tasks(
     base_scheduler = Scheduler.instance();
 
     def _make_target(_name: str, _is_walker: bool) -> Any {
-        def target -> None {
+        def target {
             self._execute_task(_name, self._system_username, _is_walker);
         }
         return target;
@@ -327,7 +327,7 @@ impl JacScaleScheduler._execute_task(
         target = registry[name];
         logger.debug(f"Executing scheduled {label} '{name}' as '{username}'");
 
-        async def _run -> None {
+        async def _run {
             if is_walker {
                 result = await self._server.execution_manager.spawn_walker(
                     target, {}, username
@@ -374,7 +374,7 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         raise RuntimeError("APScheduler is not initialized");
     }
 
-    def job_func -> None {
+    def job_func {
         self._execute_task(name, username, is_walker);
     }
 

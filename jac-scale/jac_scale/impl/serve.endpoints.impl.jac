@@ -474,7 +474,7 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
         if walker_cls?.restspec and walker_cls.restspec
         else None;
     is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
-    async def websocket_handler(websocket: WebSocket) -> None {
+    async def websocket_handler(websocket: WebSocket) {
         await ws_manager.connect(websocket, walker_name);
         try {
             while True {

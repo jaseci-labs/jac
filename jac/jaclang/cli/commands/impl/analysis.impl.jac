@@ -29,7 +29,7 @@ impl check(
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
     # Helper to process and store single file result
-    def process_file_result(file_path: str, idx: int, total: int) -> None {
+    def process_file_result(file_path: str, idx: int, total: int) {
         nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
