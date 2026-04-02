@@ -931,7 +931,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             call_meta['jac_username'] = username;
             kwargs['metadata'] = call_meta;
             # Inject per-provider API key if admin has configured one
-            if _active_provider_keys and 'api_key' not in kwargs {
+            if _active_provider_keys and not kwargs.get('api_key') {
                 try {
                     provider_key = kwargs.get('model', '') or (args[0] if args else '');
                     provider = litellm.get_llm_provider(provider_key)[1];
@@ -1026,7 +1026,7 @@ impl JacAPIServerLLMLimits.register_llm_limits_endpoints -> None {
             call_meta['jac_username'] = username;
             kwargs['metadata'] = call_meta;
             # Inject per-provider API key if admin has configured one
-            if _active_provider_keys and 'api_key' not in kwargs {
+            if _active_provider_keys and not kwargs.get('api_key') {
                 try {
                     provider_key = kwargs.get('model', '') or (args[0] if args else '');
                     provider = litellm.get_llm_provider(provider_key)[1];
