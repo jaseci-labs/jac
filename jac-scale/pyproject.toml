@@ -37,7 +37,7 @@ include = ["jac_scale*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.toml", "*.css"]
-jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template"]
+jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template", "admin/_dist/**"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

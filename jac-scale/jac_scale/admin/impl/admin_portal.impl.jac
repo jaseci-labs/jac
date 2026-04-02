@@ -1162,10 +1162,16 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
     return summary;
 }
 
-"""Get the admin dist directory path - in the running app's .jac folder."""
+"""Get the admin dist directory path - prefer pre-built assets shipped with the package."""
 impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
     import os;
-    # Use the current working directory (where the app is being run from)
+    # First check for pre-built assets shipped with the package
+    import from jac_scale.admin { admin_portal }
+    prebuilt_dir = Path(admin_portal.__file__).parent / "_dist";
+    if (prebuilt_dir / "index.html").exists() {
+        return prebuilt_dir;
+    }
+    # Fall back to runtime build location
     cwd = Path(os.getcwd());
     return cwd / ".jac" / "admin";
 }
