@@ -209,13 +209,6 @@ impl JacAPIServerCore.start(
             }
         }
     }
-    server_config = get_scale_config().get_server_config();
-    if server_config.get('docs_enabled', True) {
-        self.server.app.docs_url = "/docs";
-        self.server.app.openapi_url = "/openapi.json";
-        self.server.app.redoc_url = "/redoc";
-        self.server.app.setup();
-    }
     self._register_endpoints();
     if dev {
         # Add middleware to refresh endpoints on HMR file changes

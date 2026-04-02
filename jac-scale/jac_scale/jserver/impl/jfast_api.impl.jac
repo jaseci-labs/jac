@@ -840,7 +840,17 @@ impl JFastApiServer.init(
     app: (FastAPI | None) = None
 ) -> None {
     super.init((endpoints or []));
-    self.app = app or FastAPI(docs_url=None, redoc_url=None, openapi_url=None);
+    if app is None {
+        import from jac_scale.config_loader { get_scale_config }
+        server_config = get_scale_config().get_server_config();
+        if server_config.get('docs_enabled', True) {
+            self.app = FastAPI();
+        } else {
+            self.app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None);
+        }
+    } else {
+        self.app = app;
+    }
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
 
