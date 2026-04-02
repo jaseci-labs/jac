@@ -1,12 +1,14 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.9 (Unreleased)
+## jac-mcp 0.1.10 (Unreleased)
+
+## jac-mcp 0.1.9 (Latest Release)
 
 - 1 small refactor/change.
 - **Knowledge map tools**: `understand_jac_and_jaseci` and `get_resource` tools for on-demand doc fetching with size-tagged URIs, expanded fullstack coverage, enum-validated example categories, and leaner tool/server descriptions.
 - **Client-side and full-stack pitfalls**: Added new pitfalls documentation covering client-side `.cl.jac` and full-stack gotchas.
 
-## jac-mcp 0.1.8 (Latest Release)
+## jac-mcp 0.1.8
 
 - **Full CLI access over MCP**: AI models can now discover and run any `jac` CLI command (including plugin-provided ones) directly from the MCP session. `list_commands` returns a lightweight summary; `get_command(name)` returns full argument details; `execute_command` runs them. Replaces the narrower `start_server`, `create_project`, and `list_templates` tools.
 

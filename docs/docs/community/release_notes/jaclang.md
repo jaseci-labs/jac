@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.4 (Unreleased)
+## jaclang 0.13.5 (Unreleased)
+
+## jaclang 0.13.4 (Latest Release)
 
 - **Native: Lambda Expressions**: Added lambda expression support in the `na` (native LLVM) codespace. Lambdas compile to anonymous LLVM IR functions returned as function pointers. Leverages the existing indirect function pointer call infrastructure for invocation.
 - **Type Checker: Expression-Based CFG Narrowing for Dotted Paths**: The type checker now narrows dotted attribute expressions (e.g., `obj.field`) through the CFG backward walk, not just simple variable names. Patterns like `if obj.speed is None { obj.speed = 0; } return obj.speed;` now correctly resolve `obj.speed` to `int` instead of `int | None`. Introduced `NarrowingTarget` abstraction to generalize the CFG narrowing pipeline for both symbols and expression keys, extended `affected_symbols` to track dotted paths, and removed scope-based narrowing for dotted paths in favor of the more precise CFG analysis that accounts for assignments inside branches.
@@ -22,7 +24,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Cleanup: Remove Outdated `__specs__` from littleX Examples**: Removed deprecated `obj __specs__ { static has auth: bool = False; }` blocks from `load_user_profiles` walker in both `littleX.jac` and `littleX_single.jac`.
 - **ES Codegen: `jid()` Moved to Client Runtime**: `jid()` is now a proper runtime function (`_jac.builtin.jid()`) instead of an inline property access (`x._jac_id`). This provides clear, actionable error messages when called on `null` (e.g. server returned an error) or non-node objects, with stack traces pointing to the `.jac` source line. The `assert_no_jac_keywords` test was also improved to strip string literals before scanning, preventing false positives from English words in error messages.
 
-## jaclang 0.13.3 (Latest Release)
+## jaclang 0.13.3
 
 - **ES Codegen: `jid()` Builtin for Unified Node Identity**: Added `jid()` as a builtin function in the ES codegen, providing a consistent API for accessing node identity across both server and client code. On the client side, `jid(node)` emits `node._jac_id` in the generated JavaScript. The previous implicit `.id` alias (`this.id = this._jac_id`) on generated node class constructors has been removed in favor of the explicit `jid()` call.
 - **Fix: Windows Client Bundle Compilation**: Fixed client bundle compilation failing on Windows with `Client function 'app' not found` error. Added cross-platform path normalization for module hub lookups to handle Windows case-insensitivity and path separator differences. Extracted helper functions to the client bundle module for consistent path handling across the bundle builder and module introspector. The ES pass is now explicitly triggered when generated JavaScript is empty, ensuring code generation completes on Windows where the pass may be skipped during initial compilation due to re-entrancy guards.
