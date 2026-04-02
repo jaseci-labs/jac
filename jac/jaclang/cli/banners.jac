@@ -16,7 +16,7 @@ glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |
     Args:
         version: Jac version string
     """
-def print_version_banner(version: str) -> None {
+def print_version_banner(version: str) {
     python_version = f"Python {sys.version.split()[0]}";
     platform_info = platform.platform();
     if (platform.system() == 'Linux') {
@@ -66,7 +66,7 @@ def print_version_banner(version: str) -> None {
     Args:
         mode: Server mode (development, production, etc.)
     """
-def print_startup_header(mode: str = 'development') -> None {
+def print_startup_header(mode: str = 'development') {
     console.print('\n  JAC DEV SERVER', style='bold cyan');
     console.print();
 }
@@ -76,6 +76,6 @@ def print_startup_header(mode: str = 'development') -> None {
     Args:
         message: Message to display
     """
-def print_celebration(message: str = 'Happy coding!') -> None {
+def print_celebration(message: str = 'Happy coding!') {
     console.print(f"🚀 {message}", style='bold green');
 }

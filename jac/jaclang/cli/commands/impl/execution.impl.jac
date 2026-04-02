@@ -90,13 +90,19 @@ impl run(
     main: bool = True,
     cache: bool = True,
     autonative: bool = False,
-    show_errors: bool = False,
+    diagnostics: str = "",
     args: list = []
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.project.config { get_config }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
+    # Resolve diagnostics level: CLI flag > jac.toml > default ("error")
+    if not diagnostics {
+        cfg = get_config();
+        diagnostics = cfg.run.diagnostics if cfg else "error";
+    }
     # Set sys.argv so the script can access arguments via sys.argv[1:]
     original_argv = sys.argv;
     sys.argv = [filename] + list(args);
@@ -182,38 +188,37 @@ impl run(
             );
         }
     } except Exception as e {
-        if Jac.program.errors_had {
-            for error in Jac.program.errors_had {
-                console.error(error.pretty_print());
+        if diagnostics != "none" {
+            if Jac.program.errors_had {
+                for error in Jac.program.errors_had {
+                    console.error(error.pretty_print());
+                }
+            } else {
+                import from jaclang.jac0core.helpers { dump_traceback }
+                console.error(dump_traceback(e));
             }
-        } else {
-            import from jaclang.jac0core.helpers { dump_traceback }
-            console.error(dump_traceback(e));
         }
         sys.argv = original_argv;
         mach.close();
-        return 1;
+        return 1 if diagnostics != "none" else 0;
     }
     n_errors = len(Jac.program.errors_had);
     n_warnings = len(Jac.program.warnings_had);
-    if show_errors {
-        for error in Jac.program.errors_had {
-            console.error(error.pretty_print());
+    if diagnostics != "none" {
+        if n_errors {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print());
+            }
         }
-        for warning in Jac.program.warnings_had {
-            console.warning(f"{warning}");
+        if diagnostics == "all" and n_warnings {
+            for warning in Jac.program.warnings_had {
+                console.warning(f"{warning}");
+            }
         }
-    }
-    if n_errors or n_warnings {
-        console.print(
-            f"\n{n_errors} error(s), {n_warnings} warning(s) "
-            f"[diagnostics from first compile, cached for subsequent runs]",
-            style="dim"
-        );
     }
     sys.argv = original_argv;
     mach.close();
-    return 0;
+    return 1 if (n_errors and diagnostics != "none") else 0;
 }
 
 """Run the specified entrypoint function in the given .jac file."""
@@ -503,7 +508,7 @@ def _count_jac_files(directory: str) -> int {
 """Print startup message based on mode."""
 def _print_startup_message(
     dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
-) -> None {
+) {
     import from importlib.metadata { version as pkg_version }
 
     # Print header

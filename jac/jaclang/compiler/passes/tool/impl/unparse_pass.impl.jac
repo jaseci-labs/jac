@@ -499,7 +499,7 @@ impl UnparsePass.exit_param_var(nd: uni.ParamVar) -> None {
     }
     result = result + nd.name.gen.jac;
     if nd.type_tag {
-        result = result + " " + nd.type_tag.gen.jac;
+        result = result + nd.type_tag.gen.jac;
     }
     if nd.value {
         result = result + " = " + nd.value.gen.jac;
@@ -525,7 +525,7 @@ impl UnparsePass.exit_arch_has(nd: uni.ArchHas) -> None {
 impl UnparsePass.exit_has_var(nd: uni.HasVar) -> None {
     result = nd.name.gen.jac;
     if nd.type_tag {
-        result = result + " " + nd.type_tag.gen.jac;
+        result = result + nd.type_tag.gen.jac;
     }
     if nd.value {
         result = result + " = " + nd.value.gen.jac;

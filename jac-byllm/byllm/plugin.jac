@@ -1,7 +1,7 @@
 """Plugin for Jac's with_llm feature."""
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING }
-import from jaclang.jac0core.runtime { hookimpl, JacRuntime as Jac }
+import from jaclang.jac0core.runtime { hookimpl, LLMModel, JacRuntime as Jac }
 import from jaclang.jac0core.mtp { Info }
 import inspect;
 import sys;
@@ -123,7 +123,7 @@ class JacRuntime {
 
     """Return a configured Model from jac.toml for the builtin llm."""
     @hookimpl
-    static def default_llm -> object {
+    static def default_llm -> LLMModel {
         _cache = getattr(JacRuntime, '_cached_default_llm', None);
         if (_cache is not None) {
             return _cache;

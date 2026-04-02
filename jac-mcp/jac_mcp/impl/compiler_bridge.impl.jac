@@ -19,7 +19,7 @@ def _extract_error_info(alert: object) -> dict[str, Any] {
 impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     result_holder: list = [None];
     error_holder: list = [None];
-    def _worker -> None {
+    def _worker {
         try {
             result_holder[0] = func();
         } except Exception as e {

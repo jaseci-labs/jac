@@ -4,6 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.11 (Unreleased)
 
+- **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
+- **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
+- 2 small refactors/changes.
+
+## jac-client 0.3.8 (Latest Release)
+
+- **Auto-install Bun to .jac/bin/**: Bun is now automatically downloaded and managed inside the project's `.jac/bin/` directory when not found on the system PATH. No global install required, no interactive prompts, no PATH configuration needed. All callers resolve the bun binary via `get_bun()` which returns the absolute path directly, bypassing PATH entirely. Pinned to Bun v1.3.11 with automatic upgrades when the pinned version changes.
+
 ## jac-client 0.3.10 (Latest Release)
 
 - **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs`, `/redoc`, `/openapi.json`, `/admin`, and `/graph` to the API backend, so developers can access all dev tools from the client URL without switching ports.

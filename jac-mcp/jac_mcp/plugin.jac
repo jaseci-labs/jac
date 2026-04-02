@@ -65,7 +65,7 @@ def mcp_cmd(
 class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
-    static def create_cmd -> None {
+    static def create_cmd {
         """Register mcp command pre-hook.""";
         registry = get_registry();
         registry.extend_command(
@@ -112,7 +112,7 @@ def _handle_mcp_cmd(ctx: object) -> None {
 }
 
 """Print inventory of available resources, tools, and prompts."""
-def _print_inspect -> None {
+def _print_inspect {
     import from jac_mcp.resources { ResourceProvider }
     import from jac_mcp.tools { ToolProvider }
     import from jac_mcp.prompts { PromptProvider }

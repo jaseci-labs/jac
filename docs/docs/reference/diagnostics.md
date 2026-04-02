@@ -37,7 +37,7 @@ Use `jac.toml` to suppress diagnostics project-wide. See the [Configuration](con
 ### CLI Flags
 
 - `--nowarn` on `jac check` suppresses all warnings (errors are still shown)
-- `-e` / `--show-errors` on `jac run` displays type check errors and warnings after execution (by default, only a summary count is shown)
+- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- fail on errors with full details), `all` (errors + warnings), or `none` (silent)
 
 ---
 

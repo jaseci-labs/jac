@@ -603,3 +603,28 @@ impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
         self.l3.sync();
     }
 }
+
+"""Batch get: check L1, then load L3 misses, promote all to L1/L2."""
+impl TieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
+    result: dict[UUID, Anchor] = {};
+    missing_ids: list[UUID] = [];
+    for id in ids {
+        if (anchor := self.__mem__.get(id)) {
+            result[id] = anchor;
+        } else {
+            missing_ids.append(id);
+        }
+    }
+    if missing_ids and self.l3 {
+        for mid in missing_ids {
+            if (anchor := self.l3.get(mid)) {
+                self.__mem__[anchor.id] = anchor;
+                if self.l2 {
+                    self.l2.put(anchor);
+                }
+                result[anchor.id] = anchor;
+            }
+        }
+    }
+    return result;
+}

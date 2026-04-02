@@ -31,10 +31,17 @@ description = "Test PWA project"
 entry-point = "main.jac"
 
 [dependencies.npm]
-jac-client-node = "1.0.7"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "2.0.0"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
 
 {pwa_section}
 ''';

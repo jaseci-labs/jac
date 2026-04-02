@@ -29,7 +29,7 @@ impl check(
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
     # Helper to process and store single file result
-    def process_file_result(file_path: str, idx: int, total: int) -> None {
+    def process_file_result(file_path: str, idx: int, total: int) {
         nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
@@ -165,6 +165,9 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
         try {
             prog = JacProgram.jac_file_linter(str(path_obj));
             error_count = 0;
+            for warning in prog.warnings_had {
+                console.warning(f"{warning}");
+            }
             for error in prog.errors_had {
                 console.error(f"{error}");
                 error_count += 1;

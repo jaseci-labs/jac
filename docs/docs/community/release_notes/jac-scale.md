@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.12 (Unreleased)
 
 - **Configurable MongoDB PVC Storage Size**: MongoDB persistent volume storage size is now configurable via `mongodb_storage_size` in `jac.toml` (default: `1Gi`). Increasing the size on redeploy is supported and automatically patched onto the existing PVC without affecting stored data. Decreasing the size is blocked with an explicit error to prevent data loss.
+- **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- 2 small refactors/changes.
 
 ## jac-scale 0.2.11 (Latest Release)
 

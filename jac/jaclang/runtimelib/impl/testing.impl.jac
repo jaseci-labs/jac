@@ -206,7 +206,7 @@ impl JacTestClient._execute_request(
     server_ref = self._server;
     handler_class = self._handler_class;
     class MockHandler(handler_class) {
-        def init(mock_self: MockHandler) -> None {
+        def init(mock_self: MockHandler) {
             # Set up mock attributes without calling parent __init__
             mock_self.rfile = io.BytesIO(body or b"");
             mock_self.wfile = wfile;
@@ -221,7 +221,7 @@ impl JacTestClient._execute_request(
             mock_self.requestline = f"{method} {path} HTTP/1.1";
         }
 
-        def log_message(mock_self: MockHandler, format: str, *args: Any) -> None {
+        def log_message(mock_self: MockHandler, format: str, *args: Any) {
             # Suppress logging during tests
             ;
         }
@@ -297,9 +297,9 @@ impl JacTestClient.reload -> None {
         class MockWatcher {
             has additional_patterns: list[str] = [];
 
-            def add_callback(cb: Any) -> None { }
-            def start -> None { }
-            def stop -> None { }
+            def add_callback(cb: Any) { }
+            def start { }
+            def stop { }
         }
         mock_watcher = MockWatcher();
         self._hot_reloader = HotReloader(

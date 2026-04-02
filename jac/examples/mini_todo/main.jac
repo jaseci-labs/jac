@@ -10,22 +10,22 @@ def categorize(title: str) -> Category by llm();
 
 def:pub add_todo(title: str) -> Todo {
     category = str(categorize(title)).split(".")[-1].lower();
-    return (root ++> Todo(title=title, category=category))[0];
+    return (root() ++> Todo(title=title, category=category))[0];
 }
 
 def:pub get_todos -> list[Todo] {
-    return [root-->][?:Todo];
+    return [root()-->][?:Todo];
 }
 
 cl def:pub app -> JsxElement {
-    has todos: list = [],
+    has todos: list[Todo] = [],
         text: str = "";
 
     async can with entry {
         todos = await get_todos();
     }
 
-    async def add -> None {
+    async def add {
         if text.strip() {
             todo = await add_todo(text.strip());
             todos = todos + [todo];
@@ -37,8 +37,8 @@ cl def:pub app -> JsxElement {
         <div>
             <input
                 value={text}
-                onChange={lambda e: any  -> None { text = e.target.value;}}
-                onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                onChange={lambda e: ChangeEvent { text = e.target.value;}}
+                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                     add();
                 }}}
                 placeholder="Add a todo..."

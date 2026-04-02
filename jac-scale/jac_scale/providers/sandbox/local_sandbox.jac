@@ -101,7 +101,7 @@ obj LocalSandbox(SandboxEnvironment) {
         return full;
     }
 
-    def _kill_port_listeners(port: int) -> None {
+    def _kill_port_listeners(port: int) {
         try {
             result = subprocess.run(
                 f"lsof -i :{port} -t",
@@ -128,7 +128,7 @@ obj LocalSandbox(SandboxEnvironment) {
         }
     }
 
-    def _stop_process(rec: dict) -> None {
+    def _stop_process(rec: dict) {
         log_file = rec.get("log_file");
         if log_file {
             try {
@@ -437,7 +437,7 @@ obj LocalSandbox(SandboxEnvironment) {
         return SandboxStatus(state=SandboxState.STOPPED, sandbox_id=sandbox_id);
     }
 
-    def destroy(sandbox_id: str) -> None {
+    def destroy(sandbox_id: str) {
         self.stop(sandbox_id);
         self._lock.acquire();
         try {
