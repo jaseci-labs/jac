@@ -165,7 +165,36 @@ class JacScalePluginConfig {
                                 }
                             }
                         },
-
+                        "min_replicas": {
+                            "type": "int",
+                            "default": 1,
+                            "description": "Minimum number of pod replicas for HPA"
+                        },
+                        "max_replicas": {
+                            "type": "int",
+                            "default": 3,
+                            "description": "Maximum number of pod replicas for HPA"
+                        },
+                        "cpu_utilization_target": {
+                            "type": "int",
+                            "default": 70,
+                            "description": "Target average CPU utilization percentage for HPA scaling"
+                        },
+                        "memory_utilization_target": {
+                            "type": "int",
+                            "default": 70,
+                            "description": "Target average memory utilization percentage for HPA scaling"
+                        },
+                        "scale_up_stabilization_window": {
+                            "type": "int",
+                            "default": 60,
+                            "description": "Seconds to wait before scaling up to avoid reacting to short spikes"
+                        },
+                        "scale_down_stabilization_window": {
+                            "type": "int",
+                            "default": 300,
+                            "description": "Seconds to wait before scaling down to avoid premature replica removal"
+                        }
                     }
                 },
                 "secrets": {

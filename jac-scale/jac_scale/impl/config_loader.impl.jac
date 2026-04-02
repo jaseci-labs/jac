@@ -65,7 +65,39 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'readiness_period': 20,
             'liveness_initial_delay': 10,
             'liveness_period': 20,
-            'liveness_failure_threshold': 80
+            'liveness_failure_threshold': 80,
+            # HPA configuration
+            'min_replicas': 1,
+            'max_replicas': 3,
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70,
+            'scale_up_stabilization_window': 60,
+            'scale_down_stabilization_window': 300,
+            # Health check
+            'health_check_path': '/docs',
+            # Runtime images
+            'python_image': 'python:3.12-slim',
+            'busybox_image': 'busybox:1.36',
+            'wait_image': 'busybox',
+            # Storage
+            'pvc_size': '5Gi',
+            # Timing
+            'resource_deletion_wait': 5,
+            'aws_nlb_wait': 60,
+            # Paths
+            'app_mount_path': '/app',
+            'code_mount_path': '/code',
+            'workspace_path': '/code/workspace',
+            # Jaseci source
+            'jaseci_repo_url': 'https://github.com/jaseci-labs/jaseci.git',
+            'jaseci_branch': 'main',
+            'jaseci_commit': None,
+            'install_jaseci': True,
+            'additional_packages': [],
+            'plugin_versions': {},
+            # Domain / TLS
+            'domain': '',
+            'cert_manager_email': ''
         },
         'secrets': {},
         'server': {'port': 8000, 'host': '0.0.0.0'},
