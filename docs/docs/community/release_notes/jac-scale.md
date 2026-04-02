@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.13 (Unreleased)
 
+- added jac-mcp to default packages in kubernetes
+
 ## jac-scale 0.2.12 (Latest Release)
 
 - **Pre-built Admin Dashboard**: The admin dashboard UI is now pre-built during the release process and shipped as static assets in the package. Previously, navigating to `/admin/` on first load triggered a full Vite build from source, causing significant lag. The server now copies bundled assets instantly, falling back to source build only in dev mode.
