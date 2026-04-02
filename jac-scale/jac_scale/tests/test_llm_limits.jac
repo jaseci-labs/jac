@@ -258,15 +258,28 @@ test "llm limits delete user limits" {
     }
 }
 
-test "llm limits requires auth" {
+test "llm admin endpoints require auth" {
+    # Every LLM admin endpoint must return 403 when no Authorization header is supplied.
     client = make_client();
     try {
-        # All endpoints should reject without auth
+        assert client.get("/admin/llm/limits/default").status_code == 403;
+        assert client.put(
+            "/admin/llm/limits/default", json={"budget_limit": 5.0}
+        ).status_code == 403;
         assert client.get("/admin/llm/limits").status_code == 403;
         assert client.put(
             "/admin/llm/limits/testuser", json={"budget_limit": 5.0}
         ).status_code == 403;
+        assert client.get("/admin/llm/limits/testuser").status_code == 403;
         assert client.delete("/admin/llm/limits/testuser").status_code == 403;
+        assert client.get("/admin/llm/usage").status_code == 403;
+        assert client.get("/admin/llm/usage/testuser").status_code == 403;
+        assert client.post("/admin/llm/usage/testuser/reset").status_code == 403;
+        assert client.get("/admin/llm/config/provider-keys").status_code == 403;
+        assert client.put(
+            "/admin/llm/config/provider-keys/openai", json={"api_key": "sk-test"}
+        ).status_code == 403;
+        assert client.delete("/admin/llm/config/provider-keys/openai").status_code == 403;
     } finally {
         client.close();
     }
@@ -310,28 +323,48 @@ test "llm usage get user usage" {
     }
 }
 
-test "llm usage reset user usage" {
-    client = make_client();
-    try {
-        token = client.admin_login();
-        response = client.post(
-            "/admin/llm/usage/testuser/reset",
-            headers={"Authorization": f"Bearer {token}"}
-        );
-        assert response.status_code == 200;
-    } finally {
-        client.close();
-    }
-}
+test "llm usage reset clears accumulated spend" {
+    fake = _fake_llm_response(cost=0.005, tokens=50);
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("reset_frank", "Pass123!");
 
-test "llm usage requires auth" {
-    client = make_client();
-    try {
-        assert client.get("/admin/llm/usage").status_code == 403;
-        assert client.get("/admin/llm/usage/testuser").status_code == 403;
-        assert client.post("/admin/llm/usage/testuser/reset").status_code == 403;
-    } finally {
-        client.close();
+            # Accumulate some usage
+            client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+
+            before = extract_data(
+                client.get(
+                    "/admin/llm/usage/reset_frank",
+                    headers={"Authorization": f"Bearer {token}"}
+                ).json()
+            );
+            assert before["total_requests"] >= 1;
+            assert before["total_cost"] >= 0.005;
+
+            # Reset usage
+            client.post(
+                "/admin/llm/usage/reset_frank/reset",
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # Counters must be zeroed
+            after = extract_data(
+                client.get(
+                    "/admin/llm/usage/reset_frank",
+                    headers={"Authorization": f"Bearer {token}"}
+                ).json()
+            );
+            assert after["total_requests"] == 0;
+            assert after["total_cost"] == 0.0;
+        } finally {
+            client.close();
+        }
     }
 }
 
@@ -462,19 +495,6 @@ test "llm provider keys multiple providers independent" {
             "/admin/llm/config/provider-keys/anthropic",
             headers={"Authorization": f"Bearer {token}"}
         );
-    } finally {
-        client.close();
-    }
-}
-
-test "llm provider keys requires auth" {
-    client = make_client();
-    try {
-        assert client.get("/admin/llm/config/provider-keys").status_code == 403;
-        assert client.put(
-            "/admin/llm/config/provider-keys/openai", json={"api_key": "sk-test"}
-        ).status_code == 403;
-        assert client.delete("/admin/llm/config/provider-keys/openai").status_code == 403;
     } finally {
         client.close();
     }
@@ -773,76 +793,6 @@ test "llm enforcement budget limit blocks after spend exceeded" {
 # Streaming Enforcement Tests
 # ============================================================================
 
-test "llm streaming debug" {
-    import sys;
-    # Compare username resolution: streaming vs non-streaming
-    fake_resp = _fake_llm_response(cost=0.002, tokens=30);
-    chunks = _fake_stream_chunks(cost=0.003, tokens=45);
-
-    captured_users: list = [];
-    def mock_capture(*args: Any, **kwargs: Any) -> Any {
-        import sys;
-        # Check all possible module keys for llm_limits
-        llm_mods: Any = {k: sys.modules[k] for k in list(sys.modules.keys()) if 'llm_limits' in k};
-        for (mk, mod) in llm_mods.items() {
-            cru = getattr(mod, 'current_request_user', None);
-            if cru is not None {
-                u = cru.get();
-                captured_users.append(("stream=" + str(kwargs.get("stream", False)), mk, u));
-            }
-        }
-        if not llm_mods {
-            captured_users.append(("stream=" + str(kwargs.get("stream", False)), "(no_mod)", "(no_var)"));
-        }
-        if kwargs.get("stream") {
-            return iter(chunks);
-        }
-        return fake_resp;
-    }
-
-    with unittest.mock.patch("litellm.completion", mock_capture) {
-        client = make_client();
-        try {
-            token = client.admin_login();
-            (_, u1) = client.register_user("ns_user2", "Pass123!");
-            (_, u2) = client.register_user("st_user2", "Pass123!");
-
-            # Check if serve.endpoints can import current_request_user
-            import sys;
-            try {
-                import from jac_scale.admin.impl.llm_limits { current_request_user as cru_test }
-                sys.stderr.write(f"[DEBUG] import from impl path OK: id={id(cru_test)}\n");
-            } except Exception as imp_err {
-                sys.stderr.write(f"[DEBUG] import from impl path FAILED: {imp_err}\n");
-            }
-            try {
-                import from jac_scale.admin.llm_limits { current_request_user as cru_test2 }
-                sys.stderr.write(f"[DEBUG] import from non-impl path OK: id={id(cru_test2)}\n");
-            } except Exception as imp_err2 {
-                sys.stderr.write(f"[DEBUG] import from non-impl path FAILED: {imp_err2}\n");
-            }
-
-            client.post("/walker/CallLlm",
-                json={"model": "gpt-4o-mini"},
-                headers={"Authorization": f"Bearer {u1}"});
-            client.post("/walker/CallLlmStream",
-                json={"model": "gpt-4o-mini"},
-                headers={"Authorization": f"Bearer {u2}"});
-
-            sys.stderr.write(f"[DEBUG] captured users in wrapper: {captured_users}\n");
-
-            ns_usage = client.get("/admin/llm/usage/ns_user2", headers={"Authorization": f"Bearer {token}"}).json();
-            st_usage = client.get("/admin/llm/usage/st_user2", headers={"Authorization": f"Bearer {token}"}).json();
-            anon_usage = client.get("/admin/llm/usage/__anonymous__", headers={"Authorization": f"Bearer {token}"}).json();
-            sys.stderr.write(f"[DEBUG] ns_user usage: {ns_usage.get('data',{}).get('total_requests')}\n");
-            sys.stderr.write(f"[DEBUG] st_user usage: {st_usage.get('data',{}).get('total_requests')}\n");
-            sys.stderr.write(f"[DEBUG] __anonymous__ usage: {anon_usage.get('data',{}).get('total_requests')}\n");
-        } finally {
-            client.close();
-        }
-    }
-}
-
 test "llm streaming usage recorded after generator consumed" {
     # The mock returns an iterable of chunks; the wrapper must consume the
     # generator fully and then record cost + tokens in the store.
@@ -1025,5 +975,174 @@ test "llm streaming include_usage injected into kwargs" {
         } finally {
             client.close();
         }
+    }
+}
+
+# ============================================================================
+# Enforcement Edge Cases
+# ============================================================================
+
+test "llm enforcement enabled false bypasses enforcement" {
+    # When a user's limits have enabled=False, all enforcement checks are
+    # skipped regardless of how restrictive the other settings are.
+    fake = _fake_llm_response();
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("disabled_user", "Pass123!");
+
+            # Limits that would block the call if enabled: tight budget, rpm=1,
+            # and gpt-4o-mini excluded from the allowed model list.
+            client.put(
+                "/admin/llm/limits/disabled_user",
+                json={
+                    "budget_limit": 0.0001,
+                    "budget_period": "monthly",
+                    "rpm_limit": 1,
+                    "tpm_limit": 1,
+                    "allowed_models": ["gpt-4o"],
+                    "enabled": False
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # Should pass because enabled=False skips all enforcement checks.
+            resp = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert resp.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+test "llm enforcement budget auto-resets after period expires" {
+    # When check_limits finds that budget_reset_at is in the past it must
+    # reset the usage counters and allow the call through.
+    fake = _fake_llm_response(cost=0.005, tokens=30);
+
+    with unittest.mock.patch("litellm.completion", return_value=fake) {
+        client = make_client();
+        try {
+            token = client.admin_login();
+            (_, user_token) = client.register_user("autoreset_user", "Pass123!");
+
+            # Set a tight budget that will be exceeded on the first call.
+            client.put(
+                "/admin/llm/limits/autoreset_user",
+                json={
+                    "budget_limit": 0.001,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # First call succeeds and records cost=0.005 (exceeds the 0.001 budget).
+            first = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert first.json().get("ok");
+
+            # Second call is blocked (total_cost >= budget_limit).
+            second = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert not second.json().get("ok");
+
+            # Simulate period expiry: update limits with a budget_reset_at in the past.
+            # check_limits will detect this, clear usage, and compute a new reset time.
+            past_reset = "2020-01-01T00:00:00+00:00";
+            client.put(
+                "/admin/llm/limits/autoreset_user",
+                json={
+                    "budget_limit": 0.001,
+                    "budget_period": "monthly",
+                    "rpm_limit": 100,
+                    "tpm_limit": 1000000,
+                    "budget_reset_at": past_reset,
+                    "enabled": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            );
+
+            # Third call must pass — check_limits auto-reset usage before the budget check.
+            third = client.post(
+                "/walker/CallLlm",
+                json={"model": "gpt-4o-mini"},
+                headers={"Authorization": f"Bearer {user_token}"}
+            );
+            assert third.json().get("ok");
+        } finally {
+            client.close();
+        }
+    }
+}
+
+# ============================================================================
+# Provider Key Handler Edge Cases
+# ============================================================================
+
+test "llm provider keys delete nonexistent returns 404" {
+    client = make_client();
+    try {
+        token = client.admin_login();
+        resp = client.delete(
+            "/admin/llm/config/provider-keys/no_such_provider",
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert resp.status_code == 404;
+    } finally {
+        client.close();
+    }
+}
+
+test "llm provider keys set empty api_key returns 400" {
+    client = make_client();
+    try {
+        token = client.admin_login();
+        resp = client.put(
+            "/admin/llm/config/provider-keys/openai",
+            json={"api_key": ""},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert resp.status_code == 400;
+    } finally {
+        client.close();
+    }
+}
+
+test "llm provider keys short key masked as four stars" {
+    # _mask_key returns "****" (no suffix) for keys shorter than 4 characters.
+    client = make_client();
+    try {
+        token = client.admin_login();
+        resp = client.put(
+            "/admin/llm/config/provider-keys/test_provider",
+            json={"api_key": "ab"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert resp.status_code == 200;
+        data = extract_data(resp.json());
+        assert data["masked_key"] == "****";
+
+        # Cleanup
+        client.delete(
+            "/admin/llm/config/provider-keys/test_provider",
+            headers={"Authorization": f"Bearer {token}"}
+        );
+    } finally {
+        client.close();
     }
 }
