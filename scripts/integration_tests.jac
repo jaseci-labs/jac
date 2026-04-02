@@ -246,8 +246,8 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         [
             sys.executable, "-c",
             "from pathlib import Path;"
-            "import jac_scale.admin.admin_portal as m;"
-            "d = Path(m.__file__).parent / '_dist';"
+            "import jac_scale;"
+            "d = Path(jac_scale.__file__).parent / 'admin' / '_dist';"
             "idx = d / 'index.html';"
             "assert d.exists(), f'_dist not found at {d}';"
             "assert idx.exists(), f'index.html not found at {idx}';"
@@ -265,8 +265,8 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         [
             sys.executable, "-c",
             "from pathlib import Path;"
-            "import jac_scale.admin.admin_portal as m;"
-            "idx = Path(m.__file__).parent / '_dist' / 'index.html';"
+            "import jac_scale;"
+            "idx = Path(jac_scale.__file__).parent / 'admin' / '_dist' / 'index.html';"
             "html = idx.read_text();"
             "assert '<html' in html.lower(), 'Not valid HTML';"
             "assert 'script' in html.lower(), 'No script tags (not a Vite build)';"
@@ -287,6 +287,12 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         '        report {"status": "healthy"};\n'
         '    }\n'
         '}\n'
+    );
+    jac_toml = os.path.join(tmpdir, "jac.toml");
+    open(jac_toml, "w").write(
+        '[project]\n'
+        'name = "admin-e2e-test"\n'
+        'version = "0.0.1"\n'
     );
     log_file = os.path.join(tmpdir, "server.log");
     port = 18899;
