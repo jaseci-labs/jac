@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.11 (Unreleased)
 
+- **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
 - **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
 - 2 small refactors/changes.
 
