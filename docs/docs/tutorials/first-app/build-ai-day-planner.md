@@ -720,7 +720,7 @@ The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them i
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: any -> None { task_text = e.target.value; }}
+onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
@@ -787,8 +787,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: any -> None { task_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -846,8 +846,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: any -> None { task_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -981,8 +981,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: any -> None { task_text = e.target.value; }}
-                        onKeyPress={lambda e: any -> None {
+                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                        onKeyPress={lambda e: KeyboardEvent {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1308,8 +1308,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: any -> None { task_text = e.target.value; }}
-                            onKeyPress={lambda e: any -> None {
+                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                            onKeyPress={lambda e: KeyboardEvent {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1345,8 +1345,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: any -> None { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: any -> None {
+                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                            onKeyPress={lambda e: KeyboardEvent {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1602,8 +1602,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <input
                                 class="input"
                                 value={task_text}
-                                onChange={lambda e: any -> None { task_text = e.target.value; }}
-                                onKeyPress={lambda e: any -> None {
+                                onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                                onKeyPress={lambda e: KeyboardEvent {
                                     if e.key == "Enter" { add_new_task(); }
                                 }}
                                 placeholder="What needs to be done today?"
@@ -1639,8 +1639,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <input
                                 class="input"
                                 value={meal_text}
-                                onChange={lambda e: any -> None { meal_text = e.target.value; }}
-                                onKeyPress={lambda e: any -> None {
+                                onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                                onKeyPress={lambda e: KeyboardEvent {
                                     if e.key == "Enter" { generate_meal_list(); }
                                 }}
                                 placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -2019,12 +2019,12 @@ All the complete files are in the collapsible sections below. Create each file, 
         async def handleLogin -> None;
         async def handleSignup -> None;
         def handleLogout -> None;
-        async def handleSubmit(e: any) -> None;
-        def handleTaskKeyPress(e: any) -> None;
+        async def handleSubmit(e: FormEvent) -> None;
+        def handleTaskKeyPress(e: KeyboardEvent) -> None;
         async def fetchShoppingList -> None;
         async def generateList -> None;
         async def clearList -> None;
-        def handleMealKeyPress(e: any) -> None;
+        def handleMealKeyPress(e: KeyboardEvent) -> None;
         def getTotal -> float;
 
         if checkingAuth {
@@ -2055,7 +2055,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={taskText}
-                                    onChange={lambda e: any -> None { taskText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
                                     onKeyPress={handleTaskKeyPress}
                                     placeholder="What needs to be done today?"
                                 />
@@ -2109,7 +2109,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={mealText}
-                                    onChange={lambda e: any -> None { mealText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
                                     onKeyPress={handleMealKeyPress}
                                     placeholder="e.g. 'chicken stir fry for 4'"
                                 />
@@ -2185,7 +2185,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: any -> None { username = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2195,7 +2195,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: any -> None { password = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2305,13 +2305,13 @@ All the complete files are in the collapsible sections below. Create each file, 
         ingredients = [];
     }
 
-    impl app.handleSubmit(e: any) -> None {
+    impl app.handleSubmit(e: FormEvent) -> None {
         e.preventDefault();
         if isSignup { await handleSignup(); }
         else { await handleLogin(); }
     }
 
-    impl app.handleTaskKeyPress(e: any) -> None {
+    impl app.handleTaskKeyPress(e: KeyboardEvent) -> None {
         if e.key == "Enter" { addTask(); }
     }
 
@@ -2332,7 +2332,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         mealText = "";
     }
 
-    impl app.handleMealKeyPress(e: any) -> None {
+    impl app.handleMealKeyPress(e: KeyboardEvent) -> None {
         if e.key == "Enter" { generateList(); }
     }
 
@@ -2977,12 +2977,12 @@ All the complete files are in the collapsible sections below. Create each file, 
         async def handleLogin -> None;
         async def handleSignup -> None;
         def handleLogout -> None;
-        async def handleSubmit(e: any) -> None;
-        def handleTaskKeyPress(e: any) -> None;
+        async def handleSubmit(e: FormEvent) -> None;
+        def handleTaskKeyPress(e: KeyboardEvent) -> None;
         async def fetchShoppingList -> None;
         async def generateList -> None;
         async def clearList -> None;
-        def handleMealKeyPress(e: any) -> None;
+        def handleMealKeyPress(e: KeyboardEvent) -> None;
         def getTotal -> float;
 
         if checkingAuth {
@@ -3013,7 +3013,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={taskText}
-                                    onChange={lambda e: any -> None { taskText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
                                     onKeyPress={handleTaskKeyPress}
                                     placeholder="What needs to be done today?"
                                 />
@@ -3067,7 +3067,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={mealText}
-                                    onChange={lambda e: any -> None { mealText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
                                     onKeyPress={handleMealKeyPress}
                                     placeholder="e.g. 'chicken stir fry for 4'"
                                 />
@@ -3143,7 +3143,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: any -> None { username = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -3153,7 +3153,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: any -> None { password = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -3265,13 +3265,13 @@ All the complete files are in the collapsible sections below. Create each file, 
         ingredients = [];
     }
 
-    impl app.handleSubmit(e: any) -> None {
+    impl app.handleSubmit(e: FormEvent) -> None {
         e.preventDefault();
         if isSignup { await handleSignup(); }
         else { await handleLogin(); }
     }
 
-    impl app.handleTaskKeyPress(e: any) -> None {
+    impl app.handleTaskKeyPress(e: KeyboardEvent) -> None {
         if e.key == "Enter" { addTask(); }
     }
 
@@ -3294,7 +3294,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         mealText = "";
     }
 
-    impl app.handleMealKeyPress(e: any) -> None {
+    impl app.handleMealKeyPress(e: KeyboardEvent) -> None {
         if e.key == "Enter" { generateList(); }
     }
 

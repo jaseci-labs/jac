@@ -59,12 +59,12 @@ cl {
         return <form>
             <input
                 value={name}
-                onChange={lambda e: any -> None { name = e.target.value; }}
+                onChange={lambda e: ChangeEvent { name = e.target.value; }}
                 placeholder="Name"
             />
             <input
                 value={email}
-                onChange={lambda e: any -> None { email = e.target.value; }}
+                onChange={lambda e: ChangeEvent { email = e.target.value; }}
                 placeholder="Email"
             />
             <button
@@ -102,7 +102,7 @@ cl {
         return <div>
             <input
                 value={input_text}
-                onChange={lambda e: any -> None { input_text = e.target.value; }}
+                onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
             />
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
 
@@ -179,7 +179,7 @@ cl {
         return <div>
             <input
                 value={query}
-                onChange={lambda e: any -> None { query = e.target.value; }}
+                onChange={lambda e: ChangeEvent { query = e.target.value; }}
             />
             <ul>
                 {[<li>{r}</li> for r in results]}
@@ -407,7 +407,7 @@ cl {
         return <form>
             <input
                 value={form_data["name"]}
-                onChange={lambda e: any -> None { update_field("name", e.target.value); }}
+                onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
         </form>;

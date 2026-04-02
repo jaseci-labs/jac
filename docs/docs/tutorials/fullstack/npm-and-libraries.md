@@ -189,7 +189,7 @@ def:pub SearchBox() -> JsxElement {
         <input
             ref={inputRef}
             value={query}
-            onChange={lambda e: any -> None { query = e.target.value; }}
+            onChange={lambda e: ChangeEvent { query = e.target.value; }}
         />
         <ul>{[<li key={r.id}>{r.title}</li> for r in results]}</ul>
     </div>;

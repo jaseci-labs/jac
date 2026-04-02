@@ -161,11 +161,11 @@ node Task {
 
 # Server: return typed objects directly
 def:pub get_tasks -> list[Task] {
-    return [root-->][?:Task];
+    return [root()-->][?:Task];
 }
 
 def:pub create_task(title: str) -> Task {
-    task = root ++> Task(title=title);
+    task = root() ++> Task(title=title);
     return task[0];
 }
 
@@ -248,6 +248,16 @@ For one-off client-side declarations, use the single-statement `cl` prefix:
 ```jac
 cl import from react { useState }
 cl glob THEME: str = "dark";
+```
+
+This also works for component definitions, which is the preferred shorthand for single-component files:
+
+```jac
+# Equivalent to wrapping in cl { }
+cl def:pub app -> JsxElement {
+    has count: int = 0;
+    return <div>Count: {count}</div>;
+}
 ```
 
 ### Export Requirement
@@ -882,14 +892,14 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 cl import from "@jac/runtime" { jacLogin, useNavigate }
 
 cl {
-    def:pub LoginForm() -> any {
+    def:pub LoginForm() -> JsxElement {
         has username: str = "";
         has password: str = "";
         has error: str = "";
 
         navigate = useNavigate();
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: FormEvent) -> None {
             e.preventDefault();
             # jacLogin returns bool (True = success, False = failure)
             success = await jacLogin(username, password);
@@ -930,7 +940,7 @@ cl {
 cl import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
 
 cl {
-    def:pub NavBar() -> any {
+    def:pub NavBar() -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
 
         def handleLogout() -> None {
@@ -956,7 +966,7 @@ Each authenticated user gets an isolated root node:
 ```jac
 walker:pub GetMyData {
     can get with Root entry {
-        # 'root' is user-specific
+        # 'here' is the user-specific root node
         my_data = [-->][?:MyData];
         report my_data;
     }
@@ -990,7 +1000,7 @@ cl import from "@jac/runtime" { AuthGuard, Outlet }
 
 # pages/(auth)/layout.jac
 cl {
-    def:pub layout() -> any {
+    def:pub layout() -> JsxElement {
         return <AuthGuard redirect="/login">
             <Outlet />
         </AuthGuard>;
@@ -1805,6 +1815,8 @@ In dev mode, API routes are automatically proxied:
 
 ## Event Handlers
 
+Jac provides ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `MouseEvent`, `FormEvent`, etc.) that are available without import. Use these for type-safe event handling:
+
 ```jac
 cl {
     def:pub Form() -> JsxElement {
@@ -1813,8 +1825,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: any -> None { value = e.target.value; }}
-                onKeyPress={lambda e: any -> None {
+                onChange={lambda e: ChangeEvent { value = e.target.value; }}
+                onKeyPress={lambda e: KeyboardEvent {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -1825,6 +1837,89 @@ cl {
     }
 }
 ```
+
+### Ambient DOM Types
+
+The following event and element types are available in all Jac modules without any import statement. Use them for type-safe event handlers in JSX:
+
+**Event Types:**
+
+| Type | Fires On | Key Properties |
+|------|----------|----------------|
+| `Event` | Base event | `target`, `type`, `preventDefault()` |
+| `ChangeEvent` | `onChange` | `target.value`, `target.checked` |
+| `InputEvent` | `onInput` | `data`, `inputType` |
+| `KeyboardEvent` | `onKeyDown`, `onKeyUp`, `onKeyPress` | `key`, `code`, `ctrlKey`, `shiftKey` |
+| `MouseEvent` | `onClick`, `onMouseDown`, etc. | `clientX`, `clientY`, `button` |
+| `PointerEvent` | `onPointerDown`, `onPointerUp` | `pointerId`, `pointerType`, `pressure` |
+| `FocusEvent` | `onFocus`, `onBlur` | `relatedTarget` |
+| `DragEvent` | `onDrag`, `onDrop` | `dataTransfer` |
+| `TouchEvent` | `onTouchStart`, `onTouchEnd` | `touches`, `changedTouches` |
+| `ClipboardEvent` | `onCopy`, `onCut`, `onPaste` | `clipboardData` |
+| `FormEvent` | `onSubmit`, `onReset` | `target` (HTMLFormElement) |
+| `WheelEvent` | `onWheel` | `deltaX`, `deltaY` |
+| `AnimationEvent` | `onAnimationStart`, `onAnimationEnd` | `animationName`, `elapsedTime` |
+| `TransitionEvent` | `onTransitionEnd` | `propertyName`, `elapsedTime` |
+| `ScrollEvent` | `onScroll` | Inherits from UIEvent |
+
+**Element Types:**
+
+| Type | For Element |
+|------|-------------|
+| `HTMLElement` | Base (any element) |
+| `HTMLInputElement` | `<input>` -- adds `value`, `checked`, `files`, `type` |
+| `HTMLTextAreaElement` | `<textarea>` -- adds `value`, `rows`, `cols` |
+| `HTMLSelectElement` | `<select>` -- adds `value`, `selectedIndex`, `options` |
+| `HTMLFormElement` | `<form>` -- adds `submit()`, `reset()`, `elements` |
+| `HTMLButtonElement` | `<button>` -- adds `disabled`, `type` |
+| `HTMLAnchorElement` | `<a>` -- adds `href`, `target`, `pathname` |
+| `HTMLImageElement` | `<img>` -- adds `src`, `alt`, `naturalWidth` |
+| `HTMLCanvasElement` | `<canvas>` -- adds `getContext()`, `toDataURL()` |
+| `HTMLVideoElement` | `<video>` -- adds `play()`, `pause()`, `currentTime` |
+| `HTMLAudioElement` | `<audio>` -- adds `play()`, `pause()`, `volume` |
+
+**Usage examples:**
+
+```jac
+cl {
+    def:pub TypedForm() -> JsxElement {
+        has text: str = "";
+        has checked: bool = False;
+
+        return <div>
+            <input
+                value={text}
+                onChange={lambda e: ChangeEvent { text = e.target.value; }}
+                onKeyDown={lambda e: KeyboardEvent {
+                    if e.key == "Enter" and not e.shiftKey { submit(); }
+                }}
+            />
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+            />
+            <form onSubmit={lambda e: FormEvent {
+                e.preventDefault();
+                handleSubmit();
+            }}>
+                <button type="submit">Submit</button>
+            </form>
+        </div>;
+    }
+}
+```
+
+!!! tip "Migrating from `any`"
+    If you have existing event handlers using `e: any`, you can update them to use ambient types for better type safety and IDE support:
+
+    ```jac
+    # Before
+    onChange={lambda e: any -> None { value = e.target.value; }}
+
+    # After (no import needed)
+    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    ```
 
 ---
 
@@ -1868,7 +1963,7 @@ Import and wrap `JacClientErrorBoundary` around any subtree where you want to ca
 cl import from "@jac/runtime" { JacClientErrorBoundary }
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
             <MainAppComponents />
         </JacClientErrorBoundary>;
@@ -1896,7 +1991,7 @@ By default, jac-client internally wraps your entire application with `JacClientE
 
 ```jac
 cl {
-    def:pub App() -> any {
+    def:pub App() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
             <ExpensiveWidget />
         </JacClientErrorBoundary>;
@@ -1910,7 +2005,7 @@ You can nest multiple error boundaries for fine-grained error isolation:
 
 ```jac
 cl {
-    def:pub App() -> any {
+    def:pub App() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div>App error</div>}>
             <Header />
             <JacClientErrorBoundary fallback={<div>Content error</div>}>
@@ -2023,8 +2118,8 @@ Use `glob` for state shared across a module:
 
 ```jac
 cl {
-    glob initialized: bool = false;
-    glob cache: Any = null;
+    glob initialized: bool = False;
+    glob cache: Any = None;
 }
 ```
 

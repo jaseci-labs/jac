@@ -225,8 +225,8 @@ cl {
             <div className="add-task">
                 <input
                     value={new_title}
-                    onChange={lambda e: any -> None { new_title = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { new_title = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { handle_add(); }
                     }}
                     placeholder="New task..."
@@ -481,8 +481,8 @@ cl {
             <div className="input-row">
                 <input
                     value={input_text}
-                    onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add(); }
                     }}
                     placeholder="Add a task..."
