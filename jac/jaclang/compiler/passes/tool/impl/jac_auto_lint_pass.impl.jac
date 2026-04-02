@@ -1922,11 +1922,19 @@ impl JacAutoLintPass._check_unnecessary_none_return(
         if len(new_kid) > 0 {
             sig.set_kids(nodes=new_kid);
         } else {
-            # Signature had only -> None (no params, no parens).
-            # For methods inside classes, removing the signature entirely
-            # would lose static/classmethod semantics in codegen, so
-            # keep the EmptyToken placeholder in the FuncSignature.
-            sig.set_kids(nodes=[uni.EmptyToken()]);
+            # Signature had only -> None (no params): remove it entirely.
+            # All downstream passes (pyast_gen, esast_gen, unparse, normalize,
+            # doc_ir_gen) already guard .signature access with None/isinstance checks.
+            if isinstance(nd, uni.LambdaExpr) {
+                nd.signature = None;
+            } elif isinstance(nd, uni.Ability) {
+                nd.signature = None;
+            }
+            nd.kid = [
+                k
+                for k in nd.kid
+                if k is not sig
+            ];
         }
     }
 }
