@@ -681,16 +681,10 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
 """Set type on class fields (has vars) and validate initializer type."""
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     import from jaclang.compiler.type_system { types }
-    if (
-        nd.defer
-        and nd.kid
-        and isinstance(nd.kid[-1], uni.Name)
-    ) {
+    if (nd.defer and nd.kid and isinstance(nd.kid[-1], uni.Name)) {
         postinit_nd: uni.Name = nd.kid[-1];
         if postinit_nd.sym is None {
-            arch = nd.parent.parent
-                if isinstance(nd.parent, uni.ArchHas)
-                else None;
+            arch = nd.parent.parent if isinstance(nd.parent, uni.ArchHas) else None;
             if isinstance(arch, uni.Archetype) {
                 postinit_sym = arch.names_in_scope.get("__post_init__");
                 if postinit_sym is not None {
