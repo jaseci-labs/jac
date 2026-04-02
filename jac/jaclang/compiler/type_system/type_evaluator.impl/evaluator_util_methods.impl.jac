@@ -1207,7 +1207,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
     }
 
     # Helper to check variance - only direct TypeVar, not in unions for params
-    def check_expr(expr: uni.Expr, is_return: bool) -> None {
+    def check_expr(expr: uni.Expr, is_return: bool) {
         if isinstance(expr, uni.Name) {
             resolved = self.get_type_of_expression(expr);
             if isinstance(resolved, types.TypeVarType)

@@ -79,7 +79,7 @@ glob FLAG_BOOTSTRAP: int = 0x04;
 
 # --- Varint (LEB128) ---
 """Encode an unsigned integer as LEB128 varint, appending to buf."""
-def write_varint(buf: bytearray, value: int) -> None {
+def write_varint(buf: bytearray, value: int) {
     while value >= 0x80 {
         buf.append((value & 0x7F) | 0x80);
         value >>= 7;

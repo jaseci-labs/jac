@@ -156,9 +156,16 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+obj NarrowingTarget {
+    has key: str,  # "x" or "bmw.speed"
+        declared_type: TypeBase,
+        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+}
+
 """Represents a narrowing operation from a conditional predicate."""
 obj NarrowingPredicate {
-    has sym_name: str,
+    has key: str,
         narrow_type: TypeBase,
         is_inverted: bool = False;
 }
@@ -171,6 +178,7 @@ obj TypeEvaluator {
         _TYPING_STUB_FILE_PATH: str by postinit,
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",
@@ -196,12 +204,14 @@ obj TypeEvaluator {
         _in_ternary_expr_depth: int = 0,
         _in_bool_expr_narrowing_depth: int = 0,
         _narrowing_in_progress: set[int] by postinit,
+        _narrowing_in_progress_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
-        jac_builtins_module: uni.Module by postinit;
+        jac_builtins_module: uni.Module by postinit,
+        dom_types_module: uni.Module by postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -481,21 +491,25 @@ obj TypeEvaluator {
     def promote_inverted_narrowings(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
+    def get_narrowed_type_for_expr(
+        expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
+    ) -> TypeBase | None;
+
     def _compute_narrowed_at(
-        symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+        target: NarrowingTarget, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
-        symbol: uni.Symbol, condition: uni.Expr
+        target: NarrowingTarget, condition: uni.Expr
     ) -> NarrowingPredicate | None;
 
     def _apply_narrowing(
         predicate: NarrowingPredicate,
         incoming: TypeBase | None,
         is_true_branch: bool,
-        symbol: uni.Symbol
+        target: NarrowingTarget
     ) -> TypeBase | None;
 
     def _refine_isinstance_type(

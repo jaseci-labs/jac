@@ -1879,6 +1879,7 @@ impl DocIRGenPass.exit_func_signature(nd: uni.FuncSignature) -> None {
                 isinstance(i, uni.Token)
                 and (i.name == Tok.RETURN_HINT)
                 and not has_parens
+                and not parts
             ) {
                 parts.append(self.space());
             }

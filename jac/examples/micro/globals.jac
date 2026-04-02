@@ -6,7 +6,7 @@ glob age = 25,
      fruits = ["apple", "banana", "orange"],
      person = {"name": "Alice", "age": 30, "city": "New York"};
 
-def print_globs -> None {
+def print_globs {
     global fruits,age;
     age = 30;
     fruits = ["pear", "grape", "kiwi"];

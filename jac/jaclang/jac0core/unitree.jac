@@ -56,7 +56,7 @@ obj UniNode {
     }
 
     @gen.setter
-    def gen(value: CodeGenTarget) -> None {
+    def gen(value: CodeGenTarget) {
         self._gen = value;
     }
 
@@ -321,7 +321,7 @@ obj Expr(UniNode) {
     }
 
     @type_sym_tab.setter
-    def type_sym_tab(type_sym_tab: UniScopeNode) -> None {
+    def type_sym_tab(type_sym_tab: UniScopeNode) {
         self._type_sym_tab = type_sym_tab;
     }
 }
@@ -369,7 +369,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     }
 
     @sym.setter
-    def sym(sym: Symbol) -> None {
+    def sym(sym: Symbol) {
         self._sym = sym;
     }
 
@@ -394,7 +394,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     }
 
     @py_ctx_func.setter
-    def py_ctx_func(py_ctx_func: type[ast3.expr_context]) -> None {
+    def py_ctx_func(py_ctx_func: type[ast3.expr_context]) {
         self._py_ctx_func = py_ctx_func;
     }
 

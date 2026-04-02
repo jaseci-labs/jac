@@ -95,7 +95,7 @@ def setup(target: str) -> int {
 class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
-    static def create_cmd -> None {
+    static def create_cmd {
         """Extend core commands to add --npm flag for npm package management.""";
         registry = get_registry();
 
@@ -181,7 +181,7 @@ class JacCmd {
 }
 
 """Pre-hook to handle --skip flag for create command."""
-def _handle_create_skip(ctx: HookContext) -> None {
+def _handle_create_skip(ctx: HookContext) {
     # Check if --skip flag is set
     skip_flag = ctx.get_arg("skip", False);
     if skip_flag {

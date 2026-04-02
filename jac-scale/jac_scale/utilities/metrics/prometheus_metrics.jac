@@ -121,21 +121,19 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         );
     }
 
-    def request_started -> None {
+    def request_started {
         if self._enabled and self._active_requests {
             self._active_requests.inc();
         }
     }
 
-    def request_finished -> None {
+    def request_finished {
         if self._enabled and self._active_requests {
             self._active_requests.dec();
         }
     }
 
-    def record_walker(
-        walker_name: str, duration_seconds: float, success: bool = True
-    ) -> None {
+    def record_walker(walker_name: str, duration_seconds: float, success: bool = True) {
         if self._enabled and self._walker_latency {
             self._walker_latency.labels(
                 walker_name=walker_name, success=str(success).lower()
