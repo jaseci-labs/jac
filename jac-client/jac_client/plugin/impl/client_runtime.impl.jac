@@ -48,15 +48,15 @@ impl navigate(path: str) -> None {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any  -> any {
+        "apply": lambda target: any , thisArg: any , argumentsList: any -> any {
         # When called as JacSchema({...}), call z.object({...})
         return zodLib.object.apply(zodLib, argumentsList); },
-        "get": lambda target: any , prop: any , receiver: any  -> any {
+        "get": lambda target: any , prop: any , receiver: any -> any {
         # When accessing properties like JacSchema.string(), forward to z
         return zodLib[prop]; }
     };
     # Create a dummy function as the proxy target
-    dummyFunc = lambda schema: any  -> any { return zodLib.object(schema); };
+    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
@@ -76,14 +76,18 @@ impl __getEndpointEffects -> dict {
         initEl = None;
         try {
             initEl = document.getElementById("__jac_init__");
-        } except Exception {
-            ;
+        } except Exception as e {
+            console.warn("[jac-client] Failed to find __jac_init__ element:", e);
         }
         if initEl {
             try {
                 data = JSON.parse(initEl.textContent);
                 globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
-            } except Exception {
+            } except Exception as e {
+                console.warn(
+                    "[jac-client] Failed to parse __jac_init__ data, using empty effects:",
+                    e
+                );
                 globalThis.__jacEndpointEffects__ = {};
             }
         } else {
@@ -461,7 +465,9 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
         errMsg = error.error.message if error.error else str(error);
         errStack = error.error.stack if error.error else "";
         __jacReportError(errMsg, errStack, "", "ErrorBoundary");
-    } except Exception { }
+    } except Exception as e {
+        console.warn("[jac-client] ErrorFallback: failed to report error:", e);
+    }
     return
         <div
             role="alert"
@@ -509,7 +515,7 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
                     {error.error.message}
                 </pre>
                 <button
-                    onClick={lambda -> None { error.resetErrorBoundary();}}
+                    onClick={lambda { error.resetErrorBoundary();}}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",
@@ -778,7 +784,7 @@ impl JacForm(props: dict) -> JsxElement {
                         {placeholder or f"Select {label}"}
                     </option>
                     {options.map(
-                        lambda opt: any  -> JsxElement { return
+                        lambda opt: any -> JsxElement { return
                             <option value={opt} key={opt}>
                                 {opt}
                             </option>; }
@@ -794,7 +800,7 @@ impl JacForm(props: dict) -> JsxElement {
             return (
                 <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
                     {options.map(
-                        lambda opt: any  -> JsxElement { return (
+                        lambda opt: any -> JsxElement { return (
                             <label
                                 key={opt}
                                 style={{
@@ -885,8 +891,8 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type="checkbox"
                             checked={isVisible}
-                            onChange={lambda e: any  -> None { setPasswordVisible(
-                                lambda prev: any  -> dict { newState = Object.assign(
+                            onChange={lambda e: any { setPasswordVisible(
+                                lambda prev: any -> dict { newState = Object.assign(
                                     {}, prev
                                 );newState[fieldName] = not isVisible;return newState; }
                             );}}
@@ -1030,7 +1036,8 @@ impl __jacReportError(
             }
         );
     } except Exception {
-    # Silently ignore - never let error reporting cause more errors
+    # Intentionally silent - error reporting must never throw, as that
+    # could cause infinite loops or mask the original error.
     }
 }
 
@@ -1045,7 +1052,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     window.addEventListener(
         "error",
-        lambda event: Any  -> None { __jacReportError(
+        lambda event: Any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -1055,7 +1062,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any  -> None { reason = event.reason;message = "";stack = "";if reason {
+        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
             message = reason.message or str(reason);
             stack = reason.stack or "";
         } else {

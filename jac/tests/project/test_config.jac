@@ -209,6 +209,7 @@ test "load run config" {
         cfg = JacConfig.load(temp_project / "jac.toml");
         assert cfg.run.main is True;
         assert cfg.run.cache is True;
+        assert cfg.run.diagnostics == "error";
     }
 }
 

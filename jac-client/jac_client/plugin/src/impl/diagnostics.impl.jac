@@ -121,7 +121,11 @@ impl BaseDetector.find_importing_file(
                     }
                 }
             }
-        } except Exception {
+        } except Exception as e {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"Failed to read '{jac_file}' while scanning for imports: {e}"
+            );
             continue;
         }
     }
@@ -130,7 +134,7 @@ impl BaseDetector.find_importing_file(
 
 # ============== MissingDependencyDetector ==============
 
-# Core runtime dependencies bundled in jac-client-node
+# Core runtime dependencies (auto-injected by jac-client)
 glob CORE_DEPS = {"react","react-dom","react-router-dom","react-error-boundary","react-hook-form","zod","@hookform/resolvers"},
      DEV_DEPS = {"vite","@vitejs/plugin-react","typescript","@types/react","@types/react-dom"};
 
@@ -157,22 +161,22 @@ impl MissingDependencyDetector.detect(
     is_dev_dep = module_name in DEV_DEPS;
     (jac_file, line_num) = self.find_importing_file(module_name, ctx);
     if is_core_dep {
-        # Core runtime dependency - suggest jac-client-node
+        # Core runtime dependency - suggest adding it directly
         diag = self.create_diagnostic(
             message=f'Core dependency "{module_name}" is missing.',
             file_path=jac_file,
             line=line_num,
-            hint="This is bundled in jac-client-node.\n  Verify jac-client-node is in your jac.toml [dependencies.npm].",
-            quick_fix="jac add --npm jac-client-node"
+            hint=f"This is a core jac-client dependency.\n  It should be auto-injected. Try: jac client install",
+            quick_fix=f"jac add --npm {module_name}"
         );
     } elif is_dev_dep {
-        # Dev dependency - suggest @jac-client/dev-deps
+        # Dev dependency - suggest adding it directly
         diag = self.create_diagnostic(
             message=f'Dev dependency "{module_name}" is missing.',
             file_path=jac_file,
             line=line_num,
-            hint="This is bundled in @jac-client/dev-deps.\n  Verify @jac-client/dev-deps is in your jac.toml [dependencies.npm.dev].",
-            quick_fix="jac add --npm-dev @jac-client/dev-deps"
+            hint=f"This is a core jac-client dev dependency.\n  It should be auto-injected. Try: jac client install",
+            quick_fix=f"jac add --npm-dev {module_name}"
         );
     } else {
         # Regular dependency
@@ -601,4 +605,4 @@ impl format_build_error(
 
 # ============== Fallback Error Codes ==============
 
-# Dev dependencies bundled in @jac-client/dev-deps
+# Dev dependencies auto-injected by jac-client

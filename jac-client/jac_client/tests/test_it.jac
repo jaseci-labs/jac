@@ -2022,14 +2022,14 @@ test "diagnostics syntax error in console" {
 # ===========================================================================
 # Config Loader Dependency Management Tests
 # ===========================================================================
-"""Test JacClientConfig auto-injects missing deps and detects version mismatch."""
+"""Test JacClientConfig auto-injects individual deps and migrates legacy meta-packages."""
 test "config_loader_dependency_management" {
     import from jac_client.plugin.src.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = Path(temp_dir);
         jac_toml = project_dir / "jac.toml";
-        # Scenario 1: Missing dependencies - should auto-inject
+        # Scenario 1: Missing dependencies - should auto-inject individual packages
         jac_toml.write_text(
             """[project]
 name = "test-project"
@@ -2043,21 +2043,26 @@ base_route_app = "app"
         (project_dir / "main.jac").write_text('with entry { print("test"); }');
         config = JacClientConfig(project_dir=project_dir);
         loaded = config.load();
-        # Verify auto-injection happened
+        # Verify individual deps were auto-injected (not meta-packages)
         package = loaded.get("package", {});
         deps = package.get("dependencies", {});
         dev_deps = package.get("devDependencies", {});
-        assert "jac-client-node" in deps , "jac-client-node should be auto-injected";
-        assert "@jac-client/dev-deps" in dev_deps , "@jac-client/dev-deps should be auto-injected";
+        assert "react" in deps , "react should be auto-injected";
+        assert "react-dom" in deps , "react-dom should be auto-injected";
+        assert "react-router-dom" in deps , "react-router-dom should be auto-injected";
+        assert "vite" in dev_deps , "vite should be auto-injected";
+        assert "typescript" in dev_deps , "typescript should be auto-injected";
+        assert "jac-client-node" not in deps , "legacy meta-package should not be injected";
+        assert "@jac-client/dev-deps" not in dev_deps , "legacy meta-package should not be injected";
         # Verify saved to jac.toml
         with open(jac_toml, "rb") as f {
             saved = tomllib.load(f);
         }
-        assert "jac-client-node" in saved.get("dependencies", {}).get("npm", {});
-        # Scenario 2: Correct version present - check_runtime_version returns compatible
+        assert "react" in saved.get("dependencies", {}).get("npm", {});
+        # Scenario 2: All core deps present - check_runtime_version returns compatible
         (is_compat, user_ver, required_ver) = config.check_runtime_version();
-        assert is_compat == True , "Exact version match should be compatible";
-        # Scenario 3: Version mismatch - modify and check
+        assert is_compat == True , "All core deps present should be compatible";
+        # Scenario 3: Legacy meta-package migration
         config.invalidate();
         jac_toml.write_text(
             """[project]
@@ -2065,12 +2070,19 @@ name = "test-project"
 version = "1.0.0"
 
 [dependencies.npm]
-jac-client-node = "1.0.0"
+jac-client-node = "1.0.7"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "2.0.0"
 """
         );
         config2 = JacClientConfig(project_dir=project_dir);
-        (is_compat2, user_ver2, required_ver2) = config2.check_runtime_version();
-        assert is_compat2 == False , "Version mismatch should be incompatible";
-        assert user_ver2 == "1.0.0";
+        loaded2 = config2.load();
+        package2 = loaded2.get("package", {});
+        deps2 = package2.get("dependencies", {});
+        # Meta-package should be migrated to individual deps
+        assert "jac-client-node" not in deps2 , "legacy meta-package should be removed after migration";
+        assert "react" in deps2 , "react should be present after migration";
+        assert "react-dom" in deps2 , "react-dom should be present after migration";
     }
 }

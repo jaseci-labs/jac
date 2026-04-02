@@ -22,7 +22,7 @@ cl {
 
         # Update localStorage when state changes
         useEffect(
-            lambda -> None { try {
+            lambda { try {
                 window.localStorage.setItem(key, JSON.stringify(storedValue));
             } except Exception as e {
                 print("Error saving to localStorage");

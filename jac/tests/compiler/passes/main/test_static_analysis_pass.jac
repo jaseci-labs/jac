@@ -122,3 +122,32 @@ test "classmethod on node warns with correct archetype name" {
     warning_msgs = [str(w) for w in prog.warnings_had];
     assert any("@classmethod" in w and "'node'" in w for w in warning_msgs) , f"Expected @classmethod warning mentioning 'node', got: {warning_msgs}";
 }
+
+test "cl def has variables reassigned in nested abilities produce no unused warnings" {
+    file_path = os.path.join(FIXTURES, "cl_def_has_var.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    unused_warnings = [
+        w
+        for w in warning_msgs
+        if "defined but never used" in w
+    ];
+    assert len(unused_warnings) == 1 , f"Expected exactly 1 unused warning (for var in nested def), got: {unused_warnings}";
+    assert "'var' is defined but never used" in unused_warnings[0] , f"Expected warning for 'var', got: {unused_warnings[
+        0
+    ]}";
+}
+
+test "obj bare assignment to has var name still warns as unused" {
+    file_path = os.path.join(FIXTURES, "obj_bare_has_assign.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    unused_warnings = [
+        w
+        for w in warning_msgs
+        if "defined but never used" in w
+    ];
+    assert len(unused_warnings) > 0 , f"Expected unused variable warning for bare 'x' in obj method, got none";
+}

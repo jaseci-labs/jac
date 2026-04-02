@@ -15,7 +15,7 @@ obj Mom(Parent) {
         Parent.init();
     }
 
-    def speak -> None {
+    def speak {
         print("I'm good at swimming!");
     }
 }
@@ -26,13 +26,13 @@ obj Dad(Parent) {
         Parent.init();
     }
 
-    def speak -> None {
+    def speak {
         print("I'm good at running!");
     }
 }
 
 obj Child(Mom, Dad) {  #Child inherits from Mom and Dad
-    def speak -> None {
+    def speak {
         # Child initialization
         Mom.speak();
         Dad.speak();
