@@ -69,13 +69,17 @@ def _register_frozen_plugins(plugin_manager):
     Entry point discovery fails in frozen apps, so we register each plugin
     explicitly. This must be called in both the main sidecar process and
     the --jac-cli child process.
+
+    Uses two strategies:
+    1. importlib.import_module for regular Python packages (jac_scale, byllm)
+    2. jaclang's Jac import system for namespace/.jac packages (jac_client)
     """
-    plugins = [
+    # Regular Python packages — use importlib
+    py_plugins = [
         ("jac_scale.plugin", "JacCmd", "scale"),
-        ("jac_client.plugin.client", "JacClient", "client"),
-        ("byllm.plugin", "JacCmd", "byllm"),
+        ("byllm.plugin", "JacRuntime", "byllm"),
     ]
-    for module_path, class_name, name in plugins:
+    for module_path, class_name, name in py_plugins:
         try:
             import importlib
             mod = importlib.import_module(module_path)
@@ -87,6 +91,40 @@ def _register_frozen_plugins(plugin_manager):
             sys.stderr.write(f"[sidecar] {name} not bundled\n")
         except Exception as e:
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
+
+    # jac_client — namespace package with .jac files, needs Jac import system
+    try:
+        from jaclang.jac0core.runtime import JacRuntime as Jac
+        # Find jac_client package root in _MEIPASS or sys.path
+        _meipass = getattr(sys, "_MEIPASS", None)
+        _jc_base = None
+        if _meipass:
+            _jc_candidate = os.path.join(_meipass, "jac_client", "plugin")
+            if os.path.isdir(_jc_candidate):
+                _jc_base = _meipass
+        if not _jc_base:
+            for p in sys.path:
+                if os.path.isdir(os.path.join(p, "jac_client", "plugin")):
+                    _jc_base = p
+                    break
+        if _jc_base:
+            # Use Jac import to load the .jac module
+            Jac.jac_import(
+                target="client",
+                base_path=os.path.join(_jc_base, "jac_client", "plugin"),
+                lng="jac",
+            )
+            # After jac_import, the module should be in sys.modules
+            import importlib
+            mod = importlib.import_module("jac_client.plugin.client")
+            cls = getattr(mod, "JacClient")
+            if not plugin_manager.is_registered(cls):
+                plugin_manager.register(cls, name="client")
+                sys.stderr.write("[sidecar] Registered client plugin\n")
+        else:
+            sys.stderr.write("[sidecar] jac_client package not found\n")
+    except Exception as e:
+        sys.stderr.write(f"[sidecar] client registration error: {e}\n")
 
 
 def _run_jac_cli():

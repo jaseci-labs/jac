@@ -3051,6 +3051,8 @@ try:
     _jc_skip = ['node_modules', '.jac', '__pycache__', '.git', 'tests', 'examples']
     if _jc_root and _jc_root.is_dir():
         _jc_count = 0
+        # Create __init__.py for namespace package (needed for frozen imports)
+        _jc_dirs_seen = set()
         for _f in _jc_root.rglob('*'):
             try:
                 _rel = _f.relative_to(_jc_root)
@@ -3060,8 +3062,26 @@ try:
                     _rel_full = _f.relative_to(_jc_root.parent)
                     datas.append((str(_f), str(_rel_full.parent)))
                     _jc_count += 1
+                    # Track directories that need __init__.py
+                    _cur = _rel.parent
+                    while str(_cur) != '.':
+                        _jc_dirs_seen.add(str(_cur))
+                        _cur = _cur.parent
             except (OSError, ValueError):
                 continue
+        # Generate __init__.py for each package directory (namespace package fix)
+        import tempfile as _tmpmod
+        _init_dir = Path(_tmpmod.mkdtemp(prefix='jac_client_init_'))
+        # Root __init__.py
+        _root_init = _init_dir / '__init__.py'
+        _root_init.write_text('')
+        datas.append((str(_root_init), 'jac_client'))
+        _jc_count += 1
+        for _d in _jc_dirs_seen:
+            _init_file = _init_dir / _d.replace('/', '_').replace('\\\\', '_')
+            _init_file.write_text('')
+            datas.append((str(_init_file), str(Path('jac_client') / _d)))
+            _jc_count += 1
         print(f"  jac_client: explicitly bundled {{_jc_count}} files from {{_jc_root}}")
 except Exception as _e:
     print(f"  jac_client: could not bundle explicitly: {{_e}}")
