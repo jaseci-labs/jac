@@ -3078,6 +3078,21 @@ jac_toml = project_dir / 'jac.toml'
 if jac_toml.exists():
     datas.append((str(jac_toml), '.'))
 
+# Add assets directory if exists (templates, configs, etc.)
+assets_dir = project_dir / 'assets'
+if assets_dir.is_dir():
+    for asset_file in assets_dir.rglob('*'):
+        if asset_file.is_file():
+            rel = asset_file.relative_to(project_dir)
+            datas.append((str(asset_file), str(rel.parent)))
+    print(f"Added assets directory to sidecar bundle")
+
+# Add .env file if exists
+env_file = project_dir / '.env'
+if env_file.is_file():
+    datas.append((str(env_file), '.'))
+    print("Added .env to sidecar bundle")
+
 # Read Python dependencies from jac.toml and add to hiddenimports
 try:
     import tomllib
