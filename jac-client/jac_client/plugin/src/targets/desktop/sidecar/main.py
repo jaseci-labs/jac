@@ -63,6 +63,32 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
         return s.getsockname()[1]
 
 
+def _register_frozen_plugins(plugin_manager):
+    """Register all Jac plugins manually for PyInstaller frozen apps.
+
+    Entry point discovery fails in frozen apps, so we register each plugin
+    explicitly. This must be called in both the main sidecar process and
+    the --jac-cli child process.
+    """
+    plugins = [
+        ("jac_scale.plugin", "JacCmd", "scale"),
+        ("jac_client.plugin.client", "JacClient", "client"),
+        ("byllm.plugin", "JacCmd", "byllm"),
+    ]
+    for module_path, class_name, name in plugins:
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            if not plugin_manager.is_registered(cls):
+                plugin_manager.register(cls, name=name)
+                sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
+        except ImportError:
+            sys.stderr.write(f"[sidecar] {name} not bundled\n")
+        except Exception as e:
+            sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
+
+
 def _run_jac_cli():
     """Run jaclang CLI commands in-process (multi-mode sidecar support).
 
@@ -79,6 +105,14 @@ def _run_jac_cli():
         sys.stdout.reconfigure(encoding="utf-8")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
+
+    # Register plugins manually for frozen apps (entry point discovery fails)
+    if getattr(sys, "frozen", False):
+        try:
+            from jaclang.jac0core.runtime import plugin_manager
+            _register_frozen_plugins(plugin_manager)
+        except Exception:
+            pass
 
     from jaclang.jac0core.cli_boot import start_cli
     # Remove --jac-cli from argv so jaclang sees clean args
@@ -170,19 +204,10 @@ def main():
         sys.stderr.write("  Make sure jaclang is installed: pip install jaclang\n")
         sys.exit(1)
 
-    # Register jac-scale plugin manually for PyInstaller bundles.
+    # Register plugins manually for PyInstaller bundles.
     # Entry point discovery fails in frozen apps, so we register explicitly.
     if getattr(sys, "frozen", False):
-        try:
-            from jac_scale.plugin import JacCmd
-
-            if not plugin_manager.is_registered(JacCmd):
-                plugin_manager.register(JacCmd, name="scale")
-                sys.stderr.write("[sidecar] Registered jac-scale plugin\n")
-        except ImportError:
-            sys.stderr.write("[sidecar] jac-scale not bundled\n")
-        except Exception as e:
-            sys.stderr.write(f"[sidecar] Plugin registration error: {e}\n")
+        _register_frozen_plugins(plugin_manager)
 
     # Get the console now that jaclang is available
     from jaclang.cli.console import console
