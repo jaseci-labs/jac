@@ -50,10 +50,18 @@ obj LocalSandbox(SandboxEnvironment) {
     }
 
     def _find_jac_binary -> str {
-        candidates = [os.path.join(str(Path.home()), ".jacvenv", "bin", "jac")];
+        import sys;
+        # PyInstaller frozen app — use sidecar's multi-mode CLI
+        if getattr(sys, 'frozen', False) {
+            return sys.executable + " --jac-cli";
+        }
+        is_windows = sys.platform == "win32";
+        bin_dir = "Scripts" if is_windows else "bin";
+        jac_name = "jac.exe" if is_windows else "jac";
+        candidates = [os.path.join(str(Path.home()), ".jacvenv", bin_dir, jac_name)];
         venv = str(os.environ.get("VIRTUAL_ENV", ""));
         if venv {
-            candidates.append(os.path.join(venv, "bin", "jac"));
+            candidates.append(os.path.join(venv, bin_dir, jac_name));
         }
         for p in candidates {
             if os.path.exists(p) {
@@ -68,13 +76,17 @@ obj LocalSandbox(SandboxEnvironment) {
     }
 
     def _find_activate_script -> str {
-        jacvenv_activate = os.path.join(str(Path.home()), ".jacvenv", "bin", "activate");
+        import sys;
+        is_windows = sys.platform == "win32";
+        bin_dir = "Scripts" if is_windows else "bin";
+        activate_name = "activate.bat" if is_windows else "activate";
+        jacvenv_activate = os.path.join(str(Path.home()), ".jacvenv", bin_dir, activate_name);
         if os.path.exists(jacvenv_activate) {
             return jacvenv_activate;
         }
         venv = str(os.environ.get("VIRTUAL_ENV", ""));
         if venv {
-            activate = os.path.join(venv, "bin", "activate");
+            activate = os.path.join(venv, bin_dir, activate_name);
             if os.path.exists(activate) {
                 return activate;
             }
