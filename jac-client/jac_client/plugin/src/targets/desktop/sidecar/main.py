@@ -239,6 +239,27 @@ def main():
 
     os.environ["JAC_DATA_PATH"] = str(data_path)
 
+    # Load .env from bundled location (PyInstaller _MEIPASS) before changing CWD
+    _meipass = getattr(sys, "_MEIPASS", None)
+    if _meipass:
+        bundled_env = Path(_meipass) / ".env"
+        if bundled_env.is_file():
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(str(bundled_env), override=False)
+                sys.stderr.write(f"[sidecar] Loaded .env from bundle\n")
+            except ImportError:
+                # dotenv not available, copy .env vars manually
+                with open(bundled_env, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            key, _, val = line.partition("=")
+                            key = key.strip()
+                            val = val.strip().strip('"').strip("'")
+                            if key and key not in os.environ:
+                                os.environ[key] = val
+
     # Change working directory to writable data path
     # This ensures relative paths like .jac/ work in read-only AppImage environments
     os.chdir(data_path)
