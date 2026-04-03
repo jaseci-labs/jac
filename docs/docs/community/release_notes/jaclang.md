@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.5 (Unreleased)
+## jaclang 0.13.6 (Unreleased)
+
+## jaclang 0.13.5 (Latest Release)
 
 - **Native: Lambda Expressions and Capturing Closures**: Added lambda expression support in the `na` (native LLVM) codespace. Simple lambdas compile to anonymous LLVM IR functions returned as function pointers. Capturing closures -- lambdas that reference variables from the enclosing scope -- pass captured values as hidden extra parameters, with automatic injection at call sites. No heap allocation required for captures. Leverages the existing indirect function pointer call infrastructure.
 
-## jaclang 0.13.4 (Latest Release)
+## jaclang 0.13.4
 
 - **Native: Lambda Expressions**: Added lambda expression support in the `na` (native LLVM) codespace. Lambdas compile to anonymous LLVM IR functions returned as function pointers. Leverages the existing indirect function pointer call infrastructure for invocation.
 - **Type Checker: Expression-Based CFG Narrowing for Dotted Paths**: The type checker now narrows dotted attribute expressions (e.g., `obj.field`) through the CFG backward walk, not just simple variable names. Patterns like `if obj.speed is None { obj.speed = 0; } return obj.speed;` now correctly resolve `obj.speed` to `int` instead of `int | None`. Introduced `NarrowingTarget` abstraction to generalize the CFG narrowing pipeline for both symbols and expression keys, extended `affected_symbols` to track dotted paths, and removed scope-based narrowing for dotted paths in favor of the more precise CFG analysis that accounts for assignments inside branches.
