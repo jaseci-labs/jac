@@ -63,8 +63,36 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
         return s.getsockname()[1]
 
 
+def _run_jac_cli():
+    """Run jaclang CLI commands in-process (multi-mode sidecar support).
+
+    When the sidecar is invoked with --jac-cli, it acts as a jac CLI proxy,
+    routing commands to jaclang directly. This avoids needing a separate jac.exe.
+
+    Usage: sidecar.exe --jac-cli create myproject --use template.jacpack --force
+           sidecar.exe --jac-cli install
+           sidecar.exe --jac-cli lsp
+    """
+    os.environ["NO_COLOR"] = "1"
+    os.environ["PYTHONUTF8"] = "1"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+    from jaclang.jac0core.cli_boot import start_cli
+    # Remove --jac-cli from argv so jaclang sees clean args
+    sys.argv = ["jac"] + sys.argv[2:]  # skip [sidecar.exe, --jac-cli, ...]
+    start_cli()
+
+
 def main():
     """Main entry point for the sidecar."""
+    # Multi-mode: if --jac-cli is first arg, route to jaclang CLI
+    if len(sys.argv) > 1 and sys.argv[1] == "--jac-cli":
+        _run_jac_cli()
+        return
+
     parser = argparse.ArgumentParser(
         description="Jac Backend Sidecar - Runs Jac API server in a bundled executable"
     )
