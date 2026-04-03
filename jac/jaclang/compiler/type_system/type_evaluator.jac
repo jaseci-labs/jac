@@ -555,4 +555,16 @@ obj TypeEvaluator {
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
     def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
     def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
+    def _is_type_alias_annotation(
+        annotation_type: TypeBase, tag_expr: uni.Expr
+    ) -> bool;
+
+    def _resolve_type_alias_rhs(value: uni.Expr) -> TypeBase;
+    def _resolve_string_type_expr(
+        type_str: str, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
+
+    def _resolve_py_ast_type_node(
+        ast_node: object, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
 }

@@ -3143,3 +3143,33 @@ test "callable_narrowing" {
         program.errors_had[3].pretty_print()
     );
 }
+
+"""Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
+test "type_alias_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_type_alias_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # E1: No isinstance guard — TypeAlias'd union assigned to component type
+    assert_error_pretty_found(
+        """
+        f: Foo = val;  # Error: Foo | None cannot assign to Foo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # E2: No callable guard — TypeAlias'd union assigned to Callable
+    assert_error_pretty_found(
+        """
+        fail: Callable[[int], str] = handler;  # Error: union cannot assign to Callable
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}

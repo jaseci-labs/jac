@@ -1954,6 +1954,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     annotation_type = self.get_type_of_expression(
                         node_.parent.type_tag.tag
                     );
+                    # TypeAlias annotation: `X: TypeAlias = <type_expr>`
+                    # The annotation marks this as a type alias — the actual
+                    # type is defined by the RHS, not the annotation itself.
+                    # Detect via symbol resolution: annotation_type for TypeAlias
+                    # resolves to _SpecialForm, and we verify the tag name.
+                    if (
+                        self._is_type_alias_annotation(
+                            annotation_type, node_.parent.type_tag.tag
+                        )
+                        and node_.parent.value is not None
+                    ) {
+                        return self._resolve_type_alias_rhs(node_.parent.value);
+                    }
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
                     if node_.parent.value is not None {
@@ -4512,4 +4525,243 @@ impl TypeEvaluator._filter_union_to_non_callables(
         return union_type;
     }
     return types.NeverType();
+}
+
+"""Check whether an annotation type represents typing.TypeAlias.
+
+Uses symbol-based detection: TypeAlias is a _SpecialForm from the typing
+module, so its resolved type shares the same ClassType.shared as other
+special forms (e.g. Callable). We verify both the structural match and
+the name to avoid false positives with other special forms.
+"""
+impl TypeEvaluator._is_type_alias_annotation(
+    annotation_type: types.TypeBase, tag_expr: uni.Expr
+) -> bool {
+    if not self.prefetch or not self.prefetch.callable_class {
+        return False;
+    }
+    # Structural check: TypeAlias is a _SpecialForm, same as Callable etc.
+    is_special_form = (
+        isinstance(annotation_type, types.ClassType)
+        and annotation_type.shared is not None
+        and annotation_type.shared == self.prefetch.callable_class.shared
+    );
+    # Name check: verify the tag is specifically "TypeAlias"
+    if is_special_form and isinstance(tag_expr, uni.Name) {
+        return tag_expr.value == "TypeAlias";
+    }
+    # Fallback for unresolved imports: annotation may be Unknown but
+    # the name is still "TypeAlias" (e.g. from typing_extensions chain)
+    if (
+        isinstance(annotation_type, types.UnknownType)
+        and isinstance(tag_expr, uni.Name)
+    ) {
+        return tag_expr.value == "TypeAlias";
+    }
+    return False;
+}
+
+"""Resolve the RHS of a TypeAlias assignment to a type.
+
+Handles both expression RHS (e.g. `Foo | None`) and string forward
+references (e.g. `'SomeType'`). For string RHS containing complex
+type expressions that cannot be parsed, returns UnknownType.
+
+For stub modules (.pyi), diagnostics emitted during RHS evaluation are
+suppressed — stubs are trusted type definitions whose internal expressions
+may reference types the Jac resolver cannot fully handle (e.g. cross-module
+imports in builtins.pyi like `types.UnionType`).
+"""
+impl TypeEvaluator._resolve_type_alias_rhs(value: uni.Expr) -> types.TypeBase {
+    # String RHS: complex type expression or simple forward reference.
+    if isinstance(value, uni.String) and isinstance(value.lit_value, str) {
+        # Try simple name lookup first (fast path)
+        resolved = self._try_resolve_forward_ref(value);
+        if resolved is not None {
+            return resolved;
+        }
+        # Try parsing as a complex type expression (e.g. 'Callable[[A], B] | C')
+        scope = value.find_parent_of_type(uni.UniScopeNode);
+        if scope {
+            parsed = self._resolve_string_type_expr(value.lit_value, scope);
+            if parsed is not None {
+                return parsed;
+            }
+        }
+        return types.UnknownType();
+    }
+    if (
+        isinstance(value, uni.MultiString)
+        and value.strings
+        and isinstance(value.strings[0], uni.String)
+        and isinstance(value.strings[0].lit_value, str)
+    ) {
+        resolved = self._try_resolve_forward_ref(value.strings[0]);
+        if resolved is not None {
+            return resolved;
+        }
+        scope = value.find_parent_of_type(uni.UniScopeNode);
+        if scope {
+            parsed = self._resolve_string_type_expr(value.strings[0].lit_value, scope);
+            if parsed is not None {
+                return parsed;
+            }
+        }
+        return types.UnknownType();
+    }
+    # Expression RHS: evaluate the type expression directly.
+    # For stub modules, suppress diagnostics — stubs may contain
+    # cross-module type references that can't be resolved in Jac.
+    mod = value.find_parent_of_type(uni.Module);
+    is_stub = mod is not None and mod.is_raised_from_py;
+    if is_stub and self._pass is not None {
+        pass_ref = self._pass;
+        errors_before = len(pass_ref.errors_had);
+        prog_errors_before = len(pass_ref.prog.errors_had);
+        result = self.get_type_of_expression(value);
+        # Roll back any diagnostics emitted during stub resolution
+        del pass_ref.errors_had[errors_before:];
+        del pass_ref.prog.errors_had[prog_errors_before:];
+        return result;
+    }
+    return self.get_type_of_expression(value);
+}
+
+"""Parse a string type expression and resolve it to a type.
+
+Handles complex type expressions like 'Callable[[A], B] | C | None'
+by parsing the string using Python's ast module and recursively
+resolving each component in the given scope.
+"""
+impl TypeEvaluator._resolve_string_type_expr(
+    type_str: str, scope: uni.UniScopeNode
+) -> types.TypeBase | None {
+    import from ast { parse as _parse }
+    try {
+        tree = _parse(type_str, mode='eval');
+    } except Exception {
+        return None;
+    }
+    try {
+        return self._resolve_py_ast_type_node(tree.body, scope);
+    } except Exception {
+        return None;
+    }
+}
+
+"""Resolve a single Python AST node to a Jac type.
+
+Handles Name, Constant(None), BinOp(|), Subscript (Callable, generics),
+and Attribute (module.Type). Recurses via explicit self-calls rather than
+a nested closure to avoid bootstrap compiler limitations.
+"""
+impl TypeEvaluator._resolve_py_ast_type_node(
+    ast_node: object, scope: uni.UniScopeNode
+) -> types.TypeBase | None {
+    import from ast { Name as _N }
+    import from ast { Constant as _C }
+    import from ast { BinOp as _BO }
+    import from ast { BitOr as _BOR }
+    import from ast { Subscript as _SS }
+    import from ast { Tuple as _TU }
+    import from ast { List as _LI }
+    import from ast { Attribute as _AT }
+    # Name: symbol lookup (e.g. 'Archetype', 'str')
+    if isinstance(ast_node, _N) {
+        sym = type_utils.lookup_symtab(scope, ast_node.id, self.builtins_module);
+        if not sym {
+            return None;
+        }
+        sym = self.resolve_imported_symbols(sym);
+        return self.get_type_of_symbol(sym);
+    }
+    # Constant(None) → NoneType
+    if isinstance(ast_node, _C) and ast_node.value is None {
+        if self.prefetch and self.prefetch.none_type_class {
+            return self.prefetch.none_type_class;
+        }
+        return None;
+    }
+    # BinOp with | → UnionType
+    if isinstance(ast_node, _BO) and isinstance(ast_node.op, _BOR) {
+        left = self._resolve_py_ast_type_node(ast_node.left, scope);
+        right = self._resolve_py_ast_type_node(ast_node.right, scope);
+        if left is None or right is None {
+            return None;
+        }
+        left_types = left.types if isinstance(left, types.UnionType) else [left];
+        right_types = right.types if isinstance(right, types.UnionType) else [right];
+        return types.UnionType(types=left_types + right_types);
+    }
+    # Subscript → Callable or generic type
+    if isinstance(ast_node, _SS) {
+        base = self._resolve_py_ast_type_node(ast_node.value, scope);
+        if base is None {
+            return None;
+        }
+        # Callable[[ParamTypes], ReturnType]
+        if isinstance(ast_node.value, _N) and ast_node.value.id == "Callable" {
+            if isinstance(ast_node.slice, _TU) and len(ast_node.slice.elts) == 2 {
+                params_ast = ast_node.slice.elts[0];
+                ret_ast = ast_node.slice.elts[1];
+                param_types: list[types.TypeBase] = [];
+                if isinstance(params_ast, _LI) {
+                    for p in params_ast.elts {
+                        pt = self._resolve_py_ast_type_node(p, scope);
+                        if pt is None {
+                            return None;
+                        }
+                        param_types.append(self._convert_to_instance(pt));
+                    }
+                }
+                ret_type = self._resolve_py_ast_type_node(ret_ast, scope);
+                if ret_type is None {
+                    return None;
+                }
+                return types.create_callable_type(
+                    param_types, self._convert_to_instance(ret_type)
+                );
+            }
+        }
+        # Other generics: list[X], dict[K, V], etc.
+        type_args: list[types.TypeBase] = [];
+        slice_ast = ast_node.slice;
+        if isinstance(slice_ast, _TU) {
+            for elt in slice_ast.elts {
+                arg = self._resolve_py_ast_type_node(elt, scope);
+                if arg is None {
+                    return None;
+                }
+                type_args.append(arg);
+            }
+        } else {
+            arg = self._resolve_py_ast_type_node(slice_ast, scope);
+            if arg is None {
+                return None;
+            }
+            type_args.append(arg);
+        }
+        if isinstance(base, types.ClassType) {
+            result = base.clone_as_instance();
+            result.private.type_args = type_args;
+            return result;
+        }
+        return base;
+    }
+    # Attribute → module.Type (e.g. types.UnionType)
+    if isinstance(ast_node, _AT) {
+        base = self._resolve_py_ast_type_node(ast_node.value, scope);
+        if (
+            base is not None
+            and isinstance(base, types.ModuleType)
+            and base.symbol_table is not None
+        ) {
+            member = base.symbol_table.lookup(ast_node.attr);
+            if member {
+                return self.get_type_of_symbol(member);
+            }
+        }
+        return None;
+    }
+    return None;
 }
