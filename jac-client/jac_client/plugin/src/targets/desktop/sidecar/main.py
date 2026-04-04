@@ -63,6 +63,25 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
         return s.getsockname()[1]
 
 
+def _ensure_frozen_search_paths():
+    """Ensure _MEIPASS is discoverable by jaclang's JacMetaImporter.
+
+    In frozen PyInstaller apps, jac_client is a namespace package with .jac
+    files (no __init__.py). The JacMetaImporter handles these, but only if
+    _MEIPASS is on the search paths it checks (sys.path + JACPATH).
+    """
+    _meipass = getattr(sys, "_MEIPASS", None)
+    if not _meipass:
+        return
+    # Ensure _MEIPASS is on sys.path (PyInstaller usually does this, but be safe)
+    if _meipass not in sys.path:
+        sys.path.insert(0, _meipass)
+    # Also add to JACPATH so get_jac_search_paths() always includes it
+    jacpath = os.environ.get("JACPATH", "")
+    if _meipass not in jacpath:
+        os.environ["JACPATH"] = _meipass + (os.pathsep + jacpath if jacpath else "")
+
+
 def _register_frozen_plugins(plugin_manager):
     """Register all Jac plugins manually for PyInstaller frozen apps.
 
@@ -70,33 +89,18 @@ def _register_frozen_plugins(plugin_manager):
     explicitly. This must be called in both the main sidecar process and
     the --jac-cli child process.
 
-    Uses two strategies:
-    1. importlib.import_module for regular Python packages (jac_scale, byllm)
-    2. jaclang's Jac import system for namespace/.jac packages (jac_client)
+    jac_scale/byllm are regular Python packages (have __init__.py).
+    jac_client is a namespace package with .jac files — jaclang's
+    JacMetaImporter handles it as long as _MEIPASS is on the search paths.
     """
-    # Regular Python packages — use importlib
-    py_plugins = [
+    _ensure_frozen_search_paths()
+
+    plugins = [
         ("jac_scale.plugin", "JacCmd", "scale"),
+        ("jac_client.plugin.client", "JacClient", "client"),
         ("byllm.plugin", "JacRuntime", "byllm"),
     ]
-    for module_path, class_name, name in py_plugins:
-        try:
-            import importlib
-            mod = importlib.import_module(module_path)
-            cls = getattr(mod, class_name)
-            if not plugin_manager.is_registered(cls):
-                plugin_manager.register(cls, name=name)
-                sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
-        except ImportError:
-            sys.stderr.write(f"[sidecar] {name} not bundled\n")
-        except Exception as e:
-            sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
-
-    # jac_client — now a regular package with __init__.py (same as jac_scale)
-    jac_plugins = [
-        ("jac_client.plugin.client", "JacClient", "client"),
-    ]
-    for module_path, class_name, name in jac_plugins:
+    for module_path, class_name, name in plugins:
         try:
             import importlib
             mod = importlib.import_module(module_path)
