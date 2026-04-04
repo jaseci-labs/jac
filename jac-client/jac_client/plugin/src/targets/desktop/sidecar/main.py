@@ -92,37 +92,31 @@ def _register_frozen_plugins(plugin_manager):
         except Exception as e:
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
 
-    # jac_client — namespace package with .jac files, needs Jac import system
+    # jac_client — namespace package with .jac files
+    # Create __init__.py at runtime if missing (editable installs don't have them)
     try:
-        from jaclang.jac0core.runtime import JacRuntime as Jac
-        # Find jac_client package root in _MEIPASS or sys.path
         _meipass = getattr(sys, "_MEIPASS", None)
-        _jc_base = None
         if _meipass:
-            _jc_candidate = os.path.join(_meipass, "jac_client", "plugin")
-            if os.path.isdir(_jc_candidate):
-                _jc_base = _meipass
-        if not _jc_base:
-            for p in sys.path:
-                if os.path.isdir(os.path.join(p, "jac_client", "plugin")):
-                    _jc_base = p
-                    break
-        if _jc_base:
-            # Use Jac import to load the .jac module
-            Jac.jac_import(
-                target="client",
-                base_path=os.path.join(_jc_base, "jac_client", "plugin"),
-                lng="jac",
-            )
-            # After jac_import, the module should be in sys.modules
-            import importlib
-            mod = importlib.import_module("jac_client.plugin.client")
-            cls = getattr(mod, "JacClient")
-            if not plugin_manager.is_registered(cls):
-                plugin_manager.register(cls, name="client")
-                sys.stderr.write("[sidecar] Registered client plugin\n")
-        else:
-            sys.stderr.write("[sidecar] jac_client package not found\n")
+            for _subdir in ["jac_client", "jac_client/plugin", "jac_client/plugin/src",
+                            "jac_client/plugin/impl", "jac_client/plugin/src/targets",
+                            "jac_client/plugin/src/targets/impl",
+                            "jac_client/plugin/src/targets/desktop",
+                            "jac_client/plugin/src/targets/desktop/sidecar"]:
+                _init = os.path.join(_meipass, _subdir, "__init__.py")
+                if not os.path.exists(_init):
+                    _dir = os.path.dirname(_init)
+                    if os.path.isdir(_dir):
+                        with open(_init, "w") as f:
+                            pass
+        # Now import should work via the Jac meta-importer
+        import importlib
+        mod = importlib.import_module("jac_client.plugin.client")
+        cls = getattr(mod, "JacClient")
+        if not plugin_manager.is_registered(cls):
+            plugin_manager.register(cls, name="client")
+            sys.stderr.write("[sidecar] Registered client plugin\n")
+    except ImportError:
+        sys.stderr.write("[sidecar] client not bundled\n")
     except Exception as e:
         sys.stderr.write(f"[sidecar] client registration error: {e}\n")
 
