@@ -9,8 +9,12 @@ enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
 def categorize(title: str) -> Category by llm();
 
 def:pub add_todo(title: str) -> Todo {
-    result = categorize(title);
-    category = str(result).split(".")[-1].lower();
+    try {
+        result = categorize(title);
+        category = str(result).split(".")[-1].lower();
+    } except Exception {
+        category = "other (Needs AI)";
+    }
     todo = Todo(title=title, category=category);
     root() ++> todo;
     return todo;
