@@ -3038,33 +3038,11 @@ collected_packages = set()
 
 # Core packages - always bundle completely (with their dependencies)
 print("\\n[Collecting core packages...]")
-for pkg in ['jaclang', 'setuptools', 'appdirs', 'packaging']:
+for pkg in ['jaclang', 'jac_client', 'setuptools', 'appdirs', 'packaging']:
     d, b, h = collect_with_deps(pkg, collected_packages)
     datas += d
     binaries += b
     all_hiddenimports += h
-
-# Ensure jac_client is bundled (editable installs may not be found by collect_all)
-try:
-    import jac_client as _jc
-    _jc_root = Path(_jc.__path__[0]) if hasattr(_jc, '__path__') else None
-    _jc_skip = ['node_modules', '.jac', '__pycache__', '.git', 'tests', 'examples']
-    if _jc_root and _jc_root.is_dir():
-        _jc_count = 0
-        for _f in _jc_root.rglob('*'):
-            try:
-                _rel = _f.relative_to(_jc_root)
-                if any(_p in _jc_skip for _p in _rel.parts):
-                    continue
-                if _f.is_file() and not _f.name.startswith('.'):
-                    _rel_full = _f.relative_to(_jc_root.parent)
-                    datas.append((str(_f), str(_rel_full.parent)))
-                    _jc_count += 1
-            except (OSError, ValueError):
-                continue
-        print(f"  jac_client: explicitly bundled {{_jc_count}} files from {{_jc_root}}")
-except Exception as _e:
-    print(f"  jac_client: could not bundle explicitly: {{_e}}")
 
 # Plugin packages - bundle based on config (with their dependencies)
 print("\\n[Collecting plugin packages...]")
