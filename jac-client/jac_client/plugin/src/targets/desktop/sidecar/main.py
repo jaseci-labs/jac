@@ -92,33 +92,22 @@ def _register_frozen_plugins(plugin_manager):
         except Exception as e:
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
 
-    # jac_client — namespace package with .jac files
-    # Create __init__.py at runtime if missing (editable installs don't have them)
-    try:
-        _meipass = getattr(sys, "_MEIPASS", None)
-        if _meipass:
-            for _subdir in ["jac_client", "jac_client/plugin", "jac_client/plugin/src",
-                            "jac_client/plugin/impl", "jac_client/plugin/src/targets",
-                            "jac_client/plugin/src/targets/impl",
-                            "jac_client/plugin/src/targets/desktop",
-                            "jac_client/plugin/src/targets/desktop/sidecar"]:
-                _init = os.path.join(_meipass, _subdir, "__init__.py")
-                if not os.path.exists(_init):
-                    _dir = os.path.dirname(_init)
-                    if os.path.isdir(_dir):
-                        with open(_init, "w") as f:
-                            pass
-        # Now import should work via the Jac meta-importer
-        import importlib
-        mod = importlib.import_module("jac_client.plugin.client")
-        cls = getattr(mod, "JacClient")
-        if not plugin_manager.is_registered(cls):
-            plugin_manager.register(cls, name="client")
-            sys.stderr.write("[sidecar] Registered client plugin\n")
-    except ImportError:
-        sys.stderr.write("[sidecar] client not bundled\n")
-    except Exception as e:
-        sys.stderr.write(f"[sidecar] client registration error: {e}\n")
+    # jac_client — now a regular package with __init__.py (same as jac_scale)
+    jac_plugins = [
+        ("jac_client.plugin.client", "JacClient", "client"),
+    ]
+    for module_path, class_name, name in jac_plugins:
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            if not plugin_manager.is_registered(cls):
+                plugin_manager.register(cls, name=name)
+                sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
+        except ImportError:
+            sys.stderr.write(f"[sidecar] {name} not bundled\n")
+        except Exception as e:
+            sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
 
 
 def _run_jac_cli():
