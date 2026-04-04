@@ -66,17 +66,14 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
 def _ensure_frozen_search_paths():
     """Ensure _MEIPASS is discoverable by jaclang's JacMetaImporter.
 
-    In frozen PyInstaller apps, jac_client is a namespace package with .jac
-    files (no __init__.py). The JacMetaImporter handles these, but only if
-    _MEIPASS is on the search paths it checks (sys.path + JACPATH).
+    In frozen PyInstaller apps, the JacMetaImporter resolves .jac files
+    but only if _MEIPASS is on the search paths (sys.path + JACPATH).
     """
     _meipass = getattr(sys, "_MEIPASS", None)
     if not _meipass:
         return
-    # Ensure _MEIPASS is on sys.path (PyInstaller usually does this, but be safe)
     if _meipass not in sys.path:
         sys.path.insert(0, _meipass)
-    # Also add to JACPATH so get_jac_search_paths() always includes it
     jacpath = os.environ.get("JACPATH", "")
     if _meipass not in jacpath:
         os.environ["JACPATH"] = _meipass + (os.pathsep + jacpath if jacpath else "")
@@ -88,10 +85,6 @@ def _register_frozen_plugins(plugin_manager):
     Entry point discovery fails in frozen apps, so we register each plugin
     explicitly. This must be called in both the main sidecar process and
     the --jac-cli child process.
-
-    jac_scale/byllm are regular Python packages (have __init__.py).
-    jac_client is a namespace package with .jac files — jaclang's
-    JacMetaImporter handles it as long as _MEIPASS is on the search paths.
     """
     _ensure_frozen_search_paths()
 
@@ -108,10 +101,14 @@ def _register_frozen_plugins(plugin_manager):
             if not plugin_manager.is_registered(cls):
                 plugin_manager.register(cls, name=name)
                 sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
-        except ImportError:
-            sys.stderr.write(f"[sidecar] {name} not bundled\n")
+        except ImportError as e:
+            import traceback
+            sys.stderr.write(f"[sidecar] {name} not bundled: {e}\n")
+            traceback.print_exc(file=sys.stderr)
         except Exception as e:
+            import traceback
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
+            traceback.print_exc(file=sys.stderr)
 
 
 def _run_jac_cli():
