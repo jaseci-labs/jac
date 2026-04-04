@@ -3038,7 +3038,7 @@ collected_packages = set()
 
 # Core packages - always bundle completely (with their dependencies)
 print("\\n[Collecting core packages...]")
-for pkg in ['jaclang', 'jac_client', 'setuptools', 'appdirs', 'packaging']:
+for pkg in ['jaclang', 'setuptools', 'appdirs', 'packaging']:
     d, b, h = collect_with_deps(pkg, collected_packages)
     datas += d
     binaries += b
