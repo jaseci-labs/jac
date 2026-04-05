@@ -40,6 +40,8 @@ def parse_from_title(pr_title: str) -> list[dict]:
                     "precompile_path": pkg_info.precompile_path,
                     "precompile_artifact": pkg_info.precompile_artifact,
                     "extra_build_cmd": pkg_info.extra_build_cmd,
+                    "needs_nodejs": pkg_info.needs_nodejs,
+                    "extra_build_deps": pkg_info.extra_build_deps,
                 }
             )
     return releases

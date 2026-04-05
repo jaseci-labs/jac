@@ -1170,24 +1170,57 @@ impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
     return cwd / ".jac" / "admin";
 }
 
+"""Copy pre-built admin assets from the installed package to the dist directory."""
+def _copy_dir_contents(src: Path, dst: Path) {
+    import shutil;
+    dst.mkdir(parents=True, exist_ok=True);
+    for item in src.iterdir() {
+        dest = dst / item.name;
+        if item.is_dir() {
+            if dest.exists() {
+                shutil.rmtree(dest);
+            }
+            shutil.copytree(item, dest);
+        } else {
+            shutil.copy2(item, dest);
+        }
+    }
+}
+
 """Build the admin client from admin/ui source."""
 impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     dist_dir = self.get_admin_dist_dir();
     index_file = dist_dir / "index.html";
-    # Check if already built
+    # Check if already built/deployed
     if not force and index_file.exists() {
         logger.debug("Admin client already built");
         return True;
     }
-    # Get admin UI source directory
+
     import from jac_scale.admin { admin_portal }
     admin_dir = Path(admin_portal.__file__).parent;
+
+    # Check for pre-built assets bundled with the package
+    bundled_dist = admin_dir / "_dist";
+    if bundled_dist.exists() and (bundled_dist / "index.html").exists() {
+        logger.info("Using pre-built admin client from package");
+        try {
+            _copy_dir_contents(bundled_dist, dist_dir);
+            logger.info("Pre-built admin client deployed successfully");
+            return True;
+        } except Exception as e {
+            logger.error(f"Failed to deploy pre-built admin client: {e}");
+            return False;
+        }
+    }
+
+    # Fall back to building from source (dev mode)
     ui_dir = admin_dir / "ui";
     if not (ui_dir / "main.jac").exists() {
         logger.error(f"Admin UI source not found at {ui_dir}");
         return False;
     }
-    logger.info("Building admin client...");
+    logger.info("Building admin client from source...");
     try {
         # Run jac build in the UI directory
         result = subprocess.run(
@@ -1206,19 +1239,7 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
         # Copy built files to .jac/admin
         ui_dist = ui_dir / ".jac" / "client" / "dist";
         if ui_dist.exists() {
-            import shutil;
-            dist_dir.mkdir(parents=True, exist_ok=True);
-            for item in ui_dist.iterdir() {
-                dest = dist_dir / item.name;
-                if item.is_dir() {
-                    if dest.exists() {
-                        shutil.rmtree(dest);
-                    }
-                    shutil.copytree(item, dest);
-                } else {
-                    shutil.copy2(item, dest);
-                }
-            }
+            _copy_dir_contents(ui_dist, dist_dir);
         }
 
         logger.info("Admin client built successfully");

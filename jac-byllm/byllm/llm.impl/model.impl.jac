@@ -9,12 +9,11 @@ impl Model.postinit -> None {
     self.http_client = bool(
         self.config.get("http_client", _model_config.get("http_client", False))
     );
-    # Resolve api_key: constructor > instance config > global config > env vars (litellm fallback)
-    self.api_key = (
-        self.api_key
-        or self.config.get("api_key", "")
-        or _model_config.get("api_key", "")
-    );
+    # Resolve api_key: constructor > instance config > global config
+    if not self.api_key {
+        self.api_key = self.config.get("api_key", "")
+        or _model_config.get("api_key", "");
+    }
     # When model_name is 'mockllm', delegate to MockLLM behavior
     if self.model_name == MODEL_MOCK {
         self._mock_delegate = MockLLM(model_name=self.model_name, config=self.config);
