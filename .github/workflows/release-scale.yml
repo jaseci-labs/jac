@@ -47,12 +47,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
       - name: Download precompiled artifacts
         uses: actions/download-artifact@v4
         with:
           path: jac-scale/jac_scale/_precompiled/
           pattern: precompiled-scale-*
           merge-multiple: true
+      - name: Pre-build admin dashboard UI
+        run: |
+          pip install -e ../jac
+          pip install -e ../jac-client
+          pip install -e .
+          jac run scripts/build_admin_ui.jac
+          pip uninstall -y jac-scale jac-client jaclang
       - name: Install build tools
         run: |
           pip install build twine

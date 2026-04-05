@@ -497,6 +497,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         _icoerced.append(_ia);
                     }
                 }
+                # Inject captured closure variables if this is a capturing lambda.
+                # If the function pointer expects more args than were explicitly
+                # passed, look up the capture info by variable name and load
+                # the captured values from the current scope's local variables.
+                if func_name in self.lambda_captures {
+                    for (_cname, _c_alloca) in self.lambda_captures[func_name] {
+                        _cval = self.builder.load(_c_alloca, name=f"cap.{_cname}");
+                        _icoerced.append(_cval);
+                    }
+                }
                 return self.builder.call(
                     _loaded, _icoerced, name=f"icall.{func_name}"
                 );

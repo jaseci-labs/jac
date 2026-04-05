@@ -172,7 +172,7 @@ cl {
         return <input
             type="text"
             value={query}
-            onChange={lambda e: any -> None { query = e.target.value; }}
+            onChange={lambda e: ChangeEvent { query = e.target.value; }}
             placeholder="Search..."
         />;
     }
@@ -187,20 +187,20 @@ cl {
         has username: str = "";
         has password: str = "";
 
-        def handle_submit(e: any) -> None {
+        def handle_submit(e: FormEvent) -> None {
             e.preventDefault();
             print(f"Login: {username}");
         }
 
-        return <form onSubmit={lambda e: any -> None { handle_submit(e); }}>
+        return <form onSubmit={lambda e: FormEvent { handle_submit(e); }}>
             <input
                 value={username}
-                onChange={lambda e: any -> None { username = e.target.value; }}
+                onChange={lambda e: ChangeEvent { username = e.target.value; }}
             />
             <input
                 type="password"
                 value={password}
-                onChange={lambda e: any -> None { password = e.target.value; }}
+                onChange={lambda e: ChangeEvent { password = e.target.value; }}
             />
             <button type="submit">Login</button>
         </form>;
@@ -384,7 +384,8 @@ cl {
 | Define component | `def:pub Name(props: dict) -> JsxElement { }` |
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
-| Event handler | `onClick={lambda -> None { ... }}` |
+| Click handler | `onClick={lambda -> None { ... }}` |
+| Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
 | Children | `{props.children}` |
