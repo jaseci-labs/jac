@@ -73,7 +73,7 @@ obj DockerSandbox(SandboxEnvironment) {
         }
     }
 
-    def _copy_code_to_container(container: Any, code_path: str) -> None {
+    def _copy_code_to_container(container: Any, code_path: str) {
         buf = io.BytesIO();
         with tarfile.open(fileobj=buf, mode="w") as tar {
             tar.add(code_path, arcname=".");
@@ -82,7 +82,7 @@ obj DockerSandbox(SandboxEnvironment) {
         container.put_archive("/app", buf);
     }
 
-    def _poll_container_readiness(sandbox_id: str, port: int) -> None {
+    def _poll_container_readiness(sandbox_id: str, port: int) {
         import requests;
         url = f"http://localhost:{port}";
         start_time = time.time();
@@ -310,7 +310,7 @@ obj DockerSandbox(SandboxEnvironment) {
         );
     }
 
-    def destroy(sandbox_id: str) -> None {
+    def destroy(sandbox_id: str) {
         self.stop(sandbox_id);
         self._lock.acquire();
         try {

@@ -289,11 +289,6 @@ impl UniNode.unparse -> str {
     return ' '.join([i.unparse() for i in self.kid]);
 }
 
-impl AtomExpr.postinit -> None {
-    Expr.postinit(self);
-    AstSymbolStubNode._init_stub(self, sym_type=SymbolType.UNKNOWN);
-}
-
 
 """Initialize."""
 impl Symbol.init(
@@ -584,7 +579,7 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
 impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
     nd.name_spec.py_ctx_func = ast3.Store;
     if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
-        def fix(item: TupleVal | ListVal | UnaryExpr) -> None {
+        def fix(item: TupleVal | ListVal | UnaryExpr) {
             if isinstance(item, UnaryExpr) {
                 if isinstance(item.operand, AstSymbolNode) {
                     item.operand.name_spec.py_ctx_func = ast3.Store;
@@ -888,11 +883,7 @@ impl SubTag.postinit -> None {
 
 
 impl Module.postinit -> None {
-    self.impl_mod: list[Module] = [];
-    self.test_mod: list[Module] = [];
-    self.variant_mod: list[Module] = [];
-    self.src_terminals: list[Token] = self.terminals;
-    self.is_raised_from_py: bool = False;
+    self.src_terminals = self.terminals;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }

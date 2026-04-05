@@ -2,6 +2,10 @@ import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.client_bundle {
+    _lookup_module_in_hub,
+    _ensure_js_generated
+}
 
 glob _client_error_logger = logging.getLogger("jaclang.client_errors");
 
@@ -210,6 +214,21 @@ impl ExecutionManager.execute_function(
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
+        # Deserialize typed arguments from wire format
+        for (k, v) in list(args.items()) {
+            if isinstance(v, dict) and '__type__' in v {
+                deserialized = Serializer.deserialize(v);
+                if deserialized is not None {
+                    args[k] = deserialized;
+                }
+            } elif isinstance(v, list) {
+                args[k] = [
+                    Serializer.deserialize(item)
+                        if isinstance(item, dict) and '__type__' in item
+                        else item for item in v
+                ];
+            }
+        }
         func_result = func(**args);
         if iscoroutine(func_result) {
             result = await func_result;
@@ -244,6 +263,21 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
+    # Deserialize typed walker fields from wire format
+    for (k, v) in list(fields.items()) {
+        if isinstance(v, dict) and '__type__' in v {
+            deserialized = Serializer.deserialize(v);
+            if deserialized is not None {
+                fields[k] = deserialized;
+            }
+        } elif isinstance(v, list) {
+            fields[k] = [
+                Serializer.deserialize(item)
+                    if isinstance(item, dict) and '__type__' in item
+                    else item for item in v
+            ];
+        }
+    }
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
@@ -321,10 +355,12 @@ impl ModuleIntrospector._load_manifest -> None {
     }
     mod_path = getattr(self._module, '__file__', None);
     if mod_path {
-        mod = Jac.program.mod.hub.get(mod_path);
-        # If module not in hub, compile it to get the manifest
+        mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub);
         if not mod {
             mod = Jac.program.compile(mod_path);
+        }
+        if mod and mod.gen.client_manifest and not mod.gen.client_manifest.exports {
+            _ensure_js_generated(mod, Jac.program);
         }
         if (mod and mod.gen.client_manifest) {
             manifest = mod.gen.client_manifest;
@@ -1246,7 +1282,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         """
         def _send_response(
             self: JacRequestHandler, response: (Response | TransportResponse)
-        ) -> None {
+        ) {
             # Handle legacy Response objects for backward compatibility
             if isinstance(response, Response) {
                 Jac.send_json(self, response.status, response.body);
@@ -1257,9 +1293,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Authenticate and render a page, sending HTML response."""
-        def _render_page(
-            self: JacRequestHandler, func_name: str, args: dict = {}
-        ) -> None {
+        def _render_page(self: JacRequestHandler, func_name: str, args: dict = {}) {
             username = self._authenticate();
             if not username {
                 username = Con.GUEST.value;
@@ -1280,7 +1314,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Handle OPTIONS requests (CORS preflight)."""
-        def do_OPTIONS(self: JacRequestHandler) -> None {
+        def do_OPTIONS(self: JacRequestHandler) {
             self.send_response(200);
             ResponseBuilder._add_cors_headers(self);
             ResponseBuilder._add_custom_headers(self);
@@ -1692,7 +1726,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Log HTTP requests."""
-        def log_message(self: JacRequestHandler, format: str, *args: object) -> None {
+        def log_message(self: JacRequestHandler, format: str, *args: object) {
             console.print(f"{self.address_string()} - {(format % args)}");
         }
     }
@@ -1911,11 +1945,11 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     walkers = server.introspector.get_walkers();
     client_exports = server.introspector._client_manifest.get('exports', []);
     """Print section header.""";
-    def section(title: str, auth: str = '') -> None {
+    def section(title: str, auth: str = '') {
         console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
     """Print endpoint with description.""";
-    def endpoint(method: str, path: str, desc: str, details: str = '') -> None {
+    def endpoint(method: str, path: str, desc: str, details: str = '') {
         console.print(f"{method:6} {path}");
         console.print(f"       {desc}");
         if details {

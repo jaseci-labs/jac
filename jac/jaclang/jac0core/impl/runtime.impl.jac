@@ -142,6 +142,7 @@ impl JacAccessValidation.check_access_level(
 impl JacNode.get_edges(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[EdgeArchetype] {
+    _prefetch_edges(origin);
     edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -181,6 +182,7 @@ impl JacNode.get_edges_with_node(
     destination: ObjectSpatialDestination,
     from_visit: bool = False
 ) -> list[(EdgeArchetype | NodeArchetype)] {
+    _prefetch_edges(origin);
     loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -220,6 +222,7 @@ impl JacNode.get_edges_with_node(
 impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
+    _prefetch_edges(origin);
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -258,7 +261,6 @@ impl JacNode.remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
     for (idx, ed) in enumerate(nd.edges) {
         if (ed.id == `edge.id) {
             nd.edges.pop(idx);
-            nd.is_updated = True;
             break;
         }
     }
@@ -803,10 +805,10 @@ impl JacBuiltin.printgraph(
     edge_type = edge_type or [];
     visited_nodes: list[NodeArchetype] = [];
     node_depths: dict[(NodeArchetype, int)] = {nd: 0};
-    queue: list = [[nd, 0]];
+    queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
     connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
     """Depth first search.""";
-    def dfs(nd: NodeArchetype, cur_depth: int) -> None {
+    def dfs(nd: NodeArchetype, cur_depth: int) {
         if (nd not in visited_nodes) {
             visited_nodes.append(nd);
             traverse_graph(
@@ -905,10 +907,12 @@ impl JacBasics.get_context -> ExecutionContext {
     }
 
     # Fallback to global context (CLI, tests, non-web environments)
-    if (JacRuntime.exec_ctx is None) {
-        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None);
+    ctx = JacRuntime.exec_ctx;
+    if ctx is None {
+        ctx = JacRuntimeInterface.create_j_context(user_root=None);
+        JacRuntime.exec_ctx = ctx;
     }
-    return JacRuntime.exec_ctx;
+    return ctx;
 }
 
 """Commit all data from memory to datasource."""
@@ -950,7 +954,6 @@ impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
         for e in ranchor.edges
         if (e.id not in deleted_ids)
     ];
-    ranchor.is_updated = True;
     mem.commit(ranchor);
     return deleted_count;
 }
@@ -1206,7 +1209,7 @@ impl JacBasics.jac_test(description: str = "") -> Callable {
     def decorator(test_fun: Callable) -> Callable {
         file_path = getfile(test_fun);
         func_name = test_fun.__name__;
-        def test_deco -> None {
+        def test_deco {
             test_fun(JacTestCheck());
         }
         test_deco.__name__ = test_fun.__name__;
@@ -1548,8 +1551,6 @@ impl JacBasics.build_edge(
         );
         source.edges.append(eanch);
         target.edges.append(eanch);
-        source.is_updated = True;
-        target.is_updated = True;
         if conn_assign {
             for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {
                 if hasattr(`edge, fld) {
@@ -1850,7 +1851,7 @@ impl JacByLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 }
 
 """Call the LLM model."""
-impl JacByLLM.call_llm(model: object, mt_run: MTRuntime) -> Any {
+impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
     import from jaclang.utils { NonGPT }
     try {
         random_value_for_type = cast(
@@ -1876,7 +1877,7 @@ impl JacByLLM.call_llm(model: object, mt_run: MTRuntime) -> Any {
 }
 
 """Python library mode decorator for Jac's by llm() syntax."""
-impl JacByLLM.`by(model: object) -> Callable {
+impl JacByLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
             invoke_args: dict[((int | str), object)] = {};
@@ -1897,7 +1898,7 @@ impl JacByLLM.`by(model: object) -> Callable {
 }
 
 impl JacByLLM.filter_visitable_by(
-    connected_nodes: list[NodeArchetype], model: object, descriptions: str = ''
+    connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
 ) -> list[NodeArchetype] {
     import from jaclang.jac0core.helpers { _describe_nodes_list }
     visitable_list: list = [];
@@ -1945,7 +1946,7 @@ impl JacByLLM.by_operator(lhs: Any, rhs: Any) -> Any {
     in call_llm. Plugins (e.g. byllm) override this to return a configured
     Model instance based on jac.toml settings.
     """
-impl JacByLLM.default_llm -> object {
+impl JacByLLM.default_llm -> LLMModel {
     _cache = getattr(JacByLLM, '_default_llm_instance', None);
     if (_cache is not None) {
         return _cache;

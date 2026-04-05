@@ -31,7 +31,9 @@ import from byllm.types {
     StreamEvent,
     ToolCall,
     Message,
-    MessageRole
+    MessageRole,
+    IterationAction,
+    IterationContext
 }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry }
@@ -76,6 +78,7 @@ obj BaseLLM {
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[str, None, None];
     def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
+    def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(
         recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime
@@ -95,7 +98,26 @@ obj MockLLM(BaseLLM) {
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
-"""Primary LLM connector that abstracts LiteLLM functionality.
+"""Pool of LLM models with fallback and load-balancing via LiteLLM Router.
+
+Strategies: 'fallback' (ordered), 'simple-shuffle' (random pick per call),
+'cost-based-routing' (cheapest first), 'latency-based-routing' (fastest first),
+'least-busy' (least concurrent load), 'usage-based-routing' (least used first).
+"""
+obj ModelPool(BaseLLM) {
+    has model_name: str = "pool-model",
+        models: list[BaseLLM] = [],
+        strategy: str | None = None,
+        num_retries: int | None = None,
+        timeout: float | None = None,
+        _router: object = None;
+
+    def postinit -> None;
+    override def model_call_no_stream(params: dict) -> dict;
+    override def model_call_with_stream(params: dict) -> Generator[str, None, None];
+}
+
+"""Primary LLM connector that abstracts LiteLLM functionality
 
 Provides a unified interface for interacting with various language models
 (OpenAI, Anthropic, etc.) through LiteLLM. Supports both direct API calls

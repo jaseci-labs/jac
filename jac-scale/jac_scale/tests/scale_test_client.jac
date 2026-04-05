@@ -80,7 +80,7 @@ obj ScaleTestClient {
     }
 
     """Initialize the jac-scale server and Starlette TestClient."""
-    def _initialize -> None {
+    def _initialize {
         import from starlette.testclient { TestClient }
         import from jac_scale.serve { JacAPIServer }
 
@@ -108,6 +108,7 @@ obj ScaleTestClient {
         self._server.load_module();
 
         # Register all endpoints (same as start() but without run_server)
+        self._server.register_health_endpoint();
         self._server.register_create_user_endpoint();
         self._server.register_login_endpoint();
         self._server.register_refresh_token_endpoint();
@@ -258,7 +259,7 @@ obj ScaleTestClient {
     }
 
     """Cleanup resources."""
-    def close -> None {
+    def close {
         if self._client {
             self._client.close();
             self._client = None;

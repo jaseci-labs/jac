@@ -172,7 +172,7 @@ cl {
     }
 
     # Handle login form submission
-    async def handle_login(event: Any) -> None {
+    async def handle_login(event: Any) {
         event.preventDefault();
         username = document.getElementById("username").value;
         password = document.getElementById("password").value;
@@ -300,7 +300,7 @@ cl {
     }
 
     # Handle logout
-    def logout_action -> None {
+    def logout_action {
         jacLogout();
         navigate("/login");
     }

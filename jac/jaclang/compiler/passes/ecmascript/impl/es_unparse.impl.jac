@@ -249,6 +249,25 @@ impl JSCodeGenerator.gen_conditional_expression(nd: es.ConditionalExpression) ->
 """Generate member expression."""
 impl JSCodeGenerator.gen_member_expression(nd: es.MemberExpression) -> str {
     `obj = self.generate(nd.object);
+    # Parenthesize expressions that have lower precedence than member access.
+    # Without this, `await foo().prop` is parsed as `await (foo().prop)`
+    # instead of `(await foo()).prop`. Same issue applies to yield.
+    if isinstance(
+        nd.object,
+        (
+            es.AwaitExpression,
+            es.YieldExpression,
+            es.AssignmentExpression,
+            es.ConditionalExpression,
+            es.BinaryExpression,
+            es.LogicalExpression,
+            es.UnaryExpression,
+            es.UpdateExpression,
+            es.SequenceExpression
+        )
+    ) {
+        `obj = f"({`obj})";
+    }
     optional = '?.' if nd.optional else '';
     if nd.computed {
         prop = self.generate(nd.property);
@@ -410,7 +429,7 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
 
 """Generate private identifier."""
 impl JSCodeGenerator.gen_private_identifier(nd: es.PrivateIdentifier) -> str {
-    return f"\#{nd.name}";
+    return f"#{nd.name}";
 }
 
 """Generate identifier."""

@@ -23,11 +23,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: Any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: Any) {
             password = e.target.value;
         }
 

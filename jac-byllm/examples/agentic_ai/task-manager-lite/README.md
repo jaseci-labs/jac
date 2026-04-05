@@ -42,7 +42,7 @@ A lightweight AI-powered task management system that intelligently routes user r
 
 ## Usage
 
-1. Start the Jac Cloud server:
+1. Start the Jac server:
 
    ```bash
    jac start task_manager.jac

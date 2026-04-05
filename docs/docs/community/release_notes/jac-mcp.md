@@ -1,10 +1,32 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.7 (Unreleased)
+## jac-mcp 0.1.11 (Unreleased)
 
-- 1 small changes.
+## jac-mcp 0.1.10 (Latest Release)
 
-## jac-mcp 0.1.6 (Latest Release)
+- **Content QA fixes**: Updated `root` to `root()` in pitfalls and knowledge map to match current deprecation (W0062). Fixed invalid graph filter syntax `` [-->](`?B) `` → `[-->][?:B]` in pitfalls. Updated `root spawn` → `root() spawn` in client-side examples.
+- **New doc mappings**: Added `jac://docs/tutorial-fullstack-npm`, `jac://docs/tutorial-fullstack-advanced`, and `jac://docs/diagnostics` to DOC_MAPPINGS and knowledge map. Bundled docs updated.
+
+## jac-mcp 0.1.9
+
+- 1 small refactor/change.
+- **Knowledge map tools**: `understand_jac_and_jaseci` and `get_resource` tools for on-demand doc fetching with size-tagged URIs, expanded fullstack coverage, enum-validated example categories, and leaner tool/server descriptions.
+- **Client-side and full-stack pitfalls**: Added new pitfalls documentation covering client-side `.cl.jac` and full-stack gotchas.
+
+## jac-mcp 0.1.8
+
+- **Full CLI access over MCP**: AI models can now discover and run any `jac` CLI command (including plugin-provided ones) directly from the MCP session. `list_commands` returns a lightweight summary; `get_command(name)` returns full argument details; `execute_command` runs them. Replaces the narrower `start_server`, `create_project`, and `list_templates` tools.
+
+## jac-mcp 0.1.7
+
+- 2 small changes.
+- **8 new tools**: AI models can now run Jac code, lint files, convert Jac to Python or JavaScript, visualize graphs, list project templates, scaffold new projects, and start a local server - all from within the MCP session.
+- **`jac_to_js` fix**: Client-side transpilation now correctly targets `.cl.jac` files; previously produced no output.
+- **`start_server` fix**: Server startup now runs from the project's directory so `jac.toml` is discovered correctly.
+- **Expanded test coverage**: 35 new tests covering all new tools at both the `CompilerBridge` and `ToolProvider` levels.
+- **Richer example descriptions**: `list_examples` now returns a meaningful one-line description per example (fullstack, OSP, native/lib mode, etc.) so AI models can pick the right one without fetching its contents first.
+
+## jac-mcp 0.1.6
 
 - **Fix SSE transport method issue**
 - **Fix `prompts/get` failing with Pydantic validation error**: System instructions now correctly use `role: "assistant"`

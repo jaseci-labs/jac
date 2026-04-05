@@ -30,7 +30,6 @@ graph LR
 ```jac
 # app.jac
 node Task {
-    has id: int;
     has title: str;
     has done: bool = False;
 }
@@ -38,7 +37,7 @@ node Task {
 walker:pub get_tasks {
     can fetch with Root entry {
         tasks = [-->][?:Task];
-        report [{"id": t.id, "title": t.title, "done": t.done} for t in tasks];
+        report [{"id": jid(t), "title": t.title, "done": t.done} for t in tasks];
     }
 }
 
@@ -46,10 +45,9 @@ walker:pub add_task {
     has title: str;
 
     can create with Root entry {
-        import random;
-        task = Task(id=random.randint(1, 10000), title=self.title);
+        task = Task(title=self.title);
         root ++> task;
-        report {"id": task.id, "title": task.title, "done": task.done};
+        report {"id": jid(task), "title": task.title, "done": task.done};
     }
 }
 ```
@@ -216,6 +214,13 @@ Response (all walker responses are wrapped in a standard envelope):
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
 - **Graph Visualizer:** `http://localhost:8000/graph` - interactive visualization of your application's graph
 
+These endpoints are enabled by default. To disable them (e.g. in production), set `docs_enabled = false` in your `jac.toml`:
+
+```toml
+[plugins.scale.server]
+docs_enabled = false
+```
+
 ---
 
 ## Database Persistence
@@ -377,10 +382,8 @@ walker:pub ready {
 ```jac
 # api.jac
 import from datetime { datetime }
-import uuid;
 
 node User {
-    has id: str;
     has name: str;
     has email: str;
     has created_at: str;
@@ -391,7 +394,7 @@ walker:pub list_users {
     can fetch with Root entry {
         users = [-->][?:User];
         report [{
-            "id": u.id,
+            "id": jid(u),
             "name": u.name,
             "email": u.email
         } for u in users];
@@ -404,9 +407,9 @@ walker:pub get_user {
 
     can fetch with Root entry {
         for u in [-->][?:User] {
-            if u.id == self.user_id {
+            if jid(u) == self.user_id {
                 report {
-                    "id": u.id,
+                    "id": jid(u),
                     "name": u.name,
                     "email": u.email,
                     "created_at": u.created_at
@@ -425,13 +428,12 @@ walker:pub create_user {
 
     can create with Root entry {
         user = User(
-            id=str(uuid.uuid4()),
             name=self.name,
             email=self.email,
             created_at=datetime.now().isoformat()
         );
         root ++> user;
-        report {"id": user.id, "name": user.name, "email": user.email};
+        report {"id": jid(user), "name": user.name, "email": user.email};
     }
 }
 
@@ -443,10 +445,10 @@ walker:pub update_user {
 
     can update with Root entry {
         for u in [-->][?:User] {
-            if u.id == self.user_id {
+            if jid(u) == self.user_id {
                 if self.name { u.name = self.name; }
                 if self.email { u.email = self.email; }
-                report {"id": u.id, "name": u.name, "email": u.email};
+                report {"id": jid(u), "name": u.name, "email": u.email};
                 return;
             }
         }
@@ -460,7 +462,7 @@ walker:pub delete_user {
 
     can remove with Root entry {
         for u in [-->][?:User] {
-            if u.id == self.user_id {
+            if jid(u) == self.user_id {
                 del u;
                 report {"deleted": True};
                 return;

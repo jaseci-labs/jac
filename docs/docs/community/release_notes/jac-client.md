@@ -2,9 +2,32 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.8 (Unreleased)
+## jac-client 0.3.12 (Unreleased)
 
-## jac-client 0.3.7 (Latest Release)
+## jac-client 0.3.11 (Latest Release)
+
+- **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
+- **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.
+- 2 small refactors/changes.
+
+## jac-client 0.3.8
+
+- **Auto-install Bun to .jac/bin/**: Bun is now automatically downloaded and managed inside the project's `.jac/bin/` directory when not found on the system PATH. No global install required, no interactive prompts, no PATH configuration needed. All callers resolve the bun binary via `get_bun()` which returns the absolute path directly, bypassing PATH entirely. Pinned to Bun v1.3.11 with automatic upgrades when the pinned version changes.
+
+## jac-client 0.3.10
+
+- **Dev Mode: API Docs accessible from client URL**: The Vite dev server now proxies `/docs`, `/redoc`, `/openapi.json`, `/admin`, and `/graph` to the API backend, so developers can access all dev tools from the client URL without switching ports.
+- **Fix: Windows Client Compilation and Page Routing**: Fixed multiple Windows-specific issues preventing client apps from compiling and running. (1) **Path normalization**: Module hub lookups now use cross-platform path comparison, handling Windows case-insensitivity and backslash separators. (2) **JS generation**: The ES pass is now explicitly triggered when generated JavaScript is empty, fixing page files compiling to empty output. (3) **Import paths**: Backslashes are now normalized to forward slashes in generated JavaScript imports, fixing Vite build errors like `"page" is not exported`. These fixes are no-ops on Linux/macOS where paths already work correctly.
+
+## jac-client 0.3.9
+
+- **Updated Examples to Use Typed Interop Pattern**: The `basic-full-stack`, `full-stack-with-auth`, and `little-x` examples now use the typed object hydration pattern (`__from_wire`/`__to_wire`) for server/client communication.
+- **Simplified WebTarget Production Preview**: The `start` command for web targets now uses a simple HTTP file server for production preview instead of instantiating a full API server, reducing dependencies and startup complexity.
+- **Jac-Scale Plugin Support for PWA/Web Targets**: Fixed `WebTarget.start()` to use `Jac.get_api_server_class()` plugin hook instead of Python's built-in `http.server`. When jac-scale is installed, `jac start --client pwa` and `jac start --client web` now automatically use jac-scale's FastAPI-based server with JWT authentication, user management, WebSocket support, and admin portal. Previously, these targets ignored jac-scale and always used the basic HTTP server.
+
+## jac-client 0.3.8
+
+## jac-client 0.3.7
 
 - **PWA Install Banner**: PWA apps now show an automatic install prompt after `jac setup pwa` -- no manual code required. Features include a glassmorphic dark banner with slide-up animation, native Chrome/Edge install prompt integration via `beforeinstallprompt`, iOS Safari support with step-by-step "Add to Home Screen" instructions modal, and smart re-prompting with exponential backoff (7 → 14 → 28 days, max 3 dismissals). All banner settings are configurable via `[plugins.client.pwa]` in `jac.toml`: `install_banner`, `install_banner_delay`, `install_banner_position`, `install_button_text`, `install_dismiss_text`. For programmatic control, import `usePwaInstall` hook or `PwaInstallButton` component from `@jac/pwa`.
 - **Vite dev server binds to all interfaces**: Added `host: true` to Vite config and `--host` CLI flag so the dev server is accessible from outside containers/pods.
@@ -19,6 +42,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.5
 
+- **ESM & TypeScript Client Config Generation**: Added a feature to support for generating ESM and TypeScript client config files from `[plugins.client.configs]`, while preserving existing CommonJS behavior and allowing raw config templates when needed.
 - **Fix: Parser Strictness Compliance**: Moved docstrings before signatures across all test files (`test_cli`, `test_it`, `test_e2e`, `test_helpers`, `test_desktop_api_url`) and backtick-escaped `entry`/`walker` keyword parameters in `client_runtime` to comply with the stricter RD parser.
 - **Auto-Manage Core npm Dependencies**: The client config loader now automatically adds `jac-client-node` and `@jac-client/dev-deps` to `jac.toml` if missing, and auto-updates them when version mismatches are detected. When dependencies change, `node_modules` is cleared to force reinstall. Added `check_runtime_version()` and `sync_runtime_version()` methods for programmatic version management.
 
@@ -192,22 +216,22 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PYPI Package Release**: First stable release (v0.1.0) now available on PyPI. Install via `pip install jac-client` to get started with Vite-powered client bundling for your Jac projects.
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5
+## jaclang 0.8.10 / byllm 0.4.5
 
-## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
+## jaclang 0.8.9 / byllm 0.4.4
 
-## jaclang 0.8.8 / jac-cloud 0.2.8 / byllm 0.4.3
+## jaclang 0.8.8 / byllm 0.4.3
 
-## jaclang 0.8.7 / jac-cloud 0.2.7 / byllm 0.4.2
+## jaclang 0.8.7 / byllm 0.4.2
 
-## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
+## jaclang 0.8.6 / byllm 0.4.1
 
-## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
+## jaclang 0.8.5 / mtllm 0.4.0
 
-## jaclang 0.8.4 / jac-cloud 0.2.4 / mtllm 0.3.9
+## jaclang 0.8.4 / mtllm 0.3.9
 
-## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
+## jaclang 0.8.3 / mtllm 0.3.8
 
-## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
+## jaclang 0.8.1 / mtllm 0.3.6
 
 ## Version 0.8.0

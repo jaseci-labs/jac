@@ -1,13 +1,11 @@
 """Static analysis pass implementation."""
 
-impl StaticAnalysisPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
+impl StaticAnalysisPass.postinit -> None {
+    super.postinit();
 }
 
-"""Run all static analyses after the full tree traversal."""
-impl StaticAnalysisPass.after_pass -> None {
+"""Run all static analyses via bulk sub-node queries (no tree traversal)."""
+impl StaticAnalysisPass.transform(ir_in: uni.Module) -> uni.Module {
     self._checked_scopes: set[int] = set();
     self._check_unused_symbols(self.ir_in);
     self._check_undefined_names(self.ir_in);
@@ -18,6 +16,7 @@ impl StaticAnalysisPass.after_pass -> None {
         self._check_unreachable_code(annex_mod);
         self._check_semantic_patterns(annex_mod);
     }
+    return ir_in;
 }
 
 """Walk all scopes and warn on symbols that are defined but never used."""
@@ -65,9 +64,9 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         if name in ("self", "super", "init", "postinit") {
             continue;
         }
-        # Skip parameters of abstract abilities (no body to use them in)
+        # Skip parameters of abstract abilities and by-llm abilities
         if sym.sym_type == SymbolType.VAR and isinstance(scope, uni.Ability) {
-            if scope.needs_impl {
+            if scope.needs_impl or scope.is_genai_ability {
                 continue;
             }
         }
@@ -93,10 +92,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd._py_ctx_func != ast3.Load {
             continue;
         }
-        # Skip well-known builtins and special names
+        # Skip well-known Python builtins and special names
         import builtins;
-        if name_nd.value in dir(builtins)
-        or name_nd.value in ("self", "super", "almostEqual") {
+        if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
             continue;
         }
         # root is a Jac ambient builtin — warn if used bare (not as root() call)

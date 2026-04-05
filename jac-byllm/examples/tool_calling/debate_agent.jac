@@ -18,7 +18,7 @@ def ask_opponent(statement: str) -> str {
     return f"Opponents Answer -> {user_input}";
 }
 
-def state_facts(information: str) -> None {
+def state_facts(information: str) {
     print(f"AI -> {information}");
 }
 

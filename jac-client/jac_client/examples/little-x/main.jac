@@ -13,10 +13,8 @@ node Profile {
     }
 
     can get with get_profile entry {
-        follwers = [
-            {"id": jid(i), "username": i.username} for i in [self-->[?:Profile]]
-        ];
-        report {"user": self, "followers": follwers};
+        followers = [self-->[?:Profile]];
+        report {"user": self, "followers": followers};
     }
 
     can follow with follow_request entry {
@@ -371,7 +369,7 @@ cl def LoginForm -> JsxElement {
 }
 
 # Handle login form submission
-cl async def handle_login(event: Any) -> None {
+cl async def handle_login(event: Any) {
     event.preventDefault();
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
@@ -501,7 +499,7 @@ cl async def handle_signup(event: Any) -> None {
 }
 
 # Handle logout
-cl def logout_action -> None {
+cl def logout_action {
     jacLogout();
     navigate("/login");
 }

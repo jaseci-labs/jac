@@ -277,6 +277,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install build
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
     - name: Install jaclang for precompilation
       run: pip install -e jac
 
@@ -287,14 +295,21 @@ jobs:
         jac run jac/scripts/precompile_bytecode.jac ./jac-scale
         jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
 
-    - name: Uninstall editable jaclang
-      run: pip uninstall -y jaclang
+    - name: Pre-build admin dashboard UI
+      run: |
+        pip install -e jac-client
+        pip install -e jac-scale
+        cd jac-scale && jac run scripts/build_admin_ui.jac
+
+    - name: Uninstall editable packages
+      run: |
+        pip uninstall -y jac-scale jac-client jaclang
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
         rm -rf jac/jaclang.egg-info
-        rm -rf jac-client/*.egg-info
-        rm -rf jac-scale/*.egg-info
+        rm -rf jac-client/*.egg-info jac-client/jac_client/*.egg-info
+        rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
         rm -rf jac-byllm/*.egg-info
 
     - name: Build and install packages
@@ -324,19 +339,16 @@ jobs:
         pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v2
-
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
       run: |
         jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
         cd jac-gpt && jac install
+
+    - name: Install Playwright dependencies
+      run: |
+        pip install playwright
+        playwright install chromium --with-deps
 
     - name: Type check jac-gpt
       working-directory: jac-gpt
@@ -394,6 +406,11 @@ jobs:
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
         fi
+
+    - name: Run E2E tests
+      env:
+        SERVER_URL: http://localhost:8000
+      run: pytest jac-gpt/tests/test_e2e.jac -v
 
     - name: Stop jac-gpt server
       if: always()

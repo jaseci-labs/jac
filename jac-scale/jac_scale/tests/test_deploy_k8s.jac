@@ -24,6 +24,7 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
+import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 
 """Get current git repository URL, branch, and commit hash.
 
@@ -703,6 +704,37 @@ test "deploy all in one" {
         f"HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
     );
 
+    # Validate HPA is updated on redeploy (not silently ignored)
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=2,
+        max_replicas=5,
+        cpu_target=70
+    );
+    hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+        name=f"{app_name}-hpa", namespace=namespace
+    );
+    assert hpa_updated.spec.min_replicas == 2 , f"Expected min_replicas=2, got {hpa_updated.spec.min_replicas}";
+    assert hpa_updated.spec.max_replicas == 5 , f"Expected max_replicas=5, got {hpa_updated.spec.max_replicas}";
+    assert hpa_updated.spec.metrics[0].resource.target.average_utilization == 70 , (
+        f"Expected cpu_target=70, got {hpa_updated.spec.metrics[
+            0
+        ].resource.target.average_utilization}"
+    );
+    print(
+        f"HPA update verified: min_replicas={hpa_updated.spec.min_replicas}, max_replicas={hpa_updated.spec.max_replicas}, cpu_target=70%"
+    );
+
+    # Restore original HPA values for remaining tests
+    create_hpa(
+        namespace=namespace,
+        deployment_name=app_name,
+        min_replicas=1,
+        max_replicas=3,
+        cpu_target=50
+    );
+
     # Validate NGINX Ingress controller resources
     nginx_controller_name = f"{app_name}-ingress-nginx";
     nginx_cluster_resource_name = f"{namespace}-{nginx_controller_name}";
@@ -776,6 +808,74 @@ test "deploy all in one" {
     assert "/grafana" in ingress_paths , f"Main ingress must route '/grafana'; got paths: {ingress_paths}";
     assert "/db-dashboard" in ingress_paths , f"Main ingress must route '/db-dashboard'; got paths: {ingress_paths}";
     print(f"Main Ingress '{ingress_name}' exists with routes: {ingress_paths}");
+
+    # Validate rate limiting annotations are present with correct default values
+    ingress_annotations = main_ingress.metadata.annotations or {};
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-rps") == "20" , (
+        f"Expected limit-rps=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-rps'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-burst-multiplier"
+    ) == "5" , (
+        f"Expected limit-burst-multiplier=5, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-burst-multiplier'
+        )}"
+    );
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/limit-connections") == "20" , (
+        f"Expected limit-connections=20, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-connections'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/limit-req-status-code"
+    ) == "429" , (
+        f"Expected limit-req-status-code=429, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/limit-req-status-code'
+        )}"
+    );
+    print(
+        f"Rate limiting annotations verified: rps=20, burst-multiplier=5, connections=20, status=429"
+    );
+
+    # Validate sticky session annotations are present (enabled by default)
+    assert ingress_annotations.get("nginx.ingress.kubernetes.io/affinity") == "cookie" , (
+        f"Expected affinity=cookie, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/affinity'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-name"
+    ) == "route" , (
+        f"Expected session-cookie-name=route, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-name'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-max-age"
+    ) == "2147483647" , (
+        f"Expected session-cookie-max-age=2147483647, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-max-age'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-expires"
+    ) == "2147483647" , (
+        f"Expected session-cookie-expires=2147483647, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-expires'
+        )}"
+    );
+    assert ingress_annotations.get(
+        "nginx.ingress.kubernetes.io/session-cookie-change-on-failure"
+    ) == "true" , (
+        f"Expected session-cookie-change-on-failure=true, got: {ingress_annotations.get(
+            'nginx.ingress.kubernetes.io/session-cookie-change-on-failure'
+        )}"
+    );
+    print(
+        "Sticky session annotations verified: affinity=cookie, cookie-name=route, max-age=2147483647"
+    );
 
     ri_ingress = networking_v1.read_namespaced_ingress(
         name=redis_ingress_name, namespace=namespace

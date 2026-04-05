@@ -78,7 +78,7 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
 }
 
 """Compile all discovered .na.jac modules."""
-def _compile_all(modules: dict[str, str]) -> None {
+def _compile_all(modules: dict[str, str]) {
     for (mod_name, na_file) in modules.items() {
         accelerate_module(mod_name, na_file);
     }

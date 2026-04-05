@@ -12,29 +12,27 @@ with entry {
 
 glob T = TypeVar('T', bound=uni.UniNode);
 """Abstract class for IR passes."""
-class UniPass(ModuleCodegenPass) {
+obj UniPass(ModuleCodegenPass) {
+    has term_signal: bool = False,
+        prune_signal: bool = False;
+
     """Initialize parser."""
-    def init(
-        self: UniPass,
-        ir_in: uni.Module,
-        prog: JacProgram,
-        cancel_token: (Event | None) = None
-    ) -> None;
+    def postinit -> None;
 
     """Run once before pass."""
-    def before_pass(self: UniPass) -> None;
+    def before_pass -> None;
 
     """Run once after pass."""
-    def after_pass(self: UniPass) -> None;
+    def after_pass -> None;
 
     """Run on entering node."""
-    def enter_node(self: UniPass, nd: uni.UniNode) -> None;
+    def enter_node(nd: uni.UniNode) -> None;
 
     """Run on exiting node."""
-    def exit_node(self: UniPass, nd: uni.UniNode) -> None;
+    def exit_node(nd: uni.UniNode) -> None;
 
     """Prune traversal."""
-    def prune(self: UniPass) -> None;
+    def prune -> None;
 
     """Get all sub nodes of type."""
     static def get_all_sub_nodes(
@@ -89,11 +87,11 @@ class UniPass(ModuleCodegenPass) {
     }
 
     """Recalculate parents."""
-    def recalculate_parents(self: UniPass, nd: uni.UniNode) -> None;
+    def recalculate_parents(nd: uni.UniNode) -> None;
 
     """Run pass."""
-    def transform(self: UniPass, ir_in: uni.Module) -> uni.Module;
+    def transform(ir_in: uni.Module) -> uni.Module;
 
     """Traverse tree."""
-    def traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode;
+    def traverse(nd: uni.UniNode) -> uni.UniNode;
 }

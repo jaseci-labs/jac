@@ -455,7 +455,47 @@ impl apply_solved_type_vars(
         if ty.is_self and class_type is not None {
             return class_type.clone_as_instance();
         }
-        # Regular TypeVar -> lookup in solution by name
+        # Only substitute TypeVars that are declared class type parameters.
+        # Module-level TypeVars that are NOT used as class type params should
+        # not be substituted, as they are independent of the class hierarchy.
+        #
+        # A TypeVar should be substituted if:
+        # 1. is_class_type_param flag is True (set when created from class type param), OR
+        # 2. Name matches a class type_param AND the TypeVar has NO bound
+        #    (module-level TypeVars typically have bounds from TypeVar(...) call,
+        #    while class type params from Generic[T] don't unless explicitly bounded)
+        #
+        # This allows typeshed TypeVars (which don't have is_class_type_param) to be
+        # substituted when they match class type params, while preventing module-level
+        # TypeVars with explicit bounds from being incorrectly substituted.
+        is_declared_class_param = ty.is_class_type_param;
+        if not is_declared_class_param and ty.name {
+            # Check if this TypeVar matches a class type param by name AND bound
+            if class_type is not None {
+                for tp in class_type.shared.type_params {
+                    if tp.name == ty.name {
+                        # Only substitute if the TypeVar's bound matches the class type param's bound
+                        # (or if neither has a bound)
+                        if ty.bound is None
+                        or (tp.bound is not None and ty.bound == tp.bound) {
+                            is_declared_class_param = True;
+                        }
+                        break;
+                    }
+                }
+            }
+            # Also allow substitution if the TypeVar has no bound AND name is in solution
+            # This handles typeshed TypeVars without bounds
+            if not is_declared_class_param
+            and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+        }
+        if not is_declared_class_param {
+            return ty;
+        }
+        # Regular TypeVar (class type param) -> lookup in solution by name
         if ty.name and ty.name in solution {
             resolved = solution[ty.name];
             return convert_to_instance(resolved);
@@ -518,13 +558,26 @@ declares get() -> T, then build_type_var_solution(Box[int]) yields {U: int, T: i
 impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase] {
     solution: dict[str, types.TypeBase] = {};
 
-    # Start with the class's own type_params -> type_args
+    # Start with the class's own type_params -> type_args.
+    # PEP 484: bare generics (e.g. list without [T]) default unresolved
+    # TypeVars to Any so downstream operations (iteration, subscript,
+    # method calls) work correctly instead of producing Unknown.
     if class_type.shared.type_params
     and class_type.private
-    and class_type.private.type_args {
+    and class_type.private.type_args
+    and len(class_type.private.type_args) > 0 {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    } elif class_type.shared and class_type.shared.type_params {
+        # Bare generic (e.g. list without [T]): default all TypeVars to Any
+        # per PEP 484 so downstream operations (iteration, subscript,
+        # method calls) work correctly instead of producing Unknown.
+        for tp in class_type.shared.type_params {
+            if tp.name {
+                solution[tp.name] = types.AnyType();
             }
         }
     }
@@ -720,7 +773,8 @@ def _apply_to_function(
                 is_cls=param.is_cls,
                 param_kind=param.param_kind
             ) for param in func.parameters
-        ]
+        ],
+        type_params=func.type_params,
     );
 
     # Specialize parameter types

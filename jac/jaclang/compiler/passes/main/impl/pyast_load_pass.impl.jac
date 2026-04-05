@@ -3003,9 +3003,7 @@ impl PyastBuildPass.postinit -> None {
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
-    Transform.init(
-        self, ir_in=self.ir_in, prog=self.prog, cancel_token=self.cancel_token
-    );
+    super.postinit();
 }
 
 """Get source segment using cached line splits.

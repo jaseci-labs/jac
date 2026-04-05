@@ -12,12 +12,6 @@ impl cfg_dot_from_file(file_name: str) -> str {
     return dot;
 }
 
-"""Initialize CoalesceBBPass."""
-impl CoalesceBBPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
 
 """Generate dot graph for CFG."""
 impl CoalesceBBPass.printgraph_cfg -> str {
@@ -140,7 +134,7 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
         # Use actual keyword (def vs can)
         kw: str = 'can';
         for c in nd.kid {
-            if c and hasattr(c, 'name') and hasattr(c, 'value') {
+            if isinstance(c, uni.Token) {
                 if c.name == Tok.KW_DEF or c.name == Tok.KW_CAN {
                     kw = str(c.value);
                     break;
@@ -209,10 +203,6 @@ impl CoalesceBBPass.before_pass -> None {
 # ============================================================================
 # CFGBuildPass
 # ============================================================================
-impl CFGBuildPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Before pass -- no state needed."""
 impl CFGBuildPass.before_pass -> None { }
 
@@ -239,8 +229,8 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
         # _link_sequential linked S1→S2, so body nodes missed S1's symbols.
         # Uses iterative BFS to avoid recursion issues with cyclic CFGs.
         if new_symbols {
-            visited: set = {id(target)};
-            queue: list = list(target.bb_out);
+            visited: set[int] = {id(target)};
+            queue: list[uni.UniCFGNode] = list(target.bb_out);
             while queue {
                 child = queue.pop(0);
                 child_id = id(child);
@@ -368,8 +358,8 @@ impl CFGBuildPass._is_terminal(nd: uni.UniNode) -> bool {
 
 """Find the nearest ancestor matching one of the given types."""
 impl CFGBuildPass._find_parent_of_types(
-    nd: uni.UniNode, types: tuple
-) -> (uni.UniNode | None) {
+    nd: uni.UniNode, types: tuple[type[uni.UniCFGNode], ...]
+) -> (uni.UniCFGNode | None) {
     cur = nd.parent;
     while cur {
         if isinstance(cur, types) {
@@ -622,13 +612,15 @@ impl CFGBuildPass.exit_try_stmt(nd: uni.TryStmt) -> None {
             self.link_bbs(nd.body[-1], nd.else_body.body[0]);
         }
     }
-    # Finally: all paths flow through it
+    # Finally: all paths flow through it — always link, even from terminal
+    # statements (return/raise). The finally block executes regardless, and
+    # the link propagates affected_symbols needed for narrowing analysis.
     if nd.finally_body {
-        if nd.body and not self._is_terminal(nd.body[-1]) {
+        if nd.body {
             self.link_bbs(nd.body[-1], nd.finally_body);
         }
         for exc in nd.excepts {
-            if exc.body and not self._is_terminal(exc.body[-1]) {
+            if exc.body {
                 self.link_bbs(exc.body[-1], nd.finally_body);
             }
         }

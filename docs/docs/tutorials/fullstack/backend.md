@@ -18,11 +18,11 @@ In Jac full-stack apps, the compiler handles the client-server boundary for you.
 
 1. **Backend** = Functions or walkers that process data and return results
 2. **Frontend** = Components in `cl { }` blocks
-3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root spawn Walker()`)
+3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root() spawn Walker()`)
 
 ```mermaid
 graph LR
-    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root spawn" --> Backend["Functions or<br/>Walker API"]
+    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root() spawn" --> Backend["Functions or<br/>Walker API"]
 ```
 
 ### Two Backend Approaches
@@ -31,10 +31,10 @@ Jac offers two ways to create backend endpoints:
 
 | Approach | Syntax | Best For |
 |----------|--------|----------|
-| **Functions** | `def:pub get_tasks -> list { ... }` | Simple CRUD, quick prototyping |
+| **Functions** | `def:pub get_tasks -> list[Task] { ... }` | Simple CRUD, quick prototyping |
 | **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
 
-Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
+Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root() spawn Walker()`.
 
 Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data isolation. See the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md) for both approaches side by side.
 
@@ -46,31 +46,22 @@ Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data is
 
 ```jac
 node Task {
-    has id: str;
     has title: str;
     has created_at: str;
     has completed: bool = False;
 }
 ```
 
+Every node automatically gets a unique identifier from the runtime, accessible via `jid(node)`. You never need to manage IDs manually.
+
 ### Create Walker Endpoints
 
 ```jac
 import from datetime { datetime }
-import uuid;
 
 walker:pub get_tasks {
     can fetch with Root entry {
-        tasks = [-->][?:Task];
-        report [
-            {
-                "id": t.id,
-                "title": t.title,
-                "completed": t.completed,
-                "created_at": t.created_at
-            }
-            for t in tasks
-        ];
+        report [-->][?:Task];  # Reports typed Task nodes directly
     }
 }
 
@@ -79,17 +70,11 @@ walker:pub add_task {
 
     can create with Root entry {
         new_task = Task(
-            id=str(uuid.uuid4()),
             title=self.title,
-            completed=False,
             created_at=datetime.now().isoformat()
         );
-        root ++> new_task;
-        report {
-            "id": new_task.id,
-            "title": new_task.title,
-            "completed": new_task.completed
-        };
+        root() ++> new_task;
+        report new_task;  # Report the typed Task node
     }
 }
 
@@ -98,13 +83,12 @@ walker:pub toggle_task {
 
     can toggle with Root entry {
         for task in [-->][?:Task] {
-            if task.id == self.task_id {
+            if jid(task) == self.task_id {
                 task.completed = not task.completed;
-                report {"success": True, "completed": task.completed};
+                report task;  # Report the updated Task node
                 return;
             }
         }
-        report {"success": False, "error": "Task not found"};
     }
 }
 
@@ -113,13 +97,12 @@ walker:pub delete_task {
 
     can remove with Root entry {
         for task in [-->][?:Task] {
-            if task.id == self.task_id {
+            if jid(task) == self.task_id {
                 del task;
                 report {"success": True};
                 return;
             }
         }
-        report {"success": False, "error": "Task not found"};
     }
 }
 ```
@@ -128,9 +111,9 @@ walker:pub delete_task {
 
 ## Calling Walkers from Frontend
 
-### Basic Pattern with `root spawn`
+### Basic Pattern with `root() spawn`
 
-Use `root spawn walker_name()` to call walkers from client code:
+Use `root() spawn walker_name()` to call walkers from client code:
 
 ```jac
 # Import walkers from your main module
@@ -151,7 +134,7 @@ cl {
             loading = True;
             error = "";
             try {
-                result = root spawn get_tasks();
+                result = root() spawn get_tasks();
                 if result.reports and result.reports.length > 0 {
                     tasks = result.reports[0];
                 }
@@ -170,13 +153,13 @@ cl {
         }
 
         return <ul>
-            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
+            {[<li key={jid(task)}>{task.title}</li> for task in tasks]}
         </ul>;
     }
 }
 ```
 
-### Understanding `root spawn` Results
+### Understanding `root() spawn` Results
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -203,7 +186,7 @@ cl {
 
         async def load_tasks() -> None {
             loading = True;
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports and result.reports.length > 0 {
                 tasks = result.reports[0];
             }
@@ -213,7 +196,7 @@ cl {
         # Add new task
         async def handle_add() -> None {
             if new_title.trim() {
-                result = root spawn add_task(title=new_title.trim());
+                result = root() spawn add_task(title=new_title.trim());
                 if result.reports and result.reports.length > 0 {
                     tasks = tasks + [result.reports[0]];
                 }
@@ -223,21 +206,18 @@ cl {
 
         # Toggle task completion
         async def handle_toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [
-                    {**t, "completed": not t["completed"]}
-                    if t["id"] == task_id else t
-                    for t in tasks
-                ];
+            result = root() spawn toggle_task(task_id=task_id);
+            if result.reports and result.reports.length > 0 {
+                updated = result.reports[0];
+                tasks = [updated if jid(t) == task_id else t for t in tasks];
             }
         }
 
         # Delete task
         async def handle_delete(task_id: str) -> None {
-            result = root spawn delete_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [t for t in tasks if t["id"] != task_id];
+            result = root() spawn delete_task(task_id=task_id);
+            if result.reports and result.reports.length > 0 {
+                tasks = [t for t in tasks if jid(t) != task_id];
             }
         }
 
@@ -245,8 +225,8 @@ cl {
             <div className="add-task">
                 <input
                     value={new_title}
-                    onChange={lambda e: any -> None { new_title = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { new_title = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { handle_add(); }
                     }}
                     placeholder="New task..."
@@ -260,16 +240,16 @@ cl {
 
             <ul className="task-list">
                 {[
-                    <li key={task["id"]}>
+                    <li key={jid(task)}>
                         <input
                             type="checkbox"
-                            checked={task["completed"]}
-                            onChange={lambda -> None { handle_toggle(task["id"]); }}
+                            checked={task.completed}
+                            onChange={lambda -> None { handle_toggle(jid(task)); }}
                         />
-                        <span className={task["completed"] and "completed"}>
-                            {task["title"]}
+                        <span className={task.completed and "completed"}>
+                            {task.title}
                         </span>
-                        <button onClick={lambda -> None { handle_delete(task["id"]); }}>
+                        <button onClick={lambda -> None { handle_delete(jid(task)); }}>
                             Delete
                         </button>
                     </li>
@@ -300,7 +280,7 @@ cl {
             error_msg = "";
 
             try {
-                result = root spawn submit_data(payload=data);
+                result = root() spawn submit_data(payload=data);
                 if result.reports and result.reports.length > 0 {
                     response = result.reports[0];
                     if not response["success"] {
@@ -343,7 +323,7 @@ cl {
         async def fetch_data() -> None {
             loading = True;
             try {
-                result = root spawn get_data();
+                result = root() spawn get_data();
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
@@ -391,7 +371,7 @@ cl {
         has loading: bool = True;
 
         async def fetch_data() -> None {
-            result = root spawn get_live_data();
+            result = root() spawn get_live_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -426,7 +406,6 @@ cl {
 
 # === Backend: Data Model ===
 node Task {
-    has id: str;
     has title: str;
     has completed: bool = False;
 }
@@ -442,9 +421,8 @@ walker:pub add_task {
     has title: str;
 
     can create with Root entry {
-        import uuid;
-        task = Task(id=str(uuid.uuid4()), title=self.title);
-        root ++> task;
+        task = Task(title=self.title);
+        root() ++> task;
         report task;
     }
 }
@@ -454,7 +432,7 @@ walker:pub toggle_task {
 
     can toggle with Root entry {
         for t in [-->][?:Task] {
-            if t.id == self.task_id {
+            if jid(t) == self.task_id {
                 t.completed = not t.completed;
                 report t;
                 return;
@@ -472,7 +450,7 @@ cl {
 
         # Load tasks on mount
         async can with entry {
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports {
                 tasks = result.reports;
             }
@@ -481,7 +459,7 @@ cl {
 
         async def add() -> None {
             if input_text.trim() {
-                result = root spawn add_task(title=input_text.trim());
+                result = root() spawn add_task(title=input_text.trim());
                 if result.reports and result.reports.length > 0 {
                     tasks = tasks + [result.reports[0]];
                 }
@@ -490,10 +468,10 @@ cl {
         }
 
         async def toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
+            result = root() spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
-                tasks = [updated if t.id == task_id else t for t in tasks];
+                tasks = [updated if jid(t) == task_id else t for t in tasks];
             }
         }
 
@@ -503,8 +481,8 @@ cl {
             <div className="input-row">
                 <input
                     value={input_text}
-                    onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add(); }
                     }}
                     placeholder="Add a task..."
@@ -518,9 +496,9 @@ cl {
                 <ul>
                     {[
                         <li
-                            key={t.id}
+                            key={jid(t)}
                             style={{"textDecoration": t.completed and "line-through"}}
-                            onClick={lambda -> None { toggle(t.id); }}
+                            onClick={lambda -> None { toggle(jid(t)); }}
                         >
                             {t.title}
                         </li>
@@ -540,7 +518,7 @@ cl {
 | Concept | Usage |
 |---------|-------|
 | Import walkers | `sv import from ...main { walker_name }` |
-| Call walker | `result = root spawn walker_name(args)` |
+| Call walker | `result = root() spawn walker_name(args)` |
 | Get results | `result.reports[0]` |
 | Node spawn | `node_id spawn walker_name(args)` |
 | Error handling | `try { ... } except Exception as e { ... }` |

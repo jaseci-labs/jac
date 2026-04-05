@@ -1,10 +1,5 @@
 """UnparsePass implementation - serializes Jac AST to source strings."""
 
-"""Initialize the UnparsePass."""
-impl UnparsePass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Join child nodes' gen.jac values with a separator."""
 def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
     return sep.join(
@@ -504,7 +499,7 @@ impl UnparsePass.exit_param_var(nd: uni.ParamVar) -> None {
     }
     result = result + nd.name.gen.jac;
     if nd.type_tag {
-        result = result + " " + nd.type_tag.gen.jac;
+        result = result + nd.type_tag.gen.jac;
     }
     if nd.value {
         result = result + " = " + nd.value.gen.jac;
@@ -530,7 +525,7 @@ impl UnparsePass.exit_arch_has(nd: uni.ArchHas) -> None {
 impl UnparsePass.exit_has_var(nd: uni.HasVar) -> None {
     result = nd.name.gen.jac;
     if nd.type_tag {
-        result = result + " " + nd.type_tag.gen.jac;
+        result = result + nd.type_tag.gen.jac;
     }
     if nd.value {
         result = result + " = " + nd.value.gen.jac;

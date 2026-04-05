@@ -4,18 +4,19 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. Install everything at once with:
+**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. If you prefer pip:
 
 ```bash
 pip install jaseci
 ```
 
-Verify your versions meet the minimum requirements:
+Verify your installation meets the minimum requirements:
 
 ```bash
 jac --version
-pip show jac-client jac-scale byllm
 ```
+
+The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
 
 | Package | Minimum Version |
 |---------|----------------|
@@ -71,7 +72,7 @@ In Jac, any free-floating code in a module must live inside a `with entry { }` b
 
 **Variables and Types**
 
-Understanding Jac's type system is essential for everything that follows, especially the AI features in later parts. Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. When you declare a variable with an explicit type, a type annotation is required:
+Understanding Jac's type system is essential for everything that follows, especially the AI features in later parts. Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. You can optionally annotate a variable's type, or let Jac infer it from the assigned value:
 
 ```jac
 with entry {
@@ -114,7 +115,7 @@ with entry {
 }
 ```
 
-Functions that don't return a value use `-> None` (or you can omit the return type annotation entirely).
+Functions that don't return a value can omit the return type annotation entirely -- the `-> None` annotation is optional since functions without a return statement implicitly return `None`.
 
 **Control Flow**
 
@@ -301,9 +302,9 @@ node Task {
 
 with entry {
     # Create tasks and connect them to root
-    root ++> Task(title="Buy groceries");
-    root ++> Task(title="Team standup at 10am");
-    root ++> Task(title="Go for a run");
+    root() ++> Task(title="Buy groceries");
+    root() ++> Task(title="Team standup at 10am");
+    root() ++> Task(title="Go for a run");
 
     print("Created 3 tasks!");
 }
@@ -312,7 +313,7 @@ with entry {
 Run it with `jac <your-filename>.jac`. Your graph now looks like:
 
 !!! tip "Running examples multiple times"
-    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, run `jac clean --all` to clear the graph database.
+    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, delete the `.jac/` directory in the folder where you ran the script: `rm -rf .jac/`. (Starting in Part 3 when you create a project, you can use `jac clean --all` instead.)
 
 ```mermaid
 graph LR
@@ -325,7 +326,7 @@ The `++>` operator returns a list containing the newly created node. You can cap
 
 <!-- jac-skip -->
 ```jac
-result = root ++> Task(title="Buy groceries");
+result = root() ++> Task(title="Buy groceries");
 task = result[0];  # The new Task node
 print(task.title);  # "Buy groceries"
 ```
@@ -367,25 +368,25 @@ Now here's where the two concepts come together. The `[-->]` syntax gives you a 
 
 ```jac
 with entry {
-    root ++> Task(title="Buy groceries");
-    root ++> Task(title="Team standup at 10am");
+    root() ++> Task(title="Buy groceries");
+    root() ++> Task(title="Team standup at 10am");
 
     # Get ALL nodes connected from root
-    everything = [root-->];
+    everything = [root()-->];
 
     # Filter by node type -- same [?:Type] syntax
-    tasks = [root-->][?:Task];
+    tasks = [root()-->][?:Task];
     for task in tasks {
         status = "done" if task.done else "pending";
         print(f"[{status}] {task.title}");
     }
 
     # Filter by field value
-    grocery_tasks = [root-->][?:Task, title == "Buy groceries"];
+    grocery_tasks = [root()-->][?:Task, title == "Buy groceries"];
 }
 ```
 
-`[root-->]` reads as "all nodes connected *from* root." The `[?:Task]` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `[?...]` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
+`[root()-->]` reads as "all nodes connected *from* root." The `[?:Task]` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `[?...]` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
 
 Other directions work too:
 
@@ -399,7 +400,7 @@ Use `del` to remove a node from the graph:
 
 <!-- jac-skip -->
 ```jac
-for task in [root-->][?:Task] {
+for task in [root()-->][?:Task] {
     if task.title == "Team standup at 10am" {
         del task;
     }
@@ -412,8 +413,8 @@ You can inspect the graph at any time by printing connected nodes:
 
 <!-- jac-skip -->
 ```jac
-print([root-->]);           # All nodes connected to root
-print([root-->][?:Task]);   # Just Task nodes
+print([root()-->]);           # All nodes connected to root
+print([root()-->][?:Task]);   # Just Task nodes
 ```
 
 This is useful when data isn't appearing as expected.
@@ -431,14 +432,14 @@ This is useful when data isn't appearing as expected.
     Connect with a typed edge using `+>: EdgeType :+>`:
 
     ```jac
-    root +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
+    root() +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
     ```
 
     And filter queries by edge type:
 
     ```jac
-    scheduled_tasks = [root->:Scheduled:->][?:Task];
-    urgent = [root->:Scheduled:priority>=3:->][?:Task];
+    scheduled_tasks = [root()->:Scheduled:->][?:Task];
+    urgent = [root()->:Scheduled:priority>=3:->][?:Task];
     ```
 
     We won't use custom edges in this tutorial (default edges are sufficient), but they're useful for modeling relationships like social networks, org charts, and dependency graphs.
@@ -452,12 +453,14 @@ This is useful when data isn't appearing as expected.
 - **`[?condition]`** -- filter comprehensions on any list of objects
 - **`[?:Type]`** -- typed filter comprehension, works on any collection
 - **`[?:Type, field == val]`** -- combined type and field filtering
-- **`[root-->]`** -- query all connected nodes (returns a list, filterable like any other)
+- **`[root()-->]`** -- query all connected nodes (returns a list, filterable like any other)
 - **`jid(node)`** -- get the built-in unique identifier of any node
 - **`del`** -- remove a node from the graph
 
+> **Deep Dive:** [Object-Spatial Programming](../../reference/language/osp.md) covers the full graph model including typed edges, walkers, and advanced traversals. [Comprehensions & Filters](../../reference/language/advanced.md) has the complete filter syntax reference.
+
 !!! example "Try It Yourself"
-    After creating three tasks, mark one as done (`task.done = True`), then use `[root-->][?:Task, done == False]` to list only pending tasks. Verify that the completed task doesn't appear.
+    After creating three tasks, mark one as done (`task.done = True`), then use `[root()-->][?:Task, done == False]` to list only pending tasks. Verify that the completed task doesn't appear.
 
 ---
 
@@ -472,7 +475,10 @@ jac create day-planner --use client
 cd day-planner
 ```
 
-You can delete the scaffolded `main.jac` -- you'll replace it with the code below. Also create a `styles.css` file in the project root (we'll fill it in Part 4).
+!!! note "Bun required"
+    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+
+You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
 **Node Identity with `jid()`**
 
@@ -480,7 +486,7 @@ In Part 2, you learned that every node has a built-in unique identifier. The `ji
 
 <!-- jac-skip -->
 ```jac
-task = (root ++> Task(title="Buy groceries"))[0];
+task = (root() ++> Task(title="Buy groceries"))[0];
 print(jid(task));  # e.g., "1be2c28fc5924de28c55f68cc5ccaeb6"
 ```
 
@@ -495,9 +501,9 @@ This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` 
 
 ```jac
 """Add a task and return it."""
-def:pub add_task(title: str) -> dict {
-    task = root ++> Task(title=title);
-    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+def:pub add_task(title: str) -> Task {
+    task = root() ++> Task(title=title);
+    return task[0];
 }
 ```
 
@@ -506,7 +512,7 @@ That single annotation transforms the function into two things simultaneously:
 - A server-side function you can call from Jac code
 - An HTTP endpoint that clients can call over the network
 
-Consider what this replaces in a traditional web framework: you'd need a route decorator, a request parser to extract `title` from the request body, serialization logic to convert the response to JSON, and error handling for malformed requests. In Jac, the function signature *is* the API contract. The function's parameters define the request schema, and its return type defines the response format.
+Consider what this replaces in a traditional web framework: you'd need a route decorator, a request parser to extract `title` from the request body, serialization logic to convert the response to JSON, and error handling for malformed requests. In Jac, the function signature *is* the API contract. The function's parameters define the request schema, and its return type defines the response format. When the return type is a typed object like `Task`, the runtime automatically serializes all its fields -- no manual dict construction needed. And on the client side, the returned object arrives as a proper typed instance: you access `task.title` and `task.done` directly, not dictionary keys. This **typed interop** works for all `obj`, `node`, and `enum` types that cross the client-server boundary.
 
 **Building the CRUD Endpoints**
 
@@ -519,30 +525,30 @@ node Task {
 }
 
 """Add a task and return it."""
-def:pub add_task(title: str) -> dict {
-    task = root ++> Task(title=title);
-    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+def:pub add_task(title: str) -> Task {
+    task = root() ++> Task(title=title);
+    return task[0];
 }
 
 """Get all tasks."""
-def:pub get_tasks -> list {
-    return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
+def:pub get_tasks -> list[Task] {
+    return [root()-->][?:Task];
 }
 
 """Toggle a task's done status."""
-def:pub toggle_task(id: str) -> dict {
-    for task in [root-->][?:Task] {
+def:pub toggle_task(id: str) -> Task | None {
+    for task in [root()-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
-            return {"id": jid(task), "title": task.title, "done": task.done};
+            return task;
         }
     }
-    return {};
+    return None;
 }
 
 """Delete a task."""
 def:pub delete_task(id: str) -> dict {
-    for task in [root-->][?:Task] {
+    for task in [root()-->][?:Task] {
         if jid(task) == id {
             del task;
             return {"deleted": id};
@@ -580,11 +586,11 @@ task_data["done"] = True;   # Update a value
 
 <!-- jac-skip -->
 ```jac
-# Build a list of dicts from all Task nodes
-[{"id": jid(t), "title": t.title} for t in [root-->][?:Task]]
+# Extract titles from all Task nodes
+[t.title for t in [root()-->][?:Task]]
 
 # With a filter condition
-[t.title for t in [root-->][?:Task] if not t.done]
+[t.title for t in [root()-->][?:Task] if not t.done]
 ```
 
 **Run It**
@@ -686,8 +692,8 @@ This fetches all tasks from the server when the page loads.
     cl def:pub app -> JsxElement {
         # ...
 
-        useEffect(lambda -> None {
-            async def load -> None {
+        useEffect(lambda {
+            async def load {
                 tasks = await get_tasks();
             }
             load();
@@ -714,15 +720,15 @@ The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them i
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: any -> None { task_text = e.target.value; }}
+onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
 
-This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible.
+This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching typed client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible. And because the server declares `-> Task` as the return type, the client receives a proper `Task` object with `.title` and `.done` fields, and you can use `jid(task)` to get its unique identity -- no raw dictionaries or manual ID management.
 
 ```jac
-    async def add_new_task -> None {
+    async def add_new_task {
         if task_text.strip() {
             task = await add_task(task_text.strip());
             tasks = tasks + [task];
@@ -738,7 +744,7 @@ This is one of the most important concepts to understand in Jac's full-stack mod
 <!-- jac-skip -->
 ```jac
 {[
-    <div key={t.id} class="task-item">
+    <div key={jid(t)} class="task-item">
         <span>{t.title}</span>
     </div> for t in tasks
 ]}
@@ -766,7 +772,7 @@ cl def:pub app -> JsxElement {
         tasks = await get_tasks();
     }
 
-    async def add_new_task -> None {
+    async def add_new_task {
         if task_text.strip() {
             task = await add_task(task_text.strip());
             tasks = tasks + [task];
@@ -781,8 +787,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: any -> None { task_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -790,7 +796,7 @@ cl def:pub app -> JsxElement {
                 <button class="btn-add" onClick={add_new_task}>Add</button>
             </div>
             {[
-                <div key={t.id} class="task-item">
+                <div key={jid(t)} class="task-item">
                     <span class="task-title">{t.title}</span>
                 </div> for t in tasks
             ]}
@@ -813,7 +819,7 @@ cl def:pub app -> JsxElement {
         tasks = await get_tasks();
     }
 
-    async def add_new_task -> None {
+    async def add_new_task {
         if task_text.strip() {
             task = await add_task(task_text.strip());
             tasks = tasks + [task];
@@ -821,18 +827,14 @@ cl def:pub app -> JsxElement {
         }
     }
 
-    async def toggle(id: str) -> None {
-        await toggle_task(id);
-        tasks = [
-            {"id": t.id, "title": t.title, "done": not t.done}
-            if t.id == id else t
-            for t in tasks
-        ];
+    async def toggle(id: str) {
+        updated = await toggle_task(id);
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
-    async def remove(id: str) -> None {
+    async def remove(id: str) {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
     remaining = len([t for t in tasks if not t.done]);
@@ -844,8 +846,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: any -> None { task_text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -853,24 +855,24 @@ cl def:pub app -> JsxElement {
                 <button class="btn-add" onClick={add_new_task}>Add</button>
             </div>
             {[
-                <div key={t.id} class="task-item">
+                <div key={jid(t)} class="task-item">
                     <input
                         type="checkbox"
                         checked={t.done}
-                        onChange={lambda -> None { toggle(t.id); }}
+                        onChange={lambda { toggle(jid(t)); }}
                     />
                     <span class={"task-title " + ("task-done" if t.done else "")}>
                         {t.title}
                     </span>
                     <button
                         class="btn-delete"
-                        onClick={lambda -> None { remove(t.id); }}
+                        onClick={lambda { remove(jid(t)); }}
                     >
                         X
                     </button>
                 </div> for t in tasks
             ]}
-            <div class="count">{remaining} tasks remaining</div>
+            <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
         </div>;
 }
 ```
@@ -878,7 +880,7 @@ cl def:pub app -> JsxElement {
 There are several important patterns to understand in this code:
 
 - **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`). These are the same Python-style comprehensions you may already know, and they're essential for working with reactive state.
-- **Conditional comprehensions** update matching items (e.g., `[updated if t.id == id else t for t in tasks]`). This pattern creates a new list where one item is modified -- crucial for immutable state updates.
+- **Replacing items** in a list uses `[updated if jid(t) == id else t for t in tasks]`. Since `toggle_task` returns the updated `Task` object directly, you can swap it in place -- crucial for immutable state updates.
 - **`tasks + [task]`** creates a new list with the item appended, rather than mutating the existing list. This immutability is important because the reactive system needs to detect that the list has changed.
 - **`async`** marks methods that call the server, since network calls are inherently asynchronous.
 
@@ -912,30 +914,30 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     }
 
     """Add a task and return it."""
-    def:pub add_task(title: str) -> dict {
-        task = root ++> Task(title=title);
-        return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done};
+    def:pub add_task(title: str) -> Task {
+        task = root() ++> Task(title=title);
+        return task[0];
     }
 
     """Get all tasks."""
-    def:pub get_tasks -> list {
-        return [{"id": jid(t), "title": t.title, "done": t.done} for t in [root-->][?:Task]];
+    def:pub get_tasks -> list[Task] {
+        return [root()-->][?:Task];
     }
 
     """Toggle a task's done status."""
-    def:pub toggle_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+    def:pub toggle_task(id: str) -> Task | None {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
-                return {"id": jid(task), "title": task.title, "done": task.done};
+                return task;
             }
         }
-        return {};
+        return None;
     }
 
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -952,7 +954,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
             tasks = await get_tasks();
         }
 
-        async def add_new_task -> None {
+        async def add_new_task {
             if task_text.strip() {
                 task = await add_task(task_text.strip());
                 tasks = tasks + [task];
@@ -960,18 +962,14 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
             }
         }
 
-        async def toggle(id: str) -> None {
-            await toggle_task(id);
-            tasks = [
-                {"id": t.id, "title": t.title, "done": not t.done}
-                if t.id == id else t
-                for t in tasks
-            ];
+        async def toggle(id: str) {
+            updated = await toggle_task(id);
+            tasks = [updated if jid(t) == id else t for t in tasks];
         }
 
-        async def remove(id: str) -> None {
+        async def remove(id: str) {
             await delete_task(id);
-            tasks = [t for t in tasks if t.id != id];
+            tasks = [t for t in tasks if jid(t) != id];
         }
 
         remaining = len([t for t in tasks if not t.done]);
@@ -983,8 +981,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: any -> None { task_text = e.target.value; }}
-                        onKeyPress={lambda e: any -> None {
+                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                        onKeyPress={lambda e: KeyboardEvent {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -992,24 +990,24 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <button class="btn-add" onClick={add_new_task}>Add</button>
                 </div>
                 {[
-                    <div key={t.id} class="task-item">
+                    <div key={jid(t)} class="task-item">
                         <input
                             type="checkbox"
                             checked={t.done}
-                            onChange={lambda -> None { toggle(t.id); }}
+                            onChange={lambda { toggle(jid(t)); }}
                         />
                         <span class={"task-title " + ("task-done" if t.done else "")}>
                             {t.title}
                         </span>
                         <button
                             class="btn-delete"
-                            onClick={lambda -> None { remove(t.id); }}
+                            onClick={lambda { remove(jid(t)); }}
                         >
                             X
                         </button>
                     </div> for t in tasks
                 ]}
-                <div class="count">{remaining} tasks remaining</div>
+                <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
             </div>;
     }
     ```
@@ -1042,6 +1040,8 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`async`** -- marks functions that perform asynchronous operations
 - **JSX syntax** -- `{expression}`, `{[... for x in list]}`, event handlers with lambdas
 - **List comprehensions and `+` operator** -- `[expr for x in list]`, `[x for x in list if cond]`, and `list + [item]` for immutable state updates
+
+> **Deep Dive:** [jac-client Reference](../../reference/plugins/jac-client.md) covers the full frontend API including routing, npm package imports, and advanced component patterns. The [Full-Stack tutorials](../fullstack/setup.md) go deeper on each topic.
 
 !!! example "Try It Yourself"
     Add a "Clear All" button below the task count that deletes every task. You'll need a new `def:pub clear_all_tasks` endpoint on the server and an `async` method in the component that calls it and resets the `tasks` list.
@@ -1124,7 +1124,7 @@ This is why the type annotations you learned in Part 1 matter so much. The funct
 
 **Wire It Into the Task Flow**
 
-Two changes. First, add a `category` field to the `Task` node:
+Two changes are needed. First, add a `category` field to the `Task` node:
 
 ```jac
 node Task {
@@ -1138,45 +1138,14 @@ Then update `add_task` to call the AI:
 
 ```jac
 """Add a task with AI categorization."""
-def:pub add_task(title: str) -> dict {
+def:pub add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
-    task = root ++> Task(title=title, category=category);
-    return {
-        "id": jid(task[0]), "title": task[0].title,
-        "done": task[0].done, "category": task[0].category
-    };
+    task = root() ++> Task(title=title, category=category);
+    return task[0];
 }
 ```
 
-`str(categorize(title)).split(".")[-1].lower()` converts `Category.SHOPPING` to `"shopping"` for clean display.
-
-Also update `get_tasks` and `toggle_task` to include `"category"` in their return dictionaries:
-
-```jac
-"""Get all tasks."""
-def:pub get_tasks -> list {
-    return [
-        {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-        for t in [root-->][?:Task]
-    ];
-}
-
-"""Toggle a task's done status."""
-def:pub toggle_task(id: str) -> dict {
-    for task in [root-->][?:Task] {
-        if jid(task) == id {
-            task.done = not task.done;
-            return {
-                "id": jid(task), "title": task.title,
-                "done": task.done, "category": task.category
-            };
-        }
-    }
-    return {};
-}
-```
-
-`delete_task` doesn't need changes -- it doesn't return task data.
+`str(categorize(title)).split(".")[-1].lower()` converts `Category.SHOPPING` to `"shopping"` for clean display. Notice the return type is still `-> Task` -- the new `category` field is automatically included when the typed object crosses the client-server boundary. The other endpoints (`get_tasks`, `toggle_task`, `delete_task`) don't need any changes either, because they already return typed `Task` objects that now include the `category` field automatically.
 
 **Structured Output with obj and sem**
 
@@ -1232,48 +1201,38 @@ And three new endpoints:
 
 ```jac
 """Generate a shopping list from a meal description."""
-def:pub generate_list(meal: str) -> list {
+def:pub generate_list(meal: str) -> list[ShoppingItem] {
     # Clear old items
-    for item in [root-->][?:ShoppingItem] {
+    for item in [root()-->][?:ShoppingItem] {
         del item;
     }
     # Generate new ones
     ingredients = generate_shopping_list(meal);
-    result: list = [];
     for ing in ingredients {
-        data = {
-            "name": ing.name,
-            "quantity": ing.quantity,
-            "unit": str(ing.unit).split(".")[-1].lower(),
-            "cost": ing.cost,
-            "carby": ing.carby
-        };
-        root ++> ShoppingItem(
-            name=data["name"], quantity=data["quantity"],
-            unit=data["unit"], cost=data["cost"], carby=data["carby"]
+        root() ++> ShoppingItem(
+            name=ing.name, quantity=ing.quantity,
+            unit=str(ing.unit).split(".")[-1].lower(),
+            cost=ing.cost, carby=ing.carby
         );
-        result.append(data);
     }
-    return result;
+    return [root()-->][?:ShoppingItem];
 }
 
 """Get the current shopping list."""
-def:pub get_shopping_list -> list {
-    return [
-        {"name": s.name, "quantity": s.quantity, "unit": s.unit,
-         "cost": s.cost, "carby": s.carby}
-        for s in [root-->][?:ShoppingItem]
-    ];
+def:pub get_shopping_list -> list[ShoppingItem] {
+    return [root()-->][?:ShoppingItem];
 }
 
 """Clear the shopping list."""
 def:pub clear_shopping_list -> dict {
-    for item in [root-->][?:ShoppingItem] {
+    for item in [root()-->][?:ShoppingItem] {
         del item;
     }
     return {"cleared": True};
 }
 ```
+
+Compare these endpoints to the task endpoints -- the same pattern applies. Instead of manually constructing dictionaries with every field, you return typed objects directly. The runtime serializes all `has` fields automatically when they cross the client-server boundary. `generate_list` returns `list[ShoppingItem]` and `get_shopping_list` does the same -- no manual dict construction needed.
 
 Notice how `generate_list` clears old shopping items before generating new ones -- this ensures you always see a fresh list. The graph now holds both task and shopping data, demonstrating how different types of nodes coexist naturally:
 
@@ -1303,7 +1262,7 @@ cl def:pub app -> JsxElement {
         ingredients = await get_shopping_list();
     }
 
-    async def add_new_task -> None {
+    async def add_new_task {
         if task_text.strip() {
             task = await add_task(task_text.strip());
             tasks = tasks + [task];
@@ -1311,24 +1270,17 @@ cl def:pub app -> JsxElement {
         }
     }
 
-    async def toggle(id: str) -> None {
-        await toggle_task(id);
-        tasks = [
-            {
-                "id": t.id, "title": t.title,
-                "done": not t.done, "category": t.category
-            }
-            if t.id == id else t
-            for t in tasks
-        ];
+    async def toggle(id: str) {
+        updated = await toggle_task(id);
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
-    async def remove(id: str) -> None {
+    async def remove(id: str) {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
-    async def generate_meal_list -> None {
+    async def generate_meal_list {
         if meal_text.strip() {
             generating = True;
             ingredients = await generate_list(meal_text.strip());
@@ -1336,7 +1288,7 @@ cl def:pub app -> JsxElement {
         }
     }
 
-    async def clear_list -> None {
+    async def clear_list {
         await clear_shopping_list();
         ingredients = [];
         meal_text = "";
@@ -1356,8 +1308,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: any -> None { task_text = e.target.value; }}
-                            onKeyPress={lambda e: any -> None {
+                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                            onKeyPress={lambda e: KeyboardEvent {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1365,11 +1317,11 @@ cl def:pub app -> JsxElement {
                         <button class="btn-add" onClick={add_new_task}>Add</button>
                     </div>
                     {[
-                        <div key={t.id} class="task-item">
+                        <div key={jid(t)} class="task-item">
                             <input
                                 type="checkbox"
                                 checked={t.done}
-                                onChange={lambda -> None { toggle(t.id); }}
+                                onChange={lambda { toggle(jid(t)); }}
                             />
                             <span class={"task-title " + ("task-done" if t.done else "")}>
                                 {t.title}
@@ -1379,13 +1331,13 @@ cl def:pub app -> JsxElement {
                             ) if t.category and t.category != "other" else None}
                             <button
                                 class="btn-delete"
-                                onClick={lambda -> None { remove(t.id); }}
+                                onClick={lambda { remove(jid(t)); }}
                             >
                                 X
                             </button>
                         </div> for t in tasks
                     ]}
-                    <div class="count">{remaining} tasks remaining</div>
+                    <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
                 </div>
                 <div class="column">
                     <h2>Meal Shopping List</h2>
@@ -1393,8 +1345,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: any -> None { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: any -> None {
+                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                            onKeyPress={lambda e: KeyboardEvent {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1526,40 +1478,31 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     # --- Task Endpoints ---
 
     """Add a task with AI categorization."""
-    def:pub add_task(title: str) -> dict {
+    def:pub add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(title=title, category=category);
-        return {
-            "id": jid(task[0]), "title": task[0].title,
-            "done": task[0].done, "category": task[0].category
-        };
+        task = root() ++> Task(title=title, category=category);
+        return task[0];
     }
 
     """Get all tasks."""
-    def:pub get_tasks -> list {
-        return [
-            {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->][?:Task]
-        ];
+    def:pub get_tasks -> list[Task] {
+        return [root()-->][?:Task];
     }
 
     """Toggle a task's done status."""
-    def:pub toggle_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+    def:pub toggle_task(id: str) -> Task | None {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
-                return {
-                    "id": jid(task), "title": task.title,
-                    "done": task.done, "category": task.category
-                };
+                return task;
             }
         }
-        return {};
+        return None;
     }
 
     """Delete a task."""
     def:pub delete_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -1571,41 +1514,29 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     # --- Shopping List Endpoints ---
 
     """Generate a shopping list from a meal description."""
-    def:pub generate_list(meal: str) -> list {
-        for item in [root-->][?:ShoppingItem] {
+    def:pub generate_list(meal: str) -> list[ShoppingItem] {
+        for item in [root()-->][?:ShoppingItem] {
             del item;
         }
         ingredients = generate_shopping_list(meal);
-        result: list = [];
         for ing in ingredients {
-            data = {
-                "name": ing.name,
-                "quantity": ing.quantity,
-                "unit": str(ing.unit).split(".")[-1].lower(),
-                "cost": ing.cost,
-                "carby": ing.carby
-            };
-            root ++> ShoppingItem(
-                name=data["name"], quantity=data["quantity"],
-                unit=data["unit"], cost=data["cost"], carby=data["carby"]
+            root() ++> ShoppingItem(
+                name=ing.name, quantity=ing.quantity,
+                unit=str(ing.unit).split(".")[-1].lower(),
+                cost=ing.cost, carby=ing.carby
             );
-            result.append(data);
         }
-        return result;
+        return [root()-->][?:ShoppingItem];
     }
 
     """Get the current shopping list."""
-    def:pub get_shopping_list -> list {
-        return [
-            {"name": s.name, "quantity": s.quantity, "unit": s.unit,
-             "cost": s.cost, "carby": s.carby}
-            for s in [root-->][?:ShoppingItem]
-        ];
+    def:pub get_shopping_list -> list[ShoppingItem] {
+        return [root()-->][?:ShoppingItem];
     }
 
     """Clear the shopping list."""
     def:pub clear_shopping_list -> dict {
-        for item in [root-->][?:ShoppingItem] {
+        for item in [root()-->][?:ShoppingItem] {
             del item;
         }
         return {"cleared": True};
@@ -1625,7 +1556,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
             ingredients = await get_shopping_list();
         }
 
-        async def add_new_task -> None {
+        async def add_new_task {
             if task_text.strip() {
                 task = await add_task(task_text.strip());
                 tasks = tasks + [task];
@@ -1633,24 +1564,17 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
             }
         }
 
-        async def toggle(id: str) -> None {
-            await toggle_task(id);
-            tasks = [
-                {
-                    "id": t.id, "title": t.title,
-                    "done": not t.done, "category": t.category
-                }
-                if t.id == id else t
-                for t in tasks
-            ];
+        async def toggle(id: str) {
+            updated = await toggle_task(id);
+            tasks = [updated if jid(t) == id else t for t in tasks];
         }
 
-        async def remove(id: str) -> None {
+        async def remove(id: str) {
             await delete_task(id);
-            tasks = [t for t in tasks if t.id != id];
+            tasks = [t for t in tasks if jid(t) != id];
         }
 
-        async def generate_meal_list -> None {
+        async def generate_meal_list {
             if meal_text.strip() {
                 generating = True;
                 ingredients = await generate_list(meal_text.strip());
@@ -1658,7 +1582,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
             }
         }
 
-        async def clear_list -> None {
+        async def clear_list {
             await clear_shopping_list();
             ingredients = [];
             meal_text = "";
@@ -1678,8 +1602,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <input
                                 class="input"
                                 value={task_text}
-                                onChange={lambda e: any -> None { task_text = e.target.value; }}
-                                onKeyPress={lambda e: any -> None {
+                                onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                                onKeyPress={lambda e: KeyboardEvent {
                                     if e.key == "Enter" { add_new_task(); }
                                 }}
                                 placeholder="What needs to be done today?"
@@ -1687,11 +1611,11 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <button class="btn-add" onClick={add_new_task}>Add</button>
                         </div>
                         {[
-                            <div key={t.id} class="task-item">
+                            <div key={jid(t)} class="task-item">
                                 <input
                                     type="checkbox"
                                     checked={t.done}
-                                    onChange={lambda -> None { toggle(t.id); }}
+                                    onChange={lambda { toggle(jid(t)); }}
                                 />
                                 <span class={"task-title " + ("task-done" if t.done else "")}>
                                     {t.title}
@@ -1701,13 +1625,13 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                                 ) if t.category and t.category != "other" else None}
                                 <button
                                     class="btn-delete"
-                                    onClick={lambda -> None { remove(t.id); }}
+                                    onClick={lambda { remove(jid(t)); }}
                                 >
                                     X
                                 </button>
                             </div> for t in tasks
                         ]}
-                        <div class="count">{remaining} tasks remaining</div>
+                        <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
                     </div>
                     <div class="column">
                         <h2>Meal Shopping List</h2>
@@ -1715,8 +1639,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                             <input
                                 class="input"
                                 value={meal_text}
-                                onChange={lambda e: any -> None { meal_text = e.target.value; }}
-                                onKeyPress={lambda e: any -> None {
+                                onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                                onKeyPress={lambda e: KeyboardEvent {
                                     if e.key == "Enter" { generate_meal_list(); }
                                 }}
                                 placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1793,6 +1717,8 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 - **`-> list[Type] by llm()`** -- get validated structured output from the LLM
 - **Jac's type system is the LLM's output schema** -- name things clearly and `by llm()` handles the rest
 
+> **Deep Dive:** [byLLM Reference](../../reference/plugins/byllm.md) covers all AI integration options including model configuration, multi-provider support, and advanced prompt control. [Structured Outputs tutorial](../ai/structured-outputs.md) has more examples of `obj` + `sem` patterns.
+
 !!! example "Try It Yourself"
     Add `SOCIAL` and `FINANCE` to the `Category` enum. Then test how the AI categorizes tasks like "Call mom", "Pay rent", and "Gym at 6pm".
 
@@ -1836,7 +1762,7 @@ As your application grows, keeping everything in a single file becomes hard to n
 def:pub app -> JsxElement {
     has tasks: list = [];
 
-    async def fetchTasks -> None;  # Just the signature -- no body
+    async def fetchTasks;  # Just the signature -- no body
     # ... more declarations ...
 
     # ... UI rendering ...
@@ -1846,7 +1772,7 @@ def:pub app -> JsxElement {
 **`frontend.impl.jac`** -- method bodies in `impl` blocks:
 
 ```jac
-impl app.fetchTasks -> None {
+impl app.fetchTasks {
     tasksLoading = True;
     tasks = await get_tasks();
     tasksLoading = False;
@@ -1979,40 +1905,31 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Task Endpoints ---
 
     """Add a task with AI categorization."""
-    def:priv add_task(title: str) -> dict {
+    def:priv add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(title=title, category=category);
-        return {
-            "id": jid(task[0]), "title": task[0].title,
-            "done": task[0].done, "category": task[0].category
-        };
+        task = root() ++> Task(title=title, category=category);
+        return task[0];
     }
 
     """Get all tasks."""
-    def:priv get_tasks -> list {
-        return [
-            {"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->][?:Task]
-        ];
+    def:priv get_tasks -> list[Task] {
+        return [root()-->][?:Task];
     }
 
     """Toggle a task's done status."""
-    def:priv toggle_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+    def:priv toggle_task(id: str) -> Task | None {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 task.done = not task.done;
-                return {
-                    "id": jid(task), "title": task.title,
-                    "done": task.done, "category": task.category
-                };
+                return task;
             }
         }
-        return {};
+        return None;
     }
 
     """Delete a task."""
     def:priv delete_task(id: str) -> dict {
-        for task in [root-->][?:Task] {
+        for task in [root()-->][?:Task] {
             if jid(task) == id {
                 del task;
                 return {"deleted": id};
@@ -2024,41 +1941,29 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Shopping List Endpoints ---
 
     """Generate a shopping list from a meal description."""
-    def:priv generate_list(meal: str) -> list {
-        for item in [root-->][?:ShoppingItem] {
+    def:priv generate_list(meal: str) -> list[ShoppingItem] {
+        for item in [root()-->][?:ShoppingItem] {
             del item;
         }
         ingredients = generate_shopping_list(meal);
-        result: list = [];
         for ing in ingredients {
-            data = {
-                "name": ing.name,
-                "quantity": ing.quantity,
-                "unit": str(ing.unit).split(".")[-1].lower(),
-                "cost": ing.cost,
-                "carby": ing.carby
-            };
-            root ++> ShoppingItem(
-                name=data["name"], quantity=data["quantity"],
-                unit=data["unit"], cost=data["cost"], carby=data["carby"]
+            root() ++> ShoppingItem(
+                name=ing.name, quantity=ing.quantity,
+                unit=str(ing.unit).split(".")[-1].lower(),
+                cost=ing.cost, carby=ing.carby
             );
-            result.append(data);
         }
-        return result;
+        return [root()-->][?:ShoppingItem];
     }
 
     """Get the current shopping list."""
-    def:priv get_shopping_list -> list {
-        return [
-            {"name": s.name, "quantity": s.quantity, "unit": s.unit,
-             "cost": s.cost, "carby": s.carby}
-            for s in [root-->][?:ShoppingItem]
-        ];
+    def:priv get_shopping_list -> list[ShoppingItem] {
+        return [root()-->][?:ShoppingItem];
     }
 
     """Clear the shopping list."""
     def:priv clear_shopping_list -> dict {
-        for item in [root-->][?:ShoppingItem] {
+        for item in [root()-->][?:ShoppingItem] {
             del item;
         }
         return {"cleared": True};
@@ -2107,19 +2012,19 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
 
         # Method declarations -- bodies are in frontend.impl.jac
-        async def fetchTasks -> None;
-        async def addTask -> None;
-        async def toggleTask(id: str) -> None;
-        async def deleteTask(id: str) -> None;
-        async def handleLogin -> None;
-        async def handleSignup -> None;
-        def handleLogout -> None;
-        async def handleSubmit(e: any) -> None;
-        def handleTaskKeyPress(e: any) -> None;
-        async def fetchShoppingList -> None;
-        async def generateList -> None;
-        async def clearList -> None;
-        def handleMealKeyPress(e: any) -> None;
+        async def fetchTasks;
+        async def addTask;
+        async def toggleTask(id: str);
+        async def deleteTask(id: str);
+        async def handleLogin;
+        async def handleSignup;
+        def handleLogout;
+        async def handleSubmit(e: FormEvent);
+        def handleTaskKeyPress(e: KeyboardEvent);
+        async def fetchShoppingList;
+        async def generateList;
+        async def clearList;
+        def handleMealKeyPress(e: KeyboardEvent);
         def getTotal -> float;
 
         if checkingAuth {
@@ -2150,13 +2055,13 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={taskText}
-                                    onChange={lambda e: any -> None { taskText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
                                     onKeyPress={handleTaskKeyPress}
                                     placeholder="What needs to be done today?"
                                 />
                                 <button
                                     class="btn-add"
-                                    onClick={lambda -> None { addTask(); }}
+                                    onClick={lambda { addTask(); }}
                                 >
                                     Add
                                 </button>
@@ -2172,11 +2077,11 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     ) if len(tasks) == 0 else (
                                         <div>
                                             {[
-                                                <div key={t.id} class="task-item">
+                                                <div key={jid(t)} class="task-item">
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda -> None { toggleTask(t.id); }}
+                                                        onChange={lambda { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
@@ -2186,7 +2091,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     ) if t.category and t.category != "other" else None}
                                                     <button
                                                         class="btn-delete"
-                                                        onClick={lambda -> None { deleteTask(t.id); }}
+                                                        onClick={lambda { deleteTask(jid(t)); }}
                                                     >
                                                         X
                                                     </button>
@@ -2196,7 +2101,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     )}
                                 </div>
                             )}
-                            <div class="count">{remaining} tasks remaining</div>
+                            <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
                         </div>
                         <div class="column">
                             <h2>Meal Shopping List</h2>
@@ -2204,13 +2109,13 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={mealText}
-                                    onChange={lambda e: any -> None { mealText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
                                     onKeyPress={handleMealKeyPress}
                                     placeholder="e.g. 'chicken stir fry for 4'"
                                 />
                                 <button
                                     class="btn-generate"
-                                    onClick={lambda -> None { generateList(); }}
+                                    onClick={lambda { generateList(); }}
                                     disabled={generating}
                                 >
                                     {("Generating..." if generating else "Generate")}
@@ -2250,7 +2155,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                 </span>
                                                 <button
                                                     class="btn-clear"
-                                                    onClick={lambda -> None { clearList(); }}
+                                                    onClick={lambda { clearList(); }}
                                                 >
                                                     Clear
                                                 </button>
@@ -2280,7 +2185,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: any -> None { username = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2290,7 +2195,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: any -> None { password = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2313,7 +2218,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                         </span>
                         <button
                             type="button"
-                            onClick={lambda -> None { isSignup = not isSignup; error = ""; }}
+                            onClick={lambda { isSignup = not isSignup; error = ""; }}
                             class="auth-toggle-btn"
                         >
                             {("Sign In" if isSignup else "Sign Up")}
@@ -2329,37 +2234,30 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """Implementations for the Day Planner frontend."""
 
-    impl app.fetchTasks -> None {
+    impl app.fetchTasks {
         tasksLoading = True;
         tasks = await get_tasks();
         tasksLoading = False;
     }
 
-    impl app.addTask -> None {
+    impl app.addTask {
         if not taskText.strip() { return; }
         task = await add_task(taskText.strip());
         tasks = tasks + [task];
         taskText = "";
     }
 
-    impl app.toggleTask(id: str) -> None {
-        await toggle_task(id);
-        tasks = [
-            {
-                "id": t.id, "title": t.title,
-                "done": not t.done, "category": t.category
-            }
-            if t.id == id else t
-            for t in tasks
-        ];
+    impl app.toggleTask(id: str) {
+        updated = await toggle_task(id);
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
-    impl app.deleteTask(id: str) -> None {
+    impl app.deleteTask(id: str) {
         await delete_task(id);
-        tasks = [t for t in tasks if t.id != id];
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
-    impl app.handleLogin -> None {
+    impl app.handleLogin {
         error = "";
         if not username.strip() or not password {
             error = "Please fill in all fields";
@@ -2377,7 +2275,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
     }
 
-    impl app.handleSignup -> None {
+    impl app.handleSignup {
         error = "";
         if not username.strip() or not password {
             error = "Please fill in all fields";
@@ -2399,7 +2297,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
     }
 
-    impl app.handleLogout -> None {
+    impl app.handleLogout {
         jacLogout();
         isLoggedIn = False;
         isSignup = False;
@@ -2407,34 +2305,34 @@ All the complete files are in the collapsible sections below. Create each file, 
         ingredients = [];
     }
 
-    impl app.handleSubmit(e: any) -> None {
+    impl app.handleSubmit(e: FormEvent) {
         e.preventDefault();
         if isSignup { await handleSignup(); }
         else { await handleLogin(); }
     }
 
-    impl app.handleTaskKeyPress(e: any) -> None {
+    impl app.handleTaskKeyPress(e: KeyboardEvent) {
         if e.key == "Enter" { addTask(); }
     }
 
-    impl app.fetchShoppingList -> None {
+    impl app.fetchShoppingList {
         ingredients = await get_shopping_list();
     }
 
-    impl app.generateList -> None {
+    impl app.generateList {
         if not mealText.strip() { return; }
         generating = True;
         ingredients = await generate_list(mealText.strip());
         generating = False;
     }
 
-    impl app.clearList -> None {
+    impl app.clearList {
         await clear_shopping_list();
         ingredients = [];
         mealText = "";
     }
 
-    impl app.handleMealKeyPress(e: any) -> None {
+    impl app.handleMealKeyPress(e: KeyboardEvent) {
         if e.key == "Enter" { generateList(); }
     }
 
@@ -2587,10 +2485,10 @@ The core keywords:
 The best way to understand walkers is to compare them directly with the functions you already know. Here's `add_task` as a `def:priv` function (what you built in Part 6):
 
 ```jac
-def:priv add_task(title: str) -> dict {
+def:priv add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
-    task = root ++> Task(title=title, category=category);
-    return {"id": jid(task[0]), "title": task[0].title, "done": task[0].done, "category": task[0].category};
+    task = root() ++> Task(title=title, category=category);
+    return task[0];
 }
 ```
 
@@ -2606,12 +2504,7 @@ walker AddTask {
             title=self.title,
             category=category
         );
-        report {
-            "id": jid(new_task[0]),
-            "title": new_task[0].title,
-            "done": new_task[0].done,
-            "category": new_task[0].category
-        };
+        report new_task[0];
     }
 }
 ```
@@ -2623,17 +2516,17 @@ Study the differences carefully -- each maps directly to a concept from the func
 - **`can create with Root entry`** -- an **ability** that fires when the walker enters a `Root` node. The `with Root entry` part means "execute this code when I arrive at a Root node."
 - **`here`** -- the current node the walker is visiting. In the function version, you wrote `root` directly; in the walker version, `here` is whatever node the walker is currently at.
 - **`self.title`** -- the walker's own properties. Since the walker *is* an object, its data is accessed through `self`.
-- **`report { ... }`** -- sends data back to whoever spawned the walker. This replaces `return`.
+- **`report new_task[0]`** -- sends the typed `Task` node back to whoever spawned the walker. This replaces `return`. The reported object crosses the client-server boundary as a fully typed object, just like function return values.
 
 Spawn it:
 
 <!-- jac-skip -->
 ```jac
-result = root spawn AddTask(title="Buy groceries");
+result = root() spawn AddTask(title="Buy groceries");
 print(result.reports[0]);  # The reported dict
 ```
 
-**`root spawn AddTask(title="...")`** creates a walker and starts it at root. Whatever the walker `report`s ends up in `result.reports`.
+**`root() spawn AddTask(title="...")`** creates a walker and starts it at root. Whatever the walker `report`s ends up in `result.reports`.
 
 **The Accumulator Pattern**
 
@@ -2648,12 +2541,7 @@ walker ListTasks {
     }
 
     can collect with Task entry {
-        self.results.append({
-            "id": jid(here),
-            "title": here.title,
-            "done": here.done,
-            "category": here.category
-        });
+        self.results.append(here);
     }
 
     can done with Root exit {
@@ -2665,17 +2553,16 @@ walker ListTasks {
 Three abilities work together:
 
 1. **`with Root entry`** -- the walker enters root, `visit [-->]` sends it to all connected nodes
-2. **`with Task entry`** -- fires at each Task node, appending data to `self.results`
+2. **`with Task entry`** -- fires at each Task node, appending `here` (the node itself) to `self.results`
 3. **`with Root exit`** -- after visiting all children, the walker returns to root and reports the accumulated list
 
-A key insight here: the walker's `has results: list = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node.
+A key insight here: the walker's `has results: list = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node. And because the results are typed `Task` objects, the client receives them with all fields accessible via dot notation -- no manual dict construction needed.
 
 Compare this to the function version:
 
 ```jac
-def:priv get_tasks -> list {
-    return [{"id": jid(t), "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->][?:Task]];
+def:priv get_tasks -> list[Task] {
+    return [root()-->][?:Task];
 }
 ```
 
@@ -2695,12 +2582,7 @@ node Task {
         category: str = "other";
 
     can respond with ListTasks entry {
-        visitor.results.append({
-            "id": jid(self),
-            "title": self.title,
-            "done": self.done,
-            "category": self.category
-        });
+        visitor.results.append(self);
     }
 }
 ```
@@ -2732,7 +2614,7 @@ walker ToggleTask {
     can toggle with Task entry {
         if jid(here) == self.task_id {
             here.done = not here.done;
-            report {"id": jid(here), "done": here.done};
+            report here;
             disengage;  # Found it -- stop visiting remaining nodes
         }
     }
@@ -2759,6 +2641,8 @@ walker DeleteTask {
 }
 ```
 
+Note that `DeleteTask` still reports a plain dict rather than a typed object -- this is fine for simple status responses where no typed data needs to cross the boundary.
+
 **Multi-Step Traversals**
 
 The `GenerateShoppingList` walker demonstrates the real power of OSP -- performing multiple operations in a single graph traversal. Read this carefully, because the execution order is subtle and important:
@@ -2772,22 +2656,14 @@ walker GenerateShoppingList {
         visit [-->];
         # Generate new ingredients (runs before queued visits)
         ingredients = generate_shopping_list(self.meal_description);
-        result: list = [];
         for ing in ingredients {
-            data = {
-                "name": ing.name,
-                "quantity": ing.quantity,
-                "unit": str(ing.unit).split(".")[-1].lower(),
-                "cost": ing.cost,
-                "carby": ing.carby
-            };
             here ++> ShoppingItem(
-                name=data["name"], quantity=data["quantity"],
-                unit=data["unit"], cost=data["cost"], carby=data["carby"]
+                name=ing.name, quantity=ing.quantity,
+                unit=str(ing.unit).split(".")[-1].lower(),
+                cost=ing.cost, carby=ing.carby
             );
-            result.append(data);
         }
-        report result;
+        report [here-->][?:ShoppingItem];
     }
 
     can clear_old with ShoppingItem entry {
@@ -2809,10 +2685,7 @@ walker GetShoppingList {
     can collect with Root entry { visit [-->]; }
 
     can gather with ShoppingItem entry {
-        self.items.append({
-            "name": here.name, "quantity": here.quantity,
-            "unit": here.unit, "cost": here.cost, "carby": here.carby
-        });
+        self.items.append(here);
     }
 
     can done with Root exit { report self.items; }
@@ -2851,11 +2724,11 @@ Then in the frontend methods:
 task = await add_task(task_text.strip());
 
 # Walker style (Part 7):
-result = root spawn AddTask(title=task_text.strip());
-new_task = result.reports[0];
+result = root() spawn AddTask(title=task_text.strip());
+new_task = result.reports[0];  # A typed Task object
 ```
 
-The key pattern: **`root spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`.
+The key pattern: **`root() spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`. Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
 
 **walker:priv -- Per-User Data Isolation**
 
@@ -2962,12 +2835,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                 title=self.title,
                 category=category
             );
-            report {
-                "id": jid(new_task[0]),
-                "title": new_task[0].title,
-                "done": new_task[0].done,
-                "category": new_task[0].category
-            };
+            report new_task[0];
         }
     }
 
@@ -2979,12 +2847,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
 
         can collect with Task entry {
-            self.results.append({
-                "id": jid(here),
-                "title": here.title,
-                "done": here.done,
-                "category": here.category
-            });
+            self.results.append(here);
         }
 
         can done with Root exit {
@@ -3000,10 +2863,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         can toggle with Task entry {
             if jid(here) == self.task_id {
                 here.done = not here.done;
-                report {
-                    "id": jid(here),
-                    "done": here.done
-                };
+                report here;
                 disengage;
             }
         }
@@ -3031,22 +2891,14 @@ All the complete files are in the collapsible sections below. Create each file, 
         can generate with Root entry {
             visit [-->];
             ingredients = generate_shopping_list(self.meal_description);
-            result: list = [];
             for ing in ingredients {
-                data = {
-                    "name": ing.name,
-                    "quantity": ing.quantity,
-                    "unit": str(ing.unit).split(".")[-1].lower(),
-                    "cost": ing.cost,
-                    "carby": ing.carby
-                };
                 here ++> ShoppingItem(
-                    name=data["name"], quantity=data["quantity"],
-                    unit=data["unit"], cost=data["cost"], carby=data["carby"]
+                    name=ing.name, quantity=ing.quantity,
+                    unit=str(ing.unit).split(".")[-1].lower(),
+                    cost=ing.cost, carby=ing.carby
                 );
-                result.append(data);
             }
-            report result;
+            report [here-->][?:ShoppingItem];
         }
 
         can clear_old with ShoppingItem entry {
@@ -3060,13 +2912,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         can collect with Root entry { visit [-->]; }
 
         can gather with ShoppingItem entry {
-            self.items.append({
-                "name": here.name,
-                "quantity": here.quantity,
-                "unit": here.unit,
-                "cost": here.cost,
-                "carby": here.carby
-            });
+            self.items.append(here);
         }
 
         can done with Root exit { report self.items; }
@@ -3124,19 +2970,19 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
 
         # Method declarations -- bodies are in frontend.impl.jac
-        async def fetchTasks -> None;
-        async def addTask -> None;
-        async def toggleTask(id: str) -> None;
-        async def deleteTask(id: str) -> None;
-        async def handleLogin -> None;
-        async def handleSignup -> None;
-        def handleLogout -> None;
-        async def handleSubmit(e: any) -> None;
-        def handleTaskKeyPress(e: any) -> None;
-        async def fetchShoppingList -> None;
-        async def generateList -> None;
-        async def clearList -> None;
-        def handleMealKeyPress(e: any) -> None;
+        async def fetchTasks;
+        async def addTask;
+        async def toggleTask(id: str);
+        async def deleteTask(id: str);
+        async def handleLogin;
+        async def handleSignup;
+        def handleLogout;
+        async def handleSubmit(e: FormEvent);
+        def handleTaskKeyPress(e: KeyboardEvent);
+        async def fetchShoppingList;
+        async def generateList;
+        async def clearList;
+        def handleMealKeyPress(e: KeyboardEvent);
         def getTotal -> float;
 
         if checkingAuth {
@@ -3167,13 +3013,13 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={taskText}
-                                    onChange={lambda e: any -> None { taskText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
                                     onKeyPress={handleTaskKeyPress}
                                     placeholder="What needs to be done today?"
                                 />
                                 <button
                                     class="btn-add"
-                                    onClick={lambda -> None { addTask(); }}
+                                    onClick={lambda { addTask(); }}
                                 >
                                     Add
                                 </button>
@@ -3189,11 +3035,11 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     ) if len(tasks) == 0 else (
                                         <div>
                                             {[
-                                                <div key={t.id} class="task-item">
+                                                <div key={jid(t)} class="task-item">
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda -> None { toggleTask(t.id); }}
+                                                        onChange={lambda { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
@@ -3203,7 +3049,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     ) if t.category and t.category != "other" else None}
                                                     <button
                                                         class="btn-delete"
-                                                        onClick={lambda -> None { deleteTask(t.id); }}
+                                                        onClick={lambda { deleteTask(jid(t)); }}
                                                     >
                                                         X
                                                     </button>
@@ -3213,7 +3059,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                     )}
                                 </div>
                             )}
-                            <div class="count">{remaining} tasks remaining</div>
+                            <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
                         </div>
                         <div class="column">
                             <h2>Meal Shopping List</h2>
@@ -3221,13 +3067,13 @@ All the complete files are in the collapsible sections below. Create each file, 
                                 <input
                                     class="input"
                                     value={mealText}
-                                    onChange={lambda e: any -> None { mealText = e.target.value; }}
+                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
                                     onKeyPress={handleMealKeyPress}
                                     placeholder="e.g. 'chicken stir fry for 4'"
                                 />
                                 <button
                                     class="btn-generate"
-                                    onClick={lambda -> None { generateList(); }}
+                                    onClick={lambda { generateList(); }}
                                     disabled={generating}
                                 >
                                     {("Generating..." if generating else "Generate")}
@@ -3267,7 +3113,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                 </span>
                                                 <button
                                                     class="btn-clear"
-                                                    onClick={lambda -> None { clearList(); }}
+                                                    onClick={lambda { clearList(); }}
                                                 >
                                                     Clear
                                                 </button>
@@ -3297,7 +3143,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: any -> None { username = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -3307,7 +3153,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: any -> None { password = e.target.value; }}
+                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -3330,7 +3176,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                         </span>
                         <button
                             type="button"
-                            onClick={lambda -> None { isSignup = not isSignup; error = ""; }}
+                            onClick={lambda { isSignup = not isSignup; error = ""; }}
                             class="auth-toggle-btn"
                         >
                             {("Sign In" if isSignup else "Sign Up")}
@@ -3346,44 +3192,32 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """Implementations for the Day Planner frontend."""
 
-    impl app.fetchTasks -> None {
+    impl app.fetchTasks {
         tasksLoading = True;
-        result = root spawn ListTasks();
+        result = root() spawn ListTasks();
         tasks = result.reports[0] if result.reports else [];
         tasksLoading = False;
     }
 
-    impl app.addTask -> None {
+    impl app.addTask {
         if not taskText.strip() { return; }
-        response = root spawn AddTask(title=taskText);
-        newTask = response.reports[0];
-        tasks = tasks + [{
-            "id": newTask.id,
-            "title": newTask.title,
-            "done": newTask.done,
-            "category": newTask.category
-        }];
+        response = root() spawn AddTask(title=taskText);
+        tasks = tasks + [response.reports[0]];
         taskText = "";
     }
 
-    impl app.toggleTask(id: str) -> None {
-        root spawn ToggleTask(task_id=id);
-        tasks = [
-            {
-                "id": t.id, "title": t.title,
-                "done": not t.done, "category": t.category
-            }
-            if t.id == id else t
-            for t in tasks
-        ];
+    impl app.toggleTask(id: str) {
+        response = root() spawn ToggleTask(task_id=id);
+        updated = response.reports[0];
+        tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
-    impl app.deleteTask(id: str) -> None {
-        root spawn DeleteTask(task_id=id);
-        tasks = [t for t in tasks if t.id != id];
+    impl app.deleteTask(id: str) {
+        root() spawn DeleteTask(task_id=id);
+        tasks = [t for t in tasks if jid(t) != id];
     }
 
-    impl app.handleLogin -> None {
+    impl app.handleLogin {
         error = "";
         if not username.strip() or not password {
             error = "Please fill in all fields";
@@ -3401,7 +3235,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
     }
 
-    impl app.handleSignup -> None {
+    impl app.handleSignup {
         error = "";
         if not username.strip() or not password {
             error = "Please fill in all fields";
@@ -3423,7 +3257,7 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
     }
 
-    impl app.handleLogout -> None {
+    impl app.handleLogout {
         jacLogout();
         isLoggedIn = False;
         isSignup = False;
@@ -3431,36 +3265,36 @@ All the complete files are in the collapsible sections below. Create each file, 
         ingredients = [];
     }
 
-    impl app.handleSubmit(e: any) -> None {
+    impl app.handleSubmit(e: FormEvent) {
         e.preventDefault();
         if isSignup { await handleSignup(); }
         else { await handleLogin(); }
     }
 
-    impl app.handleTaskKeyPress(e: any) -> None {
+    impl app.handleTaskKeyPress(e: KeyboardEvent) {
         if e.key == "Enter" { addTask(); }
     }
 
-    impl app.fetchShoppingList -> None {
-        result = root spawn GetShoppingList();
+    impl app.fetchShoppingList {
+        result = root() spawn GetShoppingList();
         ingredients = result.reports[0] if result.reports else [];
     }
 
-    impl app.generateList -> None {
+    impl app.generateList {
         if not mealText.strip() { return; }
         generating = True;
-        result = root spawn GenerateShoppingList(meal_description=mealText);
+        result = root() spawn GenerateShoppingList(meal_description=mealText);
         ingredients = result.reports[0] if result.reports else [];
         generating = False;
     }
 
-    impl app.clearList -> None {
-        root spawn ClearShoppingList();
+    impl app.clearList {
+        root() spawn ClearShoppingList();
         ingredients = [];
         mealText = "";
     }
 
-    impl app.handleMealKeyPress(e: any) -> None {
+    impl app.handleMealKeyPress(e: KeyboardEvent) {
         if e.key == "Enter" { generateList(); }
     }
 
@@ -3567,9 +3401,9 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 - **`here`** -- the node the walker is currently visiting
 - **`self`** -- the walker itself (its state and properties)
 - **`visitor`** -- inside a node ability, the walker that's visiting
-- **`report { ... }`** -- send data back, collected in `.reports`
+- **`report`** -- send data back (typed objects or dicts), collected in `.reports`
 - **`disengage`** -- stop traversal immediately
-- **`root spawn Walker()`** -- create and start a walker at a node
+- **`root() spawn Walker()`** -- create and start a walker at a node
 - **`result.reports[0]`** -- access the walker's reported data
 - **`walker:priv`** -- per-user walker with data isolation
 - **`sv import`** -- import server walkers into client code
@@ -3584,6 +3418,8 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 | `walker:priv` | Per-user walker with data isolation via private root nodes |
 | Node abilities | When the logic naturally belongs to the data type |
 | Walker abilities | When the logic naturally belongs to the traversal |
+
+> **Deep Dive:** [Object-Spatial Programming Reference](../../reference/language/osp.md) covers advanced walker patterns, entry/exit semantics, and multi-hop traversals. [Walker Patterns](../../reference/language/walker-responses.md) has a quick reference for common walker response patterns.
 
 !!! example "Try It Yourself"
     Write a `CountTasks` walker that reports the total number of tasks and how many are done, without collecting the full task list. Use `self.total: int` and `self.completed: int` counters that increment as the walker visits each `Task` node.
@@ -3605,7 +3441,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 **Data & Types:** `node`, `edge`, `obj`, `enum`, `has`, `glob`, `sem`, type annotations, `str | None` unions
 
-**Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `[?:Type]` (filter), `jid()` (node identity), `del` (delete)
+**Graph:** `root()`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root()-->]` (query), `[?:Type]` (filter), `jid()` (node identity), `del` (delete)
 
 **Functions:** `def`, `def:pub`, `def:priv`, `by llm()`, `lambda`, `async`/`await`
 

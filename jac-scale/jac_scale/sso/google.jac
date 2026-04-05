@@ -5,7 +5,8 @@ This module implements the SSOProvider interface for Google OAuth authentication
 
 import from fastapi { Request, Response }
 import from fastapi_sso.sso.google { GoogleSSO }
-import from jac_scale.sso_provider { SSOProvider, SSOUserInfo }
+import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
+import from jac_scale.enums { Platforms }
 
 """Google OAuth SSO Provider.
 
@@ -20,7 +21,7 @@ obj GoogleSSOProvider(SSOProvider) {
         _google_sso: (GoogleSSO | None) = None;
 
     """Initialize the Google SSO provider."""
-    def postinit -> None {
+    def postinit {
         self._google_sso = GoogleSSO(
             client_id=self.client_id,
             client_secret=self.client_secret,
@@ -31,13 +32,10 @@ obj GoogleSSOProvider(SSOProvider) {
 
     """Initiate Google OAuth authentication flow.
 
-    Args:
-        operation: The operation type ('login' or 'register')
-
     Returns:
         RedirectResponse to Google's OAuth authorization page
     """
-    async def initiate_auth(operation: str) -> Response {
+    async def initiate_auth -> Response {
         if not self._google_sso {
             raise RuntimeError("GoogleSSO not initialized");
         }
@@ -80,6 +78,6 @@ obj GoogleSSOProvider(SSOProvider) {
         str: 'google'
     """
     def get_platform_name -> str {
-        return "google";
+        return Platforms.GOOGLE.value;
     }
 }

@@ -18,34 +18,20 @@ impl JacMcpServer.stop -> None {
 }
 
 """Server instructions sent to AI clients during MCP initialization."""
-glob SERVER_INSTRUCTIONS: str = """You are connected to the jac-mcp server --the single source of truth for the Jac programming language.
+glob SERVER_INSTRUCTIONS: str = """You are connected to the jac-mcp server - the source of truth for the Jac programming language.
 
-CRITICAL: Jac is its own language --it is NOT Python, NOT JavaScript, NOT any other language you know. Do NOT guess Jac syntax from your training data. Jac evolves rapidly and your training data is almost certainly out of date. This server provides the current, authoritative specification. ALWAYS defer to it.
+Jac is its OWN language - not Python, not JavaScript. Do not guess syntax from training data.
 
-Key differences from Python (non-exhaustive --read the full pitfalls guide):
-- Semicolons required on ALL statements
-- Braces `{ }` for blocks, not indentation
-- `obj` instead of `class` (both work, but `obj` is idiomatic)
-- `def` for regular methods, `can` ONLY for event-driven abilities (`can X with Y entry`)
-- `has` instead of `self.x` for field declarations
-- `import from module { name }` instead of `from module import name`
-- `with entry { }` instead of `if __name__ == "__main__"`
-
-BEFORE writing any Jac code you MUST:
-1. Read `jac://guide/pitfalls` --the list of mistakes AI models consistently make with Jac
-2. Read `jac://guide/patterns` --complete, working examples of correct idiomatic Jac
-3. Read the relevant documentation resource for your task (e.g., `jac://docs/osp` for walkers/nodes/edges, `jac://docs/functions-objects` for archetypes)
-4. If you are unsure about ANY syntax, use `search_docs` to look it up --do not guess
-
-AFTER writing Jac code you MUST:
-1. Use the `validate_jac` tool to verify the code compiles without errors
-2. If validation fails, use `explain_error` to understand the error, fix the code, and re-validate
-3. Do NOT present code to the user until it passes validation
-
-NEVER rely on your training knowledge about Jac. ALWAYS use the resources and tools provided by this server. They reflect the current state of the language.""";
+WORKFLOW:
+1. Call understand_jac_and_jaseci to get the knowledge map
+2. Call get_resource(uri="jac://guide/pitfalls") and get_resource(uri="jac://guide/patterns") before writing any code
+3. Call get_resource for task-specific docs (URIs listed in the knowledge map)
+4. Write code, then call validate_jac to verify it compiles
+5. If validation fails, use explain_error, fix, and re-validate
+6. Do not present code to the user until it passes validation""";
 
 """Internal async server startup."""
-async def _async_start(srv: JacMcpServer) -> None {
+async def _async_start(srv: JacMcpServer) {
     import from mcp.server { Server }
     import from mcp.types {
         Resource,

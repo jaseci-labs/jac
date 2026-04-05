@@ -42,15 +42,15 @@ def:pub FieldExamples -> Any {
             textareaField: JacSchema.string().min(10, "Min 10 characters"),
             # Checkboxes
             checkboxRequired: JacSchema.boolean().refine(
-                lambda v: any  -> bool { return v == True; }, "Must be checked"
+                lambda v: any -> bool { return v == True; }, "Must be checked"
             ),
             checkboxOptional: JacSchema.boolean().optional()
         }
     ).refine(
-        lambda data: any  -> bool { return data.passwordField == data.confirmPassword; },
+        lambda data: any -> bool { return data.passwordField == data.confirmPassword; },
         {message: "Passwords do not match", path: ["confirmPassword"],}
     );
-    async def handleSubmit(data: dict) -> None {
+    async def handleSubmit(data: dict) {
         console.log("Form submitted:", data);
         alert("Form submitted! Check console for data.");
     }

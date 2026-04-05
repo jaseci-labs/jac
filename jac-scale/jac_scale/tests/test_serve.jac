@@ -77,7 +77,7 @@ def _extract_transport_response_data(
 }
 
 """Delete SQLite database files and legacy shelf files."""
-def _cleanup_db_files(fixtures_dir: Path) -> None {
+def _cleanup_db_files(fixtures_dir: Path) {
     for pattern in [
         "*.db",
         "*.db-wal",
@@ -151,8 +151,8 @@ def _start_server(
         }
 
         try {
-            response = requests.get(f"{base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Server started successfully on port {port}");
                 server_ready = True;
                 break;
@@ -180,7 +180,7 @@ def _start_server(
 }
 
 """Stop server process."""
-def _stop_server(server_process: subprocess.Popen | None) -> None {
+def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
@@ -241,7 +241,7 @@ def setup_serve_server -> subprocess.Popen {
 }
 
 """Teardown the serve server."""
-def teardown_serve_server(sp: subprocess.Popen | None) -> None {
+def teardown_serve_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(sv_fixtures_dir);
 }
@@ -252,11 +252,18 @@ def teardown_serve_server(sp: subprocess.Popen | None) -> None {
 test "static and schema endpoints" {
     client = make_client();
     try {
-        # Test: server root endpoint returns docs
-        response = client.get("/docs");
-        assert response.status_code == 200 , "Docs endpoint should return 200";
+        # Test: health check endpoint
+        response = client.get("/healthz");
+        assert response.status_code == 200 , "Health check should return 200";
+        assert response.json() == {"status": "ok"};
 
-        # Test: custom response headers from config
+        # Test: docs are enabled by default (docs_enabled config defaults to true)
+        response = client.get("/docs");
+        assert response.status_code == 200 , "Docs should be enabled by default";
+
+        # Test: custom response headers from config (use /graph which is always available)
+        response = client.get("/graph");
+        assert response.status_code == 200;
         assert "x-custom-test-header" in response.headers;
         assert response.headers["x-custom-test-header"] == "test-value";
         assert "cross-origin-opener-policy" in response.headers;
@@ -264,10 +271,8 @@ test "static and schema endpoints" {
         assert "cross-origin-embedder-policy" in response.headers;
         assert response.headers["cross-origin-embedder-policy"] == "require-corp";
 
-        # Test: OpenAPI schema is accessible and correct
-        openapi_response = client.get("/openapi.json");
-        assert openapi_response.status_code == 200;
-        openapi_spec = openapi_response.json();
+        # Test: OpenAPI schema via app.openapi()
+        openapi_spec = client._server.server.app.openapi();
         paths = openapi_spec.get("paths", {});
 
         # Test: refresh endpoint in openapi docs
@@ -1079,7 +1084,7 @@ test "websocket functionality" {
     sp = setup_serve_server();
     try {
         # Test: websocket connect and echo
-        async def test_echo -> None {
+        async def test_echo {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
                 response = json.loads(await ws.recv());
@@ -1097,7 +1102,7 @@ test "websocket functionality" {
         asyncio.run(test_echo());
 
         # Test: websocket minimal walker
-        async def test_minimal -> None {
+        async def test_minimal {
             async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
                 await ws.send(json.dumps({}));
                 response = json.loads(await ws.recv());
@@ -1114,7 +1119,7 @@ test "websocket functionality" {
         asyncio.run(test_minimal());
 
         # Test: websocket multiple messages
-        async def test_multiple -> None {
+        async def test_multiple {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 for i in range(3) {
                     await ws.send(
@@ -1145,7 +1150,7 @@ test "websocket functionality" {
         );
 
         # Test: websocket nonexistent walker
-        async def test_nonexistent -> None {
+        async def test_nonexistent {
             try {
                 async with websockets.connect(
                     f"{sv_ws_url}/ws/NonExistentWalker"
@@ -1160,7 +1165,7 @@ test "websocket functionality" {
         asyncio.run(test_nonexistent());
 
         # Test: http walker not accessible via ws
-        async def test_http_via_ws -> None {
+        async def test_http_via_ws {
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
                     await ws.recv();
@@ -1173,7 +1178,7 @@ test "websocket functionality" {
         asyncio.run(test_http_via_ws());
 
         # Test: private websocket requires auth
-        async def test_private_no_auth -> None {
+        async def test_private_no_auth {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(json.dumps({"message": "hello"}));
                 response = json.loads(await ws.recv());
@@ -1203,7 +1208,7 @@ test "websocket functionality" {
         assert response.status_code == 200 , f"Failed to login: {response.text}";
         token = response.json()["data"]["token"];
 
-        async def test_private_with_token(t: str) -> None {
+        async def test_private_with_token(t: str) {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(
                     json.dumps({"message": "authenticated hello", "token": t})
@@ -1239,7 +1244,7 @@ test "websocket functionality" {
         assert response.status_code == 200;
         query_token = response.json()["data"]["token"];
 
-        async def test_query_token(t: str) -> None {
+        async def test_query_token(t: str) {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateWebSocket?token={t}"
             ) as ws {
@@ -1257,7 +1262,7 @@ test "websocket functionality" {
         asyncio.run(test_query_token(query_token));
 
         # Test: broadcast websocket all clients receive
-        async def test_broadcast -> None {
+        async def test_broadcast {
             async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
                 async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
                     await asyncio.sleep(0.1);
@@ -1294,7 +1299,7 @@ test "websocket functionality" {
         asyncio.run(test_broadcast());
 
         # Test: private broadcast requires auth
-        async def test_private_broadcast_no_auth -> None {
+        async def test_private_broadcast_no_auth {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat"
             ) as ws {
@@ -1330,7 +1335,7 @@ test "websocket functionality" {
             );
         }
 
-        async def test_private_broadcast_with_auth(u: list) -> None {
+        async def test_private_broadcast_with_auth(u: list) {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[0]['token']}"
             ) as ws1 {
@@ -1379,7 +1384,7 @@ test "websocket functionality" {
 glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
-     dm_api_port: int = dm_vite_port + 1,
+     dm_api_port: int = get_free_port(),
      dm_base_url: str = f"http://localhost:{dm_api_port}";
 
 """Extract data from TransportResponse envelope for dev mode."""
@@ -1409,6 +1414,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         str(dm_test_file),
         "--port",
         str(dm_vite_port),
+        "--api_port",
+        str(dm_api_port),
         "--dev"
     ];
 
@@ -1430,8 +1437,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         }
 
         try {
-            response = requests.get(f"{dm_base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{dm_base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Dev mode server started successfully on API port {dm_api_port}");
                 server_ready = True;
                 break;
@@ -1459,7 +1466,7 @@ def setup_dev_mode_server -> subprocess.Popen {
 }
 
 """Teardown the dev mode server."""
-def teardown_dev_mode_server(sp: subprocess.Popen | None) -> None {
+def teardown_dev_mode_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(dm_fixtures_dir);
 }
@@ -1616,6 +1623,70 @@ test "dev mode operations" {
     }
 }
 
+"""Test that dev mode shows named endpoints in OpenAPI spec and HMR adds new ones."""
+test "dev mode named endpoints and HMR refresh" {
+    sp = setup_dev_mode_server();
+    try {
+        # Test: OpenAPI spec shows named walker endpoints (not generic {walker_name})
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200;
+        paths = response.json().get("paths", {});
+
+        # Named endpoints should exist (from test_api.jac fixture)
+        assert "/walker/CreateTask" in paths , f"Expected /walker/CreateTask in OpenAPI paths, got: {list(
+            paths.keys()
+        )}";
+        assert "/walker/ListTasks" in paths , f"Expected /walker/ListTasks in OpenAPI paths";
+        assert "/walker/PublicInfo" in paths , f"Expected /walker/PublicInfo in OpenAPI paths";
+        assert "/function/add_numbers" in paths , f"Expected /function/add_numbers in OpenAPI paths";
+
+        # Generic catch-all should NOT exist
+        assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
+        assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
+
+        # Test: HMR adds new walker to OpenAPI spec
+        # Append a new walker to the fixture file
+        greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
+        with open(str(dm_test_file), 'a') as f {
+            f.write(greet_walker);
+        }
+
+        # Wait for HMR to detect the change, then trigger a request to flush it
+        time.sleep(3);
+        # Make a request to trigger the HMR middleware refresh
+        requests.get(f"{dm_base_url}/healthz", timeout=10);
+        time.sleep(1);
+
+        # Fetch updated OpenAPI spec
+        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+        assert response.status_code == 200;
+        paths = response.json().get("paths", {});
+
+        assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
+            paths.keys()
+        )}";
+
+        # New walker should also be callable
+        response = requests.post(
+            f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10
+        );
+        assert response.status_code == 200;
+        data = _extract_data_dev(response.json());
+        assert data["reports"][0]["message"] == "Hello, Jaseci!";
+    } finally {
+        # Remove the appended walker from fixture file to not pollute other tests
+        with open(str(dm_test_file), 'r') as f {
+            original = f.read();
+        }
+        if greet_walker in original {
+            with open(str(dm_test_file), 'w') as f {
+                f.write(original.replace(greet_walker, ''));
+            }
+        }
+        teardown_dev_mode_server(sp);
+    }
+}
+
 # =============================================================================
 # GROUP 7: PORT FALLBACK TESTS
 # =============================================================================
@@ -1758,7 +1829,7 @@ test "server startup - port fallback integration" {
         );
 
         # Verify first server is running
-        response = requests.get(f"http://localhost:{port1}/docs", timeout=5);
+        response = requests.get(f"http://localhost:{port1}/healthz", timeout=5);
         assert response.status_code == 200 , "First server should be running";
 
         # Try to start second server on same port - should fallback to next port
@@ -1793,7 +1864,9 @@ test "server startup - port fallback integration" {
             # Check if server is responding on fallback ports
             for test_port in range(port1 + 1, port1 + 5) {
                 try {
-                    resp = requests.get(f"http://localhost:{test_port}/docs", timeout=1);
+                    resp = requests.get(
+                        f"http://localhost:{test_port}/healthz", timeout=1
+                    );
                     if resp.status_code == 200 {
                         actual_port = test_port;
                         break;
@@ -1822,5 +1895,78 @@ test "server startup - port fallback integration" {
             _stop_server(sp1);
         }
         _cleanup_db_files(sv_fixtures_dir);
+    }
+}
+
+"""Test that jac start --client pwa uses jac-scale server (422 from /user/login = FastAPI validation)."""
+test "pwa target uses jac-scale server" {
+    import tempfile;
+
+    port = get_free_port();
+    jac_executable = Path(sys.executable).parent / "jac";
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        temp_path = Path(temp_dir);
+        # Create minimal jac app
+        main_jac = temp_path / "main.jac";
+        main_jac.write_text(
+            'cl { def:pub app -> JsxElement { return <div>Test</div>; } }'
+        );
+        jac_toml = temp_path / "jac.toml";
+        jac_toml.write_text(
+            '''[project]
+name = "test-pwa"
+version = "1.0.0"
+
+[plugins.client.pwa]
+theme_color = "#000000"
+'''
+        );
+        # Start server with --client pwa
+        server = subprocess.Popen(
+            [
+                str(jac_executable),
+                "start",
+                "--client",
+                "pwa",
+                "main.jac",
+                "-p",
+                str(port)
+            ],
+            cwd=temp_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        try {
+            # Wait for server to start and verify jac-scale's FastAPI is running
+            # POST /user/login with empty body returns 422 (FastAPI validation) — base HTTP server would 404
+            for _ in range(30) {
+                try {
+                    resp = requests.post(
+                        f"http://127.0.0.1:{port}/user/login", json={}, timeout=2
+                    );
+                    if resp.status_code == 422 {
+                        return;  # Test passed — jac-scale's FastAPI is running
+
+                    }
+                } except (requests.ConnectionError, requests.Timeout) {
+                    time.sleep(1);
+                }
+            }
+            # Capture output for debugging
+            server.terminate();
+            (stdout, stderr) = server.communicate(timeout=5);
+            raise AssertionError(
+                f"Server did not start or jac-scale not detected.\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            );
+        } finally {
+            server.terminate();
+            try {
+                server.wait(timeout=5);
+            } except subprocess.TimeoutExpired {
+                server.kill();
+            }
+        }
     }
 }

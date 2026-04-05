@@ -43,13 +43,21 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
         return _js_compile_cache[cache_key];
     }
     prog = JacProgram();
-    ir = prog.compile(file_path=fixture_path, no_cgen=True);
+    ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=True);
 
-    assert not prog.errors_had , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
+    # Filter out type-checker diagnostics (non-fatal warnings about
+    # Unknown types in client code).  Only fail on parse/compile errors.
+    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+    _fatal = [
+        e
+        for e in prog.errors_had
+        if e.from_pass is not TypeCheckPass
+    ];
+    assert not _fatal , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = EsastGenPass(ir, prog);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
@@ -80,6 +88,12 @@ do not trigger false positives.
 def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
     import re;
 
+    # Strip string literals so English words inside error messages
+    # and other quoted text don't trigger false positives.
+    code_without_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', js_code);
+    code_without_strings = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code_without_strings);
+    code_without_strings = re.sub(r"`(?:[^`\\]|\\.)*`", "``", code_without_strings);
+
     # Each entry: (keyword, pattern that matches Jac *statement* usage)
     # e.g. ``has varname`` at the start of a statement, not ``let has = ...``
     jac_keywords = [
@@ -97,7 +111,7 @@ def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
     ];
 
     for (kw_name, pattern) in jac_keywords {
-        assert not re.search(pattern, js_code) , (
+        assert not re.search(pattern, code_without_strings) , (
             f"Jac keyword '{kw_name}' leaked into JavaScript for {fixture_name}"
         );
     }
@@ -840,9 +854,20 @@ test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # list_compr_method: [x.strip() for x in items] → items.map(x => x.strip())
+    # items is typed as bare `list` (no element type), so x is Unknown
+    # and strip() correctly stays untranspiled.
     assert ".strip()" in js_code , (
         "Method call in comprehension output should be preserved"
     );
+}
+
+test "str methods on local vars and chained calls" {
+    js_code = compile_fixture_to_js("str_method_chaining.cl.jac", FIXTURES);
+    assert "temp.toLowerCase()" in js_code , "str.lower() on local var should map to .toLowerCase()";
+    assert "text.trim().toLowerCase()" in js_code , "chained str.strip().lower() should map to .trim().toLowerCase()";
+    assert "text.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
+    assert "text.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
+    assert "text.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
 }
 
 test "compr list ternary output" {
@@ -959,4 +984,109 @@ test "compr balanced syntax" {
 test "compr no jac keywords" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
     assert_no_jac_keywords(js_code, "comprehensions.cl.jac");
+}
+
+test "await expression parenthesized as member expression object" {
+    # BUG: When AwaitExpression is the object of a MemberExpression,
+    # the unparser generates `await foo().prop` which JS parses as
+    # `await (foo().prop)` instead of the intended `(await foo()).prop`.
+    # This manifests at runtime when typed list returns use:
+    #   await __jacCallFunction("get_items",{}).map(x => T.__from_wire(x))
+    # which calls .map() on the Promise, not the resolved array.
+    import from jaclang.compiler.passes.ecmascript.estree {
+        AwaitExpression,
+        CallExpression,
+        MemberExpression,
+        Identifier,
+        ArrowFunctionExpression,
+        Program,
+        ExpressionStatement
+    }
+
+    # Build: (await fetchData()).map(x => x)
+    await_call = AwaitExpression(
+        argument=CallExpression(callee=Identifier(name="fetchData"), arguments=[])
+    );
+    map_call = CallExpression(
+        callee=MemberExpression(
+            object=await_call, property=Identifier(name="map"), computed=False
+        ),
+        arguments=[
+            ArrowFunctionExpression(
+                params=[Identifier(name="x")],
+                body=Identifier(name="x"),
+                expression=True,
+                async_=False
+            )
+        ]
+    );
+    prog = Program(body=[ExpressionStatement(expression=map_call)]);
+    js_code = es_to_js(prog);
+
+    # The await MUST be parenthesized when used as a member expression object
+    assert "(await fetchData())" in js_code , (
+        f"AwaitExpression as MemberExpression object must be parenthesized. Got: {js_code}"
+    );
+    assert "(await fetchData()).map(" in js_code , (
+        f"Expected (await fetchData()).map(...), got: {js_code}"
+    );
+    # Must NOT have unparenthesized form
+    assert "await fetchData().map(" not in js_code , (
+        f"BUG: await not parenthesized before .map(). Got: {js_code}"
+    );
+}
+
+test "list concat in impl file uses array spread not string plus" {
+    # BUG: In .impl.jac files, `items = items + [item]` compiles to
+    # JS string concatenation `M + [J]` instead of array spread `[...M, J]`
+    # or `[...M, ...J]`.
+    fixture = "list_concat_impl.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The JS output must NOT contain raw `+` between array expressions
+    # (which would be string concatenation in JS).
+    # Look for the pattern: variable + [expression] which is the bug
+    lines = js_code.split('\n');
+    has_raw_plus_array = False;
+    for line in lines {
+        stripped = line.strip();
+        # Detect pattern: something + [something] that isn't in a string
+        if '+ [' in stripped and 'items' in stripped.lower() {
+            has_raw_plus_array = True;
+        }
+    }
+
+    # Should use spread syntax [...items, item] or .concat()
+    has_spread = "[..." in js_code;
+    has_concat = ".concat(" in js_code;
+    has_push = ".push(" in js_code;
+
+    assert (has_spread or has_concat or has_push) or not has_raw_plus_array , (
+        "List concatenation in impl file must use array spread/concat, " + "not JS `+` operator (which produces string concatenation)"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "private identifier generates hash prefix" {
+    import from jaclang.compiler.passes.ecmascript.estree {
+        PrivateIdentifier,
+        PropertyDefinition,
+        ClassBody,
+        ClassDeclaration,
+        Identifier,
+        Program,
+        Literal
+    }
+    # Build a minimal class with a private field: class Foo { #secret = 42; }
+    priv_id = PrivateIdentifier(name="secret");
+    prop_def = PropertyDefinition(key=priv_id, value=Literal(value=42, raw="42"));
+    cls = ClassDeclaration(id=Identifier(name="Foo"), body=ClassBody(body=[prop_def]));
+    prog = Program(body=[cls]);
+
+    js_code = es_to_js(prog);
+    assert "#secret" in js_code , (
+        f"PrivateIdentifier should emit '#secret', got: {js_code}"
+    );
+    assert "class Foo" in js_code;
 }

@@ -192,6 +192,92 @@ You can also override per-file with `glob llm = Model(...)` (see [Custom Model (
 
 ---
 
+## ModelPool
+
+`ModelPool` is a drop-in replacement for `Model` that wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server). It handles fallback, retries, and load-distribution across a list of `Model` instances. Use `by pool()` exactly like `by llm()` - no other call-site changes needed.
+
+```jac
+import from byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(models=[...], strategy="fallback");
+
+def answer(question: str) -> str by llm();
+```
+
+### Fallback
+
+When the primary model fails, `ModelPool` automatically tries the next model in the list. The `"fallback"` strategy uses ordered priority - each model is attempted in sequence, moving to the next only on failure:
+
+```jac
+import from byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash"),    # try first
+        Model(model_name="gpt-4o-mini"),                 # if gemini fails
+        Model(model_name="claude-sonnet-4-20250514"),    # last resort
+    ],
+    strategy="fallback",
+);
+```
+
+Any `by llm()` call in the file uses the pool automatically.
+
+### Load-Balancing (simple-shuffle)
+
+For free-tier key rotation or spreading load across multiple API keys for the same model, use the `"simple-shuffle"` strategy. Each call picks a random deployment from the pool:
+
+```jac
+import from byllm.lib { Model, ModelPool }
+import os;
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_1")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_2")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_3")),
+    ],
+    strategy="simple-shuffle",
+);
+```
+
+Each `by llm()` call is routed to a randomly selected deployment - ideal for distributing requests across multiple API keys to stay within per-key rate limits.
+
+### ModelPool Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `models` | list[BaseLLM] | required | List of `Model` instances to include in the pool |
+| `strategy` | str | `"fallback"` | Routing strategy (see table below) |
+| `num_retries` | int | `1` | Number of retries per deployment before moving to the next |
+| `timeout` | float | `60.0` | Per-request timeout in seconds |
+
+**Routing Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `"fallback"` | Ordered priority - tries models in sequence, moving to the next on failure |
+| `"simple-shuffle"` | Random pick per call - ideal for rotating across multiple API keys |
+| `"cost-based-routing"` | Cheapest deployment via LiteLLM's built-in cost database |
+| `"latency-based-routing"` | Fastest by EWMA-tracked response time |
+| `"usage-based-routing"` | Lowest current TPM/RPM usage |
+| `"least-busy"` | Fewest in-flight requests |
+
+### Global Defaults via `jac.toml`
+
+Set project-wide defaults for `ModelPool` in `jac.toml` under `[plugins.byllm.fallback]`:
+
+```toml
+[plugins.byllm.fallback]
+strategy = "fallback"    # Default routing strategy
+num_retries = 1          # Retries per deployment
+timeout = 60.0           # Per-request timeout in seconds
+```
+
+Constructor arguments always take precedence over `jac.toml` values.
+
+---
+
 ## Project Configuration
 
 ### Default Model Configuration
@@ -214,6 +300,11 @@ max_tokens = 0                    # Max response tokens (0 = no limit)
 local_cost_map = true             # Use local cost map
 drop_params = true                # Drop unsupported params per provider
 debug = false                     # Enable verbose LiteLLM logging
+
+[plugins.byllm.fallback]
+strategy = "fallback"             # Default ModelPool routing strategy
+num_retries = 1                   # Retries per deployment
+timeout = 60.0                    # Per-request timeout in seconds
 ```
 
 **`[plugins.byllm.model]` options:**
@@ -420,6 +511,7 @@ Parameters passed to `by llm()` at call time:
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
+| `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 
 !!! warning "Deprecated: `method` parameter"
@@ -569,6 +661,51 @@ obj Calculator {
 }
 ```
 
+### Interrupting the ReAct Loop
+
+Use `on_iteration` to control the loop from outside - stop buttons, token budgets, or doom-loop detection:
+
+```jac
+import from byllm.types { IterationAction, IterationContext }
+
+def my_hook(ctx: IterationContext) -> IterationAction {
+    # Stop after 5 iterations
+    if ctx.iteration > 5 {
+        return IterationAction.ABORT;
+    }
+    # Stop if too many tokens used
+    if ctx.total_tokens > 10000 {
+        return IterationAction.ABORT_WITH_SUMMARY;
+    }
+    return IterationAction.CONTINUE;
+}
+
+def agent_task(question: str) -> str by llm(
+    tools=[search, read_file],
+    on_iteration=my_hook
+);
+```
+
+**`IterationContext`** fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `iteration` | int | Current iteration number (starts at 2, since iteration 1 hasn't completed yet) |
+| `last_tool` | str | Name of the last tool executed |
+| `last_result` | str | Truncated result of last tool (500 chars) |
+| `total_tokens` | int | Cumulative token usage across all iterations |
+| `messages` | list | Full message history |
+
+**`IterationAction`** values:
+
+| Action | Behavior |
+|--------|----------|
+| `CONTINUE` | Proceed to next iteration (default) |
+| `ABORT` | Stop immediately, return last tool result |
+| `ABORT_WITH_SUMMARY` | Stop and ask LLM for a final summary |
+
+The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
+
 ---
 
 ## Streaming
@@ -684,7 +821,7 @@ With `logging=True`, the user sees the first `tool_call` event after just one LL
 | `tool_call` | LLM decided to call a tool | `tool` (str), `args` (dict), `call_id` (str), `iteration` (int) |
 | `tool_result` | Tool finished executing | `tool` (str), `result` (str, truncated), `call_id` (str), `iteration` (int) |
 | `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
-| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), optionally `reason` (str) |
+| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `per_call` (list[dict]) |
 

@@ -195,15 +195,33 @@ impl JacScaleUserManager.refresh_jwt_token(token: str) -> (str | None) {
 # ============================================================================
 # SSO Methods
 # ============================================================================
-impl JacScaleUserManager.get_sso(platform: str, operation: str) -> (SSOProvider | None) {
+impl JacScaleUserManager.get_sso(platform: str) -> (SSOProvider | None) {
     if platform not in self.SUPPORTED_PLATFORMS {
         return None;
     }
     credentials = self.SUPPORTED_PLATFORMS[platform];
-    redirect_uri = f"{SSO_HOST}/{platform}/{operation}/callback";
+    redirect_uri = f"{SSO_HOST}/sso/{platform}/callback";
     if platform == Platforms.GOOGLE.value {
-        import from jac_scale.google_sso_provider { GoogleSSOProvider }
+        import from jac_scale.sso.google { GoogleSSOProvider }
         return GoogleSSOProvider(
+            client_id=credentials['client_id'],
+            client_secret=credentials['client_secret'],
+            redirect_uri=redirect_uri,
+            allow_insecure_http=True
+        );
+    }
+    if platform == Platforms.APPLE.value {
+        import from jac_scale.sso.apple { AppleSSOProvider }
+        return AppleSSOProvider(
+            client_id=credentials['client_id'],
+            client_secret=credentials['client_secret'],
+            redirect_uri=redirect_uri,
+            allow_insecure_http=True
+        );
+    }
+    if platform == Platforms.GITHUB.value {
+        import from jac_scale.sso.github { GithubSSOProvider }
+        return GithubSSOProvider(
             client_id=credentials['client_id'],
             client_secret=credentials['client_secret'],
             redirect_uri=redirect_uri,
@@ -239,7 +257,7 @@ impl JacScaleUserManager.sso_initiate(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    sso = self.get_sso(platform, operation);
+    sso = self.get_sso(platform);
     if not sso {
         return TransportResponse.fail(
             code='SSO_INIT_FAILED',
@@ -247,11 +265,11 @@ impl JacScaleUserManager.sso_initiate(
             meta=Meta(extra={'http_status': 500})
         );
     }
-    return await sso.initiate_auth(operation);
+    return await sso.initiate_auth();
 }
 
 impl JacScaleUserManager.sso_callback(
-    request: Request, platform: str, operation: str
+    request: Request, platform: str
 ) -> TransportResponse {
     import from jaclang.runtimelib.server { JsonValue }
     if platform not in [p.value for p in Platforms] {
@@ -270,14 +288,7 @@ impl JacScaleUserManager.sso_callback(
             meta=Meta(extra={'http_status': 501})
         );
     }
-    if operation not in [o.value for o in Operations] {
-        return TransportResponse.fail(
-            code='INVALID_OPERATION',
-            message=f"Invalid operation '{operation}'. Must be 'login' or 'register'",
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    sso = self.get_sso(platform, operation);
+    sso = self.get_sso(platform);
     if not sso {
         return TransportResponse.fail(
             code='SSO_INIT_FAILED',
@@ -295,15 +306,9 @@ impl JacScaleUserManager.sso_callback(
                 meta=Meta(extra={'http_status': 400})
             );
         }
-        if operation == Operations.LOGIN.value {
-            user = self.get_user(email);
-            if not user {
-                return TransportResponse.fail(
-                    code='USER_NOT_FOUND',
-                    message='User not found. Please register first.',
-                    meta=Meta(extra={'http_status': 404})
-                );
-            }
+        user = self.get_user(email);
+        if user {
+            # User exists — login
             token = self.create_jwt_token(email);
             return TransportResponse.success(
                 data={
@@ -315,14 +320,8 @@ impl JacScaleUserManager.sso_callback(
                 },
                 meta=Meta(extra={'http_status': 200})
             );
-        } elif operation == Operations.REGISTER.value {
-            if self.get_user(email) {
-                return TransportResponse.fail(
-                    code='USER_EXISTS',
-                    message='User already exists. Please login instead.',
-                    meta=Meta(extra={'http_status': 400})
-                );
-            }
+        } else {
+            # User does not exist — register then login
             result = self.create_user(email, generate_random_password());
             if 'error' in result {
                 return TransportResponse.fail(
@@ -344,11 +343,6 @@ impl JacScaleUserManager.sso_callback(
             meta=Meta(extra={'http_status': 500})
         );
     }
-    return TransportResponse.fail(
-        code='UNKNOWN_ERROR',
-        message='An unknown error occurred',
-        meta=Meta(extra={'http_status': 500})
-    );
 }
 
 # ============================================================================
