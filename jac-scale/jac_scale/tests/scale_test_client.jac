@@ -80,7 +80,7 @@ obj ScaleTestClient {
     }
 
     """Initialize the jac-scale server and Starlette TestClient."""
-    def _initialize -> None {
+    def _initialize {
         import from starlette.testclient { TestClient }
         import from jac_scale.serve { JacAPIServer }
 
@@ -259,7 +259,7 @@ obj ScaleTestClient {
     }
 
     """Cleanup resources."""
-    def close -> None {
+    def close {
         if self._client {
             self._client.close();
             self._client = None;

@@ -1052,6 +1052,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;
         }
+        # Associate pending lambda captures with this variable name
+        if self._pending_lambda_captures is not None {
+            self.lambda_captures[var_name] = self._pending_lambda_captures;
+            self._pending_lambda_captures = None;
+        }
         # Track type info for variables pointing to structs
         if isinstance(value.type, ir.PointerType) {
             # Check if it's a known struct pointer type

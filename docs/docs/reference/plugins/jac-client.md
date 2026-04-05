@@ -161,11 +161,11 @@ node Task {
 
 # Server: return typed objects directly
 def:pub get_tasks -> list[Task] {
-    return [root-->][?:Task];
+    return [root()-->][?:Task];
 }
 
 def:pub create_task(title: str) -> Task {
-    task = root ++> Task(title=title);
+    task = root() ++> Task(title=title);
     return task[0];
 }
 
@@ -248,6 +248,16 @@ For one-off client-side declarations, use the single-statement `cl` prefix:
 ```jac
 cl import from react { useState }
 cl glob THEME: str = "dark";
+```
+
+This also works for component definitions, which is the preferred shorthand for single-component files:
+
+```jac
+# Equivalent to wrapping in cl { }
+cl def:pub app -> JsxElement {
+    has count: int = 0;
+    return <div>Count: {count}</div>;
+}
 ```
 
 ### Export Requirement
@@ -530,7 +540,7 @@ cl {
 
         # Fetch data on component mount
         async can with entry {
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports and result.reports.length > 0 {
                 tasks = result.reports[0];
             }
@@ -561,8 +571,8 @@ The `spawn` call returns a result object:
 
 | Syntax | Description |
 |--------|-------------|
-| `root spawn WalkerName()` | Spawn walker from root node |
-| `root spawn WalkerName(arg=value)` | Spawn with parameters |
+| `root() spawn WalkerName()` | Spawn walker from root node |
+| `root() spawn WalkerName(arg=value)` | Spawn with parameters |
 | `node_id spawn WalkerName()` | Spawn from specific node |
 
 The spawn call returns a result object with:
@@ -581,7 +591,7 @@ cl {
 
         # Create
         async def handle_add(title: str) -> None {
-            result = root spawn add_task(title=title);
+            result = root() spawn add_task(title=title);
             if result.reports and result.reports.length > 0 {
                 tasks = tasks + [result.reports[0]];
             }
@@ -589,7 +599,7 @@ cl {
 
         # Update
         async def handle_toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
+            result = root() spawn toggle_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
                 tasks = [
                     {**t, "completed": not t["completed"]} if t["id"] == task_id else t
@@ -600,7 +610,7 @@ cl {
 
         # Delete
         async def handle_delete(task_id: str) -> None {
-            result = root spawn delete_task(task_id=task_id);
+            result = root() spawn delete_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
                 tasks = [t for t in tasks if t["id"] != task_id];
             }
@@ -625,7 +635,7 @@ cl {
         async can with entry {
             loading = True;
             try {
-                result = root spawn get_data();
+                result = root() spawn get_data();
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
@@ -659,7 +669,7 @@ cl {
         has data: any = None;
 
         async def fetch_data() -> None {
-            result = root spawn get_live_data();
+            result = root() spawn get_live_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -882,14 +892,14 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 cl import from "@jac/runtime" { jacLogin, useNavigate }
 
 cl {
-    def:pub LoginForm() -> any {
+    def:pub LoginForm() -> JsxElement {
         has username: str = "";
         has password: str = "";
         has error: str = "";
 
         navigate = useNavigate();
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: FormEvent) -> None {
             e.preventDefault();
             # jacLogin returns bool (True = success, False = failure)
             success = await jacLogin(username, password);
@@ -930,7 +940,7 @@ cl {
 cl import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
 
 cl {
-    def:pub NavBar() -> any {
+    def:pub NavBar() -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
 
         def handleLogout() -> None {
@@ -956,7 +966,7 @@ Each authenticated user gets an isolated root node:
 ```jac
 walker:pub GetMyData {
     can get with Root entry {
-        # 'root' is user-specific
+        # 'here' is the user-specific root node
         my_data = [-->][?:MyData];
         report my_data;
     }
@@ -990,7 +1000,7 @@ cl import from "@jac/runtime" { AuthGuard, Outlet }
 
 # pages/(auth)/layout.jac
 cl {
-    def:pub layout() -> any {
+    def:pub layout() -> JsxElement {
         return <AuthGuard redirect="/login">
             <Outlet />
         </AuthGuard>;
@@ -1068,14 +1078,20 @@ cl {
 }
 ```
 
-> **Note:** The `cn()` utility is a local file you create in your project (shadcn/ui pattern):
+> **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
 >
-> ```typescript
-> // lib/utils.ts
-> import { type ClassValue, clsx } from "clsx"
-> import { twMerge } from "tailwind-merge"
-> export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+> ```jac
+> # lib/utils.cl.jac
+> import from "clsx" { clsx }
+> import from "tailwind-merge" { twMerge }
+>
+> def:pub cn(inputs: Any) -> str {
+>     args = [].slice.call(arguments);
+>     return twMerge(clsx(args));
+> }
 > ```
+>
+> Requires `clsx` and `tailwind-merge` in `[dependencies.npm]`.
 
 ### JSX Syntax Reference
 
@@ -1348,6 +1364,33 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 |---|---|
 | Vite plugins (Tailwind v4, custom plugins) | `[plugins.client.vite]` |
 | PostCSS / Tailwind v3 / ESLint / Prettier | `[plugins.client.configs]` |
+
+### shadcn/ui Configuration
+
+The `[jac-shadcn]` section configures the shadcn/ui component system. This controls the visual style, color theme, font, and border radius used by shadcn components in your project.
+
+```toml
+[jac-shadcn]
+style = "nova"            # Component style variant
+baseColor = "neutral"     # Base color palette
+theme = "amber"           # Accent color theme
+font = "inter"            # Font family
+radius = "default"        # Border radius preset
+menuAccent = "subtle"     # Menu accent style
+menuColor = "default"     # Menu color scheme
+registry = "https://jac-shadcn.jaseci.org"  # Component registry URL
+```
+
+| Key | Description | Examples |
+|-----|-------------|---------|
+| `style` | Component style variant | `"nova"`, `"default"` |
+| `baseColor` | Base neutral color palette | `"neutral"`, `"slate"`, `"zinc"`, `"gray"` |
+| `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
+| `font` | Typography font family | `"inter"`, `"geist"`, `"system"` |
+| `radius` | Border radius preset | `"default"`, `"sm"`, `"md"`, `"lg"`, `"none"` |
+| `registry` | shadcn component registry URL | Custom registry for Jac-compatible components |
+
+shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `border-border`) that automatically adapt to the configured theme. See the [NPM Packages & UI Libraries tutorial](../../tutorials/fullstack/npm-and-libraries.md) for component authoring patterns.
 
 ### TypeScript Configuration
 
@@ -1772,6 +1815,8 @@ In dev mode, API routes are automatically proxied:
 
 ## Event Handlers
 
+Jac provides ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `MouseEvent`, `FormEvent`, etc.) that are available without import. Use these for type-safe event handling:
+
 ```jac
 cl {
     def:pub Form() -> JsxElement {
@@ -1780,8 +1825,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: any -> None { value = e.target.value; }}
-                onKeyPress={lambda e: any -> None {
+                onChange={lambda e: ChangeEvent { value = e.target.value; }}
+                onKeyPress={lambda e: KeyboardEvent {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -1792,6 +1837,89 @@ cl {
     }
 }
 ```
+
+### Ambient DOM Types
+
+The following event and element types are available in all Jac modules without any import statement. Use them for type-safe event handlers in JSX:
+
+**Event Types:**
+
+| Type | Fires On | Key Properties |
+|------|----------|----------------|
+| `Event` | Base event | `target`, `type`, `preventDefault()` |
+| `ChangeEvent` | `onChange` | `target.value`, `target.checked` |
+| `InputEvent` | `onInput` | `data`, `inputType` |
+| `KeyboardEvent` | `onKeyDown`, `onKeyUp`, `onKeyPress` | `key`, `code`, `ctrlKey`, `shiftKey` |
+| `MouseEvent` | `onClick`, `onMouseDown`, etc. | `clientX`, `clientY`, `button` |
+| `PointerEvent` | `onPointerDown`, `onPointerUp` | `pointerId`, `pointerType`, `pressure` |
+| `FocusEvent` | `onFocus`, `onBlur` | `relatedTarget` |
+| `DragEvent` | `onDrag`, `onDrop` | `dataTransfer` |
+| `TouchEvent` | `onTouchStart`, `onTouchEnd` | `touches`, `changedTouches` |
+| `ClipboardEvent` | `onCopy`, `onCut`, `onPaste` | `clipboardData` |
+| `FormEvent` | `onSubmit`, `onReset` | `target` (HTMLFormElement) |
+| `WheelEvent` | `onWheel` | `deltaX`, `deltaY` |
+| `AnimationEvent` | `onAnimationStart`, `onAnimationEnd` | `animationName`, `elapsedTime` |
+| `TransitionEvent` | `onTransitionEnd` | `propertyName`, `elapsedTime` |
+| `ScrollEvent` | `onScroll` | Inherits from UIEvent |
+
+**Element Types:**
+
+| Type | For Element |
+|------|-------------|
+| `HTMLElement` | Base (any element) |
+| `HTMLInputElement` | `<input>` -- adds `value`, `checked`, `files`, `type` |
+| `HTMLTextAreaElement` | `<textarea>` -- adds `value`, `rows`, `cols` |
+| `HTMLSelectElement` | `<select>` -- adds `value`, `selectedIndex`, `options` |
+| `HTMLFormElement` | `<form>` -- adds `submit()`, `reset()`, `elements` |
+| `HTMLButtonElement` | `<button>` -- adds `disabled`, `type` |
+| `HTMLAnchorElement` | `<a>` -- adds `href`, `target`, `pathname` |
+| `HTMLImageElement` | `<img>` -- adds `src`, `alt`, `naturalWidth` |
+| `HTMLCanvasElement` | `<canvas>` -- adds `getContext()`, `toDataURL()` |
+| `HTMLVideoElement` | `<video>` -- adds `play()`, `pause()`, `currentTime` |
+| `HTMLAudioElement` | `<audio>` -- adds `play()`, `pause()`, `volume` |
+
+**Usage examples:**
+
+```jac
+cl {
+    def:pub TypedForm() -> JsxElement {
+        has text: str = "";
+        has checked: bool = False;
+
+        return <div>
+            <input
+                value={text}
+                onChange={lambda e: ChangeEvent { text = e.target.value; }}
+                onKeyDown={lambda e: KeyboardEvent {
+                    if e.key == "Enter" and not e.shiftKey { submit(); }
+                }}
+            />
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+            />
+            <form onSubmit={lambda e: FormEvent {
+                e.preventDefault();
+                handleSubmit();
+            }}>
+                <button type="submit">Submit</button>
+            </form>
+        </div>;
+    }
+}
+```
+
+!!! tip "Migrating from `any`"
+    If you have existing event handlers using `e: any`, you can update them to use ambient types for better type safety and IDE support:
+
+    ```jac
+    # Before
+    onChange={lambda e: any -> None { value = e.target.value; }}
+
+    # After (no import needed)
+    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    ```
 
 ---
 
@@ -1835,7 +1963,7 @@ Import and wrap `JacClientErrorBoundary` around any subtree where you want to ca
 cl import from "@jac/runtime" { JacClientErrorBoundary }
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
             <MainAppComponents />
         </JacClientErrorBoundary>;
@@ -1863,7 +1991,7 @@ By default, jac-client internally wraps your entire application with `JacClientE
 
 ```jac
 cl {
-    def:pub App() -> any {
+    def:pub App() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
             <ExpensiveWidget />
         </JacClientErrorBoundary>;
@@ -1877,7 +2005,7 @@ You can nest multiple error boundaries for fine-grained error isolation:
 
 ```jac
 cl {
-    def:pub App() -> any {
+    def:pub App() -> JsxElement {
         return <JacClientErrorBoundary fallback={<div>App error</div>}>
             <Header />
             <JacClientErrorBoundary fallback={<div>Content error</div>}>
@@ -1942,6 +2070,63 @@ Anchors provide persistent object references across sessions, allowing nodes and
 
 ---
 
+## JavaScript Interop
+
+### Constructing Browser Objects
+
+Jac does not have a `new` keyword. Use `Reflect.construct()` to instantiate browser built-in constructors:
+
+<!-- jac-skip -->
+```jac
+cl {
+    # WebSocket
+    ws = Reflect.construct(WebSocket, [url]);
+
+    # URL
+    url = Reflect.construct(URL, [String(baseUrl)]);
+
+    # Date
+    now = Reflect.construct(Date, []);
+
+    # Promise
+    p = Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+        resolve.call(None, "done");
+    }]);
+
+    # CustomEvent
+    evt = Reflect.construct(CustomEvent, ["my-event", {"detail": data}]);
+}
+```
+
+### Callback Invocations
+
+When passing callbacks to be invoked later, use `.call(None, ...)`:
+
+<!-- jac-skip -->
+```jac
+cl {
+    handler = myCallback;
+    ws.onmessage = lambda(e: Any) {
+        handler.call(None, JSON.parse(e.data));
+    };
+}
+```
+
+### Module-Level State
+
+Use `glob` for state shared across a module:
+
+```jac
+cl {
+    glob initialized: bool = False;
+    glob cache: Any = None;
+}
+```
+
+For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutorials/fullstack/advanced-patterns.md).
+
+---
+
 ## Development Tools
 
 ### Hot Module Replacement (HMR)
@@ -1973,6 +2158,8 @@ Provides:
 - [Fullstack Setup Tutorial](../../tutorials/fullstack/setup.md)
 - [Components Tutorial](../../tutorials/fullstack/components.md)
 - [State Management Tutorial](../../tutorials/fullstack/state.md)
+- [NPM Packages & UI Libraries](../../tutorials/fullstack/npm-and-libraries.md)
+- [Advanced Patterns & JS Interop](../../tutorials/fullstack/advanced-patterns.md)
 - [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
 - [Authentication Tutorial](../../tutorials/fullstack/auth.md)
 - [Routing Tutorial](../../tutorials/fullstack/routing.md)

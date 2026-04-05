@@ -149,6 +149,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    # Lambda expressions (Phase 17)
+    # Maps variable name → list of (cap_name, cap_alloca) for closure injection.
+    # Populated during assignment of a capturing lambda, consumed during calls.
+    has lambda_captures: dict[str, list[tuple]] = {},
+        _pending_lambda_captures: (list[tuple] | None) = None;
+    # Pending captures from the most recently compiled lambda, to be associated
+    # with a variable name during assignment. Set by _codegen_lambda, consumed
+    # and cleared by _codegen_assignment.
+    def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
+    def _find_free_vars(body: object, param_names: list[str]) -> list[str];
     # External function support (Phase 0)
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False

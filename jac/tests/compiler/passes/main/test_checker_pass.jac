@@ -3098,3 +3098,78 @@ test "bare_generic_iteration_yields_any" {
         bare_generic_warnings
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
+
+"""Test callable() type narrowing - validates narrowing unions by callability."""
+test "callable_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_callable_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 4 , f"Expected exactly 4 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # E1: No callable guard — full union assigned to Callable
+    assert_error_pretty_found(
+        """
+        fail: Callable[[int], str] = handler;  # <-- Error (union cannot assign to Callable)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # E2: No callable guard — full union assigned to str
+    assert_error_pretty_found(
+        """
+        fail: str = handler;  # <-- Error (union cannot assign to str)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+
+    # E3: Wrong type in callable branch — str assigned but handler is Callable
+    assert_error_pretty_found(
+        """
+        s: str = handler;  # <-- Error: handler is Callable here, not str
+    """,
+        program.errors_had[2].pretty_print()
+    );
+
+    # E4: Wrong type in else branch — Callable assigned but handler is str
+    assert_error_pretty_found(
+        """
+        cb: Callable[[int], str] = handler;  # <-- Error: handler is str here
+    """,
+        program.errors_had[3].pretty_print()
+    );
+}
+
+"""Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
+test "type_alias_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_type_alias_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # E1: No isinstance guard — TypeAlias'd union assigned to component type
+    assert_error_pretty_found(
+        """
+        f: Foo = val;  # Error: Foo | None cannot assign to Foo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # E2: No callable guard — TypeAlias'd union assigned to Callable
+    assert_error_pretty_found(
+        """
+        fail: Callable[[int], str] = handler;  # Error: union cannot assign to Callable
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}

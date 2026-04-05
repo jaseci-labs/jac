@@ -1001,3 +1001,82 @@ test "all exception types log and propagate regardless of debug" {
         _loguru_logger.remove(handler_id);
     }
 }
+
+"""Test ModelPool fallback strategy: router is configured with unique aliases and
+a fallbacks chain; successful responses are returned via the dispatch pipeline."""
+test "model pool router fallback" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_fallback", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "fallback_success" in stdout_value;
+}
+
+
+"""Test ModelPool load-balancing (simple-shuffle): all three deployments share the
+pool-model alias; three independent calls all succeed and the alias is pool-model."""
+test "model pool router load balance" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_round_robin", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "pool_alias:pool-model" in stdout_value;
+    assert stdout_value.count("load_balance_response") == 3;
+}
+
+
+"""Test ModelPool propagates router exceptions: when the LiteLLM Router
+raises (all deployments exhausted) the exception reaches the caller."""
+test "model pool router all fail" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_all_fail", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "EXPECTED_ERROR: RateLimitError" in stdout_value;
+    assert "UNEXPECTED" not in stdout_value;
+}
+
+
+"""Test ModelPool cost-based-routing uses the async path (acompletion).
+LiteLLM Router only supports cost-based-routing via acompletion(); ModelPool
+bridges this via ThreadPoolExecutor to stay safe in async frameworks."""
+test "model pool router cost based" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_fallbacks_convenience", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "cost_based_success" in stdout_value;
+}
+
+
+"""Test ModelPool LiteLLM Router model_list initialisation.
+Fallback strategy: unique per-model aliases + fallbacks list.
+Load-balance strategy: all models share pool-model alias."""
+test "model pool router init" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_router_init", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "fb_pool_alias:pool-primary" in stdout_value;
+    assert "fb_deploy_count:2" in stdout_value;
+    assert "fb_fallbacks_has_primary:True" in stdout_value;
+    assert "fb_fallbacks_has_chain:True" in stdout_value;
+    assert "lb_pool_alias:pool-model" in stdout_value;
+    assert "lb_deploy_count:3" in stdout_value;
+    assert "lb_all_share_alias:True" in stdout_value;
+}

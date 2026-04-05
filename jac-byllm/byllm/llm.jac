@@ -98,7 +98,26 @@ obj MockLLM(BaseLLM) {
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
-"""Primary LLM connector that abstracts LiteLLM functionality.
+"""Pool of LLM models with fallback and load-balancing via LiteLLM Router.
+
+Strategies: 'fallback' (ordered), 'simple-shuffle' (random pick per call),
+'cost-based-routing' (cheapest first), 'latency-based-routing' (fastest first),
+'least-busy' (least concurrent load), 'usage-based-routing' (least used first).
+"""
+obj ModelPool(BaseLLM) {
+    has model_name: str = "pool-model",
+        models: list[BaseLLM] = [],
+        strategy: str | None = None,
+        num_retries: int | None = None,
+        timeout: float | None = None,
+        _router: object = None;
+
+    def postinit -> None;
+    override def model_call_no_stream(params: dict) -> dict;
+    override def model_call_with_stream(params: dict) -> Generator[str, None, None];
+}
+
+"""Primary LLM connector that abstracts LiteLLM functionality
 
 Provides a unified interface for interacting with various language models
 (OpenAI, Anthropic, etc.) through LiteLLM. Supports both direct API calls

@@ -170,6 +170,29 @@ obj NarrowingPredicate {
         is_inverted: bool = False;
 }
 
+"""Classification of a leaf narrowing condition."""
+enum NarrowingKind {
+    ISINSTANCE = "isinstance",
+    CALLABLE = "callable",
+    NONE_IS = "none_is",
+    NONE_IS_NOT = "none_is_not",
+    TRUTHINESS = "truthiness",
+    LITERAL_EQ = "literal_eq",
+    LITERAL_NE = "literal_ne"
+}
+
+"""Result of classifying a leaf condition node.
+
+Captures the narrowing-kind-specific info extracted from the AST.
+Structural wrappers (parens, NOT, AND, OR) are handled by callers
+before reaching classification.
+"""
+obj ConditionInfo {
+    has kind: NarrowingKind,
+        key: str,
+        narrow_type: (TypeBase | None) = None;
+}
+
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
     has program: "JacProgram",
@@ -486,6 +509,7 @@ obj TypeEvaluator {
     def get_scope_narrowing(key: str) -> types.TypeBase | None;
     def get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
+    def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
     def process_condition(condition: uni.Expr) -> None;
     def process_negated_condition(condition: uni.Expr) -> None;
     def promote_inverted_narrowings(condition: uni.Expr) -> None;
@@ -526,5 +550,21 @@ obj TypeEvaluator {
     def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
+    def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _is_callable_type(t: TypeBase) -> bool;
+    def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
+    def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
     def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
+    def _is_type_alias_annotation(
+        annotation_type: TypeBase, tag_expr: uni.Expr
+    ) -> bool;
+
+    def _resolve_type_alias_rhs(value: uni.Expr) -> TypeBase;
+    def _resolve_string_type_expr(
+        type_str: str, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
+
+    def _resolve_py_ast_type_node(
+        ast_node: object, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
 }

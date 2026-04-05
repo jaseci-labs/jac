@@ -2751,3 +2751,58 @@ test "cross-module subscript: inline access to second item returns correct value
     result = f();
     assert result == 99 , f"Expected 99, got {result}";
 }
+
+# --- Lambda Support (Phase 1: simple, no captures) ---
+test "lambda simple add" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "apply_int_op", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(3, 4) == 7 , f"Expected 7, got {f(3, 4)}";
+    assert f(10, 20) == 30 , f"Expected 30, got {f(10, 20)}";
+}
+
+test "lambda negate single param" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "negate_via_lambda", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == -5 , f"Expected -5, got {f(5)}";
+    assert f(0) == 0 , f"Expected 0, got {f(0)}";
+    assert f(-3) == 3 , f"Expected 3, got {f(-3)}";
+}
+
+test "lambda no params" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "get_forty_two", ctypes.c_int64);
+    assert f() == 42 , f"Expected 42, got {f()}";
+}
+
+
+# --- Lambda Closures (Phase 2: capturing outer scope) ---
+test "lambda closure captures local" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "add_offset", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(10, 5) == 15 , f"Expected 15, got {f(10, 5)}";
+    assert f(0, 42) == 42 , f"Expected 42, got {f(0, 42)}";
+    assert f(7, -3) == 4 , f"Expected 4, got {f(7, -3)}";
+}
+
+test "lambda closure captures multiple vars" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(
+        eng,
+        "weighted_sum",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    assert f(3, 4, 2, 5) == 26 , f"Expected 26, got {f(3, 4, 2, 5)}";
+    assert f(1, 1, 10, 20) == 30 , f"Expected 30, got {f(1, 1, 10, 20)}";
+}
+
+test "lambda closure as scaler" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "make_scaler", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(5, 3) == 15 , f"Expected 15, got {f(5, 3)}";
+    assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
+    assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
+}
