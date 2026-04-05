@@ -2824,7 +2824,7 @@ the result to Unknown instead of str. Subsequent string method calls fail with E
 
 Mirrors: runtime.impl.jac line 1096 (chomp_target = chomp_target[1:] -> .startswith fails).
 """
-test "root_cause_5_string_slice_loses_type" {
+test "root_cause_5_string_slice_preserves_type" {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_narrowing_root_causes.jac"),
@@ -2832,16 +2832,16 @@ test "root_cause_5_string_slice_loses_type" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # fail_ functions (lines 234-254) — string slice/index loses str type
+    # Regression guard for the former "string slice loses type" root cause.
+    # The pass_ functions exercise the three patterns that used to degrade
+    # str to Unknown. They must type-check cleanly. See the fixture header
+    # comment above the pass_string_* functions for the full fix summary.
     rc5_errors = [
         e
         for e in program.errors_had
-        if e.loc and 234 <= e.loc.first_line <= 254
+        if e.loc and 239 <= e.loc.first_line <= 258
     ];
-    # PARTIALLY FIXED: str.__getitem__ now returns str via protocol matching fallback.
-    # s[0].upper() chaining now works (LiteralString flags fix propagates Instantiable).
-    # Remaining 2: while-loop re-assignment degrades str to Unknown (.startswith x2).
-    assert len(rc5_errors) == 2 , f"Expected 2 string-slice errors, got {len(
+    assert len(rc5_errors) == 0 , f"Expected 0 string-slice errors, got {len(
         rc5_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc5_errors);
 }
@@ -3025,9 +3025,10 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 dropped 3→2 (CFG resolved 1 any-in-union error).
-    # Total: 37 - 1 = 36
-    assert len(program.errors_had) == 36 , f"Expected 36 total errors, got {len(
+    # RC9 dropped 3→2 (CFG resolved 1 any-in-union error): 37 - 1 = 36
+    # RC5 dropped 2→0 (faux-scope re-assignments now bind to Python scope,
+    # preserving str narrowing in while-loop chomp pattern): 36 - 2 = 34
+    assert len(program.errors_had) == 34 , f"Expected 34 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
