@@ -120,11 +120,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         dict_release_fns: dict[str, ir.Function] = {},
         set_release_fns: dict[str, ir.Function] = {},
         # Lazily initialized tracking sets
-        _imported_na_paths: list[str] = [],
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
         _clib_paths: list[str] = [],
-        _native_emit_ctx_class: (type | None) = None;
+        _native_emit_ctx_class: (type | None) = None,
+        # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
+        di_file: object = None,
+        di_cu: object = None,
+        _di_current_sp: object = None,
+        _func_loc: dict[str, int] = {};
 
     def postinit -> None;
     # Main pass logic
@@ -163,6 +167,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
     ) -> ir.Function;
+
+    def _call_extern(
+        b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
+    ) -> ir.Value;
     # Print support
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
@@ -208,6 +216,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _register_imported_struct_types -> None;
+    def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module(imported_mod: uni.Module) -> None;
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
@@ -511,5 +520,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
     def _emit_glob_init_func -> None;
+    # DWARF debug helpers (JAC_NATIVE_DEBUG=1)
+    def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;
+    def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
     def post_transform -> None;
 }

@@ -116,6 +116,13 @@ impl run(
             full_path = os.path.abspath(filename);
             program = Jac.get_program();
             ir_mod = program.compile(file_path=full_path);
+            if program.errors_had {
+                for _err in program.errors_had {
+                    console.error(_err.pretty_print());
+                }
+                mach.close();
+                return 1;
+            }
             if ir_mod and ir_mod.gen.native_engine {
                 engine = ir_mod.gen.native_engine;
                 _populate_native_argv(engine, sys.argv);
