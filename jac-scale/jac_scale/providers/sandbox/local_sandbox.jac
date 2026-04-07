@@ -189,7 +189,7 @@ obj LocalSandbox(SandboxEnvironment) {
         vite_url = f"http://localhost:{port}";
         start_time = time.time();
         ready = False;
-        while time.time() - start_time < 120 {
+        while time.time() - start_time < 300 {
             if getattr(process, "poll")() is not None {
                 break;
             }
