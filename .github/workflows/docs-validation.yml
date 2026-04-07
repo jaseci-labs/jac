@@ -80,6 +80,17 @@ jobs:
           CI: "true"
         run: bash scripts/check-release-notes.sh
 
+  check-release-notes-section:
+    name: Check Release Notes Section
+    if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v4
         with:
