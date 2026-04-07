@@ -67,8 +67,15 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Store anchor in MongoDB."""
-impl MongoBackend.put(anchor: Anchor) -> None {
+"""No-op: anchor is already staged in the parent's L1 (_mem_ref) by
+TieredMemory.put(). DB persistence is deferred to sync() so that all
+writes go through merge-aware atomic operations."""
+impl MongoBackend.put(anchor: Anchor) -> None { }
+
+"""Write anchor directly to MongoDB. Used internally by sync() for
+non-NodeAnchor types (EdgeAnchor, WalkerAnchor) where edge merging
+doesn't apply."""
+impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
@@ -82,7 +89,7 @@ impl MongoBackend.put(anchor: Anchor) -> None {
         );
         anchor.hash = Serializer._compute_hash(anchor);
     } except Exception as e {
-        logger.error(f"MongoDB put failed: {e}");
+        logger.error(f"MongoDB _write_to_db failed: {e}");
     }
 }
 
@@ -99,8 +106,14 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close MongoDB connection."""
+"""Flush pending writes and close MongoDB connection."""
 impl MongoBackend.close -> None {
+    # Persist any pending L1 changes before closing
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"MongoBackend.close sync failed: {e}");
+    }
     if self.client {
         try {
             self.client.close();
@@ -213,7 +226,8 @@ impl MongoBackend.sync -> None {
                         continue;
                     }
                 }
-                self.put(anchor);
+                # Non-NodeAnchors or newly-created NodeAnchors: direct write
+                self._write_to_db(anchor);
             } except Exception as e {
                 logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
             }

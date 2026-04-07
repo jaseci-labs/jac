@@ -24,8 +24,9 @@ test "l3 fetch counter" {
         anchor = r.__jac__;
         anchor.persistent = True;
         mem.put(anchor);
+        mem.sync();
         mem.__mem__.clear();
-        mem.get(anchor.id);
+        mem.get(anchor.id);  # Cache miss, hits DB
         assert mem.l3_fetch_count == 1;
         # Cache hit — no increment
         mem.get(anchor.id);
@@ -75,7 +76,7 @@ test "concurrent edge adds merged in sqlite sync" {
         e0.persistent = True;
         anchor.edges = [e0];
         mem0.put(anchor);
-        mem0.close();
+        mem0.close();  # close() now flushes pending writes
 
         # Two "requests" load the same root
         mem_a = SqliteMemory(path=db_path);

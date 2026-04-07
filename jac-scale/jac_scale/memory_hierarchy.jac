@@ -123,6 +123,8 @@ obj MongoBackend(PersistentMemory) {
     def _put_node_atomic(
         anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
     ) -> None;
+
+    def _write_to_db(anchor: Anchor) -> None;
 }
 
 """

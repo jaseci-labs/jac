@@ -227,21 +227,10 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Store an anchor. Writes to memory and immediately persists to database."""
+"""Store an anchor in L1 memory. DB persistence is deferred to sync()
+so that concurrent writes go through merge-aware atomic transactions."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
-    if anchor.persistent {
-        self._ensure_connection();
-        try {
-            self.__conn__.execute(
-                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                (str(anchor.id), dumps(anchor))
-            );
-            self.__conn__.commit();
-        } except Exception as e {
-            logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
-        }
-    }
 }
 
 """Delete an anchor and track for garbage collection (only if persistent)."""
@@ -259,8 +248,14 @@ impl SqliteMemory.delete(id: UUID) -> None {
     }
 }
 
-"""Close database connection and clear memory."""
+"""Flush pending writes and close database connection."""
 impl SqliteMemory.close -> None {
+    # Persist any pending L1 changes before closing
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"SqliteMemory.close sync failed: {e}");
+    }
     if self.__conn__ {
         self.__conn__.close();
         self.__conn__ = None;
@@ -536,7 +531,9 @@ impl TieredMemory.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-"""Put anchor with write-through: L1 always, L2/L3 with access control."""
+"""Put anchor with write-through: L1 always, L2/L3 with access control.
+L3 write-through stages the anchor in L3's L1 only (no immediate DB write);
+actual DB persistence happens at sync() time via merge-aware atomic writes."""
 impl TieredMemory.put(anchor: Anchor) -> None {
     import from jaclang { JacRuntimeInterface as Jac }
     # Always write to L1 (self.__mem__ inherited from VolatileMemory)
@@ -545,7 +542,7 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     if self.l2 {
         self.l2.put(anchor);
     }
-    # Write-through to L3 with access control check
+    # Stage in L3 with access control check (sync() persists at commit time)
     if self.l3 and anchor.persistent {
         if Jac.check_write_access(anchor) {
             self.l3.put(anchor);
