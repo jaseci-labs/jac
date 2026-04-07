@@ -601,6 +601,12 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
         if isinstance(target_type, ir.IntType) and isinstance(val, ir.Constant) {
             return ir.Constant(target_type, -1);
         }
+        # Generic PointerType → IntType: ptrtoint.
+        # Needed for passing Jac obj references (struct pointers) or str (i8*)
+        # to C functions declared with int params, e.g. uv_fs_write(bufs: int).
+        if isinstance(target_type, ir.IntType) {
+            return self.builder.ptrtoint(val, target_type, name="ptr.toint");
+        }
     }
     # Struct value → struct pointer (C value → Jac pointer at call boundary)
     if not isinstance(val.type, ir.PointerType)
@@ -644,6 +650,12 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                 }
             }
         }
+    }
+    # Generic IntType → PointerType: inttoptr.
+    # Needed for assigning calloc/malloc results (i64) to pointer-typed
+    # variables like str (i8*) or obj references, e.g. `txt: str = calloc_result;`
+    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.PointerType) {
+        return self.builder.inttoptr(val, target_type, name="int.toptr");
     }
     # Int width coercion (i1 to i64, etc.)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.IntType) {
@@ -1720,9 +1732,13 @@ impl NaIRGenPass._emit_comparison(
         return None;
     }
     if is_float {
+        # IEEE 754: != must use unordered compare so NaN != NaN → true.
+        # All other comparisons use ordered (NaN → false).
+        if op == Tok.NE {
+            return self.builder.fcmp_unordered("!=", left, right, name="fcmp");
+        }
         fcmp_map: dict[(str, str)] = {
             Tok.EE: "==",
-            Tok.NE: "!=",
             Tok.LT: "<",
             Tok.GT: ">",
             Tok.LTE: "<=",

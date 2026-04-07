@@ -32,7 +32,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # Note: libgc (Boehm GC) no longer needed — using reference counting
         # Load C shared libraries from import from "lib" { ... } declarations
         import os;
-        clib_paths = getattr(module.gen, '_clib_paths', None);
+        clib_paths = module.gen._clib_paths;
         if clib_paths {
             for lib_path in clib_paths {
                 try {
@@ -56,7 +56,14 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         mod = llvm.parse_assembly(llvm_ir_str);
         mod.verify();
         target = llvm.Target.from_default_triple();
-        target_machine = target.create_target_machine();
+        # In debug mode: no optimisation so GDB sees real call frames;
+        # jit=True picks the right code model (large on x86-64) for MCJIT.
+        _native_debug: bool = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));
+        if _native_debug {
+            target_machine = target.create_target_machine(opt=0, jit=True);
+        } else {
+            target_machine = target.create_target_machine(jit=True);
+        }
 
         # Register Python function callbacks before creating engine
         # so MCJIT can resolve them during code generation (sv↔na interop)
@@ -85,6 +92,11 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # Run LLVM optimization pipeline (after linking, before JIT)
         import os as _os;
         _opt_level = int(_os.environ.get("JAC_OPT_LEVEL", "2"));
+        # Never optimise in debug mode — optimisation strips debug info and
+        # inlines / re-orders code so GDB backtraces are misleading.
+        if _native_debug {
+            _opt_level = 0;
+        }
         if _opt_level > 0 {
             pto = llvm.create_pipeline_tuning_options(
                 speed_level=_opt_level, size_level=0
@@ -108,6 +120,48 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         # and preserves the optimization work.
         module.gen.native_bitcode = mod.as_bitcode();
 
+        # ── Debug mode: emit relocatable object file with DWARF info ─────────
+        # MCJIT's __jit_debug_register_code is a local symbol in llvmlite's
+        # libllvmlite.so, so GDB can't set the breakpoint it needs for live
+        # JIT symbol resolution.  Instead we emit a proper ELF .o file with
+        # full DWARF sections (debug_info, debug_line, debug_abbrev …) and
+        # store the path for jac-gdb to load via GDB's `add-symbol-file`.
+        # The object file is written BEFORE create_mcjit_compiler which
+        # consumes the module.
+        _debug_obj_path = "";
+        _ir_dir = "";
+        _stem = "";
+        if _native_debug {
+            _src_name = _os.path.basename(module.loc.mod_path)
+                if module.loc
+                else "jac_native";
+            _stem = _os.path.splitext(_src_name)[0];
+            _src_dir = _os.path.dirname(_os.path.abspath(module.loc.mod_path))
+                if module.loc
+                else ".";
+            _ir_dir = _os.path.join(_src_dir, ".jac_ir");
+            _os.makedirs(_ir_dir, exist_ok=True);
+            try {
+                _obj_bytes = target_machine.emit_object(mod);
+                _debug_obj_path = _os.path.join(_ir_dir, _stem + ".debug.o");
+                with open(_debug_obj_path, "wb") as _of {
+                    _of.write(_obj_bytes);
+                }
+                # print(f"[JAC_NATIVE_DEBUG] Debug object: {_debug_obj_path}");
+
+                # Re-parse the module IR since emit_object may have consumed it.
+                # The original llvm_ir_str is still valid (pre-optimisation text).
+                mod = llvm.parse_assembly(str(module.gen.llvm_ir));
+                mod.verify();
+                # Re-store bitcode from the freshly parsed module
+                module.gen.native_bitcode = mod.as_bitcode();
+            } except Exception as _dbg_err {
+            # print(
+            #     f"[JAC_NATIVE_DEBUG] Warning: could not emit debug object: {_dbg_err}"
+            # );
+            }
+        }
+
         # AOT mode (used by nacompile): all imports are linked and the
         # linked+optimised bitcode is stored above. Skip JIT engine creation
         # so the module is not consumed and the caller can emit object code.
@@ -115,8 +169,75 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
 
+        # Collect all function names from the module BEFORE create_mcjit_compiler
+        # consumes it.  We need these to build the symbol map for GDB.
+        _all_fn_names: list = [];
+        if _native_debug and _debug_obj_path {
+            try {
+                for _fn in mod.functions {
+                    _fn_name_str = _fn.name;
+                    # Skip declarations (external functions like memcpy, printf …)
+                    if not _fn.is_declaration {
+                        _all_fn_names.append(_fn_name_str);
+                    }
+                }
+            } except Exception {
+                pass;
+            }
+        }
+
         engine = llvm.create_mcjit_compiler(mod, target_machine);
+        # In debug mode, register JIT code with GDB so function names and
+        # DWARF line info appear in backtraces instead of bare addresses.
+        if _native_debug {
+            try {
+                engine.enable_jit_events();
+            } except Exception {
+                pass;  # best-effort; GDB listener may not be available
+            }
+        }
         module.gen.native_engine = engine;
+
+        # ── Write symbol map for jac-gdb ─────────────────────────────────────
+        # After MCJIT finalises, query the JIT address of each function so
+        # jac-gdb can tell GDB where .text was loaded in memory.
+        if _native_debug and _debug_obj_path and _all_fn_names {
+            try {
+                # Find the minimum JIT address — that's the .text base
+                _text_addr = 0;
+                _fn_addrs: list = [];
+                for _fn_name in _all_fn_names {
+                    _addr = engine.get_function_address(_fn_name);
+                    if _addr != 0 {
+                        _fn_addrs.append((_fn_name, _addr));
+                        if _text_addr == 0 or _addr < _text_addr {
+                            _text_addr = _addr;
+                        }
+                    }
+                }
+                if _text_addr != 0 {
+                    # Write the symmap file
+                    _symmap_path = _os.path.join(_ir_dir, _stem + ".symmap");
+                    with open(_symmap_path, "w") as _sf {
+                        _sf.write(f"{_debug_obj_path}\n");
+                        _sf.write(f"0x{_text_addr:x}\n");
+                        # Write per-function addresses
+                        for (_fn_name, _addr) in _fn_addrs {
+                            _sf.write(f"{_fn_name} 0x{_addr:x}\n");
+                        }
+                    }
+                    # print(f"[JAC_NATIVE_DEBUG] Symbol map: {_symmap_path}");
+                } else {
+                    # print(
+                    #     "[JAC_NATIVE_DEBUG] Warning: no JIT function addresses found"
+                    # );
+                }
+            } except Exception as _sym_err {
+            # print(
+            #     f"[JAC_NATIVE_DEBUG] Warning: could not write symbol map: {_sym_err}"
+            # );
+            }
+        }
     } except Exception as e {
         self.emit(E5020, error=str(e));
     }
@@ -196,6 +317,34 @@ impl NativeCompilePass._compile_and_link_native_imports(
         if imported_ir is None or imported_ir.gen.llvm_ir is None {
             self.emit(W5024, path=full_path, error="No LLVM IR generated");
             continue;
+        }
+
+        # Load any .so libraries required by this imported module so that
+        # MCJIT can resolve their external symbols at JIT compilation time.
+        # Without this, transitive `import from "lib.so" { ... }` in a dep
+        # module causes an unresolved-symbol segfault at runtime.
+        import ctypes.util as _ctu;
+        dep_clib_paths = imported_ir.gen._clib_paths;
+        if dep_clib_paths {
+            # Propagate dep C-lib paths back to the main module so that
+            # nacompile (AOT) can discover all needed shared libraries.
+            for dep_lib_path in dep_clib_paths {
+                if dep_lib_path not in module.gen._clib_paths {
+                    module.gen._clib_paths.append(dep_lib_path);
+                }
+                try {
+                    if os.path.exists(dep_lib_path) {
+                        llvm.load_library_permanently(dep_lib_path);
+                    } else {
+                        found_lib = _ctu.find_library(dep_lib_path);
+                        if found_lib {
+                            llvm.load_library_permanently(found_lib);
+                        }
+                    }
+                } except Exception {
+                    pass;  # best-effort; missing lib will fail at JIT time anyway
+                }
+            }
         }
 
         # Enqueue transitive deps of this module for DFS traversal.

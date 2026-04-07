@@ -43,23 +43,6 @@ class SymTabBuildPass(UniPass) {
         self: SymTabBuildPass, nd: uni.UniNode
     ) -> (UniScopeNode | None);
 
-    """Check if a symbol's declaration has an explicit type annotation."""
-    static def _outer_has_type_annotation(sym: uni.Symbol) -> bool {
-        decl = sym.decl;
-        if (decl is None) {
-            return False;
-        }
-        name_of = decl?.name_of;
-        if (name_of is None) {
-            return False;
-        }
-        parent = name_of?.parent;
-        return (
-            (isinstance(parent, uni.Assignment) and (parent.type_tag is not None))
-            or isinstance(name_of, (uni.HasVar, uni.ParamVar))
-        );
-    }
-
     """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
         self: SymTabBuildPass, module_path: uni.ModulePath

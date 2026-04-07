@@ -57,57 +57,22 @@ impl InteropAnalysisPass._extract_type_name(
     return 'int';
 }
 
-"""Check if a module name refers to a .na.jac file and return the path
-suffix.
+"""Check if a module name refers to a .na.jac file and return the path suffix.
 
-        Given a module name like 'na_math_utils', checks if
-'na_math_utils.na.jac'
-        exists relative to the current module. Returns the module path for
-linking
-        (e.g., 'na_math_utils.na') or None if not a native module.
-        """
+Delegates to the shared resolve_native_module() in codeinfo to ensure
+consistent resolution across the compiler.
+"""
 impl InteropAnalysisPass._resolve_native_module(
     self: InteropAnalysisPass, module_name: str
 ) -> (str | None) {
     import os;
+    import from jaclang.jac0core.codeinfo { resolve_native_module }
     base_dir = '.';
     if (self.ir_in and self.ir_in.loc) {
         base_dir = os.path.dirname(self.ir_in.loc.mod_path);
     }
-    # Strip leading dots from relative imports (e.g., '.tokens' → 'tokens')
-    clean_name = module_name.lstrip('.');
-
-    # Fast path: literal flat filename (e.g. 'tokens' → 'tokens.na.jac').
-    # This mirrors Python's behaviour for a bare name with no dots.
-    na_jac_path = os.path.join(base_dir, f"{clean_name}.na.jac");
-    if os.path.exists(na_jac_path) {
-        return f"{clean_name}.na";
-    }
-
-    # Slow path: dotted name → directory hierarchy, walk up to project root.
-    # Python treats dots in `import foo.bar.baz` as package separators, so
-    # `import from runtime.jsvalue { X }` must resolve to runtime/jsvalue.na.jac
-    # regardless of how deep the calling file is nested.
-    path_name = clean_name.replace('.', os.sep);
-    if path_name != clean_name {
-        search_dir = os.path.abspath(base_dir);
-        while True {
-            candidate = os.path.join(search_dir, f"{path_name}.na.jac");
-            if os.path.exists(candidate) {
-                # Return a path relative to base_dir so that na_compile_pass
-                # can reconstruct the absolute path via:
-                #   os.path.join(base_dir, source_mod_path + ".jac")
-                rel = os.path.relpath(candidate[:-4], os.path.abspath(base_dir));
-                return rel;
-            }
-            parent = os.path.dirname(search_dir);
-            if parent == search_dir {
-                break;  # reached filesystem root
-            }
-            search_dir = parent;
-        }
-    }
-    return None;
+    (src_mod_str, _full_path) = resolve_native_module(module_name, base_dir);
+    return src_mod_str;
 }
 
 """Track imports from .na.jac modules."""
