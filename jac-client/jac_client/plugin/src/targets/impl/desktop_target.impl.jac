@@ -77,7 +77,7 @@ def _get_toml_api_base_url(project_dir: Path) -> str {
 }
 
 # ===============================================================================
-# Production Build Helpers - GLIBC compatibility and Docker builds
+# Production Build Helpers - GLIBC compatibility
 # ===============================================================================
 """Get the system GLIBC version on Linux. Returns version string or None."""
 def _get_glibc_version -> str | None {
@@ -159,29 +159,10 @@ def _check_glibc_compatibility -> tuple[bool, str | None, str] {
     }
     # GLIBC 2.35 is Ubuntu 22.04 - good target for compatibility
     if _compare_versions(glibc_version, "2.35") > 0 {
-        msg = "WARNING: GLIBC " + glibc_version + " detected. For production builds targeting older systems, use Docker build or build on Ubuntu 22.04.";
+        msg = "WARNING: GLIBC " + glibc_version + " detected. For production builds targeting older systems, build on Ubuntu 22.04.";
         return (False, glibc_version, msg);
     }
     return (True, glibc_version, "GLIBC " + glibc_version + " OK");
-}
-
-"""Check if Docker is available."""
-def _is_docker_available -> bool {
-    result = _check_command_available(["docker", "--version"]);
-    return result[0];
-}
-
-"""Get the path to the Docker build script."""
-def _get_docker_script_path -> Path | None {
-    try {
-        import from jac_client.plugin.src.targets.desktop { __file__ as desktop_init }
-        desktop_dir: Path = Path(desktop_init).parent;
-        docker_script: Path = Path(str(desktop_dir) + "/docker/build.sh");
-        if docker_script.exists() {
-            return docker_script;
-        }
-    } except Exception { }
-    return None;
 }
 
 """Find the jaseci monorepo root directory by looking for jac-client."""
@@ -199,74 +180,6 @@ def _find_jaseci_root(start_dir: Path) -> Path | None {
         search_dir = parent;
     }
     return None;
-}
-
-"""Run the Docker-based production build."""
-def _run_docker_build(project_dir: Path) -> Path | None {
-    docker_script = _get_docker_script_path();
-    if not docker_script {
-        console.error("Docker build script not found");
-        return None;
-    }
-    if not _is_docker_available() {
-        console.error("Docker is not available. Please install Docker first.");
-        return None;
-    }
-    console.print("\n🐳 Running Docker production build...", style="bold");
-    console.print(f"  Script: {docker_script}", style="muted");
-    console.print(f"  Project: {project_dir}", style="muted");
-    try {
-        result = subprocess.run(
-            ["bash", str(docker_script), str(project_dir)],
-            cwd=str(project_dir),
-            timeout=1800
-        );
-        if result.returncode == 0 {
-            bundle_dir: Path = Path(
-                str(project_dir) + "/src-tauri/target/release/bundle"
-            );
-            appimage_dir: Path = Path(str(bundle_dir) + "/appimage");
-            deb_dir: Path = Path(str(bundle_dir) + "/deb");
-            if appimage_dir.exists() {
-                for f in appimage_dir.iterdir() {
-                    fname: str = str(f.name);
-                    if fname.endswith(".AppImage") {
-                        return f;
-                    }
-                }
-            }
-            if deb_dir.exists() {
-                for f in deb_dir.iterdir() {
-                    fname: str = str(f.name);
-                    if fname.endswith(".deb") {
-                        return f;
-                    }
-                }
-            }
-            return bundle_dir;
-        } else {
-            console.error(f"Docker build failed with exit code {result.returncode}");
-            return None;
-        }
-    } except subprocess.TimeoutExpired {
-        console.error("Docker build timed out after 30 minutes");
-        return None;
-    } except Exception as e {
-        console.error(f"Docker build error: {e}");
-        return None;
-    }
-}
-
-"""Print suggestion to use Docker for production builds."""
-def _suggest_docker_build(project_dir: Path) -> None {
-    docker_script = _get_docker_script_path();
-    console.print("\n[yellow]For production-ready Linux builds, use Docker:[/yellow]");
-    if docker_script {
-        console.print(f"  {docker_script} {project_dir}");
-    } else {
-        console.print("  See jac-client/jac_client/plugin/src/targets/desktop/docker/");
-    }
-    console.print("  This builds in Ubuntu 22.04 for maximum compatibility.\n");
 }
 
 """Check if running in production build mode (via env var)."""
@@ -455,9 +368,6 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
         console.print("  2. Build: jac build main.jac --client desktop");
         console.print("\nBuild options:", style="bold");
         console.print("  --platform <windows|macos|linux|all>  Target platform");
-        console.print(
-            "  --docker                              Production build (Linux, GLIBC compatible)"
-        );
     } finally {
         # ABSOLUTE GUARANTEE: Ensure src-tauri directory exists no matter what
         if not tauri_dir.exists() {
@@ -1890,8 +1800,7 @@ impl DesktopTarget.build(
         is_compatible = glibc_check[0];
         glibc_msg = glibc_check[2];
         if not is_compatible {
-            console.print(f"\n[yellow]{glibc_msg}[/yellow]");
-            _suggest_docker_build(project_dir);
+            console.warning(glibc_msg);
         } elif glibc_msg {
             console.print(f"  {glibc_msg}", style="muted");
         }
