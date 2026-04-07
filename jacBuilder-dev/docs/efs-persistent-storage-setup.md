@@ -50,6 +50,7 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ```
 
 For **jaseci-cluster** (us-east-2):
+
 - VPC: `vpc-08dbde76269fe0c6b`
 - Private subnets: `subnet-005fe76d653fef2f3` (2a), `subnet-02d5cb139fd801b41` (2b), `subnet-0e94f2b44ddb78d03` (2c)
 - Node SG (ClusterSharedNodeSecurityGroup): `sg-026ff768549e18a90`
@@ -122,12 +123,14 @@ aws efs describe-mount-targets --file-system-id $FS_ID --region $REGION \
 ### Step 5: Install EFS CSI Driver
 
 Check if already installed:
+
 ```bash
 kubectl get pods -n kube-system | grep efs-csi
 aws eks list-addons --cluster-name $CLUSTER_NAME --region $REGION
 ```
 
 If not installed:
+
 ```bash
 cat > /tmp/efs-trust-policy.json <<EOF
 {
@@ -192,6 +195,7 @@ The StorageClass (`efs-sc`) is cluster-wide and only needs to be created once. T
 ## Does this add time to every deploy?
 
 No. `jac start --scale` uses `kubectl apply` (strategic merge), which preserves volumes added via `kubectl patch` since they're not in jac-scale's `last-applied-configuration`. The mount step checks first — on subsequent deploys it exits immediately with "already mounted, skipping". An extra rollout (~10 min) only happens:
+
 - **Once**: the first deploy after adding the step to the workflow
 - **If the deployment is deleted and recreated** from scratch on a fresh cluster
 

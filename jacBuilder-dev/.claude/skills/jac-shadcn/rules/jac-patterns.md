@@ -189,6 +189,7 @@ cl import from .ui.button { buttonVariants }
 ## Compiler gotchas
 
 ### No tuple unpacking
+
 ```jac
 # WRONG
 a, b = someFunction();
@@ -200,6 +201,7 @@ b = result[1];
 ```
 
 ### No nested def inside def
+
 ```jac
 # WRONG
 def:pub Parent(props: Any) -> JsxElement {
@@ -215,6 +217,7 @@ def:pub Parent(props: Any) -> JsxElement {
 ```
 
 ### No JSX comments
+
 ```jac
 # WRONG
 return <div>
@@ -229,6 +232,7 @@ return <div>
 ```
 
 ### True/False/None are capitalized
+
 ```jac
 has isOpen: bool = False;    # not false
 has data: Any = None;        # not null/none
@@ -236,6 +240,7 @@ if isOpen == True { ... }    # not true
 ```
 
 ### String special chars in JSX must be wrapped
+
 ```jac
 # WRONG
 <p>Terms & Conditions</p>
@@ -247,6 +252,7 @@ if isOpen == True { ... }    # not true
 ```
 
 ### Use Reflect.construct() instead of new
+
 ```jac
 # WRONG
 d = new Date();
@@ -258,6 +264,7 @@ ws = Reflect.construct(WebSocket, [url]);
 ```
 
 ### Lambda callback gotcha
+
 Function params inside lambdas compile to `new fn()`. Assign to local var and use `.call(None, args)`.
 
 ```jac
@@ -270,6 +277,7 @@ items.map(lambda(item: Any) -> Any { fmt.call(None, item); });
 ```
 
 ### Boolean in JSX
+
 ```jac
 # WRONG
 {!!value}
@@ -279,4 +287,5 @@ items.map(lambda(item: Any) -> Any { fmt.call(None, item); });
 ```
 
 ### "\n" bug
+
 `"\n"` compiles to literal `"\\n"`. Use `style.setProperty()` for CSS that needs newlines.

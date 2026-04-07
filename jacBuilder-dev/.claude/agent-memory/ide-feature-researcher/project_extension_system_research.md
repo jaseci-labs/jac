@@ -9,11 +9,13 @@ Research completed: 2026-03-24
 ## VS Code Extension Architecture
 
 ### Three-Layer Isolation
+
 1. **Renderer Process** — UI (Electron/browser). Never runs extension code.
 2. **Extension Host Process** — Dedicated Node.js process (one per window). Runs ALL extensions. Exposes the `vscode` API module.
 3. **Language Server Protocol** — Optional separate process per language server, communicates with extension host via JSON-RPC over stdio/socket.
 
 ### Web Extension Host (browser context)
+
 - Runs in a **Browser WebWorker** (not Node.js)
 - Single-file bundle required (webpack/esbuild — no `importScripts`)
 - No child processes, no `path`/`os`/`fs` — use `vscode.workspace.fs` instead
@@ -21,16 +23,19 @@ Research completed: 2026-03-24
 - Communication: postMessage between worker and extension host
 
 ### Extension Manifest (package.json)
+
 Required fields: `name`, `version`, `publisher`, `engines` (`{"vscode": "^1.x.x"}`)
 Key fields: `main` (Node.js entry), `browser` (web entry), `activationEvents[]`, `contributes{}`
 
 ### Activation Events (lazy loading)
+
 - `onCommand:myext.myCmd` — activate only when command is invoked
 - `onLanguage:jac` — activate when a .jac file is opened
 - `onStartupFinished` — after IDE is loaded (preferred over `*`)
 - `*` — always activated at startup (avoid — kills perf)
 
 ### Contribution Points (34 total)
+
 **Editor/Language**: `languages`, `grammars`, `snippets`, `semanticTokenTypes`, `semanticTokenModifiers`, `semanticTokenScopes`
 **UI/Views**: `views`, `viewsContainers`, `menus`, `submenus`, `colors`, `icons`, `walkthroughs`
 **Themes**: `themes`, `iconThemes`, `productIconThemes`
@@ -88,24 +93,28 @@ Four extension types with different trade-offs:
 ## Security Isolation Options for Web IDEs
 
 ### Option A: iframe sandbox
+
 - `<iframe sandbox="allow-scripts allow-same-origin">` + postMessage
 - Pros: browser-native, familiar pattern, works with React apps
 - Cons: shared page thread (DoS possible), cannot spawn workers easily
 - Best for: UI extensions (panels, custom editors)
 
 ### Option B: Web Worker
+
 - `new Worker(extensionBundle)` — separate thread, no DOM access
 - Pros: true thread isolation, no DoS on UI thread, can use Atomics/SharedArrayBuffer
 - Cons: no DOM/UI access, must use postMessage for all API calls
 - Best for: language features (LSP, formatters, linters, AI)
 
 ### Option C: Service Worker
+
 - Intercepts network requests, shared across tabs
 - Pros: persistent background execution
 - Cons: complex lifecycle, CSP complications
 - Best for: offline caching, network interception
 
 ### CSP hardening
+
 ```
 Content-Security-Policy: default-src 'self'; worker-src blob:; frame-src blob: data: https://trusted-ext-cdn.com
 ```
@@ -113,6 +122,7 @@ Content-Security-Policy: default-src 'self'; worker-src blob:; frame-src blob: d
 ## Minimal Viable Extension System for Jac Builder Studio
 
 ### Manifest format (jac-extension.json)
+
 ```json
 {
   "id": "my-org.my-ext",
@@ -138,27 +148,32 @@ Content-Security-Policy: default-src 'self'; worker-src blob:; frame-src blob: d
 ### Recommended Architecture for Jac Builder Studio
 
 **Layer 1: Extension Registry (backend)**
+
 - Walker: `extension_ops` — `install`, `uninstall`, `list`, `search`, `enable`, `disable`
 - Storage: `~/.jac-ide/extensions/{ext-id}/` (extracted zip) per user
 - Per-project activation via Project node metadata
 
 **Layer 2: Extension Host (frontend web worker)**
+
 - One `ExtensionHostWorker` per active project
 - Loads extension bundles as worker modules
 - Bridges `vscode.*` API calls → IDE state via postMessage to main thread
 - Sandboxed: no DOM access, timeout watchdog for infinite loops
 
 **Layer 3: Extension UI (iframe per UI extension)**
+
 - UI extensions get their own `<iframe>` with `sandbox="allow-scripts"`
 - `@jac-builder/extension-api` npm lib handles postMessage protocol
 - Panel extensions mounted in sidebar/bottom panel slots
 
 **Layer 4: Contribution Registry**
+
 - IDE reads `jac-extension.json` at activation time
 - Static contributions (grammars, themes, snippets) loaded immediately
 - Dynamic contributions (commands, views) registered with IDE command registry and panel slots
 
 **Layer 5: Language Feature Bridge**
+
 - Language extensions provide LSP-over-WebSocket or in-worker LSP
 - useLSP hook extended to support multiple language server registrations
 - Formatters, linters registered as Monaco `DocumentFormattingEditProvider`
@@ -180,23 +195,27 @@ Building a fully compatible VS Code extension host is a massive multi-year effor
 ## Rollout Priority
 
 Phase 1 (Static, zero risk):
+
 - Grammar contributions (TextMate JSON)
 - Theme contributions (JSON color definitions)
 - Snippet contributions (JSON snippets)
 - Language file associations
 
 Phase 2 (Active, sandboxed worker):
+
 - Formatter contributions (worker, returns edit ops)
 - Linter/diagnostic contributions (worker, returns markers)
 - Command contributions (invoked by command palette)
 - Completion providers (worker, returns CompletionList)
 
 Phase 3 (UI extensions, iframe):
+
 - Panel/view contributions (sidebar, bottom panel)
 - Custom file editor contributions (webview-style)
 - Status bar contributions
 
 Phase 4 (Deep integration):
+
 - LSP proxy contributions (full language servers)
 - Debug adapter contributions
 - AI agent contributions (chat panel providers)

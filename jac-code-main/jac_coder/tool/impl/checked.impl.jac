@@ -26,7 +26,7 @@ def _enforce_check(result: str, file_path: str) -> str {
 
 impl write_code(file_path: str, content: str) -> str {
     loop_msg = check_tool_loop("write_code", file_path);
-    if loop_msg { 
+    if loop_msg {
         return loop_msg;
     }
     result = write_file_guarded(file_path, content);
@@ -38,7 +38,7 @@ impl edit_code(
     file_path: str, old_string: str, new_string: str, replace_all: bool = False
 ) -> str {
     loop_msg = check_tool_loop("edit_code", file_path + "::" + old_string[:50]);
-    if loop_msg { 
+    if loop_msg {
         return loop_msg;
     }
     result = edit_file_guarded(file_path, old_string, new_string, replace_all);

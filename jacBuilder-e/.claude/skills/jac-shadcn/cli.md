@@ -15,6 +15,7 @@ jac add --shadcn button card dialog
 Fetches resolved components from the registry and installs them into `components/ui/`. Automatically resolves peer dependencies via BFS traversal.
 
 **What happens:**
+
 1. Reads `[jac-shadcn]` config from `jac.toml` (style, registry URL)
 2. Fetches component manifest from `/registry`
 3. BFS-resolves peer dependencies (e.g., `dialog` auto-adds `button` if needed)

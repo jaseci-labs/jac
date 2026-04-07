@@ -7,9 +7,9 @@ See [customization.md](../customization.md) for theming, CSS variables, and addi
 - Semantic colors
 - Built-in variants first
 - className for layout only
-- No space-x-* / space-y-*
+- No space-x-*/ space-y-*
 - Use physical CSS properties (pt/pb not py)
-- Prefer size-* over w-* h-* when equal
+- Prefer size-*over w-* h-* when equal
 - Prefer truncate shorthand
 - No manual dark: color overrides
 - Use cn() for conditional classes
@@ -95,7 +95,7 @@ Use `className` for layout (e.g. `max-w-md`, `mx-auto`, `mt-4`), **not** for ove
 
 ---
 
-## No space-x-* / space-y-*
+## No space-x-*/ space-y-*
 
 Use `gap-*` instead. `space-y-4` → `flex flex-col gap-4`. `space-x-2` → `flex gap-2`.
 
@@ -127,7 +127,7 @@ Use `pt-4 pb-4` instead of `py-4`. This ensures `pt-0` overrides cleanly with `t
 
 ---
 
-## Prefer size-* over w-* h-* when equal
+## Prefer size-*over w-* h-* when equal
 
 `size-10` not `w-10 h-10`. Applies to icons, avatars, skeletons, etc.
 

@@ -1,6 +1,7 @@
 """Phase 4 tests — cross-session project memory."""
 
 import pytest
+
 from conftest import run_jac
 
 

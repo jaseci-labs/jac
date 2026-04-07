@@ -1,11 +1,12 @@
-import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
+
 URL = "https://jac-builder.jaseci.org/"  # change endpoint if needed
-MAX_WORKERS = 50   # max concurrent users
-STEP = 10          # increase users per iteration
-MAX_ITER = 20      # how many rounds
+MAX_WORKERS = 50  # max concurrent users
+STEP = 10  # increase users per iteration
+MAX_ITER = 20  # how many rounds
 FAIL_THRESHOLD = 0.3  # 30% failure = break
 
 TIMEOUT = 5

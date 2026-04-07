@@ -1,8 +1,8 @@
 """CLI entry point for `jac-coder` command."""
 
+import os
 import subprocess
 import sys
-import os
 
 
 def main():

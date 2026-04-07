@@ -534,6 +534,7 @@ test "addition works" {
     assert calc.get_result() == 5.0;
 }
 ```
+
 ---
 
 ## Always provide default values for `has` fields

@@ -1,6 +1,5 @@
 """Pytest configuration and shared fixtures for jac-coder tests."""
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,12 +12,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Find the jac binary — check common venv locations
 JAC_BIN = shutil.which("jac") or str(
     next(
-        (p for p in [
-            PROJECT_ROOT.parent / "venv" / "bin" / "jac",
-            PROJECT_ROOT.parent.parent / "venv" / "bin" / "jac",
-            Path.home() / "programming" / "jac-apps" / "venv" / "bin" / "jac",
-            Path("/home/malitha/programming/jac-apps/venv/bin/jac"),
-        ] if p.exists()),
+        (
+            p
+            for p in [
+                PROJECT_ROOT.parent / "venv" / "bin" / "jac",
+                PROJECT_ROOT.parent.parent / "venv" / "bin" / "jac",
+                Path.home() / "programming" / "jac-apps" / "venv" / "bin" / "jac",
+                Path("/home/malitha/programming/jac-apps/venv/bin/jac"),
+            ]
+            if p.exists()
+        ),
         PROJECT_ROOT.parent / "venv" / "bin" / "jac",
     )
 )

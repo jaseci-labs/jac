@@ -1,6 +1,7 @@
 """Graph structure tests — MainAgent creation, Session wiring, idempotency."""
 
 import pytest
+
 from conftest import run_jac
 
 

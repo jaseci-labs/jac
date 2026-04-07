@@ -24,6 +24,7 @@
 6. Layout — `Layout.cl.jac` LAST (imports child components)
 
 **Endpoints must be imported in TWO places:**
+
 - `main.jac` - `import from services.products { get_products }` (registers with server)
 - `hooks/*.cl.jac` — `sv import from ..services.products { get_products }` (calls from frontend)
 
@@ -47,6 +48,7 @@
 ### Step 1: Cross-file import check
 
 Before validating, manually verify:
+
 - Every `import from "..."` / `sv import from ...` references a file that exists
 - sv import function names match actual `def:pub` names in `main.jac`
 - Component imports use correct dot-levels (`.` same dir, `..` one up, `...` two up)
@@ -55,6 +57,7 @@ Before validating, manually verify:
 ### Step 2: Validate
 
 Call `validate_project(directory)` ONCE after all files are written.
+
 - It batch type-checks all `.jac` files
 - It auto-fixes common patterns (root→root(), (?:)→[?:])
 - It returns all type errors with hints
@@ -68,6 +71,7 @@ Call `validate_project(directory)` ONCE after all files are written.
 ### Step 4: Start the app
 
 Start the application server using `run_command` with `background=True`:
+
 - **Fullstack:** `run_command("jac start --dev main.jac", background=True)`
 - **Backend only:** `run_command("jac start main.jac", background=True)`
 - **Single script:** `jac run main.jac` — one-off execution (no server)
@@ -76,6 +80,7 @@ CRITICAL: `jac start` is a LONG-RUNNING server process — ALWAYS use `backgroun
 It will block forever if run in foreground. ALWAYS use `jac start`, NEVER `jac serve`.
 
 After starting:
+
 1. Check readiness with retry: `run_command("for i in 1 2 3 4 5; do curl -s http://localhost:<port>/ > /dev/null && echo UP && break || sleep 2; done")`
 2. If DOWN, read `.jac-server.log` in the project dir for startup errors.
 3. Then proceed with browser testing.
@@ -100,11 +105,12 @@ Do NOT stop and report to the user. Investigate, fix the code, restart the serve
 Only stop after 3+ failed fix attempts on the same issue.
 
 Common runtime issues and how to fix them:
-  - Blank page / 0 children in root → check console errors with `browser_do('eval "..."')`, read source files, fix the entry point or imports
-  - Buttons that don't respond → event handler or sv import mismatch, fix the handler
-  - Missing content → data not loading, wrong endpoint name, fix the API call
-  - Broken layout → CSS/component rendering issues, fix the styles
-  - Form submission failures → request body schema mismatch (422), fix the request format
+
+- Blank page / 0 children in root → check console errors with `browser_do('eval "..."')`, read source files, fix the entry point or imports
+- Buttons that don't respond → event handler or sv import mismatch, fix the handler
+- Missing content → data not loading, wrong endpoint name, fix the API call
+- Broken layout → CSS/component rendering issues, fix the styles
+- Form submission failures → request body schema mismatch (422), fix the request format
 
 ---
 

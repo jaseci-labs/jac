@@ -1,6 +1,7 @@
 """Phase 3 tests — smart context management and compaction."""
 
 import pytest
+
 from conftest import run_jac
 
 

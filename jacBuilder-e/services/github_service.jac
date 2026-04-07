@@ -579,5 +579,3 @@ def github_clone(clone_url: str, dest_path: str, access_token: str) -> dict {
 
     return {"success": True};
 }
-
-

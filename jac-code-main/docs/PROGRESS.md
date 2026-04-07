@@ -99,19 +99,23 @@
 ## Future Work
 
 ### Reliability
+
 - [ ] Doom loop detection (repeated identical tool calls)
 - [ ] LLM retry with exponential backoff
 - [ ] Tool result validation
 
 ### UX
+
 - [ ] Text streaming (requires byllm `-> str` return type support)
 - [ ] Cost/token tracking
 - [ ] Undo/rollback for file changes
 
 ### Persistence
+
 - [ ] CLI session persistence (serialize to JSON on exit, reload on start)
 
 ### byllm Enhancement
+
 - [ ] Dynamic tool attachment on `by llm()` calls (eliminates need for pre-defined runner objects)
 
 ---

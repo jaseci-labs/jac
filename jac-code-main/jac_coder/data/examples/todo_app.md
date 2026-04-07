@@ -80,7 +80,6 @@ cl {
 
 ## `service/todoService.sv.jac`
 
-
 ```jac
 import from uuid { uuid4 }
 import from datetime { datetime }
@@ -138,7 +137,6 @@ def:priv delete_todo(id: str) -> dict {
 
 ## `index.cl.jac`
 
-
 ```jac
 import ".styles.global.css";
 import from .pages.login { page as LoginPage }
@@ -167,7 +165,6 @@ def:pub ClientApp() -> JsxElement {
 ---
 
 ## `pages/login.cl.jac`
-
 
 ```jac
 import from "@jac/runtime" { useNavigate, jacLogin, jacSignup }
@@ -520,7 +517,6 @@ def:pub EmptyState(props: dict) -> JsxElement {
 
 ## `components/TodoItem.cl.jac`
 
-
 ```jac
 def:pub TodoItem(props: dict) -> JsxElement {
     todo = props["todo"] or {};
@@ -859,7 +855,6 @@ jac start --dev
 | Logout | `jacLogout(); navigate("/login");` |
 | Hover-reveal child | `group` on parent + `group-hover:opacity-100` on child |
 | Tailwind custom token | `@theme { --color-primary: #f97316; }` → use as `bg-primary`, `text-primary`, `border-primary` |
-
 
 ### Type checker false positives
 

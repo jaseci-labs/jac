@@ -12,6 +12,7 @@ Jac Builder Studio uses **two separate GitHub OAuth Apps** for different purpose
 | **Repo Ops OAuth App** | Push, pull, create repos, PRs | `/auth/github-connect` |
 
 This separation is required because:
+
 - jac-scale hardcodes the SSO callback to `/sso/github/callback`
 - OAuth Apps only support one callback URL each
 - OAuth App tokens work for both REST API and git transport (no JWT/installation tokens needed)
@@ -52,10 +53,12 @@ This OAuth App powers "Continue with GitHub" on the login page. It's managed by 
 ### Step 2: Note Credentials
 
 After creating the app, note:
+
 - **Client ID** (starts with `Ov...`)
 - **Client Secret** (generate one, copy immediately)
 
 These map to:
+
 ```bash
 GITHUB_CLIENT_ID=Ov23li...
 GITHUB_CLIENT_SECRET=...
@@ -86,10 +89,12 @@ This OAuth App powers push, pull, create repo, and create PR from the Git panel.
 ### Step 2: Note Credentials
 
 After creating the app, note:
+
 - **Client ID** (starts with `Ov...`)
 - **Client Secret** (generate one, copy immediately)
 
 These map to:
+
 ```bash
 GITHUB_REPO_CLIENT_ID=Ov23li...
 GITHUB_REPO_CLIENT_SECRET=...
@@ -98,6 +103,7 @@ GITHUB_REPO_CLIENT_SECRET=...
 ### Step 3: Scopes
 
 The OAuth App requests these scopes during authorization (handled automatically by the backend):
+
 - `repo` -- full access to public and private repositories (push, pull, create)
 - `read:user` -- read user profile information
 - `user:email` -- read user email address
@@ -168,6 +174,7 @@ CLIENT_AUTH_CALLBACK_URL=http://localhost:8000/auth/callback
 ### Test locally:
 
 1. Start the server:
+
    ```bash
    source ~/.jacvenv/bin/activate
    jac start main.jac

@@ -93,6 +93,7 @@ items = [item for item in items if item["id"] != targetId];
 ```
 
 **WARNING:** Dynamic dict values as JSX text children render BLANK.
+
 ```jac
 # WRONG — renders blank buttons
 {[<Button>{k["label"]}</Button> for k in keys]}
@@ -250,6 +251,7 @@ In `.cl.jac` files, use `import from "@jac/runtime"` (WITH quotes, NO `cl` prefi
 In `.jac` files (like main.jac), use `cl import from "@jac/runtime"` (WITH `cl` prefix to specify client context).
 
 ### Auth
+
 ```jac
 import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn }
 
@@ -265,6 +267,7 @@ else { error = result["error"] or "Signup failed"; }
 ```
 
 ### Routing
+
 ```jac
 import from "@jac/runtime" {
     Link, Navigate, useNavigate, useLocation, useParams, Outlet, AuthGuard
@@ -298,6 +301,7 @@ return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
 ```
 
 ### IMPORTANT
+
 - In `.cl.jac` files: NO `cl` prefix needed — just `import from "@jac/runtime"`
 - In `.jac` files (main.jac): USE `cl import from "@jac/runtime"` (need `cl` prefix for client context)
 - ALWAYS use quotes: `"@jac/runtime"` (it's an npm-style path)

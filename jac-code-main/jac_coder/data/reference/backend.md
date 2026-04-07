@@ -129,11 +129,13 @@ import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn }
 | `jacIsLoggedIn()` | no | `bool` | Checks if token exists in localStorage |
 
 **Runtime behaviors:**
+
 - Token stored as `jac_token` in localStorage, sent as `Authorization: Bearer {token}` on every `def:priv`/`walker:priv` call
 - On 401 response: token auto-cleared, page reloads (user redirected to login)
 - `jacSignup` success = user is already logged in (no separate login call needed)
 
 **SSO (Google OAuth)** — configure in `jac.toml`, no code needed:
+
 ```toml
 [plugins.scale.sso.google]
 client_id = "your-google-client-id"

@@ -137,7 +137,7 @@ registry = "https://jac-shadcn.jaseci.org"
 
 ## cn-* Token System
 
-Components in the **registry project** use style-agnostic placeholder classes (`cn-button`, `cn-card`). These are resolved per-style via CSS files (`styles/style-nova.css`, etc.). When components are installed in user projects via `jac add --shadcn`, cn-* tokens are **already resolved** to concrete Tailwind classes. Users never see cn-* tokens.
+Components in the **registry project** use style-agnostic placeholder classes (`cn-button`, `cn-card`). These are resolved per-style via CSS files (`styles/style-nova.css`, etc.). When components are installed in user projects via `jac add --shadcn`, cn-*tokens are **already resolved** to concrete Tailwind classes. Users never see cn-* tokens.
 
 > **Registry developers only:** When adding new components to the registry, define cn-* tokens in all 5 style files. See [the registry CLAUDE.md](https://jac-shadcn.jaseci.org) for details.
 

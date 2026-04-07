@@ -69,6 +69,7 @@ sv import from ..services.products { get_products, add_product }
 ```
 
 **Both imports are required:**
+
 - `main.jac` import → registers the endpoint so the server exposes it
 - `sv import` in `.cl.jac` → generates HTTP stubs so frontend can call it
 
@@ -164,6 +165,7 @@ def:pub app() -> JsxElement { return <Layout />; }
 Components returning `JsxElement` MUST accept `props: dict` as the single parameter (or no params). NEVER use individual typed params like `(title: str, count: int)`.
 
 Also use `className`, NOT `class` for HTML attributes in JSX:
+
 ```jac
 # WRONG
 <div class="container">

@@ -1,6 +1,7 @@
 """Phase 2 tests — event system timing and turn summary."""
 
 import pytest
+
 from conftest import run_jac
 
 

@@ -97,6 +97,7 @@ Stored in ProjectMemory → agent knows the codebase from turn 1
 30 messages (~60K tokens) → compacted to <20K tokens
 
 Priority order:
+
 1. Project summary (AST)
 2. Jac rules (build + client + server)
 3. Last 8 turns verbatim

@@ -89,6 +89,7 @@ def summarize(text: str) -> str by model(
 ## Interface/Implementation with LLM
 
 Declaration file:
+
 ```jac
 node Router {
     def classify(message: str) -> str by llm(method="Reason");
@@ -96,6 +97,7 @@ node Router {
 ```
 
 Implementation file:
+
 ```jac
 sem Router.classify = """Return exactly one label: BUILD, PLAN, or EXPLORE.""";
 ```

@@ -91,6 +91,7 @@ keys = [{"label": "7", "onClick": h7}, {"label": "8", "onClick": h8}];
 ```
 
 **Rule:** When rendering a list of elements with text content, either:
+
 1. Write each element explicitly with literal text (best for small fixed sets like calculator keys)
 2. Create a child component that receives data as props and renders the text via `str()`
 

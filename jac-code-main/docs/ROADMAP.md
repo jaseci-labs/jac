@@ -9,6 +9,7 @@
 ## Current State Assessment
 
 ### What's Solid (Phases 1-6 Complete)
+
 - 19 tools (filesystem, search, shell, web, jac-specific, AST analysis)
 - Self-correcting code writes (jac_check errors auto-fed back into ReAct loop)
 - Real-time tool output with timing and turn summaries
@@ -24,6 +25,7 @@
 - Clean code separation (.jac interfaces + .impl.jac implementations)
 
 ### What's Missing (Post Phase 6)
+
 - **Architecture bottleneck** — Router + BuildHandler burn 2 LLM calls classifying intent before any real work starts. Every other coding agent (OpenCode, Hermes, OpenClaw) uses one agent with all tools — the LLM naturally picks the right tools without classification
 - **Tool fragmentation** — ExploreHandler has 7 tools, PlanHandler 12, BuildHandler sub-agents 13-16 each. Misrouting means the agent literally doesn't have the tools it needs
 - **Rigid build pipeline** — `build_phase` state machine (init → client → server → integration) assumes linear app building. Breaks for bug fixes, refactors, test writing, single-file edits
@@ -90,6 +92,7 @@ LLM calls write_file_checked("app.jac", code)
 ```
 
 ### Success Criteria
+
 - Agent writes code → gets jac_check error → fixes it → clean. All within ONE user prompt.
 - No changes to byllm. Only changes: tool wrappers, handler tool lists, chat_history metadata.
 
@@ -108,6 +111,7 @@ LLM calls write_file_checked("app.jac", code)
 ```
 
 ### Success Criteria
+
 - Tool calls show result previews and timing in real-time
 - Turn summary line after each agent response
 - Event infrastructure works through both CLI and JacBuilder adapter
@@ -119,11 +123,13 @@ LLM calls write_file_checked("app.jac", code)
 **Goal**: Agent handles 30+ step tasks without hitting token limits or forgetting earlier decisions.
 
 Smart context compaction BEFORE passing to `respond()`:
+
 - Tiered priority: active_files + pending_errors → project_summary → important turns → recent verbatim
 - Deterministic compaction (no LLM call needed)
 - 20K token budget with 80% threshold
 
 ### Success Criteria
+
 - Agent completes 25-step tasks without losing context
 - Active files and errors ALWAYS in context
 
@@ -145,6 +151,7 @@ Root
 ```
 
 ### Success Criteria
+
 - Session 2 skips the "let me explore your codebase" phase
 - Memory stays compact (<500 tokens when summarized)
 
@@ -281,6 +288,7 @@ AFTER (Phase 5 — compiler-accurate structure):
 6. **Regression**: All Phase 1-4 tests still pass
 
 ### Success Criteria
+
 - Agent writes correct imports without trial-and-error
 - Agent knows graph topology (which nodes connect via which edges)
 - Agent understands .cl.jac components (state, props, hooks)
@@ -327,6 +335,7 @@ def close_session(session_id: str) -> dict;
 ```
 
 `chat()` handles everything internally:
+
 1. Initializes memory (AST scan if first turn)
 2. Sets sandbox root
 3. Registers event callback (if `on_event` provided)
@@ -338,6 +347,7 @@ def close_session(session_id: str) -> dict;
 9. Returns plain dict result
 
 ### Success Criteria
+
 - JacBuilder adapter reduced from ~470 lines to ~30 lines
 - Zero internal imports in external apps — only `jac_coder.api`
 - All existing functionality preserved (sessions, routing, building, memory, events)
@@ -516,6 +526,7 @@ can spawn_agent(task: str, mode: str = "worker") -> str {
 ```
 
 **Key design**: Two concerns are cleanly separated:
+
 1. **Capability scope** (worker/explorer) — controlled by code, determines WHAT the SubAgent CAN do
 2. **Domain specialization** (instruction string) — composed by MainAgent's thinking, determines WHAT the SubAgent SHOULD do
 
@@ -799,6 +810,7 @@ AFTER:
 ```
 
 ### Success Criteria
+
 - Zero pre-defined routing — MainAgent decides autonomously when to delegate
 - Capability-scoped SubAgents (worker/explorer) — not domain-scoped (client/server/integration)
 - `think` tool enables explicit reasoning — MainAgent plans approach and composes sharp instructions
@@ -823,6 +835,7 @@ AFTER:
 ### 8.1 — Retry & Fallback
 
 When an LLM API call fails:
+
 1. Retry with exponential backoff (3 attempts: 2s, 5s, 10s)
 2. If retry exhausts, try fallback model (configurable in `jaccoder.json`)
 3. If fallback fails, return error to user with context preserved
@@ -832,6 +845,7 @@ Pattern from Hermes: `fallback_model` config + shared retry logic.
 ### 8.2 — Session Persistence (CLI)
 
 Serialize session state to `.jac-memory/sessions/` on disk:
+
 - On each turn completion: write session JSON (chat_history, active_files, pending_errors)
 - On CLI start: offer to resume last session (`jac cli.jac` → "Resume session from 2 hours ago? [y/n]")
 - ProjectMemory persisted alongside sessions
@@ -841,6 +855,7 @@ Pattern from Hermes (SQLite) and OpenCode (persistent store).
 ### 8.3 — Live ProjectMemory Updates
 
 After every turn that modifies `.jac` or `.cl.jac` files:
+
 - Re-scan modified files via AST (incremental, not full project)
 - Update ProjectMemory fields (file_map, node_details, walker_details)
 - Keep memory fresh without full re-scan cost
@@ -850,6 +865,7 @@ Pattern from OpenCode: `afterTurn()` hook in context engine.
 ### 8.4 — Tool Result Guards
 
 Validate tool results before feeding back to LLM:
+
 - Truncate results exceeding token budget (existing, but improve thresholds)
 - Detect and flag potential prompt injection in tool outputs (web_fetch, bash_exec)
 - Guard against infinite output from bash commands (timeout + kill)
@@ -857,6 +873,7 @@ Validate tool results before feeding back to LLM:
 Pattern from OpenClaw: `session-tool-result-guard.ts`.
 
 ### Success Criteria
+
 - API failures don't crash the session — retry handles transient errors
 - CLI sessions survive process restart
 - ProjectMemory stays accurate as files change during the session
@@ -892,6 +909,7 @@ Phase 7 is a **breaking architectural change** — it replaces pre-defined routi
 ## What We Never Touch
 
 These stay as-is across all phases (extended, not replaced):
+
 - All tool implementations (filesystem, search, shell, web, jac-specific)
 - Permission engine structure
 - Config system structure
@@ -922,24 +940,29 @@ byllm's `by llm(tools=[...])` with native tool calling remains the execution eng
 ## Critical Corrections (Post-Review)
 
 ### 1. Own-the-Loop Approach Degraded Quality
+
 - Replacing byllm's ReAct with structured output (`NextAction` JSON) reduced code generation quality
 - Native tool calling via `by llm(tools=[...])` is superior for code generation
 - **Decision**: byllm owns the loop. Our value is the layers around it.
 
 ### 2. `jac_check` Does NOT Work on `.cl.jac` Files
+
 - Phase 1 checked tools detect file extension, skip check for `.cl.jac`
 - Track as known gap until `jac check` supports `.cl.jac`
 
 ### 3. `dict` Fields in `by llm()` Return Types Must Be Typed
+
 - Always use `dict[str, str]` — never bare `dict` — on any obj field returned by `by llm()`
 
 ### 4. Router Classification Was Unnecessary (Phase 7 Correction)
+
 - Analyzed OpenCode, Hermes, and OpenClaw — none classify intent before acting
 - Router + BuildHandler added 2 LLM calls of latency per turn with misclassification risk
 - Tool fragmentation across handlers meant misrouted requests couldn't be completed
 - **Decision**: Orchestrator-Worker pattern. MainAgent (node) handles simple tasks directly and spawns SubAgent walkers for complex work. No pre-defined routing.
 
 ### 5. Two Kinds of Scoping: Capability vs Domain
+
 - Domain-scoped agents ("client", "server", "integration") with fixed tool sets is just routing hidden behind a match statement — wrong approach
 - Capability-scoped agents (worker/explorer) control WHAT the SubAgent CAN do — following OpenCode/Claude Code pattern
 - Domain specialization comes from MainAgent's instruction string, composed after explicit `think` reasoning
@@ -969,6 +992,7 @@ byllm's `by llm(tools=[...])` with native tool calling remains the execution eng
 | Jac-specific tooling | ✗ | ✗ | ✗ | ✗ | ✓ (existing + Phase 5) |
 
 **Our unfair advantages**:
+
 1. **Compiler-level AST understanding** of Jac code — no other agent has this for any language
 2. **OSP-native Orchestrator-Worker pattern** — MainAgent (node) spawning SubAgent (walkers) is idiomatic Jac, not bolted-on subprocess delegation like every other agent
 3. **Think + instruct delegation** — MainAgent reasons explicitly (`think` tool), then composes sharp instruction strings for capability-scoped SubAgents. Clean separation: code controls capability (worker/explorer tools), LLM controls domain (instruction content). Same capability-scoping pattern as OpenCode/Claude Code, but with the explicit reasoning step that produces higher-quality delegation.
