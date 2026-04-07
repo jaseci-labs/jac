@@ -87,7 +87,151 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if isinstance(nd, uni.AtomUnit) {
         return self._codegen_expr(nd.value);
     }
+    # Lambda expressions: emit an anonymous LLVM function and return
+    # a function pointer to it.
+    if isinstance(nd, uni.LambdaExpr) {
+        return self._codegen_lambda(nd);
+    }
     return None;
+}
+
+"""Collect free variable names referenced in a lambda body that are not
+in the lambda's own parameter list. Walks the AST looking for Name nodes.
+"""
+impl NaIRGenPass._find_free_vars(body: object, param_names: list[str]) -> list[str] {
+    free: list[str] = [];
+    seen: set[str] = set(param_names);
+    stack: list = [body] if not isinstance(body, list) else list(body);
+    while stack {
+        cur = stack.pop();
+        if cur is None {
+            continue;
+        }
+        if isinstance(cur, uni.Name) {
+            vname = cur.value;
+            if vname not in seen and vname in self.local_vars {
+                seen.add(vname);
+                free.append(vname);
+            }
+            continue;
+        }
+        # Walk children via kid list
+        if cur?.kid and cur.kid {
+            for child in cur.kid {
+                stack.append(child);
+            }
+        }
+    }
+    return free;
+}
+
+"""Generate IR for a lambda expression.
+
+Emits an anonymous LLVM function from the lambda body and returns a
+pointer to it. If the lambda references variables from the enclosing
+scope (free variables), those are appended as extra hidden parameters
+to the anonymous function, and the call site injects them automatically
+via the lambda_captures side table.
+"""
+impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
+    # --- Resolve parameter types and return type from the signature ---
+    sig = nd.signature;
+    param_types: list[ir.Type] = [];
+    param_names: list[str] = [];
+    if sig is not None and sig.params {
+        for p in sig.params {
+            p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
+            p_type = self._resolve_jac_type(p.type_tag)
+                if p?.type_tag and p.type_tag
+                else ir.IntType(64);
+            param_types.append(p_type);
+            param_names.append(p_name);
+        }
+    }
+    ret_type = ir.IntType(64);  # default
+    if sig is not None and sig.return_type is not None {
+        ret_type = self._resolve_jac_type(sig.return_type);
+    }
+    # --- Detect captured (free) variables from the enclosing scope ---
+    captures: list[tuple] = [];  # list of (name, ir.Value, ir.Type)
+    free_var_names = self._find_free_vars(nd.body, param_names);
+    for fv_name in free_var_names {
+        if fv_name in self.local_vars {
+            alloca = self.local_vars[fv_name];
+            val = self.builder.load(alloca, name=f"cap.{fv_name}");
+            captures.append((fv_name, val, val.type));
+        }
+    }
+    # Build the full parameter list: explicit params + captured vars
+    all_param_types = list(param_types);
+    all_param_names = list(param_names);
+    for (cap_name, _cap_val, cap_type) in captures {
+        all_param_types.append(cap_type);
+        all_param_names.append(cap_name);
+    }
+    # --- Create the anonymous function ---
+    self._str_count += 1;
+    anon_name = f"__jac_lambda_{self._str_count}";
+    fn_type = ir.FunctionType(ret_type, all_param_types);
+    anon_fn = ir.Function(self.llvm_module, fn_type, name=anon_name);
+    anon_fn.linkage = "private";
+    for (i, arg) in enumerate(anon_fn.args) {
+        if i < len(all_param_names) {
+            arg.name = all_param_names[i];
+        }
+    }
+    # --- Emit the lambda body ---
+    saved_builder = self.builder;
+    saved_locals = self.local_vars;
+    saved_func_symtab = dict(self.func_symtab);
+    entry_bb = anon_fn.append_basic_block("entry");
+    self.builder = ir.IRBuilder(entry_bb);
+    self.local_vars = {};
+    # Allocate ALL parameters (explicit + captured) as local variables
+    for (i, arg) in enumerate(anon_fn.args) {
+        alloca = self._entry_alloca(arg.type, all_param_names[i]);
+        self.builder.store(arg, alloca);
+        self.local_vars[all_param_names[i]] = alloca;
+    }
+    # Codegen the body
+    body = nd.body;
+    if isinstance(body, list) {
+        self._codegen_body(body);
+    } else {
+        val = self._codegen_expr(body);
+        if val is not None {
+            self.builder.ret(self._coerce_type(val, ret_type));
+        } else {
+            self.builder.ret(ir.Constant(ret_type, 0));
+        }
+    }
+    # Ensure every basic block has a terminator
+    for bb in anon_fn.basic_blocks {
+        if not bb.is_terminated {
+            term_builder = ir.IRBuilder(bb);
+            if ret_type == ir.VoidType() {
+                term_builder.ret_void();
+            } else {
+                term_builder.ret(ir.Constant(ret_type, 0));
+            }
+        }
+    }
+    # --- Restore parent context ---
+    self.builder = saved_builder;
+    self.local_vars = saved_locals;
+    self.func_symtab = saved_func_symtab;
+    # --- Record pending captures for the assignment to associate with a var name ---
+    if captures {
+        capture_info: list[tuple] = [];
+        for (cap_name, _cap_val, _cap_type) in captures {
+            # Store the alloca (not the loaded value) so it can be loaded at call time
+            capture_info.append((cap_name, self.local_vars[cap_name]));
+        }
+        self._pending_lambda_captures = capture_info;
+    } else {
+        self._pending_lambda_captures = None;
+    }
+    return anon_fn;
 }
 
 """Load a variable or return a function reference."""

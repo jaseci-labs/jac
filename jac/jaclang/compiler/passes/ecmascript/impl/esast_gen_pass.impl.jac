@@ -1298,7 +1298,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = [args_obj] if props else args;
     if (
-        isinstance(callee_type, jtypes.ClassType) and isinstance(callee, es.Expression)
+        isinstance(callee_type, jtypes.ClassType)
+        and callee_type.is_instantiable()
+        and isinstance(callee, es.Expression)
     ) {
         nd.gen.es_ast = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd

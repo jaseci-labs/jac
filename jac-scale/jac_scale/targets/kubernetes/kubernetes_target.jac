@@ -203,6 +203,7 @@ obj KubernetesTarget(DeploymentTarget) {
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
+            commands.append('pip install -e ./jac-mcp');
             commands.append('cd ..');
         } else {
             packages = config.plugin_versions or {};
@@ -210,6 +211,7 @@ obj KubernetesTarget(DeploymentTarget) {
             scale_v = packages.get('jac_scale', 'latest');
             client_v = packages.get('jac_client', 'latest');
             byllm_v = packages.get('jac_byllm', 'latest');
+            mcp_v = packages.get('jac_mcp', 'latest');
             if jaclang_v == 'latest' {
                 commands.append('pip install jaclang');
             } else {
@@ -230,6 +232,13 @@ obj KubernetesTarget(DeploymentTarget) {
                     commands.append('pip install byllm');
                 } else {
                     commands.append(f'pip install byllm=={byllm_v}');
+                }
+            }
+            if mcp_v and mcp_v != 'none' {
+                if mcp_v == 'latest' {
+                    commands.append('pip install jac-mcp');
+                } else {
+                    commands.append(f'pip install jac-mcp=={mcp_v}');
                 }
             }
         }

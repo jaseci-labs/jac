@@ -59,12 +59,12 @@ cl {
         return <form>
             <input
                 value={name}
-                onChange={lambda e: any -> None { name = e.target.value; }}
+                onChange={lambda e: ChangeEvent { name = e.target.value; }}
                 placeholder="Name"
             />
             <input
                 value={email}
-                onChange={lambda e: any -> None { email = e.target.value; }}
+                onChange={lambda e: ChangeEvent { email = e.target.value; }}
                 placeholder="Email"
             />
             <button
@@ -102,7 +102,7 @@ cl {
         return <div>
             <input
                 value={input_text}
-                onChange={lambda e: any -> None { input_text = e.target.value; }}
+                onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
             />
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
 
@@ -179,7 +179,7 @@ cl {
         return <div>
             <input
                 value={query}
-                onChange={lambda e: any -> None { query = e.target.value; }}
+                onChange={lambda e: ChangeEvent { query = e.target.value; }}
             />
             <ul>
                 {[<li>{r}</li> for r in results]}
@@ -217,7 +217,7 @@ cl {
 
 ### Manual useEffect
 
-You can also use `useEffect` manually by importing from React:
+The `can with entry/exit` syntax above is the idiomatic approach and should be preferred. However, you can also use `useEffect` manually by importing from React -- this is useful for complex patterns involving `useRef` or `useCallback`:
 
 ```jac
 cl {
@@ -407,7 +407,7 @@ cl {
         return <form>
             <input
                 value={form_data["name"]}
-                onChange={lambda e: any -> None { update_field("name", e.target.value); }}
+                onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
         </form>;
@@ -423,9 +423,10 @@ cl {
 |---------|------------|------------------|
 | State variable | `has count: int = 0` | `useState(0)` |
 | Update state | `count = count + 1` | `setCount(count + 1)` |
-| Side effects | `useEffect(fn, deps)` | Same |
+| Effect on mount | `can with entry { ... }` | `useEffect(fn, [])` |
+| Effect with deps | `can with [dep] entry { ... }` | `useEffect(fn, [dep])` |
+| Cleanup on unmount | `can with exit { ... }` | `useEffect(() => cleanup, [])` |
 | Global state | `useContext(Ctx)` | Same |
-| Dependencies | `[var1, var2]` | Same |
 
 ---
 

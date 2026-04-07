@@ -2564,10 +2564,6 @@ test "cross module glob init: pushed values are readable" {
     assert get_second() == 99 , f"Expected 99, got {get_second()}";
 }
 
-# ─── FIX 1: Transitive native imports linked via DFS ─────────────────────────
-# Before the fix, the linker only walked direct imports. A → B → C would
-# compile B but leave C's symbols unresolved at JIT link time.
-# jac-bun/issues/transitive-native-import-not-linked/
 test "transitive import: compiles without errors" {
     # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
     # All three modules must be linked for compilation to succeed.
@@ -2598,10 +2594,6 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
-# ─── FIX 4: del list[i] shrinks the list ─────────────────────────────────────
-# Before the fix, `del container.field_list[i]` was silently dropped from
-# the IR — the element was never removed and the list length never changed.
-# jac-bun/issues/del-struct-field-list-no-shrink/
 test "del list item: length decrements after delete" {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     (eng, _) = compile_native("fix_del_list.na.jac");
@@ -2632,10 +2624,6 @@ test "del list item: deleting only element yields empty list" {
     assert result == 0 , f"Expected length 0 after del, got {result}";
 }
 
-# ─── FIX 3a: Imported archetype methods registered in method_funcs ────────────
-# Before the fix, _forward_declare_method was never called for methods on
-# imported archetypes, so calls like `c.increment()` were silently dropped.
-# jac-bun/issues/imported-archetype-methods-not-in-method-funcs/
 test "imported archetype method: single increment returns 1" {
     # Counter.increment() on an imported struct; expect 1 after one call.
     (eng, _) = compile_native("fix_method_entry.na.jac");
@@ -2677,10 +2665,6 @@ test "imported archetype method: independent instances do not share state" {
     assert result == 215 , f"Expected 215 (a=2, b=15), got {result}";
 }
 
-# ─── FIX 3b: Cross-module fn arg where param type is from a third module ──────
-# When calling an imported function whose parameter type is itself defined in
-# a third module, the compiler emitted i64(0) instead of the correct struct*.
-# jac-bun/issues/cross-module-fn-arg-third-module-struct-as-i64/
 test "third module struct: compiles without type errors" {
     # fix_third_entry imports from fix_third_a and fix_third_b.
     # fix_third_b's read_value takes a DataA from fix_third_a — third-module struct.
@@ -2710,11 +2694,6 @@ test "third module struct: both fields correct after cross-module call" {
     assert result == 80 , f"Expected 80, got {result}";
 }
 
-# ─── FIX 5: var_type_node populated for imported globals (subscript access) ───
-# Before the fix, _register_imported_globals did not store the type-annotation
-# AST node in var_type_node, so _resolve_ptr_elem_cast_type emitted i8* null
-# when accessing elements of cross-module list globals inline (ITEMS[i].field).
-# jac-bun/issues/cross-module-list-subscript-multilevel-field-access/
 test "cross-module subscript: compiles without errors" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "fix_subscript_entry.na.jac")));
@@ -2750,4 +2729,254 @@ test "cross-module subscript: inline access to second item returns correct value
     f = get_func(eng, "test_subscript_second_item", ctypes.c_int64);
     result = f();
     assert result == 99 , f"Expected 99, got {result}";
+}
+
+test "transitive glob init: compiles without errors" {
+    # fix_transitive_glob_entry → fix_transitive_glob_mid → fix_transitive_glob_deep
+    # deep has a glob list; its init must be called even though entry only imports mid.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_glob_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "transitive glob init: glob list in deep module is not null (no segfault)" {
+    # Before the fix this would SIGSEGV because _TABLE in deep was never initialised.
+    (eng, _) = compile_native("fix_transitive_glob_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_transitive_glob_len", ctypes.c_int64);
+    result = run_fn();
+    assert result == 0 , f"Expected initial list length 0, got {result}";
+}
+
+test "transitive glob init: push through mid updates deep glob list" {
+    # Verifies the glob list in the transitive module is live and mutable.
+    (eng, _) = compile_native("fix_transitive_glob_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    push_fn = get_func(eng, "run_transitive_glob_push_and_len", ctypes.c_int64);
+    result = push_fn();
+    assert result == 1 , f"Expected list length 1 after push, got {result}";
+}
+
+# ─── FIX: Transitive C-library dependency loading ────────────────────────────
+# When module A imports module B which in turn imports a .so (e.g. libm), the
+# .so was only loaded during B's compilation. When A linked B's bitcode, MCJIT
+# could not resolve the extern symbols from B's clib import, causing a segfault.
+# Fix: _compile_and_link_native_imports now propagates dep._clib_paths back to
+# the main module and calls llvm.load_library_permanently for each entry.
+test "transitive clib: compiles without errors when dep imports a .so" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "transitive clib: _clib_paths of dep module propagated to entry module" {
+    # The entry's _clib_paths must include libm even though only the lib module
+    # directly imports it.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    clib_paths = ir.gen._clib_paths;
+    assert clib_paths , "_clib_paths not set on entry module IR";
+    assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
+}
+
+test "transitive clib: JIT call through dep-module extern returns correct value" {
+    # wrapped_sqrt(9.0) must return 3.0 — proves libm was actually JIT-loaded.
+    # Before the fix this would segfault because sqrt was unresolved at JIT time.
+    (eng, _) = compile_native("fix_clib_transitive_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_transitive_clib_sqrt", ctypes.c_double);
+    result = f();
+    assert abs(result - 3.0) < 1e-9 , f"Expected sqrt(9.0)=3.0, got {result}";
+}
+
+# ─── FIX: Duplicate C-symbol declaration (DuplicatedNameError) ───────────────
+# When user code imported a C function the compiler also uses internally
+# (strlen, memcpy, calloc, free …), llvmlite raised DuplicatedNameError because
+# two ir.Function objects with the same name were created in the same module.
+# Fix: _get_or_declare_extern now scans global_values for an existing declaration
+# before calling ir.Function(); _emit_rc_helpers pre-declares all internal libc
+# symbols so user imports always find an existing entry.
+test "dup clib: importing compiler-internal symbols compiles without DuplicatedNameError" {
+    # Imports strlen, memcpy, calloc, free — all pre-declared by the compiler.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_dup_clib.na.jac")));
+    assert not prog.errors_had , f"Errors (expected none, DuplicatedNameError before fix): {prog.errors_had}";
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "dup clib: user-declared strlen returns correct length for 'hello'" {
+    # Verifies the reused declaration is the real strlen, not a stub.
+    (eng, _) = compile_native("fix_dup_clib.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_strlen_hello", ctypes.c_int64);
+    result = f();
+    assert result == 5 , f"Expected strlen('hello')=5, got {result}";
+}
+
+test "dup clib: user-declared strlen returns 0 for empty string" {
+    (eng, _) = compile_native("fix_dup_clib.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_strlen_empty", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected strlen('')=0, got {result}";
+}
+
+# ─── FIX: Argument type coercion at C call boundaries ────────────────────────
+# C functions declared with 'int' params could not receive str (i8*) args and
+# vice versa. Fix: _coerce_type now has a generic PointerType→IntType fallback
+# (ptrtoint) and IntType→PointerType fallback (inttoptr).
+test "ptr-to-int coerce: compiles without IR type mismatch" {
+    # strlen declared with int param, called with str — triggers ptrtoint.
+    # Before the fix this crashed at IR verification time.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_ptr_int_coerce.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "ptr-to-int coerce: strlen(int-param) called with str returns correct length" {
+    # ptrtoint converts i8* → i64; strlen interprets it as char* and counts bytes.
+    (eng, _) = compile_native("fix_ptr_int_coerce.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_ptrtoint_strlen", ctypes.c_int64);
+    result = f();
+    assert result == 5 , f"Expected ptrtoint strlen('hello')=5, got {result}";
+}
+
+test "ptr-to-int coerce: strlen(int-param) returns 0 for empty string" {
+    (eng, _) = compile_native("fix_ptr_int_coerce.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_ptrtoint_strlen_empty", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected ptrtoint strlen('')=0, got {result}";
+}
+
+test "int-to-ptr coerce: calloc result (int) assigned to str and measured by strlen" {
+    # calloc declared as returning int; result stored in str local — inttoptr.
+    # calloc zeroes memory so strlen of the buffer must be 0.
+    (eng, _) = compile_native("fix_ptr_int_coerce.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "test_inttoptr_calloc", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected strlen of zeroed calloc buffer=0, got {result}";
+}
+
+# ─── FIX: IEEE 754 float != returns wrong result for NaN ─────────────────────
+# Before the fix, float != used fcmp_ordered, which returns false when either
+# operand is NaN — so 'NaN != NaN' was 0 (false), violating IEEE 754.
+# Fix: _emit_comparison now routes != through fcmp_unordered so NaN != NaN
+# returns 1 (true), while all other float comparisons keep ordered semantics.
+test "float NaN: NaN != NaN must be true (1)" {
+    # Core IEEE 754 requirement violated before the fix.
+    (eng, _) = compile_native("fix_float_nan.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "nan_neq_self", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected NaN != NaN = 1, got {result} (fcmp_ordered bug?)";
+}
+
+test "float NaN: NaN == NaN must be false (0)" {
+    # Ordered == returns false for NaN operands — this should still hold.
+    (eng, _) = compile_native("fix_float_nan.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "nan_eq_self", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected NaN == NaN = 0, got {result}";
+}
+
+test "float NaN: 1.0 != 2.0 must still be true (1) after fix" {
+    # The fix must not break ordered != for normal finite values.
+    (eng, _) = compile_native("fix_float_nan.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "finite_ne_distinct", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected 1.0 != 2.0 = 1, got {result}";
+}
+
+test "float NaN: 1.0 != 1.0 must be false (0) after fix" {
+    (eng, _) = compile_native("fix_float_nan.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "finite_ne_self", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected 1.0 != 1.0 = 0, got {result}";
+}
+
+test "float NaN: 3.14 == 3.14 must be true (1) after fix" {
+    (eng, _) = compile_native("fix_float_nan.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "finite_eq_self", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected 3.14 == 3.14 = 1, got {result}";
+}
+
+# --- Lambda Support (Phase 1: simple, no captures) ---
+test "lambda simple add" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "apply_int_op", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(3, 4) == 7 , f"Expected 7, got {f(3, 4)}";
+    assert f(10, 20) == 30 , f"Expected 30, got {f(10, 20)}";
+}
+
+test "lambda negate single param" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "negate_via_lambda", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == -5 , f"Expected -5, got {f(5)}";
+    assert f(0) == 0 , f"Expected 0, got {f(0)}";
+    assert f(-3) == 3 , f"Expected 3, got {f(-3)}";
+}
+
+test "lambda no params" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "get_forty_two", ctypes.c_int64);
+    assert f() == 42 , f"Expected 42, got {f()}";
+}
+
+
+# --- Lambda Closures (Phase 2: capturing outer scope) ---
+test "lambda closure captures local" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "add_offset", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(10, 5) == 15 , f"Expected 15, got {f(10, 5)}";
+    assert f(0, 42) == 42 , f"Expected 42, got {f(0, 42)}";
+    assert f(7, -3) == 4 , f"Expected 4, got {f(7, -3)}";
+}
+
+test "lambda closure captures multiple vars" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(
+        eng,
+        "weighted_sum",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    assert f(3, 4, 2, 5) == 26 , f"Expected 26, got {f(3, 4, 2, 5)}";
+    assert f(1, 1, 10, 20) == 30 , f"Expected 30, got {f(1, 1, 10, 20)}";
+}
+
+test "lambda closure as scaler" {
+    (eng, _) = compile_native("lambdas.na.jac");
+    f = get_func(eng, "make_scaler", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(5, 3) == 15 , f"Expected 15, got {f(5, 3)}";
+    assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
+    assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
 }

@@ -32,6 +32,26 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
 
+    # Pre-declare all libc functions that the compiler uses internally.
+    # This must happen BEFORE _process_clib_imports so that user imports
+    # of the same names (e.g. `import from "libc" { def memcpy(...); }`)
+    # find the correctly-typed declarations in extern_funcs and reuse them
+    # instead of creating conflicting declarations with user types.
+    self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("strlen", i64, [i8_ptr]);
+    self._get_or_declare_extern("strcmp", i32, [i8_ptr, i8_ptr]);
+    self._get_or_declare_extern("strncmp", i32, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("memcmp", i32, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
+    self._get_or_declare_extern("fopen", i8_ptr, [i8_ptr, i8_ptr]);
+    self._get_or_declare_extern("fclose", i32, [i8_ptr]);
+    self._get_or_declare_extern("fread", i64, [i8_ptr, i64, i64, i8_ptr]);
+    self._get_or_declare_extern("fwrite", i64, [i8_ptr, i64, i64, i8_ptr]);
+    self._get_or_declare_extern("fgets", i8_ptr, [i8_ptr, i32, i8_ptr]);
+    self._get_or_declare_extern("fflush", i32, [i8_ptr]);
+    self._get_or_declare_extern("ftell", i64, [i8_ptr]);
+    self._get_or_declare_extern("fseek", i32, [i8_ptr, i64, i32]);
+
     # --- Bump allocator arena globals ---
     # Uses chained arenas: when one fills up, a new one is malloc'd.
     # Arena size chosen to balance page-fault cost vs fragmentation.

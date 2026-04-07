@@ -18,11 +18,11 @@ In Jac full-stack apps, the compiler handles the client-server boundary for you.
 
 1. **Backend** = Functions or walkers that process data and return results
 2. **Frontend** = Components in `cl { }` blocks
-3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root spawn Walker()`)
+3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root() spawn Walker()`)
 
 ```mermaid
 graph LR
-    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root spawn" --> Backend["Functions or<br/>Walker API"]
+    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root() spawn" --> Backend["Functions or<br/>Walker API"]
 ```
 
 ### Two Backend Approaches
@@ -34,7 +34,7 @@ Jac offers two ways to create backend endpoints:
 | **Functions** | `def:pub get_tasks -> list[Task] { ... }` | Simple CRUD, quick prototyping |
 | **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
 
-Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
+Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root() spawn Walker()`.
 
 Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data isolation. See the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md) for both approaches side by side.
 
@@ -73,7 +73,7 @@ walker:pub add_task {
             title=self.title,
             created_at=datetime.now().isoformat()
         );
-        root ++> new_task;
+        root() ++> new_task;
         report new_task;  # Report the typed Task node
     }
 }
@@ -111,9 +111,9 @@ walker:pub delete_task {
 
 ## Calling Walkers from Frontend
 
-### Basic Pattern with `root spawn`
+### Basic Pattern with `root() spawn`
 
-Use `root spawn walker_name()` to call walkers from client code:
+Use `root() spawn walker_name()` to call walkers from client code:
 
 ```jac
 # Import walkers from your main module
@@ -134,7 +134,7 @@ cl {
             loading = True;
             error = "";
             try {
-                result = root spawn get_tasks();
+                result = root() spawn get_tasks();
                 if result.reports and result.reports.length > 0 {
                     tasks = result.reports[0];
                 }
@@ -159,7 +159,7 @@ cl {
 }
 ```
 
-### Understanding `root spawn` Results
+### Understanding `root() spawn` Results
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -186,7 +186,7 @@ cl {
 
         async def load_tasks() -> None {
             loading = True;
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports and result.reports.length > 0 {
                 tasks = result.reports[0];
             }
@@ -196,7 +196,7 @@ cl {
         # Add new task
         async def handle_add() -> None {
             if new_title.trim() {
-                result = root spawn add_task(title=new_title.trim());
+                result = root() spawn add_task(title=new_title.trim());
                 if result.reports and result.reports.length > 0 {
                     tasks = tasks + [result.reports[0]];
                 }
@@ -206,7 +206,7 @@ cl {
 
         # Toggle task completion
         async def handle_toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
+            result = root() spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
                 tasks = [updated if jid(t) == task_id else t for t in tasks];
@@ -215,7 +215,7 @@ cl {
 
         # Delete task
         async def handle_delete(task_id: str) -> None {
-            result = root spawn delete_task(task_id=task_id);
+            result = root() spawn delete_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 tasks = [t for t in tasks if jid(t) != task_id];
             }
@@ -225,8 +225,8 @@ cl {
             <div className="add-task">
                 <input
                     value={new_title}
-                    onChange={lambda e: any -> None { new_title = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { new_title = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { handle_add(); }
                     }}
                     placeholder="New task..."
@@ -280,7 +280,7 @@ cl {
             error_msg = "";
 
             try {
-                result = root spawn submit_data(payload=data);
+                result = root() spawn submit_data(payload=data);
                 if result.reports and result.reports.length > 0 {
                     response = result.reports[0];
                     if not response["success"] {
@@ -323,7 +323,7 @@ cl {
         async def fetch_data() -> None {
             loading = True;
             try {
-                result = root spawn get_data();
+                result = root() spawn get_data();
                 if result.reports and result.reports.length > 0 {
                     data = result.reports[0];
                 }
@@ -371,7 +371,7 @@ cl {
         has loading: bool = True;
 
         async def fetch_data() -> None {
-            result = root spawn get_live_data();
+            result = root() spawn get_live_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -422,7 +422,7 @@ walker:pub add_task {
 
     can create with Root entry {
         task = Task(title=self.title);
-        root ++> task;
+        root() ++> task;
         report task;
     }
 }
@@ -450,7 +450,7 @@ cl {
 
         # Load tasks on mount
         async can with entry {
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports {
                 tasks = result.reports;
             }
@@ -459,7 +459,7 @@ cl {
 
         async def add() -> None {
             if input_text.trim() {
-                result = root spawn add_task(title=input_text.trim());
+                result = root() spawn add_task(title=input_text.trim());
                 if result.reports and result.reports.length > 0 {
                     tasks = tasks + [result.reports[0]];
                 }
@@ -468,7 +468,7 @@ cl {
         }
 
         async def toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
+            result = root() spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
                 tasks = [updated if jid(t) == task_id else t for t in tasks];
@@ -481,8 +481,8 @@ cl {
             <div className="input-row">
                 <input
                     value={input_text}
-                    onChange={lambda e: any -> None { input_text = e.target.value; }}
-                    onKeyDown={lambda e: any -> None {
+                    onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+                    onKeyDown={lambda e: KeyboardEvent {
                         if e.key == "Enter" { add(); }
                     }}
                     placeholder="Add a task..."
@@ -518,7 +518,7 @@ cl {
 | Concept | Usage |
 |---------|-------|
 | Import walkers | `sv import from ...main { walker_name }` |
-| Call walker | `result = root spawn walker_name(args)` |
+| Call walker | `result = root() spawn walker_name(args)` |
 | Get results | `result.reports[0]` |
 | Node spawn | `node_id spawn walker_name(args)` |
 | Error handling | `try { ... } except Exception as e { ... }` |

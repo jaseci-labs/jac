@@ -65,6 +65,17 @@ jac start app.jac --port 8000 --profile prod
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
 
+### Server Configuration
+
+```toml
+[plugins.scale.server]
+port = 8000
+host = "0.0.0.0"
+docs_enabled = true   # Enable /docs, /redoc, /openapi.json (default: true)
+```
+
+Set `docs_enabled = false` to disable Swagger UI, ReDoc, and the OpenAPI JSON endpoint in production.
+
 ### CORS Configuration
 
 ```toml
