@@ -127,7 +127,7 @@ impl _update_npm_deps(config: Any, npm_deps: dict) -> None {
 }
 
 """Patch a specific TOML section with key-value pairs. Creates the section if missing."""
-def _patch_toml_section(toml_path: Path, section_marker: str, deps: dict) -> None {
+def _patch_toml_section(toml_path: Path, section_marker: str, deps: dict) {
     with open(toml_path, "r") as f {
         content = f.read();
     }
