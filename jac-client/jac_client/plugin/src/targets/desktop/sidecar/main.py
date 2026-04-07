@@ -85,8 +85,10 @@ def _register_frozen_plugins(plugin_manager):
             if not plugin_manager.is_registered(cls):
                 plugin_manager.register(cls, name=name)
                 sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
-        except ImportError:
-            sys.stderr.write(f"[sidecar] {name} not bundled\n")
+        except ImportError as e:
+            import traceback
+            sys.stderr.write(f"[sidecar] {name} not bundled: {e}\n")
+            traceback.print_exc(file=sys.stderr)
         except Exception as e:
             import traceback
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
