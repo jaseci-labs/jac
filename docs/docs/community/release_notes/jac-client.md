@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.12 (Unreleased)
 
-- **Fix: Proper Python Package Structure for PyInstaller**: Added __init__.py and __init__.jac files throughout jac_client to enable collect_all() bundling and fix frozen sidecar import failures.
+- **Fix: Proper Python Package Structure for PyInstaller**: Added **init**.py and **init**.jac files throughout jac_client to enable collect_all() bundling and fix frozen sidecar import failures.
 
 ## jac-client 0.3.11 (Latest Release)
 
