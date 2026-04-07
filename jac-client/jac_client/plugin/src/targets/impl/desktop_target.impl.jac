@@ -1837,9 +1837,13 @@ impl DesktopTarget.build(
                 console.print(f"  Plugins config: {plugins_config}", style="muted");
             }
         } except Exception as config_err {
-            console.warning(f"  Could not load plugins config: {config_err}, using defaults");
+            console.warning(
+                f"  Could not load plugins config: {config_err}, using defaults"
+            );
         }
-        sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform, plugins_config);
+        sidecar_path = _bundle_sidecar(
+            entry_file, project_dir, tauri_dir, platform, plugins_config
+        );
         if sidecar_path and sidecar_path.exists() {
             console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
             sidecar_bundled = True;
@@ -2479,7 +2483,12 @@ def _bundle_sidecar(
 
     if use_pyinstaller {
         result = _bundle_sidecar_pyinstaller(
-            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config
+            entry_file,
+            project_dir,
+            tauri_dir,
+            binaries_dir,
+            is_windows,
+            plugins_config
         );
         if result {
             return result;
@@ -2561,7 +2570,10 @@ if __name__ == "__main__":
             }
 
             if dep_count > 0 {
-                console.print(f"  Installing {dep_count} Python dependencies from jac.toml...", style="muted");
+                console.print(
+                    f"  Installing {dep_count} Python dependencies from jac.toml...",
+                    style="muted"
+                );
 
                 # Install each dependency
                 for (name, version) in python_deps.items() {
@@ -2587,7 +2599,9 @@ if __name__ == "__main__":
                         if result.returncode == 0 {
                             console.print(f"    ✔ {dep_spec}", style="success");
                         } else {
-                            console.warning(f"    ✖ Failed to install {dep_spec}: {result.stderr.strip()}");
+                            console.warning(
+                                f"    ✖ Failed to install {dep_spec}: {result.stderr.strip()}"
+                            );
                         }
                     } except Exception as e {
                         console.warning(f"    ✖ Failed to install {dep_spec}: {e}");
@@ -2601,7 +2615,9 @@ if __name__ == "__main__":
 
     # Create PyInstaller spec file
     spec_path = tauri_dir / "jac-sidecar.spec";
-    spec_content = _generate_pyinstaller_spec(entry_script, project_dir, binary_name, plugins_config);
+    spec_content = _generate_pyinstaller_spec(
+        entry_script, project_dir, binary_name, plugins_config
+    );
     with open(spec_path, "w") as f {
         f.write(spec_content);
     }
@@ -2690,16 +2706,14 @@ if __name__ == "__main__":
 
 """Generate PyInstaller spec file for sidecar bundling."""
 def _generate_pyinstaller_spec(
-    entry_script: Path, project_dir: Path, binary_name: str,
+    entry_script: Path,
+    project_dir: Path,
+    binary_name: str,
     plugins_config: dict | None = None
 ) -> str {
     # Default plugins config - all enabled
     if plugins_config is None {
-        plugins_config = {
-            'jac_scale': True,
-            'byllm': True,
-            'jac_coder': True
-        };
+        plugins_config = {'jac_scale': True, 'byllm': True, 'jac_coder': True};
     }
 
     # Convert plugins config to Python code string for the spec file

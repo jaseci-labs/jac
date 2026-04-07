@@ -100,6 +100,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
             print(*processed_args, **kwargs);
         } except (BrokenPipeError, OSError) {
             return;  # Silently ignore if pipe is broken
+
         }
     } else {
         # Plain print - user data is never modified
@@ -107,6 +108,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
             print(*args, **kwargs);
         } except (BrokenPipeError, OSError) {
             return;  # Silently ignore if pipe is broken
+
         }
     }
     # Flush for piped/subprocess output

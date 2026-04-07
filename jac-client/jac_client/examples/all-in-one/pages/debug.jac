@@ -50,7 +50,7 @@ cl {
         }
 
         # Test ping via walker spawn
-        async def testWalkerPing -> None {
+        async def testWalkerPing {
             loading = True;
             pingResult = "";
             pingError = "";
@@ -64,7 +64,7 @@ cl {
         }
 
         # Test direct fetch to API
-        async def testDirectFetch -> None {
+        async def testDirectFetch {
             loading = True;
             fetchResult = "";
             fetchError = "";
@@ -86,7 +86,7 @@ cl {
         }
 
         # Test fetch to root
-        async def testRootFetch -> None {
+        async def testRootFetch {
             loading = True;
             fetchResult = "";
             fetchError = "";
@@ -256,7 +256,7 @@ cl {
                         Tests `root spawn ping_server()` - this is how your app calls the backend.
                     </p>
                     <button
-                        onClick={lambda -> None { testWalkerPing();}}
+                        onClick={lambda { testWalkerPing();}}
                         style={{
                             "padding": "10px 20px",
                             "backgroundColor": "#3b82f6",
@@ -328,7 +328,7 @@ cl {
                         }}
                     >
                         <button
-                            onClick={lambda -> None { testDirectFetch();}}
+                            onClick={lambda { testDirectFetch();}}
                             style={{
                                 "padding": "10px 20px",
                                 "backgroundColor": "#8b5cf6",
@@ -341,7 +341,7 @@ cl {
                             Fetch /functions
                         </button>
                         <button
-                            onClick={lambda -> None { testRootFetch();}}
+                            onClick={lambda { testRootFetch();}}
                             style={{
                                 "padding": "10px 20px",
                                 "backgroundColor": "#6366f1",

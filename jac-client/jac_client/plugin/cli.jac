@@ -52,6 +52,7 @@ with entry {
             choices=["windows", "macos", "linux", "all"],
             short="p"  # Use -p for platform
         ),
+
     ],
     examples=[
         ("jac build", "Build web target (default)"),
