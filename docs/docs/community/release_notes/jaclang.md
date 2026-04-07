@@ -10,6 +10,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native: `jac-gdb` Debugger Support**: Added `jac-gdb`, a GDB-based debugger integration for native Jac programs. The LLVM module ID is now set from the source file name so GDB can locate source files, and optional DWARF debug metadata (function locations, compile-unit info) is emitted when `JAC_NATIVE_DEBUG=1` is set.
 - **Fix: ES Codegen `new` Expression for `Any`-Typed Callees**: Calling a variable typed as `Any` no longer emits `new handler(payload)` in the generated JavaScript.
 - **Fix: Python-Compatible Scoping for Assignments in Non-Scoping Blocks**: Unannotated assignments inside `try`/`except`/`finally`, `if`/`else`, `for`/`while`, and `match` blocks now bind in the nearest enclosing Python scope instead of creating a shadow symbol in the block's faux scope. This eliminates spurious `W2003` "defined but never used" warnings when the same name is assigned across sibling branches (e.g., `category` in `try { ... } except { ... }`), and also fully resolves the former "string slice loses type" type-checker root cause: `while chomp.startswith('.') { chomp = chomp[1:]; ... }` no longer degrades `str` to `Unknown` because the re-assignment updates the single outer symbol instead of forking a branch-local one. Mirrors the existing walrus (`:=`) handling and matches Python semantics exactly.
+- **Fix: `by postinit` Symbol Resolution**: Fields declared with `by postinit` no longer show a false W2001 ("'postinit' may be undefined") warning and go-to-definition now works correctly on them.
 
 ## jaclang 0.13.5 (Latest Release)
 
@@ -35,7 +36,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - 1 small refactor/change.
 - **Cleanup: Remove Outdated `__specs__` from littleX Examples**: Removed deprecated `obj __specs__ { static has auth: bool = False; }` blocks from `load_user_profiles` walker in both `littleX.jac` and `littleX_single.jac`.
 - **ES Codegen: `jid()` Moved to Client Runtime**: `jid()` is now a proper runtime function (`_jac.builtin.jid()`) instead of an inline property access (`x._jac_id`). This provides clear, actionable error messages when called on `null` (e.g. server returned an error) or non-node objects, with stack traces pointing to the `.jac` source line. The `assert_no_jac_keywords` test was also improved to strip string literals before scanning, preventing false positives from English words in error messages.
-- **Fix: `by postinit` Symbol Resolution**: Fields declared with `by postinit` no longer show a false W2001 ("'postinit' may be undefined") warning and go-to-definition now works correctly on them.
 
 ## jaclang 0.13.3
 
