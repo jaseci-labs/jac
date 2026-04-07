@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.6 (Unreleased)
 
+- **Type Checker: Improved Narrowing for AND/OR and Ternary Expressions**: Type narrowing now works correctly in nested ternary expressions, AND/OR chains, and `isinstance` on unknown-typed variables.
 - **Native: Bug Fixes and Stability Improvements**: Fixed several issues in the `jac-native` compilation pipeline, including silent failures when type-checker errors occur during `.na.jac` compilation, incorrect ordering of default/non-default `has` attributes in native structs, and transitive C-library import resolution for imported `.na.jac` modules.
 - **Native: `jac-gdb` Debugger Support**: Added `jac-gdb`, a GDB-based debugger integration for native Jac programs. The LLVM module ID is now set from the source file name so GDB can locate source files, and optional DWARF debug metadata (function locations, compile-unit info) is emitted when `JAC_NATIVE_DEBUG=1` is set.
 - **Fix: ES Codegen `new` Expression for `Any`-Typed Callees**: Calling a variable typed as `Any` no longer emits `new handler(payload)` in the generated JavaScript.
