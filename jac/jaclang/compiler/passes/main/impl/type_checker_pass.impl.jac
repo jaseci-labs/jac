@@ -650,6 +650,19 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
                 if postinit_sym is not None {
                     postinit_nd._sym = postinit_sym;
                 }
+            } elif isinstance(arch, uni.ImplDef) and arch.target {
+                # has field in a separate impl block: find archetype by name in module
+                arch_name = arch.target[0].sym_name if isinstance(arch.target[0], uni.NameAtom) else None;
+                mod = arch.find_parent_of_type(uni.Module);
+                if arch_name and mod {
+                    arch_node: uni.Archetype | None = next(
+                        (i for i in mod.body if isinstance(i, uni.Archetype) and i.name and i.name.sym_name == arch_name),
+                        None
+                    );
+                    if arch_node and (postinit_sym := arch_node.names_in_scope.get("__post_init__")) is not None {
+                        postinit_nd._sym = postinit_sym;
+                    }
+                }
             }
         }
     }
