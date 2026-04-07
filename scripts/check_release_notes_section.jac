@@ -88,6 +88,8 @@ def check_file(merge_base: str, filepath: str, version_header: str) -> list[str]
     return errors;
 }
 
+# NOTE: This check can be skipped by adding the 'skip-release-notes-check' label
+# to the PR. Useful when intentionally editing old release note sections (e.g., typo fixes).
 def main() -> int {
     release_note_files: dict[str, str] = {
         "jaclang":    "docs/docs/community/release_notes/jaclang.md",
