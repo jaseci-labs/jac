@@ -1,0 +1,25 @@
+name: Trigger JacBuilder Dev Deployment
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-jac-builder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger JacBuilder dev deployment
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            https://api.github.com/repos/jaseci-labs/jacBuilder/dispatches \
+            -d '{
+              "event_type": "jac-code-release",
+              "client_payload": {
+                "tag": "${{ github.event.release.tag_name }}",
+                "release_name": "${{ github.event.release.name }}"
+              }
+            }'
+          echo "Dispatched jac-code-release event to jacBuilder (tag: ${{ github.event.release.tag_name }})"

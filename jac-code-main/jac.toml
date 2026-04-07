@@ -1,0 +1,14 @@
+[project]
+name = "jac-coder"
+version = "0.1.0"
+description = "AI coding agent backend for Jac, powered by jac-byllm"
+entry-point = "cli.jac"
+
+[dependencies]
+python-dotenv = ">=1.0.0"
+
+[dependencies.npm]
+agent-browser = "latest"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"

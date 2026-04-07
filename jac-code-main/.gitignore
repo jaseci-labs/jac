@@ -1,0 +1,32 @@
+# Jac runtime
+.jac/
+jac.local.toml
+
+# Environment / secrets
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+
+# Linting / type checking
+.mypy_cache/
+.ruff_cache/
+
+# Databases
+*.db
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+vsce/

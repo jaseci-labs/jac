@@ -1,0 +1,330 @@
+name: Deploy JAC Builder (Dev) with jac-scale
+
+on:
+  push:
+    branches:
+      - dev
+      - feat/single-dir-approach
+  workflow_dispatch:
+  repository_dispatch:
+    types: [jac-code-release]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-jac-builder-dev:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.2.0
+        with:
+          aws-region: us-east-2
+          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsJaseciDeployRole
+          role-session-name: GitHubActions-JacBuilder-SandboxTest
+          audience: sts.amazonaws.com
+
+      # Update kubeconfig to connect to EKS cluster
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --region us-east-2 --name jaseci-cluster
+          kubectl config current-context
+
+      # Set up Python
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Install required packages from jaseci main branch
+      # Uses editable install so non-Python files (templates, css, etc.) are available
+      - name: Install Jaseci packages
+        run: |
+          pip install --upgrade pip
+          git clone --depth 1 --branch fix/sandbox-status-stale-cache --recurse-submodules https://github.com/udithishanka/jaseci.git /tmp/jaseci
+          pip install -e /tmp/jaseci/jac
+          pip install -e /tmp/jaseci/jac-client
+          pip install -e /tmp/jaseci/jac-byllm
+          pip install -e /tmp/jaseci/jac-scale
+
+      # Clone jac-coder and copy into app directory so it's included in the K8s container
+      # Uses the release tag when triggered by a jac-code release, otherwise defaults to main
+      - name: Setup JacCoder
+        run: |
+          JAC_CODE_REF="${{ github.event.client_payload.tag || 'main' }}"
+          echo "Cloning jac-code at ref: $JAC_CODE_REF"
+          git clone --depth 1 --branch "$JAC_CODE_REF" https://${{ secrets.GH_PAT }}@github.com/jaseci-labs/jac-code.git /tmp/jac-code
+          cp -r /tmp/jac-code/jac_coder ./jac_coder
+
+      # Install Bun (required for npm dependency management)
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      # Install app dependencies from jac.toml
+      - name: Install app dependencies
+        run: |
+          jac install
+
+      # Ensure EFS-backed PVC exists for user project persistence.
+      # StorageClass efs-sc and the EFS filesystem are pre-created cluster infrastructure
+      # (see docs/efs-persistent-storage-setup.md for setup steps).
+      - name: Ensure data PVC exists
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: jac-builder-dev-data-pvc
+            namespace: jac-builder-dev
+          spec:
+            accessModes:
+              - ReadWriteMany
+            storageClassName: efs-sc
+            resources:
+              requests:
+                storage: 10Gi
+          EOF
+
+      # Release the code PVC before jac-scale runs so code-sync can mount it
+      # Workaround for jac-scale bug: code-server holds the EBS PVC exclusively,
+      # causing Multi-Attach errors when code-sync tries to update it on a different node.
+      # See: https://github.com/jaseci-labs/jaseci/issues/5239
+      - name: Release code PVC for update
+        run: |
+          kubectl scale deployment jac-builder-dev-code-server -n jac-builder-dev --replicas=0 || true
+          kubectl wait --for=delete pod -l app=jac-builder-dev-code-server -n jac-builder-dev --timeout=60s || true
+
+      # Deploy using jac-scale — do NOT wait for rollout here.
+      # jac-scale uses replace_namespaced_deployment which wipes all prior patches.
+      # All patches are applied in the next step before the single rollout wait,
+      # so the pod starts with the final spec and only one rollout occurs.
+      - name: Deploy JAC Builder Dev with jac-scale
+        env:
+          JAC_IDE_PREVIEW_PUBLIC_URL_TEMPLATE: ${{ secrets.JAC_IDE_PREVIEW_PUBLIC_URL_TEMPLATE_DEV }}
+          JAC_MCP_SERVER_URL: ${{ secrets.JAC_MCP_SERVER_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL: "claude-opus-4-5-20251101"
+          HOST: ${{ secrets.HOST_DEV }}
+          CLIENT_AUTH_CALLBACK_URL: ${{ secrets.CLIENT_AUTH_CALLBACK_URL_DEV }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID_DEV }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET_DEV }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_SSO_CLIENT_ID_DEV }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_SSO_CLIENT_SECRET_DEV }}
+          GITHUB_REPO_CLIENT_ID: ${{ secrets.GH_APP_CLIENT_ID_DEV }}
+          GITHUB_REPO_CLIENT_SECRET: ${{ secrets.GH_APP_CLIENT_SECRET_DEV }}
+          SANDBOX_CERT_ARN: ${{ secrets.SANDBOX_CERT_ARN_DEV }}
+          SANDBOX_DOMAIN_TEMPLATE: "{sandbox_id}.mars.ninja"
+          SANDBOX_NAMESPACE: "jac-sandboxes"
+          JACCODER_WEB_MODE: "1"
+          JACCODER_MAX_WORKERS: "20"
+          K8S_APP_NAME: jac-builder-dev
+          K8S_NAMESPACE: jac-builder-dev
+        run: |
+          # jac start --scale deploys K8s resources in ~2 min then hangs due to
+          # non-daemon threads (litellm, k8s client). Kill it after 180s.
+          timeout 180 jac start main.jac --scale --experimental || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 124 ]; then
+              echo "jac start timed out (expected — process hangs after deploy due to non-daemon threads)"
+            else
+              echo "jac start failed with exit code $EXIT_CODE"
+              exit $EXIT_CODE
+            fi
+          }
+          echo "Deployment spec applied by jac-scale."
+
+      # Apply all patches immediately after jac-scale so K8s performs only one rollout.
+      # Combines: RBAC, in-cluster kubeconfig secret, kubectl init container,
+      # EFS data PVC mount, SA token automount, on-demand node pinning.
+      - name: Apply all patches and wait for rollout
+        run: |
+          # --- RBAC: allow pod to deploy user projects via jac-scale ---
+          kubectl create clusterrolebinding jac-builder-dev-deployer \
+            --clusterrole=cluster-admin \
+            --serviceaccount=jac-builder-dev:jac-builder-dev-sa \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # --- Git safe.directory config (fixes "dubious ownership" on EFS-mounted paths) ---
+          # Git 2.35.2+ refuses to run in dirs owned by a different UID (EFS root squash).
+          # Mount a ConfigMap as /root/.gitconfig so all directories are trusted.
+          kubectl apply -f - <<'GITCFG_EOF'
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: jac-builder-gitconfig
+            namespace: jac-builder-dev
+          data:
+            config: |
+              [safe]
+                directory = *
+          GITCFG_EOF
+
+          # --- In-cluster kubeconfig secret (uses SA token, no aws CLI needed) ---
+          cat > /tmp/in-cluster-kubeconfig <<'KUBECONFIG_EOF'
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              server: https://kubernetes.default.svc
+            name: in-cluster
+          contexts:
+          - context:
+              cluster: in-cluster
+              user: sa
+            name: default
+          current-context: default
+          users:
+          - name: sa
+            user:
+              tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          KUBECONFIG_EOF
+          kubectl create secret generic jac-builder-kubeconfig \
+            --from-file=config=/tmp/in-cluster-kubeconfig \
+            -n jac-builder-dev \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # --- Verify jac-scale created the deployment before patching ---
+          kubectl get deployment jac-builder-dev -n jac-builder-dev \
+            || { echo "ERROR: deployment jac-builder-dev not found — jac-scale may have failed"; exit 1; }
+
+          # --- Build and apply all deployment patches in one pass ---
+          python3 -c "
+          import json, subprocess
+          dep = json.loads(subprocess.check_output([
+              'kubectl','get','deployment','jac-builder-dev','-n','jac-builder-dev','-o','json'
+          ]))
+          spec = dep['spec']['template']['spec']
+          existing_vols  = {v['name'] for v in spec.get('volumes', [])}
+          existing_mounts = {vm['name'] for vm in (spec.get('containers') or [{}])[0].get('volumeMounts', [])}
+          has_init    = bool(spec.get('initContainers'))
+          has_kubectl = any(ic['name'] == 'install-kubectl' for ic in spec.get('initContainers', []))
+          has_env     = bool((spec.get('containers') or [{}])[0].get('env'))
+
+          kubectl_init = {
+              'name': 'install-kubectl',
+              'image': 'curlimages/curl:8.5.0',
+              'command': ['sh','-c',
+                  'curl -sL https://dl.k8s.io/release/\$(curl -sL https://dl.k8s.io/release/stable.txt)'
+                  '/bin/linux/amd64/kubectl -o /opt/kubectl/kubectl && chmod +x /opt/kubectl/kubectl'],
+              'volumeMounts': [{'name':'kubectl-bin','mountPath':'/opt/kubectl'}]
+          }
+          path_env = {'name':'PATH','value':'/opt/kubectl:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin'}
+
+          patches = []
+
+          # kubeconfig volume + mount
+          if 'kubeconfig' not in existing_vols:
+              patches.append({'op':'add','path':'/spec/template/spec/volumes/-',
+                  'value':{'name':'kubeconfig','secret':{'secretName':'jac-builder-kubeconfig'}}})
+          if 'kubeconfig' not in existing_mounts:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-',
+                  'value':{'name':'kubeconfig','mountPath':'/root/.kube','readOnly':True}})
+
+          # kubectl-bin emptyDir + init container + mount
+          if 'kubectl-bin' not in existing_vols:
+              patches.append({'op':'add','path':'/spec/template/spec/volumes/-',
+                  'value':{'name':'kubectl-bin','emptyDir':{}}})
+          if not has_kubectl:
+              if has_init:
+                  patches.append({'op':'add','path':'/spec/template/spec/initContainers/-','value':kubectl_init})
+              else:
+                  patches.append({'op':'add','path':'/spec/template/spec/initContainers','value':[kubectl_init]})
+          if 'kubectl-bin' not in existing_mounts:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-',
+                  'value':{'name':'kubectl-bin','mountPath':'/opt/kubectl'}})
+
+          # Git safe.directory ConfigMap mounted as /root/.gitconfig
+          if 'gitconfig' not in existing_vols:
+              patches.append({'op':'add','path':'/spec/template/spec/volumes/-',
+                  'value':{'name':'gitconfig','configMap':{'name':'jac-builder-gitconfig'}}})
+          if 'gitconfig' not in existing_mounts:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-',
+                  'value':{'name':'gitconfig','mountPath':'/root/.gitconfig','subPath':'config'}})
+
+          # EFS data PVC volume + mount
+          if 'jac-data' not in existing_vols:
+              patches.append({'op':'add','path':'/spec/template/spec/volumes/-',
+                  'value':{'name':'jac-data','persistentVolumeClaim':{'claimName':'jac-builder-dev-data-pvc'}}})
+          if 'jac-data' not in existing_mounts:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-',
+                  'value':{'name':'jac-data','mountPath':'/root/.jac-ide'}})
+
+          # GitHub App private key secret mount
+          if 'github-app-key' not in existing_vols:
+              patches.append({'op':'add','path':'/spec/template/spec/volumes/-',
+                  'value':{'name':'github-app-key','secret':{'secretName':'github-app-key'}}})
+          if 'github-app-key' not in existing_mounts:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-',
+                  'value':{'name':'github-app-key','mountPath':'/secrets/github-app','readOnly':True}})
+
+          # PATH env var so kubectl is on the shell path
+          if has_env:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/env/-','value':path_env})
+          else:
+              patches.append({'op':'add','path':'/spec/template/spec/containers/0/env','value':[path_env]})
+
+          # SA token, on-demand node pin, extended progress deadline — included in the
+          # same JSON patch so only ONE pod spec change occurs and K8s does a single rollout.
+          patches.append({'op':'add','path':'/spec/template/spec/automountServiceAccountToken','value':True})
+          patches.append({'op':'add','path':'/spec/template/spec/nodeSelector',
+              'value':{'karpenter.sh/capacity-type':'on-demand'}})
+          patches.append({'op':'add','path':'/spec/progressDeadlineSeconds','value':1200})
+
+          json.dump(patches, open('/tmp/patches.json','w'))
+          print(json.dumps(patches, indent=2))
+          "
+
+          kubectl patch deployment jac-builder-dev -n jac-builder-dev --type=json --patch-file=/tmp/patches.json
+
+          echo "All patches applied. Waiting for rollout (single rollout)..."
+          kubectl rollout status deployment/jac-builder-dev -n jac-builder-dev --timeout=2400s
+
+      # Restore code-server (repacks tar.gz with updated code from PVC)
+      - name: Restore code server
+        run: |
+          kubectl scale deployment jac-builder-dev-code-server -n jac-builder-dev --replicas=1
+
+      # Get deployment status
+      - name: Verify deployment
+        if: always()
+        run: |
+          echo "Checking deployment status..."
+          kubectl get deployments -n jac-builder-dev
+          kubectl get services -n jac-builder-dev
+          kubectl get ingress -n jac-builder-dev
+          kubectl get pods -n jac-builder-dev
+
+      # Output deployment summary
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## JAC Builder Dev Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **App Name**: jac-builder-dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: jac-builder-dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: jaseci-cluster (sandbox test)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: us-east-2" >> $GITHUB_STEP_SUMMARY
+          echo "- **Domain**: https://jac-builder-dev.jaseci.org" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get all -n jac-builder-dev 2>&1 >> $GITHUB_STEP_SUMMARY || echo "Unable to fetch deployment status" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Ingress" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -n jac-builder-dev 2>&1 >> $GITHUB_STEP_SUMMARY || echo "Unable to fetch ingress status" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

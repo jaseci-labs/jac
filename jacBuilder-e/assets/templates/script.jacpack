@@ -1,0 +1,13 @@
+{
+  "name": "script",
+  "description": "Simple Jac script that runs and exits - graph traversal example",
+  "config": {},
+  "files": {
+    "main.jac": "\"\"\"Jac Script - runs once and exits.\n\nRun with: jac run main.jac\n\"\"\"\n\nnode Person {\n    has name: str;\n    has age: int = 0;\n}\n\nwith entry {\n    print(\"=== Jac Script Example ===\");\n\n    root() ++> Person(name=\"Alice\", age=30);\n    root() ++> Person(name=\"Bob\", age=25);\n    root() ++> Person(name=\"Charlie\", age=35);\n\n    r = root();\n    people = [r -->(?:Person)];\n    print(\"People in graph: \" + str(len(people)));\n    for person in people {\n        print(\"  \" + person.name + \" age=\" + str(person.age));\n    }\n\n    print(\"Done!\");\n}\n",
+    "jac.toml": "[project]\nname = \"script\"\nversion = \"0.0.1\"\n",
+    "README.md": "# Jac Script\n\nRun with: `jac run main.jac`\n"
+  },
+  "directories": [],
+  "root_gitignore_entries": [],
+  "jaclang": ""
+}

@@ -1,0 +1,17 @@
+.jac
+.jac-logs
+/.jac/
+.env
+.venv
+__pycache__
+
+
+*.log
+.jaseci-logs/
+
+src-tauri
+jac_coder/
+CLAUDE.md
+.docs
+.e2e
+.env.local

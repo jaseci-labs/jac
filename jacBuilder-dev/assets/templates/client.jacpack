@@ -1,0 +1,74 @@
+{
+  "name": "client",
+  "description": "Jac project with frontend client setup",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: {{name}}",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {
+      "npm": {
+        "jac-client-node": "1.0.7",
+        "@tailwindcss/vite": "^4.1.17",
+        "tailwind-merge": "^3.4.0",
+        "tailwindcss": "^4.1.17",
+        "dev": {
+          "@jac-client/dev-deps": "1.0.0"
+        }
+      }
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "plugins": {
+      "client": {
+        "vite": {
+          "plugins": [
+            "tailwindcss()"
+          ],
+          "lib_imports": [
+            "import tailwindcss from '@tailwindcss/vite'"
+          ]
+        }
+      }
+    },
+    "serve": {
+      "base_route_app": "app"
+    }
+  },
+  "files": {
+    "README.md": "# client\n\nA Jac client-side application with React support.\n\n## Project Structure\n\n```\nclient/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 components/           # Reusable components\n\u2502   \u2514\u2500\u2500 Button.cl.jac     # Example Jac component\n\u251c\u2500\u2500 assets/               # Static assets (images, fonts, etc.)\n\u2514\u2500\u2500 build/                # Build output (generated)\n```\n\n## Getting Started\n\nStart the development server:\n\n```bash\njac start main.jac\n```\n\n## Components\n\nCreate Jac components in `components/` as `.cl.jac` files and import them:\n\n```jac\ncl import from .components.Button { Button }\n```\n\n## Adding Dependencies\n\nAdd npm packages with the --cl flag:\n\n```bash\njac add --cl react-router-dom\n```\n",
+    "main.jac": "\"\"\"Main entry point for client.\"\"\"\n\n# Client-side imports (useState is auto-injected when using `has` variables)\ncl import from react { useEffect }\ncl import from .components.Button { Button }\ncl import \".styles.global.css\";\n\n# Client-side component\ncl {\n    def:pub app() -> JsxElement {\n        has count: int = 0;\n\n        can with [count] entry {\n            print(\"Count changed:\", count);\n        }\n\n        return <div className=\"p-8 font-sans\">\n            <h1 className=\"text-3xl font-bold text-gray-900\">Hello, World!</h1>\n            <p className=\"mt-2 text-lg text-gray-600\">Count: {count}</p>\n            <div className=\"flex gap-4 mt-4\">\n                <Button\n                    label=\"Increment\"\n                    onClick={lambda -> None { count = count + 1; }}\n                    variant=\"primary\"\n                />\n                <Button\n                    label=\"Reset\"\n                    onClick={lambda -> None { count = 0; }}\n                    variant=\"secondary\"\n                />\n            </div>\n        </div>;\n    }\n}\n",
+    "styles/global.css": "@import \"tailwindcss\";\n",
+    "components/Button.cl.jac": "\"\"\"Button component for the Jac client application.\"\"\"\n\ndef:pub Button(label: str, onClick: any, variant: str = \"primary\") -> JsxElement {\n    variant_cls = \"bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300\";\n    if variant == \"primary\" {\n        variant_cls = \"bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white shadow-blue-200 hover:shadow-md hover:shadow-blue-200\";\n    }\n\n    classes = \"px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200 shadow-sm cursor-pointer \" + variant_cls;\n\n    return <button className={classes} onClick={onClick}>\n        {label}\n    </button>;\n}\n"
+  },
+  "directories": [],
+  "root_gitignore_entries": [
+    "# Jac project",
+    "packages/",
+    "*.jbc",
+    "*.jir",
+    "",
+    "# Python",
+    "__pycache__/",
+    "*.py[cod]",
+    ".venv/",
+    "venv/",
+    "",
+    "# IDE",
+    ".idea/",
+    ".vscode/",
+    "*.swp",
+    "",
+    "# Node.js",
+    "node_modules/",
+    "",
+    "# Build artifacts",
+    ".jac/",
+    "*.session",
+    "*.session.*"
+  ],
+  "jaclang": "0.9.14"
+}

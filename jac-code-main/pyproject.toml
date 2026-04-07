@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jac-coder"
+version = "0.1.0"
+description = "AI coding agent backend for Jac, powered by jac-byllm"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "jaclang",
+    "byllm",
+    "mcp>=1.0.0",
+    "jac-mcp",
+]
+
+[project.scripts]
+jac-coder        = "jac_coder.cli_entry:main"
+jac-coder-server = "jac_coder.serve_entry:main"
+
+[tool.setuptools.packages.find]
+include = ["jac_coder*"]
+
+[tool.setuptools.package-data]
+jac_coder = [
+    "*.jac",
+    "**/*.jac",
+    "data/**/*.md",
+]

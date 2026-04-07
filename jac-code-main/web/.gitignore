@@ -1,0 +1,16 @@
+packages/
+*.jbc
+*.jir
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+*.swp
+node_modules/
+.jac/
+*.session
+*.session.*
+.jac-ide/
+export-*.jacpack

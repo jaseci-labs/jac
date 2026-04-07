@@ -1,0 +1,144 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  min-height: 100vh;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+
+
+/* ── Splash Screen ── */
+
+.splash-root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+}
+
+.splash-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  margin-bottom: 2rem;
+}
+
+.splash-logo {
+  width: 6rem;
+  height: 6rem;
+  object-fit: contain;
+  will-change: filter;
+  transition: filter 300ms ease;
+}
+
+.splash-logo:hover {
+  filter: drop-shadow(0 0 1.5rem #646cffaa);
+}
+
+.splash-logo-vite:hover {
+  filter: drop-shadow(0 0 1.5rem #a855f7aa);
+}
+
+.splash-logo-jaseci:hover {
+  filter: drop-shadow(0 0 1.5rem #f97316aa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* .splash-logo-vite {
+    animation: logo-spin 8s linear infinite;
+} */
+
+.splash-title {
+  font-size: 3.2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, #a855f7, #f97316);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.splash-card {
+  padding: 2rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 1.5rem;
+}
+
+.splash-btn {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 0.6rem 1.4rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background-color: #1a1a1a;
+  color: rgba(255, 255, 255, 0.87);
+  cursor: pointer;
+  transition:
+    border-color 250ms ease,
+    background-color 250ms ease;
+}
+
+.splash-btn:hover {
+  border-color: #a855f7;
+  background-color: #2a2a2a;
+}
+
+.splash-hint {
+  margin-top: 0.8rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.splash-hint code {
+  font-family: "Fira Code", "Cascadia Code", monospace;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.splash-footer {
+  margin-top: 1.5rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.8rem;
+}
+
+.splash-footer a {
+  color: #a855f7;
+  text-decoration: none;
+  transition: color 200ms ease;
+}
+
+.splash-footer a:hover {
+  color: #c084fc;
+}

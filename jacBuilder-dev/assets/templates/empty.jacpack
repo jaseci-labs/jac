@@ -1,0 +1,12 @@
+{
+  "name": "empty",
+  "description": "Empty project \u2014 start from scratch or upload your own files",
+  "config": {},
+  "files": {
+    "jac.toml": "[project]\nname = \"empty\"\nversion = \"0.0.1\"\n",
+    "README.md": "# My Project\n"
+  },
+  "directories": [],
+  "root_gitignore_entries": [],
+  "jaclang": ""
+}

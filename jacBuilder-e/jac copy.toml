@@ -1,0 +1,195 @@
+[project]
+name = "jac-ide"
+version = "1.0.0"
+description = "Standalone Jac IDE - Web-based code editor with live preview"
+entry-point = "main.jac"
+
+[dependencies]
+websockets = ">=12.0"
+httpx = ">=0.27.0"
+watchdog = ">=3.0.0"
+mcp = ">=1.0.0"
+
+[dependencies.npm]
+"@radix-ui/react-slot" = "*"
+react-resizable-panels = "*"
+input-otp = "*"
+vaul = "*"
+cmdk = "*"
+recharts = "*"
+embla-carousel-react = "*"
+react-day-picker = "*"
+"@hugeicons/core-free-icons" = "*"
+"@hugeicons/react" = "*"
+"@fontsource-variable/inter" = "*"
+shadcn = "^3.8.5"
+"@base-ui/react" = "^1.2.0"
+radix-ui = "^1.4.3"
+class-variance-authority = "^0.7.1"
+tw-animate-css = "^1.4.0"
+jac-client-node = "1.0.7"
+"@monaco-editor/react" = "^4.7.0"
+monaco-editor = "latest"
+monaco-editor-textmate = "^4.0.0"
+monaco-textmate = "^3.0.1"
+clsx = "^2.1.0"
+tailwind-merge = "^2.2.0"
+sonner = "^2.0.0"
+react-markdown = "latest"
+remark-gfm = "latest"
+rehype-highlight = "latest"
+"highlight.js" = "latest"
+diff = "latest"
+"@xterm/xterm" = "^5.5.0"
+"@xterm/addon-fit" = "^0.10.0"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "2.0.0"
+"@tailwindcss/vite" = "latest"
+tailwindcss = "latest"
+
+[dev-dependencies]
+
+[test]
+directory = "tests"
+verbose = true
+fail_fast = false
+
+[serve]
+base_route_app = "app"
+
+[plugins.client.app_meta_data]
+title = "Jac Builder Studio"
+description = "A web-based IDE for the Jac language. Build, preview, and version your projects in the browser."
+keywords = "jac, ide, builder, programming, web, jaseci"
+author = "Jaseci Labs"
+theme_color = "#f97316"
+icon = "/static/assets/logo-builder.png"
+apple_touch_icon = "/static/assets/logo-builder.png"
+og_type = "website"
+og_title = "Jac Builder Studio"
+og_description = "Build Jac apps in your browser. No install needed."
+og_site_name = "Jac Builder Studio"
+meta_application_name = "Jac Builder Studio"
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[plugins.client.vite.define]
+"globalThis.__JAC_IDE_VERSION__" = "0.1.0-beta"
+
+[plugins.scale.kubernetes]
+app_name = "${K8S_APP_NAME}"
+namespace = "${K8S_NAMESPACE}"
+jaseci_repo_url = "https://github.com/udithishanka/jaseci.git"
+jaseci_branch = "fix/sandbox-status-stale-cache"
+container_port = 8000
+memory_request = "3Gi"
+memory_limit = "6Gi"
+readiness_initial_delay = 300
+readiness_period = 20
+liveness_initial_delay = 600
+liveness_period = 20
+liveness_failure_threshold = 80
+min_replicas = 1
+max_replicas = 15
+cpu_utilization_target = 40   # Scale earlier (at 40% CPU instead of 50%)
+
+[plugins.scale.sandbox]
+enabled = true
+type = "local"
+namespace = "${SANDBOX_NAMESPACE}"
+max_per_user = 3
+ttl_seconds = 1800
+domain_template = "${SANDBOX_DOMAIN_TEMPLATE}"
+base_image = "776241927220.dkr.ecr.us-east-2.amazonaws.com/jac-sandbox-base:v0.3.4"
+security_context = false
+memory_limit = "2Gi"
+ingress_class = "alb"
+tls_enabled = true
+proxy_mode = true
+warm_pool_size = 3
+
+[plugins.scale.sandbox.ingress_annotations]
+"alb.ingress.kubernetes.io/group.name" = "jaseci-cluster-alb-2"
+"alb.ingress.kubernetes.io/group.order" = "50"
+"alb.ingress.kubernetes.io/certificate-arn" = "${SANDBOX_CERT_ARN}"
+"alb.ingress.kubernetes.io/scheme" = "internet-facing"
+"alb.ingress.kubernetes.io/target-type" = "ip"
+"alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+"alb.ingress.kubernetes.io/ssl-redirect" = "443"
+
+[plugins.scale.secrets]
+JAC_IDE_PREVIEW_PUBLIC_URL_TEMPLATE = "${JAC_IDE_PREVIEW_PUBLIC_URL_TEMPLATE}"
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY}"
+MODEL = "${MODEL}"
+JAC_MCP_SERVER_URL = "${JAC_MCP_SERVER_URL}"
+JAC_SANDBOX_TYPE = "kubernetes"
+HOST = "${HOST}"
+CLIENT_AUTH_CALLBACK_URL = "${CLIENT_AUTH_CALLBACK_URL}"
+GOOGLE_CLIENT_ID = "${GOOGLE_CLIENT_ID}"
+GOOGLE_CLIENT_SECRET = "${GOOGLE_CLIENT_SECRET}"
+GITHUB_CLIENT_ID = "${GITHUB_CLIENT_ID}"
+GITHUB_CLIENT_SECRET = "${GITHUB_CLIENT_SECRET}"
+GITHUB_REPO_CLIENT_ID = "${GITHUB_REPO_CLIENT_ID}"
+GITHUB_REPO_CLIENT_SECRET = "${GITHUB_REPO_CLIENT_SECRET}"
+SANDBOX_NAMESPACE = "${SANDBOX_NAMESPACE}"
+SANDBOX_DOMAIN_TEMPLATE = "${SANDBOX_DOMAIN_TEMPLATE}"
+
+[plugins.scale.monitoring]
+enabled = true
+
+[jac-shadcn]
+style = "nova"
+baseColor = "neutral"
+theme = "amber"
+font = "inter"
+radius = "default"
+menuAccent = "subtle"
+menuColor = "default"
+registry = "https://jac-shadcn.jaseci.org"
+
+
+# Desktop target configuration (Tauri)
+[desktop]
+name = "jac-ide"
+identifier = "jac.ide"
+version = "1.0.0"
+
+[desktop.window]
+title = "jac-ide"
+width = 1200
+height = 800
+min_width = 800
+min_height = 600
+resizable = true
+fullscreen = false
+
+[desktop.platforms]
+windows = true
+macos = true
+linux = true
+
+[desktop.features]
+system_tray = false
+auto_update = false
+notifications = false
+
+[plugins.client.assets]
+custom_extensions = [".wasm", ".json", ".js", ".jacpack"]
+
+[plugins.scale.sso]                                                               
+host = "${HOST}"
+client_auth_callback_url = "${CLIENT_AUTH_CALLBACK_URL}"                 
+                                                                                
+[plugins.scale.sso.google]
+client_id = "${GOOGLE_CLIENT_ID}"                                                 
+client_secret = "${GOOGLE_CLIENT_SECRET}"                                         
+
+[plugins.scale.sso.github]
+client_id = "${GITHUB_CLIENT_ID}"
+client_secret = "${GITHUB_CLIENT_SECRET}"
+public_link = "${GITHUB_PUBLIC_LINK}"
+app_slug = "${GITHUB_APP_SLUG}"

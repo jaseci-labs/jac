@@ -1,0 +1,313 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code when working with Jac code in this project.
+
+## CRITICAL: Always Validate
+
+After writing or modifying ANY `.jac` or `.cl.jac` file, run:
+```bash
+{{JAC_BINARY}} check main.jac
+```
+If errors are reported, fix them before finishing your turn. Do NOT present code to the user without validating first.
+
+## MCP Tools Available
+
+You have access to `jac mcp` tools via the configured MCP server. Use them:
+- `validate_jac(code)` — Full type-check + compile validation. MANDATORY after every code change.
+- `check_syntax(code)` — Quick parse check while iterating.
+- `explain_error(error_message)` — Get fix suggestions for compiler errors.
+- `search_docs(query)` — Search official Jac documentation. **Never guess syntax — search first.**
+- `format_jac(code)` — Auto-format to standard Jac style.
+- `py_to_jac(python_code)` — Transpile Python to Jac.
+- `list_examples(category?)` — List available example categories.
+- `get_example(name)` — Get working `.jac` files from an example category.
+
+## MCP Resources — Read These BEFORE Writing Code
+
+- `jac://guide/pitfalls` — 24 common mistakes AI models make with Jac. READ THIS FIRST.
+- `jac://guide/patterns` — 12 idiomatic Jac patterns with working examples.
+
+## Jac Language Reference
+
+### File Types & Conventions
+- `.jac` — Backend (Python-like server code, compiles to Python)
+- `.cl.jac` — Client-side (JSX/React syntax, compiles to JS/React)
+- `jac.toml` — Project config (replaces package.json); npm deps in `[dependencies.npm]`
+- `main.jac` — Entry point; every new walker must be imported here
+
+### Imports (NEVER use `from x import y` or `import:py`)
+```jac
+import from math { sqrt }               # Python stdlib
+import from "@mantine/core" { Button }  # npm package (cl.jac only)
+import from .utils { helper }           # local module (dot-relative)
+import from os { path }                 # Python module
+```
+CSS imports in client files: `cl import "./styles.css";`
+
+### Core Syntax
+- Braces `{}` for ALL blocks (not indentation)
+- Semicolons `;` required at end of statements
+- `has` for declaring fields (nodes/objects) or state (cl.jac = useState)
+- `can` for methods inside archetypes; `def` for standalone functions
+- `walker` for JWT-required endpoints; `walker:pub` for public endpoints
+- `Root` (capital R) in entry abilities: `can start with Root entry { }`
+- `(?:Type)` for typed graph filters: `[root -->(?:MyNode)]`
+- `report` returns data from walkers (not `return`)
+- No `let`/`const` keyword — just assign directly: `x = 5;`
+- `True`/`False`/`None` — capitalized (Python-style)
+- `glob` for module-level variables: `glob _count: int = 0;`
+
+### Graph Operations
+```jac
+node MyNode { has value: str = ""; }
+
+# Create + connect (untyped edge)
+root ++> MyNode(value="hello");
+
+# Create + connect (typed edge)
+profile +>:Post():+> Tweet(content="hello");
+
+# Query typed children
+items = [here -->(?:MyNode)];
+
+# Delete node from graph
+del node_ref;
+```
+
+### Walkers (API Endpoints)
+```jac
+# JWT-required (user's isolated root)
+walker my_walker {
+    has message: str;
+    can start with Root entry {
+        profiles = [-->(?:UserProfile)];
+        report {"data": profiles};
+    }
+}
+
+# Public (global root, no auth needed)
+walker:pub public_walker {
+    can start with Root entry { ... }
+}
+```
+
+### Functions & REST Endpoints
+```jac
+# Regular function
+def helper(x: str) -> str { return x; }
+
+# Public REST endpoint (bypasses JWT)
+@restspec(method=HTTPMethod.GET, path="/health")
+async def:pub health() -> dict { return {"status": "ok"}; }
+```
+
+### LLM Integration (by llm)
+```jac
+obj Sentiment { has score: float; has label: str; }
+sem Sentiment = "Sentiment analysis result";
+
+def analyze(text: str) -> Sentiment by llm(
+    temperature=0.0,
+    incl_info={"instructions": "Analyze sentiment"}
+);
+```
+
+### Control Flow
+```jac
+if condition { ... } elif other { ... } else { ... }
+for item in items { ... }
+while condition { ... }
+match value { case 1 { ... } case _ { ... } }
+try { ... } except Exception as e { ... } finally { ... }
+```
+
+### Testing
+```jac
+# Test files: tests/*_test.jac (NOT test_*.jac)
+# Run: jac test -d tests/ -v
+# Single: jac test tests/my_test.jac -v
+
+test "my test" {
+    check 1 + 1 == 2;
+}
+```
+
+## MUST NOT DO — Critical Compiler Errors
+
+### Backend (.jac)
+1. **No nested `def` inside `def`** — all helpers must be at module level
+2. **No tuple unpacking**: `a, b = func()` is INVALID → use `result = func(); a = result[0];`
+3. **No slice assignment**: `list[:] = [...]` is INVALID → use helper functions
+4. **No `from x import y`** → use `import from x { y }`
+5. **No `class`** → use `obj` for classes, `node` for graph nodes
+6. **No `__init__`** → use `def init(self) { }` (no underscores)
+7. **No `pass`** → use `0;` as no-op
+8. **No `import:py`** → use `import from module { name }`
+9. **No docstrings inside function bodies** → place `"""doc"""` BEFORE the `def`
+10. **No bare function calls at module level** → wrap in `glob _init: bool = my_init_func();`
+11. **Non-default field can't follow default field** in `obj` (dataclass ordering)
+12. **Don't name files same as Python stdlib** (e.g., `types.jac` → use `data_types.jac`)
+13. **`signal.SIGTERM` inside try/except crashes compiler** → use glob constants
+14. **`report` is a reserved keyword** — don't use as variable name
+
+### Client (.cl.jac)
+15. **No JSX comments**: Do NOT use `{/* */}` or `{# comment}` inside JSX return blocks — both cause compiler errors
+16. **No `new` keyword** → use `Reflect.construct(Date, [args])` for Date, WebSocket, Map, URLSearchParams, etc.
+17. **String `?` in JSX must be wrapped**: `{"?"}` not bare `?`
+18. **String `&` in JSX must be wrapped**: `{"Privacy & Security"}` not bare `&`
+19. **No `{...props}` spread** → use `{**props}`
+20. **CSS properties must be quoted**: `style={{"backgroundColor": "red"}}`
+
+### Both
+21. **F-string single-quote stripping**: Jac strips `'` in f-strings around variables. Use string concatenation:
+```jac
+# BAD — Jac strips the closing '
+cmd = f"[ -f '{path}' ]";
+# GOOD — string concatenation
+cmd = "[ -f \"" + path + "\" ]";
+# BEST — check in Python, avoid shell conditionals
+if os.path.isfile(path) { cmd = "source \"" + path + "\""; }
+```
+
+22. **`glob` reassignment doesn't work from inside functions** — only mutation works:
+```jac
+# BAD — reassignment inside function is silently ignored
+glob _count: int = 0;
+def increment() -> None { _count = _count + 1; }  # broken
+
+# GOOD — use container dict mutation pattern
+glob _state: dict = {"count": 0};
+def increment() -> None { _state["count"] = _state["count"] + 1; }
+```
+
+23. **`set([value])` not `{value}`** — `{value}` is ambiguous with dict literals. Use `set()` constructor.
+
+## Client-Side (.cl.jac) Patterns
+
+### Components
+```jac
+# Props always arrive as object — access via props.foo
+def:pub MyComponent(props: Any) -> Any {
+    variant = props.variant or "default";
+    return <div>{props.children}</div>;
+}
+```
+
+### State Management
+```jac
+has count: int = 0;           # generates useState; auto-creates setCount
+has items: list = [];          # has = reactive state
+
+# Direct assignment updates state:
+count = count + 1;
+
+# WARNING: has values are NOT synchronous — after `items = newList`,
+# `items` still holds old value in current closure. Use local var:
+newItems = result;
+items = newItems;
+doSomething(newItems);  # use local var, not `items`
+```
+
+### Effects & Lifecycle
+```jac
+# Mount effect
+useEffect(lambda -> None { console.log("mounted"); }, []);
+
+# Cleanup
+useEffect(lambda -> Any {
+    return lambda -> None { cleanup(); };
+}, []);
+
+# Dependency effect
+useEffect(lambda -> None { fetchData(); }, [projectId]);
+
+# can with entry (alternative mount syntax)
+can with entry { initializeData(); }
+```
+
+### Event Handlers (always use lambda)
+```jac
+onClick={lambda -> None { handleClick(); }}
+onChange={lambda e: Any -> None { value = e.target.value; }}
+```
+
+### Lambda Callback Gotcha
+```jac
+# BAD — Jac generates `new callback(arg)` for function params in lambda
+ws.onmessage = lambda(e: Any) { onMessage(msg); };
+
+# GOOD — assign to local var, use .call()
+msgHandler = onMessage;
+ws.onmessage = lambda(e: Any) { msgHandler.call(None, msg); };
+```
+
+### Navigation & Routing
+```jac
+import from "@jac/runtime" { useParams, Navigate }
+
+# Redirect during render — use component, NOT function
+return <Navigate to="/login" replace />;
+
+# URL params
+params = useParams();
+projectId = params.projectId;
+```
+
+### Casting for JSX
+```jac
+# Numbers/booleans must be cast to String for JSX display
+{String(count)}              # not {count}
+{Boolean(anchor)}            # not !!anchor
+```
+
+### Module-Level Constants
+```jac
+glob _theme: Any = createTheme({...});  # not const
+glob _frameworks: list = [...];          # module-level data
+```
+
+### `"\n"` Bug
+Jac compiles `"\n"` to literal `"\\n"`. Use `style.setProperty()` for CSS that needs newlines.
+
+## Server-Client Communication
+
+### Spawn Pattern (calling walkers from frontend)
+```jac
+# In frontend (.cl.jac):
+sv import from endpoints { CreateTodo }
+
+# Call walker — `spawn` is a KEYWORD (never import it)
+response = root spawn CreateTodo(text="My task");
+data = response.reports;     # reports is a list
+
+# Spawn on specific node
+node_id spawn UpdateItem();
+```
+
+### Walker Auth
+- `walker` = JWT-required (operates on user's isolated root)
+- `walker:pub` = public (operates on global shared root)
+- `def:pub` = public function endpoint (bypasses JWT)
+- NEVER use `walker:pub` for user data (causes cross-user leakage)
+
+## Configuration (jac.toml)
+```toml
+[dependencies.npm]
+react = "^18.3.1"
+"@mantine/core" = "^7.0.0"
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac"]
+
+[serve]
+base_route_app = "app"
+```
+
+## Validation Workflow (MANDATORY)
+1. Read `jac://guide/pitfalls` if not already familiar
+2. `search_docs` for any syntax you're unsure about
+3. Write the code
+4. Run `{{JAC_BINARY}} check main.jac`
+5. If errors: `explain_error(msg)` → fix → re-validate
+6. `format_jac(code)` for consistent style
+7. Repeat until `jac check` passes with zero errors

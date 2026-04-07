@@ -467,7 +467,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if imported_mod is None and os.path.isfile(full_path) {
             try {
                 import from jaclang.jac0core.parser { parse as rd_parse }
-                source = open(full_path).read();
+                source = open(full_path, encoding="utf-8").read();
                 (imported_mod, _) = rd_parse(source, full_path, prog=self.prog);
             } except Exception {
                 continue;

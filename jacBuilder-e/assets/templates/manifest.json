@@ -1,0 +1,54 @@
+{
+  "templates": [
+    {
+      "id": "preview-template",
+      "name": "Preview Starter",
+      "description": "Jac IDE preview starter template",
+      "path": "preview-template.jacpack"
+    },
+    {
+      "id": "client",
+      "name": "Client App",
+      "description": "Jac project with frontend client setup",
+      "path": "client.jacpack"
+    },
+    {
+      "id": "fullstack",
+      "name": "Fullstack App",
+      "description": "Full-stack Jac app with authenticated todo list example",
+      "path": "fullstack.jacpack"
+    },
+    {
+      "id": "little-x",
+      "name": "Little X",
+      "description": "Little X - A Twitter-like social app built with Jac",
+      "path": "little-x.jacpack"
+    },
+    {
+      "id": "shadcn-themed",
+      "name": "Jac Shadcn Themed",
+      "description": "Themed jac-client project with Shadcn UI components",
+      "path": "jac-shadcn-themed-project.jacpack"
+    },
+    {
+      "id": "backend-api",
+      "name": "Backend API",
+      "description": "Jac API server with walkers and graph — no frontend. Swagger at /docs, Graph at /graph.",
+      "path": "backend-api.jacpack",
+      "project_type": "backend"
+    },
+    {
+      "id": "script",
+      "name": "Script",
+      "description": "Simple Jac script that runs and exits — graph traversal example.",
+      "path": "script.jacpack",
+      "project_type": "script"
+    },
+    {
+      "id": "empty",
+      "name": "Empty",
+      "description": "Empty project — start from scratch or upload your own files.",
+      "path": "empty.jacpack"
+    }
+  ]
+}
