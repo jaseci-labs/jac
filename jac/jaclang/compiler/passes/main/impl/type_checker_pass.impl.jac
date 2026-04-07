@@ -650,9 +650,12 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
                 if postinit_sym is not None {
                     postinit_nd._sym = postinit_sym;
                 }
-            } elif isinstance(arch, uni.ImplDef) and isinstance(arch.decl_link, uni.Archetype) {
+            } elif isinstance(arch, uni.ImplDef)
+            and isinstance(arch.decl_link, uni.Archetype) {
                 # has field in a separate impl block: decl_link points to the archetype
-                if (postinit_sym := arch.decl_link.names_in_scope.get("__post_init__")) is not None {
+                if (
+                    postinit_sym := arch.decl_link.names_in_scope.get("__post_init__")
+                ) is not None {
                     postinit_nd._sym = postinit_sym;
                 }
             }
