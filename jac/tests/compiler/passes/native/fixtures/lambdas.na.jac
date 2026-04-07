@@ -18,24 +18,3 @@ def negate_via_lambda(x: int) -> int {
     neg = lambda (n: int) -> int { return 0 - n; };
     return neg(x);
 }
-
-
-# --- Phase 2: Capturing closures ---
-
-# Lambda captures a local variable from enclosing scope
-def add_offset(x: int, offset: int) -> int {
-    adder = lambda (n: int) -> int { return n + offset; };
-    return adder(x);
-}
-
-# Lambda captures multiple variables
-def weighted_sum(a: int, b: int, wa: int, wb: int) -> int {
-    compute = lambda -> int { return a * wa + b * wb; };
-    return compute();
-}
-
-# Closure used as a factory-like pattern: outer sets multiplier, inner uses it
-def make_scaler(x: int, factor: int) -> int {
-    scale = lambda (n: int) -> int { return n * factor; };
-    return scale(x);
-}

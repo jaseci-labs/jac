@@ -2301,7 +2301,7 @@ test "isinstance_ternary_narrowing" {
     path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_ternary.jac");
     mod = program.compile(path);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
+    assert len(program.errors_had) == 0, f"Expected 0 type errors, got {len(
         program.errors_had
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -2838,10 +2838,8 @@ test "root_cause_5_string_slice_loses_type" {
         for e in program.errors_had
         if e.loc and 234 <= e.loc.first_line <= 254
     ];
-    # PARTIALLY FIXED: str.__getitem__ now returns str via protocol matching fallback.
-    # s[0].upper() chaining now works (LiteralString flags fix propagates Instantiable).
-    # Remaining 2: while-loop re-assignment degrades str to Unknown (.startswith x2).
-    assert len(rc5_errors) == 2 , f"Expected 2 string-slice errors, got {len(
+    # FULLY FIXED: Unknown type narrowing now allows isinstance/method chaining to work.
+    assert len(rc5_errors) == 0, f"Expected 0 string-slice errors, got {len(
         rc5_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc5_errors);
 }
@@ -2932,7 +2930,7 @@ test "root_cause_8_dynamic_class_attrs" {
     ];
     # 4 errors: type[Archetype].reports, WalkerArchetype._instance,
     # object.call_params, executor.submit (ThreadPoolExecutor Unknown from import).
-    assert len(rc8_errors) == 4 , f"Expected 4 dynamic-attr errors, got {len(
+    assert len(rc8_errors) == 4, f"Expected 4 dynamic-attr errors, got {len(
         rc8_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc8_errors);
 }
@@ -3025,9 +3023,8 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 dropped 3→2 (CFG resolved 1 any-in-union error).
-    # Total: 37 - 1 = 36
-    assert len(program.errors_had) == 36 , f"Expected 36 total errors, got {len(
+    # Narrowing now works on Unknown types (isinstance on Unknown → narrows to target type).
+    assert len(program.errors_had) == 34, f"Expected 34 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
