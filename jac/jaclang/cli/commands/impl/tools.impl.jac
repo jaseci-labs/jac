@@ -193,7 +193,7 @@ def _install_completion(shell: str, code: str) -> int {
     }
     new_block = f"{start_marker}\n{source_line}\n{end_marker}\n";
     if os.path.exists(config_file) {
-        with open(config_file, "r") as f {
+        with open(config_file, "r", encoding="utf-8") as f {
             content = f.read();
         }
     } else {
@@ -213,7 +213,7 @@ def _install_completion(shell: str, code: str) -> int {
     }
     try {
         os.makedirs(os.path.dirname(config_file), exist_ok=True);
-        with open(config_file, "w") as f {
+        with open(config_file, "w", encoding="utf-8") as f {
             f.write(content);
         }
         console.print(f"Completion script written to {comp_file}");

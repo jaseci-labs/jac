@@ -222,36 +222,39 @@ def fail_assign_to_narrowed_none_local(x: int | None) -> int {
 }
 
 # ============================================================================
-# Root Cause 5: String slicing loses type information
+# Root Cause 5 (FIXED): String slicing preserves type information
 #
-# When a string variable is sliced (e.g., s = s[1:]), the resulting type
-# should still be str, but the type checker resolves it to Unknown.
-# Subsequent string method calls (e.g., .startswith(), .endswith()) then
-# fail with E1032.
+# Regression guard for the former "string slice loses type" root cause.
+# Previously, slicing a str variable produced Unknown and subsequent
+# .startswith()/.endswith() calls emitted E1032. Fixed by:
+#   1) str.__getitem__ returning str via protocol matching fallback,
+#   2) LiteralString flags propagating Instantiable through chained calls,
+#   3) unannotated re-assignments inside non-scoping blocks (while/if/try/...)
+#      binding to the enclosing Python scope so re-slicing no longer creates a
+#      shadow symbol that degrades str to Unknown.
 #
 # Mirrors: runtime.impl.jac line 1096 (chomp_target = chomp_target[1:])
-# then chomp_target.startswith('.') fails
 # ============================================================================
 
-def fail_string_slice_loses_type(target: str) -> str {
+def pass_string_slice_in_while(target: str) -> str {
     chomp = target;
     while chomp.startswith('.') {
-        chomp = chomp[1:];          # slice should preserve str type
-        if chomp.startswith('.') {  # E1032: Unknown has no .startswith
+        chomp = chomp[1:];          # slice preserves str across iterations
+        if chomp.startswith('.') {  # str.startswith resolves cleanly
             continue;
         }
     }
     return chomp;
 }
 
-def fail_string_slice_endswith(path: str) -> bool {
-    base = path[:-3];               # slice should be str
-    return base.endswith(".jac");    # E1032 if slice type is Unknown
+def pass_string_slice_endswith(path: str) -> bool {
+    base = path[:-3];               # slice is str
+    return base.endswith(".jac");    # str.endswith resolves cleanly
 }
 
-def fail_string_index_method(s: str) -> str {
-    c = s[0];                       # indexing str should give str
-    return c.upper();               # E1032 if index type is Unknown
+def pass_string_index_method(s: str) -> str {
+    c = s[0];                       # indexing str gives str
+    return c.upper();               # str.upper resolves cleanly
 }
 
 # ============================================================================

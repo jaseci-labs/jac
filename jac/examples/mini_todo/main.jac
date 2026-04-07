@@ -13,7 +13,7 @@ def:pub add_todo(title: str) -> Todo {
         result = categorize(title);
         category = str(result).split(".")[-1].lower();
     } except Exception {
-        category = "other (Needs AI)";
+        category = "other (setup AI key)";
     }
     todo = Todo(title=title, category=category);
     root() ++> todo;

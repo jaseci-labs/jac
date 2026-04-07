@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# jac-gdb — run a jac native (.na.jac) program under GDB with full DWARF
+#           debug symbols and minimal optimisation.
+#
+# Usage
+# -----
+#   jac-gdb <file.na.jac> [args...]
+#   jac-gdb --no-run <file.na.jac> [args...]   # load into GDB, don't auto-run
+#   jac-gdb --help
+#
+# What it does
+# ------------
+#   • Sets JAC_NATIVE_DEBUG=1  → emits DWARF DICompileUnit / DISubprogram /
+#                                per-statement DILocation metadata into the
+#                                LLVM IR before JIT compilation.
+#   • Sets JAC_OPT_LEVEL=0     → skips all LLVM optimisation passes so GDB
+#                                sees real stack frames (no inlining, no
+#                                variable elimination).
+#   • Runs `gdb --args <python> <jac> run <file> [args]`
+#
+# GDB commands that are most useful once inside
+# -----------------------------------------------
+#   (gdb) info sharedlibrary       — see which .so files are loaded
+#   (gdb) info functions           — list all native function symbols
+#   (gdb) break my_function        — set breakpoint by Jac function name
+#   (gdb) break event_loop.na.jac:42   — break at source line (needs DWARF)
+#   (gdb) bt / backtrace           — full stack trace after a crash
+#   (gdb) frame N                  — switch to frame N
+#   (gdb) info registers           — dump CPU registers
+#   (gdb) set debug jit on         — show JIT symbol registration events
+#
+# Environment overrides
+# ---------------------
+#   PYTHON      — Python interpreter (default: auto-detected from jac shebang)
+#   JAC_BIN     — jac binary (default: $(which jac))
+#   GDB         — GDB binary (default: gdb)
+#   JAC_GDB_EXTRA_ARGS — extra gdb flags inserted before --args
+
+set -euo pipefail
+
+AUTO_RUN=1
+POSITIONAL=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --no-run)   AUTO_RUN=0 ;;
+        --help|-h)
+            grep '^#' "$0" | grep -v '#!/' | sed 's/^# \?//'
+            exit 0
+            ;;
+        *)  POSITIONAL+=("$arg") ;;
+    esac
+done
+
+set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: jac-gdb [--no-run] <file.na.jac> [args...]" >&2
+    echo "       jac-gdb --help" >&2
+    exit 1
+fi
+
+# ── Locate the jac binary ──────────────────────────────────────────────────
+JAC_BIN="${JAC_BIN:-$(command -v jac 2>/dev/null || true)}"
+if [[ -z "$JAC_BIN" ]]; then
+    echo "error: 'jac' not found in PATH. Install jac or set JAC_BIN=." >&2
+    exit 1
+fi
+
+# ── Extract Python interpreter from the jac shebang ───────────────────────
+PYTHON="${PYTHON:-}"
+if [[ -z "$PYTHON" ]]; then
+    SHEBANG=$(head -1 "$JAC_BIN" 2>/dev/null || true)
+    if [[ "$SHEBANG" == '#!'* ]]; then
+        PYTHON="${SHEBANG:2}"   # strip '#!'
+        PYTHON="${PYTHON%% *}"  # strip any arguments (e.g. /usr/bin/env python3)
+        # If shebang is `/usr/bin/env python3`, resolve through env
+        if [[ "$(basename "$PYTHON")" == "env" ]]; then
+            SHEBANG_ARGS=($SHEBANG)
+            PYTHON=$(command -v "${SHEBANG_ARGS[1]}" 2>/dev/null || true)
+        fi
+    fi
+fi
+if [[ -z "$PYTHON" || ! -x "$PYTHON" ]]; then
+    PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
+fi
+if [[ -z "$PYTHON" ]]; then
+    echo "error: cannot find Python interpreter. Set PYTHON=." >&2
+    exit 1
+fi
+
+GDB="${GDB:-$(command -v gdb 2>/dev/null || true)}"
+if [[ -z "$GDB" ]]; then
+    echo "error: 'gdb' not found. Install gdb (apt install gdb)." >&2
+    exit 1
+fi
+
+# ── Activate debug mode ────────────────────────────────────────────────────
+export JAC_NATIVE_DEBUG=1
+export JAC_OPT_LEVEL=0
+# Python's fault handler prints a Python traceback on SIGSEGV which helps
+# diagnose crashes that happen outside JIT code (e.g., in the compiler itself).
+export PYTHONFAULTHANDLER=1
+
+# ── Compute expected symmap path from source file ─────────────────────────
+# The Jac compiler writes a .symmap file into <src_dir>/.jac_ir/<stem>.symmap
+# during JIT compilation when JAC_NATIVE_DEBUG=1.  We pre-compute its path
+# so GDB can auto-load it after a crash.
+SRC_FILE="$1"
+SRC_ABS="$(readlink -f "$SRC_FILE" 2>/dev/null || realpath "$SRC_FILE" 2>/dev/null || echo "$SRC_FILE")"
+SRC_DIR="$(dirname "$SRC_ABS")"
+SRC_BASENAME="$(basename "$SRC_ABS")"
+# Strip ONLY the last extension to match Python's os.path.splitext():
+#   foo.na.jac → foo.na   (compiler uses splitext, which strips one ext)
+STEM="${SRC_BASENAME%.*}"
+SYMMAP_PATH="${SRC_DIR}/.jac_ir/${STEM}.symmap"
+export JAC_SYMMAP_PATH="$SYMMAP_PATH"
+
+# ── Transpile the Jac GDB helper to Python ────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GDB_HELPER_JAC="${SCRIPT_DIR}/jac-gdb-helper.jac"
+GDB_HELPER="/tmp/jac-gdb-helper.$$.py"
+jac jac2py "$GDB_HELPER_JAC" > "$GDB_HELPER" 2>/dev/null
+trap "rm -f '$GDB_HELPER'" EXIT
+
+# ── Build gdb command ──────────────────────────────────────────────────────
+GDB_ARGS=(
+    # Python uses SIGUSR1/SIGUSR2 internally; don't stop on them
+    -ex "handle SIGUSR1 nostop noprint pass"
+    -ex "handle SIGUSR2 nostop noprint pass"
+    # Stop (don't kill) on segfault/abort so we can inspect the crash
+    -ex "handle SIGSEGV stop print nopass"
+    -ex "handle SIGABRT stop print nopass"
+    # Nicer output
+    -ex "set print pretty on"
+    -ex "set print array on"
+    -ex "set pagination off"
+)
+
+# Load the transpiled Python helper (defines jac-load-symbols, jac-auto-symbols)
+if [[ -s "$GDB_HELPER" ]]; then
+    GDB_ARGS+=(-ex "source $GDB_HELPER")
+fi
+
+if [[ $AUTO_RUN -eq 1 ]]; then
+    GDB_ARGS+=(-ex "run")
+    # After the program crashes/stops, auto-load debug symbols from the
+    # .symmap file (produced during JIT compilation).  This maps the .o
+    # file with DWARF info onto the JIT code addresses so GDB can show
+    # real function names and source lines in backtraces.
+    GDB_ARGS+=(-ex "jac-auto-symbols")
+    GDB_ARGS+=(-ex "jac-bt")
+fi
+
+# Insert any user-provided extra args before --args
+if [[ -n "${JAC_GDB_EXTRA_ARGS:-}" ]]; then
+    # shellcheck disable=SC2206
+    GDB_ARGS+=($JAC_GDB_EXTRA_ARGS)
+fi
+
+echo "jac-gdb: running with:"
+echo "  Python  : $PYTHON"
+echo "  jac     : $JAC_BIN"
+echo "  gdb     : $GDB"
+echo "  file    : $1"
+echo "  symmap  : $SYMMAP_PATH"
+echo "  env     : JAC_NATIVE_DEBUG=1  JAC_OPT_LEVEL=0"
+echo ""
+
+exec "$GDB" \
+    "${GDB_ARGS[@]}" \
+    --args "$PYTHON" "$JAC_BIN" run "$@"

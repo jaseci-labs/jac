@@ -70,7 +70,7 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
 }
 
 """Ensure generated JavaScript has balanced delimiters."""
-def assert_balanced_syntax(js_code: str, fixture_name: str) -> None {
+def assert_balanced_syntax(js_code: str, fixture_name: str) {
     pairs = [("{", "}"), ("(", ")"), ("[", "]")];
     for (open_char, close_char) in pairs {
         assert js_code.count(open_char) == js_code.count(close_char) , (
@@ -85,7 +85,7 @@ Uses regex word-boundary matching so that Jac keywords appearing as
 JS variable names (e.g. ``let has = false;`` inside the _jac runtime)
 do not trigger false positives.
 """
-def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
+def assert_no_jac_keywords(js_code: str, fixture_name: str) {
     import re;
 
     # Strip string literals so English words inside error messages
@@ -762,6 +762,29 @@ test "jsx text with quotes does not produce double-double quotes" {
     # The text content should appear in the output with escaped quotes.
     assert "Try: show all to reset" in js_code , (
         "JSX text content with quotes should appear in output"
+    );
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "any typed callee emits plain call not new expression" {
+    # BUG: `Any` is internally represented as a `ClassType` with the
+    # `Instance` flag, so the ES codegen previously emitted
+    # `new handler(payload)` for any callee whose type was a ClassType,
+    # including variables typed as `Any`. This broke async callbacks
+    # passed between components, since `new` makes JavaScript try to
+    # construct an object rather than invoke the function.
+    fixture = "any_callee_not_new.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # Plain invocation must be emitted, not `new ...()`.
+    assert "await handler(payload)" in js_code , (
+        f"Expected plain `await handler(payload)` call, got:\n{js_code}"
+    );
+    assert "await new handler" not in js_code , (
+        f"`Any`-typed async callee must not be emitted as `new`:\n{js_code}"
+    );
+    assert "new handler(" not in js_code , (
+        f"`Any`-typed sync callee must not be emitted as `new`:\n{js_code}"
     );
     assert_balanced_syntax(js_code, fixture);
 }
