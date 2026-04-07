@@ -475,15 +475,15 @@ test "test_go_to_definition_by_postinit" {
             passes_main_fixture_abs_path("static_analysis/by_postinit_sym.jac")
         );
         lsp.type_check_file(file_uri);
-        # Foo: inline - 'postinit' on line 2 col 20 -> def postinit on line 3 (0-indexed: 2)
+        # Foo: inline 
         result = lsp.get_definition(file_uri, lspt.Position(1, 20));
         assert result is not None , "Foo: expected go-to-def for 'postinit', got None";
         assert "by_postinit_sym.jac:2:" in str(result) , f"Foo: expected line 3 (0-indexed 2), got: {result}";
-        # Bar: stub+impl file - 'postinit' on line 9 col 20 -> def postinit; on line 10 (0-indexed: 9)
+        # Bar: stub+impl file 
         result = lsp.get_definition(file_uri, lspt.Position(8, 20));
         assert result is not None , "Bar: expected go-to-def for 'postinit', got None";
         assert "by_postinit_sym.jac:9:" in str(result) , f"Bar: expected line 10 (0-indexed 9), got: {result}";
-        # Baz: impl block - 'postinit' on line 16 col 20 -> def postinit; on line 17 (0-indexed: 16)
+        # Baz: impl block 
         result = lsp.get_definition(file_uri, lspt.Position(15, 20));
         assert result is not None , "Baz: expected go-to-def for 'postinit', got None";
         assert "by_postinit_sym.jac:16:" in str(result) , f"Baz: expected line 17 (0-indexed 16), got: {result}";
