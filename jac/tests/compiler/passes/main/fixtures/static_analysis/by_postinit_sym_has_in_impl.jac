@@ -1,7 +1,7 @@
-obj Greeter {
-    def postinit;
-}
+obj Greeter ;
 
 impl Greeter {
     has msg: str by postinit;
+
+    def postinit;
 }
