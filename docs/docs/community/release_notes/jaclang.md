@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.6 (Unreleased)
 
+- **Lint: W3038 Auto-Convert React `useState` to Jac `has`**: `jac lint --fix` now rewrites the React `useState` hook pattern into Jac native state declarations. `[name, setName] = useState("")` becomes `has name: str = ""`, all `setName(expr)` calls throughout the function body are rewritten to direct `name = expr` assignments, and the unused `useState` import is automatically removed. The type is inferred from the initial value.
 - **Fix: UTF-8 Encoding for Windows**: Added explicit `encoding="utf-8"` to `open()` calls in compiler passes and CLI commands. Prevents `charmap` codec errors on Windows where the default encoding is `cp1252`.
 - **Type Checker: Improved Narrowing for AND/OR and Ternary Expressions**: Type narrowing now works correctly in nested ternary expressions, AND/OR chains, and `isinstance` on unknown-typed variables.
 - **Native: Bug Fixes and Stability Improvements**: Fixed several issues in the `jac-native` compilation pipeline, including silent failures when type-checker errors occur during `.na.jac` compilation, incorrect ordering of default/non-default `has` attributes in native structs, and transitive C-library import resolution for imported `.na.jac` modules.

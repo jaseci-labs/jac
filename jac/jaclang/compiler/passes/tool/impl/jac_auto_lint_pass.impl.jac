@@ -34,6 +34,10 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
     }
+    # Pop setter map pushed by _convert_usestate_vars for this ability
+    if not self.report_only and self._pending_setters {
+        self._pending_setters.pop();
+    }
     if not self.report_only and not self._is_suppressed(W3005) {
         sig = ability_node.signature;
         if isinstance(sig, uni.FuncSignature) {
@@ -139,6 +143,10 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     }
     if not self._is_suppressed(W3001) and ability_node.is_static {
         self._remove_staticmethod_from_kids(ability_node);
+    }
+    # W3038: Convert useState hooks to has declarations before combining has statements
+    if not self._is_suppressed(W3038) {
+        self._convert_usestate_vars(ability_node);
     }
     if ability_node.body is not None and isinstance(ability_node.body, list) {
         old_body = list(ability_node.body);
@@ -2001,4 +2009,376 @@ impl JacAutoLintPass._body_has_return_stmt(body: list) -> bool {
         }
     }
     return False;
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# useState-to-has conversion (W3038)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""Check if a statement is a useState destructuring assignment.
+
+Matches: [varName, setterName] = useState(initialValue)
+
+Returns (var_name, setter_name, initial_value_node) tuple if matched, else None.
+"""
+impl JacAutoLintPass._is_usestate_assignment(stmt: uni.UniNode) -> (tuple | None) {
+    if not isinstance(stmt, uni.Assignment) {
+        return None;
+    }
+    # Right side must be a FuncCall to useState
+    rhs = stmt.value;
+    if not isinstance(rhs, uni.FuncCall) {
+        return None;
+    }
+    if not isinstance(rhs.target, uni.Name) or rhs.target.value != "useState" {
+        return None;
+    }
+    # Left side must be a single ListVal with exactly two Name elements
+    if len(stmt.target) != 1 {
+        return None;
+    }
+    lhs = stmt.target[0];
+    if not isinstance(lhs, (uni.ListVal, uni.TupleVal)) {
+        return None;
+    }
+    if len(lhs.values) != 2 {
+        return None;
+    }
+    name_node = lhs.values[0];
+    setter_node = lhs.values[1];
+    if not isinstance(name_node, uni.Name) or not isinstance(setter_node, uni.Name) {
+        return None;
+    }
+    initial_value: (uni.Expr | None) = None;
+    if rhs.params and len(rhs.params) > 0 {
+        first_param = rhs.params[0];
+        if isinstance(first_param, uni.Expr) {
+            initial_value = first_param;
+        }
+    }
+    return (name_node.value, setter_node.value, initial_value);
+}
+
+"""Infer a Jac type string from the initial useState value.
+
+Maps common literal types to their Jac equivalents.
+Falls back to 'any' for complex expressions.
+"""
+impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -> str {
+    if value is None {
+        return "any";
+    }
+    if isinstance(value, (uni.String, uni.MultiString)) {
+        return "str";
+    }
+    if isinstance(value, uni.Int) {
+        return "int";
+    }
+    if isinstance(value, uni.Float) {
+        return "float";
+    }
+    if isinstance(value, uni.Bool) {
+        return "bool";
+    }
+    if isinstance(value, uni.Null) {
+        return "None";
+    }
+    if isinstance(value, uni.ListVal) {
+        return "list";
+    }
+    if isinstance(value, uni.DictVal) {
+        return "dict";
+    }
+    return "any";
+}
+
+"""Create an ArchHas (has declaration) node from useState info.
+
+Produces: has var_name: type_str = init_value;
+Uses ref_node for source-location metadata on generated tokens.
+"""
+impl JacAutoLintPass._create_has_from_usestate(
+    ref_node: uni.UniNode, var_name: str, type_str: str, init_value: (uni.Expr | None)
+) -> uni.ArchHas {
+    # Build the Name node for the variable
+    name_node = uni.Name(
+        orig_src=ref_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=var_name,
+        line=ref_node.loc.first_line,
+        end_line=ref_node.loc.last_line,
+        col_start=ref_node.loc.col_start,
+        col_end=ref_node.loc.col_start + len(var_name),
+        pos_start=ref_node.loc.pos_start,
+        pos_end=ref_node.loc.pos_end,
+        is_kwesc=False
+    );
+    # Build the type Name node
+    type_name_node = uni.Name(
+        orig_src=ref_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=type_str,
+        line=ref_node.loc.first_line,
+        end_line=ref_node.loc.last_line,
+        col_start=ref_node.loc.col_start,
+        col_end=ref_node.loc.col_start + len(type_str),
+        pos_start=ref_node.loc.pos_start,
+        pos_end=ref_node.loc.pos_end,
+        is_kwesc=False
+    );
+    # Use ref_node to generate tokens — gen_token() needs a live node with valid loc info
+    colon_tok = ref_node.gen_token(Tok.COLON);
+    # SubTag kid matches parser: SubTag(tag=type_expr, kid=[colon_uni, type_expr])
+    type_tag = uni.SubTag(tag=type_name_node, kid=[colon_tok, type_name_node]);
+    # HasVar kid: [name, type_tag] + optional [eq, value] — must be non-empty at construction
+    has_var_kids: list[uni.UniNode] = [name_node, type_tag];
+    if init_value is not None {
+        eq_tok = ref_node.gen_token(Tok.EQ);
+        has_var_kids.append(eq_tok);
+        has_var_kids.append(init_value);
+    }
+    has_var = uni.HasVar(
+        name=name_node,
+        type_tag=type_tag,
+        value=init_value,
+        defer=False,
+        kid=has_var_kids
+    );
+    # ArchHas kid: [has_kw, has_var, semi] — must be non-empty at construction
+    has_kw = ref_node.gen_token(Tok.KW_HAS);
+    semi_tok = ref_node.gen_token(Tok.SEMI);
+    arch_has = uni.ArchHas(
+        is_static=False,
+        vars=[has_var],
+        is_frozen=False,
+        access=None,
+        doc=None,
+        kid=[has_kw, has_var, semi_tok]
+    );
+    return arch_has;
+}
+
+"""Sync a node's kid list after its body has been rewritten.
+
+When body statements are replaced, the kid list must be updated too since
+the unparser reads nd.kid, not nd.body. This swaps only the changed nodes.
+"""
+impl JacAutoLintPass._sync_body_to_kids(
+    nd: uni.UniNode, old_body: list, new_body: list
+) -> None {
+    swapped: dict[int, uni.UniNode] = {
+        id(o): n
+        for (o, n) in zip(old_body, new_body)
+        if o is not n
+    };
+    if swapped {
+        nd.kid = [swapped.get(id(k), k) for k in nd.kid];
+        for k in nd.kid {
+            if k is not None {
+                k.parent = nd;
+            }
+        }
+    }
+}
+
+"""Convert useState hooks inside an ability to has declarations.
+
+Detects useState assignments, creates has nodes in their place, and pushes
+the setter→var mapping onto _pending_setters so that exit_expr_stmt can
+replace setter calls as the visitor naturally walks into child nodes.
+"""
+impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
+    if not ability_node.body or not isinstance(ability_node.body, list) {
+        return;
+    }
+    body = list(ability_node.body);
+    new_body: list[uni.UniNode] = [];
+    replaced: dict[int, uni.ArchHas] = {};  # old stmt id -> new ArchHas for kid rebuild
+    setters: dict[str, str] = {};  # setter_name -> var_name for this ability
+    for stmt in body {
+        match_result = self._is_usestate_assignment(stmt);
+        if match_result is None {
+            new_body.append(stmt);
+            continue;
+        }
+        (var_name, setter_name, init_value) = match_result;
+        type_str = self._infer_type_from_usestate_value(init_value);
+        init_repr = (
+            str(getattr(init_value, "value", "..."))
+                if init_value is not None
+                else '""'
+        );
+        if not self.emit(
+            W3038,
+            node_override=stmt,
+            name=var_name,
+            type_name=type_str,
+            init=init_repr
+        ) {
+            new_body.append(stmt);
+            continue;
+        }
+        has_node = self._create_has_from_usestate(stmt, var_name, type_str, init_value);
+        has_node.parent = ability_node;
+        new_body.append(has_node);
+        replaced[id(stmt)] = has_node;
+        setters[setter_name] = var_name;
+        self._did_convert_usestate = True;
+    }
+    if not setters {
+        return;
+    }
+    ability_node.body = new_body;
+    self.recalculate_parents(ability_node);
+    ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
+    # Push setter map so exit_expr_stmt can replace calls as the visitor walks children
+    self._pending_setters.append(setters);
+}
+
+"""Replace setterName(expr) with varName = expr as the visitor exits each ExprStmt.
+
+This is called automatically by the visitor for every ExprStmt in the tree.
+_pending_setters is a stack: the top entry belongs to the innermost ability
+currently being visited, so nested abilities with different state vars are
+handled correctly without any manual recursion.
+"""
+impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
+    if not self.lint_enabled or self.report_only or not self._pending_setters {
+        return;
+    }
+    if not isinstance(nd.expr, uni.FuncCall) {
+        return;
+    }
+    call = nd.expr;
+    if not isinstance(call.target, uni.Name)
+    or call.params is None
+    or len(call.params) != 1 {
+        return;
+    }
+    # Check all active setter maps (handles closures over outer abilities)
+    var_name: (str | None) = None;
+    for setter_map in self._pending_setters {
+        if call.target.value in setter_map {
+            var_name = setter_map[call.target.value];
+            break;
+        }
+    }
+    if var_name is None {
+        return;
+    }
+    value_expr = call.params[0];
+    parent = nd.parent;
+    if parent is None {
+        return;
+    }
+    lhs_name = uni.Name(
+        orig_src=nd.loc.orig_src,
+        name=Tok.NAME.value,
+        value=var_name,
+        line=nd.loc.first_line,
+        end_line=nd.loc.last_line,
+        col_start=nd.loc.col_start,
+        col_end=nd.loc.col_start + len(var_name),
+        pos_start=nd.loc.pos_start,
+        pos_end=nd.loc.pos_end,
+        is_kwesc=False
+    );
+    eq_tok = nd.gen_token(Tok.EQ);
+    semi_tok = nd.gen_token(Tok.SEMI);
+    assign = uni.Assignment(
+        target=[lhs_name],
+        value=value_expr,
+        mutable=True,
+        aug_op=None,
+        kid=[lhs_name, eq_tok, value_expr, semi_tok]
+    );
+    assign.parent = parent;
+    # Swap nd -> assign in parent.body and parent.kid
+    if isinstance(parent?.body, list) {
+        parent.body = [assign if s is nd else s for s in parent.body];
+    }
+    parent.kid = [assign if k is nd else k for k in parent.kid];
+}
+
+"""Remove useState from react imports after all abilities have been processed.
+
+If all useState calls in the module were converted to has declarations,
+the useState import item is removed. If it was the only import from react,
+the entire import statement is removed from the module body.
+"""
+impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
+    if not self.lint_enabled or self.report_only {
+        return;
+    }
+    if not self._did_convert_usestate {
+        return;
+    }
+    # Check if useState is still referenced anywhere (in case it wasn't converted everywhere)
+    module_body = list(nd.body);
+    new_module_body: list[uni.UniNode] = [];
+    for stmt in module_body {
+        if not isinstance(stmt, uni.Import) {
+            new_module_body.append(stmt);
+            continue;
+        }
+        import_node = stmt;
+        # Only handle `import from "..." { useState }` style imports
+        if import_node.from_loc is None {
+            new_module_body.append(stmt);
+            continue;
+        }
+        usestate_items = [
+            item
+            for item in import_node.items
+            if isinstance(item, uni.ModuleItem)
+            and isinstance(item.name, uni.Name)
+            and item.name.value == "useState"
+        ];
+        if not usestate_items {
+            new_module_body.append(stmt);
+            continue;
+        }
+        remaining_items = [
+            item
+            for item in import_node.items
+            if item not in usestate_items
+        ];
+        if not remaining_items {
+            # useState was the only import — remove the whole import statement
+            continue;
+        }
+        # Remove useState from the import's item list and rebuild kids
+        import_node.items = remaining_items;
+        new_kid: list[uni.UniNode] = [];
+        skip_comma = False;
+        for kid in import_node.kid {
+            if kid in usestate_items {
+                skip_comma = True;
+                continue;
+            }
+            if skip_comma and isinstance(kid, uni.Token) and kid.name == Tok.COMMA {
+                skip_comma = False;
+                continue;
+            }
+            skip_comma = False;
+            new_kid.append(kid);
+        }
+        import_node.set_kids(nodes=new_kid);
+        new_module_body.append(stmt);
+    }
+    nd.body = new_module_body;
+    # Must also rebuild kid list — the unparser reads nd.kid, not nd.body
+    removed_ids = set(
+        id(s)
+        for s in module_body
+        if s not in new_module_body
+    );
+    if removed_ids {
+        new_kid: list[uni.UniNode] = [
+            k
+            for k in nd.kid
+            if id(k) not in removed_ids
+        ];
+        nd.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+    }
+    self.recalculate_parents(nd);
 }
