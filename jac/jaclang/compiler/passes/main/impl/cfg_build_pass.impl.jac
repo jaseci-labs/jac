@@ -325,27 +325,23 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
 
 """Wire short-circuit boolean flow for BoolExpr conditions.
 Sets sc_true_target/sc_false_target on the BoolExpr and links it to targets.
-Returns the BoolExpr as the entry CFG node."""
+Intra-operand narrowing is handled separately via _narrow_prev chains
+(see enter_bool_expr)."""
 impl CFGBuildPass._wire_bool_condition(
     expr: uni.BoolExpr,
     true_target: (uni.UniCFGNode | None),
     false_target: (uni.UniCFGNode | None)
 ) -> uni.UniCFGNode {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
-
-    # Set branch targets on the BoolExpr itself
     expr.sc_true_target = true_target;
     expr.sc_false_target = false_target;
     expr.affected_symbols.update(collect_narrowing_symbols(expr));
-
-    # Link BoolExpr to its true/false targets
     if true_target {
         self.link_bbs(expr, true_target);
     }
     if false_target {
         self.link_bbs(expr, false_target);
     }
-
     return expr;
 }
 
