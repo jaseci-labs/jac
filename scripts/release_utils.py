@@ -29,6 +29,8 @@ class PackageInfo(NamedTuple):
     precompile_path: str = ""  # Path to _precompiled dir (relative to repo root)
     precompile_artifact: str = ""  # Artifact name prefix for precompiled bytecode
     extra_build_cmd: str = ""  # Extra command to run before build (e.g., bundle_docs)
+    needs_nodejs: bool = False  # Whether extra_build_cmd requires Node.js/Bun
+    extra_build_deps: str = ""  # Additional pip packages needed for extra_build_cmd
 
 
 # Package registry - single source of truth for all release scripts
@@ -76,6 +78,9 @@ PACKAGES: dict[str, PackageInfo] = {
         precompile=True,
         precompile_path="jac-scale/jac_scale/_precompiled",
         precompile_artifact="precompiled-scale",
+        extra_build_cmd="jac run scripts/build_admin_ui.jac",
+        needs_nodejs=True,
+        extra_build_deps="jac-client",
     ),
     "jac-super": PackageInfo(
         dir="jac-super",

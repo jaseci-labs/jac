@@ -106,17 +106,6 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
                 sym.add_use(i.name_spec);
             } elif (
                 (nd.type_tag is None)
-                and not isinstance(
-                    i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
-                )
-                and (
-                    (outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
-                )
-                and self._outer_has_type_annotation(outer)
-            ) {
-                outer.add_use(i.name_spec);
-            } elif (
-                (nd.type_tag is None)
                 and (
                     (outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
                 )
@@ -127,6 +116,32 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
                 # the enclosing ability (not an archetype). Assignments to these
                 # names in nested abilities are state mutations, not new locals.
                 outer_has.add_use(i.name_spec);
+            } elif (
+                (nd.type_tag is None)
+                and not isinstance(
+                    i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
+                )
+            ) {
+                # Python semantics: an unannotated assignment inside a non-scoping
+                # block (try/except/finally, if/else, for/while, match) binds in
+                # the nearest enclosing Python scope, not in the inner block.
+                # Without this, two assignments to the same name in sibling
+                # branches would create separate "shadow" symbols in each faux
+                # scope, fragmenting symbol resolution and producing spurious
+                # "defined but never used" warnings. This mirrors the walrus
+                # handling in exit_binary_expr.
+                py_scope = self.find_python_scope_node_of(i);
+                if py_scope is not None {
+                    if (
+                        (outer := py_scope.lookup(i.sym_name, deep=False)) is not None
+                    ) {
+                        outer.add_use(i.name_spec);
+                    } else {
+                        py_scope.def_insert(i, single_decl='local var');
+                    }
+                } else {
+                    i.sym_tab.def_insert(i, single_decl='local var');
+                }
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {

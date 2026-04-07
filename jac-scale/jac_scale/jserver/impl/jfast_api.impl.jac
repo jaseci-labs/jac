@@ -840,7 +840,7 @@ impl JFastApiServer.init(
     app: (FastAPI | None) = None
 ) -> None {
     super.init((endpoints or []));
-    self.app = app or FastAPI(docs_url=None, redoc_url=None, openapi_url=None);
+    self.app = app or FastAPI();
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
 

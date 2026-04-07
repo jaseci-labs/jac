@@ -245,7 +245,7 @@ RIGHT:
 
 ```jac
 self.name = "Alice";
-root ++> node;
+root() ++> node;
 def init() { }
 ```
 
@@ -415,13 +415,13 @@ a +>:MyEdge(weight=2.0):+> b;  # typed edge
 
 # Traverse
 visit [-->];           # visit all connected nodes
-visit [-->](`?B);      # visit only B-type nodes
+visit [-->][?:B];      # visit only B-type nodes
 ```
 
 ### 21. Walker spawn syntax
 
 ```jac
-root spawn MyWalker();
+root() spawn MyWalker();
 ```
 
 ## File Organization
@@ -609,7 +609,7 @@ merged = {**dict1, **dict2};
 
 ### 30. Event handlers REQUIRE type annotations on lambda parameters
 
-Lambda event handlers must have type annotations. Omitting the type on the event parameter causes compilation errors.
+Lambda event handlers must have type annotations. Use ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `FormEvent`, etc.) which are available without import. Omitting the type on the event parameter causes compilation errors.
 
 WRONG (missing type annotation):
 
@@ -617,16 +617,12 @@ WRONG (missing type annotation):
 <input onChange={lambda e { name = e.target.value; }} />
 ```
 
-WRONG (missing return type):
-
-```
-<input onChange={lambda e: any { name = e.target.value; }} />
-```
-
-RIGHT:
+RIGHT (use ambient DOM types -- no import needed):
 
 ```jac
-<input onChange={lambda e: any -> None { name = e.target.value; }} />
+<input onChange={lambda e: ChangeEvent { name = e.target.value; }} />
+<input onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter" { submit(); } }} />
+<form onSubmit={lambda e: FormEvent { e.preventDefault(); handle(); }} />
 ```
 
 For click handlers with no event parameter:
@@ -699,7 +695,7 @@ cl {
         return <div>
             <input
                 value={query}
-                onChange={lambda e: any -> None { query = e.target.value; }}
+                onChange={lambda e: ChangeEvent { query = e.target.value; }}
             />
         </div>;
     }
@@ -778,9 +774,9 @@ sv import from ...main { get_tasks, add_task }
 
 The `sv` prefix tells the compiler this is a server-side import to be called over HTTP.
 
-### 35. Calling walkers from client uses `root spawn`, NOT `await func()`
+### 35. Calling walkers from client uses `root() spawn`, NOT `await func()`
 
-Server walkers are called by spawning them on `root`. The result contains `.reports` with the walker's reported values.
+Server walkers are called by spawning them on `root()`. The result contains `.reports` with the walker's reported values.
 
 WRONG (function-call style):
 
@@ -802,7 +798,7 @@ cl {
         has tasks: list = [];
 
         async can with entry {
-            result = root spawn get_tasks();
+            result = root() spawn get_tasks();
             if result.reports and result.reports.length > 0 {
                 tasks = result.reports[0];
             }
@@ -822,7 +818,7 @@ sv import from ...main { add_task }
 
 cl {
     async def handle_add() -> None {
-        result = root spawn add_task(title="New task");
+        result = root() spawn add_task(title="New task");
         if result.reports and result.reports.length > 0 {
             new_task = result.reports[0];
             tasks = tasks + [new_task];
@@ -833,12 +829,12 @@ cl {
 
 ### 36. Walker reports are in `result.reports[0]`, NOT `result.data`
 
-The response from `root spawn` has a `.reports` array containing values from the walker's `report` statements. The first report is at index `[0]`.
+The response from `root() spawn` has a `.reports` array containing values from the walker's `report` statements. The first report is at index `[0]`.
 
 WRONG:
 
 ```
-result = root spawn get_tasks();
+result = root() spawn get_tasks();
 tasks = result.data;          # WRONG: no .data property
 tasks = result;               # WRONG: result is a response object, not the data
 tasks = result.reports;       # PARTIAL: this is the full array, usually you want [0]
@@ -847,7 +843,7 @@ tasks = result.reports;       # PARTIAL: this is the full array, usually you wan
 RIGHT:
 
 ```jac
-result = root spawn get_tasks();
+result = root() spawn get_tasks();
 if result.reports and result.reports.length > 0 {
     tasks = result.reports[0];
 }
@@ -999,13 +995,13 @@ cl {
         return <form>
             <input
                 value={username}
-                onChange={lambda e: any -> None { username = e.target.value; }}
+                onChange={lambda e: ChangeEvent { username = e.target.value; }}
                 placeholder="Username"
             />
             <input
                 type="password"
                 value={password}
-                onChange={lambda e: any -> None { password = e.target.value; }}
+                onChange={lambda e: ChangeEvent { password = e.target.value; }}
                 placeholder="Password"
             />
             <button type="button" onClick={lambda -> None { handleLogin(); }}>

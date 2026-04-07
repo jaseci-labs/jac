@@ -2,16 +2,26 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.12 (Unreleased)
+## jac-scale 0.2.14 (Unreleased)
 
 - **Docker Build Pathway (`--build`)**: `jac start app.jac --scale --build` now builds and pushes a Docker image to DockerHub before deploying. Auto-generates a `Dockerfile` (with Bun, `jac install`, and layer-cached `jac.toml`) and `.dockerignore` (excludes `jac.local.toml`) if not present. Sets the correct K8s startup command automatically.
 - **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
 - **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
 - **Health Check Tuning**: Interval reduced from 15s to 10s, max retries increased to 60, `aws_nlb_wait` reduced to 10s.
+- **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
+
+## jac-scale 0.2.13 (Latest Release)
+
+- **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.
+
+## jac-scale 0.2.12
+
+- **Pre-built Admin Dashboard**: The admin dashboard UI is now pre-built during the release process and shipped as static assets in the package. Previously, navigating to `/admin/` on first load triggered a full Vite build from source, causing significant lag. The server now copies bundled assets instantly, falling back to source build only in dev mode.
 - **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- **API docs enabled by default**: `/docs`, `/redoc`, and `/openapi.json` are now available in all modes (not just dev). Disable with `docs_enabled = false` in `[plugins.scale.server]`.
 - 2 small refactors/changes.
 
-## jac-scale 0.2.11 (Latest Release)
+## jac-scale 0.2.11
 
 - **Fix: Sandbox status returns stale RUNNING for dead pods**: `KubernetesSandbox.status()` was returning the cached registry state (often `RUNNING`) when `read_namespaced_pod_status()` threw an exception (pod deleted or unreachable). This caused callers to believe the sandbox was still alive, preventing recovery. Now returns `STOPPED` when the pod query fails so dead pods are detected immediately.
 - **Fix: Admin portal build fails from PyPI install**: `jac.toml` and `styles/*.css` were excluded from the wheel because `pyproject.toml` package-data only included `*.jac` files. The admin portal's `jac build` command needs these files to discover the project config and generate Tailwind CSS output.
@@ -19,7 +29,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.10
 
 - **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
-- **Security: FastAPI docs disabled in production**: `/docs`, `/redoc`, and `/openapi.json` are no longer exposed in production. They are only available in dev mode.
+- **Configurable API docs**: `/docs`, `/redoc`, and `/openapi.json` are controlled by the `docs_enabled` setting in `[plugins.scale.server]` (defaults to `true`). Set `docs_enabled = false` to hide them in production.
 - **Health check endpoint**: Added `GET /healthz` for liveness checks. Returns `{"status": "ok"}` with no authentication required. Useful for Kubernetes probes and monitoring.
 - **Warm Pool TTL**: Added `warm_pool_ttl` config to control warm pod lifetime independently from sandbox `ttl_seconds`. Default `0` means warm pods live indefinitely until claimed, preventing the pool from emptying after the sandbox TTL expires.
 

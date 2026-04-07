@@ -214,6 +214,13 @@ Response (all walker responses are wrapped in a standard envelope):
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
 - **Graph Visualizer:** `http://localhost:8000/graph` - interactive visualization of your application's graph
 
+These endpoints are enabled by default. To disable them (e.g. in production), set `docs_enabled = false` in your `jac.toml`:
+
+```toml
+[plugins.scale.server]
+docs_enabled = false
+```
+
 ---
 
 ## Database Persistence

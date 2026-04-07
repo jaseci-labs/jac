@@ -197,6 +197,16 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "fullstack-routing.md",
              "Routing - Full-stack routing tutorial"
          ),
+         "jac://docs/tutorial-fullstack-npm": (
+             "tutorials/fullstack/npm-and-libraries.md",
+             "fullstack-npm-and-libraries.md",
+             "NPM & Libraries - Using npm packages, UI libraries, and JS interop"
+         ),
+         "jac://docs/tutorial-fullstack-advanced": (
+             "tutorials/fullstack/advanced-patterns.md",
+             "fullstack-advanced-patterns.md",
+             "Advanced Patterns - Advanced full-stack patterns"
+         ),
          # --- Deployment & Scaling ---
          "jac://docs/jac-scale": (
              "reference/plugins/jac-scale.md",
@@ -243,6 +253,11 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "tutorials/language/debugging.md",
              "debugging.md",
              "Debugging - Debugging techniques tutorial"
+         ),
+         "jac://docs/diagnostics": (
+             "reference/diagnostics.md",
+             "diagnostics.md",
+             "Diagnostics - Compiler diagnostics and error reference"
          ),
          # --- Python Integration ---
          "jac://docs/python-integration": (
