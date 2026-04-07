@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.12 (Unreleased)
 
+- **Feat: Multi-mode Sidecar for Windows Desktop**: --jac-cli flag for CLI proxy, manual plugin registration for frozen apps, .env loading from bundled location, UTF-8/NO_COLOR for Windows.
+
 ## jac-client 0.3.11 (Latest Release)
 
 - **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
