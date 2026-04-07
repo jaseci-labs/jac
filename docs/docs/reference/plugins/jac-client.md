@@ -1496,6 +1496,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | `filename` | Path to .jac file | `main.jac` |
 | `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
 | `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+
 **Examples:**
 
 ```bash
