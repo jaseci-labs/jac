@@ -1191,14 +1191,17 @@ test "vite config generation" {
             entry_file.parent.mkdir(parents=True, exist_ok=True);
             entry_file.write_text("// Mock entry file");
 
-            # Test create_vite_config (build config)
-            build_config_path = bundler.create_vite_config(entry_file);
+            # Test create_vite_config (build config) - pass explicit API URL to test define injection
+            build_config_path = bundler.create_vite_config(
+                entry_file, api_base_url_override="https://api.example.com"
+            );
             assert build_config_path.exists();
             assert build_config_path.name == "vite.config.js";
 
             # Read and validate build config content
             build_config_content = build_config_path.read_text();
             assert "globalThis.__JAC_API_BASE_URL__" in build_config_content;
+            assert "https://api.example.com" in build_config_content;
             assert "jacSourceMapper()" in build_config_content;  # Build-specific plugin
             assert "tailwindcss()" in build_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in build_config_content;  # Tailwind import
@@ -1212,8 +1215,9 @@ test "vite config generation" {
 
             # Read and validate dev config content
             dev_config_content = dev_config_path.read_text();
-            assert "globalThis.__JAC_API_BASE_URL__" in dev_config_content;
-            assert '"http://localhost:8001"' in dev_config_content;  # API port
+            # Dev mode uses proxy, so API base URL define is not needed (proxy handles routing)
+            # Check that proxy is configured to the correct port
+            assert "http://localhost:8001" in dev_config_content;  # API port in proxy config
             assert "/walker" in dev_config_content;  # Walker endpoint proxy
             assert "/docs" in dev_config_content;  # FastAPI docs proxy
             assert "/openapi.json" in dev_config_content;  # OpenAPI spec proxy
