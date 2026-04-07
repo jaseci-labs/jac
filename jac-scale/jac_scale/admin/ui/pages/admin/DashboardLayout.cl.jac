@@ -95,12 +95,12 @@ cl {
 
         currentSubTabs = subTabs[activeCategory];
 
-        def handleCategoryChange(catId: str, defaultTab: str) -> None {
+        def handleCategoryChange(catId: str, defaultTab: str) {
             activeCategory = catId;
             activeSubTab = defaultTab;
         }
 
-        def handleSubTabChange(tabId: str) -> None {
+        def handleSubTabChange(tabId: str) {
             activeSubTab = tabId;
         }
 

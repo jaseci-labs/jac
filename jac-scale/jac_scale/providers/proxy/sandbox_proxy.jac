@@ -21,7 +21,7 @@ glob log = _setup_logging(),
      _ws_session: aiohttp.ClientSession | None = None;
 
 
-async def watch_pods -> None {
+async def watch_pods {
     import from kubernetes_asyncio { client, config, watch }
 
     try {
@@ -191,7 +191,7 @@ async def handle_websocket(request: web.Request, pod_ip: str) -> web.WebSocketRe
         async with ws_session.ws_connect(
             target, protocols=protocols, headers=ws_headers
         ) as ws_backend {
-            async def client_to_backend -> None {
+            async def client_to_backend {
                 async for msg in ws_client {
                     if msg.type == WSMsgType.TEXT {
                         await ws_backend.send_str(msg.data);
@@ -203,7 +203,7 @@ async def handle_websocket(request: web.Request, pod_ip: str) -> web.WebSocketRe
                     }
                 }
             }
-            async def backend_to_client -> None {
+            async def backend_to_client {
                 async for msg in ws_backend {
                     if msg.type == WSMsgType.TEXT {
                         await ws_client.send_str(msg.data);
@@ -226,12 +226,12 @@ async def handle_websocket(request: web.Request, pod_ip: str) -> web.WebSocketRe
     return ws_client;
 }
 
-async def on_startup(app: web.Application) -> None {
+async def on_startup(app: web.Application) {
     app["watcher"] = asyncio.create_task(watch_pods());
     log.info(f"Sandbox proxy started on :{PROXY_PORT}");
 }
 
-async def on_cleanup(app: web.Application) -> None {
+async def on_cleanup(app: web.Application) {
     app["watcher"].cancel();
     if _session and not _session.closed {
         await _session.close();

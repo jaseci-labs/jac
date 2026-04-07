@@ -58,7 +58,7 @@ cl {
         }
 
         # Handle logout
-        def handleLogout -> None {
+        def handleLogout {
             jacLogout();
             isLoggedIn = False;
             username = "";
@@ -67,7 +67,7 @@ cl {
         }
 
         # Handle form submit
-        async def handleSubmit(e: Any) -> None {
+        async def handleSubmit(e: Any) {
             e.preventDefault();
             if isSignup {
                 await handleSignup();
@@ -228,7 +228,7 @@ cl {
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: Any  -> None { username = e.target.value;}}
+                                onChange={lambda e: Any { username = e.target.value;}}
                                 placeholder="Enter your username"
                                 style={{
                                     "width": "100%",
@@ -257,7 +257,7 @@ cl {
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: Any  -> None { password = e.target.value;}}
+                                onChange={lambda e: Any { password = e.target.value;}}
                                 placeholder="Enter your password"
                                 style={{
                                     "width": "100%",
@@ -338,7 +338,7 @@ cl {
                             )}
                         </p>
                         <button
-                            onClick={lambda -> None { isSignup = not isSignup;error = "";username = "";password = "";}}
+                            onClick={lambda { isSignup = not isSignup;error = "";username = "";password = "";}}
                             style={{
                                 "background": "none",
                                 "border": "none",

@@ -179,6 +179,19 @@ impl nacompile(filename: str, output: str = "") -> int {
         needed_libs: list[str] = ["libc.so.6"];
     }
 
+    # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
+    # These come from `import from "/path/to/lib.so" { ... }` declarations
+    # in the compiled module and its transitive dependencies.
+    # _clib_paths is accumulated by _compile_and_link_native_imports.
+    clib_paths = ir_module.gen._clib_paths;
+    if clib_paths {
+        for lib_path in clib_paths {
+            if lib_path not in needed_libs {
+                needed_libs.append(lib_path);
+            }
+        }
+    }
+
     # Step 6: Emit object code via llvmlite
     try {
         mod = llvm.parse_assembly(llvm_ir_str);

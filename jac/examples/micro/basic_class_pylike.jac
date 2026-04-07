@@ -4,12 +4,12 @@ obj Person {
     has age: int,
         name: str;
 
-    def init(name: str, age: int) -> None {
+    def init(name: str, age: int) {
         self.name = name;
         self.age = age;
     }
 
-    def greet -> None {
+    def greet {
         print("Hello, my name is ", self.name, " and I'm ", self.age, " years old.");
     }
 }

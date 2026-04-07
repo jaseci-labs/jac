@@ -5,7 +5,7 @@ obj Parent {
     # Parent initialization
     }
 
-    def speak -> None {
+    def speak {
     # Parent speaking
     }
 }

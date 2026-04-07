@@ -19,7 +19,7 @@ impl DependencyInstaller.postinit -> None {
 impl DependencyInstaller.ensure_venv -> None {
     import venv;
     import sys;
-    def _create_venv(target: Path) -> None {
+    def _create_venv(target: Path) {
         builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
         try {
             builder.create(str(target));

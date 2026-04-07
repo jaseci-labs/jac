@@ -500,9 +500,7 @@ def _generate_identifier(name: str) -> str {
 }
 
 """Generate tauri.conf.json."""
-def _generate_tauri_config(
-    tauri_dir: Path, name: str, identifier: str, version: str
-) -> None {
+def _generate_tauri_config(tauri_dir: Path, name: str, identifier: str, version: str) {
     config = {
         "productName": name,
         "version": version,
@@ -529,7 +527,7 @@ def _generate_tauri_config(
 }
 
 """Generate Cargo.toml."""
-def _generate_cargo_toml(tauri_dir: Path, name: str, identifier: str) -> None {
+def _generate_cargo_toml(tauri_dir: Path, name: str, identifier: str) {
     # Sanitize name for Cargo (Rust package names)
     cargo_name = name.lower().replace(" ", "-").replace("_", "-");
     cargo_name = "".join(c if c.isalnum() or c == "-" else "" for c in cargo_name);
@@ -572,7 +570,7 @@ custom-protocol = ["tauri/custom-protocol"]
 }
 
 """Generate build.rs (required for Tauri v2)."""
-def _generate_build_rs(tauri_dir: Path) -> None {
+def _generate_build_rs(tauri_dir: Path) {
     build_rs = '''fn main() {
     tauri_build::build()
 }
@@ -723,7 +721,9 @@ except ImportError:
 api_base_url: embed this URL and skip sidecar port discovery.
     Empty string means dynamic discovery at runtime.
 """
-def _generate_main_rs(tauri_dir: Path, api_base_url: str = "") -> None {
+def _generate_main_rs(tauri_dir: Path, api_base_url: str = "") {
+    import json;
+
     # Read window config from tauri.conf.json (before we clear windows array)
     config_path = tauri_dir / "tauri.conf.json";
     win_title = "Jac App";
@@ -1087,7 +1087,7 @@ jac_coder = true   # AI coding assistant
 }
 
 """Check and install all required dependencies for desktop target."""
-def _check_and_install_dependencies -> None {
+def _check_and_install_dependencies {
     import platform as platform_module;
     import sys;
 
@@ -1544,7 +1544,7 @@ def _try_install_linux_system_deps(distro: str) -> None {
 }
 
 """Print manual installation instructions."""
-def _print_manual_install_instructions(distro: str | None) -> None {
+def _print_manual_install_instructions(distro: str | None) {
     console.print("  Install system dependencies manually:", style="muted");
     if distro in ("ubuntu", "debian") {
         console.print(
@@ -1578,7 +1578,7 @@ def _print_manual_install_instructions(distro: str | None) -> None {
 }
 
 """Check macOS dependencies."""
-def _check_macos_dependencies -> None {
+def _check_macos_dependencies {
     # macOS dependencies are typically handled by Xcode Command Line Tools
     # which is checked in _check_and_install_build_tools
     console.print(
@@ -1587,7 +1587,7 @@ def _check_macos_dependencies -> None {
 }
 
 """Check Windows dependencies."""
-def _check_windows_dependencies -> None {
+def _check_windows_dependencies {
     console.warning("  Windows dependencies check not fully implemented");
     console.print(
         "  Please ensure Visual Studio Build Tools are installed:", style="muted"
@@ -2127,7 +2127,7 @@ def _bundle_jac_sources(project_dir: Path, tauri_dir: Path, config: dict) -> Non
 }
 
 """Populate icon array in tauri.conf.json from icons directory."""
-def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
+def _populate_icon_array(tauri_dir: Path, config: dict) {
     # Populate icon array if empty or missing
     if "bundle" not in config {
         config["bundle"] = {};
@@ -2200,7 +2200,9 @@ def _update_tauri_config_for_build(
     project_dir: Path,
     web_bundle_path: Path,
     sidecar_bundled: bool = False
-) -> None {
+) {
+    import json;
+
     config_path = tauri_dir / "tauri.conf.json";
     if not config_path.exists() {
         raise RuntimeError("tauri.conf.json not found. Run 'jac setup desktop' first.");
@@ -3144,7 +3146,7 @@ impl DesktopTarget.dev(
     console.print("  Step 4: Launching Tauri dev window...", style="muted");
     console.print("  (Press Ctrl+C to stop)", style="muted");
     # Setup signal handlers for cleanup
-    def cleanup -> None {
+    def cleanup {
         console.print("\n  Stopping dev servers...", style="muted");
         if vite_process {
             try {
@@ -3164,7 +3166,7 @@ impl DesktopTarget.dev(
         }
         console.print("  ✔ Dev servers stopped", style="success");
     }
-    def signal_handler(signum: int, frame: Any) -> None {
+    def signal_handler(signum: int, frame: Any) {
         cleanup();
         sys.exit(0);
     }
@@ -3186,7 +3188,9 @@ impl DesktopTarget.dev(
 }
 
 """Update tauri.conf.json for dev mode (point to dev server)."""
-def _update_tauri_config_for_dev(tauri_dir: Path) -> None {
+def _update_tauri_config_for_dev(tauri_dir: Path) {
+    import json;
+
     config_path = tauri_dir / "tauri.conf.json";
     if not config_path.exists() {
         raise RuntimeError("tauri.conf.json not found. Run 'jac setup desktop' first.");
@@ -3436,7 +3440,7 @@ impl DesktopTarget.start(
     console.print("  (Press Ctrl+C to stop)", style="muted");
     # Setup signal handlers for cleanup
     tauri_process = None;
-    def cleanup -> None {
+    def cleanup {
         console.print("\n  Stopping app...", style="muted");
         if tauri_process {
             try {
@@ -3456,7 +3460,7 @@ impl DesktopTarget.start(
         }
         console.print("  ✔ App stopped", style="success");
     }
-    def signal_handler(signum: int, frame: Any) -> None {
+    def signal_handler(signum: int, frame: Any) {
         cleanup();
         sys.exit(0);
     }

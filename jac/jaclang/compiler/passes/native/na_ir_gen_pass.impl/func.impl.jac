@@ -35,6 +35,8 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    # Store line info for use when the body is generated (codegen_ability)
+    self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
     # Store AST signature for return type propagation in for-loops
     self.method_ast_sigs[name] = sig;
     self.has_native_code = True;
@@ -61,9 +63,31 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     # Return type -- value type for clib structs
     ret_type = self._resolve_clib_type(sig.return_type);
-    # Create function
+    # Create function — reuse existing declaration if the compiler already
+    # declared this symbol internally (e.g. free, malloc, memcpy, strlen).
+    # This prevents DuplicatedNameError when user code imports a C function
+    # that the compiler also uses.
+    #
+    # We do NOT store user-declared functions in self.extern_funcs — that
+    # cache is reserved for internal compiler use with canonical C types.
+    # If the function is already in extern_funcs (e.g. free/malloc from
+    # _emit_rc_helpers), we reuse that declaration.  Otherwise we create
+    # a new ir.Function with the user's types; if internal code later needs
+    # the same symbol via _get_or_declare_extern, it will look up the
+    # existing declaration from the LLVM module globals.
     fnty = ir.FunctionType(ret_type, param_types);
-    func = ir.Function(self.llvm_module, fnty, name=name);
+    if name in self.extern_funcs {
+        func = self.extern_funcs[name];
+    } elif name in self.func_symtab {
+        # Already declared (e.g. by a previous _process_clib_imports call on
+        # another module that shares the same library symbol).  Reuse it so we
+        # don't get a DuplicatedNameError from llvmlite.
+        func = self.func_symtab[name];
+    } else {
+        func = ir.Function(self.llvm_module, fnty, name=name);
+        # Do NOT store in extern_funcs — let _get_or_declare_extern
+        # create its own version with internal types if needed.
+    }
     # Name the parameters
     for (i, p) in enumerate(sig.get_parameters()) {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
@@ -91,6 +115,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    # DWARF debug info (JAC_NATIVE_DEBUG=1)
+    self._attach_di_subprogram(
+        func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
+    );
     # Store parameters as local variables (alloca + store pattern)
     sig = (nd).signature;
     for (i, p) in enumerate(sig.get_parameters()) {
@@ -156,6 +184,11 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             self.builder.ret(ir.Constant(ret_type, 0));
         }
     }
+    # DWARF post-pass: tag untagged instructions with fallback line
+    self._finalize_di_locations(
+        func, self._func_loc.get(name, nd.loc.first_line if nd.loc else 1)
+    );
+
     (nd).gen.llvm_ir = func;
     self.builder = None;
 }
@@ -251,17 +284,15 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     if glob_init_fn is not None {
         self.builder.call(glob_init_fn, []);
     }
-    # Call __jac_glob_init_<safe_name>() for every imported .na.jac module.
-    # We use the interop manifest's native_cross_module_imports to get the exact
-    # same source_module strings that na_compile_pass uses when renaming
-    # __jac_glob_init → __jac_glob_init_<safe_name> inside the linked IR.
-    # This guarantees the declaration here and the definition after linking share
-    # the same symbol name.
+    # Call __jac_glob_init_<safe_name>() for every imported .na.jac module,
+    # including transitive deps.  native_transitive_sources is populated by
+    # _register_imported_struct_types (DFS over all import trees) on the
+    # shared InteropManifest, and contains the same source_module strings
+    # that na_compile_pass uses when renaming __jac_glob_init.
     _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
-    _cross_imports = _manifest.native_cross_module_imports if _manifest else [];
+    _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
     _seen_init_mods: set = set();
-    for _imp_binding in _cross_imports {
-        _source_mod = _imp_binding.source_module;
+    for _source_mod in _all_na_sources {
         if _source_mod is None or _source_mod in _seen_init_mods {
             continue;
         }

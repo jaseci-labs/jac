@@ -58,7 +58,7 @@ def _convert_transport_response_to_json_response(
 """Custom logging handler that routes logs to jac-super console."""
 class ConsoleLogHandler(logging.Handler) {
     """A logging handler that forwards log messages to jac-super's console."""
-    def emit(self: ConsoleLogHandler, record: logging.LogRecord) -> None {
+    def emit(self: ConsoleLogHandler, record: logging.LogRecord) {
         import from jaclang.cli.console { console }
         message = self.format(record);
         console.print(f"  {message}");
@@ -840,7 +840,7 @@ impl JFastApiServer.init(
     app: (FastAPI | None) = None
 ) -> None {
     super.init((endpoints or []));
-    self.app = app or FastAPI(docs_url=None, redoc_url=None, openapi_url=None);
+    self.app = app or FastAPI();
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
 

@@ -1029,7 +1029,7 @@ def _forward_vite_output(
     ready_event: "threading.Event",
     sys_module: Any,
     output_buffer: list[str]
-) -> None {
+) {
     try {
         for line in iter(proc.stdout.readline, '') {
             if not line {

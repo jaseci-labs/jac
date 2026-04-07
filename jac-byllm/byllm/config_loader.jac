@@ -20,6 +20,7 @@ class JacByllmConfig(PluginConfigBase) {
     def get_model_config(self: JacByllmConfig) -> dict[str, Any];
     def get_call_params_config(self: JacByllmConfig) -> dict[str, Any];
     def get_litellm_config(self: JacByllmConfig) -> dict[str, Any];
+    def get_fallback_config(self: JacByllmConfig) -> dict[str, Any];
     def get_system_prompt(self: JacByllmConfig) -> str;
 }
 

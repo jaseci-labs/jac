@@ -5,7 +5,55 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
         if self.builder.block.is_terminated {
             break;
         }
+        # ── Per-statement DWARF location (JAC_NATIVE_DEBUG=1) ──────────────────
+        # Snapshot the block count and per-block instruction counts before
+        # codegen so we can tag EVERY new instruction — including those in
+        # newly created blocks (if/elif/while/for branches) — with a
+        # DILocation pointing at the source line.
+        _di_blk_count_snap = 0;
+        _di_instr_snap = 0;
+        _di_line_snap = 0;
+        _di_blk_snap = None;
+        _di_blk_instr_counts: dict = {};  # block → instruction count before stmt
+        if self._di_current_sp is not None and stmt?.loc {
+            _di_blk_snap = self.builder.block;
+            _di_instr_snap = len(self.builder.block.instructions);
+            _di_line_snap = stmt.loc.first_line;
+            _di_func = self.builder.function;
+            _di_blk_count_snap = len(_di_func.blocks);
+            # Record instruction count for every existing block so we can
+            # identify instructions added by this statement in pre-existing
+            # blocks (rare but possible with builder repositioning).
+            for _di_b in _di_func.blocks {
+                _di_blk_instr_counts[id(_di_b)] = len(_di_b.instructions);
+            }
+        }
         self._codegen_stmt(stmt);
+        # Attach !dbg metadata to all NEW instructions across ALL blocks that
+        # were created or grew during this statement's codegen.
+        if _di_blk_snap is not None and _di_line_snap > 0 {
+            try {
+                _di_loc = self.llvm_module.add_debug_info(
+                    "DILocation",
+                    {"line": _di_line_snap, "column": 0, "scope": self._di_current_sp}
+                );
+                _di_func2 = self.builder.function;
+                for _di_blk2 in _di_func2.blocks {
+                    _prev_count = _di_blk_instr_counts.get(id(_di_blk2), 0);
+                    _all_instrs = _di_blk2.instructions;
+                    if len(_all_instrs) > _prev_count {
+                        _new_instrs = _all_instrs[_prev_count:];
+                        for _instr in _new_instrs {
+                            if "dbg" not in getattr(_instr, "metadata", {}) {
+                                _instr.set_metadata("dbg", _di_loc);
+                            }
+                        }
+                    }
+                }
+            } except Exception {
+                pass;  # best-effort
+            }
+        }
     }
 }
 
@@ -1051,6 +1099,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             alloca = self._entry_alloca(var_type, var_name);
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;
+        }
+        # Associate pending lambda captures with this variable name
+        if self._pending_lambda_captures is not None {
+            self.lambda_captures[var_name] = self._pending_lambda_captures;
+            self._pending_lambda_captures = None;
         }
         # Track type info for variables pointing to structs
         if isinstance(value.type, ir.PointerType) {

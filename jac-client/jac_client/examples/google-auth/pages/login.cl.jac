@@ -14,7 +14,7 @@ cl def:pub Login -> JsxElement {
     }
 
     # Handle Google login - redirects to backend
-    def handleGoogleLogin -> None {
+    def handleGoogleLogin {
         auth.handleLogin('google');
     }
     ;
@@ -52,7 +52,7 @@ cl def:pub Login -> JsxElement {
                         Don't have an account?
                     </p>
                     <button
-                        onClick={lambda() -> None { auth.handleRegister('google');}}
+                        onClick={lambda() { auth.handleRegister('google');}}
                         style={{
                             background: 'none',
                             border: 'none',

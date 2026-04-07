@@ -128,14 +128,14 @@ obj TelemetryStore {
         _lock: Any = None,
         _traces: Any = None;
 
-    def postinit -> None {
+    def postinit {
         self._lock = threading.Lock();
         self._traces = OrderedDict();
     }
 
     # Called by JacLLMLogger for each individual LLM API call.
     # Creates/updates a Trace based on invocation_id in metadata.
-    def record_llm_event(event: dict) -> None {
+    def record_llm_event(event: dict) {
         with self._lock {
             metadata = event.get("metadata", {}) or {};
             inv_id = metadata.get("jac_invocation_id") or str(uuid.uuid4());
@@ -188,7 +188,7 @@ obj TelemetryStore {
     }
 
     # Called by byllm agent callback. Finalizes the Trace with agent-level data.
-    def record_agent_completion(record: dict) -> None {
+    def record_agent_completion(record: dict) {
         with self._lock {
             inv_id = record.get("invocation_id");
             if inv_id and inv_id in self._traces {
@@ -473,7 +473,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         import from litellm.integrations.custom_logger { CustomLogger }
 
         class JacLLMLogger(CustomLogger) {
-            def init(self: JacLLMLogger, telemetry_store: TelemetryStore) -> None {
+            def init(self: JacLLMLogger, telemetry_store: TelemetryStore) {
                 self.store = telemetry_store;
                 CustomLogger.__init__(self);
             }
@@ -484,7 +484,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 response_obj: Any,
                 start_time: Any,
                 end_time: Any
-            ) -> None {
+            ) {
                 try {
                     slp = kwargs.get("standard_logging_object", {}) or {};
                     metadata = kwargs.get("litellm_params", {}).get("metadata", {})
@@ -519,7 +519,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 response_obj: Any,
                 start_time: Any,
                 end_time: Any
-            ) -> None {
+            ) {
                 try {
                     slp = kwargs.get("standard_logging_object", {}) or {};
                     metadata = kwargs.get("litellm_params", {}).get("metadata", {})

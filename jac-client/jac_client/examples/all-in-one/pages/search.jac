@@ -32,7 +32,7 @@ cl {
             )
         ];
 
-        def handleSearch(e: Any) -> None {
+        def handleSearch(e: Any) {
             e.preventDefault();
             if inputValue.trim() {
                 navigate(f"/search?q={encodeURIComponent(inputValue.trim())}&page=1");
@@ -41,7 +41,7 @@ cl {
             }
         }
 
-        def goToPage(newPage: int) -> None {
+        def goToPage(newPage: int) {
             if query {
                 navigate(f"/search?q={encodeURIComponent(query)}&page={newPage}");
             } else {
@@ -62,7 +62,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
+                            onChange={lambda e: Any { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",
@@ -150,7 +150,7 @@ cl {
                 </ul>
                 <div style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}>
                     <button
-                        onClick={lambda -> None { goToPage(page - 1);}}
+                        onClick={lambda { goToPage(page - 1);}}
                         disabled={page <= 1}
                         style={{
                             "padding": "0.5rem 1rem",
@@ -166,7 +166,7 @@ cl {
                         Page{page}
                     </span>
                     <button
-                        onClick={lambda -> None { goToPage(page + 1);}}
+                        onClick={lambda { goToPage(page + 1);}}
                         style={{
                             "padding": "0.5rem 1rem",
                             "border": "1px solid #d1d5db",

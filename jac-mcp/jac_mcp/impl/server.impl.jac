@@ -31,7 +31,7 @@ WORKFLOW:
 6. Do not present code to the user until it passes validation""";
 
 """Internal async server startup."""
-async def _async_start(srv: JacMcpServer) -> None {
+async def _async_start(srv: JacMcpServer) {
     import from mcp.server { Server }
     import from mcp.types {
         Resource,

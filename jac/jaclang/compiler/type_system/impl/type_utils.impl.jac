@@ -558,13 +558,26 @@ declares get() -> T, then build_type_var_solution(Box[int]) yields {U: int, T: i
 impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase] {
     solution: dict[str, types.TypeBase] = {};
 
-    # Start with the class's own type_params -> type_args
+    # Start with the class's own type_params -> type_args.
+    # PEP 484: bare generics (e.g. list without [T]) default unresolved
+    # TypeVars to Any so downstream operations (iteration, subscript,
+    # method calls) work correctly instead of producing Unknown.
     if class_type.shared.type_params
     and class_type.private
-    and class_type.private.type_args {
+    and class_type.private.type_args
+    and len(class_type.private.type_args) > 0 {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    } elif class_type.shared and class_type.shared.type_params {
+        # Bare generic (e.g. list without [T]): default all TypeVars to Any
+        # per PEP 484 so downstream operations (iteration, subscript,
+        # method calls) work correctly instead of producing Unknown.
+        for tp in class_type.shared.type_params {
+            if tp.name {
+                solution[tp.name] = types.AnyType();
             }
         }
     }

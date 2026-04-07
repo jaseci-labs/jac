@@ -808,7 +808,7 @@ impl JacBuiltin.printgraph(
     queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
     connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
     """Depth first search.""";
-    def dfs(nd: NodeArchetype, cur_depth: int) -> None {
+    def dfs(nd: NodeArchetype, cur_depth: int) {
         if (nd not in visited_nodes) {
             visited_nodes.append(nd);
             traverse_graph(
@@ -1209,7 +1209,7 @@ impl JacBasics.jac_test(description: str = "") -> Callable {
     def decorator(test_fun: Callable) -> Callable {
         file_path = getfile(test_fun);
         func_name = test_fun.__name__;
-        def test_deco -> None {
+        def test_deco {
             test_fun(JacTestCheck());
         }
         test_deco.__name__ = test_fun.__name__;

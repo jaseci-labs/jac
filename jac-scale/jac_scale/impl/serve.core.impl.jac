@@ -209,12 +209,11 @@ impl JacAPIServerCore.start(
             }
         }
     }
-    if dev {
-        # Enable FastAPI docs only in dev mode
-        self.server.app.docs_url = "/docs";
-        self.server.app.openapi_url = "/openapi.json";
-        self.server.app.redoc_url = "/redoc";
-        self.server.app.setup();
+    server_config = get_scale_config().get_server_config();
+    if not server_config.get('docs_enabled', True) {
+        self.server.app.docs_url = None;
+        self.server.app.openapi_url = None;
+        self.server.app.redoc_url = None;
     }
     self._register_endpoints();
     if dev {
@@ -919,7 +918,7 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
 impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     self._hot_reloader = hot_reloader;
     # Callback when file changes - sets pending flag
-    def on_change(event: Any) -> None {
+    def on_change(event: Any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }

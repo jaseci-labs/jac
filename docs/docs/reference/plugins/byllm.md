@@ -192,6 +192,92 @@ You can also override per-file with `glob llm = Model(...)` (see [Custom Model (
 
 ---
 
+## ModelPool
+
+`ModelPool` is a drop-in replacement for `Model` that wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server). It handles fallback, retries, and load-distribution across a list of `Model` instances. Use `by pool()` exactly like `by llm()` - no other call-site changes needed.
+
+```jac
+import from byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(models=[...], strategy="fallback");
+
+def answer(question: str) -> str by llm();
+```
+
+### Fallback
+
+When the primary model fails, `ModelPool` automatically tries the next model in the list. The `"fallback"` strategy uses ordered priority - each model is attempted in sequence, moving to the next only on failure:
+
+```jac
+import from byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash"),    # try first
+        Model(model_name="gpt-4o-mini"),                 # if gemini fails
+        Model(model_name="claude-sonnet-4-20250514"),    # last resort
+    ],
+    strategy="fallback",
+);
+```
+
+Any `by llm()` call in the file uses the pool automatically.
+
+### Load-Balancing (simple-shuffle)
+
+For free-tier key rotation or spreading load across multiple API keys for the same model, use the `"simple-shuffle"` strategy. Each call picks a random deployment from the pool:
+
+```jac
+import from byllm.lib { Model, ModelPool }
+import os;
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_1")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_2")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_3")),
+    ],
+    strategy="simple-shuffle",
+);
+```
+
+Each `by llm()` call is routed to a randomly selected deployment - ideal for distributing requests across multiple API keys to stay within per-key rate limits.
+
+### ModelPool Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `models` | list[BaseLLM] | required | List of `Model` instances to include in the pool |
+| `strategy` | str | `"fallback"` | Routing strategy (see table below) |
+| `num_retries` | int | `1` | Number of retries per deployment before moving to the next |
+| `timeout` | float | `60.0` | Per-request timeout in seconds |
+
+**Routing Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `"fallback"` | Ordered priority - tries models in sequence, moving to the next on failure |
+| `"simple-shuffle"` | Random pick per call - ideal for rotating across multiple API keys |
+| `"cost-based-routing"` | Cheapest deployment via LiteLLM's built-in cost database |
+| `"latency-based-routing"` | Fastest by EWMA-tracked response time |
+| `"usage-based-routing"` | Lowest current TPM/RPM usage |
+| `"least-busy"` | Fewest in-flight requests |
+
+### Global Defaults via `jac.toml`
+
+Set project-wide defaults for `ModelPool` in `jac.toml` under `[plugins.byllm.fallback]`:
+
+```toml
+[plugins.byllm.fallback]
+strategy = "fallback"    # Default routing strategy
+num_retries = 1          # Retries per deployment
+timeout = 60.0           # Per-request timeout in seconds
+```
+
+Constructor arguments always take precedence over `jac.toml` values.
+
+---
+
 ## Project Configuration
 
 ### Default Model Configuration
@@ -214,6 +300,11 @@ max_tokens = 0                    # Max response tokens (0 = no limit)
 local_cost_map = true             # Use local cost map
 drop_params = true                # Drop unsupported params per provider
 debug = false                     # Enable verbose LiteLLM logging
+
+[plugins.byllm.fallback]
+strategy = "fallback"             # Default ModelPool routing strategy
+num_retries = 1                   # Retries per deployment
+timeout = 60.0                    # Per-request timeout in seconds
 ```
 
 **`[plugins.byllm.model]` options:**

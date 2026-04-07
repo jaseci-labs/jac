@@ -5,14 +5,21 @@ description = "Jac client application: js-styling"
 entry-point = "main.jac"
 
 [dependencies.npm]
-"jac-client-node" = "1.0.7"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
 
-# Default packages are automatically included (react, react-dom, react-router-dom, vite, @babel/*, typescript, @types/*, @vitejs/plugin-react)
+# Core packages are listed above; additional deps can be added with `jac add --npm <package>`

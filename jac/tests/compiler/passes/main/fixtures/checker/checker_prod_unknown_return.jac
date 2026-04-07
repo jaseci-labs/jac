@@ -4,23 +4,26 @@ When a function has a return type annotation but returns an expression
 that resolves to UnknownType, the checker should detect the mismatch
 or warn about lost type information.
 
-Unknown source: bare generic list.pop() returns Unknown.
+Unknown source: magic method resolution on Any-typed values fails,
+producing genuine Unknown (e.g. Any + 1 -> Unknown).
 
 Expected errors: 3
   1. returns_int_but_unknown  — Unknown returned where int expected
   2. returns_str_but_unknown  — Unknown returned where str expected
-  3. caller bad assignment    — downstream use inherits the problem
+  3. caller bad assignment    — downstream int->str mismatch
 """
 
 def returns_int_but_unknown() -> int {
     items: list = [1, 2, 3];
-    val = items.pop();
+    any_val = items.pop();
+    val = any_val + 1;
     return val;                    # Error: Unknown returned where int declared
 }
 
 def returns_str_but_unknown() -> str {
     items: list = ["a", "b"];
-    val = items.pop();
+    any_val = items.pop();
+    val = any_val + "x";
     return val;                    # Error: Unknown returned where str declared
 }
 
