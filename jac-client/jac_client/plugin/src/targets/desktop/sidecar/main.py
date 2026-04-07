@@ -84,6 +84,7 @@ def _register_frozen_plugins(plugin_manager: PluginManager) -> None:
     for module_path, class_name, name in plugins:
         try:
             import importlib
+
             mod = importlib.import_module(module_path)
             cls = getattr(mod, class_name)
             if not plugin_manager.is_registered(cls):
@@ -91,10 +92,12 @@ def _register_frozen_plugins(plugin_manager: PluginManager) -> None:
                 sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
         except ImportError as e:
             import traceback
+
             sys.stderr.write(f"[sidecar] {name} not bundled: {e}\n")
             traceback.print_exc(file=sys.stderr)
         except Exception as e:
             import traceback
+
             sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
             traceback.print_exc(file=sys.stderr)
 
@@ -120,11 +123,13 @@ def _run_jac_cli():
     if getattr(sys, "frozen", False):
         try:
             from jaclang.jac0core.runtime import plugin_manager
+
             _register_frozen_plugins(plugin_manager)
         except Exception:
             pass
 
     from jaclang.jac0core.cli_boot import start_cli
+
     # Remove --jac-cli from argv so jaclang sees clean args
     sys.argv = ["jac"] + sys.argv[2:]  # skip [sidecar.exe, --jac-cli, ...]
     start_cli()
@@ -281,11 +286,12 @@ def main():
         if bundled_env.is_file():
             try:
                 from dotenv import load_dotenv
+
                 load_dotenv(str(bundled_env), override=False)
-                sys.stderr.write(f"[sidecar] Loaded .env from bundle\n")
+                sys.stderr.write("[sidecar] Loaded .env from bundle\n")
             except ImportError:
                 # dotenv not available, copy .env vars manually
-                with open(bundled_env, "r", encoding="utf-8") as f:
+                with open(bundled_env, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith("#") and "=" in line:
