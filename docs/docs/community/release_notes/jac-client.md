@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.12 (Unreleased)
 
+- **Fix: Proper Python Package Structure for PyInstaller**: Added __init__.py and __init__.jac files throughout jac_client to enable collect_all() bundling and fix frozen sidecar import failures.
+
 ## jac-client 0.3.11 (Latest Release)
 
 - **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
