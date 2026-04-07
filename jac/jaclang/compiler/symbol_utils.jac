@@ -122,103 +122,117 @@ def get_expr_key(expr: uni.Expr) -> str | None {
     return None;
 }
 
-"""Collect symbols narrowed by a condition expression.
+"""Extract narrowing key from the first argument of a builtin call (isinstance/callable).
 
-Extracted from CFGBuildPass._collect_narrowing_symbols.
-Handles isinstance, None checks, truthiness, walrus, boolean ops.
+Handles unwrapping parentheses, Name, AtomTrailer, and walrus expressions.
 """
-def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
-    symbols: set[str] = set();
-    # Pattern: isinstance(x, T) or isinstance((x := expr), T) — collect 'x'
-    if isinstance(condition, uni.FuncCall) {
+def _extract_first_arg_key(arg: uni.Expr) -> str | None {
+    if isinstance(arg, uni.AtomUnit) and arg.value {
+        arg = arg.value;
+    }
+    if isinstance(arg, uni.Name) {
+        return arg.value;
+    }
+    if isinstance(arg, uni.AtomTrailer) and arg.is_attr {
+        return get_expr_key(arg);
+    }
+    if (
+        isinstance(arg, uni.BinaryExpr)
+        and isinstance(arg.op, uni.Token)
+        and arg.op.name == "WALRUS_EQ"
+        and isinstance(arg.left, uni.Name)
+    ) {
+        return arg.left.value;
+    }
+    return None;
+}
+
+"""Extract narrowing key from the left side of a CompareExpr.
+
+Handles unwrapping parentheses, Name, AtomTrailer, and walrus expressions.
+"""
+def _extract_compare_left_key(left: uni.Expr) -> str | None {
+    if isinstance(left, uni.AtomUnit) and left.value {
+        left = left.value;
+    }
+    if isinstance(left, uni.Name) {
+        return left.value;
+    }
+    if isinstance(left, uni.AtomTrailer) and left.is_attr {
+        return get_expr_key(left);
+    }
+    if (
+        isinstance(left, uni.BinaryExpr)
+        and isinstance(left.op, uni.Token)
+        and left.op.name == "WALRUS_EQ"
+        and isinstance(left.left, uni.Name)
+    ) {
+        return left.left.value;
+    }
+    return None;
+}
+
+"""Classify a leaf condition and extract its narrowing key (type-free).
+
+Free-standing function for use in symbol_utils where TypeEvaluator is unavailable.
+Returns the narrowing key or None.
+"""
+def classify_condition_key(condition: uni.Expr) -> str | None {
+    # isinstance(x, T) or callable(x)
+    if isinstance(condition, uni.FuncCall) and isinstance(condition.target, uni.Name) {
         if (
-            isinstance(condition.target, uni.Name)
-            and condition.target.value == "isinstance"
+            condition.target.value in ("isinstance", "callable")
             and len(condition.params) >= 1
         ) {
-            first_arg = condition.params[0];
-            # Unwrap parentheses
-            if isinstance(first_arg, uni.AtomUnit) and first_arg.value {
-                first_arg = first_arg.value;
-            }
-            if isinstance(first_arg, uni.Name) {
-                symbols.add(first_arg.value);
-            } elif isinstance(first_arg, uni.AtomTrailer) and first_arg.is_attr {
-                if key := get_expr_key(first_arg) {
-                    symbols.add(key);
-                }
-            } elif (
-                isinstance(first_arg, uni.BinaryExpr)
-                and isinstance(first_arg.op, uni.Token)
-                and first_arg.op.name == "WALRUS_EQ"
-                and isinstance(first_arg.left, uni.Name)
-            ) {
-                # isinstance((x := expr), T) -> collect 'x'
-                symbols.add(first_arg.left.value);
-            }
+            return _extract_first_arg_key(condition.params[0]);
         }
     }
-    # Pattern: x is None / x is not None — collect 'x'
-    # Also handles: (x := expr) is not None — collect 'x' from walrus
-    elif isinstance(condition, uni.CompareExpr) {
-        left = condition.left;
-        # Unwrap AtomUnit (parentheses)
-        if isinstance(left, uni.AtomUnit) {
-            inner = left.value;
-            if inner {
-                left = inner;
-            }
-        }
-        if isinstance(left, uni.Name) {
-            symbols.add(left.value);
-        } elif isinstance(left, uni.AtomTrailer) and left.is_attr {
-            if key := get_expr_key(left) {
-                symbols.add(key);
-            }
-        } elif isinstance(left, uni.BinaryExpr) {
-            if (
-                isinstance(left.op, uni.Token)
-                and left.op.name == "WALRUS_EQ"
-                and isinstance(left.left, uni.Name)
-            ) {
-                # (x := expr) is not None -> collect 'x'
-                symbols.add(left.left.value);
-            }
-        }
+    # CompareExpr: x is None, x == literal, etc.
+    if isinstance(condition, uni.CompareExpr) {
+        return _extract_compare_left_key(condition.left);
     }
-    # Pattern: not <condition> — recurse
-    elif isinstance(condition, uni.UnaryExpr) {
-        symbols.update(collect_narrowing_symbols(condition.operand));
+    # Truthiness: x / x.attr
+    if isinstance(condition, uni.Name) {
+        return condition.value;
     }
-    # Pattern: <cond1> and/or <cond2> — collect from both
-    elif isinstance(condition, uni.BoolExpr) {
-        for val in condition.values {
-            symbols.update(collect_narrowing_symbols(val));
-        }
+    if isinstance(condition, uni.AtomTrailer) and condition.is_attr {
+        return get_expr_key(condition);
     }
-    # Pattern: (parenthesized) — unwrap
-    elif isinstance(condition, uni.AtomUnit)
-    and isinstance(condition.value, uni.Expr) {
-        symbols.update(collect_narrowing_symbols(condition.value));
-    }
-    # Pattern: x (truthiness check like `if val:`) — collect 'x'
-    elif isinstance(condition, uni.Name) {
-        symbols.add(condition.value);
-    }
-    # Pattern: x.attr (truthiness check like `if obj.field:`) — collect 'x.attr'
-    elif isinstance(condition, uni.AtomTrailer) and condition.is_attr {
-        if key := get_expr_key(condition) {
-            symbols.add(key);
-        }
-    }
-    # Pattern: (x := expr) walrus operator — collect 'x'
-    elif (
+    # Walrus: (x := expr)
+    if (
         isinstance(condition, uni.BinaryExpr)
         and isinstance(condition.op, uni.Token)
         and condition.op.name == "WALRUS_EQ"
         and isinstance(condition.left, uni.Name)
     ) {
-        symbols.add(condition.left.value);
+        return condition.left.value;
+    }
+    return None;
+}
+
+"""Collect symbols narrowed by a condition expression.
+
+Extracted from CFGBuildPass._collect_narrowing_symbols.
+Structural wrappers (parens, NOT, AND/OR) recurse; leaf conditions
+are classified via classify_condition_key.
+"""
+def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
+    symbols: set[str] = set();
+    # Structural wrappers — recurse
+    if isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
+        symbols.update(collect_narrowing_symbols(condition.value));
+    } elif isinstance(condition, uni.UnaryExpr) {
+        symbols.update(collect_narrowing_symbols(condition.operand));
+    } elif isinstance(condition, uni.BoolExpr) {
+        for val in condition.values {
+            symbols.update(collect_narrowing_symbols(val));
+        }
+    } else {
+        # Leaf classification — single dispatch point
+        key = classify_condition_key(condition);
+        if key is not None {
+            symbols.add(key);
+        }
     }
     return symbols;
 }

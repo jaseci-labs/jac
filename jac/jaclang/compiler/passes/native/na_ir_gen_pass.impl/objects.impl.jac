@@ -455,6 +455,10 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    # DWARF debug info (JAC_NATIVE_DEBUG=1)
+    self._attach_di_subprogram(
+        func, full_name, method.loc.first_line if method.loc else 0
+    );
     # Store self pointer
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -533,6 +537,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         }
     }
     method.gen.llvm_ir = func;
+    # DWARF post-pass: tag untagged instructions with fallback line
+    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
     self.builder = saved_builder;
     self.local_vars = saved_locals;
@@ -569,6 +575,10 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    # DWARF debug info (JAC_NATIVE_DEBUG=1)
+    self._attach_di_subprogram(
+        func, full_name, method.loc.first_line if method.loc else 0
+    );
     # Store self pointer (only parameter)
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -595,6 +605,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
         self.builder.ret_void();
     }
     method.gen.llvm_ir = func;
+    # DWARF post-pass: tag untagged instructions with fallback line
+    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
     self.builder = saved_builder;
     self.local_vars = saved_locals;
