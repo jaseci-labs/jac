@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.14 (Unreleased)
 
+- **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
+
 ## jac-scale 0.2.13 (Latest Release)
 
 - **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.

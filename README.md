@@ -79,11 +79,14 @@ def categorize(title: str) -> Category by llm();
 
 def:pub add_todo(title: str) -> Todo {
     try {
-        category = str(categorize(title)).split(".")[-1].lower();
+        result = categorize(title);
+        category = str(result).split(".")[-1].lower();
     } except Exception {
-        category = "other";
+        category = "other (setup AI key)";
     }
-    return (root() ++> Todo(title=title, category=category))[0];
+    todo = Todo(title=title, category=category);
+    root() ++> todo;
+    return todo;
 }
 
 def:pub get_todos -> list[Todo] {
@@ -136,6 +139,8 @@ typescript = "^5.3.3"
 
 [serve]
 base_route_app = "app"
+
+[plugins.scale]
 
 [plugins.client]
 
