@@ -1,3 +1,3 @@
-impl Greeter.postinit {
+impl Bar.postinit {
     self.msg = "hello";
 }

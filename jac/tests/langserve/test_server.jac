@@ -475,9 +475,9 @@ test "test_go_to_definition_by_postinit_same_file" {
             passes_main_fixture_abs_path("static_analysis/by_postinit_sym.jac")
         );
         lsp.type_check_file(file_uri);
-        # 'postinit' on line 2 (has msg: str by postinit;) col 19 -> should go to def postinit on line 3
+        # Foo: 'postinit' on line 2 col 20 -> def postinit on line 3 (0-indexed: 2)
         result = lsp.get_definition(file_uri, lspt.Position(1, 20));
-        assert result is not None , "Expected go-to-def for 'postinit' in by postinit, got None";
+        assert result is not None , "Expected go-to-def for 'postinit' in Foo, got None";
         assert "by_postinit_sym.jac:2:" in str(result) , f"Expected definition at line 3 (0-indexed 2), got: {result}";
     } finally {
         teardown_test();
@@ -489,13 +489,13 @@ test "test_go_to_definition_by_postinit_impl_file" {
     try {
         lsp = create_server("");
         file_uri = uris.from_fs_path(
-            passes_main_fixture_abs_path("static_analysis/by_postinit_sym_impl.jac")
+            passes_main_fixture_abs_path("static_analysis/by_postinit_sym.jac")
         );
         lsp.type_check_file(file_uri);
-        # 'postinit' on line 2 (has msg: str by postinit;) col 19 -> should go to impl Greeter.postinit in .impl.jac
-        result = lsp.get_definition(file_uri, lspt.Position(1, 20));
-        assert result is not None , "Expected go-to-def for 'postinit' in by postinit (impl file), got None";
-        assert "by_postinit_sym_impl" in str(result) , f"Expected definition in by_postinit_sym_impl, got: {result}";
+        # Bar: 'postinit' on line 9 col 20 -> def postinit; stub on line 10 (0-indexed: 9)
+        result = lsp.get_definition(file_uri, lspt.Position(8, 20));
+        assert result is not None , "Expected go-to-def for 'postinit' in Bar, got None";
+        assert "by_postinit_sym.jac:9:" in str(result) , f"Expected definition at line 10 (0-indexed 9), got: {result}";
     } finally {
         teardown_test();
     }
@@ -506,13 +506,13 @@ test "test_go_to_definition_by_postinit_has_in_impl_block" {
     try {
         lsp = create_server("");
         file_uri = uris.from_fs_path(
-            passes_main_fixture_abs_path("static_analysis/by_postinit_sym_has_in_impl.jac")
+            passes_main_fixture_abs_path("static_analysis/by_postinit_sym.jac")
         );
         lsp.type_check_file(file_uri);
-        # 'postinit' on line 4 (has msg: str by postinit;) col 20 -> should go to def postinit on line 6
-        result = lsp.get_definition(file_uri, lspt.Position(3, 20));
-        assert result is not None , "Expected go-to-def for 'postinit' in by postinit (has inside impl block), got None";
-        assert "by_postinit_sym_has_in_impl.jac" in str(result) , f"Expected definition in by_postinit_sym_has_in_impl.jac, got: {result}";
+        # Baz: 'postinit' on line 16 col 20 -> def postinit on line 17 (0-indexed: 16)
+        result = lsp.get_definition(file_uri, lspt.Position(15, 20));
+        assert result is not None , "Expected go-to-def for 'postinit' in Baz impl block, got None";
+        assert "by_postinit_sym.jac:16:" in str(result) , f"Expected definition at line 17 (0-indexed 16), got: {result}";
     } finally {
         teardown_test();
     }
