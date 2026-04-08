@@ -2007,10 +2007,12 @@ impl DesktopTarget.build(
     }
     # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
+    os.environ["JAC_BUILD"] = "1";
     try {
         web_bundle_path = super.build(entry_file, project_dir, platform);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
+        os.environ.pop("JAC_BUILD", None);
     }
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
     # Step 1.1: Copy assets to dist for desktop builds (Tauri serves from dist directly)
