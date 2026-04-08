@@ -2444,6 +2444,11 @@ impl PyastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
     ];
 }
 
+"""CfgExpr: propagate inner expression's generated Python AST."""
+impl PyastGenPass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
+    nd.gen.py_ast = nd.expr.gen.py_ast;
+}
+
 impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     nd.gen.py_ast = [
         self.sync(
