@@ -143,9 +143,10 @@ Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
-        _persistence_type: PersistenceType = PersistenceType.NONE;
+        _persistence_type: PersistenceType = PersistenceType.NONE,
+        use_cache: bool = True;  # Override parent default to enable Redis cache by default
 
-    def init(use_cache: bool = True) -> None;
+    def postinit -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.14 (Unreleased)
 
+- **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
+
 - **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
 - **HPA: Memory scaling and stabilization windows**: The Kubernetes HPA now scales on both CPU and memory utilization by default (both at 70%). Either metric can be disabled by setting it to `null`. Added configurable stabilization windows: `scale_up_stabilization_window` (default: 60s) prevents reacting to short-lived CPU/memory spikes, and `scale_down_stabilization_window` (default: 300s) prevents premature replica removal. CPU default raised from 50% to 70%. Configure via `[plugins.scale.kubernetes]` in `jac.toml`.
 - **Fix: Kubernetes config consistency between `config_loader` and `plugin_config`**: 18 fields present in `KubernetesConfig` were missing from the `get_default_config` defaults in `config_loader` and the schema in `plugin_config`, including `health_check_path`, `python_image`, `busybox_image`, `pvc_size`, `jaseci_branch`, `jaseci_commit`, `install_jaseci`, `additional_packages`, `domain`, `cert_manager_email`, and others. These fields already worked at runtime via `from_dict` fallbacks but were invisible to users inspecting default config. All fields are now declared consistently across `KubernetesConfig`, `config_loader`, and `plugin_config`.
