@@ -21,7 +21,7 @@ obj GithubSSOProvider(SSOProvider) {
         _github_sso: (GithubSSO | None) = None;
 
     """Initialize the GitHub SSO provider."""
-    def postinit -> None {
+    def postinit {
         self._github_sso = GithubSSO(
             client_id=self.client_id,
             client_secret=self.client_secret,

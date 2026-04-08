@@ -120,7 +120,7 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              # Type checking
              "isinstance","issubclass","type","callable",
              # Identity / hashing
-             "id","hash",
+             "id","hash","jid",
              # Representation
              "repr","format","ascii",
              # Char/ord conversion

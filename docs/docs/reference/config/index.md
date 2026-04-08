@@ -111,7 +111,18 @@ session = ""            # Session name for persistence
 main = true             # Run as main module
 cache = true            # Use bytecode cache
 topology_index = true   # Build topology index for graph query optimization
+diagnostics = "error"   # Diagnostic verbosity: "error", "all", or "none"
 ```
+
+The `diagnostics` setting controls how compilation errors and warnings are reported during `jac run`:
+
+| Value | Behavior |
+|-------|----------|
+| `"error"` | Show errors with full details, suppress warnings, exit code 1 on errors |
+| `"all"` | Show both errors and warnings, exit code 1 on errors |
+| `"none"` | Suppress all diagnostics, always exit code 0 |
+
+The CLI flag `-e` / `--diagnostics` overrides this setting.
 
 ---
 
@@ -334,6 +345,12 @@ disabled = []           # Explicitly disabled
 model = "gpt-4"
 temperature = 0.7
 api_key = "${OPENAI_API_KEY}"
+
+# Server settings (jac-scale)
+[plugins.scale.server]
+port = 8000
+host = "0.0.0.0"
+docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
 
 # Webhook settings (jac-scale)
 [plugins.scale.webhook]

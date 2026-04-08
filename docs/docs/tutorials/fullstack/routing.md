@@ -218,7 +218,7 @@ For explicit route configuration, import from `@jac/runtime`:
 cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Router>
             <Routes>
                 <Route path="/" element={<Home />} />
@@ -487,7 +487,7 @@ cl {
         return <form>
             <input
                 value={email}
-                onChange={lambda e: any -> None { email = e.target.value; }}
+                onChange={lambda e: ChangeEvent { email = e.target.value; }}
             />
             <button onClick={lambda -> None { handle_login(); }}>
                 Login
@@ -540,7 +540,7 @@ For file-based routing, use the built-in `AuthGuard` component in a layout file:
 cl import from "@jac/runtime" { AuthGuard, Outlet }
 
 cl {
-    def:pub layout() -> any {
+    def:pub layout() -> JsxElement {
         return <AuthGuard redirect="/login">
             <Outlet />
         </AuthGuard>;

@@ -5,7 +5,8 @@ the checker should either error or warn — not silently accept it.
 This is critical because it can mask bugs where wrong types flow
 through the program undetected.
 
-Unknown source: bare generic list.pop() returns Unknown.
+Unknown source: magic method resolution on Any-typed values fails,
+producing genuine Unknown (e.g. Any + 1 -> Unknown).
 
 Expected errors: 3
   1. process_int(unknown_val)      — Unknown passed to int param
@@ -26,9 +27,10 @@ def process_list(lst: list[int]) -> int {
 }
 
 with entry {
-    # Bare generic list — .pop() returns Unknown
+    # Any + int -> Unknown (magic method __add__ unresolved on Any)
     items: list = [1, 2, 3];
-    unknown_val = items.pop();
+    any_val = items.pop();
+    unknown_val = any_val + 1;
 
     # Passing Unknown to typed parameters should not pass silently
     process_int(unknown_val);      # Error: Unknown -> int param

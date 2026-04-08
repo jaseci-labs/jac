@@ -1,13 +1,13 @@
 [project]
 name = "jac-scale"
-version = "0.2.8"
+version = "0.2.13"
 description = ""
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "rich>=13.0.0",
-    "jaclang>=0.13.1",
+    "jaclang>=0.13.5",
     "python-dotenv>=1.2.1,<2.0.0",
     "docker>=7.1.0,<8.0.0",
     "kubernetes>=34.1.0,<35.0.0",
@@ -36,8 +36,8 @@ scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 include = ["jac_scale*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
-jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template"]
+"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.toml", "*.css"]
+jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template", "admin/_dist/**/*"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

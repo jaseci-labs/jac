@@ -46,7 +46,7 @@ def myablty -> int { }  # define a data spacial freestyle ability
 
 
 
-def myfunc -> None { }  # define a function
+def myfunc { }  # define a function
 
 
 

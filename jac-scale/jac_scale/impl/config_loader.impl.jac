@@ -49,6 +49,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'redis_password': 'password',
             # Ingress configuration
             'ingress_node_port': 30080,
+            # Rate limiting (DDoS protection)
+            'ingress_limit_rps': 20,
+            'ingress_limit_burst_multiplier': 5,
+            'ingress_limit_connections': 20,
+            # Sticky sessions (cookie-based affinity, disabled by default)
+            'ingress_session_affinity': True,
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,
@@ -62,7 +68,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_failure_threshold': 80
         },
         'secrets': {},
-        'server': {'port': 8000, 'host': '0.0.0.0'},
+        'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
@@ -188,7 +194,8 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
     server_config = config.get('server', {});
     return {
         'port': int(server_config.get('port', 8000)),
-        'host': server_config.get('host', '0.0.0.0')
+        'host': server_config.get('host', '0.0.0.0'),
+        'docs_enabled': server_config.get('docs_enabled', True)
     };
 }
 

@@ -2,7 +2,7 @@ import from byllm { Model, Image }
 import from typing { List, Dict, Any }
 import os;
 
-def clear_terminal -> None {
+def clear_terminal {
     # For Windows
     if os.name == "nt" {
         os.system("cls");  # For macOS / Linux

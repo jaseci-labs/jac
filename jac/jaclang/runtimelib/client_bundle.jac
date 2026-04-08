@@ -1,6 +1,7 @@
 """Client bundle generation utilities for Jac web front-ends."""
 import hashlib;
 import json;
+import os;
 import from collections.abc { Iterable, Sequence }
 import from pathlib { Path }
 import from types { ModuleType }
@@ -16,6 +17,12 @@ with entry {
 
 """Raised when the client bundle cannot be generated."""
 class ClientBundleError(RuntimeError) {}
+
+"""Lookup module in hub with cross-platform path normalization (Windows case/separators)."""
+def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
+
+"""Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
+def _ensure_js_generated(mod: Module, program: Any) -> None;
 
 """Result of processing client imports."""
 class ProcessedImports(NamedTuple) {

@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Get the client build directory from project config."""
 impl ViteCompiler._get_client_dir(self: ViteCompiler) -> Path {
     # Try to get from project config
@@ -91,7 +93,11 @@ impl ViteCompiler._create_pages_entry_content(
         if config and config?.routing and config.routing {
             auth_redirect = config.routing.get('auth_redirect', '/login');
         }
-    } except Exception { }
+    } except Exception as e {
+        console.warning(
+            f"Failed to load routing config, using default auth_redirect='/login': {e}"
+        );
+    }
     # Check if main.jac exists and exports app (used as wrapper)
     app_module = self.compiled_dir / f"{module_path.stem}.js";
     has_app_wrapper = app_module.exists();
@@ -200,10 +206,12 @@ impl ViteCompiler._copy_asset_file(
         output_path = self.compiled_dir / asset_path.name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
-    with contextlib.suppress(FileNotFoundError, OSError) {
+    try {
         output_path.write_text(
             asset_path.read_text(encoding='utf-8'), encoding='utf-8'
         );
+    } except (FileNotFoundError, OSError) as e {
+        console.warning(f"Failed to copy asset '{asset_path}' to '{output_path}': {e}");
     }
 }
 
@@ -338,7 +346,9 @@ impl ViteCompiler.compile_dependencies_recursively(
                 }
             }
         }
-    } except Exception { }
+    } except Exception as e {
+        console.warning(f"Failed to generate source map for '{module_path}': {e}");
+    }
     if (not manifest or not manifest.imports) {
         return;
     }
@@ -407,12 +417,16 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
 
 """Convert a .jac relative path string to .js, handling compound extensions."""
 impl ViteCompiler._jac_path_to_js(self: ViteCompiler, rel_str: str) -> str {
+    # Convert Windows backslashes to forward slashes for JS imports
+    rel_str = rel_str.replace('\\', '/');
     for compound_ext in self.COMPOUND_EXTENSIONS {
         if rel_str.endswith(compound_ext) {
             return rel_str[:-len(compound_ext)] + '.js';
         }
     }
-    return str(Path(rel_str).with_suffix('.js'));
+    result = str(Path(rel_str).with_suffix('.js'));
+    # Ensure forward slashes in the final result (Path may reintroduce backslashes on Windows)
+    return result.replace('\\', '/');
 }
 
 """Scan pages/ directory, compile page files, and generate _routes.js manifest.

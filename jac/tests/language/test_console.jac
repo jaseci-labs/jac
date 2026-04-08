@@ -89,6 +89,24 @@ test "4-byte emoji literals in f-strings are not garbled" {
 # =============================================================================
 # Regression: user data with special patterns preserved unchanged
 # =============================================================================
+# =============================================================================
+# Windows encoding: unencodable chars replaced instead of crash
+# =============================================================================
+test "Windows console encoding handles unencodable Unicode" {
+    # This test verifies that characters outside cp1252 don't crash on Windows.
+    # On Windows cmd/PowerShell (without WT_SESSION), unencodable chars are replaced.
+    # On Linux/Mac/Windows Terminal, they pass through unchanged.
+    (stdout, _) = run_jac(['run', FSTRING_ENCODING_FILE]);
+
+    # The file contains emoji (📚💬🐛🚀) which can't be encoded in cp1252.
+    # Test should not crash - output should contain either the emoji or replacement char.
+    assert len(stdout) > 0 , "No output - possible encoding crash";
+
+    # At minimum, the ASCII parts should always be present
+    assert 'world' in stdout , "ASCII content missing from output";
+    assert 'ESC_NEWLINE' in stdout , "Label missing - possible encoding crash";
+}
+
 test "all edge case patterns preserved" {
     (stdout, stderr) = run_jac(['run', EDGE_CASES_FILE]);
 

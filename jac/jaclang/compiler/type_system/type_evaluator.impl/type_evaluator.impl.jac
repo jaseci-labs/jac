@@ -495,35 +495,10 @@ impl TypeEvaluator._get_type_of_expression_core(
             base_type = self.get_type_of_expression(expr.target);
 
             # Narrowing for Name targets: two systems may apply.
-            # - Scope narrowing: set by ternary/AND/OR handlers for inline expressions.
-            # - CFG narrowing: backward walk through control flow (statement-level).
-            # In ternary/bool contexts, scope narrowing takes priority because CFG
-            # operates at statement granularity and cannot see ternary-internal branches.
-            # In statement contexts (if/else bodies), CFG takes priority because it
-            # tracks assignments and re-narrowing that scope narrowing doesn't see.
+            # CFG-based narrowing: backward walk through control flow.
+            # Expression-level chains (_narrow_prev) handle AND/OR/ternary.
             if isinstance(expr.target, uni.Name) and expr.target.sym {
-                if (
-                    self._in_ternary_expr_depth > 0
-                    or self._in_bool_expr_narrowing_depth > 0
-                ) {
-                    if scope_narrowed := self.get_scope_narrowing(expr.target.value) {
-                        base_type = scope_narrowed;
-                    } elif narrowed := self.get_narrowed_type(expr.target.sym, expr) {
-                        base_type = narrowed;
-                    }
-                } else {
-                    if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
-                        base_type = narrowed;
-                    } elif scope_narrowed := self.get_scope_narrowing(
-                        expr.target.value
-                    ) {
-                        base_type = scope_narrowed;
-                    }
-                }
-                # Scope narrowing: `if isinstance(a.b, Foo) and a.b.bar` → a.b narrowed to Foo
-                # Uses key like "a.b" to look up narrowed type from current if/AND scope.
-            } elif target_key := self.get_narrowing_key(expr.target) {
-                if narrowed := self.get_scope_narrowing(target_key) {
+                if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
                     base_type = narrowed;
                 }
             }
@@ -546,12 +521,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     return types.UnknownType();
                 }
-                # Check for full expr narrowing: `if c.field is not None: use(c.field)`
-                # We still do member lookup below for IDE features (symbol, go-to-def)
+                # Dotted-path narrowing is now handled by CFG (get_narrowed_type_for_expr)
+                # after member lookup below. Scope-based dotted narrowing removed because
+                # it doesn't account for assignments inside branches.
                 full_narrowed: TypeBase | None = None;
-                if full_key := self.get_narrowing_key(expr) {
-                    full_narrowed = self.get_scope_narrowing(full_key);
-                }
                 # Member lookup on (narrowed) base type
                 assert isinstance(expr.right, uni.Name);
                 if isinstance(base_type, types.ModuleType) {
@@ -809,6 +782,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                         #
                         # expr_type = self._set_symbol_to_expr(expr.right, member.symbol);
                         member.symbol.add_use(expr.right);
+                        # Try CFG-based expression narrowing for dotted paths (e.g., bmw.speed)
+                        if full_narrowed is None and overloaded_ty is None {
+                            cfg_narrowed = self.get_narrowed_type_for_expr(
+                                expr, member_ty, expr
+                            );
+                            if cfg_narrowed is not None {
+                                full_narrowed = cfg_narrowed;
+                            }
+                        }
                         # Use narrowed type for hover/IDE if available, otherwise declared type
                         expr.right.type = full_narrowed or overloaded_ty or member_ty;
                         return expr.right.type;
@@ -1109,6 +1091,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     self.get_type_of_expression(assign.value);
                 }
                 return base_type;
+            } elif isinstance(expr.right, uni.FilterCompr) {
+                # Filter comprehension trailer: <expr>[?:Type] or <expr>[?:Type, field==val]
+                # Evaluate the filter (resolves symbols in compares, computes list[FilterType]).
+                filter_result = self.get_type_of_expression(expr.right);
+                # If the filter inferred a concrete list type, use it.
+                if not isinstance(filter_result, types.UnknownType) {
+                    return filter_result;
+                }
+                # No type filter — return the base type unchanged (preserves list[Any] from edge traversal).
+                return base_type;
             } else {  # <expr>[<expr>]
                 # --- Handle Callable special form ---
                 # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
@@ -1388,39 +1380,11 @@ impl TypeEvaluator._get_type_of_expression_core(
             return types.UnknownType();
 
         case uni.IfElseExpr():
-            # Evaluate condition first
+            # Evaluate condition, then both branches.
+            # Branch narrowing comes via _narrow_prev wired by the CFG pass.
             self.get_type_of_expression(expr.condition);
-
-            # Check for isinstance narrowing in the condition
-            isinstance_info = self._extract_isinstance_info(expr.condition);
-
-            # Evaluate true branch with narrowing applied
-            self.push_narrowing_scope();
-            if isinstance_info {
-                (narrowing_key, narrowed_type) = isinstance_info;
-                # Refine: filter the variable's existing type to preserve generic
-                # params (e.g., isinstance(x, list) on list[int]|str → list[int]).
-                refined = self._refine_isinstance_type(
-                    narrowing_key, narrowed_type, expr.condition
-                );
-                self.add_scope_narrowing(narrowing_key, refined);
-            } else {
-                self.process_condition(expr.condition);
-            }
-            self._in_ternary_expr_depth += 1;
             true_type = self.get_type_of_expression(expr.value);
-            self._in_ternary_expr_depth -= 1;
-            self.pop_narrowing_scope();
-
-            # Evaluate false branch with inverse narrowing.
-            # process_negated_condition handles all condition types uniformly:
-            # isinstance, is None / is not None, truthiness (not x), and OR chains.
-            self.push_narrowing_scope();
-            self.process_negated_condition(expr.condition);
-            self._in_ternary_expr_depth += 1;
             false_type = self.get_type_of_expression(expr.else_value);
-            self._in_ternary_expr_depth -= 1;
-            self.pop_narrowing_scope();
 
             unique_types: list[types.TypeBase] = [];
             for branch_type in [true_type, false_type] {
@@ -1437,7 +1401,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.BoolExpr():
             # AND/OR return operand values, not bool: `x and y` → y if x truthy, else x
             # The type should be the union of all operand types (Python semantics).
-            # Narrowing (isinstance/truthiness) handled by TypeCheckPass.enter_bool_expr
+            # Progressive narrowing comes via _narrow_prev wired by the CFG pass.
             is_or = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_OR;
             operand_types: list[TypeBase] = [];
             num_values = len(expr.values);
@@ -1553,6 +1517,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         #     );
                         # }
                     }
+                    # Return list[FilterType] — the filter narrows elements to the given type.
+                    if self.prefetch and self.prefetch.list_class {
+                        list_type = self.prefetch.list_class.clone_as_instance();
+                        filter_inst = self._convert_to_instance(filter_type);
+                        list_type.private.type_args = [filter_inst];
+                        return list_type;
+                    }
                 }
             }
 
@@ -1652,19 +1623,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             symbol_type = self._convert_to_instance(narrowed);
                         }
                     }
-                    # Scope narrowing for ternary/AND/OR expression contexts.
-                    # This takes priority over CFG narrowing in inline expressions
-                    # because CFG operates at statement granularity and cannot see
-                    # ternary-internal branches.  Placed here (after symbol resolution)
-                    # so .sym and .name_of are always set for the language server.
-                    if (
-                        self._in_ternary_expr_depth > 0
-                        or self._in_bool_expr_narrowing_depth > 0
-                    ) {
-                        if scope_narrowed := self.get_scope_narrowing(expr.value) {
-                            symbol_type = scope_narrowed;
-                        }
-                    }
+                    # CFG + _narrow_prev chain handle expression-level narrowing.
                     if isinstance(symbol_type, types.FunctionType) {
                         overloaded_ty: types.OverloadedType | None = None;
                         overloaded_fns: list[types.FunctionType] = [symbol_type];
@@ -1717,12 +1676,22 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.EdgeRefTrailer():
             # Edge traversal: [node-->], [node<--], [node->:Edge:->], etc.
-            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only)
-            # TODO: Infer more specific types from filters like [?:Profile]
+            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only).
+            # Two syntax forms place FilterCompr differently:
+            #   [root-->][?:Todo]  — FilterCompr is sibling in AtomTrailer (handled there)
+            #   [-->[?:Todo]]      — FilterCompr is in EdgeRefTrailer.chain (handled here)
             if self.prefetch and self.prefetch.list_class {
+                element_type: types.TypeBase = types.AnyType();
+                for chain_item in expr.chain {
+                    if isinstance(chain_item, uni.FilterCompr) and chain_item.f_type {
+                        ft = self.get_type_of_expression(chain_item.f_type);
+                        if isinstance(ft, types.ClassType) {
+                            element_type = self._convert_to_instance(ft);
+                        }
+                    }
+                }
                 list_type = self.prefetch.list_class.clone_as_instance();
-                # Return list[Any] so indexing returns Any (allows attribute access)
-                list_type.private.type_args = [types.AnyType()];
+                list_type.private.type_args = [element_type];
                 return list_type;
             }
             return types.UnknownType();
@@ -1842,7 +1811,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         );
                         if next_type and not isinstance(next_type, types.UnknownType) {
                             elem_type = self._convert_to_instance(next_type);
-                        } elif len(iter_type.private.type_args) == 1 {
+                        } elif iter_type.private
+                        and iter_type.private.type_args
+                        and len(iter_type.private.type_args) == 1 {
                             # Fallback: try to extract from type_args
                             elem_type = iter_type.private.type_args[0];
                             # If element type is a TypeVar, specialize it using collection's type_args
@@ -1898,6 +1869,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     annotation_type = self.get_type_of_expression(
                         node_.parent.type_tag.tag
                     );
+                    # TypeAlias annotation: `X: TypeAlias = <type_expr>`
+                    # The annotation marks this as a type alias — the actual
+                    # type is defined by the RHS, not the annotation itself.
+                    # Detect via symbol resolution: annotation_type for TypeAlias
+                    # resolves to _SpecialForm, and we verify the tag name.
+                    if (
+                        self._is_type_alias_annotation(
+                            annotation_type, node_.parent.type_tag.tag
+                        )
+                        and node_.parent.value is not None
+                    ) {
+                        return self._resolve_type_alias_rhs(node_.parent.value);
+                    }
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
                     if node_.parent.value is not None {
@@ -2004,7 +1988,9 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     }
 
                     # Fallback: try to extract from type_args if __next__ didn't work
-                    if len(iter_type.private.type_args) == 1 {
+                    if iter_type.private
+                    and iter_type.private.type_args
+                    and len(iter_type.private.type_args) == 1 {
                         elem_type = iter_type.private.type_args[0];
                         # If element type is already concrete (e.g. Iterator[int]
                         # from range.__iter__), use it directly.
@@ -2485,6 +2471,10 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if isinstance(dest_type, types.UnknownType) {
         return True;
     }
+    # Any is compatible with everything in both directions (PEP 484).
+    if isinstance(src_type, types.AnyType) or isinstance(dest_type, types.AnyType) {
+        return True;
+    }
     # Literal type assignability rules (similar to Pyright's literalValue handling)
     if self.prefetch
     and isinstance(src_type, types.ClassType)
@@ -2774,31 +2764,8 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Scope narrowing for inline expression contexts (ternary / AND / OR).
-    # For AtomTrailer: apply early return since its handler already does symbol
-    # resolution independently.  For Name/NameAtom: bypass the cache and fall
-    # through to _get_type_of_expression_core so symbol resolution (.sym, .name_of)
-    # still happens — the language server needs these for hover/go-to-definition.
-    # Scope narrowing is applied inside _get_type_of_expression_core after resolution.
-    if (self._in_ternary_expr_depth > 0 or self._in_bool_expr_narrowing_depth > 0) {
-        if isinstance(node_, uni.AtomTrailer) {
-            narrowing_key = self.get_narrowing_key(node_);
-            if narrowing_key is not None {
-                if scope_narrowed := self.get_scope_narrowing(narrowing_key) {
-                    node_.type = scope_narrowed;
-                    return scope_narrowed;
-                }
-            }
-        }
-        # For Name/NameAtom: bypass cache, fall through to _get_type_of_expression_core
-        if isinstance(node_, (uni.Name, uni.NameAtom)) {
-            if self.get_scope_narrowing(node_.value) is not None {
-                result = self._get_type_of_expression_core(node_, expected_type);
-                node_.type = result;
-                return result;
-            }
-        }
-    }
+    # Expression-level narrowing handled via _narrow_prev chains in
+    # get_narrowed_type{,_for_expr}. No scope stack needed.
     # Use cached result if available, UNLESS expected_type is provided
     # for a container literal that could benefit from bidirectional inference.
     if node_.type is not None {
@@ -2991,12 +2958,16 @@ impl TypeEvaluator.postinit -> None {
     self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "jac_builtins.pyi"
     );
+    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "dom_types.pyi"
+    );
     self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
     # Initialize objects that need constructor calls
     self.prefetch = PrefetchedTypes();
     self._narrowing_in_progress = set();
+    self._narrowing_in_progress_keys = set();
     # NOTE: The initialization order here is important.
     self.typing_module = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
     self.types_module = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
@@ -3013,8 +2984,15 @@ impl TypeEvaluator.postinit -> None {
     );
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(self._JAC_BUILTINS_STUB_FILE_PATH);
+    self.dom_types_module = self._load_stub_module(self._DOM_TYPES_STUB_FILE_PATH);
     # This avoids parent_scope chaining which can cause recursion issues
     for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
+        if name not in self.builtins_module.names_in_scope {
+            self.builtins_module.names_in_scope[name] = sym;
+        }
+    }
+    # Merge DOM types (Event, ChangeEvent, HTMLElement, etc.) into builtins
+    for (name, sym) in self.dom_types_module.names_in_scope.items() {
         if name not in self.builtins_module.names_in_scope {
             self.builtins_module.names_in_scope[name] = sym;
         }
@@ -3028,43 +3006,158 @@ impl TypeEvaluator.postinit -> None {
 # Type narrowing support (CFG-based, flow-sensitive)
 # Pyright-style implementation with affected_symbols optimization.
 # -------------------------------------------------------------------------
+"""Derive the narrowing predecessor of an Expr from AST structure.
+Returns (predecessor_expr, is_true) or None.
+
+For BoolExpr(AND, [a, b, c]): b → (a, True), c → (b, True)
+For BoolExpr(OR,  [a, b, c]): b → (a, False), c → (b, False)
+For IfElseExpr(cond, v, w):   v → (cond, True), w → (cond, False)"""
+def _narrow_prev_of(expr: uni.Expr) -> tuple[uni.Expr, bool] | None {
+    parent = expr.parent;
+    if isinstance(parent, uni.BoolExpr) {
+        for i in range(1, len(parent.values)) {
+            if parent.values[i] is expr {
+                is_and = isinstance(parent.op, uni.Token) and parent.op.name == "KW_AND";
+                return (parent.values[i - 1], is_and);
+            }
+        }
+    }
+    if isinstance(parent, uni.IfElseExpr) {
+        if expr is parent.value {
+            return (parent.condition, True);
+        }
+        if expr is parent.else_value {
+            return (parent.condition, False);
+        }
+    }
+    return None;
+}
+
+"""Find the nearest Expr ancestor that has a narrowing predecessor.
+Returns None if no expression-level narrowing applies here."""
+def _find_narrow_chain_for(at_node: uni.UniNode) -> uni.Expr | None {
+    cur: uni.UniNode | None = at_node;
+    while cur is not None {
+        if isinstance(cur, uni.Expr) and _narrow_prev_of(cur) is not None {
+            return cur;
+        }
+        if isinstance(cur, uni.CodeBlockStmt) {
+            return None;
+        }
+        cur = cur.parent;
+    }
+    return None;
+}
+
+"""Find the enclosing statement-level CFG node (CodeBlockStmt)."""
+def _find_stmt_cfg_node_for(at_node: uni.UniNode) -> uni.UniCFGNode | None {
+    if isinstance(at_node, uni.CodeBlockStmt) {
+        return at_node;
+    }
+    return at_node.find_parent_of_type(uni.CodeBlockStmt);
+}
+
+"""Walk the narrowing chain and apply predicates.
+Derives predecessors from AST structure via _narrow_prev_of — no stored fields.
+Climbs through nested expressions: when the immediate chain ends, checks if
+the ancestor expression itself has a predecessor (e.g., inner ternary inside
+outer ternary's else_value)."""
+impl TypeEvaluator._narrow_via_chain(
+    target: NarrowingTarget, from_expr: uni.Expr, base_type: TypeBase | None
+) -> TypeBase | None {
+    prev = _narrow_prev_of(from_expr);
+    if prev is None {
+        # No predecessor at this level. Climb: check if from_expr's parent
+        # expression has a predecessor (handles nested ternary/BoolExpr).
+        cur: uni.UniNode | None = from_expr.parent;
+        while cur is not None and not isinstance(cur, uni.CodeBlockStmt) {
+            if isinstance(cur, uni.Expr) and _narrow_prev_of(cur) is not None {
+                return self._narrow_via_chain(target, cur, base_type);
+            }
+            cur = cur.parent;
+        }
+        return base_type;
+    }
+    (prev_expr, is_true) = prev;
+    # Recurse: get the type at the predecessor's position first.
+    prior_type = self._narrow_via_chain(target, prev_expr, base_type);
+    # Apply this step's predicate at its edge.
+    predicate = self._find_predicate_for(target, prev_expr);
+    if predicate is None {
+        return prior_type;
+    }
+    narrowed = self._apply_narrowing(predicate, prior_type, is_true, target);
+    return narrowed if narrowed is not None else prior_type;
+}
+
 """Entry point: get the CFG-based narrowed type for a symbol at a given AST node."""
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     sym_id = id(symbol);
-    # Reentrancy guard: Skip if we're already computing narrowing for THIS symbol.
-    # This happens when get_type_of_expression(assignment.value) triggers get_narrowed_type
-    # for the same symbol, which would cause infinite recursion.
-    # Uses id(symbol) to avoid name collisions between different scopes.
     if sym_id in self._narrowing_in_progress {
         return None;
     }
-    # Performance optimization: Only do CFG walk for types that can be narrowed.
-    # 1. Union types (e.g., X | None, A | B) - narrow to subset
-    # 2. Class types with potential subclasses - narrow via isinstance
-    #    e.g., isinstance(nd, CFGNode) where nd: BaseNode -> narrow to CFGNode
-    # Skip primitives (int, str, bool, etc.) where narrowing doesn't apply.
     symbol_type = self.get_type_of_symbol(symbol);
-    if not isinstance(symbol_type, (types.UnionType, types.ClassType)) {
+    if not isinstance(
+        symbol_type, (types.UnionType, types.ClassType, types.UnknownType)
+    ) {
         return None;
     }
-    # Find the enclosing CodeBlockStmt (CFG node) for this Name node.
-    stmt: uni.CodeBlockStmt | None = None;
-    if isinstance(at_node, uni.CodeBlockStmt) {
-        stmt = at_node;
-    } else {
-        stmt = at_node.find_parent_of_type(uni.CodeBlockStmt);
-    }
-    if stmt is None {
-        return None;
-    }
-    # Mark this symbol as in-progress before computing narrowing.
     self._narrowing_in_progress.add(sym_id);
     try {
-        return self._compute_narrowed_at(symbol, stmt, set());
+        narrowing_target = NarrowingTarget(
+            key=symbol.sym_name, declared_type=symbol_type, symbol=symbol
+        );
+        # Statement-level CFG narrowing (bb_in walk).
+        stmt_narrowed: TypeBase | None = None;
+        stmt = _find_stmt_cfg_node_for(at_node);
+        if stmt is not None {
+            stmt_narrowed = self._compute_narrowed_at(narrowing_target, stmt, set());
+        }
+        # Expression-level chain narrowing (inside BoolExpr/ternary).
+        chain_start = _find_narrow_chain_for(at_node);
+        if chain_start is None {
+            return stmt_narrowed;
+        }
+        # Chain starts from the statement-level narrowed type (or declared).
+        return self._narrow_via_chain(narrowing_target, chain_start, stmt_narrowed);
     } finally {
         self._narrowing_in_progress.discard(sym_id);
+    }
+}
+
+"""Entry point: get the CFG-based narrowed type for an expression (e.g., obj.attr) at a given node."""
+impl TypeEvaluator.get_narrowed_type_for_expr(
+    expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    if not isinstance(declared_type, (types.UnionType, types.ClassType)) {
+        return None;
+    }
+    key = self.get_narrowing_key(expr);
+    if key is None {
+        return None;
+    }
+    if key in self._narrowing_in_progress_keys {
+        return None;
+    }
+    self._narrowing_in_progress_keys.add(key);
+    try {
+        narrowing_target = NarrowingTarget(key=key, declared_type=declared_type);
+        stmt_narrowed: TypeBase | None = None;
+        stmt = _find_stmt_cfg_node_for(at_node);
+        if stmt is not None {
+            stmt_narrowed = self._compute_narrowed_at(narrowing_target, stmt, set());
+        }
+        chain_start = _find_narrow_chain_for(at_node);
+        if chain_start is None {
+            return stmt_narrowed;
+        }
+        return self._narrow_via_chain(narrowing_target, chain_start, stmt_narrowed);
+    } finally {
+        self._narrowing_in_progress_keys.discard(key);
     }
 }
 
@@ -3073,10 +3166,16 @@ Uses Pyright-style affected_symbols optimization to skip branches where
 the symbol is not narrowed or assigned.
 """
 impl TypeEvaluator._compute_narrowed_at(
-    symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+    target: NarrowingTarget, stmt: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
-    sym_name = symbol.sym_name;
-    cache_key = (id(stmt), id(symbol));
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    key = target.key;
+    # Use symbol identity for cache key when available (different scoped symbols
+    # with the same name must not share cache entries), fall back to string key
+    # for expression-based narrowing (no symbol).
+    cache_key = (id(stmt), id(target.symbol))
+        if target.symbol is not None
+        else (id(stmt), key);
     if cache_key in self._narrowing_cache {
         return self._narrowing_cache[cache_key];
     }
@@ -3123,26 +3222,26 @@ impl TypeEvaluator._compute_narrowed_at(
             }
         }
 
-        # PYRIGHT-STYLE OPTIMIZATION: Skip branches where symbol is not affected.
-        # If the predecessor doesn't narrow or assign this symbol, we can skip
+        # PYRIGHT-STYLE OPTIMIZATION: Skip branches where target is not affected.
+        # If the predecessor doesn't narrow or assign this target, we can skip
         # the expensive recursive walk and just mark as unnarrowed.
-        if sym_name not in pred.affected_symbols {
+        if key not in pred.affected_symbols {
             has_unnarrowed_pred = True;
             continue;
         }
 
         # Recursively get predecessor's narrowed type.
-        pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
+        pred_narrowed = self._compute_narrowed_at(target, pred, visited);
 
         # Check if predecessor is a BoolExpr (short-circuit branch point).
         if isinstance(pred, uni.BoolExpr) {
-            predicate = self._find_predicate_for(symbol, pred);
+            predicate = self._find_predicate_for(target, pred);
             if predicate is not None {
                 is_true_edge = stmt is pred.sc_true_target;
                 is_false_edge = stmt is pred.sc_false_target;
                 if is_true_edge or is_false_edge {
                     narrowed = self._apply_narrowing(
-                        predicate, pred_narrowed, is_true_edge, symbol
+                        predicate, pred_narrowed, is_true_edge, target
                     );
                     if narrowed is not None {
                         incoming_types.append(narrowed);
@@ -3161,12 +3260,12 @@ impl TypeEvaluator._compute_narrowed_at(
         # Skip when successor is a BoolExpr (IfStmt → chain entry edge,
         # not a true/false branch — narrowing happens at the BoolExpr level).
         if isinstance(pred, uni.IfStmt) and not isinstance(stmt, uni.BoolExpr) {
-            predicate = self._find_predicate_for(symbol, pred.condition);
+            predicate = self._find_predicate_for(target, pred.condition);
             if predicate is not None {
                 edge_kind = self._classify_edge(pred, stmt);
                 if edge_kind == "true" {
                     narrowed = self._apply_narrowing(
-                        predicate, pred_narrowed, True, symbol
+                        predicate, pred_narrowed, True, target
                     );
                     if narrowed is not None {
                         incoming_types.append(narrowed);
@@ -3176,7 +3275,7 @@ impl TypeEvaluator._compute_narrowed_at(
                     continue;
                 } elif edge_kind == "false" {
                     narrowed = self._apply_narrowing(
-                        predicate, pred_narrowed, False, symbol
+                        predicate, pred_narrowed, False, target
                     );
                     if narrowed is not None {
                         incoming_types.append(narrowed);
@@ -3194,10 +3293,10 @@ impl TypeEvaluator._compute_narrowed_at(
         # Check if predecessor is an AssertStmt with isinstance narrowing.
         # assert isinstance(x, T) narrows x to T for subsequent statements.
         if isinstance(pred, uni.AssertStmt) {
-            predicate = self._find_predicate_for(symbol, pred.condition);
+            predicate = self._find_predicate_for(target, pred.condition);
             if predicate is not None {
                 # Assert passed means condition is true
-                narrowed = self._apply_narrowing(predicate, pred_narrowed, True, symbol);
+                narrowed = self._apply_narrowing(predicate, pred_narrowed, True, target);
                 if narrowed is not None {
                     incoming_types.append(narrowed);
                 } else {
@@ -3207,18 +3306,25 @@ impl TypeEvaluator._compute_narrowed_at(
             }
         }
 
-        # Check if predecessor is an Assignment that assigns to this symbol.
+        # Check if predecessor is an Assignment that assigns to this target.
         # a: int | None = None; a = 90; -> narrows 'a' to int
+        # Also handles AtomTrailer: bmw.speed = 0 -> narrows 'bmw.speed' to int
         # Only narrow if the assigned type is strictly narrower than the declared type.
         if isinstance(pred, uni.Assignment) and pred.value {
             found_assignment = False;
-            for target in pred.target {
-                if isinstance(target, uni.Name) and target.value == sym_name {
+            for t in pred.target {
+                target_key: str | None = None;
+                if isinstance(t, uni.Name) {
+                    target_key = t.value;
+                } elif isinstance(t, uni.AtomTrailer) and t.is_attr {
+                    target_key = self.get_narrowing_key(t);
+                }
+                if target_key is not None and target_key == key {
                     # Get the type of the assigned value
                     assigned_type = self.get_type_of_expression(pred.value);
                     if assigned_type
                     and not isinstance(assigned_type, types.UnknownType) {
-                        declared_type = self.get_type_of_symbol(symbol);
+                        declared_type = target.declared_type;
                         # Only narrow if:
                         # 1. assigned_type is assignable to declared_type (valid assignment)
                         # 2. declared_type is NOT assignable to assigned_type (narrowing, not equivalent)
@@ -3242,8 +3348,9 @@ impl TypeEvaluator._compute_narrowed_at(
 
         # Check if predecessor is a MatchStmt and narrow based on pattern.
         if isinstance(pred, uni.MatchStmt) {
-            # Check if match target is the symbol we're narrowing
-            if isinstance(pred.target, uni.Name) and pred.target.value == sym_name {
+            # Check if match target matches our key
+            match_key = self.get_narrowing_key(pred.target);
+            if match_key is not None and match_key == key {
                 # Find which MatchCase contains the current stmt
                 match_case: uni.MatchCase | None;
                 if isinstance(stmt, uni.MatchCase) {
@@ -3316,63 +3423,6 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     return "unconditional";
 }
 
-"""Push a new narrowing scope for if/AND blocks."""
-impl TypeEvaluator.push_narrowing_scope -> None {
-    self._narrowing_scope_stack.append({});
-}
-
-"""Pop the current narrowing scope."""
-impl TypeEvaluator.pop_narrowing_scope -> None {
-    if self._narrowing_scope_stack {
-        self._narrowing_scope_stack.pop();
-    }
-}
-
-"""Add a narrowing for a key in the current scope.
-
-Args:
-    key: Narrowing key (e.g., "x" or "x.foo.bar")
-    narrowed_type: The type to narrow to
-"""
-impl TypeEvaluator.add_scope_narrowing(
-    key: str, narrowed_type: types.TypeBase
-) -> None {
-    if self._narrowing_scope_stack {
-        current_scope = self._narrowing_scope_stack[-1];
-        # If already narrowed, keep the more specific type.
-        # In `x and isinstance(x, T)`, truthiness narrows first (e.g., to a UnionType
-        # with None excluded), then isinstance narrows further. The isinstance type
-        # is always more specific than the truthiness-narrowed union.
-        if key in current_scope {
-            existing = current_scope[key];
-            if (
-                isinstance(narrowed_type, types.ClassType)
-                and isinstance(existing, types.ClassType)
-            ) {
-                if self.is_sub_class(existing, narrowed_type) {
-                    current_scope[key] = narrowed_type;
-                }
-            } elif isinstance(existing, types.UnionType) {
-                # Existing is a union (e.g., from truthiness narrowing),
-                # new type is more specific (e.g., from isinstance) — replace.
-                current_scope[key] = narrowed_type;
-            }
-        } else {
-            current_scope[key] = narrowed_type;
-        }
-    }
-}
-
-"""Get narrowed type for a key from the scope stack."""
-impl TypeEvaluator.get_scope_narrowing(key: str) -> types.TypeBase | None {
-    # Search from innermost to outermost scope
-    for scope in reversed(self._narrowing_scope_stack) {
-        if key in scope {
-            return scope[key];
-        }
-    }
-    return None;
-}
 
 """Get a string key for an expression to use in narrowing.
 
@@ -3423,41 +3473,32 @@ impl TypeEvaluator._find_symbol_by_key(
     return None;
 }
 
-"""Extract narrowings from condition and add to current scope stack.
+"""Classify a leaf condition into its narrowing kind + key.
 
-Used for scope-based (forward) narrowing in if/AND blocks. Stores narrowed types
-in _narrowing_scope_stack keyed by expression path (e.g., "x", "a.b.c").
+Only handles leaf conditions (isinstance, callable, None checks, truthiness,
+literal comparisons). Structural wrappers (parens, NOT, AND, OR, walrus)
+are the caller's responsibility.
 
-Supported patterns:
-  - Parentheses: `(cond)` → unwrap and recurse
-  - AND: `a and b` → process each operand
-  - isinstance: `isinstance(x, T)` → {"x": T}, `isinstance(x, (A,B))` → {"x": A|B}
-  - None checks: `x is not None` → {"x": T} (excludes None), `x is None` → {"x": None}
-  - Truthiness: `if x` where x: T|None → {"x": T}
+Returns None if the condition is not a recognized narrowing pattern.
 """
-impl TypeEvaluator.process_condition(condition: uni.Expr) -> None {
+impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | None {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # Unwrap parentheses: `(isinstance(x, T))` → recurse into inner expression
-    if isinstance(condition, uni.AtomUnit) and condition.value {
-        self.process_condition(condition.value);
-        return;
+    import from jaclang.compiler.type_system.type_evaluator {
+        ConditionInfo,
+        NarrowingKind
     }
-    # AND expression: `isinstance(x, T) and x.foo` → process each operand
-    if isinstance(condition, uni.BoolExpr) and condition.op.name == Tok.KW_AND {
-        for val in condition.values {
-            self.process_condition(val);
-        }
-        return;
-    }
-    # isinstance: `isinstance(x, Foo)` → {"x": Foo}, `isinstance(x, (A,B))` → {"x": A|B}
-    # Refine: filter the variable's existing type to preserve generic params.
+    # 1. isinstance(x, T)
     if isinstance_info := self._extract_isinstance_info(condition) {
-        (narrowing_key, narrowed_type) = isinstance_info;
-        refined = self._refine_isinstance_type(narrowing_key, narrowed_type, condition);
-        self.add_scope_narrowing(narrowing_key, refined);
-        return;
+        (key, narrow_type) = isinstance_info;
+        return ConditionInfo(
+            kind=NarrowingKind.ISINSTANCE, key=key, narrow_type=narrow_type
+        );
     }
-    # None checks: `x is not None` or `x is None`
+    # 2. callable(x)
+    if callable_key := self._extract_callable_info(condition) {
+        return ConditionInfo(kind=NarrowingKind.CALLABLE, key=callable_key,);
+    }
+    # 3-4. x is None / x is not None
     if (
         isinstance(condition, uni.CompareExpr)
         and len(condition.ops) == 1
@@ -3465,150 +3506,63 @@ impl TypeEvaluator.process_condition(condition: uni.Expr) -> None {
         and isinstance(condition.rights[0], uni.Null)
     ) {
         narrowing_key = self.get_narrowing_key(condition.left);
-        if narrowing_key is not None
-        and self.prefetch
-        and self.prefetch.none_type_class {
-            expr_type = self.get_type_of_expression(condition.left);
-            none_type = self._convert_to_instance(self.prefetch.none_type_class);
-            if condition.ops[0].name == Tok.KW_ISN {
-                # `x is not None` → exclude None: Mammal|None → {"x": Mammal}
-                if self._union_contains_none(expr_type) {
-                    narrowed = self.exclude_type_from_union(expr_type, none_type);
-                    if narrowed != expr_type {
-                        self.add_scope_narrowing(narrowing_key, narrowed);
-                    }
-                }
-            } elif condition.ops[0].name == Tok.KW_IS {
-                # `x is None` → narrow to None: Mammal|None → {"x": None}
-                if self._union_contains_none(expr_type) {
-                    self.add_scope_narrowing(narrowing_key, none_type);
-                }
+        if narrowing_key is not None {
+            op_name = condition.ops[0].name;
+            if op_name == Tok.KW_IS {
+                return ConditionInfo(kind=NarrowingKind.NONE_IS, key=narrowing_key);
+            } elif op_name == Tok.KW_ISN {
+                return ConditionInfo(
+                    kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key
+                );
             }
         }
-        return;
     }
-    # Truthiness: `if x` or `if x.field` → T|None narrowed to T
+    # 5-6. x == literal / x != literal (non-None CompareExpr)
+    if (
+        isinstance(condition, uni.CompareExpr)
+        and len(condition.ops) == 1
+        and len(condition.rights) == 1
+    ) {
+        left_key = self.get_narrowing_key(condition.left);
+        right_expr = condition.rights[0];
+        if left_key is not None
+        and isinstance(right_expr, (uni.String, uni.Int, uni.Float, uni.Bool)) {
+            literal_type = self.get_type_of_expression(right_expr);
+            op_name = condition.ops[0].name;
+            if op_name == Tok.EE {
+                return ConditionInfo(
+                    kind=NarrowingKind.LITERAL_EQ,
+                    key=left_key,
+                    narrow_type=literal_type
+                );
+            } elif op_name == Tok.NE {
+                return ConditionInfo(
+                    kind=NarrowingKind.LITERAL_NE,
+                    key=left_key,
+                    narrow_type=literal_type
+                );
+            }
+        }
+    }
+    # 7. Truthiness: if x / if x.attr
     if isinstance(condition, (uni.Name, uni.AtomTrailer)) {
         narrowing_key = self.get_narrowing_key(condition);
-        if narrowing_key is not None
-        and self.prefetch
-        and self.prefetch.none_type_class {
-            expr_type = self.get_type_of_expression(condition);
-            if self._union_contains_none(expr_type) {
-                none_type = self._convert_to_instance(self.prefetch.none_type_class);
-                narrowed = self.exclude_type_from_union(expr_type, none_type);
-                if narrowed != expr_type {
-                    self.add_scope_narrowing(narrowing_key, narrowed);
-                }
-            }
+        if narrowing_key is not None {
+            return ConditionInfo(kind=NarrowingKind.TRUTHINESS, key=narrowing_key);
         }
     }
-}
-
-"""Promote inverted narrowings from a terminated if-body to the parent scope.
-
-When an if-body always terminates (raise/return/break/continue), the only
-way to reach code after the if is via the else-path. This method applies
-the negated condition's narrowings to the parent scope so that dotted paths
-like `rt.program` stay narrowed after the if-block.
-
-Called from exit_if_stmt BEFORE pop_narrowing_scope. We temporarily pop
-the current scope, process the negated condition into the parent scope,
-then push a dummy scope for the caller's pop.
-"""
-impl TypeEvaluator.promote_inverted_narrowings(condition: uni.Expr) -> None {
-    # Pop the current (if-body) scope temporarily
-    self.pop_narrowing_scope();
-    # If there's no parent scope, create one so the narrowings persist
-    # after the if-block for the rest of the function/scope.
-    if not self._narrowing_scope_stack {
-        self.push_narrowing_scope();
-    }
-    # Apply negated narrowings to the parent scope
-    self.process_negated_condition(condition);
-    # Push a dummy scope that exit_if_stmt's pop_narrowing_scope will remove
-    self.push_narrowing_scope();
-}
-
-"""Process a condition under the assumption it evaluated to falsy.
-
-Used for OR expressions: in `X or Y`, when evaluating Y, X was falsy.
-This is the inverse of process_condition — it narrows based on what
-must be true when a condition is false.
-
-Supported patterns:
-  - `not X` being falsy → X is truthy → process_condition(X)
-  - isinstance(x, T) being falsy → narrow x to exclude T
-  - `x is None` being falsy → x is not None → exclude None
-  - `x is not None` being falsy → x is None → narrow to None
-  - OR expression being falsy → all operands are falsy → recurse
-  - Truthiness (`x` where x: T|None) being falsy → not useful (falsy != None)
-"""
-impl TypeEvaluator.process_negated_condition(condition: uni.Expr) -> None {
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    # Unwrap parentheses
-    if isinstance(condition, uni.AtomUnit) and condition.value {
-        self.process_negated_condition(condition.value);
-        return;
-    }
-    # `not X` being falsy means X is truthy — delegate to positive narrowing
-    if isinstance(condition, uni.UnaryExpr)
-    and isinstance(condition.op, uni.Token)
-    and condition.op.name == Tok.NOT {
-        self.process_condition(condition.operand);
-        return;
-    }
-    # OR being falsy means ALL operands are falsy
-    if isinstance(condition, uni.BoolExpr) and condition.op.name == Tok.KW_OR {
-        for val in condition.values {
-            self.process_negated_condition(val);
-        }
-        return;
-    }
-    # isinstance(x, T) being falsy → exclude T from x's type
-    if isinstance_info := self._extract_isinstance_info(condition) {
-        (narrowing_key, isinstance_type) = isinstance_info;
-        sym = self._find_symbol_by_key(narrowing_key, condition);
-        if sym is not None {
-            base_type = self.get_type_of_symbol(sym);
-            narrowed = self.exclude_type_from_union(base_type, isinstance_type);
-            if narrowed != base_type {
-                self.add_scope_narrowing(narrowing_key, narrowed);
-            }
-        }
-        return;
-    }
-    # None checks inverted
+    # 8. Walrus truthiness: if (x := expr)
     if (
-        isinstance(condition, uni.CompareExpr)
-        and len(condition.ops) == 1
-        and len(condition.rights) == 1
-        and isinstance(condition.rights[0], uni.Null)
+        isinstance(condition, uni.BinaryExpr)
+        and isinstance(condition.op, uni.Token)
+        and condition.op.name == "WALRUS_EQ"
+        and isinstance(condition.left, uni.Name)
     ) {
-        narrowing_key = self.get_narrowing_key(condition.left);
-        if narrowing_key is not None
-        and self.prefetch
-        and self.prefetch.none_type_class {
-            expr_type = self.get_type_of_expression(condition.left);
-            none_type = self._convert_to_instance(self.prefetch.none_type_class);
-            if condition.ops[0].name == Tok.KW_IS {
-                # `x is None` being falsy → x is not None → exclude None
-                if self._union_contains_none(expr_type) {
-                    narrowed = self.exclude_type_from_union(expr_type, none_type);
-                    if narrowed != expr_type {
-                        self.add_scope_narrowing(narrowing_key, narrowed);
-                    }
-                }
-            } elif condition.ops[0].name == Tok.KW_ISN {
-                # `x is not None` being falsy → x is None → narrow to None
-                if self._union_contains_none(expr_type) {
-                    self.add_scope_narrowing(narrowing_key, none_type);
-                }
-            }
-        }
-        return;
+        return ConditionInfo(kind=NarrowingKind.TRUTHINESS, key=condition.left.value,);
     }
+    return None;
 }
+
 
 """Find a narrowing predicate for a specific symbol in a condition expression.
 
@@ -3623,14 +3577,19 @@ Supports the following patterns (Pyright-compatible):
 - x == literal / x != literal (literal equality)
 """
 impl TypeEvaluator._find_predicate_for(
-    symbol: uni.Symbol, condition: uni.Expr
+    target: NarrowingTarget, condition: uni.Expr
 ) -> NarrowingPredicate | None {
-    import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
-    sym_name = symbol.sym_name;
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.compiler.type_system.type_evaluator {
+        NarrowingKind,
+        NarrowingPredicate,
+        NarrowingTarget
+    }
+    key = target.key;
     # Pattern 0: Unwrap parenthesized expressions (AtomUnit)
     # Handles: (isinstance(x, T)), ((x is None)), etc.
     if isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
-        return self._find_predicate_for(symbol, condition.value);
+        return self._find_predicate_for(target, condition.value);
     }
     # Pattern 1: NOT handling (UnaryExpr with NOT operator)
     # Handles: not isinstance(x, T), not (x is None), etc.
@@ -3639,10 +3598,10 @@ impl TypeEvaluator._find_predicate_for(
         and isinstance(condition.op, uni.Token)
         and condition.op.name == Tok.NOT
     ) {
-        inner_pred = self._find_predicate_for(symbol, condition.operand);
+        inner_pred = self._find_predicate_for(target, condition.operand);
         if inner_pred is not None {
             return NarrowingPredicate(
-                sym_name=inner_pred.sym_name,
+                key=inner_pred.key,
                 narrow_type=inner_pred.narrow_type,
                 is_inverted=not inner_pred.is_inverted
             );
@@ -3660,7 +3619,7 @@ impl TypeEvaluator._find_predicate_for(
                 all_preds = [
                     p
                     for val in condition.values
-                    if (p := self._find_predicate_for(symbol, val)) is not None
+                    if (p := self._find_predicate_for(target, val)) is not None
                 ];
                 if not all_preds {
                     return None;
@@ -3699,7 +3658,7 @@ impl TypeEvaluator._find_predicate_for(
             # (all operands falsy) means each inverted pred's inner condition is true.
             case Tok.KW_OR:
                 all_preds = [
-                    self._find_predicate_for(symbol, val) for val in condition.values
+                    self._find_predicate_for(target, val) for val in condition.values
                 ];
                 matched = [
                     p
@@ -3725,14 +3684,14 @@ impl TypeEvaluator._find_predicate_for(
                         union_type = types.UnionType(types=narrowed_types);
                     }
                     return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=union_type, is_inverted=False
+                        key=key, narrow_type=union_type, is_inverted=False
                     );
                 }
                 # Sub-pattern (b): has inverted predicates (e.g., `not x or not x.y`)
-                # Return first matching predicate for this symbol. On the false branch,
+                # Return first matching predicate for this target. On the false branch,
                 # _apply_narrowing inverts is_inverted (double negation → positive).
                 for p in matched {
-                    if p.sym_name == sym_name {
+                    if p.key == key {
                         return p;
                     }
                 }
@@ -3740,189 +3699,73 @@ impl TypeEvaluator._find_predicate_for(
 
         }
     }
-    # Pattern 4: isinstance(x, T), isinstance(x, (A, B, C)), or isinstance((x := expr), T)
-    if (
-        isinstance(condition, uni.FuncCall)
-        and isinstance(condition.target, uni.Name)
-        and condition.target.value == "isinstance"
-        and len(condition.params) == 2
-        and not isinstance(condition.params[1], uni.KWPair)
-    ) {
-        # Extract symbol name from first arg (handles walrus and parentheses)
-        first_arg = condition.params[0];
-        if isinstance(first_arg, uni.AtomUnit) and first_arg.value {
-            first_arg = first_arg.value;
-        }
-        extracted_name: str | None = None;
-        if isinstance(first_arg, uni.Name) {
-            extracted_name = first_arg.value;
-        } elif (
-            isinstance(first_arg, uni.BinaryExpr)
-            and isinstance(first_arg.op, uni.Token)
-            and first_arg.op.name == "WALRUS_EQ"
-            and isinstance(first_arg.left, uni.Name)
-        ) {
-            extracted_name = first_arg.left.value;
-        }
-        if extracted_name is not None and extracted_name == sym_name {
-            type_arg = condition.params[1];
-            # Check if it's a tuple of types: isinstance(x, (A, B, C))
-            if isinstance(type_arg, uni.TupleVal) {
-                type_list: list[types.TypeBase] = [];
-                for type_expr in type_arg.values {
-                    if not isinstance(type_expr, uni.KWPair) {
-                        t = self.get_type_of_expression(type_expr);
-                        t_inst = self._convert_to_instance(t);
-                        type_list.append(t_inst);
-                    }
+    # Unified leaf classification — covers isinstance, callable, None is/is not,
+    # literal eq/ne, truthiness, and walrus variants.
+    info = self.classify_condition(condition);
+    if info is not None and info.key == key {
+        match info.kind {
+            case NarrowingKind.ISINSTANCE:
+                return NarrowingPredicate(
+                    key=key, narrow_type=info.narrow_type, is_inverted=False
+                );
+
+            case NarrowingKind.CALLABLE:
+                expr_type = self.get_type_of_expression(condition.params[0]);
+                callable_type = self._filter_union_to_callables(expr_type);
+                if not isinstance(callable_type, types.NeverType) {
+                    return NarrowingPredicate(
+                        key=key, narrow_type=callable_type, is_inverted=False
+                    );
                 }
-                if len(type_list) > 0 {
-                    if len(type_list) == 1 {
-                        isinstance_inst = type_list[0];
+
+            case NarrowingKind.NONE_IS:
+                if self.prefetch and self.prefetch.none_type_class {
+                    none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                    return NarrowingPredicate(
+                        key=key, narrow_type=none_inst, is_inverted=False
+                    );
+                }
+
+            case NarrowingKind.NONE_IS_NOT:
+                if self.prefetch and self.prefetch.none_type_class {
+                    none_inst = self._convert_to_instance(self.prefetch.none_type_class);
+                    return NarrowingPredicate(
+                        key=key, narrow_type=none_inst, is_inverted=True
+                    );
+                }
+
+            case NarrowingKind.LITERAL_EQ:
+                return NarrowingPredicate(
+                    key=key, narrow_type=info.narrow_type, is_inverted=False
+                );
+
+            case NarrowingKind.LITERAL_NE:
+                return NarrowingPredicate(
+                    key=key, narrow_type=info.narrow_type, is_inverted=True
+                );
+
+            case NarrowingKind.TRUTHINESS:
+                if self.prefetch and self.prefetch.none_type_class {
+                    # For walrus (x := expr), check the assigned type for None
+                    if (
+                        isinstance(condition, uni.BinaryExpr)
+                        and isinstance(condition.op, uni.Token)
+                        and condition.op.name == "WALRUS_EQ"
+                    ) {
+                        check_type = self.get_type_of_expression(condition.right);
                     } else {
-                        isinstance_inst = types.UnionType(types=type_list);
+                        check_type = target.declared_type;
                     }
-                    return NarrowingPredicate(
-                        sym_name=sym_name,
-                        narrow_type=isinstance_inst,
-                        is_inverted=False
-                    );
+                    if self._union_contains_none(check_type) {
+                        none_inst = self._convert_to_instance(
+                            self.prefetch.none_type_class
+                        );
+                        return NarrowingPredicate(
+                            key=key, narrow_type=none_inst, is_inverted=True
+                        );
+                    }
                 }
-            } else {
-                # Single type: isinstance(x, T)
-                isinstance_type = self.get_type_of_expression(type_arg);
-                isinstance_inst = self._convert_to_instance(isinstance_type);
-                return NarrowingPredicate(
-                    sym_name=sym_name, narrow_type=isinstance_inst, is_inverted=False
-                );
-            }
-        }
-    }
-    # Pattern 5: x is None / x is not None
-    if (
-        isinstance(condition, uni.CompareExpr)
-        and len(condition.ops) == 1
-        and len(condition.rights) == 1
-        and isinstance(condition.left, uni.Name)
-        and isinstance(condition.rights[0], uni.Null)
-    ) {
-        if condition.left.value == sym_name {
-            op_name = condition.ops[0].name;
-            if self.prefetch and self.prefetch.none_type_class {
-                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-                if op_name == Tok.KW_IS {
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=none_inst, is_inverted=False
-                    );
-                } elif op_name == Tok.KW_ISN {
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-                    );
-                }
-            }
-        }
-    }
-    # Pattern 6: x == literal / x != literal (literal equality narrowing)
-    if (
-        isinstance(condition, uni.CompareExpr)
-        and len(condition.ops) == 1
-        and len(condition.rights) == 1
-        and isinstance(condition.left, uni.Name)
-    ) {
-        if condition.left.value == sym_name {
-            op_name = condition.ops[0].name;
-            right_expr = condition.rights[0];
-            # Check for literal values (String, Int, Float, Bool, etc.)
-            if isinstance(right_expr, (uni.String, uni.Int, uni.Float, uni.Bool)) {
-                literal_type = self.get_type_of_expression(right_expr);
-                if op_name == Tok.EE {  # ==
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=literal_type, is_inverted=False
-                    );
-                } elif op_name == Tok.NE {  # !=
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=literal_type, is_inverted=True
-                    );
-                }
-            }
-        }
-    }
-    # Pattern 7: Truthiness narrowing - if x: (where x is a Name)
-    # This excludes None from the type when the condition is truthy.
-    # Only apply if the symbol's type actually contains None (e.g., X | None).
-    # Use the `symbol` parameter (from the backward walk's usage site) rather
-    # than `condition.sym`, because reassignment inside the if-body can create
-    # a new symbol whose type is the narrower assigned type (e.g., Dog instead
-    # of Dog | None), causing the None check to fail spuriously.
-    if isinstance(condition, uni.Name) and condition.value == sym_name {
-        if self.prefetch and self.prefetch.none_type_class {
-            sym_type = self.get_type_of_symbol(symbol);
-            # Use unified helper to check if union contains None
-            if self._union_contains_none(sym_type) {
-                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-                return NarrowingPredicate(
-                    sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-                );
-            }
-        }
-    }
-    # Pattern 8: Walrus operator truthiness narrowing - if (x := expr):
-    # The walrus assigns a value and uses it as a condition.
-    # When truthy, we exclude None from the assigned type.
-    if (
-        isinstance(condition, uni.BinaryExpr)
-        and isinstance(condition.op, uni.Token)
-        and condition.op.name == "WALRUS_EQ"
-        and isinstance(condition.left, uni.Name)
-        and condition.left.value == sym_name
-    ) {
-        if self.prefetch and self.prefetch.none_type_class {
-            # Get the type of the right side (the value being assigned)
-            walrus_type = self.get_type_of_expression(condition.right);
-            # Only narrow if the type contains None
-            if self._union_contains_none(walrus_type) {
-                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-                return NarrowingPredicate(
-                    sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-                );
-            }
-        }
-    }
-    # Pattern 9: Walrus with is/is not None - (x := expr) is not None
-    # Handles: if (x := get_value()) is not None: use(x)
-    if (
-        isinstance(condition, uni.CompareExpr)
-        and len(condition.ops) == 1
-        and len(condition.rights) == 1
-        and isinstance(condition.rights[0], uni.Null)
-    ) {
-        # Unwrap AtomUnit (parentheses) from left side
-        left = condition.left;
-        if isinstance(left, uni.AtomUnit) and left.value {
-            left = left.value;
-        }
-        if (
-            isinstance(left, uni.BinaryExpr)
-            and isinstance(left.op, uni.Token)
-            and left.op.name == "WALRUS_EQ"
-            and isinstance(left.left, uni.Name)
-            and left.left.value == sym_name
-        ) {
-            op_name = condition.ops[0].name;
-            if self.prefetch and self.prefetch.none_type_class {
-                none_inst = self._convert_to_instance(self.prefetch.none_type_class);
-                if op_name == Tok.KW_IS {
-                    # (x := expr) is None -> narrow to None
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=none_inst, is_inverted=False
-                    );
-                } elif op_name == Tok.KW_ISN {
-                    # (x := expr) is not None -> exclude None
-                    return NarrowingPredicate(
-                        sym_name=sym_name, narrow_type=none_inst, is_inverted=True
-                    );
-                }
-            }
+
         }
     }
     return None;
@@ -3940,9 +3783,12 @@ impl TypeEvaluator._apply_narrowing(
     predicate: NarrowingPredicate,
     incoming: TypeBase | None,
     is_true_branch: bool,
-    symbol: uni.Symbol
+    target: NarrowingTarget
 ) -> TypeBase | None {
-    import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
+    import from jaclang.compiler.type_system.type_evaluator {
+        NarrowingPredicate,
+        NarrowingTarget
+    }
     # Determine if this is positive (narrow to type) or negative (exclude type).
     is_positive: bool = (
         is_true_branch if not predicate.is_inverted else not is_true_branch
@@ -3953,10 +3799,12 @@ impl TypeEvaluator._apply_narrowing(
         if incoming is not None {
             base_type = incoming;
         } else {
-            base_type = self.get_type_of_symbol(symbol);
+            base_type = target.declared_type;
         }
         # Filter the base union to only include types that are subclasses
-        # of the narrow_type (inheritance-aware isinstance narrowing)
+        # of the narrow_type (inheritance-aware isinstance narrowing).
+        # Also handles non-ClassType identity matching (e.g., FunctionType
+        # from callable() narrowing).
         filtered = self._filter_union_for_isinstance(base_type, predicate.narrow_type);
         if filtered is not None {
             return filtered;
@@ -3969,7 +3817,7 @@ impl TypeEvaluator._apply_narrowing(
         if incoming is not None {
             base_type = incoming;
         } else {
-            base_type = self.get_type_of_symbol(symbol);
+            base_type = target.declared_type;
         }
         result = self.exclude_type_from_union(base_type, predicate.narrow_type);
         # If exclusion didn't change the type (e.g., non-union or already narrowed),
@@ -3998,11 +3846,6 @@ impl TypeEvaluator._refine_isinstance_type(
     sym = self._find_symbol_by_key(narrowing_key, condition);
     if sym is not None {
         base_type = self.get_type_of_symbol(sym);
-        # Also check if there's already a scope narrowing for this key
-        # (e.g., from an outer truthiness check in an AND chain).
-        if scope_type := self.get_scope_narrowing(narrowing_key) {
-            base_type = scope_type;
-        }
         filtered = self._filter_union_for_isinstance(base_type, isinstance_type);
         if filtered is not None {
             return filtered;
@@ -4076,6 +3919,10 @@ impl TypeEvaluator._type_matches_isinstance(
             return True;
         }
     }
+    # Non-ClassType identity match (e.g., FunctionType from callable() narrowing)
+    if t is target_type {
+        return True;
+    }
     return False;
 }
 
@@ -4119,24 +3966,31 @@ impl TypeEvaluator._union_narrowed_types(types_list: list) -> TypeBase {
 """Exclude a type from a union, returning the remaining type(s).
 
 Handles:
-- Excluding a single ClassType from a UnionType
+- Excluding ClassType members by shared identity
+- Excluding non-ClassType members (FunctionType, etc.) by object identity
 - Excluding a UnionType from another UnionType (excludes all types in the union)
 """
 impl TypeEvaluator.exclude_type_from_union(
     original: TypeBase, to_exclude: TypeBase
 ) -> TypeBase {
     if isinstance(original, types.UnionType) and original.types {
-        # Build a set of shared IDs to exclude
+        # Build sets of identifiers to exclude:
+        # - ClassType: use shared ID (two ClassType instances with same shared are equal)
+        # - Non-ClassType (FunctionType, etc.): use object ID (identity comparison)
         exclude_shareds: set = set();
+        exclude_ids: set = set();
+        to_exclude_list: list[TypeBase] = [];
         if isinstance(to_exclude, types.UnionType) and to_exclude.types {
-            for excl_t in to_exclude.types {
-                if isinstance(excl_t, types.ClassType) and excl_t.shared is not None {
-                    exclude_shareds.add(id(excl_t.shared));
-                }
+            to_exclude_list = to_exclude.types;
+        } else {
+            to_exclude_list = [to_exclude];
+        }
+        for excl_t in to_exclude_list {
+            if isinstance(excl_t, types.ClassType) and excl_t.shared is not None {
+                exclude_shareds.add(id(excl_t.shared));
+            } else {
+                exclude_ids.add(id(excl_t));
             }
-        } elif isinstance(to_exclude, types.ClassType)
-        and to_exclude.shared is not None {
-            exclude_shareds.add(id(to_exclude.shared));
         }
         remaining: list[TypeBase] = [];
         for t in original.types {
@@ -4144,6 +3998,8 @@ impl TypeEvaluator.exclude_type_from_union(
                 if id(t.shared) in exclude_shareds {
                     continue;
                 }
+            } elif id(t) in exclude_ids {
+                continue;
             }
             remaining.append(t);
         }
@@ -4165,6 +4021,10 @@ impl TypeEvaluator.exclude_type_from_union(
     and original.shared is not None
     and to_exclude.shared is not None
     and original.shared == to_exclude.shared {
+        return types.NeverType();
+    }
+    # Non-ClassType exact match (e.g., FunctionType)
+    if original is to_exclude {
         return types.NeverType();
     }
     return original;
@@ -4278,4 +4138,346 @@ impl TypeEvaluator._extract_isinstance_info(
         narrowing_key,
         self._convert_to_instance(self.get_type_of_expression(type_arg))
     );
+}
+
+"""Parse callable(x) → narrowing_key or None.
+
+Detects calls to the builtin `callable()` with a single argument and
+returns the narrowing key for that argument, or None if the condition
+is not a callable() call.
+"""
+impl TypeEvaluator._extract_callable_info(condition: uni.Expr) -> str | None {
+    if not isinstance(condition, uni.FuncCall) {
+        return None;
+    }
+    if not isinstance(condition.target, uni.Name)
+    or condition.target.value != "callable" {
+        return None;
+    }
+    if not condition.params or len(condition.params) != 1 {
+        return None;
+    }
+    return self.get_narrowing_key(condition.params[0]);
+}
+
+"""Check whether a type is callable (FunctionType or Callable annotation)."""
+impl TypeEvaluator._is_callable_type(t: types.TypeBase) -> bool {
+    if isinstance(t, types.FunctionType) {
+        return True;
+    }
+    if isinstance(t, types.ClassType) {
+        # Check if this is a Callable annotation (e.g., Callable[[int], str])
+        if (
+            self.prefetch
+            and self.prefetch.callable_class
+            and t.shared is not None
+            and t.shared == self.prefetch.callable_class.shared
+        ) {
+            return True;
+        }
+        # Check for classes with __call__ method
+        if t.shared is not None and t.shared.symbol_table is not None {
+            if t.shared.symbol_table.lookup("__call__", deep=False) is not None {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+"""Filter a union type to only its callable members.
+
+Given a union like `Callable[[int], str] | str | None`, returns
+`Callable[[int], str]`. For non-union types, returns the type unchanged
+if it is callable, or NeverType if not.
+"""
+impl TypeEvaluator._filter_union_to_callables(
+    union_type: types.TypeBase
+) -> types.TypeBase {
+    if isinstance(union_type, types.UnionType) and union_type.types {
+        callables: list[types.TypeBase] = [
+            t
+            for t in union_type.types
+            if self._is_callable_type(t)
+        ];
+        if len(callables) == 0 {
+            return types.NeverType();
+        } elif len(callables) == 1 {
+            return callables[0];
+        } else {
+            return types.UnionType(types=callables);
+        }
+    }
+    if self._is_callable_type(union_type) {
+        return union_type;
+    }
+    return types.NeverType();
+}
+
+"""Filter a union type to only its non-callable members.
+
+Given a union like `Callable[[int], str] | str | None`, returns
+`str | None`. For non-union types, returns the type unchanged if it
+is not callable, or NeverType if it is callable.
+"""
+impl TypeEvaluator._filter_union_to_non_callables(
+    union_type: types.TypeBase
+) -> types.TypeBase {
+    if isinstance(union_type, types.UnionType) and union_type.types {
+        non_callables: list[types.TypeBase] = [
+            t
+            for t in union_type.types
+            if not self._is_callable_type(t)
+        ];
+        if len(non_callables) == 0 {
+            return types.NeverType();
+        } elif len(non_callables) == 1 {
+            return non_callables[0];
+        } else {
+            return types.UnionType(types=non_callables);
+        }
+    }
+    if not self._is_callable_type(union_type) {
+        return union_type;
+    }
+    return types.NeverType();
+}
+
+"""Check whether an annotation type represents typing.TypeAlias.
+
+Uses symbol-based detection: TypeAlias is a _SpecialForm from the typing
+module, so its resolved type shares the same ClassType.shared as other
+special forms (e.g. Callable). We verify both the structural match and
+the name to avoid false positives with other special forms.
+"""
+impl TypeEvaluator._is_type_alias_annotation(
+    annotation_type: types.TypeBase, tag_expr: uni.Expr
+) -> bool {
+    if not self.prefetch or not self.prefetch.callable_class {
+        return False;
+    }
+    # Structural check: TypeAlias is a _SpecialForm, same as Callable etc.
+    is_special_form = (
+        isinstance(annotation_type, types.ClassType)
+        and annotation_type.shared is not None
+        and annotation_type.shared == self.prefetch.callable_class.shared
+    );
+    # Name check: verify the tag is specifically "TypeAlias"
+    if is_special_form and isinstance(tag_expr, uni.Name) {
+        return tag_expr.value == "TypeAlias";
+    }
+    # Fallback for unresolved imports: annotation may be Unknown but
+    # the name is still "TypeAlias" (e.g. from typing_extensions chain)
+    if (
+        isinstance(annotation_type, types.UnknownType)
+        and isinstance(tag_expr, uni.Name)
+    ) {
+        return tag_expr.value == "TypeAlias";
+    }
+    return False;
+}
+
+"""Resolve the RHS of a TypeAlias assignment to a type.
+
+Handles both expression RHS (e.g. `Foo | None`) and string forward
+references (e.g. `'SomeType'`). For string RHS containing complex
+type expressions that cannot be parsed, returns UnknownType.
+
+For stub modules (.pyi), diagnostics emitted during RHS evaluation are
+suppressed — stubs are trusted type definitions whose internal expressions
+may reference types the Jac resolver cannot fully handle (e.g. cross-module
+imports in builtins.pyi like `types.UnionType`).
+"""
+impl TypeEvaluator._resolve_type_alias_rhs(value: uni.Expr) -> types.TypeBase {
+    # String RHS: complex type expression or simple forward reference.
+    if isinstance(value, uni.String) and isinstance(value.lit_value, str) {
+        # Try simple name lookup first (fast path)
+        resolved = self._try_resolve_forward_ref(value);
+        if resolved is not None {
+            return resolved;
+        }
+        # Try parsing as a complex type expression (e.g. 'Callable[[A], B] | C')
+        scope = value.find_parent_of_type(uni.UniScopeNode);
+        if scope {
+            parsed = self._resolve_string_type_expr(value.lit_value, scope);
+            if parsed is not None {
+                return parsed;
+            }
+        }
+        return types.UnknownType();
+    }
+    if (
+        isinstance(value, uni.MultiString)
+        and value.strings
+        and isinstance(value.strings[0], uni.String)
+        and isinstance(value.strings[0].lit_value, str)
+    ) {
+        resolved = self._try_resolve_forward_ref(value.strings[0]);
+        if resolved is not None {
+            return resolved;
+        }
+        scope = value.find_parent_of_type(uni.UniScopeNode);
+        if scope {
+            parsed = self._resolve_string_type_expr(value.strings[0].lit_value, scope);
+            if parsed is not None {
+                return parsed;
+            }
+        }
+        return types.UnknownType();
+    }
+    # Expression RHS: evaluate the type expression directly.
+    # For stub modules, suppress diagnostics — stubs may contain
+    # cross-module type references that can't be resolved in Jac.
+    mod = value.find_parent_of_type(uni.Module);
+    is_stub = mod is not None and mod.is_raised_from_py;
+    if is_stub and self._pass is not None {
+        pass_ref = self._pass;
+        errors_before = len(pass_ref.errors_had);
+        prog_errors_before = len(pass_ref.prog.errors_had);
+        result = self.get_type_of_expression(value);
+        # Roll back any diagnostics emitted during stub resolution
+        del pass_ref.errors_had[errors_before:];
+        del pass_ref.prog.errors_had[prog_errors_before:];
+        return result;
+    }
+    return self.get_type_of_expression(value);
+}
+
+"""Parse a string type expression and resolve it to a type.
+
+Handles complex type expressions like 'Callable[[A], B] | C | None'
+by parsing the string using Python's ast module and recursively
+resolving each component in the given scope.
+"""
+impl TypeEvaluator._resolve_string_type_expr(
+    type_str: str, scope: uni.UniScopeNode
+) -> types.TypeBase | None {
+    import from ast { parse as _parse }
+    try {
+        tree = _parse(type_str, mode='eval');
+    } except Exception {
+        return None;
+    }
+    try {
+        return self._resolve_py_ast_type_node(tree.body, scope);
+    } except Exception {
+        return None;
+    }
+}
+
+"""Resolve a single Python AST node to a Jac type.
+
+Handles Name, Constant(None), BinOp(|), Subscript (Callable, generics),
+and Attribute (module.Type). Recurses via explicit self-calls rather than
+a nested closure to avoid bootstrap compiler limitations.
+"""
+impl TypeEvaluator._resolve_py_ast_type_node(
+    ast_node: object, scope: uni.UniScopeNode
+) -> types.TypeBase | None {
+    import from ast { Name as _N }
+    import from ast { Constant as _C }
+    import from ast { BinOp as _BO }
+    import from ast { BitOr as _BOR }
+    import from ast { Subscript as _SS }
+    import from ast { Tuple as _TU }
+    import from ast { List as _LI }
+    import from ast { Attribute as _AT }
+    # Name: symbol lookup (e.g. 'Archetype', 'str')
+    if isinstance(ast_node, _N) {
+        sym = type_utils.lookup_symtab(scope, ast_node.id, self.builtins_module);
+        if not sym {
+            return None;
+        }
+        sym = self.resolve_imported_symbols(sym);
+        return self.get_type_of_symbol(sym);
+    }
+    # Constant(None) → NoneType
+    if isinstance(ast_node, _C) and ast_node.value is None {
+        if self.prefetch and self.prefetch.none_type_class {
+            return self.prefetch.none_type_class;
+        }
+        return None;
+    }
+    # BinOp with | → UnionType
+    if isinstance(ast_node, _BO) and isinstance(ast_node.op, _BOR) {
+        left = self._resolve_py_ast_type_node(ast_node.left, scope);
+        right = self._resolve_py_ast_type_node(ast_node.right, scope);
+        if left is None or right is None {
+            return None;
+        }
+        left_types = left.types if isinstance(left, types.UnionType) else [left];
+        right_types = right.types if isinstance(right, types.UnionType) else [right];
+        return types.UnionType(types=left_types + right_types);
+    }
+    # Subscript → Callable or generic type
+    if isinstance(ast_node, _SS) {
+        base = self._resolve_py_ast_type_node(ast_node.value, scope);
+        if base is None {
+            return None;
+        }
+        # Callable[[ParamTypes], ReturnType]
+        if isinstance(ast_node.value, _N) and ast_node.value.id == "Callable" {
+            if isinstance(ast_node.slice, _TU) and len(ast_node.slice.elts) == 2 {
+                params_ast = ast_node.slice.elts[0];
+                ret_ast = ast_node.slice.elts[1];
+                param_types: list[types.TypeBase] = [];
+                if isinstance(params_ast, _LI) {
+                    for p in params_ast.elts {
+                        pt = self._resolve_py_ast_type_node(p, scope);
+                        if pt is None {
+                            return None;
+                        }
+                        param_types.append(self._convert_to_instance(pt));
+                    }
+                }
+                ret_type = self._resolve_py_ast_type_node(ret_ast, scope);
+                if ret_type is None {
+                    return None;
+                }
+                return types.create_callable_type(
+                    param_types, self._convert_to_instance(ret_type)
+                );
+            }
+        }
+        # Other generics: list[X], dict[K, V], etc.
+        type_args: list[types.TypeBase] = [];
+        slice_ast = ast_node.slice;
+        if isinstance(slice_ast, _TU) {
+            for elt in slice_ast.elts {
+                arg = self._resolve_py_ast_type_node(elt, scope);
+                if arg is None {
+                    return None;
+                }
+                type_args.append(arg);
+            }
+        } else {
+            arg = self._resolve_py_ast_type_node(slice_ast, scope);
+            if arg is None {
+                return None;
+            }
+            type_args.append(arg);
+        }
+        if isinstance(base, types.ClassType) {
+            result = base.clone_as_instance();
+            result.private.type_args = type_args;
+            return result;
+        }
+        return base;
+    }
+    # Attribute → module.Type (e.g. types.UnionType)
+    if isinstance(ast_node, _AT) {
+        base = self._resolve_py_ast_type_node(ast_node.value, scope);
+        if (
+            base is not None
+            and isinstance(base, types.ModuleType)
+            and base.symbol_table is not None
+        ) {
+            member = base.symbol_table.lookup(ast_node.attr);
+            if member {
+                return self.get_type_of_symbol(member);
+            }
+        }
+        return None;
+    }
+    return None;
 }

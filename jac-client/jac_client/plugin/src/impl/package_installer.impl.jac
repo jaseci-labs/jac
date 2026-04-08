@@ -39,12 +39,14 @@ impl PackageInstaller.uninstall_package(
 
 """Regenerate package.json from jac.toml and run bun install."""
 impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
-    import from jac_client.plugin.utils { ensure_bun_available }
+    import from jac_client.plugin.utils { get_bun }
     import from jaclang.cli.console { console }
-    # Ensure bun is available before proceeding
-    if not ensure_bun_available() {
+    # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
+    bun = get_bun();
+    if not bun {
         raise ClientBundleError(
-            'Bun is required. Install manually: https://bun.sh'
+            'Bun is required but could not be found or installed. '
+            'Install manually: https://bun.sh'
         ) from None;
     }
     # Regenerate package.json from updated jac.toml
@@ -56,7 +58,7 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
         # Run bun install to actually install the packages
         console.print("\n  ⏳ Installing packages...\n");
         result = subprocess.run(
-            ['bun', 'install'], cwd=self.project_dir, check=False, text=True
+            [bun, 'install'], cwd=self.project_dir, check=False, text=True
         );
         if result.returncode != 0 {
             raise ClientBundleError('Failed to install packages (see output above)');

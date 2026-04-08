@@ -1058,7 +1058,7 @@ impl TypeEvaluator._create_special_builtin_type(
         mro=[],
         is_builtin_class=True
     );
-    special_type = types.ClassType(shared=shared);
+    special_type = types.ClassType(shared=shared, flags=base_class.flags);
     # Compute MRO: [SpecialType, BaseClass, ...]
     special_type.shared.mro = [special_type] + base_class.shared.mro;
     return special_type;
@@ -1207,7 +1207,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
     }
 
     # Helper to check variance - only direct TypeVar, not in unions for params
-    def check_expr(expr: uni.Expr, is_return: bool) -> None {
+    def check_expr(expr: uni.Expr, is_return: bool) {
         if isinstance(expr, uni.Name) {
             resolved = self.get_type_of_expression(expr);
             if isinstance(resolved, types.TypeVarType)

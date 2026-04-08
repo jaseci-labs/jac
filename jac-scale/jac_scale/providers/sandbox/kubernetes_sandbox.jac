@@ -16,6 +16,7 @@ import from jac_scale.abstractions.models.sandbox_status {
     SandboxInfo
 }
 import from jac_scale.abstractions.logger { Logger }
+import from jaclang.cli.console { console }
 import from jac_scale.factories.ingress_factory { IngressFactory }
 
 glob _SANDBOX_LABEL: str = "jac-sandbox",
@@ -69,7 +70,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         return self._ingress_provider;
     }
 
-    def _ensure_namespace -> None {
+    def _ensure_namespace {
         import from kubernetes { client }
         core_v1 = client.CoreV1Api();
         try {
@@ -466,6 +467,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
             )
         ];
 
+        warm_ttl = self.config.warm_pool_ttl if self.config.warm_pool_ttl > 0 else None;
         pod = client.V1Pod(
             metadata=client.V1ObjectMeta(
                 name=pod_name,
@@ -476,7 +478,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
                 containers=[main_container],
                 volumes=volumes,
                 restart_policy="Never",
-                active_deadline_seconds=self.config.ttl_seconds,
+                active_deadline_seconds=warm_ttl,
                 termination_grace_period_seconds=10,
                 automount_service_account_token=False
             )
@@ -700,7 +702,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         }
     }
 
-    def _signal_start(pod_name: str) -> None {
+    def _signal_start(pod_name: str) {
         import from kubernetes { client }
         import from kubernetes.stream { stream }
         core_v1 = client.CoreV1Api();
@@ -718,7 +720,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         );
     }
 
-    def _poll_pod_readiness(sandbox_id: str) -> None {
+    def _poll_pod_readiness(sandbox_id: str) {
         import from kubernetes { client }
         core_v1 = client.CoreV1Api();
         namespace = self.config.namespace;
@@ -994,7 +996,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         }
     }
 
-    def _cleanup_k8s_resources(sandbox_id: str, namespace: str) -> None {
+    def _cleanup_k8s_resources(sandbox_id: str, namespace: str) {
         import from kubernetes { client }
         import from kubernetes.client.exceptions { ApiException }
         core_v1 = client.CoreV1Api();
@@ -1039,7 +1041,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         }
     }
 
-    def stop(sandbox_id: str) -> None {
+    def stop(sandbox_id: str) {
         self._init_k8s();
         rec: Any = self._registry.get(sandbox_id);
         namespace = self.config.namespace;
@@ -1083,8 +1085,9 @@ obj KubernetesSandbox(SandboxEnvironment) {
             } else {
                 state = SandboxState.STOPPED;
             }
-        } except Exception {
-            state = rec_d.get("status", SandboxState.STOPPED);
+        } except Exception as e {
+            console.print(f"[sandbox-status] Pod query failed for {sandbox_id}: {e}");
+            state = SandboxState.STOPPED;
         }
         created_at = float(rec_d.get("created_at", time.time()));
         uptime = time.time() - created_at if state == SandboxState.RUNNING else 0.0;
@@ -1097,7 +1100,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         );
     }
 
-    def destroy(sandbox_id: str) -> None {
+    def destroy(sandbox_id: str) {
         self.stop(sandbox_id);
         self._lock.acquire();
         try {
@@ -1142,7 +1145,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
         }
     }
 
-    def _cleanup_loop -> None {
+    def _cleanup_loop {
         while True {
             time.sleep(60);
             try {
@@ -1193,10 +1196,25 @@ obj KubernetesSandbox(SandboxEnvironment) {
             phase = str(pod.status.phase) if pod.status else "Unknown";
             is_terminal = phase in ["Failed", "Succeeded"];
             is_expired = False;
+
+            # Warm pods with ttl=0 never expire from age-based cleanup
+            is_warm = pod.metadata.labels.get("jac-sandbox-pool") == "warm"
+                if pod.metadata.labels
+                else False;
+            if is_warm and self.config.warm_pool_ttl <= 0 {
+                if not is_terminal {
+                    live_pod_names.add(pod_name);
+                    continue;
+                }
+            }
+
             created: Any = pod.metadata.creation_timestamp;
             if created {
                 age = now - created.replace(tzinfo=timezone.utc).timestamp();
-                is_expired = age > self.config.ttl_seconds;
+                ttl = self.config.warm_pool_ttl
+                    if (is_warm and self.config.warm_pool_ttl > 0)
+                    else self.config.ttl_seconds;
+                is_expired = age > ttl;
             }
             if is_terminal or is_expired {
                 pods_to_delete.append(pod_name);

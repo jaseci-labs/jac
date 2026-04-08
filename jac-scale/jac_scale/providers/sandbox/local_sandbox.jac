@@ -50,10 +50,18 @@ obj LocalSandbox(SandboxEnvironment) {
     }
 
     def _find_jac_binary -> str {
-        candidates = [os.path.join(str(Path.home()), ".jacvenv", "bin", "jac")];
+        import sys;
+        # PyInstaller frozen app — use sidecar's multi-mode CLI
+        if getattr(sys, 'frozen', False) {
+            return sys.executable + " --jac-cli";
+        }
+        is_windows = sys.platform == "win32";
+        bin_dir = "Scripts" if is_windows else "bin";
+        jac_name = "jac.exe" if is_windows else "jac";
+        candidates = [os.path.join(str(Path.home()), ".jacvenv", bin_dir, jac_name)];
         venv = str(os.environ.get("VIRTUAL_ENV", ""));
         if venv {
-            candidates.append(os.path.join(venv, "bin", "jac"));
+            candidates.append(os.path.join(venv, bin_dir, jac_name));
         }
         for p in candidates {
             if os.path.exists(p) {
@@ -68,13 +76,19 @@ obj LocalSandbox(SandboxEnvironment) {
     }
 
     def _find_activate_script -> str {
-        jacvenv_activate = os.path.join(str(Path.home()), ".jacvenv", "bin", "activate");
+        import sys;
+        is_windows = sys.platform == "win32";
+        bin_dir = "Scripts" if is_windows else "bin";
+        activate_name = "activate.bat" if is_windows else "activate";
+        jacvenv_activate = os.path.join(
+            str(Path.home()), ".jacvenv", bin_dir, activate_name
+        );
         if os.path.exists(jacvenv_activate) {
             return jacvenv_activate;
         }
         venv = str(os.environ.get("VIRTUAL_ENV", ""));
         if venv {
-            activate = os.path.join(venv, "bin", "activate");
+            activate = os.path.join(venv, bin_dir, activate_name);
             if os.path.exists(activate) {
                 return activate;
             }
@@ -101,7 +115,7 @@ obj LocalSandbox(SandboxEnvironment) {
         return full;
     }
 
-    def _kill_port_listeners(port: int) -> None {
+    def _kill_port_listeners(port: int) {
         try {
             result = subprocess.run(
                 f"lsof -i :{port} -t",
@@ -128,7 +142,7 @@ obj LocalSandbox(SandboxEnvironment) {
         }
     }
 
-    def _stop_process(rec: dict) -> None {
+    def _stop_process(rec: dict) {
         log_file = rec.get("log_file");
         if log_file {
             try {
@@ -141,13 +155,22 @@ obj LocalSandbox(SandboxEnvironment) {
         process = rec.get("process");
         if process is not None {
             try {
-                pid = int(getattr(process, "pid"));
-                os.killpg(os.getpgid(pid), int(signal.SIGTERM));
+                import sys;
+                if sys.platform == "win32" {
+                    process.terminate();
+                } else {
+                    pid = int(getattr(process, "pid"));
+                    os.killpg(os.getpgid(pid), int(signal.SIGTERM));
+                }
                 getattr(process, "wait")(timeout=5);
             } except (ProcessLookupError, subprocess.TimeoutExpired) {
                 try {
-                    pid2 = int(getattr(process, "pid"));
-                    os.killpg(os.getpgid(pid2), int(signal.SIGKILL));
+                    if sys.platform == "win32" {
+                        process.kill();
+                    } else {
+                        pid2 = int(getattr(process, "pid"));
+                        os.killpg(os.getpgid(pid2), int(signal.SIGKILL));
+                    }
                 } except ProcessLookupError {
                     ;
                 }
@@ -168,7 +191,7 @@ obj LocalSandbox(SandboxEnvironment) {
         vite_url = f"http://localhost:{port}";
         start_time = time.time();
         ready = False;
-        while time.time() - start_time < 120 {
+        while time.time() - start_time < 300 {
             if getattr(process, "poll")() is not None {
                 break;
             }
@@ -238,7 +261,18 @@ obj LocalSandbox(SandboxEnvironment) {
             sid = self._sandbox_id(user_id, project_id);
 
             preview_suffix = f"-{project_id}" if project_id else "";
-            preview_dir = f"/tmp/jac-preview-{user_id}{preview_suffix}";
+
+            # If code_path is a real directory, run directly from it (desktop mode).
+            # Only copy to temp dir if code_path doesn't exist or is not a directory.
+            if code_path and os.path.isdir(code_path) {
+                preview_dir = code_path;
+            } else {
+                import tempfile;
+                preview_dir = os.path.join(
+                    tempfile.gettempdir(), f"jac-preview-{user_id}{preview_suffix}"
+                );
+                os.makedirs(preview_dir, exist_ok=True);
+            }
 
             if key in self._registry {
                 rec_d: dict = dict(self._registry[key]);
@@ -248,20 +282,6 @@ obj LocalSandbox(SandboxEnvironment) {
                 }
             } else {
                 previous_port = 0;
-                real_code = os.path.realpath(code_path) if code_path else "";
-                real_preview = os.path.realpath(preview_dir);
-                if real_code and real_code != real_preview {
-                    if os.path.exists(preview_dir) {
-                        shutil.rmtree(preview_dir);
-                    }
-                    if os.path.isdir(code_path) {
-                        shutil.copytree(code_path, preview_dir, symlinks=True);
-                    } else {
-                        os.makedirs(preview_dir, exist_ok=True);
-                    }
-                } elif not os.path.exists(preview_dir) {
-                    os.makedirs(preview_dir, exist_ok=True);
-                }
             }
 
             if previous_port
@@ -296,52 +316,74 @@ obj LocalSandbox(SandboxEnvironment) {
             activate_script = self._find_activate_script();
             jac_bin = self._find_jac_binary();
 
-            src_dir = code_path or "";
-            home_dir = str(Path.home());
-            global_env = os.path.join(home_dir, ".jac-ide", "global.env");
-            project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
-            env_sources = "";
-            if os.path.isfile(global_env) {
-                env_sources += f"source \"{global_env}\"; ";
-            }
-            if project_env_file and os.path.isfile(project_env_file) {
-                env_sources += f"source \"{project_env_file}\"; ";
-            }
-            env_prefix = "";
-            if env_sources {
-                env_prefix = f"set -a; {env_sources}set +a; ";
-            }
+            import sys;
+            is_windows = sys.platform == "win32";
 
             existing_rec: dict = dict(self._registry.get(key, {}));
             needs_install = not (key in self._registry)
             or bool(existing_rec.get("needs_install", True));
 
-            if activate_script {
-                if needs_install {
-                    shell_cmd = f"{env_prefix}source {activate_script} && jac install && jac start main.jac -p {port} --dev";
-                } else {
-                    shell_cmd = f"{env_prefix}source {activate_script} && jac start main.jac -p {port} --dev";
+            if is_windows {
+                # Windows: use cmd.exe syntax (call for activate, & for chaining)
+                parts = [];
+                if activate_script {
+                    parts.append(f"call \"{activate_script}\"");
                 }
-            } else {
+                # Load .env files by reading them with set /p or for loop
+                src_dir = code_path or "";
+                project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
                 if needs_install {
-                    shell_cmd = f"{env_prefix}{jac_bin} install && {jac_bin} start main.jac -p {port} --dev";
+                    parts.append(f"{jac_bin} install");
+                }
+                parts.append(f"{jac_bin} start main.jac -p {port} --dev");
+                shell_cmd = " && ".join(parts);
+            } else {
+                # Unix: use bash syntax
+                src_dir = code_path or "";
+                home_dir = str(Path.home());
+                global_env = os.path.join(home_dir, ".jac-ide", "global.env");
+                project_env_file = os.path.join(src_dir, ".env") if src_dir else "";
+                env_sources = "";
+                if os.path.isfile(global_env) {
+                    env_sources += f"source \"{global_env}\"; ";
+                }
+                if project_env_file and os.path.isfile(project_env_file) {
+                    env_sources += f"source \"{project_env_file}\"; ";
+                }
+                env_prefix = "";
+                if env_sources {
+                    env_prefix = f"set -a; {env_sources}set +a; ";
+                }
+                if activate_script {
+                    if needs_install {
+                        shell_cmd = f"{env_prefix}source {activate_script} && jac install && jac start main.jac -p {port} --dev";
+                    } else {
+                        shell_cmd = f"{env_prefix}source {activate_script} && jac start main.jac -p {port} --dev";
+                    }
                 } else {
-                    shell_cmd = f"{env_prefix}{jac_bin} start main.jac -p {port} --dev";
+                    if needs_install {
+                        shell_cmd = f"{env_prefix}{jac_bin} install && {jac_bin} start main.jac -p {port} --dev";
+                    } else {
+                        shell_cmd = f"{env_prefix}{jac_bin} start main.jac -p {port} --dev";
+                    }
                 }
             }
 
             log_path = os.path.join(preview_dir, ".jac-preview.log");
             log_file = open(log_path, "w", encoding="utf-8");
 
-            process = subprocess.Popen(
-                shell_cmd,
-                shell=True,
-                executable="/bin/bash",
-                cwd=preview_dir,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid
-            );
+            import sys;
+            popen_kwargs = {
+                "shell": True,
+                "cwd": preview_dir,
+                "stdout": log_file,
+                "stderr": subprocess.STDOUT
+            };
+            if sys.platform != "win32" {
+                popen_kwargs["executable"] = "/bin/bash";
+                popen_kwargs["preexec_fn"] = os.setsid;
+            }
+            process = subprocess.Popen(shell_cmd, **popen_kwargs);
 
             self._registry[key] = {
                 "sandbox_id": sid,
@@ -437,7 +479,7 @@ obj LocalSandbox(SandboxEnvironment) {
         return SandboxStatus(state=SandboxState.STOPPED, sandbox_id=sandbox_id);
     }
 
-    def destroy(sandbox_id: str) -> None {
+    def destroy(sandbox_id: str) {
         self.stop(sandbox_id);
         self._lock.acquire();
         try {

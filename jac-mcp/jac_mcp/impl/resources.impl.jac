@@ -197,6 +197,16 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "fullstack-routing.md",
              "Routing - Full-stack routing tutorial"
          ),
+         "jac://docs/tutorial-fullstack-npm": (
+             "tutorials/fullstack/npm-and-libraries.md",
+             "fullstack-npm-and-libraries.md",
+             "NPM & Libraries - Using npm packages, UI libraries, and JS interop"
+         ),
+         "jac://docs/tutorial-fullstack-advanced": (
+             "tutorials/fullstack/advanced-patterns.md",
+             "fullstack-advanced-patterns.md",
+             "Advanced Patterns - Advanced full-stack patterns"
+         ),
          # --- Deployment & Scaling ---
          "jac://docs/jac-scale": (
              "reference/plugins/jac-scale.md",
@@ -243,6 +253,11 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "tutorials/language/debugging.md",
              "debugging.md",
              "Debugging - Debugging techniques tutorial"
+         ),
+         "jac://docs/diagnostics": (
+             "reference/diagnostics.md",
+             "diagnostics.md",
+             "Diagnostics - Compiler diagnostics and error reference"
          ),
          # --- Python Integration ---
          "jac://docs/python-integration": (
@@ -364,6 +379,16 @@ impl ResourceProvider._index_bundled -> None {
             "description": "Idiomatic Jac code patterns with complete examples",
             "mimeType": "text/markdown",
             "path": str(patterns_path)
+        };
+    }
+    understand_path = content_dir / "understand.md";
+    if understand_path.exists() {
+        self._resources["jac://guide/understand"] = {
+            "uri": "jac://guide/understand",
+            "name": "Jac & Jaseci Knowledge Map",
+            "description": "Orientation map: what Jac and Jaseci are, the 3 core paradigms, and which resource URI to fetch for any task",
+            "mimeType": "text/markdown",
+            "path": str(understand_path)
         };
     }
 }

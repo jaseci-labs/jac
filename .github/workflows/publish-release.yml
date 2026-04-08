@@ -149,7 +149,23 @@ jobs:
         if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
         run: pip install -e ./${{ matrix.dir }}
 
-      # Run extra build commands (e.g., bundle_docs for jac-mcp)
+      # Install extra pip dependencies for build commands (e.g., jac-client for admin UI)
+      - name: Install extra build dependencies
+        if: matrix.extra_build_deps != ''
+        run: pip install -e ./${{ matrix.extra_build_deps }}
+
+      # Set up Node.js for packages that need it (e.g., admin UI build)
+      - name: Set up Node.js (for client builds)
+        if: matrix.needs_nodejs == true
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Bun (for client builds)
+        if: matrix.needs_nodejs == true
+        uses: oven-sh/setup-bun@v2
+
+      # Run extra build commands (e.g., bundle_docs for jac-mcp, build_admin_ui for jac-scale)
       - name: Run extra build commands
         if: matrix.extra_build_cmd != ''
         working-directory: ${{ matrix.dir }}

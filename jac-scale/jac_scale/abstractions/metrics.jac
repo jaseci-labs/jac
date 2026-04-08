@@ -50,26 +50,26 @@ All methods are safe to call but perform no operations.
 This ensures zero overhead when metrics are not needed.
 """
 class NoOpMetricsCollector(MetricsCollector) {
-    def init(self: NoOpMetricsCollector, config: dict[str, Any] = {}) -> None { }
+    def init(self: NoOpMetricsCollector, config: dict[str, Any] = {}) { }
     def record_request(
         self: NoOpMetricsCollector,
         method: str,
         path: str,
         status_code: int,
         duration_seconds: float
-    ) -> None { }
+    ) { }
 
-    def request_started(self: NoOpMetricsCollector) -> None { }
-    def request_finished(self: NoOpMetricsCollector) -> None { }
+    def request_started(self: NoOpMetricsCollector) { }
+    def request_finished(self: NoOpMetricsCollector) { }
     def record_walker(
         self: NoOpMetricsCollector,
         walker_name: str,
         duration_seconds: float,
         success: bool = True
-    ) -> None { }
+    ) { }
 
     def get_endpoint_handler(self: NoOpMetricsCollector) -> Callable[..., Any] {
-        def noop -> None { }
+        def noop { }
         return noop;
     }
 

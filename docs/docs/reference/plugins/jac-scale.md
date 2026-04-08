@@ -65,6 +65,17 @@ jac start app.jac --port 8000 --profile prod
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
 
+### Server Configuration
+
+```toml
+[plugins.scale.server]
+port = 8000
+host = "0.0.0.0"
+docs_enabled = true   # Enable /docs, /redoc, /openapi.json (default: true)
+```
+
+Set `docs_enabled = false` to disable Swagger UI, ReDoc, and the OpenAPI JSON endpoint in production.
+
 ### CORS Configuration
 
 ```toml
@@ -1252,6 +1263,70 @@ All traffic flows through a single **NGINX Ingress controller** deployed per app
 container_port = 8000
 ingress_node_port = 30080
 ```
+
+---
+
+### Rate Limiting (DDoS Protection)
+
+jac-scale applies NGINX rate limiting annotations to the Ingress to protect against abuse and DDoS traffic. Limits are enforced **per client IP**.
+
+**How it works (leaky bucket algorithm):**
+
+- **`ingress_limit_rps`** - sustained requests per second allowed per IP.
+- **`ingress_limit_burst_multiplier`** - burst = `limit_rps x burst_multiplier`. Requests within the burst are queued; requests beyond it are dropped with `429`.
+- **`ingress_limit_connections`** - maximum number of concurrent open connections per IP. Excess connections are rejected immediately.
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `ingress_limit_rps` | `20` | Sustained requests per second per client IP |
+| `ingress_limit_burst_multiplier` | `5` | Burst headroom multiplier (burst = rps × multiplier) |
+| `ingress_limit_connections` | `20` | Max concurrent connections per client IP |
+
+Requests that exceed the limits receive `429 Too Many Requests`.
+
+**To customize in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+ingress_limit_rps = 50              # allow more sustained traffic
+ingress_limit_burst_multiplier = 3  # tighter burst control
+ingress_limit_connections = 30      # more concurrent connections
+```
+
+---
+
+### Sticky Sessions (Cookie-Based Affinity)
+
+When your pods hold per-user state (e.g. running user processes), you need requests from the same user to always reach the same pod. jac-scale supports opt-in cookie-based session affinity via NGINX.
+
+**Enabled by default.** Disable it in `jac.toml` if not needed:
+
+```toml
+[plugins.scale.kubernetes]
+ingress_session_affinity = false
+```
+
+**How it works:**
+
+On the first response, NGINX sets a `route` cookie in the browser. Every subsequent request includes that cookie and NGINX uses it to route back to the same pod, regardless of IP changes (mobile networks, NAT, VPN, proxies). The cookie never expires in the browser.
+
+| Behaviour | Detail |
+|-----------|--------|
+| Cookie name | `route` |
+| Cookie lifetime | Never expires (`max-age` ~68 years) |
+| On pod failure | NGINX re-routes to a healthy pod and rewrites the cookie automatically |
+| IP changes (mobile/NAT) | Handled correctly - routing is cookie-based, not IP-based |
+
+**When to use:**
+
+- Your pods run stateful per-user processes (e.g. sandbox environments, background workers per user)
+- You need a user to consistently land on the pod that owns their session
+
+**Limitations:**
+
+Sticky sessions ensure routing **while a pod is alive**. If a pod is deleted (e.g. during a rolling deployment), in-flight user processes on that pod are lost. The user is automatically re-routed to a new pod, but any in-memory state is gone. For true resilience, externalize per-user state to Redis or a database so any pod can serve any user.
 
 ---
 

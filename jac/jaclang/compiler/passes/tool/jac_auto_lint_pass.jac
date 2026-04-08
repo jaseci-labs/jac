@@ -44,12 +44,14 @@ import from jaclang.jac0core.diagnostics {
     W3025,
     W3030,
     W3035,
-    W3036
+    W3036,
+    W3037
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     has lint_enabled: bool = True,
+        report_only: bool = False,
         main_module: (uni.Module | None) = None,
         _exclude_patterns: list[str] = [],
         _project_root: str = "";
@@ -121,6 +123,14 @@ obj JacAutoLintPass(UniPass) {
     def _check_too_many_params(nd: uni.FuncSignature) -> None;
     def _check_is_with_literal(nd: uni.CompareExpr) -> None;
     def _check_mutable_default(nd: uni.ParamVar) -> None;
+    def _check_unnecessary_none_return(
+        nd: (uni.Ability | uni.LambdaExpr),
+        body: (list | uni.Expr),
+        sig: (uni.FuncSignature | None),
+        name: str
+    ) -> None;
+
+    def _body_has_return_stmt(body: list) -> bool;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
@@ -128,5 +138,14 @@ obj JacAutoLintPass(UniPass) {
     def enter_param_var(nd: uni.ParamVar) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
+    def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _body_to_key(body: list) -> str;
+}
+
+"""Report-only lint pass for use in the standard compile/LSP pipeline.
+
+Emits lint warnings without mutating the AST.
+"""
+obj JacLintCheckPass(JacAutoLintPass) {
+    has report_only: bool = True;
 }

@@ -1038,9 +1038,14 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         ),
                         jac_node=nd
                     );
-                    # Wrap return with __from_wire if return type is a boundary type
+                    # Wrap return with __from_wire if return type is a boundary type.
+                    # We must await the call BEFORE wrapping with __from_wire
+                    # so __from_wire receives the resolved value, not a Promise.
                     if inline_ret_type in inline_boundary
                     and inline_boundary[inline_ret_type].kind != "enum" {
+                        result_expr = self.sync_loc(
+                            es.AwaitExpression(argument=result_expr), jac_node=nd
+                        );
                         result_expr = self.sync_loc(
                             es.CallExpression(
                                 callee=es.MemberExpression(
@@ -1057,6 +1062,13 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                         inner = inline_ret_type[5:-1];
                         if inner in inline_boundary
                         and inline_boundary[inner].kind != "enum" {
+                            # Wrap in AwaitExpression BEFORE chaining .map()
+                            # so the resolved array (not the Promise) gets mapped.
+                            # The outer exit_await_expr will see this is already
+                            # awaited and produce (await call()).map(...).
+                            result_expr = self.sync_loc(
+                                es.AwaitExpression(argument=result_expr), jac_node=nd
+                            );
                             result_expr = self.sync_loc(
                                 es.CallExpression(
                                     callee=es.MemberExpression(
@@ -1093,6 +1105,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                             val_type = dict_params[comma_pos + 2:].strip();
                             if val_type in inline_boundary
                             and inline_boundary[val_type].kind != "enum" {
+                                # Await before dict hydration
+                                result_expr = self.sync_loc(
+                                    es.AwaitExpression(argument=result_expr),
+                                    jac_node=nd
+                                );
                                 entries_call = es.CallExpression(
                                     callee=es.MemberExpression(
                                         object=es.Identifier(name='Object'),
@@ -1182,12 +1199,23 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             _obj_type = None;
         }
         self._ensure_emitters();
-        if (
-            isinstance(_obj_type, jtypes.ClassType)
-            and _obj_type.shared
-            and _obj_type.shared.class_name in self._primitive_type_names
-        ) {
-            _type_name = _obj_type.shared.class_name;
+        _type_name = "";
+        if isinstance(_obj_type, jtypes.ClassType) and _obj_type.shared {
+            # Direct match (e.g. str, list, dict).
+            if _obj_type.shared.class_name in self._primitive_type_names {
+                _type_name = _obj_type.shared.class_name;
+            } else {
+                # Walk the MRO to catch subtypes like LiteralString → str.
+                for _base in _obj_type.shared.mro {
+                    if _base.shared
+                    and _base.shared.class_name in self._primitive_type_names {
+                        _type_name = _base.shared.class_name;
+                        break;
+                    }
+                }
+            }
+        }
+        if _type_name {
             _emitter = self._primitive_emitters.get(_type_name);
             _method_name = callee.property.name;
             _emit_fn_name = "emit_" + _method_name;
@@ -1270,7 +1298,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = [args_obj] if props else args;
     if (
-        isinstance(callee_type, jtypes.ClassType) and isinstance(callee, es.Expression)
+        isinstance(callee_type, jtypes.ClassType)
+        and callee_type.is_instantiable()
+        and isinstance(callee, es.Expression)
     ) {
         nd.gen.es_ast = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
@@ -1889,9 +1919,27 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
     } else {
         operator = ES_BINARY_OPS.get(op_name) if op_name else '+';
         operator = operator or '+';
-        bin_expr = self.sync_loc(
-            es.BinaryExpression(operator=operator, left=left, right=right), jac_node=nd
-        );
+        # Heuristic: when `+` is used with an ArrayExpression on either side,
+        # emit array spread syntax [...left, ...right] instead of raw `+`
+        # which would produce string concatenation in JS. This handles the
+        # case where type info is unavailable (e.g. in .impl.jac files) but
+        # the programmer clearly intended list concatenation.
+        if operator == '+'
+        and (
+            isinstance(left, es.ArrayExpression)
+            or isinstance(right, es.ArrayExpression)
+        ) {
+            left_spread = es.SpreadElement(argument=left);
+            right_spread = es.SpreadElement(argument=right);
+            bin_expr = self.sync_loc(
+                es.ArrayExpression(elements=[left_spread, right_spread]), jac_node=nd
+            );
+        } else {
+            bin_expr = self.sync_loc(
+                es.BinaryExpression(operator=operator, left=left, right=right),
+                jac_node=nd
+            );
+        }
     }
     nd.gen.es_ast = bin_expr;
 }
@@ -4224,7 +4272,7 @@ impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> di
     is_writer = False;
     touches: set[str] = set();
     """Recursively scan a node and its descendants for effects.""";
-    def _scan(nd: uni.UniNode) -> None {
+    def _scan(nd: uni.UniNode) {
         nonlocal is_writer;
 
         # Edge creation: BinaryExpr with ConnectOp operator (++>, <++, <++>)

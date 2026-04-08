@@ -34,7 +34,7 @@ class ImageRegistryFactory {
         factory: Callable that accepts (config: dict) and returns an
                  ImageRegistry instance
     """
-    static def register(registry_type: str, factory: RegistryFactory) -> None {
+    static def register(registry_type: str, factory: RegistryFactory) {
         ImageRegistryFactory._registry[registry_type] = factory;
     }
 
