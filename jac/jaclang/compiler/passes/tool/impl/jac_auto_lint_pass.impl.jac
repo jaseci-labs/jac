@@ -821,7 +821,16 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     obj_expr = nd.params[0];
     attr_expr = nd.params[1];
     attr_name = self._extract_string_literal_value(attr_expr);
+    # Since BoolExpr operands and IfElseExpr branches are now CfgExpr nodes,
+    # the FuncCall's direct parent is the CfgExpr wrapper, not the enclosing
+    # BoolExpr/IfElseExpr. Step through the wrapper to reach the semantic
+    # parent so the hasattr→obj?.attr rewrite still fires.
+    cfg_wrapper: uni.CfgExpr | None = None;
     parent = nd.parent;
+    if isinstance(parent, uni.CfgExpr) {
+        cfg_wrapper = parent;
+        parent = parent.parent;
+    }
     if parent is None {
         return;
     }
@@ -841,6 +850,19 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     if not self.emit(W3007, node_override=nd) {
+        return;
+    }
+    if cfg_wrapper is not None {
+        replacement.parent = cfg_wrapper;
+        cfg_wrapper.expr = replacement;
+        cfg_wrapper.kid = [replacement];
+        if isinstance(parent, uni.IfElseExpr)
+        and parent.condition is cfg_wrapper
+        and attr_name is not None
+        and isinstance(parent.value.expr, uni.AtomTrailer)
+        and self._is_matching_attr_access(parent.value.expr, obj_expr, attr_name) {
+            self._make_null_ok(parent.value.expr);
+        }
         return;
     }
     replacement.parent = parent;
