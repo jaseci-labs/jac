@@ -44,9 +44,13 @@ impl Scheduler.start -> None {
 """Signal the scheduler to stop and wait for the thread to finish."""
 impl Scheduler.stop -> None {
     self._running = False;
-    self._stop_event.set();
-    self._done_event.set();
-    if self._thread and self._thread.is_alive() {
+    if self._stop_event is not None {
+        self._stop_event.set();
+    }
+    if self._done_event is not None {
+        self._done_event.set();
+    }
+    if self._thread is not None and self._thread.is_alive() {
         self._thread.join(timeout=5);
     }
 }
@@ -58,6 +62,9 @@ For recurring (interval/cron) tasks, blocks until Ctrl+C.
 """
 impl Scheduler.wait -> None {
     if not self._running {
+        return;
+    }
+    if self._done_event is None {
         return;
     }
     try {

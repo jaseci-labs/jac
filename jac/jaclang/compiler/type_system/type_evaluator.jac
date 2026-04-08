@@ -221,11 +221,8 @@ obj TypeEvaluator {
         prefetch: PrefetchedTypes by postinit,
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
-        # Type narrowing
+        # Type narrowing (CFG-based only — no scope stack)
         _narrowing_cache: dict[tuple, types.TypeBase | None] = {},
-        _narrowing_scope_stack: list[dict[str, types.TypeBase]] = [],
-        _in_ternary_expr_depth: int = 0,
-        _in_bool_expr_narrowing_depth: int = 0,
         _narrowing_in_progress: set[int] by postinit,
         _narrowing_in_progress_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
@@ -502,18 +499,10 @@ obj TypeEvaluator {
     #    find narrowing conditions. Used for flow-sensitive analysis.
     # -------------------------------------------------------------------------
 
-    # --- Scope-based narrowing (forward traversal) ---
-    def push_narrowing_scope -> None;
-    def pop_narrowing_scope -> None;
-    def add_scope_narrowing(key: str, narrowed_type: types.TypeBase) -> None;
-    def get_scope_narrowing(key: str) -> types.TypeBase | None;
+    # --- CFG-based narrowing (backward traversal) ---
     def get_narrowing_key(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
-    def process_condition(condition: uni.Expr) -> None;
-    def process_negated_condition(condition: uni.Expr) -> None;
-    def promote_inverted_narrowings(condition: uni.Expr) -> None;
-    # --- CFG-based narrowing (backward traversal) ---
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def get_narrowed_type_for_expr(
         expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode

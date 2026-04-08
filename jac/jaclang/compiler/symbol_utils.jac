@@ -219,7 +219,10 @@ are classified via classify_condition_key.
 def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     symbols: set[str] = set();
     # Structural wrappers — recurse
-    if isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
+    if isinstance(condition, uni.CfgExpr) {
+        symbols.update(collect_narrowing_symbols(condition.expr));
+    } elif isinstance(condition, uni.AtomUnit)
+    and isinstance(condition.value, uni.Expr) {
         symbols.update(collect_narrowing_symbols(condition.value));
     } elif isinstance(condition, uni.UnaryExpr) {
         symbols.update(collect_narrowing_symbols(condition.operand));

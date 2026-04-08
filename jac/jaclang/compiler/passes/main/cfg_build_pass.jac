@@ -36,11 +36,24 @@ obj CFGBuildPass(UniPass) {
         parent: uni.UniNode, child: uni.UniNode
     ) -> (uni.UniCFGNode | None);
 
-    def _wire_bool_condition(
-        expr: uni.BoolExpr,
+    def _wire_bool_operands(
+        values: list[uni.CfgExpr],
+        op_is_and: bool,
         true_target: (uni.UniCFGNode | None),
         false_target: (uni.UniCFGNode | None)
-    ) -> uni.UniCFGNode;
+    ) -> uni.CfgExpr;
+
+    def _set_and_link(
+        cfg: uni.CfgExpr,
+        true_target: (uni.UniCFGNode | None),
+        false_target: (uni.UniCFGNode | None)
+    ) -> None;
+
+    def _patch_inner_bool(
+        nested: uni.BoolExpr,
+        my_true: (uni.UniCFGNode | None),
+        my_false: (uni.UniCFGNode | None)
+    ) -> None;
 
     # -- Symbol collection (enter) --
     def enter_node(nd: uni.UniNode) -> None;
@@ -49,6 +62,9 @@ obj CFGBuildPass(UniPass) {
     def enter_assert_stmt(nd: uni.AssertStmt) -> None;
     def enter_match_stmt(nd: uni.MatchStmt) -> None;
     # -- Edge building (exit) --
+    # Expression-level CFG
+    def exit_bool_expr(nd: uni.BoolExpr) -> None;
+    def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
     # Branch
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;

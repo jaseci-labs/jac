@@ -120,41 +120,6 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression — prune to let the evaluator handle progressive
-narrowing (each AND/OR operand needs narrowing from prior operands)."""
-impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    if nd.op.name == Tok.KW_AND or nd.op.name == Tok.KW_OR {
-        self.prune();
-        self.evaluator.get_type_of_expression(nd);
-    }
-}
-
-"""Exit a boolean expression."""
-impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None { }
-
-"""Enter a ternary expression — prune to let the evaluator handle branch
-traversal with proper narrowing context (ternary is an expression, not a CFG node)."""
-impl TypeCheckPass.enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None {
-    self.prune();
-    # The evaluator's IfElseExpr case handles narrowing for both branches
-    # via push/pop scope + process_condition/process_negated_condition.
-    self.evaluator.get_type_of_expression(nd);
-}
-
-
-"""Enter an if statement — CFG handles narrowing, no scope needed."""
-impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None { }
-
-"""Exit an if statement — CFG handles narrowing via backward walk."""
-impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None { }
-
-"""Enter a match case — CFG handles narrowing via MatchStmt predecessor."""
-impl TypeCheckPass.enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None { }
-
-"""Exit a match case — CFG handles narrowing."""
-impl TypeCheckPass.exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None { }
-
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
     self.evaluator.get_type_of_expression(nd);
@@ -481,13 +446,8 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     }
 
     # ImplDef body is not in kid list, traverse it explicitly.
-    # Isolate scope narrowings so guard-pattern promotions (e.g.,
-    # `if x is None { return; }` → x narrowed to NoneType) from one
-    # impl body don't leak into subsequent impl bodies.
     if isinstance(nd.body, uni.ImplDef) {
-        self.evaluator.push_narrowing_scope();
         self.traverse(nd.body);
-        self.evaluator.pop_narrowing_scope();
     }
     # Check for missing return statements on non-None return type functions
     if (
@@ -681,6 +641,26 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
 """Set type on class fields (has vars) and validate initializer type."""
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     import from jaclang.compiler.type_system { types }
+    if (nd.defer and nd.kid and isinstance(nd.kid[-1], uni.Name)) {
+        postinit_nd: uni.Name = nd.kid[-1];
+        if postinit_nd.sym is None {
+            arch = nd.parent.parent if isinstance(nd.parent, uni.ArchHas) else None;
+            if isinstance(arch, uni.Archetype) {
+                postinit_sym = arch.names_in_scope.get("__post_init__");
+                if postinit_sym is not None {
+                    postinit_nd._sym = postinit_sym;
+                }
+            } elif isinstance(arch, uni.ImplDef)
+            and isinstance(arch.decl_link, uni.Archetype) {
+                # has field in a separate impl block: decl_link points to the archetype
+                if (
+                    postinit_sym := arch.decl_link.names_in_scope.get("__post_init__")
+                ) is not None {
+                    postinit_nd._sym = postinit_sym;
+                }
+            }
+        }
+    }
     if (sym := nd.sym) {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         nd.type = declared_type;
