@@ -8,6 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
 - **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
 - **Health Check Tuning**: Interval reduced from 15s to 10s, max retries increased to 60, `aws_nlb_wait` reduced to 10s.
+- **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
 - **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
 
 ## jac-scale 0.2.13 (Latest Release)
