@@ -52,7 +52,8 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'system_tray': False,
             'auto_update': False,
             'notifications': False
-        }
+        },
+        'plugins': {'jac_scale': True, 'byllm': True, 'jac_coder': True}
     };
 }
 
@@ -124,6 +125,12 @@ impl DesktopConfig.get_platforms_config(self: DesktopConfig) -> dict[str, Any] {
 impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('features', {});
+}
+
+"""Get plugins configuration (which Jac plugins to bundle)."""
+impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('plugins', {});
 }
 
 """Validate desktop configuration."""
