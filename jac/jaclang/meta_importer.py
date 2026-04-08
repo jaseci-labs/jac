@@ -53,6 +53,8 @@ _BOOTSTRAP_JIR_HEADER_FMT = "<4sHHIIIIII"
 _BOOTSTRAP_JIR_HEADER_SIZE = 32
 _BOOTSTRAP_JIR_SECTIONS_MAGIC = b"JIRX"
 _BOOTSTRAP_SEC_BYTECODE = 0x02
+_BOOTSTRAP_SEC_NATIVE_OBJ = 0x06
+_BOOTSTRAP_SEC_NATIVE_LAYOUT = 0x08
 _BOOTSTRAP_SEC_TERMINATOR = 0xFF
 _BOOTSTRAP_FLAG_BOOTSTRAP = 0x04
 
@@ -70,8 +72,16 @@ def _get_bootstrap_cache_dir() -> Path:
         return base / "jac" / "jir" / "bootstrap"
 
 
-def _write_bootstrap_jir(bytecode: bytes, source_hash: int) -> bytes:
-    """Build a minimal JIR with FLAG_BOOTSTRAP set and a SEC_BYTECODE section."""
+def _write_bootstrap_jir(
+    bytecode: bytes,
+    source_hash: int,
+    extra_sections: dict[int, bytes] | None = None,
+) -> bytes:
+    """Build a minimal JIR with FLAG_BOOTSTRAP set and a SEC_BYTECODE section.
+
+    If extra_sections is provided, those TLV entries are written after
+    SEC_BYTECODE and before the terminator.
+    """
     import struct
     import zlib
 
@@ -90,35 +100,45 @@ def _write_bootstrap_jir(bytecode: bytes, source_hash: int) -> bytes:
     )
     # Empty AST payload: a single varint 0x00 (empty string pool), compressed
     empty_payload = zlib.compress(b"\x00", 1)
-    # TLV section
+    # TLV sections
     import struct as _struct
 
-    sec = (
-        _BOOTSTRAP_JIR_SECTIONS_MAGIC
-        + bytes([_BOOTSTRAP_SEC_BYTECODE])
-        + _struct.pack("<I", len(bytecode))
-        + bytecode
-        + bytes([_BOOTSTRAP_SEC_TERMINATOR])
-        + b"\x00\x00\x00\x00"
-    )
-    return header + empty_payload + sec
+    sec_parts = [
+        _BOOTSTRAP_JIR_SECTIONS_MAGIC,
+        bytes([_BOOTSTRAP_SEC_BYTECODE]),
+        _struct.pack("<I", len(bytecode)),
+        bytecode,
+    ]
+    if extra_sections:
+        for sec_type, sec_data in extra_sections.items():
+            sec_parts.append(bytes([sec_type]))
+            sec_parts.append(_struct.pack("<I", len(sec_data)))
+            sec_parts.append(sec_data)
+    sec_parts.append(bytes([_BOOTSTRAP_SEC_TERMINATOR]))
+    sec_parts.append(b"\x00\x00\x00\x00")
+    return header + empty_payload + b"".join(sec_parts)
 
 
-def _read_bootstrap_jir(data: bytes) -> bytes | None:
-    """Extract SEC_BYTECODE from a bootstrap JIR file. Returns None on failure."""
+def _read_bootstrap_jir(data: bytes) -> tuple[bytes | None, dict[int, bytes]]:
+    """Extract all sections from a bootstrap JIR file.
+
+    Returns (bytecode_or_None, {sec_type: sec_data, ...}).
+    """
     import struct
 
+    empty: dict[int, bytes] = {}
     if len(data) < _BOOTSTRAP_JIR_HEADER_SIZE:
-        return None
+        return None, empty
     try:
         magic, fmt_ver = struct.unpack_from("<4sH", data, 0)
         if magic != _BOOTSTRAP_JIR_MAGIC or fmt_ver != _BOOTSTRAP_JIR_FMT_VER:
-            return None
+            return None, empty
         # Find SECTIONS_MAGIC after the header
         pos = data.find(_BOOTSTRAP_JIR_SECTIONS_MAGIC, _BOOTSTRAP_JIR_HEADER_SIZE)
         if pos < 0:
-            return None
+            return None, empty
         pos += len(_BOOTSTRAP_JIR_SECTIONS_MAGIC)
+        sections: dict[int, bytes] = {}
         while pos < len(data):
             sec_type = data[pos]
             pos += 1
@@ -130,20 +150,24 @@ def _read_bootstrap_jir(data: bytes) -> bytes | None:
             pos += 4
             if pos + sec_len > len(data):
                 break
-            if sec_type == _BOOTSTRAP_SEC_BYTECODE:
-                return data[pos : pos + sec_len]
+            sections[sec_type] = data[pos : pos + sec_len]
             pos += sec_len
-        return None
+        bytecode = sections.get(_BOOTSTRAP_SEC_BYTECODE)
+        return bytecode, sections
     except Exception:
-        return None
+        return None, empty
 
 
 def _bootstrap_compile(
     file_path: str,
     jac_source: str,
     impl_sources: list[tuple[str, str]] | None = None,
-) -> types.CodeType:
-    """Compile a bootstrap .jac file, using a JIR disk cache when possible."""
+) -> tuple[types.CodeType, dict[int, bytes]]:
+    """Compile a bootstrap .jac file, using a JIR disk cache when possible.
+
+    Returns (code_object, extra_sections) where extra_sections may contain
+    SEC_NATIVE_OBJ and SEC_NATIVE_LAYOUT from a previous native caching run.
+    """
     import zlib
 
     # Build the hash key from all source inputs + Python version + transpiler
@@ -166,9 +190,9 @@ def _bootstrap_compile(
     if cache_file.is_file():
         try:
             data = cache_file.read_bytes()
-            bc = _read_bootstrap_jir(data)
+            bc, sections = _read_bootstrap_jir(data)
             if bc is not None:
-                return marshal.loads(bc)  # noqa: S302
+                return marshal.loads(bc), sections  # noqa: S302
         except Exception:
             cache_file.unlink(missing_ok=True)
 
@@ -184,7 +208,7 @@ def _bootstrap_compile(
     except OSError:
         pass
 
-    return code
+    return code, {}
 
 
 # Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
@@ -193,7 +217,7 @@ def _bootstrap_compile(
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
 with open(_modresolver_jac, encoding="utf-8") as _f:
-    _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
+    _modresolver_code, _ = _bootstrap_compile(_modresolver_jac, _f.read())
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
 _modresolver.__file__ = _modresolver_jac
 _modresolver.__package__ = "jaclang.jac0core"
@@ -317,6 +341,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         Bootstrap modules are part of the jaclang compiler infrastructure.
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
+
+        For .na.jac files, if native bitcode has been cached from a prior run,
+        the MCJIT engine is loaded and native wrappers are installed immediately
+        after executing the Python bytecode (which is still needed for module
+        registration and class definitions).
         """
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
@@ -326,8 +355,86 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             with open(impl_path, encoding="utf-8") as f:
                 impl_sources.append((f.read(), impl_path))
 
-        code = _bootstrap_compile(file_path, jac_source, impl_sources or None)
+        code, sections = _bootstrap_compile(file_path, jac_source, impl_sources or None)
         exec(code, module.__dict__)
+
+        # For .na.jac files, attempt to load cached native bitcode
+        if (
+            file_path.endswith(".na.jac")
+            and _BOOTSTRAP_SEC_NATIVE_OBJ in sections
+            and _BOOTSTRAP_SEC_NATIVE_LAYOUT in sections
+        ):
+            self._load_bootstrap_native(module, sections)
+
+    @staticmethod
+    def _load_bootstrap_native(module: ModuleType, sections: dict[int, bytes]) -> None:
+        """Load cached native bitcode and install native wrappers on a module.
+
+        Called from _exec_bootstrap for .na.jac files that have cached bitcode.
+        The Python bytecode has already been executed, so the module has all its
+        Python-side objects (classes, enums). This overlays native function
+        implementations via ctypes wrappers.
+
+        Silently falls back to Python if anything goes wrong (no llvmlite,
+        platform mismatch, corrupt bitcode, etc.).
+        """
+        try:
+            import struct as _struct
+
+            import llvmlite.binding as llvm
+
+            llvm.initialize_native_target()
+            llvm.initialize_native_asmprinter()
+
+            # Parse SEC_NATIVE_OBJ: [triple_len:2LE][triple:UTF-8][bitcode]
+            native_obj_data = sections[_BOOTSTRAP_SEC_NATIVE_OBJ]
+            if len(native_obj_data) < 2:
+                return
+            (triple_len,) = _struct.unpack_from("<H", native_obj_data, 0)
+            if len(native_obj_data) < 2 + triple_len:
+                return
+            cached_triple = native_obj_data[2 : 2 + triple_len].decode("utf-8")
+            if cached_triple != llvm.get_default_triple():
+                return  # Platform mismatch — fall back to Python
+
+            bitcode = native_obj_data[2 + triple_len :]
+
+            # Load libc for symbol resolution
+            import ctypes
+            import ctypes.util
+
+            libc_name = ctypes.util.find_library("c")
+            if libc_name:
+                llvm.load_library_permanently(libc_name)
+
+            # Deserialize NativeModuleLayout from SEC_NATIVE_LAYOUT first
+            # so we can use layout.init_functions for global initialization.
+            from jaclang.jac0core.codeinfo import deserialize_native_layout
+            from jaclang.jac0core.native_marshal import install_native_wrappers
+
+            layout_data = sections[_BOOTSTRAP_SEC_NATIVE_LAYOUT]
+            layout = deserialize_native_layout(layout_data)
+
+            # Create MCJIT engine from cached bitcode (already optimized)
+            llvm_mod = llvm.parse_bitcode(bitcode)
+            target = llvm.Target.from_default_triple()
+            target_machine = target.create_target_machine(jit=True)
+            engine = llvm.create_mcjit_compiler(llvm_mod, target_machine)
+
+            # Run native global initializers in the order specified by
+            # the layout metadata (imported module inits first, then
+            # the module's own __jac_glob_init).
+            for init_name in layout.init_functions:
+                addr = engine.get_function_address(init_name)
+                if addr:
+                    ctypes.CFUNCTYPE(None)(addr)()
+
+            count = install_native_wrappers(module, engine, layout)
+            if count > 0:
+                module.__jac_native_engine__ = engine  # type: ignore[attr-defined]
+                module.__jac_native_layout__ = layout  # type: ignore[attr-defined]
+        except Exception:
+            pass  # Graceful fallback — Python bytecode already executed
 
     def exec_module(self, module: ModuleType) -> None:
         """Execute the module by loading and executing its bytecode.

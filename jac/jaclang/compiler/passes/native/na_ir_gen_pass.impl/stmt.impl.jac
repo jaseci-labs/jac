@@ -195,6 +195,9 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     # Fallback: return appropriate default value based on return type
     if isinstance(func_ret_type, ir.VoidType) {
         self.builder.ret_void();
+    } elif self._is_jac_optional(func_ret_type) {
+        # Optional-returning function with bare return/return None → return None optional
+        self.builder.ret(self._make_none_optional());
     } elif isinstance(func_ret_type, ir.PointerType) {
         self.builder.ret(ir.Constant(func_ret_type, None));
     } else {

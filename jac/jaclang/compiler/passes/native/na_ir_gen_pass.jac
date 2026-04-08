@@ -27,6 +27,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         range_struct_type: object by postinit,
         slice_struct_type: object by postinit,
         jacval_type: object by postinit,
+        jac_optional_type: object by postinit,
         # Simple defaults
         builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
@@ -186,6 +187,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _box_optional(value: ir.Value) -> ir.Value;
+    def _make_none_optional -> ir.Value;
+    def _unbox_optional(opt_val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _is_jac_optional(ty: ir.Type) -> bool;
     def _promote_to_float(
         left: ir.Value, right: ir.Value
     ) -> tuple[(ir.Value, ir.Value)];
@@ -495,6 +500,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _export_native_layout -> None;
     def _extract_tuple_struct_hints(type_node: object) -> list;
     def _extract_elem_struct_hint(type_node: object) -> (str | None);
+    def _is_optional_type(type_node: object) -> bool;
     # Primitive emitter dispatch
     def _ensure_emitters -> None;
     def _dispatch_primitive_method(

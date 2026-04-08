@@ -78,6 +78,9 @@ impl NaIRGenPass.postinit -> None {
     self.jacval_type = self.llvm_module.context.get_identified_type("JacVal");
     self.jacval_type.set_body(ir.IntType(8), ir.IntType(64));
 
+    self.jac_optional_type = self.llvm_module.context.get_identified_type("JacOptional");
+    self.jac_optional_type.set_body(ir.IntType(8), ir.IntType(64));
+
     super.postinit();
 }
 
@@ -172,6 +175,10 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
     }
     if isinstance(ty, ir.VoidType) {
         return "void";
+    }
+    # By-value JacOptional struct
+    if self._is_jac_optional(ty) {
+        return "JacOptional";
     }
     if isinstance(ty, ir.PointerType) {
         if ty?.pointee {
@@ -313,13 +320,49 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
+        # Check if return type is optional (T | None) via AST signature
+        _ret_optional = False;
+        _ret_opt_inner: (str | None) = None;
+        _ast_sig = self.method_ast_sigs.get(fname);
+        if _ast_sig and _ast_sig.return_type {
+            _ret_optional = self._is_optional_type(_ast_sig.return_type);
+            if _ret_optional and isinstance(_ast_sig.return_type, uni.BinaryExpr) {
+                # Resolve the inner type name (T in T | None) for marshalling.
+                # For enums, store the enum name (e.g. "TokenKind") so the
+                # marshalling layer can look up the exact enum map.
+                # For primitives, store the LLVM type string (e.g. "i64").
+                _rt_node = _ast_sig.return_type;
+                _inner_name = (
+                    self._get_name(_rt_node.left)
+                        if self._get_name(_rt_node.right) == "None"
+                        else self._get_name(_rt_node.right)
+                );
+                _prim_map: dict = {
+                    "int": "i64",
+                    "float": "f64",
+                    "bool": "i1",
+                    "str": "i8*",
+                    "bytes": "i8*"
+                };
+                if _inner_name in _prim_map {
+                    _ret_opt_inner = _prim_map[_inner_name];
+                } elif _inner_name in self.enum_types {
+                    # Store the Jac enum name for precise enum map lookup
+                    _ret_opt_inner = f"enum:{_inner_name}";
+                } else {
+                    _ret_opt_inner = "i64";
+                }
+            }
+        }
         layout.functions[fname] = NativeFuncLayout(
             name=fname,
             param_types=param_types,
             param_names=param_names,
             ret_type=ret_type,
             ret_struct_name=ret_struct,
-            ret_tuple_layout=ret_tuple
+            ret_tuple_layout=ret_tuple,
+            ret_is_optional=_ret_optional,
+            ret_optional_inner_type=_ret_opt_inner
         );
     }
     # Methods
@@ -348,6 +391,19 @@ impl NaIRGenPass._export_native_layout -> None {
     for (ename, ltype) in self.list_types.items() {
         layout.list_elem_types[f"List.{ename}"] = ename;
     }
+    # Init functions: collect __jac_glob_init* names in call order
+    # (imported module inits before the module's own __jac_glob_init)
+    _init_fns: list[str] = [];
+    for (fname, _) in self.func_symtab.items() {
+        if "glob_init" in fname and fname != "__jac_glob_init" {
+            _init_fns.append(fname);
+        }
+    }
+    _init_fns.sort();
+    if "__jac_glob_init" in self.func_symtab {
+        _init_fns.append("__jac_glob_init");
+    }
+    layout.init_functions = _init_fns;
     self.ir_in.gen.native_layout = layout;
 }
 
@@ -409,6 +465,22 @@ impl NaIRGenPass._extract_elem_struct_hint(type_node: object) -> (str | None) {
         return name;
     }
     return None;
+}
+
+"""Check if an AST type expression is optional (T | None)."""
+impl NaIRGenPass._is_optional_type(type_node: object) -> bool {
+    if isinstance(type_node, uni.BinaryExpr) {
+        op_val = getattr(type_node.op, 'value', '');
+        if op_val == "|" {
+            if self._get_name(type_node.right) == "None" {
+                return True;
+            }
+            if self._get_name(type_node.left) == "None" {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 # ─── Imported Struct Type Registration ────────────────────────

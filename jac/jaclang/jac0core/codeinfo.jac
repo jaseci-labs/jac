@@ -89,7 +89,9 @@ obj NativeFuncLayout {
         param_names: list[str] = field(default_factory=`list),
         ret_type: str = "i64",
         ret_struct_name: (str | None) = None,
-        ret_tuple_layout: (NativeTupleLayout | None) = None;
+        ret_tuple_layout: (NativeTupleLayout | None) = None,
+        ret_is_optional: bool = False,
+        ret_optional_inner_type: (str | None) = None;
 }
 
 """Resolve a module name to a .na.jac file path.
@@ -137,7 +139,154 @@ obj NativeModuleLayout {
         functions: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         methods: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         list_elem_types: dict[(str, str)] = field(default_factory=`dict),
-        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict);
+        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict),
+        init_functions: list[str] = field(default_factory=`list);
+}
+
+"""Serialize a NativeModuleLayout to JSON bytes for bootstrap bitcode caching."""
+def serialize_native_layout(layout: NativeModuleLayout) -> bytes {
+    import json;
+
+    def _field_to_dict(f: NativeFieldInfo) -> dict {
+        d: dict = {"name": f.name, "llvm_type": f.llvm_type, "index": f.index};
+        if f.enum_type is not None {
+            d["enum_type"] = f.enum_type;
+        }
+        if f.is_func_ptr {
+            d["is_func_ptr"] = True;
+            if f.func_param_types is not None {
+                d["func_param_types"] = f.func_param_types;
+            }
+            if f.func_ret_type is not None {
+                d["func_ret_type"] = f.func_ret_type;
+            }
+        }
+        return d;
+    }
+
+    def _tuple_to_dict(t: NativeTupleLayout) -> dict {
+        return {
+            "key": t.key,
+            "element_types": t.element_types,
+            "element_struct_hints": t.element_struct_hints
+        };
+    }
+
+    def _func_to_dict(f: NativeFuncLayout) -> dict {
+        d: dict = {
+            "name": f.name,
+            "param_types": f.param_types,
+            "param_names": f.param_names,
+            "ret_type": f.ret_type
+        };
+        if f.ret_struct_name is not None {
+            d["ret_struct_name"] = f.ret_struct_name;
+        }
+        if f.ret_tuple_layout is not None {
+            d["ret_tuple_layout"] = _tuple_to_dict(f.ret_tuple_layout);
+        }
+        if f.ret_is_optional {
+            d["ret_is_optional"] = True;
+        }
+        if f.ret_optional_inner_type is not None {
+            d["ret_optional_inner_type"] = f.ret_optional_inner_type;
+        }
+        return d;
+    }
+
+    out: dict = {
+        "structs": {
+            name: {
+                "name": s.name,
+                "fields": [_field_to_dict(f) for f in s.fields],
+                "has_vtable": s.has_vtable
+            } for (name, s) in layout.structs.items()
+        },
+        "enums": {
+            name: {
+                "name": e.name,
+                "is_string_valued": e.is_string_valued,
+                "members": e.members
+            } for (name, e) in layout.enums.items()
+        },
+        "functions": {name: _func_to_dict(f) for (name, f) in layout.functions.items()},
+        "methods": {name: _func_to_dict(f) for (name, f) in layout.methods.items()},
+        "list_elem_types": dict(layout.list_elem_types),
+        "tuples": {name: _tuple_to_dict(t) for (name, t) in layout.tuples.items()},
+        "init_functions": layout.init_functions
+    };
+    return json.dumps(out, separators=(',', ':')).encode('utf-8');
+}
+
+"""Deserialize JSON bytes back into a NativeModuleLayout."""
+def deserialize_native_layout(data: bytes) -> NativeModuleLayout {
+    import json;
+    d = json.loads(data.decode('utf-8'));
+
+    def _dict_to_field(fd: dict) -> NativeFieldInfo {
+        return NativeFieldInfo(
+            name=fd["name"],
+            llvm_type=fd["llvm_type"],
+            index=fd["index"],
+            enum_type=fd.get("enum_type"),
+            is_func_ptr=fd.get("is_func_ptr", False),
+            func_param_types=fd.get("func_param_types"),
+            func_ret_type=fd.get("func_ret_type")
+        );
+    }
+
+    def _dict_to_tuple(td: dict) -> NativeTupleLayout {
+        return NativeTupleLayout(
+            key=td["key"],
+            element_types=td["element_types"],
+            element_struct_hints=td.get("element_struct_hints", [])
+        );
+    }
+
+    def _dict_to_func(fd: dict) -> NativeFuncLayout {
+        rtl = None;
+        if "ret_tuple_layout" in fd and fd["ret_tuple_layout"] is not None {
+            rtl = _dict_to_tuple(fd["ret_tuple_layout"]);
+        }
+        return NativeFuncLayout(
+            name=fd["name"],
+            param_types=fd.get("param_types", []),
+            param_names=fd.get("param_names", []),
+            ret_type=fd.get("ret_type", "i64"),
+            ret_struct_name=fd.get("ret_struct_name"),
+            ret_tuple_layout=rtl,
+            ret_is_optional=fd.get("ret_is_optional", False),
+            ret_optional_inner_type=fd.get("ret_optional_inner_type")
+        );
+    }
+
+    layout = NativeModuleLayout();
+    for (name, sd) in d.get("structs", {}).items() {
+        layout.structs[name] = NativeStructLayout(
+            name=sd["name"],
+            fields=[_dict_to_field(f) for f in sd.get("fields", [])],
+            has_vtable=sd.get("has_vtable", False)
+        );
+    }
+    for (name, ed) in d.get("enums", {}).items() {
+        layout.enums[name] = NativeEnumLayout(
+            name=ed["name"],
+            is_string_valued=ed.get("is_string_valued", False),
+            members=ed.get("members", [])
+        );
+    }
+    for (name, fd) in d.get("functions", {}).items() {
+        layout.functions[name] = _dict_to_func(fd);
+    }
+    for (name, fd) in d.get("methods", {}).items() {
+        layout.methods[name] = _dict_to_func(fd);
+    }
+    layout.list_elem_types = d.get("list_elem_types", {});
+    for (name, td) in d.get("tuples", {}).items() {
+        layout.tuples[name] = _dict_to_tuple(td);
+    }
+    layout.init_functions = d.get("init_functions", []);
+    return layout;
 }
 
 """Metadata for a type (obj, node, enum) that crosses a codespace boundary.

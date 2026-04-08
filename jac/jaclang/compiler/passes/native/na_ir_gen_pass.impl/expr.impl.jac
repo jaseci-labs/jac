@@ -498,9 +498,16 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
         }
         return None;
     }
-    # Handle identity operators: is / is not (pointer comparison)
+    # Handle identity operators: is / is not
     if op == Tok.KW_IS {
-        # Coerce both to same pointer type for comparison
+        # JacOptional is None: extract tag, check == 0
+        if self._is_jac_optional(left.type) {
+            tag = self.builder.extract_value(left, 0, name="is.tag");
+            return self.builder.icmp_unsigned(
+                "==", tag, ir.Constant(ir.IntType(8), 0), name="is.none"
+            );
+        }
+        # Pointer is None: NULL comparison
         if isinstance(left.type, ir.PointerType)
         and isinstance(right.type, ir.PointerType) {
             if left.type != right.type {
@@ -508,27 +515,23 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             }
             return self.builder.icmp_unsigned("==", left, right, name="is.eq");
         }
-        # i64 is None: compare against -1 sentinel (for optional enum/int)
-        if isinstance(left.type, ir.IntType)
-        and isinstance(right.type, ir.PointerType) {
-            sentinel = ir.Constant(left.type, -1);
-            return self.builder.icmp_signed("==", left, sentinel, name="is.none");
-        }
         return self._to_bool(left);
     }
     if op == Tok.KW_ISN {
+        # JacOptional is not None: extract tag, check != 0
+        if self._is_jac_optional(left.type) {
+            tag = self.builder.extract_value(left, 0, name="isn.tag");
+            return self.builder.icmp_unsigned(
+                "!=", tag, ir.Constant(ir.IntType(8), 0), name="isnot.none"
+            );
+        }
+        # Pointer is not None: NULL comparison
         if isinstance(left.type, ir.PointerType)
         and isinstance(right.type, ir.PointerType) {
             if left.type != right.type {
                 right = self.builder.bitcast(right, left.type);
             }
             return self.builder.icmp_unsigned("!=", left, right, name="is.ne");
-        }
-        # i64 is not None: compare against -1 sentinel (for optional enum/int)
-        if isinstance(left.type, ir.IntType)
-        and isinstance(right.type, ir.PointerType) {
-            sentinel = ir.Constant(left.type, -1);
-            return self.builder.icmp_signed("!=", left, sentinel, name="isnot.none");
         }
         return self._to_bool(left);
     }

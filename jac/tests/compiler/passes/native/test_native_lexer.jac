@@ -511,3 +511,124 @@ test "accelerate module compiles lexer" {
         }
     }
 }
+
+# --- Bootstrap bitcode caching infrastructure tests ---
+test "bootstrap jir extra sections roundtrip" {
+    import marshal;
+    import from jaclang.meta_importer { _write_bootstrap_jir, _read_bootstrap_jir }
+
+    bytecode = marshal.dumps(compile("x=1", "<test>", "exec"));
+    extra = {
+        0x06: b"fake_bitcode_payload_here",
+        0x08: b'{"structs":{},"enums":{},"functions":{}}'
+    };
+    jir_data = _write_bootstrap_jir(bytecode, 12345, extra_sections=extra);
+    (bc, sections) = _read_bootstrap_jir(jir_data);
+    assert bc is not None , "Bytecode missing from JIR";
+    assert bc == bytecode , "Bytecode mismatch";
+    assert 0x06 in sections , "SEC_NATIVE_OBJ missing";
+    assert 0x08 in sections , "SEC_NATIVE_LAYOUT missing";
+    assert sections[0x06] == b"fake_bitcode_payload_here";
+    assert sections[0x08] == b'{"structs":{},"enums":{},"functions":{}}';
+}
+
+test "bootstrap jir without extra sections still works" {
+    import marshal;
+    import from jaclang.meta_importer { _write_bootstrap_jir, _read_bootstrap_jir }
+
+    bytecode = marshal.dumps(compile("x=1", "<test>", "exec"));
+    jir_data = _write_bootstrap_jir(bytecode, 99);
+    (bc, sections) = _read_bootstrap_jir(jir_data);
+    assert bc is not None;
+    assert bc == bytecode;
+    assert 0x06 not in sections , "Should have no native sections";
+    assert 0x08 not in sections;
+}
+
+test "native layout serialization roundtrip" {
+    import from jaclang.jac0core.codeinfo {
+        NativeModuleLayout,
+        NativeStructLayout,
+        NativeFieldInfo,
+        NativeEnumLayout,
+        NativeFuncLayout,
+        NativeTupleLayout,
+        serialize_native_layout,
+        deserialize_native_layout
+    }
+
+    layout = NativeModuleLayout();
+    layout.structs["Token"] = NativeStructLayout(
+        name="Token",
+        fields=[
+            NativeFieldInfo(
+                name="kind", llvm_type="i64", index=0, enum_type="TokenKind"
+            ),
+            NativeFieldInfo(name="value", llvm_type="i8*", index=1)
+        ]
+    );
+    layout.enums["TokenKind"] = NativeEnumLayout(
+        name="TokenKind", is_string_valued=True, members=[("NAME", 0), ("INT", 1)]
+    );
+    layout.functions["tokenize"] = NativeFuncLayout(
+        name="tokenize",
+        param_types=["i8*", "i8*"],
+        param_names=["source", "file_path"],
+        ret_type="Tuple*",
+        ret_tuple_layout=NativeTupleLayout(
+            key="tokenize_ret",
+            element_types=["List.ptr*", "i64"],
+            element_struct_hints=["Token", ""]
+        )
+    );
+    layout.functions["lookup"] = NativeFuncLayout(
+        name="lookup",
+        param_types=["i8*"],
+        ret_type="JacOptional",
+        ret_is_optional=True,
+        ret_optional_inner_type="enum:TokenKind"
+    );
+    layout.init_functions = ["__jac_glob_init_tokens_na", "__jac_glob_init"];
+
+    data = serialize_native_layout(layout);
+    layout2 = deserialize_native_layout(data);
+
+    # Structs
+    assert "Token" in layout2.structs;
+    assert len(layout2.structs["Token"].fields) == 2;
+    assert layout2.structs["Token"].fields[0].name == "kind";
+    assert layout2.structs["Token"].fields[0].enum_type == "TokenKind";
+    # Enums
+    assert "TokenKind" in layout2.enums;
+    assert layout2.enums["TokenKind"].is_string_valued;
+    assert len(layout2.enums["TokenKind"].members) == 2;
+    # Functions
+    assert "tokenize" in layout2.functions;
+    assert layout2.functions["tokenize"].ret_type == "Tuple*";
+    assert layout2.functions["tokenize"].ret_tuple_layout is not None;
+    assert layout2.functions["tokenize"].ret_tuple_layout.element_types == [
+        "List.ptr*",
+        "i64"
+    ];
+    # Optional function
+    assert "lookup" in layout2.functions;
+    assert layout2.functions["lookup"].ret_is_optional;
+    assert layout2.functions["lookup"].ret_optional_inner_type == "enum:TokenKind";
+    # Init functions
+    assert layout2.init_functions == ["__jac_glob_init_tokens_na", "__jac_glob_init"];
+}
+
+test "native layout for lexer includes init functions" {
+    prog = JacProgram();
+    ir = prog.compile(file_path=NA_LEXER_PATH);
+    layout = ir.gen.native_layout;
+    assert layout is not None;
+    assert len(layout.init_functions) > 0 , "No init functions in layout";
+    assert "__jac_glob_init" in layout.init_functions , (
+        f"__jac_glob_init missing from {layout.init_functions}"
+    );
+    # __jac_glob_init should be last (imported inits run first)
+    assert layout.init_functions[-1] == "__jac_glob_init" , (
+        f"__jac_glob_init should be last, got order: {layout.init_functions}"
+    );
+}

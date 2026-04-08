@@ -119,19 +119,35 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return self.set_types["i64"].as_pointer();
         }
     }
-    # Handle union types: T | None → resolve T (BinaryExpr with BW_OR op)
+    # Handle union types: T | None → resolve T or JacOptional*
     if isinstance(type_expr, uni.BinaryExpr) {
         op_val = getattr(type_expr.op, 'value', '');
         if op_val == "|" {
-            # Resolve left side; right is typically None
             right_name = self._get_name(type_expr.right);
-            left_type = self._resolve_jac_type(type_expr.left);
-            if right_name == "None" {
-                # T | None → just use T's type (pointers are nullable)
-                return left_type;
+            left_name = self._get_name(type_expr.left);
+            _right_is_none = right_name == "None";
+            _left_is_none = left_name == "None";
+            # Determine which side is None and which is T
+            if _right_is_none {
+                inner_type = self._resolve_jac_type(type_expr.left);
+            } elif _left_is_none {
+                inner_type = self._resolve_jac_type(type_expr.right);
+            } else {
+                # Non-None union — use left type (simplified)
+                return self._resolve_jac_type(type_expr.left);
             }
-            # For non-None unions, use the left type (simplified)
-            return left_type;
+            # Pointer types (str, struct, list, dict, set) are naturally
+            # nullable via NULL — no wrapping needed.
+            if isinstance(inner_type, ir.PointerType) {
+                return inner_type;
+            }
+            # Value types (int, float, bool, enum) use by-value JacOptional
+            # tagged union { i8 tag, i64 value } — returned in registers.
+            if isinstance(inner_type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+                return self.jac_optional_type;
+            }
+            # Fallback: return inner type as-is
+            return inner_type;
         }
     }
     # Handle list[T] type annotations (AtomTrailer: list[T])
@@ -470,11 +486,20 @@ impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
     if nd is None {
         return None;
     }
+    # Null literal (None keyword) → return "None" so callers can
+    # check for it uniformly via `== "None"`.
+    if isinstance(nd, uni.Null) {
+        return "None";
+    }
     if isinstance(nd, uni.Name) {
         return nd.value;
     }
     if nd?.sym_name {
         return nd.sym_name;
+    }
+    # Token with name "NULL" is also a None literal (parser emits this)
+    if getattr(nd, 'name', '') == "NULL" {
+        return "None";
     }
     if nd?.value and isinstance(getattr(nd, "value"), str) {
         return nd.value;
@@ -522,10 +547,90 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     return val;
 }
 
+"""Check if an LLVM type is the JacOptional struct (by-value, not pointer)."""
+impl NaIRGenPass._is_jac_optional(ty: ir.Type) -> bool {
+    # Named struct types have a string repr like %"JacOptional"
+    return str(ty).strip('%"') == "JacOptional";
+}
+
+"""Box a value into a by-value JacOptional {i8 tag=1, i64 value}.
+
+Returns the struct as an SSA value — no heap allocation. On x86-64
+this fits in two registers (rax + rdx).
+"""
+impl NaIRGenPass._box_optional(value: ir.Value) -> ir.Value {
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    opt_ty = self.jac_optional_type;
+    # Convert value to i64 payload
+    if isinstance(value.type, ir.DoubleType) {
+        payload = self.builder.bitcast(value, i64, name="opt.f2i");
+    } elif isinstance(value.type, ir.FloatType) {
+        ext = self.builder.fpext(value, ir.DoubleType(), name="opt.f32ext");
+        payload = self.builder.bitcast(ext, i64, name="opt.f2i");
+    } elif isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        payload = self.builder.zext(value, i64, name="opt.zext");
+    } elif isinstance(value.type, ir.IntType) and value.type.width == 64 {
+        payload = value;
+    } else {
+        payload = self.builder.ptrtoint(value, i64, name="opt.ptrtoint");
+    }
+    # Build the struct via insertvalue (pure SSA, no allocation)
+    opt = ir.Constant(opt_ty, ir.Undefined);
+    opt = self.builder.insert_value(opt, ir.Constant(i8, 1), 0, name="opt.tag");
+    opt = self.builder.insert_value(opt, payload, 1, name="opt.val");
+    return opt;
+}
+
+"""Create a by-value JacOptional {i8 tag=0, i64 value=0} representing None.
+
+Pure constant — no allocation.
+"""
+impl NaIRGenPass._make_none_optional -> ir.Value {
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    return ir.Constant(
+        self.jac_optional_type, (ir.Constant(i8, 0), ir.Constant(i64, 0))
+    );
+}
+
+"""Extract the i64 payload from a by-value JacOptional and convert to target_type."""
+impl NaIRGenPass._unbox_optional(opt_val: ir.Value, target_type: ir.Type) -> ir.Value {
+    payload = self.builder.extract_value(opt_val, 1, name="unbox.val");
+    if isinstance(target_type, ir.DoubleType) {
+        return self.builder.bitcast(payload, target_type, name="unbox.i2f");
+    }
+    if isinstance(target_type, ir.FloatType) {
+        dbl = self.builder.bitcast(payload, ir.DoubleType(), name="unbox.i2d");
+        return self.builder.fptrunc(dbl, target_type, name="unbox.d2f");
+    }
+    if isinstance(target_type, ir.IntType) and target_type.width < 64 {
+        return self.builder.trunc(payload, target_type, name="unbox.trunc");
+    }
+    return payload;
+}
+
 """Coerce a value to the target type if needed."""
 impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
+    }
+    # ── JacOptional boxing/unboxing (by-value, zero allocation) ──
+    # Value type → JacOptional (boxing: wrap value in tagged union)
+    if self._is_jac_optional(target_type)
+    and isinstance(val.type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return self._box_optional(val);
+    }
+    # NULL pointer → JacOptional (None boxing: None literal)
+    if self._is_jac_optional(target_type)
+    and isinstance(val.type, ir.PointerType)
+    and isinstance(val, ir.Constant) {
+        return self._make_none_optional();
+    }
+    # JacOptional → value type (unboxing: extract payload)
+    if self._is_jac_optional(val.type)
+    and isinstance(target_type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return self._unbox_optional(val, target_type);
     }
     # Int → Double (f64)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.DoubleType) {
@@ -596,10 +701,6 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                     return self.builder.load(int_ptr, name="struct.abi.unbox");
                 }
             }
-        }
-        # Null pointer → integer -1 sentinel (e.g., None for optional enum T | None)
-        if isinstance(target_type, ir.IntType) and isinstance(val, ir.Constant) {
-            return ir.Constant(target_type, -1);
         }
         # Generic PointerType → IntType: ptrtoint.
         # Needed for passing Jac obj references (struct pointers) or str (i8*)

@@ -2980,3 +2980,123 @@ test "lambda closure as scaler" {
     assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
     assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
 }
+
+# --- Optional[T] via by-value JacOptional {i8 tag, i64 value} ---
+test "optional types compile" {
+    (eng, _) = compile_native("optional_types.na.jac");
+    assert eng is not None;
+}
+
+test "optional int returns value" {
+    (eng, _) = compile_native("optional_types.na.jac");
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_int", JacOpt, ctypes.c_int64);
+    result = f(5);
+    assert result.tag == 1 , f"Expected tag=1, got {result.tag}";
+    assert result.value == 10 , f"Expected value=10, got {result.value}";
+}
+
+test "optional int returns none" {
+    (eng, _) = compile_native("optional_types.na.jac");
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_int", JacOpt, ctypes.c_int64);
+    result = f(-1);
+    assert result.tag == 0 , f"Expected tag=0 (None), got {result.tag}";
+
+    result2 = f(0);
+    assert result2.tag == 0 , f"Expected tag=0 (None) for 0, got {result2.tag}";
+}
+
+test "optional float returns value" {
+    (eng, _) = compile_native("optional_types.na.jac");
+    import struct as st;
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_float", JacOpt, ctypes.c_double);
+    result = f(2.0);
+    assert result.tag == 1 , f"Expected tag=1, got {result.tag}";
+    fval = st.unpack("d", st.pack("q", result.value))[0];
+    assert abs(fval - 6.28) < 0.01 , f"Expected ~6.28, got {fval}";
+}
+
+test "optional float returns none" {
+    (eng, _) = compile_native("optional_types.na.jac");
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_float", JacOpt, ctypes.c_double);
+    result = f(-1.0);
+    assert result.tag == 0 , f"Expected tag=0 (None), got {result.tag}";
+}
+
+test "optional enum returns value" {
+    (eng, _) = compile_native("optional_types.na.jac");
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_color", JacOpt, ctypes.c_int64);
+    # RED = ordinal 0
+    result = f(0);
+    assert result.tag == 1 , f"Expected tag=1, got {result.tag}";
+    assert result.value == 0 , f"Expected RED ordinal 0, got {result.value}";
+    # GREEN = ordinal 1
+    result2 = f(1);
+    assert result2.tag == 1 and result2.value == 1;
+    # BLUE = ordinal 2
+    result3 = f(2);
+    assert result3.tag == 1 and result3.value == 2;
+}
+
+test "optional enum returns none" {
+    (eng, _) = compile_native("optional_types.na.jac");
+
+    class JacOpt(ctypes.Structure) {
+        _fields_ = [("tag", ctypes.c_int8), ("value", ctypes.c_int64)];
+    }
+
+    f = get_func(eng, "get_maybe_color", JacOpt, ctypes.c_int64);
+    result = f(99);
+    assert result.tag == 0 , f"Expected tag=0 (None) for unknown color, got {result.tag}";
+}
+
+test "is none check" {
+    (eng, _) = compile_native("optional_types.na.jac");
+    f = get_func(eng, "check_is_none", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 1 , f"Expected 1 (not none), got {f(5)}";
+    assert f(-1) == -1 , f"Expected -1 (is none), got {f(-1)}";
+    assert f(0) == -1 , f"Expected -1 (is none for 0), got {f(0)}";
+}
+
+test "is not none check" {
+    (eng, _) = compile_native("optional_types.na.jac");
+    f = get_func(eng, "check_is_not_none", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 1 , f"Expected 1 (is not none), got {f(5)}";
+    assert f(-1) == -1 , f"Expected -1 (is none), got {f(-1)}";
+    assert f(0) == -1 , f"Expected -1 (is none for 0), got {f(0)}";
+}
+
+test "pointer optional still uses null" {
+    (eng, _) = compile_native("optional_types.na.jac");
+    f = get_func(eng, "pointer_optional_still_works", ctypes.c_char_p, ctypes.c_int64);
+    result = f(5);
+    assert result == b"hello" , f"Expected b'hello', got {result}";
+    result2 = f(-1);
+    assert result2 is None or result2 == b"" , (
+        f"Expected None/empty for str|None returning None, got {result2}"
+    );
+}

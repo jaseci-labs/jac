@@ -186,6 +186,49 @@ def marshal_value(
     func_layout: Any = None,
     layout: Any = None
 ) -> Any {
+    # By-value JacOptional tagged union: { i8 tag, i64 value }
+    # Returned as a ctypes Structure (two fields), not a pointer.
+    if llvm_type == "JacOptional" {
+        # raw is a ctypes Structure with .tag and .value fields
+        if hasattr(raw, 'tag') {
+            if raw.tag == 0 {
+                return None;
+            }
+            opt_value = raw.value;
+        } else {
+            return None;
+        }
+        # Extract value based on inner type
+        inner = getattr(
+            func_layout, "ret_optional_inner_type", None
+        )
+            if func_layout
+            else None;
+        if inner in ("f64", "double") {
+            import struct as _st;
+            return _st.unpack("d", _st.pack("q", opt_value))[0];
+        }
+        if inner in ("f32", "float") {
+            import struct as _st;
+            dbl = _st.unpack("d", _st.pack("q", opt_value))[0];
+            return float(dbl);
+        }
+        if inner == "i1" {
+            return bool(opt_value);
+        }
+        # Enum return: inner type is "enum:EnumName"
+        if inner and inner.startswith("enum:") {
+            enum_name = inner[5:];
+            emap = enum_maps.get(enum_name);
+            if emap {
+                val = int(opt_value);
+                if 0 <= val < len(emap) and emap[val] is not None {
+                    return emap[val];
+                }
+            }
+        }
+        return int(opt_value);
+    }
     # Function pointer fields
     if (field_info and field_info.is_func_ptr) {
         if (raw is None or raw == 0) {
@@ -437,6 +480,17 @@ def install_native_wrappers(
     for (func_name, func_layout) in layout.functions.items() {
         # Only wrap functions that exist in the module namespace
         if func_name not in module_ns {
+            continue;
+        }
+        # Skip wrapping functions that return by-value JacOptional —
+        # ctypes cannot directly return LLVM aggregate types. These
+        # functions work correctly within native code; only the Python
+        # wrapper boundary needs the ctypes struct return ABI which
+        # varies by platform. TODO: Add ctypes Structure return support.
+        if func_layout.ret_type == "JacOptional" {
+            logger.debug(
+                f"Skipping native wrapper for {func_name} (returns JacOptional)"
+            );
             continue;
         }
         wrapper = wrap_native_function(
