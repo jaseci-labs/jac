@@ -133,6 +133,12 @@ impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, Any] {
     return config.get('plugins', {});
 }
 
+"""Check if desktop is configured for client-only mode (no sidecar)."""
+impl DesktopConfig.is_client_only(self: DesktopConfig) -> bool {
+    config = self.load();
+    return bool(config.get('client_only', False));
+}
+
 """Validate desktop configuration."""
 impl DesktopConfig.validate(self: DesktopConfig) -> None {
     config = self.load();

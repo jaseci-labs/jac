@@ -1822,38 +1822,45 @@ impl DesktopTarget.build(
     _copy_assets_to_dist(project_dir, web_bundle_path.parent);
     # Regenerate main.rs with latest TOML config (base_url may have changed since setup)
     _generate_main_rs(tauri_dir, api_base_url=toml_base_url);
-    # Step 1.5: Bundle sidecar (optional - can be skipped if not needed)
-    # This bundles the Jac backend as an executable for local use
+    # Load desktop config
+    import from jac_client.plugin.src.desktop_config { DesktopConfig }
+    desktop_config = DesktopConfig(project_dir=project_dir);
+    is_client_only = desktop_config.is_client_only();
+    # Step 1.5: Bundle sidecar (skipped in client_only mode)
     sidecar_bundled = False;
-    try {
-        console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
-        # Load desktop config to get plugins configuration
-        import from jac_client.plugin.src.desktop_config { DesktopConfig }
-        plugins_config = None;
-        try {
-            desktop_config = DesktopConfig(project_dir=project_dir);
-            plugins_config = desktop_config.get_plugins_config();
-            if plugins_config {
-                console.print(f"  Plugins config: {plugins_config}", style="muted");
-            }
-        } except Exception as config_err {
-            console.warning(
-                f"  Could not load plugins config: {config_err}, using defaults"
+    if is_client_only {
+        if not toml_base_url {
+            raise RuntimeError(
+                "client_only mode requires [plugins.client.api] base_url in jac.toml. "
+                "Set it to your remote server URL."
             );
         }
-        sidecar_path = _bundle_sidecar(
-            entry_file, project_dir, tauri_dir, platform, plugins_config
-        );
-        if sidecar_path and sidecar_path.exists() {
-            console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
-            sidecar_bundled = True;
+        console.print("  Step 1.5: Sidecar bundling skipped (client_only mode)", style="muted");
+        console.print(f"  Using remote backend: {toml_base_url}", style="muted");
+    } else {
+        try {
+            console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
+            plugins_config = None;
+            try {
+                plugins_config = desktop_config.get_plugins_config();
+                if plugins_config {
+                    console.print(f"  Plugins config: {plugins_config}", style="muted");
+                }
+            } except Exception as config_err {
+                console.warning(f"  Could not load plugins config: {config_err}, using defaults");
+            }
+            sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform, plugins_config);
+            if sidecar_path and sidecar_path.exists() {
+                console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
+                sidecar_bundled = True;
+            }
+        } except Exception as e {
+            console.warning(f"  Sidecar bundling skipped: {e}");
+            console.print(
+                "  Note: Desktop app will need external API server", style="muted"
+            );
+            sidecar_bundled = False;
         }
-    } except Exception as e {
-        console.warning(f"  Sidecar bundling skipped: {e}");
-        console.print(
-            "  Note: Desktop app will need external API server", style="muted"
-        );
-        sidecar_bundled = False;
     }
     # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
     icon_path = tauri_dir / "icons" / "icon.png";
