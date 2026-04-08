@@ -13,6 +13,7 @@ Options:
     --module-path PATH    Path to the .jac module file (default: main.jac)
     --port PORT          Port to bind the API server (default: 8000, 0 = auto)
     --base-path PATH     Base path for the project (default: current directory)
+    --data-path PATH     Writable path for runtime data (default: ~/.local/share/jac-app/.jac)
     --host HOST          Host to bind to (default: 127.0.0.1)
     --help               Show this help message
 """
@@ -20,9 +21,34 @@ Options:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
+import signal
 import socket
 import sys
 from pathlib import Path
+from types import FrameType
+
+
+def _signal_handler(signum: int, frame: FrameType | None) -> None:
+    """Handle signals and log them to stderr."""
+    sig_name = (
+        signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
+    )
+    sys.stderr.write(f"[sidecar] Received signal: {sig_name} ({signum})\n")
+    sys.stderr.flush()
+    sys.exit(128 + signum)
+
+
+# Register signal handlers early
+for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    with contextlib.suppress(OSError, ValueError):
+        signal.signal(sig, _signal_handler)
+
+
+# Set JAC_USE_STDERR before any jaclang imports.
+# This redirects console output to stderr since Tauri closes stdout after reading the port.
+os.environ["JAC_USE_STDERR"] = "1"
 
 
 def _find_free_port(host: str = "127.0.0.1") -> int:
@@ -61,6 +87,12 @@ def main():
         default="127.0.0.1",
         help="Host to bind to (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--data-path",
+        type=str,
+        default=None,
+        help="Writable path for runtime data like database (default: ~/.local/share/jac-app/.jac)",
+    )
 
     args = parser.parse_args()
 
@@ -98,14 +130,73 @@ def main():
     try:
         # Import jaclang (must be installed via pip)
         from jaclang.jac0core.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import plugin_manager
     except ImportError as e:
         # Console not available (jaclang import failed)
         sys.stderr.write(f"Error: Failed to import Jac runtime: {e}\n")
         sys.stderr.write("  Make sure jaclang is installed: pip install jaclang\n")
         sys.exit(1)
 
+    # Register jac-scale plugin manually for PyInstaller bundles.
+    # Entry point discovery fails in frozen apps, so we register explicitly.
+    if getattr(sys, "frozen", False):
+        try:
+            from jac_scale.plugin import JacCmd
+
+            if not plugin_manager.is_registered(JacCmd):
+                plugin_manager.register(JacCmd, name="scale")
+                sys.stderr.write("[sidecar] Registered jac-scale plugin\n")
+        except ImportError:
+            sys.stderr.write("[sidecar] jac-scale not bundled\n")
+        except Exception as e:
+            sys.stderr.write(f"[sidecar] Plugin registration error: {e}\n")
+
     # Get the console now that jaclang is available
     from jaclang.cli.console import console
+
+    # Determine data path (writable location for runtime data)
+    # IMPORTANT: Must be set BEFORE Jac.jac_import so jac-scale config reads the correct path
+    if args.data_path:
+        data_path = Path(args.data_path).resolve()
+    else:
+        # Default: ~/.local/share/jac-app (Linux)
+        # This ensures we have a writable location even if base_path is read-only (e.g., AppImage)
+        data_path = Path.home() / ".local" / "share" / "jac-app"
+
+    # Try to create data path with fallbacks
+    fallback_paths = [
+        data_path,
+        Path.home() / ".jac-app",  # Fallback to home directory
+    ]
+    # Add /tmp fallback only on Unix (os.getuid() doesn't exist on Windows)
+    if hasattr(os, "getuid"):
+        fallback_paths.append(Path("/tmp") / f"jac-app-{os.getuid()}")
+
+    data_path_created = False
+    for candidate in fallback_paths:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            # Verify we can actually write to it
+            test_file = candidate / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            data_path = candidate
+            data_path_created = True
+            break
+        except (OSError, PermissionError) as e:
+            sys.stderr.write(f"[sidecar] Cannot use data path {candidate}: {e}\n")
+            continue
+
+    if not data_path_created:
+        sys.stderr.write("Error: Could not create any writable data directory\n")
+        sys.stderr.write(f"  Tried: {[str(p) for p in fallback_paths]}\n")
+        sys.exit(1)
+
+    os.environ["JAC_DATA_PATH"] = str(data_path)
+
+    # Change working directory to writable data path
+    # This ensures relative paths like .jac/ work in read-only AppImage environments
+    os.chdir(data_path)
 
     # Initialize Jac runtime
     try:
@@ -136,13 +227,10 @@ def main():
         sys.stdout.write(f"JAC_SIDECAR_PORT={port}\n")
         sys.stdout.flush()
 
-        # stderr: Tauri drops the stdout pipe after reading the port marker,
-        # so any further stdout writes raise BrokenPipeError.
-        console.print("Jac Sidecar starting...", style="bold")
-        console.print(f"  Module: {module_name}", style="muted")
-        console.print(f"  Base path: {base_path}", style="muted")
-        console.print(f"  Server: http://{args.host}:{port}", style="muted")
-        console.print("")
+        # Check if server was created properly
+        if server.server is None:
+            console.error("Server socket not created")
+            sys.exit(1)
 
         # Start the server (blocks until interrupted)
         # no_client=True: client bundle is already embedded in the Tauri webview

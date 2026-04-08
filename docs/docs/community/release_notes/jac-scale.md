@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.14 (Unreleased)
 
 - **Configurable MongoDB PVC Storage Size**: MongoDB persistent volume storage size is now configurable via `mongodb_storage_size` in `jac.toml` (default: `1Gi`). Increasing the size on redeploy is supported and automatically patched onto the existing PVC without affecting stored data. Decreasing the size is blocked with an explicit error to prevent data loss.
+- **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
+
 - **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
 
 ## jac-scale 0.2.13 (Latest Release)
