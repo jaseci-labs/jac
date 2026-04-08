@@ -508,10 +508,6 @@ obj TypeEvaluator {
         expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
     ) -> TypeBase | None;
 
-    def _narrow_via_chain(
-        target: NarrowingTarget, from_expr: uni.Expr, base_type: TypeBase | None
-    ) -> TypeBase | None;
-
     def _compute_narrowed_at(
         target: NarrowingTarget, stmt: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
