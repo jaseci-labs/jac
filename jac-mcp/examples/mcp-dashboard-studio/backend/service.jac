@@ -15,7 +15,7 @@ obj _State {
 
 glob _st: _State = _State();
 
-def:pub set_server_url(url: str) -> None {
+def:pub set_server_url(url: str) {
     _st.server_url = url;
     _st.session_id = None;  # Reset session on URL change
 }

@@ -88,7 +88,7 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={server_url}
-                                onChange={lambda e: Any  -> None { server_url = e.target.value;}}
+                                onChange={lambda e: Any { server_url = e.target.value;}}
                                 placeholder={DEFAULT_URL}
                                 className="w-72 bg-zinc-900/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-400 placeholder-zinc-700 font-mono focus:outline-none focus:border-orange-500/40 focus:text-zinc-200 transition"
                             />
@@ -131,17 +131,15 @@ def:pub DashboardPage -> JsxElement {
                         <input
                             type="text"
                             value={query}
-                            onChange={lambda e: Any  -> None { query = e.target.value;}}
-                            onKeyPress={lambda e: Any  -> None { if e.key == "Enter" {
+                            onChange={lambda e: Any { query = e.target.value;}}
+                            onKeyPress={lambda e: Any { if e.key == "Enter" {
                                 runTool("search_docs", {"query": query});
                             }}}
                             placeholder="Search Jac documentation..."
                             className="flex-1 bg-transparent px-4 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
                         />
                         <button
-                            onClick={lambda -> None { runTool(
-                                "search_docs", {"query": query}
-                            );}}
+                            onClick={lambda { runTool("search_docs", {"query": query});}}
                             disabled={loading != "" or not connected}
                             className={"px-5 py-2 text-sm rounded-xl font-medium transition disabled:opacity-30 disabled:cursor-not-allowed " + (
                                 "bg-orange-500/80 animate-pulse text-white"
@@ -183,7 +181,7 @@ def:pub DashboardPage -> JsxElement {
                                     className="flex flex-wrap justify-end items-center gap-1.5"
                                 >
                                     <button
-                                        onClick={lambda -> None { runTool(
+                                        onClick={lambda { runTool(
                                             "validate_jac", {"code": code}
                                         );}}
                                         disabled={loading != "" or not connected}
@@ -198,7 +196,7 @@ def:pub DashboardPage -> JsxElement {
                                             else "Validate"}
                                     </button>
                                     <button
-                                        onClick={lambda -> None { runTool(
+                                        onClick={lambda { runTool(
                                             "check_syntax", {"code": code}
                                         );}}
                                         disabled={loading != "" or not connected}
@@ -214,7 +212,7 @@ def:pub DashboardPage -> JsxElement {
                                     </button>
                                     <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
                                     <button
-                                        onClick={lambda -> None { runTool(
+                                        onClick={lambda { runTool(
                                             "format_jac", {"code": code}
                                         );}}
                                         disabled={loading != "" or not connected}
@@ -230,7 +228,7 @@ def:pub DashboardPage -> JsxElement {
                                     </button>
                                     <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
                                     <button
-                                        onClick={lambda -> None { runTool(
+                                        onClick={lambda { runTool(
                                             "get_ast_tree", {"code": code}
                                         );}}
                                         disabled={loading != "" or not connected}
@@ -245,7 +243,7 @@ def:pub DashboardPage -> JsxElement {
                                             else "AST Tree"}
                                     </button>
                                     <button
-                                        onClick={lambda -> None { runTool(
+                                        onClick={lambda { runTool(
                                             "get_ast_json", {"code": code}
                                         );}}
                                         disabled={loading != "" or not connected}
@@ -286,8 +284,8 @@ def:pub DashboardPage -> JsxElement {
                                 </div>
                                 <textarea
                                     value={code}
-                                    onChange={lambda e: Any  -> None { code = e.target.value;}}
-                                    onScroll={lambda e: Any  -> None { code_scroll = e.target.scrollTop;}}
+                                    onChange={lambda e: Any { code = e.target.value;}}
+                                    onScroll={lambda e: Any { code_scroll = e.target.scrollTop;}}
                                     spellCheck={False}
                                     className="flex-1 resize-none bg-[#0d0e10] pl-3 pr-4 py-4 font-mono text-xs leading-6 text-zinc-100 outline-none placeholder-zinc-700"
                                     placeholder="# Paste your Jac code here..."
@@ -304,7 +302,7 @@ def:pub DashboardPage -> JsxElement {
                                     Python to Jac
                                 </div>
                                 <button
-                                    onClick={lambda -> None { runTool(
+                                    onClick={lambda { runTool(
                                         "py_to_jac", {"code": python_input}
                                     );}}
                                     disabled={loading != "" or not connected}
@@ -321,7 +319,7 @@ def:pub DashboardPage -> JsxElement {
                             </div>
                             <textarea
                                 value={python_input}
-                                onChange={lambda e: Any  -> None { python_input = e.target.value;}}
+                                onChange={lambda e: Any { python_input = e.target.value;}}
                                 rows={5}
                                 spellCheck={False}
                                 className={inputCls + " resize-y"}
@@ -339,10 +337,10 @@ def:pub DashboardPage -> JsxElement {
                                         Converted Jac
                                     </span>
                                     <button
-                                        onClick={lambda -> None { navigator.clipboard.writeText(
+                                        onClick={lambda { navigator.clipboard.writeText(
                                             current_result["data"]["jac_code"]
                                         );jac_copied = True;setTimeout(
-                                            lambda -> None { jac_copied = False;}, 2000
+                                            lambda { jac_copied = False;}, 2000
                                         );}}
                                         className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                                             "bg-green-500/20 border-green-500/40 text-green-400"
@@ -387,12 +385,12 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={error_message}
-                                onChange={lambda e: Any  -> None { error_message = e.target.value;}}
+                                onChange={lambda e: Any { error_message = e.target.value;}}
                                 placeholder="Paste an error message..."
                                 className={inputCls}
                             />
                             <button
-                                onClick={lambda -> None { runTool(
+                                onClick={lambda { runTool(
                                     "explain_error", {"error_message": error_message}
                                 );}}
                                 disabled={loading != "" or not connected}
@@ -408,7 +406,7 @@ def:pub DashboardPage -> JsxElement {
                                 Examples
                             </div>
                             <button
-                                onClick={lambda -> None { runTool("list_examples", {});}}
+                                onClick={lambda { runTool("list_examples", {});}}
                                 disabled={loading != "" or not connected}
                                 className={ghostBtn + (
                                     " animate-pulse" if busy("list_examples") else ""
@@ -422,12 +420,12 @@ def:pub DashboardPage -> JsxElement {
                                 <input
                                     type="text"
                                     value={example_name}
-                                    onChange={lambda e: Any  -> None { example_name = e.target.value;}}
+                                    onChange={lambda e: Any { example_name = e.target.value;}}
                                     placeholder="Category name..."
                                     className={inputCls + " flex-1"}
                                 />
                                 <button
-                                    onClick={lambda -> None { runTool(
+                                    onClick={lambda { runTool(
                                         "get_example", {"name": example_name}
                                     );}}
                                     disabled={loading != "" or not connected}

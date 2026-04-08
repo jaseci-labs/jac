@@ -275,8 +275,8 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
                     {("Modified" if changed else "No changes")}
                 </span>
                 <button
-                    onClick={lambda -> None { navigator.clipboard.writeText(formatted);output_copied = True;setTimeout(
-                        lambda -> None { output_copied = False;}, 2000
+                    onClick={lambda { navigator.clipboard.writeText(formatted);output_copied = True;setTimeout(
+                        lambda { output_copied = False;}, 2000
                     );}}
                     className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                         "bg-green-500/20 border-green-500/40 text-green-400"
@@ -335,8 +335,8 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                     </span>
                 </div>
                 <button
-                    onClick={lambda -> None { navigator.clipboard.writeText(json_str);ast_copied = True;setTimeout(
-                        lambda -> None { ast_copied = False;}, 2000
+                    onClick={lambda { navigator.clipboard.writeText(json_str);ast_copied = True;setTimeout(
+                        lambda { ast_copied = False;}, 2000
                     );}}
                     className={"px-2 py-0.5 text-[9px] rounded border transition " + (
                         "bg-green-500/20 border-green-500/30 text-green-400"
@@ -427,7 +427,7 @@ impl DashboardPage.renderExamplesOutput -> JsxElement {
             {[
                 <button
                     key={c["name"]}
-                    onClick={lambda -> None { example_name = str(c["name"]);runTool(
+                    onClick={lambda { example_name = str(c["name"]);runTool(
                         "get_example", {"name": str(c["name"])}
                     );}}
                     className="px-2 py-0.5 text-[11px] rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30 transition cursor-pointer"
@@ -498,7 +498,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
                             </span>
                         </div>
                         <button
-                            onClick={lambda -> None { navigator.clipboard.writeText(
+                            onClick={lambda { navigator.clipboard.writeText(
                                 s.split("\n").slice(1).join("\n")
                             );}}
                             className="px-2 py-1 text-[9px] rounded-md border transition bg-white/5 hover:bg-white/10 border-white/10"
