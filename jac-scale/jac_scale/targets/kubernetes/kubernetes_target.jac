@@ -1460,7 +1460,7 @@ obj KubernetesTarget(DeploymentTarget) {
             if cpu_target is None and memory_target is None {
                 if critical_missing {
                     if non_critical_missing {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"HPA: {', '.join(critical_missing)}. "
                             f"Also missing (non-critical): {', '.join(
                                 non_critical_missing
@@ -1469,14 +1469,14 @@ obj KubernetesTarget(DeploymentTarget) {
                             f"Configure the missing values in [plugins.scale.kubernetes]."
                         );
                     } else {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"HPA: {', '.join(critical_missing)}. "
                             f"HPA has no active metrics and will not scale the deployment. "
                             f"Configure the missing values in [plugins.scale.kubernetes]."
                         );
                     }
                 } else {
-                    self.logger.warning(
+                    self.logger.warn(
                         "HPA: both cpu_utilization_target and memory_utilization_target are disabled. "
                         "HPA has no active metrics and will not scale the deployment."
                     );
@@ -1487,7 +1487,7 @@ obj KubernetesTarget(DeploymentTarget) {
                         if cpu_target is not None
                         else "HPA will scale on memory only.";
                     if non_critical_missing {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"HPA: {', '.join(critical_missing)}. "
                             f"Also missing (non-critical): {', '.join(
                                 non_critical_missing
@@ -1495,13 +1495,13 @@ obj KubernetesTarget(DeploymentTarget) {
                             f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
                         );
                     } else {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"HPA: {', '.join(critical_missing)}. "
                             f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
                         );
                     }
                 } elif non_critical_missing {
-                    self.logger.warning(
+                    self.logger.warn(
                         f"HPA: {', '.join(non_critical_missing)} not configured. "
                         f"HPA will still scale but setting limits is recommended for proper resource management."
                     );
@@ -1754,7 +1754,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             } except Exception as e {
                 if self.logger {
-                    self.logger.warning(
+                    self.logger.warn(
                         f"Failed to list PVCs while checking resources for '{app_name}': {e}"
                     );
                 }
@@ -2049,7 +2049,7 @@ obj KubernetesTarget(DeploymentTarget) {
                         );
                     } except Exception as e {
                         if self.logger {
-                            self.logger.warning(
+                            self.logger.warn(
                                 f"Failed to delete PVC '{pvc.metadata.name}': {e}"
                             );
                         }
@@ -2094,7 +2094,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     if ns_deleted {
                         self.logger.info(f"Namespace '{namespace}' deleted");
                     } else {
-                        self.logger.warning(
+                        self.logger.warn(
                             f"Timed out waiting for namespace '{namespace}' to be deleted"
                         );
                     }
@@ -2405,9 +2405,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
-                    f"Failed to list Deployments in '{namespace}': {e}"
-                );
+                self.logger.warn(f"Failed to list Deployments in '{namespace}': {e}");
             }
         }
 
@@ -2419,9 +2417,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
-                    f"Failed to list StatefulSets in '{namespace}': {e}"
-                );
+                self.logger.warn(f"Failed to list StatefulSets in '{namespace}': {e}");
             }
         }
 
@@ -2444,7 +2440,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(f"Failed to list Pods in '{namespace}': {e}");
+                self.logger.warn(f"Failed to list Pods in '{namespace}': {e}");
             }
         }
 
@@ -2517,7 +2513,7 @@ obj KubernetesTarget(DeploymentTarget) {
             }
         } except Exception as e {
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     f"Failed to resolve service URL for '{app_name}': {e}"
                 );
             }
