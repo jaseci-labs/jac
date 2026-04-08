@@ -632,3 +632,79 @@ test "native layout for lexer includes init functions" {
         f"__jac_glob_init should be last, got order: {layout.init_functions}"
     );
 }
+
+# --- End-to-end bootstrap native caching test ---
+test "bootstrap native cache end to end" {
+    import subprocess;
+    import glob as globmod;
+    import from jaclang.meta_importer { _get_bootstrap_cache_dir }
+
+    cache_dir = _get_bootstrap_cache_dir();
+
+    # Surgically remove just the lexer/tokens bootstrap JIR files.
+    # The rest of the compiler cache stays warm so subprocesses are fast.
+    removed: list[str] = [];
+    for pattern in ["lexer.na.*.jir", "tokens.na.*.jir"] {
+        for f in globmod.glob(str(cache_dir / pattern)) {
+            os.unlink(f);
+            removed.append(f);
+        }
+    }
+
+    # Snippet: calls the free tokenize() function which gets native-wrapped.
+    # Uses _py_tokenize (original) on the native run for comparison.
+    snippet = (
+        "import time, sys\n"
+        "import jaclang\n"
+        "from jaclang.jac0core.parser.lexer import tokenize\n"
+        "from jaclang.jac0core.native_accel import _caching_future\n"
+        "if _caching_future:\n"
+        "    _caching_future.result(timeout=60)\n"
+        "lex_mod = sys.modules['jaclang.jac0core.parser.lexer']\n"
+        "native = hasattr(lex_mod, '__jac_native_engine__')\n"
+        "src = 'x = 1 + 2;\\n' * 50\n"
+        "tok_fn = lex_mod.tokenize\n"
+        "t0 = time.perf_counter()\n"
+        "for _ in range(20):\n"
+        "    tok_fn(src, 'b.jac')\n"
+        "elapsed = (time.perf_counter() - t0)\n"
+        "print(f'native={native} time={elapsed:.4f}')\n"
+    );
+
+    # Run 1: no native cache — Python lexer, background caches bitcode
+    r1 = subprocess.run(
+        [sys.executable, "-c", snippet], capture_output=True, text=True, timeout=60
+    );
+    assert r1.returncode == 0 , (
+        f"Run 1 failed (rc={r1.returncode}): {r1.stderr[-300:]}"
+    );
+    line1 = [
+        l
+        for l in r1.stdout.strip().split("\n")
+        if "native=" in l
+    ][-1];
+    assert "native=False" in line1 , f"Run 1 should be Python: {line1}";
+    py_time = float(line1.split("time=")[1]);
+
+    # Run 2: native cache present — lexer loads natively
+    r2 = subprocess.run(
+        [sys.executable, "-c", snippet], capture_output=True, text=True, timeout=60
+    );
+    assert r2.returncode == 0 , (
+        f"Run 2 crashed (rc={r2.returncode}): {r2.stderr[-300:]}"
+    );
+    line2 = [
+        l
+        for l in r2.stdout.strip().split("\n")
+        if "native=" in l
+    ][-1];
+    assert "native=True" in line2 , f"Run 2 should be native: {line2}";
+    na_time = float(line2.split("time=")[1]);
+
+    speedup = py_time / na_time if na_time > 0 else 0;
+    print(
+        f"\nBootstrap cache e2e: python={py_time:.4f}s, "
+        f"native={na_time:.4f}s, speedup={speedup:.1f}x"
+    );
+    assert speedup > 1.5 , f"Expected >1.5x speedup, got {speedup:.1f}x";
+}
