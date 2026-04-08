@@ -19,6 +19,7 @@ import types
 from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
+from typing import ClassVar
 
 # Cache jac0 transpiler hash for bootstrap cache invalidation
 import jaclang.jac0 as _jac0_mod
@@ -335,6 +336,10 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         """Create the module."""
         return None  # use default machinery
 
+    # Deferred native loading: collect .na.jac modules' cached sections
+    # during bootstrap, then load them all from a single MCJIT engine.
+    _pending_native: ClassVar[dict[str, tuple[ModuleType, dict[int, bytes]]]] = {}
+
     def _exec_bootstrap(self, module: ModuleType, file_path: str) -> None:
         """Execute a bootstrap .jac module using jac0 with bytecode caching.
 
@@ -342,10 +347,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
 
-        For .na.jac files, if native bitcode has been cached from a prior run,
-        the MCJIT engine is loaded and native wrappers are installed immediately
-        after executing the Python bytecode (which is still needed for module
-        registration and class definitions).
+        For .na.jac files with cached native bitcode, the sections are stashed
+        for deferred loading. Call finalize_bootstrap_native() after all
+        bootstrap imports to load a single shared MCJIT engine.
         """
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
@@ -358,26 +362,30 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         code, sections = _bootstrap_compile(file_path, jac_source, impl_sources or None)
         exec(code, module.__dict__)
 
-        # For .na.jac files, attempt to load cached native bitcode
+        # Stash native sections for deferred loading
         if (
             file_path.endswith(".na.jac")
             and _BOOTSTRAP_SEC_NATIVE_OBJ in sections
             and _BOOTSTRAP_SEC_NATIVE_LAYOUT in sections
         ):
-            self._load_bootstrap_native(module, sections)
+            JacMetaImporter._pending_native[file_path] = (module, sections)
 
     @staticmethod
-    def _load_bootstrap_native(module: ModuleType, sections: dict[int, bytes]) -> None:
-        """Load cached native bitcode and install native wrappers on a module.
+    def finalize_bootstrap_native() -> None:
+        """Load cached native bitcode for all pending bootstrap .na.jac modules.
 
-        Called from _exec_bootstrap for .na.jac files that have cached bitcode.
-        The Python bytecode has already been executed, so the module has all its
-        Python-side objects (classes, enums). This overlays native function
-        implementations via ctypes wrappers.
+        Uses the LARGEST cached bitcode (typically the lexer module, which has
+        tokens linked in at IR level) as the single MCJIT engine. Installs
+        native wrappers on all pending modules from this shared engine.
 
-        Silently falls back to Python if anything goes wrong (no llvmlite,
-        platform mismatch, corrupt bitcode, etc.).
+        Call this once after all bootstrap imports are complete.
+        Silently falls back to Python if anything goes wrong.
         """
+        pending = JacMetaImporter._pending_native
+        if not pending:
+            return
+        JacMetaImporter._pending_native = {}
+
         try:
             import struct as _struct
 
@@ -385,19 +393,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
             llvm.initialize_native_target()
             llvm.initialize_native_asmprinter()
-
-            # Parse SEC_NATIVE_OBJ: [triple_len:2LE][triple:UTF-8][bitcode]
-            native_obj_data = sections[_BOOTSTRAP_SEC_NATIVE_OBJ]
-            if len(native_obj_data) < 2:
-                return
-            (triple_len,) = _struct.unpack_from("<H", native_obj_data, 0)
-            if len(native_obj_data) < 2 + triple_len:
-                return
-            cached_triple = native_obj_data[2 : 2 + triple_len].decode("utf-8")
-            if cached_triple != llvm.get_default_triple():
-                return  # Platform mismatch — fall back to Python
-
-            bitcode = native_obj_data[2 + triple_len :]
 
             # Load libc for symbol resolution
             import ctypes
@@ -407,34 +402,68 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             if libc_name:
                 llvm.load_library_permanently(libc_name)
 
-            # Deserialize NativeModuleLayout from SEC_NATIVE_LAYOUT first
-            # so we can use layout.init_functions for global initialization.
             from jaclang.jac0core.codeinfo import deserialize_native_layout
             from jaclang.jac0core.native_marshal import install_native_wrappers
 
-            layout_data = sections[_BOOTSTRAP_SEC_NATIVE_LAYOUT]
-            layout = deserialize_native_layout(layout_data)
+            # Find the largest bitcode -- this is the module that has all
+            # cross-module imports linked in (e.g. lexer links tokens).
+            best_path = None
+            best_size = 0
+            for file_path, (_mod, secs) in pending.items():
+                native_obj = secs[_BOOTSTRAP_SEC_NATIVE_OBJ]
+                if len(native_obj) > best_size:
+                    best_size = len(native_obj)
+                    best_path = file_path
 
-            # Create MCJIT engine from cached bitcode (already optimized)
+            if best_path is None:
+                return
+
+            best_mod, best_secs = pending[best_path]
+
+            # Parse the bitcode from the largest module
+            native_obj_data = best_secs[_BOOTSTRAP_SEC_NATIVE_OBJ]
+            (triple_len,) = _struct.unpack_from("<H", native_obj_data, 0)
+            cached_triple = native_obj_data[2 : 2 + triple_len].decode("utf-8")
+            if cached_triple != llvm.get_default_triple():
+                return  # Platform mismatch
+
+            bitcode = native_obj_data[2 + triple_len :]
+
+            # Create a single MCJIT engine from the linked bitcode.
+            # Discover ALL glob_init functions from the LLVM module before
+            # creating the engine (which consumes the module reference).
             llvm_mod = llvm.parse_bitcode(bitcode)
+            all_init_names: list[str] = []
+            try:
+                for fn in llvm_mod.functions:
+                    if "glob_init" in fn.name and not fn.is_declaration:
+                        all_init_names.append(fn.name)
+            except Exception:
+                pass
+            # Sort: imported module inits first, __jac_glob_init last
+            all_init_names.sort(key=lambda n: (n == "__jac_glob_init", n))
+
             target = llvm.Target.from_default_triple()
             target_machine = target.create_target_machine(jit=True)
             engine = llvm.create_mcjit_compiler(llvm_mod, target_machine)
 
-            # Run native global initializers in the order specified by
-            # the layout metadata (imported module inits first, then
-            # the module's own __jac_glob_init).
-            for init_name in layout.init_functions:
+            # Run all global initializers
+            for init_name in all_init_names:
                 addr = engine.get_function_address(init_name)
                 if addr:
                     ctypes.CFUNCTYPE(None)(addr)()
 
-            count = install_native_wrappers(module, engine, layout)
-            if count > 0:
-                module.__jac_native_engine__ = engine  # type: ignore[attr-defined]
-                module.__jac_native_layout__ = layout  # type: ignore[attr-defined]
+            # Install wrappers on ALL pending modules from this shared engine.
+            # Each module gets wrappers for its own functions from the same engine.
+            for _path, (mod, secs) in pending.items():
+                mod_layout_data = secs[_BOOTSTRAP_SEC_NATIVE_LAYOUT]
+                mod_layout = deserialize_native_layout(mod_layout_data)
+                count = install_native_wrappers(mod, engine, mod_layout)
+                if count > 0:
+                    mod.__jac_native_engine__ = engine  # type: ignore[attr-defined]
+                    mod.__jac_native_layout__ = mod_layout  # type: ignore[attr-defined]
         except Exception:
-            pass  # Graceful fallback — Python bytecode already executed
+            pass  # Graceful fallback -- Python bytecode already executed
 
     def exec_module(self, module: ModuleType) -> None:
         """Execute the module by loading and executing its bytecode.

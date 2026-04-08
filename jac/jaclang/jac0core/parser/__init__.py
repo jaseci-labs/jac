@@ -17,3 +17,12 @@ __all__ = [
     "Parser",
     "parse",
 ]
+
+# After all bootstrap .na.jac modules are imported, load cached native
+# bitcode into a shared MCJIT engine and install native wrappers.
+try:
+    from jaclang.meta_importer import JacMetaImporter
+
+    JacMetaImporter.finalize_bootstrap_native()
+except Exception:
+    pass

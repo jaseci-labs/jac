@@ -40,16 +40,15 @@ else:
     # No disabling - load all plugins normally
     plugin_manager.load_setuptools_entrypoints("jac")
 
-# Cache native bitcode for bootstrap .na.jac modules so they run
-# natively from the second invocation onward (not gated by autonative).
-# TODO: Currently disabled — cross-module native loading needs the linked
-# bitcode to include all transitive dependencies (tokens + lexer together).
-# Enable once _load_bootstrap_native handles multi-module bitcode bundles.
-# try:
-#     from jaclang.jac0core.native_accel import schedule_bootstrap_native_caching
-#     schedule_bootstrap_native_caching()
-# except Exception:
-#     pass
+# Cache native bitcode for bootstrap .na.jac modules so they run natively
+# from the second invocation onward (not gated by autonative).
+# Native loading happens later in parser/__init__.py when modules are imported.
+try:
+    from jaclang.jac0core.native_accel import schedule_bootstrap_native_caching
+
+    schedule_bootstrap_native_caching()
+except Exception:
+    pass
 
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
