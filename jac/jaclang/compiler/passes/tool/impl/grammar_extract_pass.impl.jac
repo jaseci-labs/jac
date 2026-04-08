@@ -1817,6 +1817,9 @@ impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
 
 """Extract a FuncCall from an expression, if present."""
 impl GrammarExtractPass.get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | None {
+    if isinstance(expr, uni.CfgExpr) {
+        return self.get_call_from_expr(expr.expr);
+    }
     if isinstance(expr, uni.FuncCall) {
         return expr;
     }
