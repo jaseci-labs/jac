@@ -11,7 +11,10 @@ sv import from ..main {
     get_example,
     search_docs,
     understand_jac_and_jaseci,
-    get_resource
+    get_resource,
+    list_commands,
+    get_command,
+    execute_command
 }
 
 def:pub DashboardPage -> JsxElement {
@@ -23,6 +26,9 @@ def:pub DashboardPage -> JsxElement {
         query: str = "",
         example_name: str = "",
         resource_uri: str = "",
+        command_name: str = "",
+        command_target: str = "",
+        command_args: str = "",
         error_message: str = "",
         server_url: str = "",
         connected: bool = False,
@@ -49,6 +55,9 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderListCommandsOutput -> JsxElement;
+    def renderGetCommandOutput -> JsxElement;
+    def renderExecuteCommandOutput -> JsxElement;
     def renderValidationOutput -> JsxElement;
     def renderFormatOutput -> JsxElement;
     def renderAstOutput -> JsxElement;
@@ -405,6 +414,93 @@ def:pub DashboardPage -> JsxElement {
                             >
                                 {"Running..." if busy("explain_error") else "Explain"}
                             </button>
+                        </div>
+                        <div className={panelCls}>
+                            <div className="flex items-center justify-between">
+                                <div className={sectionLabel}>
+                                    Commands
+                                </div>
+                                <button
+                                    onClick={lambda { runTool("list_commands", {});}}
+                                    disabled={loading != "" or not connected}
+                                    className={ghostBtn + (
+                                        " animate-pulse"
+                                            if busy("list_commands")
+                                            else ""
+                                    )}
+                                >
+                                    {"Loading..."
+                                        if busy("list_commands")
+                                        else "List All"}
+                                </button>
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={command_name}
+                                    onChange={lambda e: Any { command_name = e.target.value;}}
+                                    placeholder="Command name..."
+                                    className={inputCls + " flex-1 font-mono"}
+                                />
+                                <button
+                                    onClick={lambda { runTool(
+                                        "get_command", {"name": command_name}
+                                    );}}
+                                    disabled={loading != "" or not connected}
+                                    className={ghostBtn + " whitespace-nowrap" + (
+                                        " animate-pulse" if busy("get_command") else ""
+                                    )}
+                                >
+                                    {"Loading..." if busy("get_command") else "Details"}
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                value={command_target}
+                                onChange={lambda e: Any { command_target = e.target.value;}}
+                                placeholder="target file (e.g. /path/to/main.jac)"
+                                className={inputCls + " font-mono"}
+                            />
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={command_args}
+                                    onChange={lambda e: Any { command_args = e.target.value;}}
+                                    placeholder="extra flags (e.g. --verbose)"
+                                    className={inputCls + " flex-1 font-mono"}
+                                />
+                                <button
+                                    onClick={lambda { runTool(
+                                        "execute_command",
+                                        {
+                                            "command": command_name,
+                                            "args": (
+                                                [command_target] + [
+                                                    a
+                                                    for a in command_args.split(" ")
+                                                    if a.strip()
+                                                ]
+                                            )
+                                                if command_target.strip()
+                                                else [
+                                                    a
+                                                    for a in command_args.split(" ")
+                                                    if a.strip()
+                                                ]
+                                        }
+                                    );}}
+                                    disabled={loading != "" or not connected}
+                                    className={ghostBtn + " whitespace-nowrap" + (
+                                        " animate-pulse"
+                                            if busy("execute_command")
+                                            else ""
+                                    )}
+                                >
+                                    {"Running..."
+                                        if busy("execute_command")
+                                        else "Execute"}
+                                </button>
+                            </div>
                         </div>
                         <div className={panelCls}>
                             <div className={sectionLabel}>

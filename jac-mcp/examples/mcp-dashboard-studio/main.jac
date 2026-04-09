@@ -11,6 +11,9 @@ import from backend.service {
     list_examples_service,
     get_example_service,
     search_docs_service,
+    list_commands_service,
+    get_command_service,
+    execute_command_service,
     understand_jac_and_jaseci_service,
     get_resource_service
 }
@@ -164,6 +167,52 @@ walker:pub search_docs {
             disengage;
         }
         report search_docs_service(self.query);
+    }
+}
+
+walker:pub list_commands {
+    has output: dict = {};
+
+    can run with Root entry {
+        report list_commands_service();
+    }
+}
+
+walker:pub get_command {
+    has name: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.name.strip() {
+            report {
+                "ok": False,
+                "tool": "get_command",
+                "data": {},
+                "error": {"message": "Command name cannot be empty."}
+            };
+            disengage;
+        }
+        report get_command_service(self.name);
+    }
+}
+
+walker:pub execute_command {
+    has command: str,
+        args: list[str] = [],
+        timeout: int = 30,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.command.strip() {
+            report {
+                "ok": False,
+                "tool": "execute_command",
+                "data": {},
+                "error": {"message": "Command cannot be empty."}
+            };
+            disengage;
+        }
+        report execute_command_service(self.command, self.args, self.timeout);
     }
 }
 

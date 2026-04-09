@@ -67,6 +67,12 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "list_commands" {
+        return "Fetching command list...";
+    } elif tool == "get_command" {
+        return "Loading command details...";
+    } elif tool == "execute_command" {
+        return "Executing command...";
     } elif tool == "understand_jac_and_jaseci" {
         return "Loading Jac & Jaseci guide...";
     } elif tool == "get_resource" {
@@ -113,6 +119,20 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "list_commands" {
+        total: int = data["total"] if "total" in data else 0;
+        return str(total) + " commands available.";
+    } elif tool == "get_command" {
+        cmd_name: str = str(data["name"]) if "name" in data else "";
+        return "Details loaded: " + cmd_name
+            if cmd_name
+            else "Command details loaded.";
+    } elif tool == "execute_command" {
+        success: bool = data["success"] if "success" in data else False;
+        exit_code: int = data["exit_code"] if "exit_code" in data else -1;
+        return "Exited " + str(exit_code) + (
+            " — success." if success else " — failed."
+        );
     } elif tool == "understand_jac_and_jaseci" {
         km: str = str(data["knowledge_map"]) if "knowledge_map" in data else "";
         return "Guide loaded (" + str(len(km.split("\n"))) + " lines)."
@@ -163,6 +183,14 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "list_commands" {
+            spawn_res = await root spawn list_commands();
+        } elif tool == "get_command" {
+            spawn_res = await root spawn get_command(name=args["name"]);
+        } elif tool == "execute_command" {
+            spawn_res = await root spawn execute_command(
+                command=args["command"], args=args["args"]
+            );
         } elif tool == "understand_jac_and_jaseci" {
             spawn_res = await root spawn understand_jac_and_jaseci();
         } elif tool == "get_resource" {
@@ -592,6 +620,195 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         </div>;
 }
 
+impl DashboardPage.renderListCommandsOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    total: int = data["total"] if "total" in data else 0;
+    commands: list = data["commands"] if "commands" in data else [];
+    if len(commands) == 0 {
+        return
+            <div className="text-xs text-zinc-500">
+                No commands found.
+            </div>;
+    }
+    groups: list = data["groups"] if "groups" in data else [];
+    return
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <span
+                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-zinc-400 bg-zinc-500/10 border-zinc-500/20"
+                >
+                    {str(total) + " COMMANDS"}
+                </span>
+            </div>
+            {[
+                <div key={g} className="space-y-1">
+                    <div
+                        className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold pt-1"
+                    >
+                        {g}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {[
+                            <button
+                                key={str(cmd["name"]) if "name" in cmd else str(cmd)}
+                                onClick={lambda { command_name = str(cmd["name"])
+                                    if "name" in cmd
+                                    else "";runTool(
+                                    "get_command",
+                                    {"name": str(cmd["name"]) if "name" in cmd else ""}
+                                );}}
+                                disabled={loading != "" or not connected}
+                                className="px-2 py-0.5 text-[11px] rounded-md bg-zinc-800 hover:bg-zinc-700 border border-white/[0.08] text-zinc-300 hover:text-white disabled:opacity-30 transition font-mono"
+                            >
+                                {str(cmd["name"]) if "name" in cmd else ""}
+                            </button>
+                            for cmd in commands
+                            if ("group" in cmd and cmd["group"] == g)
+                        ]}
+                    </div>
+                </div> for g in groups
+            ]}
+        </div>;
+}
+
+impl DashboardPage.renderGetCommandOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    cmd_name: str = str(data["name"]) if "name" in data else "";
+    help_text: str = str(data["help"]) if "help" in data else "";
+    group: str = str(data["group"]) if "group" in data else "";
+    source: str = str(data["source"]) if "source" in data else "";
+    args: list = data["args"] if "args" in data else [];
+    return
+        <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+                <span
+                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
+                >
+                    {cmd_name}
+                </span>
+                <span
+                    className="text-[9px] font-mono px-2 py-0.5 rounded-md border text-zinc-500 bg-zinc-800/50 border-white/[0.06]"
+                >
+                    {group}
+                </span>
+                <span
+                    className="text-[9px] font-mono px-2 py-0.5 rounded-md border text-zinc-600 bg-zinc-800/30 border-white/[0.04]"
+                >
+                    {source}
+                </span>
+            </div>
+            {help_text
+            and <p className="text-xs text-zinc-400 leading-relaxed">
+                {help_text}
+            </p>}
+            {len(args) > 0
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    Arguments
+                </div>
+                {[
+                    <div
+                        key={str(a["name"]) if "name" in a else str(a)}
+                        className="flex items-start gap-2 text-[11px] py-1 border-b border-white/[0.04]"
+                    >
+                        <span className="font-mono text-orange-300/80 flex-shrink-0">
+                            {str(a["name"]) if "name" in a else ""}
+                        </span>
+                        <span className="text-zinc-500">
+                            {str(a["help"]) if "help" in a else ""}
+                        </span>
+                    </div> for a in args
+                ]}
+            </div>}
+            <button
+                onClick={lambda { runTool(
+                    "execute_command", {"command": cmd_name, "args": []}
+                );}}
+                disabled={loading != "" or not connected}
+                className={ghostBtn + (
+                    " animate-pulse" if busy("execute_command") else ""
+                )}
+            >
+                {"Running..." if busy("execute_command") else "Execute " + cmd_name}
+            </button>
+        </div>;
+}
+
+impl DashboardPage.renderExecuteCommandOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    success: bool = data["success"] if "success" in data else False;
+    exit_code: int = data["exit_code"] if "exit_code" in data else -1;
+    stdout: str = str(data["stdout"]) if "stdout" in data else "";
+    stderr: str = str(data["stderr"]) if "stderr" in data else "";
+    cmd: str = str(data["command"]) if "command" in data else "";
+    return
+        <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+                {cmd
+                and <span
+                    className="text-[9px] font-mono text-zinc-500 bg-zinc-800/50 border border-white/[0.06] px-2 py-0.5 rounded-md"
+                >
+                    {cmd}
+                </span>}
+                <span
+                    className={"text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
+                        "text-green-400 bg-green-500/10 border-green-500/20"
+                            if success
+                            else "text-red-400 bg-red-500/10 border-red-500/20"
+                    )}
+                >
+                    {"exit " + str(exit_code)}
+                </span>
+            </div>
+            {stdout
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    stdout
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-green-300/80 max-h-[280px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+                >
+                    {stdout}
+                </pre>
+            </div>}
+            {stderr
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-red-600 font-semibold"
+                >
+                    stderr
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-red-300/80 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-red-500/10 whitespace-pre-wrap break-words font-mono"
+                >
+                    {stderr}
+                </pre>
+            </div>}
+        </div>;
+}
+
 impl DashboardPage.renderUnderstandOutput -> JsxElement {
     if not current_result {
         return renderEmpty();
@@ -667,6 +884,12 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "list_commands" {
+        return renderListCommandsOutput();
+    } elif active_tool == "get_command" {
+        return renderGetCommandOutput();
+    } elif active_tool == "execute_command" {
+        return renderExecuteCommandOutput();
     } elif active_tool == "understand_jac_and_jaseci" {
         return renderUnderstandOutput();
     } elif active_tool == "get_resource" {

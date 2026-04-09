@@ -186,6 +186,20 @@ def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
 
+def:pub list_commands_service -> dict {
+    return call_mcp_tool("list_commands", {});
+}
+
+def:pub get_command_service(name: str) -> dict {
+    return call_mcp_tool("get_command", {"name": name});
+}
+
+def:pub execute_command_service(command: str, args: list[str], timeout: int) -> dict {
+    return call_mcp_tool(
+        "execute_command", {"command": command, "args": args, "timeout": timeout}
+    );
+}
+
 def:pub understand_jac_and_jaseci_service -> dict {
     return call_mcp_tool("understand_jac_and_jaseci", {});
 }
