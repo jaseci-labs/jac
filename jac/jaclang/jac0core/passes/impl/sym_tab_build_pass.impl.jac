@@ -559,11 +559,31 @@ impl SymTabBuildPass.exit_iter_for_stmt(
     self.pop_scope();
 }
 
-"""Recursively define symbols in unpacking expressions."""
+"""Recursively define symbols in unpacking expressions.
+
+Matches Python's scoping semantics for both `(x, y) = f()` and
+`for (x, y) in items:`. Unpacking targets rebind an existing local
+binding when one is in scope; otherwise they bind in the nearest
+Python scope (function or module) rather than fragmenting into
+block-local shadows inside Jac's faux if/try/match scopes.
+"""
 impl SymTabBuildPass._def_insert_unpacking(
     self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
 ) -> None {
     if isinstance(nd, uni.Name) {
+        if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+            existing.add_use(nd.name_spec);
+            return;
+        }
+        py_scope = self.find_python_scope_node_of(nd);
+        if py_scope is not None {
+            if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
+                outer.add_use(nd.name_spec);
+            } else {
+                py_scope.def_insert(nd, single_decl='local var');
+            }
+            return;
+        }
         sym_tab.def_insert(nd, single_decl='iterator');
     } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
         for target_var in nd.values {

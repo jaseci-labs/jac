@@ -3208,23 +3208,38 @@ impl TypeEvaluator._get_type_from_flow_node(
             }
         }
 
-        # Assignment predecessor: barrier. An assignment whose target matches
+        # Assignment predecessor: barrier. An assignment whose target writes
         # the reference key kills any pre-assignment narrowing on this edge.
-        # On a strict narrowing (e.g. `int | None` = `int`) the assigned type
-        # becomes the edge's contribution; otherwise the edge resets to the
-        # declared type. Either way, we never fall through.
+        # On a strict narrowing from a flat target (e.g. `int | None` = `int`)
+        # the assigned type becomes the edge's contribution; otherwise the
+        # edge resets to the declared type. Either way, we never fall through.
         if isinstance(pred, uni.Assignment) and pred.value {
+            import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
             target_key_matched = False;
-            narrowed_from_assignment: TypeBase | None = None;
+            flat_target_matched = False;
             for t in pred.target {
-                target_key: str | None = None;
-                if isinstance(t, uni.Name) {
-                    target_key = t.value;
-                } elif isinstance(t, uni.AtomTrailer) and t.is_attr {
-                    target_key = self.create_key_for_reference(t);
-                }
-                if target_key is not None and target_key == key {
+                written_keys = collect_assignment_target_keys(t);
+                if key in written_keys {
                     target_key_matched = True;
+                    # Strict narrowing is only sound for flat Name/AtomTrailer
+                    # targets. For destructuring (`(x, _) = ...`) we'd need
+                    # element-type inference; conservatively reset instead.
+                    if (
+                        (isinstance(t, uni.Name) and t.value == key)
+                        or (
+                            isinstance(t, uni.AtomTrailer)
+                            and t.is_attr
+                            and self.create_key_for_reference(t) == key
+                        )
+                    ) {
+                        flat_target_matched = True;
+                    }
+                    break;
+                }
+            }
+            if target_key_matched {
+                narrowed_from_assignment: TypeBase | None = None;
+                if flat_target_matched {
                     assigned_type = self.get_type_of_expression(pred.value);
                     if (
                         assigned_type
@@ -3238,10 +3253,7 @@ impl TypeEvaluator._get_type_from_flow_node(
                             narrowed_from_assignment = assigned_type;
                         }
                     }
-                    break;
                 }
-            }
-            if target_key_matched {
                 if narrowed_from_assignment is not None {
                     incoming_types.append(narrowed_from_assignment);
                 } else {

@@ -240,6 +240,35 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     return symbols;
 }
 
+"""Collect every reference key bound by a single assignment target.
+
+Walks one element of `Assignment.target`, extracting the reference keys
+it writes. Handles flat names, dotted attribute paths, and recursive
+tuple/list destructuring (e.g. `(a, (b, c)) = ...`).
+"""
+def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
+    keys: set[str] = set();
+    if isinstance(target, uni.Name) {
+        keys.add(target.value);
+    } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+        if key := get_expr_key(target) {
+            keys.add(key);
+        }
+    } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        if target.values {
+            for sub in target.values {
+                if isinstance(sub, uni.UniNode) {
+                    keys.update(collect_assignment_target_keys(sub));
+                }
+            }
+        }
+    } elif isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.UniNode) {
+        # Parenthesized target: `(x) = ...` or `((x, y)) = ...`.
+        keys.update(collect_assignment_target_keys(target.value));
+    }
+    return keys;
+}
+
 """Collect all symbols assigned/bound in a statement.
 
 Extracted from CFGBuildPass._collect_assigned_symbols.
@@ -247,16 +276,10 @@ Handles assignments, for-loops, and walrus operators.
 """
 def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
     symbols: set[str] = set();
-    # Assignment: x = ...
+    # Assignment: x = ..., (x, y) = ..., obj.attr = ...
     if isinstance(nd, uni.Assignment) {
         for target in nd.target {
-            if isinstance(target, uni.Name) {
-                symbols.add(target.value);
-            } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
-                if key := get_expr_key(target) {
-                    symbols.add(key);
-                }
-            }
+            symbols.update(collect_assignment_target_keys(target));
         }
     }
     # For loop: for x in ...
