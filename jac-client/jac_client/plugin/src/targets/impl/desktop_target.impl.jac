@@ -1837,11 +1837,15 @@ impl DesktopTarget.build(
                 "Set it to your remote server URL."
             );
         }
-        console.print("  Step 1.5: Sidecar bundling skipped (client_only mode)", style="muted");
+        console.print(
+            "  Step 1.5: Sidecar bundling skipped (client_only mode)", style="muted"
+        );
         console.print(f"  Using remote backend: {toml_base_url}", style="muted");
     } else {
         try {
-            console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
+            console.print(
+                "  Step 1.5: Bundling sidecar (Jac backend)...", style="muted"
+            );
             plugins_config = None;
             try {
                 plugins_config = desktop_config.get_plugins_config();
@@ -1849,9 +1853,13 @@ impl DesktopTarget.build(
                     console.print(f"  Plugins config: {plugins_config}", style="muted");
                 }
             } except Exception as config_err {
-                console.warning(f"  Could not load plugins config: {config_err}, using defaults");
+                console.warning(
+                    f"  Could not load plugins config: {config_err}, using defaults"
+                );
             }
-            sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform, plugins_config);
+            sidecar_path = _bundle_sidecar(
+                entry_file, project_dir, tauri_dir, platform, plugins_config
+            );
             if sidecar_path and sidecar_path.exists() {
                 console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
                 sidecar_bundled = True;
