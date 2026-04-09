@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.6.4 (Unreleased)
 
-- **Add: Automatic Anthropic prompt caching for ReAct loops**: Claude models now get `cache_control` markers on the system prompt and tool schemas automatically, caching the static prefix across iterations for up to 90% input token savings. Enabled by default, configurable via `[plugins.byllm.prompt_caching] enabled = false`.
+- **Add: Automatic Anthropic prompt caching**: Caches system prompt and tool schemas across ReAct iterations for Claude models, reducing input token costs by up to 90%. Enabled by default.
 
 ## byllm 0.6.3 (Latest Release)
 
