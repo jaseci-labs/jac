@@ -247,15 +247,6 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         }
     }
 
-    # W2052: overly broad except (catching Exception or BaseException)
-    for nd in mod.get_all_sub_nodes(typ=uni.Except, brute_force=True) {
-        if nd.ex_type is not None and isinstance(nd.ex_type, uni.Name) {
-            if nd.ex_type.value in ("Exception", "BaseException") {
-                self.emit(W2052, node_override=nd.ex_type, type=nd.ex_type.value);
-            }
-        }
-    }
-
     # E2055: return in finally block
     for nd in mod.get_all_sub_nodes(typ=uni.FinallyStmt, brute_force=True) {
         for stmt in nd.body {

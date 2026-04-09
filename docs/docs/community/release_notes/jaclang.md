@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `by postinit` Symbol Resolution**: Fields declared with `by postinit` no longer show a false W2001 ("'postinit' may be undefined") warning and go-to-definition now works correctly on them.
 - **Fix: Assignment Is a Narrowing Barrier**: Re-assigning a variable inside a narrowed scope (e.g. inside a `case` body) now correctly resets its type for every access that follows.
 - **Fix: Narrowing Through Parenthesized `and`/`or` Conditions**: `if (a and b):` now narrows types the same way as `if a and b:`.
+- **Removed: W2052 Broad Exception Warning**: Removed the `W2052` warning that flagged `except Exception` as overly broad. Catching `Exception` is a legitimate and common pattern at system boundaries (e.g., LLM calls, network I/O), and the warning produced false positives in these cases.
 
 ## jaclang 0.13.5 (Latest Release)
 
