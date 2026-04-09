@@ -3109,9 +3109,13 @@ if PLUGINS_CONFIG.get('jac_mcp', True):
 # Merge collected imports with manual hiddenimports
 hiddenimports.extend(all_hiddenimports)
 
-# Add project .jac files
+# Add project .jac files (exclude build artifacts to avoid recursive nesting)
 project_dir = Path(r'{project_dir}')
+EXCLUDE_DIRS = ['src-tauri', 'node_modules', '__pycache__', '.git', 'dist', '__jac_gen__', '.jac']
 for jac_file in project_dir.rglob('*.jac'):
+    # Skip files inside excluded directories
+    if any(part in EXCLUDE_DIRS for part in jac_file.relative_to(project_dir).parts):
+        continue
     rel_path = jac_file.relative_to(project_dir)
     datas.append((str(jac_file), str(rel_path.parent) or '.'))
 
