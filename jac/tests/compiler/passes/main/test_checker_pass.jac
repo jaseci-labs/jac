@@ -301,6 +301,29 @@ test "arity" {
     );
 }
 
+test "dunder_new_direct_call" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_dunder_new_direct.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # object.__new__(self.__class__) and object.__new__(cls) should NOT error.
+    # Only the call with too many args should produce errors (one per extra arg).
+    e1051_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1051"
+    ];
+    assert len(e1051_errors) == 2 , f"Expected 2 E1051 errors, got {len(
+        e1051_errors
+    )}: " + "\n".join(e.pretty_print() for e in e1051_errors);
+    # Both errors should be on the too-many-args line
+    for e in e1051_errors {
+        assert e.loc and e.loc.first_line == 32 , f"Expected error on line 32, got line {e.loc.first_line
+            if e.loc
+            else '?'}";
+    }
+}
+
 test "param_types" {
     path = os.path.join(CHECKER_FIXTURES, "checker_param_types.jac");
     program = JacProgram();
@@ -1947,6 +1970,54 @@ test "assignment_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Parenthesized BoolExpr conditions wire the short-circuit CFG."""
+test "parenthesized_bool_cond" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_parenthesized_bool_cond.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Assignment barrier: strict narrowing, widening reset, in-branch re-narrow."""
+test "assignment_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_barrier.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # The widening reassignment in `widen_via_reassign` resets `x` to
+    # `int | None`, so `return x` against the `int` return type is the
+    # only expected error.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
+}
+
+"""Match-case narrowing is killed by a later assignment to the subject."""
+test "match_case_reassign_reset" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_match_case_reassign_reset.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 4 , f"Expected 4 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    assert 'Cannot assign int to Shape' in program.errors_had[0].pretty_print();
+    for i in [1, 2, 3] {
+        msg = program.errors_had[i].pretty_print();
+        assert 'has no attribute "sides"' in msg , f"Expected attribute error at index {i}, got: {msg}";
+    }
+}
+
 """Test truthiness guard narrowing for member access."""
 test "guard_narrowing" {
     program = JacProgram();
@@ -3025,9 +3096,7 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 dropped 3→2 (CFG resolved 1 any-in-union error): 37 - 1 = 36
-    # RC5 dropped 2→0 (faux-scope re-assignments now bind to Python scope,
-    # preserving str narrowing in while-loop chomp pattern): 36 - 2 = 34
+    # RC9 dropped 3→2, RC5 dropped 2→0. Total: 34
     assert len(program.errors_had) == 34 , f"Expected 34 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
