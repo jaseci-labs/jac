@@ -36,7 +36,7 @@ pip install jac-scale[scheduler]       # apscheduler
 pip install jac-scale[deploy]          # kubernetes + docker
 ```
 
-No code changes are required — the same APIs, configuration, and behavior apply. When a feature is used without its dependency installed, a clear error message shows the exact install command needed.
+No code changes are required - the same APIs, configuration, and behavior apply. When a feature is used without its dependency installed, a clear error message shows the exact install command needed.
 
 ---
 

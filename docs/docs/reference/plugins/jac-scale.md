@@ -11,7 +11,7 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 jac-scale is lightweight by default. Install only the extras you need:
 
 ```bash
-# Core only — FastAPI server, auth, CLI (no heavy dependencies)
+# Core only - FastAPI server, auth, CLI (no heavy dependencies)
 pip install jac-scale
 
 # Add MongoDB + Redis for persistent storage and distributed cache
@@ -26,7 +26,7 @@ pip install jac-scale[scheduler]
 # Add Kubernetes + Docker for deployment and image building
 pip install jac-scale[deploy]
 
-# Everything — recommended for production or if unsure
+# Everything - recommended for production or if unsure
 pip install jac-scale[all]
 ```
 
