@@ -102,15 +102,18 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
             # Plain print - user data is never modified
             print(*args, **kwargs);
         }
-    } except (BrokenPipeError, OSError) {
+    } except (BrokenPipeError, OSError) as e {
+        import sys as _sys;
+        _sys.stderr.write(f"[JacConsole] print caught pipe error: {e}\n");
         return;  # Silently ignore if pipe is broken
     }
     # Flush for piped/subprocess output
     output_file = kwargs.get('file', sys.stdout);
     try {
         output_file.flush();
-    } except (BrokenPipeError, OSError) {
-        ;  # Ignore broken pipe errors (e.g., stdout closed in sidecar mode)
+    } except (BrokenPipeError, OSError) as e {
+        import sys as _sys;
+        _sys.stderr.write(f"[JacConsole] flush caught pipe error: {e}\n");
     }
 }
 
