@@ -319,7 +319,7 @@ impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None
     # If the symbol is from a module item, we need to resolve it to the actual symbol.
     # Check if mod_item.name is a Name and has a sym attribute before accessing it
     # Cache the type.
-    # __new__ is always a classmethod in Python, even without @classmethod decorator
+    # __new__ is a staticmethod in CPython; cls is marked is_cls for constructor resolution
     impl_ := nd.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
@@ -665,9 +665,9 @@ impl TypeEvaluator.emit_diag(
 }
 
 impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
-    if node_.name_spec and node_.name_spec.sym_name == "__new__" {
-        return True;
-    }
+    # Note: __new__ is a staticmethod in CPython, not a classmethod.
+    # Its cls param is marked is_cls for constructor resolution but the
+    # function itself should not carry the ClassMethod flag.
     if node_.decorators {
         for decorator in node_.decorators {
             decor_type = self.get_type_of_expression(decorator);

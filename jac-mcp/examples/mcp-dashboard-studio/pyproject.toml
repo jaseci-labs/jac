@@ -1,0 +1,13 @@
+[project]
+name = "jac-mcp-dashboard-studio"
+version = "0.1.0"
+description = "Interactive browser dashboard for Jac code via MCP"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jac-client>=0.3.9",
+    "jac-mcp==0.1.8",
+    "jaclang>=0.13.2",
+    "requests>=2.33.0",
+    "watchdog>=6.0.0",
+]
