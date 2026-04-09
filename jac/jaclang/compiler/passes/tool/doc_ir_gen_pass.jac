@@ -101,6 +101,7 @@ obj DocIRGenPass(UniPass) {
     def exit_inner_compr(nd: uni.InnerCompr) -> None;
     def exit_f_string(nd: uni.FString) -> None;
     def exit_formatted_value(nd: uni.FormattedValue) -> None;
+    def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;

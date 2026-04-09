@@ -1,0 +1,24 @@
+[project]
+name = "mcp-dashboard-studio"
+version = "1.0.0"
+description = "Developer dashboard for jac-mcp tools"
+entry-point = "main.jac"
+
+[dependencies.npm]
+jac-client-node = "1.0.7"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "2.0.0"
+"@tailwindcss/vite" = "^4.1.17"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]

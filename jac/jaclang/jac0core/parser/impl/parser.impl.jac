@@ -71,7 +71,8 @@ import from jaclang.jac0core.unitree {
     UnaryExpr,
     CompareExpr,
     BoolExpr,
-    IfElseExpr
+    IfElseExpr,
+    CfgExpr
 }
 import from jaclang.jac0core.unitree {
     AtomTrailer,
@@ -812,11 +813,14 @@ impl Parser.parse_expression -> Expr {
         condition = self.parse_expression();
         else_uni = self.consume_uni(TokenKind.KW_ELSE);
         else_value = self.parse_expression();
+        cond_cfg = CfgExpr(expr=condition, kid=[condition]);
+        val_cfg = CfgExpr(expr=expr, kid=[expr]);
+        else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
         return IfElseExpr(
-            condition=condition,
-            value=expr,
-            else_value=else_value,
-            kid=[expr, if_uni, condition, else_uni, else_value]
+            condition=cond_cfg,
+            value=val_cfg,
+            else_value=else_cfg,
+            kid=[val_cfg, if_uni, cond_cfg, else_uni, else_cfg]
         );
     }
     return expr;
@@ -919,7 +923,7 @@ impl Parser.parse_shift -> Expr {
 impl Parser.parse_logical_or -> Expr {
     left = self.parse_logical_and();
     while self.match_tok(TokenKind.KW_OR) {
-        values = [left];
+        values: list[Expr] = [left];
         op = self.make_uni_token(self.previous());
         while True {
             values.append(self.parse_logical_and());
@@ -927,14 +931,15 @@ impl Parser.parse_logical_or -> Expr {
                 break;
             }
         }
+        cfg_values = [CfgExpr(expr=v, kid=[v]) for v in values];
         kid: list = [];
-        for (i, v) in enumerate(values) {
-            kid.append(v);
-            if i < len(values) - 1 {
+        for (i, cv) in enumerate(cfg_values) {
+            kid.append(cv);
+            if i < len(cfg_values) - 1 {
                 kid.append(op);
             }
         }
-        left = BoolExpr(op=op, values=values, kid=kid);
+        left = BoolExpr(op=op, values=cfg_values, kid=kid);
     }
     return left;
 }
@@ -942,7 +947,7 @@ impl Parser.parse_logical_or -> Expr {
 impl Parser.parse_logical_and -> Expr {
     left = self.parse_logical_not();
     while self.match_tok(TokenKind.KW_AND) {
-        values = [left];
+        values: list[Expr] = [left];
         op = self.make_uni_token(self.previous());
         while True {
             values.append(self.parse_logical_not());
@@ -950,14 +955,15 @@ impl Parser.parse_logical_and -> Expr {
                 break;
             }
         }
+        cfg_values = [CfgExpr(expr=v, kid=[v]) for v in values];
         kid: list = [];
-        for (i, v) in enumerate(values) {
-            kid.append(v);
-            if i < len(values) - 1 {
+        for (i, cv) in enumerate(cfg_values) {
+            kid.append(cv);
+            if i < len(cfg_values) - 1 {
                 kid.append(op);
             }
         }
-        left = BoolExpr(op=op, values=values, kid=kid);
+        left = BoolExpr(op=op, values=cfg_values, kid=kid);
     }
     return left;
 }
