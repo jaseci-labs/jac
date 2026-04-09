@@ -12,15 +12,21 @@ usage before a None would cause trouble.
 # ──────────────────────────────────────────────
 try:
     from pymongo import MongoClient, UpdateOne
+    from pymongo.collection import Collection
+    from pymongo.cursor import Cursor
+    from pymongo.errors import ConnectionFailure
     from pymongo.results import (
-        InsertOneResult as PyMongoInsertOneResult,
-        InsertManyResult as PyMongoInsertManyResult,
-        UpdateResult as PyMongoUpdateResult,
         DeleteResult as PyMongoDeleteResult,
     )
-    from pymongo.cursor import Cursor
-    from pymongo.collection import Collection
-    from pymongo.errors import ConnectionFailure
+    from pymongo.results import (
+        InsertManyResult as PyMongoInsertManyResult,
+    )
+    from pymongo.results import (
+        InsertOneResult as PyMongoInsertOneResult,
+    )
+    from pymongo.results import (
+        UpdateResult as PyMongoUpdateResult,
+    )
 
     HAS_PYMONGO = True
 except ImportError:
@@ -63,13 +69,13 @@ except ImportError:
 # ──────────────────────────────────────────────
 try:
     from prometheus_client import (
-        Counter,
-        Histogram,
-        Gauge,
-        generate_latest,
         CONTENT_TYPE_LATEST,
         REGISTRY,
         CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
     )
 
     HAS_PROMETHEUS = True
@@ -88,8 +94,8 @@ except ImportError:
 # [scheduler] group — apscheduler
 # ──────────────────────────────────────────────
 try:
-    from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.executors.pool import ThreadPoolExecutor as APThreadPoolExecutor
+    from apscheduler.schedulers.background import BackgroundScheduler
 
     HAS_APSCHEDULER = True
 except ImportError:
@@ -102,11 +108,8 @@ except ImportError:
 # [deploy] group — kubernetes
 # ──────────────────────────────────────────────
 try:
-    from kubernetes import client as k8s_client, config as k8s_config
-    from kubernetes.client.exceptions import ApiException as K8sApiException
-    from kubernetes.config.config_exception import (
-        ConfigException as K8sConfigException,
-    )
+    from kubernetes import client as k8s_client
+    from kubernetes import config as k8s_config
     from kubernetes.client import (
         AutoscalingV2Api,
         V2CrossVersionObjectReference,
@@ -114,6 +117,10 @@ try:
         V2HorizontalPodAutoscalerSpec,
         V2MetricSpec,
         V2ResourceMetricSource,
+    )
+    from kubernetes.client.exceptions import ApiException as K8sApiException
+    from kubernetes.config.config_exception import (
+        ConfigException as K8sConfigException,
     )
 
     HAS_KUBERNETES = True
@@ -136,7 +143,8 @@ except ImportError:
 # ──────────────────────────────────────────────
 try:
     import docker as docker_module
-    from docker.errors import APIError as DockerAPIError, BuildError as DockerBuildError
+    from docker.errors import APIError as DockerAPIError
+    from docker.errors import BuildError as DockerBuildError
 
     HAS_DOCKER = True
 except ImportError:
