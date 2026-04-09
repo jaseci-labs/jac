@@ -27,4 +27,3 @@ with entry {
         HAS_KUBERNETES = False;
     }
 }
-

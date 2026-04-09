@@ -7,8 +7,14 @@ try:
     from pymongo.errors import ConnectionFailure
     from pymongo.results import (
         DeleteResult as PyMongoDeleteResult,
+    )
+    from pymongo.results import (
         InsertManyResult as PyMongoInsertManyResult,
+    )
+    from pymongo.results import (
         InsertOneResult as PyMongoInsertOneResult,
+    )
+    from pymongo.results import (
         UpdateResult as PyMongoUpdateResult,
     )
 
