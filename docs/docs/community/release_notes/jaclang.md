@@ -20,6 +20,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Reject impl for methods that already have a body (E2016/E2017)**: `decl_impl_match_pass` now checks `needs_impl` before overwriting a declaration's body. Providing an impl for a method with an existing body raises E2016. Providing a duplicate impl for a stub that already has one raises E2017.
 - **Fix: Assignment Is a Narrowing Barrier**: Re-assigning a variable inside a narrowed scope (e.g. inside a `case` body) now correctly resets its type for every access that follows.
 - **Fix: Narrowing Through Parenthesized `and`/`or` Conditions**: `if (a and b):` now narrows types the same way as `if a and b:`.
+- **Removed: W2052 Broad Exception Warning**: Removed the `W2052` warning that flagged `except Exception` as overly broad. Catching `Exception` is a legitimate and common pattern at system boundaries (e.g., LLM calls, network I/O), and the warning produced false positives in these cases.
 
 ## jaclang 0.13.5 (Latest Release)
 

@@ -456,11 +456,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),
      # New semantic warnings
-     W2052 = _warn(
-         "W2052",
-         Category.SEMANTIC,
-         "Catching overly broad exception type '{type}' — catch a more specific exception"
-     ),
      W2058 = _warn(
          "W2058",
          Category.SEMANTIC,
