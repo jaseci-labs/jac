@@ -1081,11 +1081,6 @@ test "model pool router init" {
     assert "lb_all_share_alias:True" in stdout_value;
 }
 
-
-# ---------------------------------------------------------------------------
-# Anthropic Prompt Caching Tests
-# ---------------------------------------------------------------------------
-
 import from byllm.llm {
     _is_prompt_caching_eligible,
     _apply_prompt_caching,
@@ -1110,7 +1105,6 @@ test "prompt caching marks system message and last tool for anthropic models" {
     ];
     _apply_prompt_caching(messages, tools);
 
-    # System message and last tool marked; user message and first tool untouched
     assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
     assert "cache_control" not in messages[1];
     assert "cache_control" not in tools[0];
