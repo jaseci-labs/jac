@@ -296,11 +296,14 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             continue;
         }
         has_else = prev?.else_body and prev.else_body is not None;
-        # Check if prev has a short-circuit BoolExpr condition (already wired in exit handler)
-        has_bool_sc = (
-            isinstance(prev, (uni.IfStmt, uni.ElseIf, uni.WhileStmt))
-            and isinstance(prev.condition, uni.BoolExpr)
-        );
+        # Check if prev has a short-circuit BoolExpr condition (already wired
+        # in exit handler). Peel AtomUnit (parentheses) so that
+        # `(a and b)` is recognized the same as `a and b`.
+        has_bool_sc = False;
+        if isinstance(prev, (uni.IfStmt, uni.ElseIf, uni.WhileStmt)) {
+            unwrapped = _unwrap_parens(prev.condition);
+            has_bool_sc = isinstance(unwrapped, uni.BoolExpr);
+        }
         if has_else
         and isinstance(
             prev, (uni.IfStmt, uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
@@ -613,18 +616,17 @@ impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
         }
     }
 
-    # Check for short-circuit boolean condition (any BoolExpr, not just nested ones)
-    has_bool_sc = isinstance(nd.condition, uni.BoolExpr);
+    # Short-circuit boolean conditions: peel AtomUnit (parentheses) so that
+    # `if (a and b)` is recognized as a BoolExpr the same as `if a and b`.
+    unwrapped = _unwrap_parens(nd.condition);
+    cond_bool = unwrapped if isinstance(unwrapped, uni.BoolExpr) else None;
 
-    if has_bool_sc and true_target {
+    if cond_bool is not None and true_target {
         # For if-without-else, find the next sibling as false fallthrough target
         if not false_target and not nd.else_body and nd.parent {
             false_target = self._find_next_cfg_stmt_after(nd.parent, nd);
         }
-        import from jaclang.jac0core.constant { Tokens as Tok }
-        cond_bool: uni.BoolExpr = nd.condition;
-        op_is_and = isinstance(cond_bool.op, uni.Token)
-        and cond_bool.op.name == Tok.KW_AND;
+        op_is_and = _bool_is_and(cond_bool);
         entry = self._wire_bool_operands(
             cond_bool.values, op_is_and, true_target, false_target
         );
@@ -674,14 +676,13 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         false_target = self._find_next_cfg_stmt_after(nd.parent, nd);
     }
 
-    # Check for short-circuit boolean condition (any BoolExpr, not just nested ones)
-    has_bool_sc = isinstance(nd.condition, uni.BoolExpr);
+    # Short-circuit boolean conditions: peel AtomUnit (parentheses) so that
+    # `while (a and b)` is recognized the same as `while a and b`.
+    unwrapped = _unwrap_parens(nd.condition);
+    cond_bool = unwrapped if isinstance(unwrapped, uni.BoolExpr) else None;
 
-    if has_bool_sc and true_target {
-        import from jaclang.jac0core.constant { Tokens as Tok }
-        cond_bool: uni.BoolExpr = nd.condition;
-        op_is_and = isinstance(cond_bool.op, uni.Token)
-        and cond_bool.op.name == Tok.KW_AND;
+    if cond_bool is not None and true_target {
+        op_is_and = _bool_is_and(cond_bool);
         entry = self._wire_bool_operands(
             cond_bool.values, op_is_and, true_target, false_target
         );
@@ -692,7 +693,7 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         if true_target {
             self.link_bbs(nd, true_target);
         }
-        if false_target and not has_bool_sc {
+        if false_target and cond_bool is None {
             self.link_bbs(nd, false_target);
         }
     }

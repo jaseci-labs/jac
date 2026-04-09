@@ -1947,6 +1947,32 @@ test "assignment_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Regression: parenthesized BoolExpr conditions wire short-circuit CFG.
+
+Before the fix, `if (a and b):` was treated as a non-BoolExpr condition
+(because the parens wrapped the BoolExpr in an AtomUnit), so exit_if_stmt
+fell back to simple edges and never wired the CfgExpr operand chain.
+That left the operand CfgExprs with empty bb_in, so the backward walker
+starting from `expr.strings` inside the `and` couldn't find the upstream
+match-case narrowing and widened to the declared type. Now the condition
+is AtomUnit-peeled before the BoolExpr check, and narrowing flows through
+the parenthesized condition exactly as through the bare form.
+"""
+test "parenthesized_bool_cond" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_parenthesized_bool_cond.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All three shapes (no parens, if-with-parens, while-with-parens) must
+    # narrow cleanly to MultiString inside the match case.
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Regression: assignment is a narrowing barrier (widening edge).
 
 Pins down the three shapes of the barrier: strict narrowing succeeds,
