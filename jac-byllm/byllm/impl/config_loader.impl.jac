@@ -85,9 +85,7 @@ impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, Any] 
 impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, Any] {
     config = self.load();
     pc_config = config.get('prompt_caching', {});
-    return {
-        'enabled': bool(pc_config.get('enabled', True))
-    };
+    return {'enabled': bool(pc_config.get('enabled', True))};
 }
 
 """Get or create the global JacByllmConfig instance."""

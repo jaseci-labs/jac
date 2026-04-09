@@ -1,4 +1,3 @@
-
 """Check if the model is eligible for Anthropic prompt caching."""
 def _is_prompt_caching_eligible(model_name: str) -> bool {
     pc_config = _byllm_config.get_prompt_caching_config();
