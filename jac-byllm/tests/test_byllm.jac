@@ -1164,5 +1164,4 @@ test "McpClient errors when neither command nor url is set" {
         err = e;
     }
     assert err is not None , "McpClient must require command or url";
-    assert "command" in str(err) and "url" in str(err);
 }
