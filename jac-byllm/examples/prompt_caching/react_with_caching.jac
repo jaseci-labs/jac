@@ -29,8 +29,8 @@ sem lookup.fact_type = "One of: pop, capital, gdp";
 
 def research(question: str) -> str by llm(tools=[lookup], stream=True, logging=True);
 
+glob response = "";
 with entry {
-    response = "";
     for event in research(
         "Look up pop, capital, and gdp for France, Japan, Brazil, India, "
         "Germany, Nigeria, and Mexico. Rank by GDP."
