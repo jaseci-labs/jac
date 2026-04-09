@@ -57,7 +57,9 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             # Jac plugins to bundle in the desktop app (all enabled by default)
             'jac_scale': True,   # jac-scale: FastAPI server, auth, scaling
             'byllm': True,       # jac-byllm: LLM providers integration
-            'jac_coder': True    # jac-coder: AI coding assistant
+            'jac_coder': True,   # jac-coder: AI coding assistant
+            'jac_mcp': True,     # jac-mcp: MCP server integration
+            'jac_client': True   # jac-client: web client bundling
         }
     };
 }
