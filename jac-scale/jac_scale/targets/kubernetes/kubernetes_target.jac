@@ -204,7 +204,7 @@ obj KubernetesTarget(DeploymentTarget) {
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
-            commands.append('pip install -e ./jac-scale');
+            commands.append('pip install -e "./jac-scale[all]"');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
             commands.append('pip install -e ./jac-mcp');
@@ -222,9 +222,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 commands.append(f'pip install jaclang=={jaclang_v}');
             }
             if scale_v == 'latest' {
-                commands.append('pip install jac-scale');
+                commands.append('pip install "jac-scale[all]"');
             } else {
-                commands.append(f'pip install jac-scale=={scale_v}');
+                commands.append(f'pip install "jac-scale[all]=={scale_v}"');
             }
             if client_v == 'latest' {
                 commands.append('pip install jac-client');

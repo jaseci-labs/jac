@@ -9,7 +9,7 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 ## Installation
 
 ```bash
-pip install jac-scale
+pip install jac-scale[all]
 jac plugins enable scale
 ```
 
@@ -2489,7 +2489,7 @@ The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_prox
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang jac-scale
+RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080
