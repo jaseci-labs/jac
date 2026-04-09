@@ -7,6 +7,7 @@ import from jac_scale._optdeps.kubernetes {
     V2ResourceMetricSource,
     ApiException
 }
+
 def create_hpa(
     namespace: str,
     deployment_name: str,

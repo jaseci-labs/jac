@@ -1,7 +1,7 @@
 """Helpers for guarding optional dependencies."""
 
 """Raise a helpful error if an optional dependency is missing."""
-def require_optional(package: str, group: str) -> None {
+def require_optional(package: str, group: str) {
     try {
         __import__(package);
     } except (ImportError, ValueError) {

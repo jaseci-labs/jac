@@ -1,4 +1,5 @@
 """Guarded re-exports for prometheus-client (install group: [monitoring])."""
+
 with entry {
     try {
         import from prometheus_client {

@@ -1,4 +1,5 @@
 """Guarded re-exports for redis (install group: [data])."""
+
 with entry {
     try {
         import redis as redis_module;
