@@ -186,6 +186,10 @@ def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
 
+def:pub jac_to_js_service(code: str) -> dict {
+    return call_mcp_tool("jac_to_js", {"code": code});
+}
+
 def:pub jac_to_py_service(code: str) -> dict {
     return call_mcp_tool("jac_to_py", {"code": code});
 }

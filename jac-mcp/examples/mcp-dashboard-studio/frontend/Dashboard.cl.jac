@@ -11,6 +11,7 @@ sv import from ..main {
     list_examples,
     get_example,
     search_docs,
+    jac_to_js,
     jac_to_py,
     run_jac,
     lint_jac,
@@ -64,6 +65,7 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderJacToJsOutput -> JsxElement;
     def renderJacToPyOutput -> JsxElement;
     def renderRunOutput -> JsxElement;
     def renderLintOutput -> JsxElement;
@@ -360,6 +362,21 @@ def:pub DashboardPage -> JsxElement {
                                         {"Converting..."
                                             if busy("jac_to_py")
                                             else "→ Py"}
+                                    </button>
+                                    <button
+                                        onClick={lambda { runTool(
+                                            "jac_to_js", {"code": code}
+                                        );}}
+                                        disabled={loading != "" or not connected}
+                                        className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
+                                            "bg-white/20 animate-pulse"
+                                                if busy("jac_to_js")
+                                                else "bg-white/5 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {"Converting..."
+                                            if busy("jac_to_js")
+                                            else "→ JS"}
                                     </button>
                                 </div>
                             </div>

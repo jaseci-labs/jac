@@ -67,6 +67,8 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "jac_to_js" {
+        return "Transpiling Jac to JavaScript...";
     } elif tool == "jac_to_py" {
         return "Transpiling Jac to Python...";
     } elif tool == "run_jac" {
@@ -127,6 +129,11 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "jac_to_js" {
+        warnings_js: list = data["warnings"] if "warnings" in data else [];
+        return "Transpiled successfully."
+            if len(warnings_js) == 0
+            else (str(len(warnings_js)) + " warning(s).");
     } elif tool == "jac_to_py" {
         warnings: list = data["warnings"] if "warnings" in data else [];
         return "Transpiled successfully."
@@ -212,6 +219,8 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "jac_to_js" {
+            spawn_res = await root spawn jac_to_js(code=args["code"]);
         } elif tool == "jac_to_py" {
             spawn_res = await root spawn jac_to_py(code=args["code"]);
         } elif tool == "run_jac" {
@@ -668,6 +677,74 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
                     </button>
                 </div> for m in matches
             ]}
+        </div>;
+}
+
+impl DashboardPage.renderJacToJsOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    js_code: str = str(data["js_code"]) if "js_code" in data else "";
+    warnings: list = data["warnings"] if "warnings" in data else [];
+    if not js_code and len(warnings) == 0 {
+        return
+            <div className="text-xs text-zinc-500">
+                No output returned.
+            </div>;
+    }
+    return
+        <div className="space-y-3">
+            {js_code
+            and <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span
+                            className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-amber-400 bg-amber-500/10 border-amber-500/20"
+                        >
+                            JAVASCRIPT
+                        </span>
+                        <span className="text-[10px] text-zinc-600 font-mono">
+                            {str(len(js_code.split("\n"))) + " lines"}
+                        </span>
+                    </div>
+                    <button
+                        onClick={lambda { navigator.clipboard.writeText(js_code);output_copied = True;setTimeout(
+                            lambda { output_copied = False;}, 2000
+                        );}}
+                        className={"px-2 py-1 text-[9px] rounded-md border transition " + (
+                            "bg-green-500/20 border-green-500/40 text-green-400"
+                                if output_copied
+                                else "bg-white/5 hover:bg-white/10 border-white/10"
+                        )}
+                    >
+                        {"Copied!" if output_copied else "Copy"}
+                    </button>
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-amber-300/80 max-h-[420px] overflow-auto bg-[#070809] p-3 rounded-lg border border-amber-900/30 whitespace-pre-wrap break-words font-mono"
+                >
+                    {js_code}
+                </pre>
+            </div>}{len(warnings) > 0
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
+                >
+                    {str(len(warnings)) + " warning(s)"}
+                </div>
+                {[
+                    <div
+                        key={str(w)}
+                        className="text-[11px] font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
+                    >
+                        {str(w)}
+                    </div> for w in warnings
+                ]}
+            </div>}
         </div>;
 }
 
@@ -1203,6 +1280,8 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "jac_to_js" {
+        return renderJacToJsOutput();
     } elif active_tool == "jac_to_py" {
         return renderJacToPyOutput();
     } elif active_tool == "run_jac" {
