@@ -6,6 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Feat: Multi-mode Sidecar for Windows Desktop**: --jac-cli flag for CLI proxy, manual plugin registration for frozen apps, .env loading from bundled location, UTF-8/NO_COLOR for Windows.
 - **Desktop Plugin Bundling Config**: Added `get_plugins_config()` to `DesktopConfig` for reading the `[desktop.plugins]` section from `jac.toml`, controlling which Jac plugins (jac-scale, byllm, jac-coder) are bundled into desktop apps.
+- **Feat: Client-Only Mode for Desktop Builds**: Added `client_only` build mode that builds only the web client bundle without the full Tauri app, useful for development and CI workflows.
+- **Fix: JAC_BUILD Env Var During Desktop Build**: Set `JAC_BUILD=1` environment variable during desktop build to prevent the Jac server from starting during compilation, avoiding port conflicts and unnecessary resource usage.
 - **Fix: Vite Define Skips Empty API URL**: The Vite config no longer injects `__JAC_API_BASE_URL__: undefined` when no API URL is configured, preventing conflicts with Tauri's runtime injection in desktop builds.
 - **Fix: HTML Script Tag Escaping**: Fixed `</script>` sequences in JSON payloads within `<script>` tags being incorrectly interpreted as tag closers by escaping `</` to `<\/`.
 - **Desktop Sidecar Overhaul**: Complete rewrite of sidecar process management with signal handling (`SIGTERM`/`SIGINT`/`SIGHUP`), stderr redirect (`JAC_USE_STDERR=1`) to avoid `BrokenPipeError` after Tauri closes stdout, writable data path (`--data-path` / `JAC_DATA_PATH`) for read-only AppImage environments with fallback probing, and manual plugin registration for PyInstaller-frozen apps.
