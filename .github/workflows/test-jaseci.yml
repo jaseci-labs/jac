@@ -320,7 +320,7 @@ jobs:
         python -m build jac-byllm --wheel
         pip install jac/dist/jaclang-*.whl
         pip install jac-client/dist/jac_client-*.whl
-        pip install "jac-scale/dist/jac_scale-*.whl[all]"
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
         pip install pytest-asyncio
