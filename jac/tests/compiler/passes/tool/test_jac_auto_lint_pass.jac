@@ -1161,3 +1161,34 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
     # Lambda with no params: -> None removed
     assert "lambda {" in formatted;
 }
+
+# ── TestW3038UseStateToHas ────────────────────────────────────────────────
+test "W3038 auto-fix converts useState to has declaration" {
+    input_path = auto_lint_fixture_path("usestate_to_has.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # useState assignment replaced with has declaration
+    assert "has name: str = \"\"" in formatted;
+
+    # useState call is gone (only the docstring comment may mention it, not code)
+    assert "= useState(" not in formatted;
+
+    # setter call replaced with direct assignment
+    assert "name = str(e.target.value);" in formatted;
+    assert "setName" not in formatted;
+
+    # useState import removed (it was the only import from react)
+    assert "import from \"react\"" not in formatted;
+}
+
+test "W3038 report-only mode does not modify useState" {
+    input_path = auto_lint_fixture_path("usestate_to_has.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+    formatted = prog.mod.main.gen.jac;
+
+    # Without auto-lint, useState must be preserved
+    assert "[name, setName] = useState(\"\");" in formatted;
+    assert "setName(str(e.target.value));" in formatted;
+    assert "= useState(" in formatted;
+}
