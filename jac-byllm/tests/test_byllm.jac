@@ -1083,13 +1083,7 @@ test "model pool router init" {
     assert "lb_all_share_alias:True" in stdout_value;
 }
 
-# =============================================================================
 # MCP integration tests
-# =============================================================================
-# These tests cover McpTool's polymorphic interface (so it plugs into byllm's
-# tool list cleanly) and McpClient's config validation. They do NOT spawn real
-# MCP servers or make network calls — protocol-level behavior belongs to the
-# mcp library's own test suite.
 glob _dummy_mcp_client = McpClient(url="http://example.invalid/mcp");
 
 test "McpTool implements Tool interface" {

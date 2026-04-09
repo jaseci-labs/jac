@@ -38,9 +38,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     tools = [];
     for (i, func) in enumerate(raw_tools) {
         # Already tool-like (e.g., McpTool) — pass through unchanged.
-        if hasattr(func, 'get_json_schema')
-        and hasattr(func, 'get_name')
-        and hasattr(func, 'is_finish_tool') {
+        if func?.get_json_schema and func?.get_name and func?.is_finish_tool {
             tools.append(func);
             continue;
         }
