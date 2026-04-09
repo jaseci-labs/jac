@@ -1,4 +1,5 @@
 import "../styles/main.css";
+import from "@viz-js/viz" { instance }
 sv import from ..main {
     set_mcp_server,
     validate_jac,
@@ -12,6 +13,7 @@ sv import from ..main {
     search_docs,
     understand_jac_and_jaseci,
     get_resource,
+    graph_visualize,
     list_commands,
     get_command,
     execute_command
@@ -38,7 +40,8 @@ def:pub DashboardPage -> JsxElement {
         jac_copied: bool = False,
         output_copied: bool = False,
         ast_copied: bool = False,
-        code_scroll: int = 0;
+        code_scroll: int = 0,
+        graph_svg: str = "";
     #  Method declarations -- bodies are in Dashboard.impl.jac
     def get_first_report(spawn_res: Any) -> dict;
     def busy(tool: str) -> bool;
@@ -55,6 +58,7 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderGraphVisualizeOutput -> JsxElement;
     def renderListCommandsOutput -> JsxElement;
     def renderGetCommandOutput -> JsxElement;
     def renderExecuteCommandOutput -> JsxElement;
@@ -270,6 +274,22 @@ def:pub DashboardPage -> JsxElement {
                                         {"Parsing..."
                                             if busy("get_ast_json")
                                             else "AST JSON"}
+                                    </button>
+                                    <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
+                                    <button
+                                        onClick={lambda { runTool(
+                                            "graph_visualize", {"code": code}
+                                        );}}
+                                        disabled={loading != "" or not connected}
+                                        className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
+                                            "bg-white/20 animate-pulse"
+                                                if busy("graph_visualize")
+                                                else "bg-white/5 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {"Graphing..."
+                                            if busy("graph_visualize")
+                                            else "Graph"}
                                     </button>
                                 </div>
                             </div>

@@ -11,6 +11,7 @@ import from backend.service {
     list_examples_service,
     get_example_service,
     search_docs_service,
+    graph_visualize_service,
     list_commands_service,
     get_command_service,
     execute_command_service,
@@ -167,6 +168,19 @@ walker:pub search_docs {
             disengage;
         }
         report search_docs_service(self.query);
+    }
+}
+
+walker:pub graph_visualize {
+    has code: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("graph_visualize");
+            disengage;
+        }
+        report graph_visualize_service(self.code);
     }
 }
 

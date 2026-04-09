@@ -186,6 +186,10 @@ def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
 
+def:pub graph_visualize_service(code: str) -> dict {
+    return call_mcp_tool("graph_visualize", {"code": code});
+}
+
 def:pub list_commands_service -> dict {
     return call_mcp_tool("list_commands", {});
 }

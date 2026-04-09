@@ -67,6 +67,8 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "graph_visualize" {
+        return "Generating graph...";
     } elif tool == "list_commands" {
         return "Fetching command list...";
     } elif tool == "get_command" {
@@ -119,6 +121,9 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "graph_visualize" {
+        graph: str = str(data["graph"]) if "graph" in data else "";
+        return "Graph generated." if graph else "No graph output.";
     } elif tool == "list_commands" {
         total: int = data["total"] if "total" in data else 0;
         return str(total) + " commands available.";
@@ -159,6 +164,9 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
     loading = tool;
     active_tool = tool;
     notice = start_notice(tool);
+    if tool != "graph_visualize" {
+        graph_svg = "";
+    }
     try {
         spawn_res: Any = None;
         if tool == "validate_jac" {
@@ -183,6 +191,8 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "graph_visualize" {
+            spawn_res = await root spawn graph_visualize(code=args["code"]);
         } elif tool == "list_commands" {
             spawn_res = await root spawn list_commands();
         } elif tool == "get_command" {
@@ -201,6 +211,14 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             current_result = res;
             if res["ok"] {
                 notice = success_notice(tool, res);
+                if tool == "graph_visualize" {
+                    gdata: dict = res["data"] if "data" in res else {};
+                    dot: str = str(gdata["graph"]) if "graph" in gdata else "";
+                    if dot {
+                        _viz_inst: Any = await instance();
+                        graph_svg = str(_viz_inst.renderString(dot));
+                    }
+                }
             } else {
                 err = res["error"] if "error" in res else {};
                 err_msg: str = str(err["message"]) if "message" in err else "unknown";
@@ -620,6 +638,66 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         </div>;
 }
 
+impl DashboardPage.renderGraphVisualizeOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    graph: str = str(data["graph"]) if "graph" in data else "";
+    program_output: str = str(data["program_output"])
+        if "program_output" in data
+        else "";
+    if not graph {
+        return
+            <div className="text-xs text-zinc-500">
+                No graph output returned.
+            </div>;
+    }
+    return
+        <div className="space-y-3">
+            {graph_svg
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    Graph
+                </div>
+                <div
+                    className="overflow-auto max-h-[400px] bg-white rounded-lg p-3 border border-white/10"
+                    dangerouslySetInnerHTML={{"__html": graph_svg}}
+                />
+            </div>}
+            <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    DOT Source
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-teal-300/80 max-h-[200px] overflow-auto bg-[#070809] p-3 rounded-lg border border-teal-900/30 whitespace-pre-wrap break-words font-mono"
+                >
+                    {graph}
+                </pre>
+            </div>
+            {program_output
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    Program Output
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-zinc-300 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+                >
+                    {program_output}
+                </pre>
+            </div>}
+        </div>;
+}
+
 impl DashboardPage.renderListCommandsOutput -> JsxElement {
     if not current_result {
         return renderEmpty();
@@ -884,6 +962,8 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "graph_visualize" {
+        return renderGraphVisualizeOutput();
     } elif active_tool == "list_commands" {
         return renderListCommandsOutput();
     } elif active_tool == "get_command" {

@@ -12,6 +12,7 @@ react-error-boundary = "^5.0.0"
 react-hook-form = "^7.71.0"
 zod = "^4.3.6"
 "@hookform/resolvers" = "^5.2.2"
+"@viz-js/viz" = "latest"
 
 [dependencies.npm.dev]
 "@tailwindcss/vite" = "^4.1.17"
