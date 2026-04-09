@@ -8,10 +8,48 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 
 ## Installation
 
+jac-scale is lightweight by default. Install only the extras you need:
+
 ```bash
+# Core only - FastAPI server, auth, CLI (no heavy dependencies)
 pip install jac-scale
+
+# Add MongoDB + Redis for persistent storage and distributed cache
+pip install jac-scale[data]
+
+# Add Prometheus metrics and observability
+pip install jac-scale[monitoring]
+
+# Add APScheduler for cron and background task scheduling
+pip install jac-scale[scheduler]
+
+# Add Kubernetes + Docker for deployment and image building
+pip install jac-scale[deploy]
+
+# Everything - recommended for production or if unsure
+pip install jac-scale[all]
+```
+
+Groups are combinable: `pip install jac-scale[data,monitoring]`
+
+After installing, enable the plugin:
+
+```bash
 jac plugins enable scale
 ```
+
+!!! note
+    When a feature is used without its dependency installed, you get a clear error with the exact install command:
+    `ImportError: 'pymongo' is required for this feature. Install it with: pip install jac-scale[data]`
+
+| Group | What it adds | When you need it |
+|-------|-------------|-----------------|
+| _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
+| `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
+| `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
+| `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
+| `[deploy]` | kubernetes, docker | `jac start --scale` or `jac start --build` |
+| `[all]` | All of the above | Production, or when you want everything |
 
 ---
 
@@ -2489,7 +2527,7 @@ The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_prox
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang jac-scale
+RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080

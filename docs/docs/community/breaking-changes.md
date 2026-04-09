@@ -7,6 +7,39 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### jac-scale 0.2.14
+
+#### 1. Heavy Dependencies Moved to Optional Install Groups
+
+`pip install jac-scale` no longer installs pymongo, redis, prometheus-client, apscheduler, kubernetes, or docker. These are now optional extras.
+
+**Impact:** Existing installations that rely on any of these packages must update their install command.
+
+**Before:**
+
+```bash
+pip install jac-scale
+```
+
+**After:**
+
+```bash
+pip install jac-scale[all]
+```
+
+Or install only what you need:
+
+```bash
+pip install jac-scale[data]            # pymongo + redis
+pip install jac-scale[monitoring]      # prometheus-client
+pip install jac-scale[scheduler]       # apscheduler
+pip install jac-scale[deploy]          # kubernetes + docker
+```
+
+No code changes are required - the same APIs, configuration, and behavior apply. When a feature is used without its dependency installed, a clear error message shows the exact install command needed.
+
+---
+
 ### Version 0.12.3
 
 #### 1. Automatic `TYPE_CHECKING` Import Guards

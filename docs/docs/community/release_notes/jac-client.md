@@ -8,6 +8,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Desktop Plugin Bundling Config**: Added `get_plugins_config()` to `DesktopConfig` for reading the `[desktop.plugins]` section from `jac.toml`, controlling which Jac plugins (jac-scale, byllm, jac-coder) are bundled into desktop apps.
 - **Feat: Client-Only Mode for Desktop Builds**: Added `client_only` build mode that builds only the web client bundle without the full Tauri app, useful for development and CI workflows.
 - **Fix: JAC_BUILD Env Var During Desktop Build**: Set `JAC_BUILD=1` environment variable during desktop build to prevent the Jac server from starting during compilation, avoiding port conflicts and unnecessary resource usage.
+- **Fix: Always Bundle jac_client as Core Sidecar Package**: `jac_client` is now bundled as a core package in PyInstaller builds regardless of `[desktop.plugins]` config, since the sidecar entry point depends on it. Previously, setting `jac_client = false` in plugins config would break the sidecar at startup with `ModuleNotFoundError`.
+- **Fix: Exclude Build Artifacts from PyInstaller .jac Collection**: The `rglob('*.jac')` in the PyInstaller spec now skips `src-tauri`, `node_modules`, `dist`, and other build artifact directories. Previously, rebuilding would recursively nest previous sidecar bundles, creating deeply nested paths that exceeded Windows path limits and broke NSIS installer generation.
+- **Fix: Add jac_mcp to Default Desktop Plugin Config**: Added `jac_mcp` to the default `[desktop.plugins]` configuration so MCP server integration is bundled by default in desktop builds.
 - **Fix: Vite Define Skips Empty API URL**: The Vite config no longer injects `__JAC_API_BASE_URL__: undefined` when no API URL is configured, preventing conflicts with Tauri's runtime injection in desktop builds.
 - **Fix: HTML Script Tag Escaping**: Fixed `</script>` sequences in JSON payloads within `<script>` tags being incorrectly interpreted as tag closers by escaping `</` to `<\/`.
 - **Desktop Sidecar Overhaul**: Complete rewrite of sidecar process management with signal handling (`SIGTERM`/`SIGINT`/`SIGHUP`), stderr redirect (`JAC_USE_STDERR=1`) to avoid `BrokenPipeError` after Tauri closes stdout, writable data path (`--data-path` / `JAC_DATA_PATH`) for read-only AppImage environments with fallback probing, and manual plugin registration for PyInstaller-frozen apps.
@@ -18,6 +21,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Standalone Sidecar Bundling via PyInstaller**: Desktop builds now bundle the Jac sidecar as a standalone executable using PyInstaller by default. The bundled sidecar includes Python, jaclang, jac-client, and configured plugins (jac-scale, byllm, jac-coder via `[desktop.plugins]` in `jac.toml`), eliminating the requirement for end users to have Python installed. Auto-installs Python dependencies from `jac.toml` before bundling. Set `JAC_SIDECAR_STANDALONE=0` to fall back to wrapper script mode.
 - **Debug Diagnostic Page**: Added a debug page to the all-in-one example app for diagnosing sidecar/API connectivity issues. Displays API base URL status, Tauri runtime detection, `get_api_url` invoke results, and interactive buttons to test walker spawning and direct HTTP fetch.
 - **Plugin Reference Docs**: Added `reference/plugins/jac-client.md` documenting jac-client CLI commands and configuration options.
+- 1 small refactor/change.
 
 ## jac-client 0.3.11 (Latest Release)
 

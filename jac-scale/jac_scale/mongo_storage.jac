@@ -3,7 +3,7 @@
 import hashlib;
 import from datetime { UTC, datetime }
 import from typing { Any }
-import from pymongo.collection { Collection }
+import from jac_scale._optdeps.pymongo { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 
 obj MongoUserStorage {
