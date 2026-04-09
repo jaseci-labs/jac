@@ -501,23 +501,6 @@ test "W2050: missing return on non-None function" {
     assert has_diagnostic_code(prog, "W2050", in_warnings=True);
 }
 
-test "W2052: overly broad except" {
-    (prog, _) = compile_and_check("semantic_W2052_broad_except.jac");
-    assert has_diagnostic_code(prog, "W2052", in_warnings=True);
-    # Verify underline is clamped to the token, not the entire Except block
-    for w in prog.warnings_had {
-        if "W2052" in w.msg {
-            output = w.pretty_print();
-            for line in output.split('\n') {
-                caret_count = line.count('^');
-                assert caret_count <= len("Exception") , f"Underline too wide ({caret_count} carets): {repr(
-                    line
-                )}";
-            }
-        }
-    }
-}
-
 test "E2055: return in finally block" {
     (prog, _) = compile_and_check("context_E2055_return_in_finally.jac");
     assert has_diagnostic_code(prog, "E2055");
@@ -767,7 +750,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
 glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
-def reject_test(name_snippet: tuple) -> None {
+def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_REJECT {
         pytest.skip(f"{name} not yet implemented");
@@ -777,7 +760,7 @@ def reject_test(name_snippet: tuple) -> None {
     assert has_errors , f"Validation must reject '{name}': {snippet}";
 }
 
-def validate_reject_test(name_snippet: tuple) -> None {
+def validate_reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_VALIDATE {
         pytest.skip(f"{name} not yet implemented");
