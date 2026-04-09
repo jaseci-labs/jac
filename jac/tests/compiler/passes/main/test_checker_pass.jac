@@ -301,6 +301,29 @@ test "arity" {
     );
 }
 
+test "dunder_new_direct_call" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_dunder_new_direct.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # object.__new__(self.__class__) and object.__new__(cls) should NOT error.
+    # Only the call with too many args should produce errors (one per extra arg).
+    e1051_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1051"
+    ];
+    assert len(e1051_errors) == 2 , f"Expected 2 E1051 errors, got {len(
+        e1051_errors
+    )}: " + "\n".join(e.pretty_print() for e in e1051_errors);
+    # Both errors should be on the too-many-args line
+    for e in e1051_errors {
+        assert e.loc and e.loc.first_line == 32 , f"Expected error on line 32, got line {e.loc.first_line
+            if e.loc
+            else '?'}";
+    }
+}
+
 test "param_types" {
     path = os.path.join(CHECKER_FIXTURES, "checker_param_types.jac");
     program = JacProgram();
