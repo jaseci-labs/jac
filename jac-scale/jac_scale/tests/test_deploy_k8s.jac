@@ -730,6 +730,7 @@ test "deploy all in one" {
         scale_up_stabilization_window=120,
         scale_down_stabilization_window=600
     );
+    time.sleep(10);
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
     );
@@ -766,7 +767,7 @@ test "deploy all in one" {
         scale_up_stabilization_window=60,
         scale_down_stabilization_window=300
     );
-
+    time.sleep(10);
     # Validate NGINX Ingress controller resources
     nginx_controller_name = f"{app_name}-ingress-nginx";
     nginx_cluster_resource_name = f"{namespace}-{nginx_controller_name}";
