@@ -2,7 +2,7 @@ import logging;
 import datetime;
 import from typing { Any }
 import from uuid { uuid4 }
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     BackgroundScheduler,
     APThreadPoolExecutor as ThreadPoolExecutor
 }

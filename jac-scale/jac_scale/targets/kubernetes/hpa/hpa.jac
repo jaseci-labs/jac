@@ -1,4 +1,4 @@
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     AutoscalingV2Api,
     V2CrossVersionObjectReference,
     V2HorizontalPodAutoscaler,

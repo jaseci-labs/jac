@@ -1,6 +1,6 @@
 """DockerHub registry implementation."""
 import from typing { Any }
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     docker_module as docker,
     DockerAPIError as APIError,
     DockerBuildError as BuildError

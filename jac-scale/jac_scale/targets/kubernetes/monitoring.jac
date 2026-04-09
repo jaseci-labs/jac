@@ -2,7 +2,7 @@
 import re;
 import hashlib;
 import from typing { Any }
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     k8s_client as client,
     K8sApiException as ApiException
 }

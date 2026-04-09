@@ -35,6 +35,11 @@ deploy = [
 all = [
     "jac-scale[data,monitoring,scheduler,deploy]",
 ]
+test = [
+    "jac-scale[all]",
+    "testcontainers[mongodb,redis]",
+    "requests",
+]
 
 [project.urls]
 Repository = "https://github.com/Jaseci-Labs/jaseci"

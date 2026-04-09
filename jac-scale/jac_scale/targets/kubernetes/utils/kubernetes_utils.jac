@@ -8,7 +8,7 @@ import from pathlib { Path }
 import requests;
 import urllib3;
 import from dotenv { dotenv_values }
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     k8s_client as client,
     k8s_config as config,
     K8sApiException as ApiException,

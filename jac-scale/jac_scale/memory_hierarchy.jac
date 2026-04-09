@@ -15,7 +15,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
 import from uuid { UUID }
-import from jac_scale.utils.optional_imports {
+import from jac_scale._optdeps.optional_imports {
     redis_module as redis,
     MongoClient,
     UpdateOne,

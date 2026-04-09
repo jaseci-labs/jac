@@ -2,7 +2,7 @@
 import from typing { Any }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.abstractions.metrics { MetricsCollector, NoOpMetricsCollector }
-import from jac_scale.utils.optional_deps { is_optional_available }
+import from jac_scale._optdeps.optional_deps { is_optional_available }
 
 """Factory for creating utility instances."""
 class UtilityFactory {

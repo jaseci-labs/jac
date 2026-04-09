@@ -993,7 +993,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
     import re;
-    import from jac_scale.utils.optional_imports { generate_latest, REGISTRY }
+    import from jac_scale._optdeps.optional_imports { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
