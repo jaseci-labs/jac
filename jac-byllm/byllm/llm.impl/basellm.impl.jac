@@ -10,7 +10,7 @@ def _is_prompt_caching_eligible(model_name: str) -> bool {
 
 
 """Add cache_control markers to the last system message and last tool."""
-def _apply_prompt_caching(messages: list, tools: list | None) -> None {
+def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
     for (i, msg) in enumerate(messages) {
         if isinstance(msg, dict) and msg.get("role") == "system" {
