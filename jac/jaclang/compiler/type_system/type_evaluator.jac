@@ -432,6 +432,7 @@ obj TypeEvaluator {
         expr: uni.FuncCall, method_type: TypeBase
     ) -> types.FunctionType | None;
 
+    def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
@@ -506,10 +507,6 @@ obj TypeEvaluator {
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def get_narrowed_type_for_expr(
         expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
-    ) -> TypeBase | None;
-
-    def _narrow_via_chain(
-        target: NarrowingTarget, from_expr: uni.Expr, base_type: TypeBase | None
     ) -> TypeBase | None;
 
     def _compute_narrowed_at(
