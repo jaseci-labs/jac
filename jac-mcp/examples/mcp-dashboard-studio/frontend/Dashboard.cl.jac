@@ -11,6 +11,7 @@ sv import from ..main {
     list_examples,
     get_example,
     search_docs,
+    jac_to_py,
     run_jac,
     lint_jac,
     understand_jac_and_jaseci,
@@ -63,6 +64,7 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderJacToPyOutput -> JsxElement;
     def renderRunOutput -> JsxElement;
     def renderLintOutput -> JsxElement;
     def renderGraphVisualizeOutput -> JsxElement;
@@ -342,6 +344,22 @@ def:pub DashboardPage -> JsxElement {
                                         )}
                                     >
                                         {"Running..." if busy("run_jac") else "▶ Run"}
+                                    </button>
+                                    <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
+                                    <button
+                                        onClick={lambda { runTool(
+                                            "jac_to_py", {"code": code}
+                                        );}}
+                                        disabled={loading != "" or not connected}
+                                        className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
+                                            "bg-white/20 animate-pulse"
+                                                if busy("jac_to_py")
+                                                else "bg-white/5 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {"Converting..."
+                                            if busy("jac_to_py")
+                                            else "→ Py"}
                                     </button>
                                 </div>
                             </div>
