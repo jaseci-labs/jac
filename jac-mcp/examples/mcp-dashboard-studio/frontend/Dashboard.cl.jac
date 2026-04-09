@@ -11,6 +11,7 @@ sv import from ..main {
     list_examples,
     get_example,
     search_docs,
+    run_jac,
     lint_jac,
     understand_jac_and_jaseci,
     get_resource,
@@ -43,7 +44,9 @@ def:pub DashboardPage -> JsxElement {
         ast_copied: bool = False,
         code_scroll: int = 0,
         graph_svg: str = "",
-        lint_auto_fix: bool = False;
+        lint_auto_fix: bool = False,
+        run_entrypoint: str = "",
+        run_timeout: int = 30;
     #  Method declarations -- bodies are in Dashboard.impl.jac
     def get_first_report(spawn_res: Any) -> dict;
     def busy(tool: str) -> bool;
@@ -60,6 +63,7 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderRunOutput -> JsxElement;
     def renderLintOutput -> JsxElement;
     def renderGraphVisualizeOutput -> JsxElement;
     def renderListCommandsOutput -> JsxElement;
@@ -320,6 +324,25 @@ def:pub DashboardPage -> JsxElement {
                                     >
                                         {"Linting..." if busy("lint_jac") else "Lint"}
                                     </button>
+                                    <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
+                                    <button
+                                        onClick={lambda { runTool(
+                                            "run_jac",
+                                            {
+                                                "code": code,
+                                                "entrypoint": run_entrypoint,
+                                                "timeout": run_timeout
+                                            }
+                                        );}}
+                                        disabled={loading != "" or not connected}
+                                        className={"px-2.5 py-1 text-[10px] rounded-md border disabled:opacity-30 disabled:cursor-not-allowed transition font-medium " + (
+                                            "bg-green-500/30 border-green-500/40 text-green-300 animate-pulse"
+                                                if busy("run_jac")
+                                                else "bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500/20"
+                                        )}
+                                    >
+                                        {"Running..." if busy("run_jac") else "▶ Run"}
+                                    </button>
                                 </div>
                             </div>
                             <div className="flex min-h-[520px] bg-[#0d0e10]">
@@ -549,6 +572,37 @@ def:pub DashboardPage -> JsxElement {
                                         if busy("execute_command")
                                         else "Execute"}
                                 </button>
+                            </div>
+                        </div>
+                        <div className={panelCls}>
+                            <div className={sectionLabel}>
+                                Run Settings
+                            </div>
+                            <input
+                                type="text"
+                                value={run_entrypoint}
+                                onChange={lambda e: Any { run_entrypoint = e.target.value;}}
+                                placeholder="entrypoint (optional, e.g. my_func)"
+                                className={inputCls + " font-mono"}
+                            />
+                            <div className="flex gap-2 items-center">
+                                <span
+                                    className="text-[10px] text-zinc-600 flex-shrink-0"
+                                >
+                                    timeout (s)
+                                </span>
+                                <input
+                                    type="number"
+                                    value={run_timeout}
+                                    onChange={lambda e: Any { run_timeout = int(
+                                        e.target.value
+                                    )
+                                        if e.target.value
+                                        else 30;}}
+                                    min={1}
+                                    max={120}
+                                    className={inputCls + " w-20"}
+                                />
                             </div>
                         </div>
                         <div className={panelCls}>

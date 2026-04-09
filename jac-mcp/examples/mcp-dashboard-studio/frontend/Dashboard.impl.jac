@@ -67,6 +67,8 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "run_jac" {
+        return "Running Jac code...";
     } elif tool == "lint_jac" {
         return "Linting Jac code...";
     } elif tool == "graph_visualize" {
@@ -123,6 +125,11 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "run_jac" {
+        exit_code: int = data["exit_code"] if "exit_code" in data else -1;
+        return "Exited " + str(exit_code) + (
+            " — success." if exit_code == 0 else " — failed."
+        );
     } elif tool == "lint_jac" {
         violations: list = data["violations"] if "violations" in data else [];
         return "No violations found."
@@ -198,6 +205,12 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "run_jac" {
+            spawn_res = await root spawn run_jac(
+                code=args["code"],
+                entrypoint=args["entrypoint"],
+                timeout=args["timeout"]
+            );
         } elif tool == "lint_jac" {
             spawn_res = await root spawn lint_jac(
                 code=args["code"], auto_fix=args["auto_fix"]
@@ -649,6 +662,65 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         </div>;
 }
 
+impl DashboardPage.renderRunOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    exit_code: int = data["exit_code"] if "exit_code" in data else -1;
+    stdout: str = str(data["stdout"]) if "stdout" in data else "";
+    stderr: str = str(data["stderr"]) if "stderr" in data else "";
+    error: str = str(data["error"]) if "error" in data and data["error"] else "";
+    success: bool = exit_code == 0;
+    return
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <span
+                    className={"text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
+                        "text-green-400 bg-green-500/10 border-green-500/20"
+                            if success
+                            else "text-red-400 bg-red-500/10 border-red-500/20"
+                    )}
+                >
+                    {"exit " + str(exit_code)}
+                </span>
+                {error
+                and <span className="text-[10px] text-red-400 font-mono">
+                    {error}
+                </span>}
+            </div>
+            {stdout
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                >
+                    stdout
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-green-300/80 max-h-[340px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+                >
+                    {stdout}
+                </pre>
+            </div>}
+            {stderr
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-red-600 font-semibold"
+                >
+                    stderr
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-red-300/80 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-red-500/10 whitespace-pre-wrap break-words font-mono"
+                >
+                    {stderr}
+                </pre>
+            </div>}
+        </div>;
+}
+
 impl DashboardPage.renderLintOutput -> JsxElement {
     if not current_result {
         return renderEmpty();
@@ -1054,6 +1126,8 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "run_jac" {
+        return renderRunOutput();
     } elif active_tool == "lint_jac" {
         return renderLintOutput();
     } elif active_tool == "graph_visualize" {
