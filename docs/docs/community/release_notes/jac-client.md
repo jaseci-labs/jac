@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.12 (Unreleased)
 
+- **Examples: useState → `has` Declaration Migration**: Updated `all-in-one` and `full-stack-with-auth` examples to replace React `useState` hooks with Jac-native `has` declarations. Setter callbacks passed as JSX props (e.g. `setFilter`, `setInput`) are now expressed as inline lambdas (`lambda val: str -> str { x = val; }`). The `useLocalStorage` hook was refactored to use `useEffect` for the initial localStorage load, replacing the unsupported lazy-initializer pattern.
 - **Desktop Plugin Bundling Config**: Added `get_plugins_config()` to `DesktopConfig` for reading the `[desktop.plugins]` section from `jac.toml`, controlling which Jac plugins (jac-scale, byllm, jac-coder) are bundled into desktop apps.
 - **Fix: Vite Define Skips Empty API URL**: The Vite config no longer injects `__JAC_API_BASE_URL__: undefined` when no API URL is configured, preventing conflicts with Tauri's runtime injection in desktop builds.
 - **Fix: HTML Script Tag Escaping**: Fixed `</script>` sequences in JSON payloads within `<script>` tags being incorrectly interpreted as tag closers by escaping `</` to `<\/`.

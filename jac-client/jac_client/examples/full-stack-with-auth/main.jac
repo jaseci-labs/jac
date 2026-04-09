@@ -639,12 +639,12 @@ cl {
                 </h1>
                 <TodoInput
                     input={input}
-                    setInput={lambda val: str { input = val;}}
+                    setInput={lambda val: str -> str { input = val;}}
                     addTodo={addTodo}
                 />
                 <TodoFilters
                     filter={filter}
-                    setFilter={lambda val: str { filter = val;}}
+                    setFilter={lambda val: str -> str { filter = val;}}
                 />
                 <TodoList
                     filteredTodos={filteredTodos}
