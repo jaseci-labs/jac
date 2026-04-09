@@ -730,7 +730,7 @@ test "deploy all in one" {
         scale_up_stabilization_window=120,
         scale_down_stabilization_window=600
     );
-    time.sleep(10);
+    time.sleep(30);
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
     );
@@ -757,17 +757,17 @@ test "deploy all in one" {
     );
 
     # Restore original HPA values for remaining tests
-    create_hpa(
-        namespace=namespace,
-        deployment_name=app_name,
-        min_replicas=1,
-        max_replicas=3,
-        cpu_target=70,
-        memory_target=70,
-        scale_up_stabilization_window=60,
-        scale_down_stabilization_window=300
-    );
-    time.sleep(10);
+    # create_hpa(
+    #     namespace=namespace,
+    #     deployment_name=app_name,
+    #     min_replicas=1,
+    #     max_replicas=3,
+    #     cpu_target=70,
+    #     memory_target=70,
+    #     scale_up_stabilization_window=60,
+    #     scale_down_stabilization_window=300
+    # );
+    # time.sleep(30);
     # Validate NGINX Ingress controller resources
     nginx_controller_name = f"{app_name}-ingress-nginx";
     nginx_cluster_resource_name = f"{namespace}-{nginx_controller_name}";
